@@ -441,20 +441,35 @@ export const normalizeNetworkConfigBrand = (brand?: string) =>
 export const isSupportedNetworkConfigBrand = (brand?: string) =>
   NETWORK_CONFIG_BRAND_ALIASES.has(normalizeNetworkConfigBrand(brand));
 
-export const validateNetworkConfigCommands = (value: string) => {
+type Translate = (
+  id: string,
+  fallback?: string,
+  values?: Record<string, string>
+) => string;
+
+export const validateNetworkConfigCommands = (
+  value: string,
+  t: Translate = (_id, fallback) => fallback || _id
+) => {
   const commands = (value || '')
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
   if (!commands.length) {
-    return '请输入采集命令';
+    return t('Collection.networkConfigFileTask.commandsRequired', '请输入采集命令');
   }
   const badCommand = commands.find((command) => {
     const lowered = command.toLowerCase().replace(/\s+/g, ' ');
     const firstWord = lowered.split(' ')[0];
     return DANGEROUS_EXACT_COMMANDS.has(lowered) || DANGEROUS_COMMAND_PREFIXES.has(firstWord);
   });
-  return badCommand ? `命令存在高危操作：${badCommand}` : '';
+  return badCommand
+    ? t(
+      'Collection.networkConfigFileTask.dangerousCommand',
+      '命令存在高危操作：{command}',
+      { command: badCommand }
+    )
+    : '';
 };
 
 export const validateCycleTime = (

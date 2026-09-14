@@ -43,7 +43,7 @@ const TrainTaskModal = forwardRef<ModalRef, TrainTaskModalProps>(({ datasetOptio
         open={modalState.isOpen}
         onCancel={handleCancel}
         footer={[
-          <Button key="submit" loading={loadingState.confirm} type="primary" onClick={handleSubmit}>
+          <Button key="submit" loading={loadingState.confirm} disabled={loadingState.select} type="primary" onClick={handleSubmit}>
             {t('common.confirm')}
           </Button>,
           <Button key="cancel" onClick={handleCancel}>

@@ -24,6 +24,7 @@ import {
   UnifiedFilterConfigModal,
 } from "@/app/ops-analysis/components/unifiedFilter";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
+import { useShareOrganizationSeed } from "@/app/ops-analysis/context/shareOrganization";
 import { useCanvasResources } from "@/app/ops-analysis/hooks/useCanvasResources";
 import { useDataSourceManager } from "@/app/ops-analysis/hooks/useDataSource";
 import { useOpsAnalysisQueryState } from "@/app/ops-analysis/hooks/useOpsAnalysisQueryState";
@@ -105,6 +106,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const { hasPermission } = useBtnPermissions();
   const { shareLoading, openShare } = useCanvasShareAction('screen');
   const { namespaceList } = useOpsAnalysis();
+  const shareOrganizationSeed = useShareOrganizationSeed();
   const dataSourceManager = useDataSourceManager();
   const { dataSources } = dataSourceManager;
   const { syncCanvasResources } = useCanvasResources();
@@ -277,12 +279,15 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         ...normalized,
         filters: loadedDefinitions,
       });
-      queryState.resetQueryState({ definitions: loadedDefinitions });
+      queryState.resetQueryState({
+        definitions: loadedDefinitions,
+        organizationId: shareOrganizationSeed,
+      });
       setRefreshVersion((current) => current + 1);
       setRefreshCause("manual");
       void syncScreenCanvasResources(normalized);
     },
-    [queryState, setSavedRefreshInterval, syncScreenCanvasResources],
+    [queryState, setSavedRefreshInterval, shareOrganizationSeed, syncScreenCanvasResources],
   );
   const screenDraft = useCanvasDraft({
     resourceType: "screen",
@@ -318,6 +323,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setSavedRefreshInterval(0);
       queryState.resetQueryState({
         definitions: emptyViewSets.filters ?? [],
+        organizationId: shareOrganizationSeed,
       });
       return;
     }
@@ -347,6 +353,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         setEditQuerySnapshot(null);
         queryState.resetQueryState({
           definitions: normalized.filters ?? [],
+          organizationId: shareOrganizationSeed,
         });
       } catch (error) {
         console.error("Failed to load screen:", error);
@@ -362,6 +369,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           setEditQuerySnapshot(null);
           queryState.resetQueryState({
             definitions: fallback.filters ?? [],
+            organizationId: shareOrganizationSeed,
           });
         }
       } finally {
@@ -378,6 +386,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     getScreenDetail,
     queryState.resetQueryState,
     selectedScreen?.data_id,
+    shareOrganizationSeed,
     syncScreenCanvasResources,
   ]);
 

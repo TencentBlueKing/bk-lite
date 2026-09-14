@@ -50,7 +50,7 @@ import ImportModelConfigModal, { ImportModelConfigModalRef } from './list/import
 import ExportModelConfigModal, { ExportModelConfigModalRef } from './list/exportModelConfigModal';
 import ManageToolbar from './list/manageToolbar';
 import CustomTable from '@/components/custom-table';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -89,7 +89,7 @@ const AssetManage = () => {
   const modelListFromContext = commonContext?.modelList || [];
   const { confirm } = Modal;
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const groupRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
   const copyModelRef = useRef<any>(null);

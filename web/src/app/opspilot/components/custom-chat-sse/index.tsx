@@ -35,6 +35,8 @@ import {initToolCallTooltips} from './toolCallRenderer';
 import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
 import ContextUsageRing from './ContextUsageRing';
 import type { LlmContextUsage } from './llmContextUsage';
+import ImageBlobPreview from './ImageBlobPreview';
+import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -137,6 +139,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   initialContextUsage = null,
 }) => {
   const { t } = useTranslation();
+  const imeEnterGuard = useImeEnterGuard();
 
   let session = null;
   try {
@@ -901,31 +904,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       <div className="relative rounded-xl border border-[var(--color-border-1)] bg-[var(--color-bg)] transition-all focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary-bg-active)]">
         {imageList.length > 0 && (
           <div className="flex flex-wrap gap-2 p-2.5 pb-0">
-            {imageList.map((file) => {
-              const previewUrl = file.originFileObj && typeof window !== 'undefined'
-                ? URL.createObjectURL(file.originFileObj)
-                : '';
-
-              return (
-                <div key={file.uid} className="relative group rounded-lg overflow-hidden border border-[var(--color-border-1)] bg-[var(--color-bg)]">
-                  {previewUrl && (
-                    <img
-                      src={previewUrl}
-                      alt={file.name}
-                      className="w-14 h-14 object-cover"
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
-                    aria-label="删除图片"
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
+            {imageList.map((file) => (
+              <div key={file.uid} className="relative group rounded-lg overflow-hidden border border-[var(--color-border-1)] bg-[var(--color-bg)]">
+                <ImageBlobPreview file={file} />
+                <button
+                  type="button"
+                  className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
+                  aria-label="删除图片"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -937,15 +928,17 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             autoSize={{ minRows: 2, maxRows: 6 }}
             bordered={false}
             className="!p-0 text-[13px] leading-relaxed resize-none bg-transparent placeholder:text-[var(--color-text-4)] focus:shadow-none"
+            onCompositionStart={imeEnterGuard.onCompositionStart}
+            onCompositionEnd={imeEnterGuard.onCompositionEnd}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if ((value.trim() || imageList.length > 0) && !loading) {
-                  const currentImages = [...imageList];
-                  setImageList([]);
-                  setValue('');
-                  handleSend(value, currentImages);
-                }
+              if (!imeEnterGuard.handleEnterKey(e)) {
+                return;
+              }
+              if ((value.trim() || imageList.length > 0) && !loading) {
+                const currentImages = [...imageList];
+                setImageList([]);
+                setValue('');
+                handleSend(value, currentImages);
               }
             }}
             onPaste={(event: React.ClipboardEvent) => {

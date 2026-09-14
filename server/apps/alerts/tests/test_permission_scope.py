@@ -209,7 +209,10 @@ def test_filter_operator_log_scope_is_lazy_and_keeps_alert_incident_visibility(d
     OperatorLog.objects.create(action="add", target_type=LogTargetType.SYSTEM, operator="u", target_id="A1", overview="x")
     request = _request(current_team="1", is_superuser=True)
 
-    with django_assert_num_queries(0):
+    from django.db import connection
+
+    # SQLite 的 JSON 成员兼容路径各读取一次 Alert/Incident；原生 JSON 数据库保持惰性。
+    with django_assert_num_queries(0 if connection.features.supports_json_field_contains else 2):
         result = ps.filter_operator_log_queryset_for_request(OperatorLog.objects.all(), request)
 
     assert set(result.values_list("target_type", "target_id")) == {

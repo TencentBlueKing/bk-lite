@@ -57,11 +57,11 @@ STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN=<previous-token>
 ```bash
 MAX_ACTIVE_RUNS=16
 MAX_ACTIVE_RUN_TARGETS=4000
-MAX_ACTIVE_TARGETS=160
-CONFIGURATION_MAX_ACTIVE_TARGETS=100
-MONITORING_MAX_ACTIVE_TARGETS=30
-NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=30
-TARGET_TASK_WINDOW=160
+MAX_ACTIVE_TARGETS=120
+CONFIGURATION_MAX_ACTIVE_TARGETS=80
+MONITORING_MAX_ACTIVE_TARGETS=20
+NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=20
+TARGET_TASK_WINDOW=120
 SNMP_ENGINE_MAX_TARGETS=2000
 SNMP_ENGINE_IDLE_SECONDS=300
 SNMP_ENGINE_TOTAL_TARGET_BUDGET=4000
@@ -85,10 +85,10 @@ EVENT_LOOP_LAG_INTERVAL=1
 CAPACITY_LOG_INTERVAL=30
 ```
 
-这些值是单 Pod、跨所有 Run 共享的容量。三类软配额必须为正整数，但不要求总和等于 160；
-三类同时积压时按 `100/30/30` 调度，某类无排队目标时，其他类可借满 160。新类别到达后不抢占
+这些值是单 worker、跨该 worker 内所有 Run 共享的容量。三类软配额必须为正整数，但不要求总和等于 120；
+三类同时积压时按 `80/20/20` 调度，某类无排队目标时，其他类可借满 120。新类别到达后不抢占
 在途目标，而是优先获得后续释放的槽位。SNMP 不再拥有独立目标并发池，直接与其他异步采集共享
-全局 160；`SYNC_SDK_MAX_IN_FLIGHT` 和 `REMOTE_JOB_MAX_IN_FLIGHT` 仅作为对应阻塞资源的第二维技术
+worker 内全局 120；`SYNC_SDK_MAX_IN_FLIGHT` 和 `REMOTE_JOB_MAX_IN_FLIGHT` 仅作为对应阻塞资源的第二维技术
 边界。配置非法时启动失败，不再支持用 `0` 隐式关闭边界。
 
 `MAX_ACTIVE_RUNS` 保留 Run 数量准入，`MAX_ACTIVE_RUN_TARGETS` 同时限制所有已接纳 Run 的目标总数；
@@ -104,7 +104,7 @@ v3 按用户名与密钥组合各一个），不再为每个目标新建 engine�
 P99 延迟 ≤25 ms）。`SNMP_ENGINE_MAX_TARGETS` 限制单个 engine 服务过的不同目标地址数
 （每个目标在 pysnmp LCD 中约占 20 KiB），达到后新目标换用新 engine、旧 engine 排空在途请求后关闭；
 `SNMP_ENGINE_IDLE_SECONDS` 是 engine 空闲多久后释放 dispatcher；`SNMP_ENGINE_TOTAL_TARGET_BUDGET`
-限制所有存活 engine 的 LCD 不同目标条目总数。存活 engine 数同时受 `MAX_ACTIVE_TARGETS=160` 约束；
+限制所有存活 engine 的 LCD 不同目标条目总数。存活 engine 数同时受 `MAX_ACTIVE_TARGETS=120` 约束；
 超过预算时先淘汰空闲 LRU，全部在途时等待容量。配置必须有限且位于受支持范围，否则启动失败。
 
 `REDIS_MAX_CONNECTIONS` 应不小于目标并发并留租约余量（推荐
@@ -147,7 +147,7 @@ P99 延迟 ≤25 ms）。`SNMP_ENGINE_MAX_TARGETS` 限制单个 engine 服务过
 正文。
 
 运行时默认每 30 秒输出一次 `event=collection_capacity`，专门记录
-`MAX_ACTIVE_TARGETS`（默认 160）全局异步目标槽位的已用、剩余、利用率和峰值，同时包含待调度
+`MAX_ACTIVE_TARGETS`（默认 120）单 worker 异步目标槽位的已用、剩余、利用率和峰值，同时包含待调度
 目标/Run、已接纳 Run 的目标总预算、发布队列与完整 payload 生命周期利用率、JetStream 本周期异常、
 事件循环 lag、进程 CPU/RSS/线程/FD，以及 cgroup v1/v2 CPU 限额、内存利用率和 CPU throttling
 增量。可通过 `CAPACITY_LOG_INTERVAL` 调整周期；该日志用于压测后判断

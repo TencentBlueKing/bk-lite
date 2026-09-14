@@ -862,7 +862,8 @@ async def test_metrics_batch_encodes_and_publishes_in_bounded_chunks(monkeypatch
     )
 
     assert outcomes["one"] is None
-    assert produced_at_first_publish < produced
+    # 小结果先完整校验，随后直接复用有界编码缓存，不再重复转换。
+    assert produced_at_first_publish == produced == 5
 
 
 @pytest.mark.asyncio
@@ -1127,7 +1128,7 @@ async def test_metrics_batch_streams_small_target_terminal_before_large_peer_fin
 
     assert first_result_id == "small"
     assert first_outcome is None
-    assert published == ["large-0", "small-0", "large-1"]
+    assert published == ["large-0", "small-0"]
 
     remaining = [event async for event in events]
     assert remaining == [("large", None)]

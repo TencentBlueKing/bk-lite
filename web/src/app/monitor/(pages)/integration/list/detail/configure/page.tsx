@@ -1,6 +1,6 @@
 'use client';
 import React, { useMemo } from 'react';
-import { Alert, Spin } from 'antd';
+import { Alert, Button, Spin } from 'antd';
 import AutomaticConfiguration from './automatic';
 import { useSearchParams } from 'next/navigation';
 import configureStyle from './index.module.scss';
@@ -21,7 +21,12 @@ const Configure: React.FC = () => {
   const objectId = parseIntegrationObjectId(searchParams.get('id'));
   const pluginId = parseIntegrationObjectId(searchParams.get('plugin_id'));
   const templateType = searchParams.get('template_type') || '';
-  const { getCollectType, ready: objectConfigReady } = useObjectConfigInfo(objectName);
+  const {
+    getCollectType,
+    ready: objectConfigReady,
+    error: objectConfigError,
+    retry: retryObjectConfig
+  } = useObjectConfigInfo(objectName);
 
   const collectType = useMemo(
     () => (objectConfigReady ? getCollectType(objectName, pluginName) : undefined),
@@ -40,6 +45,23 @@ const Configure: React.FC = () => {
           showIcon
           message={t('monitor.integrations.missingEntryContext')}
           description={t('monitor.integrations.missingEntryContextDescription')}
+        />
+      </div>
+    );
+  }
+
+  if (templateType !== 'api' && objectConfigError) {
+    return (
+      <div className={configureStyle.configure}>
+        <Alert
+          type="error"
+          showIcon
+          message={t('common.loadFailed')}
+          action={
+            <Button size="small" onClick={retryObjectConfig}>
+              {t('common.retry')}
+            </Button>
+          }
         />
       </div>
     );

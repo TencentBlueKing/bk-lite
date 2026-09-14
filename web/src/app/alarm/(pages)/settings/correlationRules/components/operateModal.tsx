@@ -1,5 +1,7 @@
 'use client';
 
+import { invalidMatchRules } from '@/app/alarm/utils/multivalueRules';
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -72,7 +74,7 @@ interface FormValues {
   name: string;
   organization: string[];
   assign_organization?: string;
-  filter_rules: Array<Array<{ key: string; operator: string; value: string | number }>>;
+  filter_rules: Array<Array<{ key: string; operator: string; value: string | number | (string | number)[] }>>;
   self_healing_observation_time?: number;
   auto_close_time?: number;
   md_cron_expr?: string;
@@ -120,70 +122,7 @@ const DIMENSION_OPTIONS: AggregationDimension[] = [
   'item',
 ];
 
-const DEFAULT_FILTER_RULES = [[{ key: 'source_id', operator: 'eq', value: '' }]];
-
-const CORRELATION_EVENT_RULE_LIST = [
-  { name: 'title', verbose_name: '标题' },
-  { name: 'source_id', verbose_name: '告警源' },
-  { name: 'level', verbose_name: '级别' },
-  { name: 'resource_type', verbose_name: '类型对象' },
-  { name: 'resource_id', verbose_name: '对象实例' },
-  { name: 'description', verbose_name: '内容' },
-  { name: 'service', verbose_name: '服务' },
-  { name: 'location', verbose_name: '位置' },
-  { name: 'resource_name', verbose_name: '资源名称' },
-  { name: 'item', verbose_name: '指标' },
-];
-
-const CORRELATION_EVENT_CONDITION_LISTS: Record<
-  string,
-  { name: string; desc: string }[]
-> = {
-  title: [
-    { name: 'eq', desc: '等于' },
-    { name: 'contains', desc: '包含' },
-    { name: 're', desc: '正则' },
-    { name: 'not_contains', desc: '不包含' },
-  ],
-  source_id: [{ name: 'eq', desc: '等于' }],
-  level: [{ name: 'eq', desc: '等于' }],
-  resource_type: [
-    { name: 'eq', desc: '等于' },
-    { name: 'contains', desc: '包含' },
-    { name: 'ne', desc: '不等于' },
-  ],
-  resource_id: [
-    { name: 'eq', desc: '等于' },
-    { name: 'contains', desc: '包含' },
-    { name: 're', desc: '正则' },
-    { name: 'not_contains', desc: '不包含' },
-  ],
-  description: [
-    { name: 'contains', desc: '包含' },
-    { name: 're', desc: '正则' },
-    { name: 'not_contains', desc: '不包含' },
-  ],
-  service: [
-    { name: 'eq', desc: '等于' },
-    { name: 'contains', desc: '包含' },
-    { name: 'ne', desc: '不等于' },
-  ],
-  location: [
-    { name: 'eq', desc: '等于' },
-    { name: 'contains', desc: '包含' },
-    { name: 'ne', desc: '不等于' },
-  ],
-  resource_name: [
-    { name: 'eq', desc: '等于' },
-    { name: 'contains', desc: '包含' },
-    { name: 'ne', desc: '不等于' },
-  ],
-  item: [
-    { name: 'eq', desc: '等于' },
-    { name: 'contains', desc: '包含' },
-    { name: 'ne', desc: '不等于' },
-  ],
-};
+const DEFAULT_FILTER_RULES = [[{ key: 'title', operator: 'eq', value: '' }]];
 
 const DEFAULT_MISSING_VALUES: Pick<
   FormValues,
@@ -768,35 +707,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
               <Form.Item
                 name="filter_rules"
                 className="mb-0"
-                rules={
-                  strategyType === 'missing_detection' || strategyType === 'instant'
-                    ? [
-                      {
-                        validator: async (_, value) => {
-                          if (
-                            !value ||
-                              !Array.isArray(value) ||
-                              value.length === 0 ||
-                              !value.some(
-                                (group) =>
-                                  Array.isArray(group) &&
-                                  group.some(
-                                    (item) => item?.key && item?.operator && item?.value !== undefined && item?.value !== ''
-                                  )
-                              )
-                          ) {
-                            throw new Error(t('settings.correlation.filterRequired'));
-                          }
-                        },
-                      },
-                    ]
-                    : undefined
-                }
+                rules={[{validator: async (_, value) => {
+                  if (invalidMatchRules(value, false, "correlation")) throw new Error(t('settings.correlation.filterRequired'));
+                }}]}
               >
                 <RulesMatch
                   levelType="event"
-                  ruleOptions={CORRELATION_EVENT_RULE_LIST}
-                  conditionOptions={CORRELATION_EVENT_CONDITION_LISTS}
                 />
               </Form.Item>
             </div>

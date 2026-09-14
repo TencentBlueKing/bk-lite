@@ -75,7 +75,7 @@ assert.match(
 
 const rootLayout = readFileSync(join(webRoot, 'src/app/layout.tsx'), 'utf8');
 assert.match(rootLayout, /isResponsiveAppRoute\s*=\s*pathname\?\.startsWith\('\/apm'\)/, 'APM 路由必须退出全局 1280px 最小宽度');
-assert.match(rootLayout, /!isAuthRoute\s*&&\s*!isResponsiveAppRoute\s*\?\s*'min-w-\[1280px\]'/, '仅非响应式应用保留桌面最小宽度');
+assert.match(rootLayout, /!isAuthRoute\s*&&\s*!isResponsiveAppRoute\s*&&\s*!screenMode\s*\?\s*'min-w-\[1280px\]'/, '仅非响应式、非屏显应用保留桌面最小宽度');
 
 for (const locale of ['zh', 'en'] as const) {
   const visit = (items: readonly MenuRoute[]) => {

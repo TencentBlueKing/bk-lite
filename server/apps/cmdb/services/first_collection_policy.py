@@ -43,31 +43,41 @@ class FirstCollectionPolicy:
 
     @classmethod
     def _payload(cls, task):
-        payload = {
-            field: cls._normalize(cls._field_value(task, field))
-            for field in cls.FINGERPRINT_FIELDS
-        }
-        payload["decrypt_credentials"] = cls._normalize(
-            cls._field_value(task, "decrypt_credentials")
-        )
+        payload = {field: cls._normalize(cls._field_value(task, field)) for field in cls.FINGERPRINT_FIELDS}
+        payload["decrypt_credentials"] = cls._normalize(cls._field_value(task, "decrypt_credentials"))
         return payload
 
     @classmethod
     def is_eligible(cls, task):
+        return bool(cls.eligible_channels(task))
+
+    @classmethod
+    def eligible_channels(cls, task) -> tuple[str, ...]:
         if not task or not bool(getattr(task, "is_interval", False)):
-            return False
+            return ()
         if getattr(task, "cycle_value_type", "") != "cycle":
-            return False
+            return ()
         if getattr(task, "task_type", "") in {
             CollectPluginTypes.K8S,
             CollectPluginTypes.CONFIG_FILE,
         }:
-            return False
+            return ()
         try:
             cycle_minutes = int(getattr(task, "cycle_value", 0) or 0)
         except (TypeError, ValueError):
-            return False
-        return cycle_minutes >= cls.THRESHOLD_MINUTES
+            return ()
+        if cycle_minutes < 1:
+            return ()
+
+        channels = ["device"] if cycle_minutes >= cls.THRESHOLD_MINUTES else []
+        is_network = getattr(task, "model_id", "") == "network" or getattr(task, "task_type", "") == CollectPluginTypes.SNMP
+        if is_network:
+            from apps.cmdb.models.collect_model import normalize_topology_contract
+
+            contract = normalize_topology_contract(getattr(task, "params", None), device_cycle_minutes=cycle_minutes)
+            if contract["has_network_topo"] and contract["topology_interval_minutes"] >= cls.THRESHOLD_MINUTES:
+                channels.append("topology")
+        return tuple(channels)
 
     @classmethod
     def fingerprint(cls, task):
@@ -87,10 +97,7 @@ class FirstCollectionPolicy:
     def changed_fields(cls, old_task, new_task):
         fields = (*cls.FINGERPRINT_FIELDS, "decrypt_credentials")
         return tuple(
-            field
-            for field in fields
-            if cls._normalize(cls._field_value(old_task, field))
-            != cls._normalize(cls._field_value(new_task, field))
+            field for field in fields if cls._normalize(cls._field_value(old_task, field)) != cls._normalize(cls._field_value(new_task, field))
         )
 
     @classmethod

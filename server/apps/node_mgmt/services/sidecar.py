@@ -254,11 +254,23 @@ class Sidecar:
         return True
 
     @staticmethod
-    def trigger_converge_tasks_if_needed(node_id: str, node_ip: str, status_payload: dict):
-        action_running_exists = CollectorActionTaskNode.objects.filter(
-            node_id=node_id,
-            status="running",
-        ).exists()
+    def trigger_converge_tasks_if_needed(
+        node_id: str,
+        node_ip: str,
+        status_payload: dict,
+        *,
+        skip_action_converge: bool = False,
+    ):
+        # Sidecar 心跳先上报当前采集器状态，再领取本轮下发的 start/restart/stop。
+        # 领取动作的这次上报仍是动作执行前的状态，不能用来结案。
+        action_running_exists = (
+            False
+            if skip_action_converge
+            else CollectorActionTaskNode.objects.filter(
+                node_id=node_id,
+                status="running",
+            ).exists()
+        )
 
         target_filter = Q(**{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id})
         if node_ip:
@@ -747,7 +759,9 @@ class Sidecar:
 
         # 节点操作信息
         action_obj = new_obj.action_set.first()
+        actions_delivered = False
         if action_obj:
+            actions_delivered = True
             response_data.update(actions=action_obj.action)
 
             for action_item in action_obj.action:
@@ -847,7 +861,12 @@ class Sidecar:
 
         # 返回响应
         node_status = request_data.get("status", {})
-        Sidecar.trigger_converge_tasks_if_needed(node_id, new_obj.ip, node_status)
+        Sidecar.trigger_converge_tasks_if_needed(
+            node_id,
+            new_obj.ip,
+            node_status,
+            skip_action_converge=actions_delivered,
+        )
         return EncryptedJsonResponse(status=202, data=response_data, headers={"ETag": new_etag}, request=request)
 
     @staticmethod

@@ -1,75 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import {
-  LEVEL_MULTI_OPERATOR_OPTIONS,
-  getMatchRuleOperatorOptions,
-  getMatchRuleValueAfterOperatorChange,
-  getMatchRuleValueSelectState,
-  isEmptyMatchRuleValue,
-  isLevelMultiSelectEnabled,
-  normalizeMultipleRuleValue,
-} from '../src/app/alarm/(pages)/settings/components/matchRuleValue';
+import { invalidMatchRules } from '../src/app/alarm/utils/multivalueRules';
 
-assert.deepEqual(normalizeMultipleRuleValue('0'), ['0']);
-assert.deepEqual(normalizeMultipleRuleValue(['0', '1']), ['0', '1']);
-assert.deepEqual(normalizeMultipleRuleValue(undefined), []);
-assert.equal(isEmptyMatchRuleValue([]), true);
-assert.equal(isEmptyMatchRuleValue(null), true);
-assert.equal(isEmptyMatchRuleValue(false), true);
-assert.equal(isEmptyMatchRuleValue(0), false);
-assert.equal(isEmptyMatchRuleValue('0'), false);
-assert.equal(isLevelMultiSelectEnabled('level', true), true);
-assert.equal(isLevelMultiSelectEnabled('title', true), false);
-assert.deepEqual(LEVEL_MULTI_OPERATOR_OPTIONS, [
-  { name: 'eq', desc: '等于' },
-  { name: 'ne', desc: '不等于' },
-]);
-
-const fallbackOperatorOptions = [{ name: 'contains', desc: '包含' }];
-assert.deepEqual(
-  getMatchRuleOperatorOptions('level', true, fallbackOperatorOptions),
-  LEVEL_MULTI_OPERATOR_OPTIONS,
-);
-assert.deepEqual(
-  getMatchRuleOperatorOptions('title', true, fallbackOperatorOptions),
-  fallbackOperatorOptions,
-);
-assert.deepEqual(getMatchRuleValueSelectState('level', true, '0'), {
-  mode: 'multiple',
-  value: ['0'],
-});
-assert.deepEqual(getMatchRuleValueSelectState('title', true, '0'), {
-  mode: undefined,
-  value: '0',
-});
-assert.equal(
-  getMatchRuleValueAfterOperatorChange('level', true, ['0']),
-  undefined,
-);
-assert.deepEqual(
-  getMatchRuleValueAfterOperatorChange('level', false, ['0']),
-  ['0'],
-);
-assert.deepEqual(
-  getMatchRuleValueAfterOperatorChange('title', true, ['0']),
-  ['0'],
-);
-
-const settingsRoot = new URL(
-  '../src/app/alarm/(pages)/settings/',
-  import.meta.url,
-);
-const levelMultiSelectCallSites = readdirSync(settingsRoot, {
-  recursive: true,
-  encoding: 'utf8',
-})
-  .filter((path) => path.endsWith('.tsx'))
-  .filter((path) =>
-    /<MatchRule\s+[\s\S]*?enableLevelMultiSelect[\s\S]*?\/>/.test(
-      readFileSync(new URL(path, settingsRoot), 'utf8'),
-    ),
-  );
-assert.deepEqual(levelMultiSelectCallSites, [
-  'alertAssign/components/operateModal.tsx',
-]);
-console.log('alert assignment level multiselect validation passed');
+// 级别实际值为单枚举，条件允许多个完整候选值。
+assert.equal(invalidMatchRules([[{key:'level',operator:'eq',value:['0','1']}]],false,'assignment'),true);
+assert.equal(invalidMatchRules([[{key:'level',operator:'any_of',value:['0','1']}]],false,'assignment'),false);
+assert.equal(invalidMatchRules([[{key:'level',operator:'none_of',value:['0']}]],false,'assignment'),false);
+assert.equal(invalidMatchRules([[{key:'source_names',operator:'all_of',value:['平台A','平台B']}]],false,'assignment'),false);
+assert.equal(invalidMatchRules([[{key:'push_source_ids',operator:'all_of',value:['a','b']}]],false,'assignment'),false);
+console.log('alert candidate and set validation passed');

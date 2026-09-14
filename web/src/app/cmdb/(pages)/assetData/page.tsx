@@ -26,7 +26,8 @@ import {
   StarOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
-import { useSearchParams, usePathname, useRouter } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
@@ -34,11 +35,23 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import RefreshIconButton from '@/components/refresh-icon-button';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useClientData } from '@/context/client';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
+import {
+  canSyncMonitor,
+  isMonitorSold,
+  pickBatchPushCounts,
+  resolveBatchPushSummaryLevel,
+  isSystemLinkAttr,
+  resolveListDisplayFieldKeys,
+  buildExternalIdLines,
+  displayExternalIdValue,
+  EXTERNAL_ID_COLUMN_KEY,
+} from '@/app/cmdb/utils/systemLinkage';
 import {
   ensureCollectTaskMap,
 } from '@/app/cmdb/utils/collectTask';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCommon, useCmdbUserList } from '@/app/cmdb/context/common';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
@@ -200,6 +213,7 @@ interface ImportRef {
 const AssetDataContent = () => {
   const { t } = useTranslation();
   const { selectedGroup, userId } = useUserInfoContext();
+  const { clientData } = useClientData();
   const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
@@ -210,9 +224,10 @@ const AssetDataContent = () => {
     setInstanceShowFieldSettings,
     deleteInstance,
     batchDeleteInstances,
+    batchPushToMonitor,
   } = useInstanceApi();
   const { getCollectTaskNames } = useCollectApi();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const assetModelId: string = searchParams.get('modelId') || '';
@@ -220,8 +235,7 @@ const AssetDataContent = () => {
     searchParams.get('classificationId') || '';
   const urlQueryList: string = searchParams.get('query_list') || '';
   const commonContext = useCommon();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = useCmdbUserList();
   const modelListFromContext = commonContext?.modelList || [];
   const fieldRef = useRef<FieldRef>(null);
   const importRef = useRef<ImportRef>(null);
@@ -380,8 +394,8 @@ const AssetDataContent = () => {
     exportRef.current?.showModal({
       title,
       modelId,
-      columns,
-      displayFieldKeys,
+      columns: columns.filter((col) => col.key !== EXTERNAL_ID_COLUMN_KEY),
+      displayFieldKeys: displayFieldKeys.filter((key) => key !== EXTERNAL_ID_COLUMN_KEY),
       selectedKeys,
       exportType,
       tableData,
@@ -634,7 +648,7 @@ const AssetDataContent = () => {
       getInstanceShowFieldDetail(id),
     ])
       .then(([attrList, instData, displayFields]) => {
-        const fieldKeys = displayFields?.show_fields || attrList.map((item: AttrFieldType) => item.attr_id);
+        const fieldKeys = resolveListDisplayFieldKeys(displayFields?.show_fields, attrList);
         setDisplayFieldKeys(fieldKeys);
         setPropertyList(attrList);
         setTableData(instData.insts);
@@ -697,6 +711,34 @@ const AssetDataContent = () => {
 
   const batchDeleteConfirm = () => {
     handleDeleteWithConfirm(() => batchDeleteInstances(selectedRowKeys.map((k) => String(k))));
+  };
+
+  const batchSyncMonitorConfirm = () => {
+    const instUuids = selectedRowKeys.map((k) => String(k));
+    if (!instUuids.length) return;
+    confirm({
+      title: t('Model.systemLinkageBatchConfirm', '', { count: instUuids.length }),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      async onOk() {
+        try {
+          const summary = await batchPushToMonitor(instUuids);
+          const counts = pickBatchPushCounts(summary);
+          const level = resolveBatchPushSummaryLevel(counts);
+          const text = t('Model.systemLinkageBatchSummary', '', counts);
+          if (level === 'success') {
+            message.success(text);
+          } else if (level === 'warning') {
+            message.warning(text);
+          } else {
+            message.error(text);
+          }
+        } catch {
+          message.error(t('Model.systemLinkageSyncFailed'));
+        }
+      },
+    });
   };
 
   // 导出菜单项
@@ -1008,7 +1050,11 @@ const AssetDataContent = () => {
   useEffect(() => {
     if (!propertyList.length) return;
 
-    const attrList = getAssetColumns({ attrList: propertyList, userList, t });
+    const attrList = getAssetColumns({
+      attrList: propertyList.filter((item) => !isSystemLinkAttr(item)),
+      userList,
+      t,
+    });
     const columnsWithFollow = attrList.map((column) => {
       if (column.key !== 'inst_name') return column;
 
@@ -1042,6 +1088,50 @@ const AssetDataContent = () => {
         },
       };
     });
+    const externalIdColumn: ColumnItem | null = canSyncMonitor(modelId)
+      ? {
+        title: t('Model.systemLinkageExternalId'),
+        key: EXTERNAL_ID_COLUMN_KEY,
+        dataIndex: EXTERNAL_ID_COLUMN_KEY,
+        width: 100,
+        ellipsis: { showTitle: false },
+        onHeaderCell: () => ({ className: 'w-[100px] max-w-[100px]' }),
+        onCell: () => ({ className: 'w-[100px] max-w-[100px] overflow-hidden' }),
+        render: (_: unknown, record: any) => {
+          const lines = buildExternalIdLines(modelId, record);
+          const lineLabel = (key: string) =>
+            key === 'node_id'
+              ? t('Model.systemLinkageNodeId')
+              : t('Model.systemLinkageMonitorId');
+          return (
+            <Tooltip
+              title={
+                <div className="text-xs leading-5">
+                  {lines.map((line) => (
+                    <div key={line.key}>
+                      {lineLabel(line.key)}: {displayExternalIdValue(line.value)}
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+              <div className="block w-[100px] max-w-[100px] overflow-hidden cursor-default">
+                {lines.map((line, index) => (
+                  <div
+                    key={line.key}
+                    className={`overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] leading-[18px] ${
+                      index > 0 ? 'text-[var(--color-text-3)]' : ''
+                    }`}
+                  >
+                    {displayExternalIdValue(line.value)}
+                  </div>
+                ))}
+              </div>
+            </Tooltip>
+          );
+        },
+      }
+      : null;
     const actionColumn: ColumnItem = {
       title: t('common.actions'),
       key: 'action',
@@ -1076,16 +1166,26 @@ const AssetDataContent = () => {
         </>
       ),
     };
-    const tableColumns = [...columnsWithFollow, actionColumn];
+    const tableColumns = [...columnsWithFollow, ...(externalIdColumn ? [externalIdColumn] : []), actionColumn];
     setColumns(tableColumns);
 
     const orderedColumns = tableColumns
       .filter((col) => displayFieldKeys.includes(col.key as string))
       .sort((a, b) => displayFieldKeys.indexOf(a.key as string) - displayFieldKeys.indexOf(b.key as string));
     setCurrentColumns([...orderedColumns, actionColumn]);
-  }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t]);
+  }, [propertyList, displayFieldKeys, propertyListGroups, modelId, followPendingKey, handleFollowToggle, isFollowed, t, userList]);
 
   const showSubscribeAction = selectedRowKeys.length > 0 || storeQueryList.length > 0;
+  const showBatchSyncMonitor = canSyncMonitor(modelId) && isMonitorSold(clientData);
+  const batchSyncMonitorItem: NonNullable<MenuProps['items']>[number] = {
+    key: 'batchSyncMonitor',
+    label: (
+      <PermissionWrapper requiredPermissions={['Edit']}>
+        <a onClick={batchSyncMonitorConfirm}>{t('Model.systemLinkageBatchSync')}</a>
+      </PermissionWrapper>
+    ),
+    disabled: !selectedRowKeys.length,
+  };
 
   const batchOperateItems: MenuProps['items'] = [
     {
@@ -1112,6 +1212,7 @@ const AssetDataContent = () => {
       ),
       disabled: !selectedRowKeys.length || !propertyListGroups.length,
     },
+    ...(showBatchSyncMonitor ? [batchSyncMonitorItem] : []),
     {
       key: 'batchDelete',
       label: (

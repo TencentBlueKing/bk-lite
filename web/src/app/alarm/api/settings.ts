@@ -1,4 +1,11 @@
 import useApiClient from '@/utils/request';
+import {
+  NotificationTemplateListParams,
+  NotificationTemplateDraftTestSendRequest,
+  NotificationTemplatePayload,
+  NotificationTemplatePreviewRequest,
+  NotificationTemplateTestSendRequest,
+} from '@/app/alarm/types/settings';
 
 export const useSettingApi = () => {
   const { get, post, del, put, patch } = useApiClient();
@@ -109,6 +116,36 @@ export const useSettingApi = () => {
   const getEnrichmentMetrics = () =>
     get('/alerts/api/enrichment/metrics/');
 
+  const getNotificationTemplateList = (params?: NotificationTemplateListParams) =>
+    get('/alerts/api/notification_templates/', { params, suppressErrorNotification: true });
+
+  const getNotificationTemplate = (id: string | number) =>
+    get(`/alerts/api/notification_templates/${id}/`, { suppressErrorNotification: true });
+
+  const createNotificationTemplate = (params: NotificationTemplatePayload) =>
+    post('/alerts/api/notification_templates/', params, { suppressErrorNotification: true });
+
+  const updateNotificationTemplate = (id: string | number, params: NotificationTemplatePayload) =>
+    put(`/alerts/api/notification_templates/${id}/`, params, { suppressErrorNotification: true });
+
+  const deleteNotificationTemplate = (id: string | number) =>
+    del(`/alerts/api/notification_templates/${id}/`, { suppressErrorNotification: true });
+
+  const previewNotificationTemplate = (params: NotificationTemplatePreviewRequest) =>
+    post('/alerts/api/notification_templates/preview/', params, { suppressErrorNotification: true });
+
+  const getNotificationTemplateOptions = (params?: { channel_type?: string }) =>
+    get('/alerts/api/notification_templates/options/', { params });
+
+  const getNotificationTemplateCatalog = () =>
+    get('/alerts/api/notification_templates/catalog/', { suppressErrorNotification: true });
+
+  const testSendNotificationTemplate = (id: string | number, params: NotificationTemplateTestSendRequest) =>
+    post(`/alerts/api/notification_templates/${id}/test_send/`, params, { suppressErrorNotification: true });
+
+  const testSendDraftNotificationTemplate = (params: NotificationTemplateDraftTestSendRequest) =>
+    post('/alerts/api/notification_templates/test_send/', params, { suppressErrorNotification: true });
+
   // Action Rule API (告警处理动作规则)
   const getActionRuleList = (params: any) => get('/alerts/api/action_rule/', { params });
   const getActionRule = (id: number) => get(`/alerts/api/action_rule/${id}/`);
@@ -162,6 +199,16 @@ export const useSettingApi = () => {
     deleteEnrichment,
     patchEnrichment,
     getEnrichmentMetrics,
+    getNotificationTemplateList,
+    getNotificationTemplate,
+    createNotificationTemplate,
+    updateNotificationTemplate,
+    deleteNotificationTemplate,
+    previewNotificationTemplate,
+    getNotificationTemplateOptions,
+    getNotificationTemplateCatalog,
+    testSendNotificationTemplate,
+    testSendDraftNotificationTemplate,
     getActionRuleList,
     getActionRule,
     createActionRule,

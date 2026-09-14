@@ -57,7 +57,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 3
@@ -86,7 +87,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 3
@@ -115,7 +117,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 3
@@ -144,7 +147,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 3
@@ -173,7 +177,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 3
@@ -202,7 +207,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
     sizeToContent: true
@@ -243,7 +249,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -272,7 +279,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -301,7 +309,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -335,7 +344,8 @@ dashboards:
           - name: organization
             type: string
             value: null
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -357,7 +367,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: limit
@@ -408,7 +419,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -437,7 +449,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -466,7 +479,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -495,7 +509,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -518,7 +533,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -556,7 +572,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -612,7 +629,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -641,7 +659,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -670,7 +689,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -696,7 +716,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -719,7 +740,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -770,7 +792,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -799,7 +822,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -839,7 +863,8 @@ dashboards:
           - name: organization
             type: string
             value: null
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -862,7 +887,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -895,7 +921,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -946,7 +973,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -975,7 +1003,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -1004,7 +1033,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -1030,7 +1060,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -1052,7 +1083,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: limit
@@ -1098,7 +1130,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -1132,7 +1165,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -1172,7 +1206,8 @@ dashboards:
           - name: organization
             type: string
             value: null
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
           - name: time
@@ -1218,7 +1253,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -1247,7 +1283,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -1276,7 +1313,8 @@ dashboards:
           - name: organization
             type: string
             value: ''
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
       - h: 5
@@ -1310,7 +1348,8 @@ dashboards:
           - name: organization
             type: string
             value: null
-            inputMode: organization
+            inputConfig:
+              control: organization
             alias_name: 组织
             filterType: filter
     sizeToContent: true
@@ -1339,7 +1378,8 @@ dashboards:
     type: string
     order: 0
     enabled: true
-    inputMode: organization
+    inputConfig:
+      control: organization
   - id: time__timeRange
     key: time
     name: 时间范围
@@ -1364,7 +1404,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 日志
   chart_type:
@@ -1404,7 +1445,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   - name: time
     type: timeRange
     value: 10080
@@ -1445,7 +1487,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 其他
   chart_type:
@@ -1485,7 +1528,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   - name: limit
     type: number
     value: 10
@@ -1521,7 +1565,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   - name: time
     type: timeRange
     value: 10080
@@ -1566,7 +1611,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   tags:
   - 其他
   chart_type:
@@ -1606,7 +1652,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   - name: time
     type: timeRange
     value: 10080
@@ -1652,7 +1699,8 @@ datasources:
     value: ''
     alias_name: 组织
     filterType: filter
-    inputMode: organization
+    inputConfig:
+      control: organization
   - name: time
     type: timeRange
     value: 10080

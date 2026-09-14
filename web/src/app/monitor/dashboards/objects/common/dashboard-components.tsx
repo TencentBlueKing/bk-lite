@@ -739,7 +739,7 @@ export const DashboardShell = ({
           metaItems={[
             ...(brandLabel
               ? [
-                <span key="brand" className={styles.instanceMetaInline}>{brandLabel}</span>
+                <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
               ]
               : []),
             ...dashboard.objectMetaItems.map((item, index) => (

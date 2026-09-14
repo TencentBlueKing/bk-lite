@@ -1,0 +1,11 @@
+---CAP---
+Filesystem            kbytes    used   avail capacity  Mounted on
+rpool/ROOT/solaris    102400   40960   61440       40%    /
+rpool/data            204800   51200  153600       25%    /mnt/data"q /weird
+---TYPE---
+/:          zfs
+/mnt/data"q /weird: zfs
+---INO---
+Filesystem             iused   ifree  %iused  Mounted on
+rpool/ROOT/solaris         1       9      10%    /
+rpool/data                 2      38       5%    /mnt/data"q /weird

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Drawer, Spin, Button, Tag, Modal, message } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useCommon } from '@/app/cmdb/context/common';
@@ -40,7 +40,7 @@ const DeviceDetailDrawer: React.FC<Props> = ({
   onUnplaced,
 }) => {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { getInstanceDetail, saveRackRoomLayout } = useInstanceApi();
   const { getModelAttrList } = useModelApi();
   const { flatGroups } = useUserInfoContext();

@@ -19,6 +19,7 @@ from apps.alerts.views import (
     IncidentUpdateViewSet,
     K8sOpenAPIViewSet,
     LevelModelViewSet,
+    NotificationTemplateViewSet,
     SystemLogModelViewSet,
     SystemSettingModelViewSet,
     receiver_data,
@@ -38,13 +39,16 @@ router.register(r"api/shield", AlertShieldModelViewSet, basename="shield")
 router.register(r"api/enrichment", EnrichmentRuleModelViewSet, basename="enrichment")
 router.register(r"api/incident", IncidentModelViewSet, basename="incident")
 router.register(
-    r"api/incident/(?P<incident_pk>\d+)/updates", IncidentUpdateViewSet, basename="incident-updates",
+    r"api/incident/(?P<incident_pk>\d+)/updates",
+    IncidentUpdateViewSet,
+    basename="incident-updates",
 )
 router.register(r"api/alarm_strategy", AlarmStrategyModelViewSet, basename="alarm_strategy")
 router.register(r"api/log", SystemLogModelViewSet, basename="log")
 router.register(r"open_api/k8s", K8sOpenAPIViewSet, basename="alerts_k8s_open_api")
 router.register(r"api/action_rule", ActionRuleViewSet, basename="action_rule")
 router.register(r"api/action_execution", ActionExecutionViewSet, basename="action_execution")
+router.register(r"api/notification_templates", NotificationTemplateViewSet, basename="notification_templates")
 
 open_api_patterns = [
     path("api/open/alerts/actions/<str:action>", open_api_views.OpenAlertBatchActionView.as_view()),

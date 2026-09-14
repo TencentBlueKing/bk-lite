@@ -69,7 +69,8 @@ def test_weopsx_yaml_parses_and_binds_organization_and_time():
     filters = {item["key"]: item for item in dashboard.filters}
     assert set(filters) == {"organization", "time"}
     assert filters["organization"]["type"] == "string"
-    assert filters["organization"]["inputMode"] == "organization"
+    assert (filters["organization"].get("inputConfig") or {}).get("control") == "organization"
+    assert "inputMode" not in filters["organization"]
     assert "defaultValue" not in filters["organization"] or filters["organization"].get("defaultValue") in (None, "", {})
     assert filters["time"]["type"] == "timeRange"
     assert filters["time"]["defaultValue"]["selectValue"] == 10080
@@ -84,7 +85,8 @@ def test_weopsx_yaml_parses_and_binds_organization_and_time():
         assert bound_time == (widget["id"] in TIME_BOUND_WIDGET_IDS), widget["id"]
         org_param = next(param for param in value_config["dataSourceParams"] if param["name"] == "organization")
         assert org_param["filterType"] == "filter"
-        assert org_param["inputMode"] == "organization"
+        assert (org_param.get("inputConfig") or {}).get("control") == "organization"
+        assert "inputMode" not in org_param
 
     referenced = set(dashboard.refs.datasource_keys)
     configured = {widget["valueConfig"]["dataSource"] for widget in widgets}
@@ -129,7 +131,8 @@ def test_weopsx_yaml_parses_and_binds_organization_and_time():
     for datasource in document.datasources:
         org_param = next(param for param in datasource.params if param["name"] == "organization")
         assert org_param["filterType"] == "filter"
-        assert org_param.get("inputMode") == "organization"
+        assert (org_param.get("inputConfig") or {}).get("control") == "organization"
+        assert "inputMode" not in org_param
 
 
 def test_reused_datasources_declare_organization_parameter():
@@ -141,7 +144,8 @@ def test_reused_datasources_declare_organization_parameter():
         assert org_param["type"] == "string"
         assert org_param["value"] == ""
         assert org_param["filterType"] == "filter"
-        assert org_param["inputMode"] == "organization"
+        assert (org_param.get("inputConfig") or {}).get("control") == "organization"
+        assert "inputMode" not in org_param
     assert next(param["value"] for param in by_api["cmdb/get_cmdb_model_instance_top"]["params"] if param["name"] == "group_by") == "model"
     assert next(param["alias_name"] for param in by_api["cmdb/get_cmdb_model_instance_top"]["params"] if param["name"] == "group_by") == "排行维度"
     assert by_api["cmdb/get_cmdb_model_instance_top"]["name"] == "CMDB 实例排行（按模型/分类）"

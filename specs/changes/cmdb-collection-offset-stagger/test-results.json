@@ -1,0 +1,1974 @@
+{
+  "generated_at": "2026-09-11T07:51:58.180587+00:00",
+  "scope": "主机、网络设备、网络拓扑；分段集成与真实 Telegraf 公共调度，非真实设备端到端验收",
+  "file_sha256": {
+    "server/apps/cmdb/services/collection_offset.py": "2c77bd5a7c0c7c2bc32d56192a8dcdd5a071c07bec8372ffb529b0a3e91ce52f",
+    "server/apps/cmdb/services/collection_offset_policy.py": "cf51080b1c7c752a23523c12f82ba8df047e7e719829e6a289e1ab7eb4563db5",
+    "server/apps/cmdb/services/collection_offset_service.py": "e15786f0481a0d88fd6de16a1ffdfc73ab4737f97dc0e012b526dcd45738fa0c",
+    "server/apps/cmdb/services/collect_service.py": "e090524561662ead3cb01cd135b077a5ff83cf31bbfcb528dce546b5644ed590",
+    "server/apps/cmdb/services/node_mgmt_sync_service.py": "6bc7411ca16fa74f8fe3ce873dc02e719254f146ead077d5560ebe1e576ed443",
+    "server/apps/cmdb/node_configs/base.py": "c352c77f6f5ddc28d433dfba8d4e91d1959eadd7a1e89fe6ba50c491c50885ce",
+    "server/apps/cmdb/support-files/base.child.toml.j2": "7a2ef5c78b037b8007c56fe75867e92434cd0a539ff6e4769d254f583ca09648",
+    "server/apps/node_mgmt/services/telegraf_oneshot.py": "6a4d6e0daeac585bffa1bb5762650c5bd9806c260ebe3a79ba2937ed6898c019",
+    "server/apps/cmdb/tests/test_collection_offset_config_pure.py": "9a3c51bd43e02f43a1a5e1a99211d91dbc6a241b391fce65e2996edd1afbb334",
+    "server/apps/cmdb/tests/test_collection_offset_telegraf_live.py": "bed030d861c4d904a8535eea2a2fcea2f9cee042ccb276dec5ea5f8e4163df91",
+    "server/apps/node_mgmt/tests/test_telegraf_oneshot_service.py": "f738990a73e7a50e392b2ee19a7ec2371d49bcbe01aa4701587f6fbc97e6599a"
+  },
+  "regression": {
+    "timestamp": "2026-09-11T07:49:44.518151+00:00",
+    "seconds": 5.996,
+    "counts": {
+      "passed": 355,
+      "skipped": 3
+    },
+    "cases": [
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_new_host_avoids_legacy_task_and_renders_persisted_offset",
+        "status": "passed",
+        "seconds": 1.136
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_network_channels_are_allocated_together",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_unrelated_edit_preserves_offset_and_legacy_is_not_enrolled",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_unsupported_plugin_is_unchanged",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_collect_create_ignores_client_offset_and_pushes_saved_phase",
+        "status": "passed",
+        "seconds": 0.021
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_managed_schedule_change_keeps_valid_offset_and_other_tasks[cycle]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_managed_schedule_change_keeps_valid_offset_and_other_tasks[access_point]",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_managed_schedule_change_keeps_valid_offset_and_other_tasks[resume]",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_enable_topology_allocates_only_new_channel",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_disabled_topology_does_not_take_a_slot",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_failed_transaction_rolls_back_offset_and_releases_write_lock",
+        "status": "passed",
+        "seconds": 0.015
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_lock_competition_does_not_save_duplicate_offset",
+        "status": "passed",
+        "seconds": 0.019
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_edit_cannot_overwrite_or_erase_server_owned_offset",
+        "status": "passed",
+        "seconds": 0.064
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_saved_offset_survives_post_commit_failure_and_retry",
+        "status": "passed",
+        "seconds": 0.05
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_permission_is_checked_again_after_acquiring_lock",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_two_channel_save_pushes_matching_ids_intervals_and_offsets",
+        "status": "passed",
+        "seconds": 0.034
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_lock_contention_rolls_back_create_before_external_effects",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_registered_future_plugin_reuses_allocation_and_rendering",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_legacy_edit_ignores_client_attempt_to_enable_offset",
+        "status": "passed",
+        "seconds": 0.026
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_read_after_lock_uses_latest_offset",
+        "status": "passed",
+        "seconds": 0.025
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_other_organizations_and_nodes_still_contribute_shared_load",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_node_sync_created_host_gets_offset_and_refresh_preserves_it",
+        "status": "passed",
+        "seconds": 0.028
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_first_collection::test_create_marks_first_collection_ready_only_after_node_config_push",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_first_collection::test_create_without_first_collection_only_pushes_config",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_first_collection::test_create_stays_successful_when_post_commit_config_push_fails",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_first_collection::test_create_without_recovery_run_surfaces_post_commit_config_failure",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_first_collection::test_update_replaces_node_config_before_first_collection_dispatch",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_first_collection::test_disabling_k8s_schedule_still_removes_legacy_periodic_task",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_same_task_fingerprint_creates_one_waiting_trigger_intent",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_returning_to_an_earlier_configuration_creates_a_new_run",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_queued_old_revision_is_skipped_after_configuration_returns_to_a[pending]",
+        "status": "passed",
+        "seconds": 0.016
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_queued_old_revision_is_skipped_after_configuration_returns_to_a[waiting_config]",
+        "status": "passed",
+        "seconds": 0.018
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_governance_edit_keeps_pending_first_collection_valid",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_first_collection_dispatches_only_long_interval_channels[5-30-True-suffixes0]",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_first_collection_dispatches_only_long_interval_channels[30-5-True-suffixes1]",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_first_collection_dispatches_only_long_interval_channels[15-15-True-suffixes2]",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_first_collection_dispatches_only_long_interval_channels[5-None-True-suffixes3]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_first_collection_dispatches_only_long_interval_channels[2-None-True-suffixes4]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_first_collection_dispatches_only_long_interval_channels[5-30-False-suffixes5]",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_first_collection_dispatches_only_long_interval_channels[30-30-False-suffixes6]",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_outer_transaction_rollback_removes_intent_and_never_dispatches",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_config_ready_persists_pending_before_dispatch",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_execute_accepts_one_shot_without_changing_collect_task_status",
+        "status": "passed",
+        "seconds": 0.012
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_claim_locks_only_run_row_without_nullable_outer_join",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_partial_network_retry_only_executes_unaccepted_channel",
+        "status": "passed",
+        "seconds": 0.014
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_celery_task_retries_same_run_with_orchestrator_backoff",
+        "status": "passed",
+        "seconds": 0.022
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_expired_worker_cannot_overwrite_new_worker_result",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_terminal_run_is_not_dispatched_again",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_recovery_pushes_waiting_config_then_dispatches",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_recovery_replaces_an_already_saved_config_after_lost_ack",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_recovery_redispatches_stale_pending_without_rewriting_config",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_failed_dispatch_rotates_the_bounded_recovery_window",
+        "status": "passed",
+        "seconds": 0.014
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_dispatch_recovery_stops_after_bounded_attempts",
+        "status": "passed",
+        "seconds": 0.017
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_fingerprint_change_skips_stale_run_without_node_execution",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_permanent_channel_failure_finishes_without_retry_and_records_stage",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_network_retry_exhaustion_finishes_partial_and_preserves_accepted_channel",
+        "status": "passed",
+        "seconds": 0.012
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_node_lock_contention_retries_without_consuming_collection_attempt",
+        "status": "passed",
+        "seconds": 0.027
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_node_busy_budget_survives_recovery_and_finishes_without_redispatch[False]",
+        "status": "passed",
+        "seconds": 0.034
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_node_busy_budget_survives_recovery_and_finishes_without_redispatch[True]",
+        "status": "passed",
+        "seconds": 0.056
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_celery_preserves_business_attempts_after_eight_node_busy_retries",
+        "status": "passed",
+        "seconds": 0.039
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_node_mgmt_rpc_exception_has_one_safe_traceback_owner",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_dispatch_failure_has_one_safe_traceback_and_preserves_pending_state",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_recovery_failure_has_one_safe_traceback_and_keeps_waiting_config",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_failed_config_recovery_rotates_the_bounded_scan_window",
+        "status": "passed",
+        "seconds": 0.032
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_config_recovery_stops_after_bounded_attempts",
+        "status": "passed",
+        "seconds": 0.03
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_expired_third_attempt_converges_without_starting_a_fourth",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_execute_skips_run_when_task_can_no_longer_be_collected[disabled]",
+        "status": "passed",
+        "seconds": 0.016
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_execute_skips_run_when_task_can_no_longer_be_collected[ineligible]",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_orchestrator::test_execute_skips_run_when_task_can_no_longer_be_collected[missing]",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_second_run_of_same_type_is_blocked_while_scope_is_held",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_sync_and_collect_can_hold_leases_at_the_same_time",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_stale_run_is_timed_out_and_scope_released",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_terminal_transition_clears_active_scope",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_terminal_finish_advances_matching_config_timestamp[sync-last_sync_at-success]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_terminal_finish_advances_matching_config_timestamp[sync-last_sync_at-partial_success]",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_terminal_finish_advances_matching_config_timestamp[collect-last_collect_at-success]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_terminal_finish_advances_matching_config_timestamp[collect-last_collect_at-partial_success]",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_terminal_finish_advances_matching_config_timestamp[collect-last_collect_at-failed]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_failed_sync_finish_does_not_advance_last_sync_at",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_delayed_older_finish_cannot_overwrite_newer_config_timestamp[sync-last_sync_at]",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_delayed_older_finish_cannot_overwrite_newer_config_timestamp[collect-last_collect_at]",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_successful_finish_and_config_timestamp_update_share_transaction[success]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_successful_finish_and_config_timestamp_update_share_transaction[partial_success]",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_heartbeat_rejects_expired_run_and_releases_scope",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_node_query_exception_crossing_deadline_prefers_timeout",
+        "status": "passed",
+        "seconds": 0.023
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_cloud_region_exception_crossing_deadline_prefers_timeout",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_collect_external_exception_crossing_deadline_prefers_timeout",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_persist_hosts_stops_after_first_external_write_expires_lease",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_collect_submit_crossing_deadline_cannot_finish_success",
+        "status": "passed",
+        "seconds": 0.022
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_recovered_stale_run_cannot_be_overwritten_by_old_worker_finish",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_recover_stale_runs_uses_single_deadline_guarded_update",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_sync_hosts_returns_blocked_history_without_starting_work",
+        "status": "passed",
+        "seconds": 0.012
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_failure_message_is_sanitized_and_scope_is_released",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_finish_run_does_not_overwrite_existing_terminal_state",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_task_entry_recovers_stale_runs_before_sync",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_task_entry_recovers_stale_runs_before_collect",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_access_point_pagination_uses_run_deadline_and_heartbeat",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_collect_hosts_returns_blocked_history_without_submitting_work",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_finish_run_rejects_non_terminal_status",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_heartbeat_rejects_finished_lease",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_pagination_refreshes_run_heartbeat",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_cloud_region_rpc_is_guarded_before_and_after",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_existing_collect_task_only_persists_delivery_intent",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_new_collect_task_only_persists_delivery_intent",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_celery_entries_preserve_external_return_contracts",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_celery_entry_error_log_is_sanitized[sync_node_mgmt_hosts]",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_execution::test_celery_entry_error_log_is_sanitized[collect_node_mgmt_hosts]",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_disable_collect_only_deletes_node_params",
+        "status": "passed",
+        "seconds": 0.014
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_retired_region_is_excluded_from_dispatch_and_records_delete_intent",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_retirement_rolls_back_when_delivery_intent_cannot_be_recorded",
+        "status": "passed",
+        "seconds": 0.012
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_manual_sync_mode_deletes_retired_task_but_does_not_push_active_task",
+        "status": "passed",
+        "seconds": 0.014
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_manual_sync_mode_with_only_retired_tasks_stays_waiting_sync",
+        "status": "passed",
+        "seconds": 0.012
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_interval_only_update_reconciles_existing_retirement_intent",
+        "status": "passed",
+        "seconds": 0.019
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_foreign_config_region_state_cannot_suppress_current_delete_intent",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_retired_legacy_region_without_state_is_deleted_and_failure_is_retryable",
+        "status": "passed",
+        "seconds": 0.016
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_retired_region_reactivation_reuses_task_and_pushes_again",
+        "status": "passed",
+        "seconds": 0.019
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_region_task_create_unique_race_reloads_and_reuses_winner",
+        "status": "passed",
+        "seconds": 0.017
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_config_versions_share_region_claim_and_new_disable_deletes_after_old_push",
+        "status": "passed",
+        "seconds": 0.019
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_disable_collect_restarts_old_push_pending_from_delete",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_disable_collect_old_push_pending_delete_failure_is_retryable",
+        "status": "passed",
+        "seconds": 0.024
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_enable_collect_deletes_then_pushes",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_node_config_scope_does_not_reuse_collect_run_region_history",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_delete_failure_stays_delete_pending_and_is_retryable",
+        "status": "passed",
+        "seconds": 0.109
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_push_failure_stays_push_pending_and_retries_from_push",
+        "status": "passed",
+        "seconds": 0.085
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_sync_task_update_push_failure_is_retried_by_reconciler",
+        "status": "passed",
+        "seconds": 0.091
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_delivery_intent_arriving_during_claim_preserves_token_and_stays_pending",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_delivery_intent_cas_does_not_overwrite_claim_started_after_read",
+        "status": "passed",
+        "seconds": 0.021
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_multiple_legacy_rows_wait_for_active_claim_then_consolidate",
+        "status": "passed",
+        "seconds": 0.013
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_fresh_stable_claim_blocks_legacy_merge[delete_pending]",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_fresh_stable_claim_blocks_legacy_merge[push_in_progress]",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_concurrent_degraded_recovery_claims_region_side_effect_once",
+        "status": "passed",
+        "seconds": 0.019
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_stale_node_config_claim_can_be_recovered",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_old_node_config_claim_cannot_overwrite_new_claim",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_contended_reconciler_cannot_reverse_later_healthy_health",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_degraded_retry_skips_healthy_region_and_only_retries_failed_region",
+        "status": "passed",
+        "seconds": 0.016
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_disabled_region_is_successful_skip_while_collect_remains_disabled",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_node_config_claim_has_explicit_outcomes[delete_pending-True-acquired]",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_node_config_claim_has_explicit_outcomes[healthy-True-skip]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_node_config_claim_has_explicit_outcomes[disabled-False-skip]",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_node_config_claim_has_explicit_outcomes[delete_in_progress-True-contended]",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_real_rpc_failure_still_degrades_when_other_region_is_contended",
+        "status": "passed",
+        "seconds": 0.015
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_invalid_region_still_degrades_when_valid_region_is_contended",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_old_owner_claim_lost_cannot_pollute_new_owner_health[finish]",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_old_owner_claim_lost_cannot_pollute_new_owner_health[rpc_failure]",
+        "status": "passed",
+        "seconds": 0.012
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_collect_enabled_without_sync_waits_and_does_not_dispatch",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_no_region_task_reports_unknown_instead_of_healthy",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_invalid_region_system_code_degrades_without_guessing_or_leaking",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_one_region_failure_degrades_aggregate_but_keeps_other_region_healthy",
+        "status": "passed",
+        "seconds": 0.017
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_stale_config_version_cannot_overwrite_current_health",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_mgmt_sync_node_config::test_collect_service_logs_do_not_include_node_payload_or_rpc_result",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_unique_write_lock::test_same_unique_signature_has_single_owner_and_stale_takeover",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_unique_write_lock::test_lock_keys_are_stable_and_ignore_empty_unique_values",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_cmdb_child_config_one_shot_returns_stargazer_acceptance",
+        "status": "passed",
+        "seconds": 0.021
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_network_one_shot_reports_partial_channel_acceptance",
+        "status": "passed",
+        "seconds": 0.017
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_executor_failure_is_retryable_without_leaking_exception",
+        "status": "passed",
+        "seconds": 0.015
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_executor_timeout_returns_bounded_retryable_result",
+        "status": "passed",
+        "seconds": 0.015
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_reports_node_lock_contention_without_treating_it_as_collection_failure",
+        "status": "passed",
+        "seconds": 0.015
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_node_mgmt_rpc_interface_runs_saved_child_config",
+        "status": "passed",
+        "seconds": 0.015
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_nats_one_shot_rejects_invalid_or_unsigned_requests",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_node_outside_signed_organization_scope",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_uses_controlled_http_config_and_decrypted_env",
+        "status": "passed",
+        "seconds": 0.021
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_wrong_node_without_executing",
+        "status": "passed",
+        "seconds": 0.012
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_mixed_cmdb_task_configs",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_uncontrolled_child_config[http-\\n[[inputs.http]]\\n  urls = [\"${STARGAZER_URL}/api/collect/collect_info\"]\\n]",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_uncontrolled_child_config[http-\\n[[inputs.prometheus]]\\n  urls = [\"${STARGAZER_URL}/api/collect/collect_info\"]\\n[[outputs.file]]\\n  files = [\"stdout\"]\\n]",
+        "status": "passed",
+        "seconds": 0.014
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_uncontrolled_child_config[exec-\\n[[inputs.prometheus]]\\n  urls = [\"${STARGAZER_URL}/api/collect/collect_info\"]\\n]",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_windows_one_shot_is_rejected_until_a_hard_memory_limit_is_available",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_successful_process_without_acceptance_metric_is_permanent_failure",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_unsupported_operating_system_returns_structured_permanent_failure",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_repeated_attempts_use_same_bounded_command_without_config_content",
+        "status": "passed",
+        "seconds": 0.015
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_unknown_or_malformed_toml_structure[\\n[agent]\\n  interval = \"1s\"\\n[[inputs.prometheus]]\\n  urls = [\"${STARGAZER_URL}/api/collect/collect_info\"]\\n]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_unknown_or_malformed_toml_structure[\\n[[inputs.prometheus]]\\n  urls = [\"${STARGAZER_URL}/api/collect/collect_info\"]\\n  tags = \"not-a-table\"\\n]",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_unknown_or_malformed_toml_structure[\\n[[inputs.prometheus]]\\n  urls = [\"${STARGAZER_URL}/api/collect/collect_info\"]\\n  http_headers = [\"not-a-table\"]\\n]",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_fails_closed_when_region_secret_cannot_be_decrypted",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_environment_over_total_byte_limit",
+        "status": "passed",
+        "seconds": 0.014
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_config_count_and_content_size_limits",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_rejects_conflicting_child_environments",
+        "status": "passed",
+        "seconds": 0.011
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_linux_watchdog_kills_stuck_process_and_cleans_resources",
+        "status": "skipped",
+        "seconds": 0.0,
+        "reason": "Linux one-shot resource boundary"
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_linux_watchdog_never_signals_a_reused_process_identity",
+        "status": "skipped",
+        "seconds": 0.0,
+        "reason": "Linux /proc process identity boundary"
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_accepts_periodic_offset_but_does_not_wait_for_it[omitted]",
+        "status": "passed",
+        "seconds": 0.014
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_accepts_periodic_offset_but_does_not_wait_for_it[zero]",
+        "status": "passed",
+        "seconds": 0.016
+      },
+      {
+        "id": "apps.node_mgmt.tests.test_telegraf_oneshot_service::test_one_shot_accepts_periodic_offset_but_does_not_wait_for_it[nonzero]",
+        "status": "passed",
+        "seconds": 0.016
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_service::test_competing_transactions_never_commit_same_available_phase",
+        "status": "passed",
+        "seconds": 0.158
+      },
+      {
+        "id": "apps.cmdb.tests.test_unique_write_lock::test_serialize_fails_fast_on_contention_and_succeeds_after_holder_exits",
+        "status": "passed",
+        "seconds": 0.125
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_occupancy_width_buckets",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_10_small_30min_unique_starts",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_two_large_then_small_30min",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_five_220min_never_realign",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_220_avoids_dense_30min_cluster",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_mixed_30_and_220_periodic_approach",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_more_than_cycle_slots_still_unique_starts",
+        "status": "passed",
+        "seconds": 0.008
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_large_network_host_topology_250min",
+        "status": "passed",
+        "seconds": 0.078
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset::test_group_large_network_device_and_topo_same_250min",
+        "status": "passed",
+        "seconds": 0.023
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugin_renders_its_own_offset[host-device-collection_offset_seconds-420-1800s]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugin_renders_its_own_offset[network-device-collection_offset_seconds-660-1800s]",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugin_renders_its_own_offset[network-topology-topology_collection_offset_seconds-1260-9000s]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_invalid_offsets_fall_back_to_zero[None]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_invalid_offsets_fall_back_to_zero[-60]",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_invalid_offsets_fall_back_to_zero[1800]",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_invalid_offsets_fall_back_to_zero[bad]",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_invalid_offsets_fall_back_to_zero[True]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_invalid_offsets_fall_back_to_zero[1.5]",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugins_accept_missing_and_zero_offset[omitted-host-device-collection_offset_seconds]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugins_accept_missing_and_zero_offset[omitted-network-device-collection_offset_seconds]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugins_accept_missing_and_zero_offset[omitted-network-topology-topology_collection_offset_seconds]",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugins_accept_missing_and_zero_offset[zero-host-device-collection_offset_seconds]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugins_accept_missing_and_zero_offset[zero-network-device-collection_offset_seconds]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_supported_plugins_accept_missing_and_zero_offset[zero-network-topology-topology_collection_offset_seconds]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_other_plugin_does_not_render_offset_even_if_params_contain_it",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_non_periodic_task_does_not_render_offset[host]",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_non_periodic_task_does_not_render_offset[network]",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_other_plugins_have_no_active_offset_channels[redis-redis_info]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_other_plugins_have_no_active_offset_channels[mysql-mysql_info]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_other_plugins_have_no_active_offset_channels[pc-pc_info]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_count_targets_without_expanding_network[10.0.0.1-10.0.0.64-64]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_count_targets_without_expanding_network[10.0.0.0/21-2048]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_count_targets_without_expanding_network[10.0.0.1,10.0.0.3-10.0.0.4-3]",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_count_targets_without_expanding_network[node-a.example.com-1]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_count_targets_without_expanding_network[10.0.0.9-10.0.0.1-1]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_count_targets_without_expanding_network[0.0.0.0/0-4294967296]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_count_targets_without_expanding_network[-0]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_config_pure::test_asset_count_takes_precedence_over_range",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_pure::test_busy_width_is_not_shortened_by_cycle",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_pure::test_assignment_uses_full_period_including_wrapped_busy_windows",
+        "status": "passed",
+        "seconds": 0.027
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_pure::test_keep_previous_offset_when_equally_good",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_pure::test_coprime_periods_accept_unavoidable_collision",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_pure::test_full_phase_capacity_still_returns_legal_deterministic_result",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_pure::test_large_coprime_cycle_uses_equivalent_phases_without_time_expansion",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_telegraf_live::test_telegraf_129_keeps_phase_after_reload_and_restart",
+        "status": "skipped",
+        "seconds": 0.0,
+        "reason": "显式启用 Telegraf Docker 时序验收"
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_first_collection::test_schedule_delegates_policy_and_persistence_to_orchestrator",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestPrimitives::test_safe_int",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestPrimitives::test_get_snapshot_item",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestPrimitives::test_snapshot_task_空与正常",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestPrimitives::test_snapshot_task_exec_time_isoformat",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestPrimitives::test_should_sync_node_params",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestPrimitives::test_should_register_sync_beat",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestResolveCloudMeta::test_task_cloud优先_非access_point模式",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestResolveCloudMeta::test_access_point优先模式",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestResolveCloudMeta::test_access_point优先但无ap云_回退task",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestResolveCloudMeta::test_无云时按节点反查",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestResolveCloudMeta::test_无云名时按云id查名",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestResolveCloudMeta::test_节点反查空结果返回None",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestEnrichSnapshot::test_非host跳过",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestEnrichSnapshot::test_host回填云信息到params和实例",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestEnrichSnapshot::test_host已有相同云信息_无变化",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestRepairSnapshot::test_非host返回False",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestRepairSnapshot::test_host有变化_persist_false不落库",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestRepairSnapshot::test_host有变化_persist落库",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestRepairSnapshot::test_host无enrich变化_走二次解析无变化返回False",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_空凭据非k8s_报错",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_ip任务允许空凭据并沿用旧值",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_仅改regions_用旧凭据",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_华为云编辑project与region时保留掩码AKSK",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_华为云编辑提交掩码时沿用旧AKSK",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_regions与其他字段共存",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_credential为None_用旧凭据",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_dict合并旧新",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_list池合并保留旧项字段",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_云任务单凭据编辑不回传credential_id时保留密钥",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_云任务库为凭据池页面提交单个对象时保留密钥[qcloud-incoming0]",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_云任务库为凭据池页面提交单个对象时保留密钥[aliyun_account-incoming1]",
+        "status": "passed",
+        "seconds": 0.007
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_云任务库为凭据池页面提交单个对象时保留密钥[hwcloud-incoming2]",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_旧单凭据dict升级为单项凭据池时保留掩码密钥",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_凭据池编辑提交掩码时沿用旧密钥",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestFormatUpdateCredential::test_list池含非dict项_报错",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_is_schedule_config_changed",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_normalize_cloud_regions_非qcloud原样",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_normalize_cloud_regions_qcloud补字段",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_schedule_delayed_sync_非interval跳过",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_schedule_delayed_sync_非cycle类型跳过",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_schedule_delayed_sync_非法值跳过",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_schedule_delayed_sync_低于阈值跳过",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestScheduleAndMisc::test_schedule_delayed_sync_达阈值注册on_commit",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods::test_exec_task_passes_execution_token_to_sync_collect_task",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods::test_exec_task_defers_celery_publish_until_transaction_commit",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestListRegions::test_成功路径",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestListRegions::test_失败路径",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestListRegions::test_format_params_基本结构",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestListRegions::test_format_params_保留空_ip_range",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestListRegions::test_format_params_close_无周期",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestListRegions::test_format_params_cycle_最小一分钟",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestListRegions::test_format_params_cycle_小于一分钟报错",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestCollectCrudSideEffects::test_create_事务内后续失败不提前同步外部副作用",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestCollectCrudSideEffects::test_create_事务提交后才同步外部副作用",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestCollectCrudSideEffects::test_create_config_file_仅下发telegraf配置并清理遗留beat",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestCollectCrudSideEffects::test_update_事务内后续失败不提前同步外部副作用",
+        "status": "passed",
+        "seconds": 0.009
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestCollectCrudSideEffects::test_update_事务提交后才同步外部副作用",
+        "status": "passed",
+        "seconds": 0.01
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestCollectCrudSideEffects::test_destroy_外部清理失败时保留数据库删除入口可重试",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_methods.TestCollectCrudSideEffects::test_destroy_pc_task_只删任务资源不操作图资产",
+        "status": "passed",
+        "seconds": 0.006
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_permission_and_node_params::test_has_permission_raises_when_view_denies",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_permission_and_node_params::test_delete_team_only_removes_dropped_orgs",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_collect_service_permission_and_node_params::test_push_and_delete_node_params_call_node_mgmt",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_ineligible_tasks_are_rejected[overrides0]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_ineligible_tasks_are_rejected[overrides1]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_ineligible_tasks_are_rejected[overrides2]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_ineligible_tasks_are_rejected[overrides3]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_ineligible_tasks_are_rejected[overrides4]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_ineligible_tasks_are_rejected[overrides5]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_threshold_task_is_eligible",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_equivalent_dict_order_has_same_fingerprint",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_fingerprint_is_irreversible",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_source_change_triggers[instances-value0]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_source_change_triggers[access_point-value1]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_source_change_triggers[plugin_id-host_info_v2]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_source_change_triggers[params-value3]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_source_change_triggers[timeout-90]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_source_change_triggers[cycle_value-60]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_source_change_triggers[decrypt_credentials-value6]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_governance_change_does_not_trigger[name-\\u65b0\\u540d\\u79f0]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_governance_change_does_not_trigger[team-value1]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_governance_change_does_not_trigger[expire_days-30]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_governance_change_does_not_trigger[data_cleanup_strategy-delete]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_policy::test_update_to_short_cycle_does_not_trigger",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_task::test_terminal_orchestrator_result_is_returned_without_retry",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_task::test_retry_wait_uses_orchestrator_backoff[10]",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_task::test_retry_wait_uses_orchestrator_backoff[20]",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_task::test_first_collection_task_never_calls_legacy_stargazer_trigger",
+        "status": "passed",
+        "seconds": 0.005
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_task::test_new_one_shot_task_uses_a_new_protocol_name_and_legacy_messages_are_safely_retired",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_task::test_first_collection_task_retry_budget_covers_the_node_lock_watchdog",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_first_collection_task::test_first_collection_recovery_task_is_registered_and_bounded",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_base_node_params_uses_primary_credential_from_pool_for_node_push",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_base_node_params_pushes_credentials_pool_to_stargazer_headers",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_network_node_params_pushes_snmp_timeout_and_retry_settings",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_base_node_params_forwards_ip_precheck_and_executor_node_ip",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_base_node_params_push_params_renders_template_with_default_filter",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_base_node_params_push_params_uses_task_cycle_interval_when_present",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_base_node_params_push_params_uses_minute_one_as_60_seconds",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_direct_database_node_params_push_multicred_headers[apps.cmdb.node_configs.databases.mysql.MysqlNodeParams-mysql-primary_credential0-secondary_credential0-expected_extra_headers0]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_direct_database_node_params_push_multicred_headers[apps.cmdb.node_configs.databases.oracle.OracleNodeParams-oracle-primary_credential1-secondary_credential1-expected_extra_headers1]",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_direct_database_node_params_push_multicred_headers[apps.cmdb.node_configs.databases.mssql.MssqlNodeParams-mssql-primary_credential2-secondary_credential2-expected_extra_headers2]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_direct_database_node_params_push_multicred_headers[apps.cmdb.node_configs.databases.postgresql.PostgresqlNodeParams-postgresql-primary_credential3-secondary_credential3-expected_extra_headers3]",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_base_node_params_single_credential_keeps_legacy_headers",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_network_node_params_device_channel_disables_inline_topo",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_network_topo_node_params_carries_topology_contract",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_config_file_node_params_does_not_carry_celery_execution_id",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_config_file_node_params_builds_one_telegraf_config_per_host",
+        "status": "passed",
+        "seconds": 0.004
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_network_node_params_topology_protocols_header_is_agent_parseable",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_node_params_multicred::test_network_node_params_multicred_pool_carries_topology_contract_defaults",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_recommended_topology_interval_is_five_times_device",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_normalize_topology_contract_includes_interval_and_versions",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_normalize_topology_contract_defaults_topology_timeout",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_device_and_topology_config_ids_differ_metric_scope_same",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_device_credentials_do_not_enable_inline_topo",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_topology_credentials_carry_protocols_and_interval",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_expected_network_node_configs_returns_two_when_enabled",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_reconcile_delete_clears_both_configs",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_reconcile_edit_deletes_existing_configs_before_recreate",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_reconcile_delete_propagates_node_mgmt_failure_without_leaking_error",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_reconcile_without_topology_deletes_only_topology_config",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_reconcile_without_topology_propagates_cleanup_failure_without_push",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_get_last_synced_topology_round",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_query_role_round_marker_ignores_legacy_attempt_labels",
+        "status": "passed",
+        "seconds": 0.001
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_replay_stale_when_version_mismatch",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_replay_pending_when_interfaces_missing",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_replay_idempotent_same_round",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_replay_legacy_pending_without_completion_proof_never_deletes",
+        "status": "passed",
+        "seconds": 0.002
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_replay_missing_when_task_deleted",
+        "status": "passed",
+        "seconds": 0.003
+      },
+      {
+        "id": "apps.cmdb.tests.test_network_channel_split::test_gate_triggers_topology_replay_for_network",
+        "status": "passed",
+        "seconds": 0.01
+      }
+    ]
+  },
+  "coverage": {
+    "totals": {
+      "covered_lines": 220,
+      "num_statements": 228,
+      "percent_covered": 96.49122807017544,
+      "percent_covered_display": "96",
+      "missing_lines": 8,
+      "excluded_lines": 0
+    },
+    "files": {
+      "apps/cmdb/services/collection_offset.py": {
+        "covered_lines": 101,
+        "num_statements": 106,
+        "percent_covered": 95.28301886792453,
+        "percent_covered_display": "95",
+        "missing_lines": 5,
+        "excluded_lines": 0
+      },
+      "apps/cmdb/services/collection_offset_policy.py": {
+        "covered_lines": 70,
+        "num_statements": 73,
+        "percent_covered": 95.89041095890411,
+        "percent_covered_display": "96",
+        "missing_lines": 3,
+        "excluded_lines": 0
+      },
+      "apps/cmdb/services/collection_offset_service.py": {
+        "covered_lines": 49,
+        "num_statements": 49,
+        "percent_covered": 100.0,
+        "percent_covered_display": "100",
+        "missing_lines": 0,
+        "excluded_lines": 0
+      }
+    }
+  },
+  "live_telegraf": {
+    "timestamp": "2026-09-11T07:49:24.200648+00:00",
+    "seconds": 62.189,
+    "counts": {
+      "passed": 1
+    },
+    "cases": [
+      {
+        "id": "apps.cmdb.tests.test_collection_offset_telegraf_live::test_telegraf_129_keeps_phase_after_reload_and_restart",
+        "status": "passed",
+        "seconds": 62.126
+      }
+    ],
+    "phases": [
+      {
+        "stage": "initial",
+        "samples": [
+          {
+            "channel": "omitted",
+            "timestamp_ns": 1789112970000000000
+          },
+          {
+            "channel": "zero",
+            "timestamp_ns": 1789112970000000000
+          },
+          {
+            "channel": "5s",
+            "timestamp_ns": 1789112975000000000
+          },
+          {
+            "channel": "omitted",
+            "timestamp_ns": 1789112980000000000
+          },
+          {
+            "channel": "zero",
+            "timestamp_ns": 1789112980000000000
+          },
+          {
+            "channel": "5s",
+            "timestamp_ns": 1789112985000000000
+          }
+        ]
+      },
+      {
+        "stage": "reload",
+        "samples": [
+          {
+            "channel": "omitted",
+            "timestamp_ns": 1789112990000000000
+          },
+          {
+            "channel": "zero",
+            "timestamp_ns": 1789112990000000000
+          },
+          {
+            "channel": "5s",
+            "timestamp_ns": 1789112995000000000
+          },
+          {
+            "channel": "zero",
+            "timestamp_ns": 1789113000000000000
+          },
+          {
+            "channel": "omitted",
+            "timestamp_ns": 1789113000000000000
+          },
+          {
+            "channel": "5s",
+            "timestamp_ns": 1789113005000000000
+          }
+        ]
+      },
+      {
+        "stage": "restart",
+        "samples": [
+          {
+            "channel": "zero",
+            "timestamp_ns": 1789113010000000000
+          },
+          {
+            "channel": "omitted",
+            "timestamp_ns": 1789113010000000000
+          },
+          {
+            "channel": "5s",
+            "timestamp_ns": 1789113015000000000
+          },
+          {
+            "channel": "zero",
+            "timestamp_ns": 1789113020000000000
+          },
+          {
+            "channel": "omitted",
+            "timestamp_ns": 1789113020000000000
+          },
+          {
+            "channel": "5s",
+            "timestamp_ns": 1789113025000000000
+          }
+        ]
+      }
+    ]
+  },
+  "earlier_failures": [
+    {
+      "type": "test_observation_window",
+      "runs": 2,
+      "reason": "固定14秒可能先于下一周期边界加偏移结束；修正为逐阶段等待实际样本",
+      "evidence": "/tmp/cmdb-offset-live-diagnose.log"
+    }
+  ],
+  "not_verified": [
+    "真实 NodeMgmt RPC 和远程 Executor 传输",
+    "Stargazer 实际目标采集至 CMDB 入库",
+    "生产数据库锁等待行为",
+    "Linux 专用资源边界测试",
+    "全仓门禁"
+  ]
+}

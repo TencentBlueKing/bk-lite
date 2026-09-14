@@ -18,6 +18,7 @@ import {
 } from '@ant-design/icons';
 import FilterOptionsModal from './filterOptionsModal';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { isOrganizationControl, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
 import {
@@ -124,12 +125,6 @@ const DragHandleContext = React.createContext<{
   listeners: Record<string, any> | undefined;
 } | null>(null);
 
-const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  const normalized = Number(value);
-  return Number.isNaN(normalized) ? undefined : normalized;
-};
-
 const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -200,7 +195,10 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         order: initialDefinitions.length + index,
         enabled: true,
         inputConfig: param.sampleInputConfig,
-        inputMode: param.sampleInputConfig?.control,
+        inputMode:
+          param.sampleInputConfig?.control === 'organization'
+            ? undefined
+            : param.sampleInputConfig?.control,
       };
     });
 
@@ -232,9 +230,40 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     setDefinitions(
       definitions.map((definition) => {
         if (definition.id !== id) return definition;
+
+        if (inputMode === 'organization') {
+          return sanitizeUnifiedFilterDefinition({
+            ...definition,
+            inputConfig: { control: 'organization' },
+            defaultValue: null,
+            options: undefined,
+          });
+        }
+
+        if (inputMode === 'input') {
+          return sanitizeUnifiedFilterDefinition({
+            ...definition,
+            inputMode: 'input',
+            inputConfig: { control: 'input' },
+            defaultValue: null,
+            options: undefined,
+          });
+        }
+
+        if (inputMode !== 'select' && inputMode !== 'radio') {
+          return definition;
+        }
+
         return sanitizeUnifiedFilterDefinition({
           ...definition,
           inputMode,
+          inputConfig: {
+            control: inputMode,
+            ...(inputMode === 'select'
+              && definition.inputConfig?.control === 'select'
+              ? { multiple: definition.inputConfig.multiple }
+              : {}),
+          },
           defaultValue: null,
           options: isOptionInputMode(inputMode) ? definition.options : undefined,
         });
@@ -273,7 +302,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
           if (d.id !== editingFilterId) return d;
           const isMultiple = Boolean(
             d.inputConfig
-            && d.inputConfig.control !== 'input'
+            && d.inputConfig.control === 'select'
             && d.inputConfig.multiple,
           );
           let nextDefault: FilterValue = d.defaultValue ?? null;
@@ -361,7 +390,9 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
           );
         }
 
-        const currentMode = normalizeUnifiedFilterInputMode(record.inputMode);
+        const currentMode = isOrganizationControl(record)
+          ? 'organization'
+          : normalizeUnifiedFilterInputMode(record.inputMode);
 
         return (
           <div className="flex items-center gap-2">
@@ -426,12 +457,14 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
           );
         }
 
-        const currentMode = normalizeUnifiedFilterInputMode(record.inputMode);
+        const currentMode = isOrganizationControl(record)
+          ? 'organization'
+          : normalizeUnifiedFilterInputMode(record.inputMode);
 
         if (currentMode === 'select') {
           const isMultiple = Boolean(
             record.inputConfig
-            && record.inputConfig.control !== 'input'
+            && record.inputConfig.control === 'select'
             && record.inputConfig.multiple,
           );
           const selectValue = Array.isArray(value)

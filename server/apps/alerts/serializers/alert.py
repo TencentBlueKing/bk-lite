@@ -9,6 +9,7 @@ from rest_framework.fields import empty
 from apps.alerts.constants import PERMISSION_ALERT
 from apps.alerts.constants.constants import AlertStatus, NotifyResultStatus
 from apps.alerts.models.models import Alert
+from apps.alerts.service.source_names import source_names_by_alert
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.serializers import AuthSerializer
@@ -33,6 +34,13 @@ def _format_alert_duration(total_seconds: int) -> str:
     return result
 
 
+class AlertSourceNamesListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        instances = list(data.all() if hasattr(data, "all") else data)
+        self.child.source_names_map = source_names_by_alert([obj.pk for obj in instances], instances[0]._state.db or "default") if instances else {}
+        return super().to_representation(instances)
+
+
 class AlertModelSerializer(AuthSerializer):
     """
     Serializer for Alert model.
@@ -41,6 +49,7 @@ class AlertModelSerializer(AuthSerializer):
     permission_key = PERMISSION_ALERT
 
     event_count = serializers.SerializerMethodField()
+    source_names = serializers.SerializerMethodField()
     # 持续时间
     duration = serializers.SerializerMethodField()
     operator_user = serializers.SerializerMethodField()
@@ -72,6 +81,7 @@ class AlertModelSerializer(AuthSerializer):
 
     class Meta:
         model = Alert
+        list_serializer_class = AlertSourceNamesListSerializer
         exclude = ["events"]
         extra_kwargs = {
             # "events": {"write_only": True},  # events 字段只读
@@ -79,9 +89,18 @@ class AlertModelSerializer(AuthSerializer):
             "updated_at": {"read_only": True},
             "closed_at": {"read_only": True},
             "monitor_objects": {"read_only": True},
+            "push_source_ids": {"read_only": True},
             # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }
+
+    def get_source_names(self, obj):
+        names = getattr(self, "source_names_map", None)
+        if names is not None:
+            return names.get(obj.pk, [])
+        if not obj.pk:
+            return []
+        return source_names_by_alert([obj.pk], obj._state.db or "default")[obj.pk]
 
     def validate_team(self, value):
         team_ids = normalize_team_ids(value)

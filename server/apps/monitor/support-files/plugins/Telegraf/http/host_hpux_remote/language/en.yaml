@@ -1,0 +1,95 @@
+Host HP-UX Remote:
+  name: HP-UX Host Remote Collection
+  desc: A Linux collect node SSHes to HP-UX on each interval and runs system commands. It collects CPU, load, memory and swap, disk capacity and inodes, disk busy and throughput, NICs, uptime, and OS version. The target does not need a collector installed. Fill in IP, SSH username (for example root), password or private key, port (default 22), interval, and a Linux collect node. It does not collect hardware inventory, lastlog, lsof, or connection tables. There is no version picker; version and architecture are detected automatically.
+monitor_object:
+  Host: Host
+monitor_object_type:
+  OS: Operating System
+monitor_object_metric:
+  Host:
+    cpu_usage_total:
+      name: CPU Usage
+      desc: HP-UX CPU usage as sar -u user + sys + wio.
+    cpu_usage_iowait_total:
+      name: CPU IOWait Rate
+      desc: CPU time waiting for I/O, from sar %wio.
+    cpu_usage_system_total:
+      name: CPU System Usage
+      desc: Percentage of CPU time spent in system/kernel mode.
+    cpu_usage_user_total:
+      name: CPU User Usage
+      desc: Percentage of CPU time spent in user mode.
+    system_load1:
+      name: 1 Minute Average Load
+      desc: Average system load over the last 1 minute.
+    system_load5:
+      name: 5 Minute Average Load
+      desc: Average system load over the last 5 minutes.
+    system_load15:
+      name: 15 Minute Average Load
+      desc: Average system load over the last 15 minutes.
+    system_uptime:
+      name: System Uptime
+      desc: Seconds since the last boot.
+    os_info:
+      name: OS Version
+      desc: HP-UX uname release and architecture (os_version, arch, machine).
+    diskio_write_bytes_rate:
+      name: Disk Write Rate
+      desc: Disk write bytes per second. Zero when HP-UX sar -d only reports combined blks/s.
+    diskio_read_bytes_rate:
+      name: Disk Read Rate
+      desc: Disk transfer bytes per second from the 1s sar -d sample. Combined blks/s is recorded on the read side when read/write are not split.
+    disk_tm_act:
+      name: Disk Busy
+      desc: HP-UX sar -d %busy, the share of time the disk was active.
+    disk_total:
+      name: Disk Total
+      desc: Total capacity of a disk or filesystem.
+    disk_free:
+      name: Disk Free
+      desc: Currently available free space of a disk or filesystem.
+    disk_used_percent:
+      name: Disk Usage
+      desc: Percentage of disk space that has been consumed.
+    disk_inodes_used_percent:
+      name: Inode Usage
+      desc: Filesystem inode usage percentage.
+    disk_iused:
+      name: Used inodes
+      desc: Number of used inodes.
+    disk_ifree:
+      name: Free inodes
+      desc: Number of free inodes.
+    mem_total:
+      name: Total Memory
+      desc: Total physical memory available on the system.
+    mem_used_percent:
+      name: Memory Usage
+      desc: Percentage of memory currently in use.
+    mem_swap_free:
+      name: Swap Free Memory
+      desc: Free swap space available.
+    mem_swap_total:
+      name: Swap Total Memory
+      desc: Total swap space.
+    net_bytes_recv_rate:
+      name: Network Receive Throughput Rate
+      desc: Data received per unit time on a network interface.
+    net_bytes_sent_rate:
+      name: Network Send Throughput Rate
+      desc: Data sent per unit time on a network interface.
+    net_err_in_rate:
+      name: Network Receive Error Rate
+      desc: Errored packets received per unit time.
+    net_err_out_rate:
+      name: Network Send Error Rate
+      desc: Errored packets sent per unit time.
+monitor_object_metric_group:
+  Host:
+    CPU: CPU
+    System: System
+    Disk IO: Disk I/O
+    Disk: Disk
+    Memory: Memory
+    Network: Network

@@ -35,6 +35,12 @@ import {
   resolveProcessNameFromInstance,
   withHostProcessMetricsTab
 } from '@/app/monitor/dashboards/objects/host/host-process-metrics-tab';
+import {
+  MAX_CONCURRENT_REQUESTS,
+  releaseMetricRequestSlot,
+  runMetricRangeQuery,
+  waitForAvailableMetricSlot,
+} from './metricRequestSlot';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -100,7 +106,6 @@ const MonitorView: React.FC<ViewModalProps> = ({
   );
 
   // 请求并发控制：与指标详情页一致，排队而非取消最早请求。
-  const MAX_CONCURRENT_REQUESTS = 4;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const requestGenerationRef = useRef(0);
@@ -426,136 +431,146 @@ const MonitorView: React.FC<ViewModalProps> = ({
     }
     const generation = requestGenerationRef.current;
     setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
-    while (activeRequestsRef.current.size >= MAX_CONCURRENT_REQUESTS) {
-      await new Promise((resolve) => window.setTimeout(resolve, 30));
-      if (generation !== requestGenerationRef.current) return;
-    }
-    if (generation !== requestGenerationRef.current) return;
-    const previousController = activeRequestsRef.current.get(metric.id);
-    if (previousController) {
-      previousController.abort();
-      activeRequestsRef.current.delete(metric.id);
-    }
-    const abortController = new AbortController();
-    activeRequestsRef.current.set(metric.id, abortController);
-    let response;
-    try {
-      const params = getParams(metric);
-      response = await post(
-        `/monitor/api/metrics_instance/query_by_metric_range/`,
-        params,
-        {
-          signal: abortController.signal,
-          // 全量指标并行展开时由卡片空态承接失败，避免同类 400 刷 toast。
-          suppressErrorNotification: true,
-        },
-      );
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        return;
-      }
-      return;
-    }
-    // 响应返回后若已被新请求替换，丢弃结果，避免 force 刷新被旧数据覆盖。
-    if (activeRequestsRef.current.get(metric.id) !== abortController) {
-      return;
-    }
-    try {
-      const instanceRow = [
-        {
-          instance_id_values: form.instance_id_values,
-          instance_name: form.instance_name,
-          instance_id_keys: isHostProcessMetricsTab(activeTab)
-            ? ['instance_id']
-            : metric?.instance_id_keys || [],
-          dimensions: metric?.dimensions || [],
-          title: metric?.display_name || '--',
-        },
-      ];
-      const chartData = response?.data?.result || [];
-      const displayUnit = response?.data?.unit || '';
-      const seriesBudget = response?.data?.series_budget;
-      const viewData = attachGapIntervals(
-        renderChart(chartData, instanceRow),
-        response?.data?.gaps || []
-      );
-      setMetricData((prevData) => {
-        const updatedData = prevData.map((group) => ({
-          ...group,
-          child: (group.child || []).map((item) =>
-            item.id === metric.id
-              ? {
-                ...item,
-                displayUnit,
-                viewData,
-                seriesBudget,
-              }
-              : item
-          ),
-        }));
-        return updatedData;
-      });
-      // 同时更新originMetricData，保持数据同步
-      setOriginMetricData((prevData) => {
-        const updatedData = prevData.map((group) => ({
-          ...group,
-          child: (group.child || []).map((item) =>
-            item.id === metric.id
-              ? {
-                ...item,
-                displayUnit,
-                viewData,
-                seriesBudget,
-              }
-              : item
-          ),
-        }));
-        return updatedData;
-      });
-      setLoadedMetricIds((prev) => {
-        const newSet = new Set(prev).add(metric.id);
-        return newSet;
-      });
-      setCancelledMetricIds((prev) => {
-        if (prev.has(metric.id)) {
-          const newSet = new Set(prev);
-          newSet.delete(metric.id);
-          return newSet;
-        }
-        return prev;
-      });
-      if (needsRefreshOnExpand) {
-        setNeedsRefreshOnExpand(false);
-      }
-    } catch (error: any) {
-      if (error.name === 'CancelledError') {
-        setCancelledMetricIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.add(metric.id);
-          return newSet;
-        });
-        return;
-      }
-      return;
-    } finally {
-      // 仅当前请求仍占用该指标槽时清理 loading/loaded，避免 force 刷新时被中止的旧请求清掉新请求状态。
-      if (activeRequestsRef.current.get(metric.id) !== abortController) {
-        return;
-      }
-      activeRequestsRef.current.delete(metric.id);
+    const canOccupy = await waitForAvailableMetricSlot(
+      activeRequestsRef.current,
+      () => generation === requestGenerationRef.current,
+      { maxConcurrent: MAX_CONCURRENT_REQUESTS }
+    );
+    if (!canOccupy) {
       setLoadingMetricIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(metric.id);
         return newSet;
       });
-      if (abortController.signal.aborted) {
-        setLoadedMetricIds((prev) => {
+      return;
+    }
+    const previousController = activeRequestsRef.current.get(metric.id);
+    if (previousController) {
+      previousController.abort();
+      releaseMetricRequestSlot(
+        activeRequestsRef.current,
+        metric.id,
+        previousController
+      );
+    }
+    const abortController = new AbortController();
+    await runMetricRangeQuery({
+      slots: activeRequestsRef.current,
+      metricId: metric.id,
+      controller: abortController,
+      postQuery: async () => {
+        const params = getParams(metric);
+        return post(
+          `/monitor/api/metrics_instance/query_by_metric_range/`,
+          params,
+          {
+            signal: abortController.signal,
+            // 全量指标并行展开时由卡片空态承接失败，避免同类 400 刷 toast。
+            suppressErrorNotification: true,
+          },
+        );
+      },
+      handleResponse: (response) => {
+        try {
+          const instanceRow = [
+            {
+              instance_id_values: form.instance_id_values,
+              instance_name: form.instance_name,
+              instance_id_keys: isHostProcessMetricsTab(activeTab)
+                ? ['instance_id']
+                : metric?.instance_id_keys || [],
+              dimensions: metric?.dimensions || [],
+              title: metric?.display_name || '--',
+            },
+          ];
+          const chartData = response?.data?.result || [];
+          const displayUnit = response?.data?.unit || '';
+          const seriesBudget = response?.data?.series_budget;
+          const viewData = attachGapIntervals(
+            renderChart(chartData, instanceRow),
+            response?.data?.gaps || []
+          );
+          setMetricData((prevData) => {
+            const updatedData = prevData.map((group) => ({
+              ...group,
+              child: (group.child || []).map((item) =>
+                item.id === metric.id
+                  ? {
+                    ...item,
+                    displayUnit,
+                    viewData,
+                    seriesBudget,
+                  }
+                  : item
+              ),
+            }));
+            return updatedData;
+          });
+          // 同时更新originMetricData，保持数据同步
+          setOriginMetricData((prevData) => {
+            const updatedData = prevData.map((group) => ({
+              ...group,
+              child: (group.child || []).map((item) =>
+                item.id === metric.id
+                  ? {
+                    ...item,
+                    displayUnit,
+                    viewData,
+                    seriesBudget,
+                  }
+                  : item
+              ),
+            }));
+            return updatedData;
+          });
+          setLoadedMetricIds((prev) => {
+            const newSet = new Set(prev).add(metric.id);
+            return newSet;
+          });
+          setCancelledMetricIds((prev) => {
+            if (prev.has(metric.id)) {
+              const newSet = new Set(prev);
+              newSet.delete(metric.id);
+              return newSet;
+            }
+            return prev;
+          });
+          if (needsRefreshOnExpand) {
+            setNeedsRefreshOnExpand(false);
+          }
+        } catch (error: unknown) {
+          const name =
+            error && typeof error === 'object' && 'name' in error
+              ? (error as { name: unknown }).name
+              : '';
+          if (name === 'CancelledError') {
+            setCancelledMetricIds((prev) => {
+              const newSet = new Set(prev);
+              newSet.add(metric.id);
+              return newSet;
+            });
+          }
+        }
+      },
+      onSettled: (released) => {
+        // 仅当前请求仍占用该指标槽时清理 loading/loaded，避免 force 刷新时被中止的旧请求清掉新请求状态。
+        if (!released) {
+          return;
+        }
+        setLoadingMetricIds((prev) => {
           const newSet = new Set(prev);
           newSet.delete(metric.id);
           return newSet;
         });
-      }
-    }
+        if (abortController.signal.aborted) {
+          setLoadedMetricIds((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(metric.id);
+            return newSet;
+          });
+        }
+      },
+    });
   };
 
   const onTimeChange = (val: number[], originValue: number | null) => {

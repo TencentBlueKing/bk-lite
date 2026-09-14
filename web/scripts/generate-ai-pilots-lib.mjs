@@ -41,32 +41,17 @@ export const toImportPath = (absoluteFile, rootDir) => {
 export const emptyManifest = () =>
   `${HEADER}import type { AiPageContextPilot } from './types';\n\nexport const GENERATED_PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = [];\n`;
 
-export const buildPilotsManifestSource = (pilotFiles, webRootDir) => {
-  const sorted = [...pilotFiles].sort((a, b) => a.localeCompare(b));
-  if (!sorted.length) return emptyManifest();
-
-  const entries = sorted.map((file) => {
-    const relFromApp = path.relative(path.join(webRootDir, 'src', 'app'), file).replace(/\\/g, '/');
-    const prefix = pathnamePrefixFromPilotFile(relFromApp);
-    const importPath = toImportPath(file, webRootDir);
-    return { prefix, importPath };
-  });
-
-  const lines = [
-    HEADER.trimEnd(),
-    `import type { AiPageContextPilot } from './types';`,
-    '',
-    'export const GENERATED_PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = [',
-  ];
-  for (const entry of entries) {
-    lines.push('  {');
-    lines.push(`    test: (pathname) => pathname.includes('${entry.prefix}'),`);
-    lines.push(`    load: () => import('${entry.importPath}'),`);
-    lines.push('  },');
-  }
-  lines.push('];');
-  lines.push('');
-  return `${lines.join('\n')}\n`;
+/**
+ * Always emit an empty shared manifest.
+ *
+ * Dynamic `import('@/app/...')` from `src/components` is an invalid reverse
+ * dependency under COMPONENT_GOVERNANCE. App routes must call
+ * `registerPageContextPilot` (see monitor/ops-analysis register-dashboard-pilot).
+ * `pilotFiles` is retained for diagnostics / future app-side codegen.
+ */
+export const buildPilotsManifestSource = (pilotFiles, _webRootDir) => {
+  void pilotFiles;
+  return emptyManifest();
 };
 
 export const writeIfChanged = (file, content) => {

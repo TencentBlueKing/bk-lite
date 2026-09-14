@@ -21,8 +21,13 @@ def source(db):
 
 def _make_event(source, event_id="E1", title="t", status=EventStatus.RECEIVED, **over):
     defaults = dict(
-        source=source, raw_data={}, title=title, level="0",
-        start_time=timezone.now(), event_id=event_id, status=status,
+        source=source,
+        raw_data={},
+        title=title,
+        level="0",
+        start_time=timezone.now(),
+        event_id=event_id,
+        status=status,
     )
     defaults.update(over)
     return Event.objects.create(**defaults)
@@ -67,7 +72,7 @@ def test_shield_filter_match_by_level(source):
     AlertShield.objects.create(
         name="级别屏蔽",
         match_type="filter",
-        match_rules=[[{"key": "level", "operator": "eq", "value": "2"}]],
+        match_rules=[[{"key": "level", "operator": "any_of", "value": ["2"]}]],
         suppression_time={},
     )
 
@@ -135,7 +140,9 @@ def test_shield_day_time_range_matched(source):
     _make_event(source, "E1")
     # 全天时间范围 → 生效
     AlertShield.objects.create(
-        name="全天屏蔽", match_type="all", match_rules=[],
+        name="全天屏蔽",
+        match_type="all",
+        match_rules=[],
         suppression_time={"type": "day", "start_time": "00:00:00", "end_time": "23:59:59"},
     )
     execute_shield_check_for_events(["E1"])

@@ -42,6 +42,7 @@ def _fake_event(**fields):
 # 空 / 无效规则
 # --------------------------------------------------------------------------
 
+
 def test_empty_rules_returns_false():
     assert InstantMatcher.match_in_memory(_fake_event(), []) is False
     assert InstantMatcher.match_in_memory(_fake_event(), None) is False
@@ -66,10 +67,11 @@ def test_missing_key_or_operator():
 # 各操作符语义
 # --------------------------------------------------------------------------
 
+
 def test_eq_zh_and_en():
     e = _fake_event(title="abc")
     assert InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "eq", "value": "abc"}]])
-    assert InstantMatcher.match_in_memory(e, [[{"key": "标题", "operator": "等于", "value": "abc"}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "标题", "operator": "等于", "value": "abc"}]])
     assert not InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "eq", "value": "xyz"}]])
 
 
@@ -82,34 +84,34 @@ def test_ne():
 def test_icontains_and_not_contains():
     e = _fake_event(title="API Gateway Timeout")
     assert InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "contains", "value": "gateway"}]])
-    assert InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "包含", "value": "GATEWAY"}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "包含", "value": "GATEWAY"}]])
     assert not InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "not_contains", "value": "gateway"}]])
     assert InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "not_contains", "value": "absent"}]])
 
 
 def test_regex():
-    e = _fake_event(title="Order 123 failed")
-    assert InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "regex", "value": r"\d+\s+failed"}]])
-    assert not InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "regex", "value": r"^success"}]])
+    e = _fake_event(resource_name="Order 123 failed")
+    assert InstantMatcher.match_in_memory(e, [[{"key": "resource_name", "operator": "re", "value": r"\d+\s+failed"}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "resource_name", "operator": "re", "value": r"^success"}]])
     # 非法正则不视为命中
-    assert not InstantMatcher.match_in_memory(e, [[{"key": "title", "operator": "regex", "value": "("}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "resource_name", "operator": "re", "value": "("}]])
 
 
 def test_in_and_not_in():
     e = _fake_event(level="1")
-    assert InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "in", "value": ["0", "1"]}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "in", "value": ["0", "1"]}]])
     assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "in", "value": ["2", "3"]}]])
-    assert InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "not_in", "value": ["2", "3"]}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "not_in", "value": ["2", "3"]}]])
     # 非列表参数 → 不命中
     assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "in", "value": "1"}]])
 
 
-def test_numeric_compare():
+def test_severity_does_not_allow_numeric_comparison():
     e = _fake_event(level="2")
-    assert InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "gt", "value": 1}]])
-    assert InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "gte", "value": 2}]])
-    assert InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "lt", "value": 3}]])
-    assert InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "lte", "value": 2}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "gt", "value": 1}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "gte", "value": 2}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "lt", "value": 3}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "lte", "value": 2}]])
     assert not InstantMatcher.match_in_memory(e, [[{"key": "level", "operator": "gt", "value": 5}]])
 
 
@@ -117,25 +119,30 @@ def test_numeric_compare():
 # AND / OR 嵌套
 # --------------------------------------------------------------------------
 
+
 def test_and_group_all_must_match():
     e = _fake_event(title="A", level="1")
-    rules = [[
-        {"key": "title", "operator": "eq", "value": "A"},
-        {"key": "level", "operator": "eq", "value": "1"},
-    ]]
+    rules = [
+        [
+            {"key": "title", "operator": "eq", "value": "A"},
+            {"key": "level", "operator": "any_of", "value": ["1"]},
+        ]
+    ]
     assert InstantMatcher.match_in_memory(e, rules)
-    rules2 = [[
-        {"key": "title", "operator": "eq", "value": "A"},
-        {"key": "level", "operator": "eq", "value": "2"},
-    ]]
+    rules2 = [
+        [
+            {"key": "title", "operator": "eq", "value": "A"},
+            {"key": "level", "operator": "any_of", "value": ["2"]},
+        ]
+    ]
     assert not InstantMatcher.match_in_memory(e, rules2)
 
 
 def test_or_groups_any_can_match():
     e = _fake_event(title="A", level="1")
     rules = [
-        [{"key": "title", "operator": "eq", "value": "B"}],          # 不命中
-        [{"key": "level", "operator": "eq", "value": "1"}],          # 命中
+        [{"key": "title", "operator": "eq", "value": "B"}],  # 不命中
+        [{"key": "level", "operator": "any_of", "value": ["1"]}],  # 命中
     ]
     assert InstantMatcher.match_in_memory(e, rules)
 
@@ -144,31 +151,33 @@ def test_or_groups_any_can_match():
 # 字段映射 + labels/tags 回退
 # --------------------------------------------------------------------------
 
+
 def test_field_map_alias():
     e = _fake_event(resource_name="host-1")
-    # 中文别名 "对象实例" 应映射到 resource_name
-    assert InstantMatcher.match_in_memory(e, [[{"key": "对象实例", "operator": "eq", "value": "host-1"}]])
+    # 历史中文别名不再映射
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "对象实例", "operator": "eq", "value": "host-1"}]])
 
 
 def test_source_name_via_source_relation():
     e = _fake_event(source_name="src-prod")
-    assert InstantMatcher.match_in_memory(e, [[{"key": "source", "operator": "contains", "value": "prod"}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "source", "operator": "contains", "value": "prod"}]])
 
 
 def test_label_fallback():
     e = _fake_event(labels={"region": "us-east"})
-    # region 不是 FIELD_MAP 已知字段，应回退到 labels
-    assert InstantMatcher.match_in_memory(e, [[{"key": "region", "operator": "eq", "value": "us-east"}]])
+    # region 不是当前模型字段，禁止回退到 labels
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "region", "operator": "eq", "value": "us-east"}]])
 
 
 def test_tag_fallback():
     e = _fake_event(tags={"env": "prod"})
-    assert InstantMatcher.match_in_memory(e, [[{"key": "env", "operator": "eq", "value": "prod"}]])
+    assert not InstantMatcher.match_in_memory(e, [[{"key": "env", "operator": "eq", "value": "prod"}]])
 
 
 # --------------------------------------------------------------------------
 # 与 StrategyMatcher（DB 端）等价性对拍
 # --------------------------------------------------------------------------
+
 
 @pytest.fixture
 def source(db):
@@ -205,19 +214,20 @@ def test_parity_with_strategy_matcher(db_event):
         [[{"key": "level", "operator": "in", "value": ["0", "1"]}]],
         [[{"key": "level", "operator": "gt", "value": 0}]],
         [
-            [{"key": "title", "operator": "regex", "value": r"^API"}],
-            [{"key": "service", "operator": "eq", "value": "missing"}],
+            [{"key": "title", "operator": "re", "value": r"^API"}],
+            [{"key": "service", "operator": "any_of", "value": ["missing"]}],
         ],
-        [[
-            {"key": "title", "operator": "contains", "value": "gateway"},
-            {"key": "level", "operator": "eq", "value": "1"},
-        ]],
+        [
+            [
+                {"key": "title", "operator": "contains", "value": "gateway"},
+                {"key": "level", "operator": "any_of", "value": ["1"]},
+            ]
+        ],
     ]
     from apps.alerts.models.models import Event as EventModel
+
     for rules in test_cases:
         in_mem = InstantMatcher.match_in_memory(db_event, rules)
-        qs = StrategyMatcher.match_events_to_strategy(
-            EventModel.objects.filter(pk=db_event.pk), rules
-        )
+        qs = StrategyMatcher.match_events_to_strategy(EventModel.objects.filter(pk=db_event.pk), rules)
         db_hit = qs.exists()
         assert in_mem == db_hit, f"parity broken for rules={rules}: mem={in_mem} db={db_hit}"

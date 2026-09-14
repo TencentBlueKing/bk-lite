@@ -2,7 +2,6 @@
 
 from copy import deepcopy
 
-
 BUILTIN_TYPES = {
     "ssh": {
         "name": "SSH",
@@ -144,6 +143,13 @@ BUILTIN_TYPES = {
         "categories": ["database", "other"],
         "fields": [
             {"id": "token", "name": "Token", "kind": "secret", "required": True},
+        ],
+    },
+    "gateway_secret": {
+        "name": "OpenAPI 网关密钥",
+        "categories": ["other"],
+        "fields": [
+            {"id": "secret", "name": "共享密钥 / 服务令牌", "kind": "secret", "required": True},
         ],
     },
     "oauth_client": {

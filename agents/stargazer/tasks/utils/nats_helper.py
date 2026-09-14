@@ -11,9 +11,13 @@ import asyncio
 import hashlib
 import json
 import os
+import sys
+import threading
 import time
+import weakref
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from typing import Any, Dict, Iterable, Iterator
 
 from core.collection.contracts import StructuredMetricsPayload
@@ -28,6 +32,14 @@ MAX_NATS_LINE_BYTES = 900_000
 MAX_NATS_LINES_PER_RESULT = 100_000
 MAX_NATS_BYTES_PER_RESULT = 64 * 1024 * 1024
 _metrics_encode_executor: ThreadPoolExecutor | None = None
+_encode_slots = weakref.WeakKeyDictionary()
+_encode_cancel: ContextVar = ContextVar("metrics_encode_cancel", default=None)
+
+
+def _check_encode_cancelled():
+    cancelled = _encode_cancel.get()
+    if cancelled is not None and cancelled.is_set():
+        raise asyncio.CancelledError("metrics encoding cancelled")
 
 
 def _get_metrics_encode_executor() -> ThreadPoolExecutor:
@@ -41,13 +53,57 @@ def _get_metrics_encode_executor() -> ThreadPoolExecutor:
     return _metrics_encode_executor
 
 
-async def _run_metrics_encode(function, *args):
+async def _run_metrics_encode(function, *args, metrics=None):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
+    if loop not in _encode_slots:
+        _encode_slots[loop] = asyncio.Semaphore(max(1, int(os.getenv("METRICS_ENCODE_WORKERS", "2"))))
+    queued_at = time.monotonic()
+    async with _encode_slots[loop]:
+        if metrics is not None:
+            metrics.observe("publish_encode_queue_wait_seconds", time.monotonic() - queued_at)
+        started = time.monotonic()
+        try:
+            return await _execute_metrics_encode(function, args)
+        finally:
+            if metrics is not None:
+                metrics.observe("publish_encode_duration_seconds", time.monotonic() - started)
+
+
+async def _execute_metrics_encode(function, args):
+    loop = asyncio.get_running_loop()
+    cancelled = threading.Event()
+
+    def encode():
+        token = _encode_cancel.set(cancelled)
+        try:
+            _check_encode_cancelled()
+            return function(*args)
+        finally:
+            _encode_cancel.reset(token)
+
+    future = loop.run_in_executor(
         _get_metrics_encode_executor(),
-        function,
-        *args,
+        encode,
     )
+    try:
+        return await asyncio.shield(future)
+    except asyncio.CancelledError:
+        cancelled.set()
+        # 取消 await 不会停止线程。编码线程真正退出前不能归还 Payload 额度。
+        while not future.done():
+            try:
+                await asyncio.shield(future)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if future.done() and not future.cancelled():
+            future.exception()
+        raise
+    finally:
+        # executor 的完成回调可能暂留闭包；线程结束后主动断开闭包中的输入引用。
+        function = None
+        args = ()
 
 
 class MetricsPublishError(RuntimeError):
@@ -63,6 +119,7 @@ class MetricsPublishError(RuntimeError):
         attempted_count: int | None = None,
         attempted_indices: tuple[int, ...] = (),
         confirmed_indices: tuple[int, ...] = (),
+        failed_stage: str = "",
     ):
         self.task_id = task_id
         self.subject = subject
@@ -74,6 +131,7 @@ class MetricsPublishError(RuntimeError):
         self.attempted_count = success_count if attempted_count is None else int(attempted_count)
         self.attempted_indices = attempted_indices
         self.confirmed_indices = confirmed_indices
+        self.failed_stage = failed_stage
         super().__init__(
             f"metrics publish incomplete: task_id={task_id}, subject={subject}, "
             f"success={success_count}/{total_lines}, delivery_detected={delivery_detected}, "
@@ -117,6 +175,7 @@ async def _publish_lines_with_retry(
             attempted_count=error.attempted_count_before_failure,
             attempted_indices=tuple(getattr(error, "attempted_indices", ())),
             confirmed_indices=tuple(getattr(error, "confirmed_indices", ())),
+            failed_stage=str(getattr(error, "timeout_phase", None) or "publish_call"),
         ) from error
     except Exception as error:
         # 普通异常无法证明服务端未收到，按不确定投递处理，避免重复数据。
@@ -183,14 +242,26 @@ class _DeliveryAttemptFilter:
         self.skipped_indices: set[int] = set()
         self.cancelled_result_ids: set[str] = set()
 
+    def budget_for(self, index: int):
+        state = self._attempt_states.get(self._line_result_ids[index])
+        return getattr(state, "send_budget", None)
+
     def __call__(self, index: int) -> bool:
         result_id = self._line_result_ids[index]
         state = self._attempt_states.get(result_id)
-        if state is None or state.mark_delivery_started():
+        if state is None:
+            return True
+        admission = getattr(state, "mark_processing", state.mark_delivery_started)
+        if admission():
             return True
         self.skipped_indices.add(index)
         self.cancelled_result_ids.add(result_id)
         return False
+
+    def mark_transport_started(self, index: int) -> None:
+        state = self._attempt_states.get(self._line_result_ids[index])
+        if state is not None:
+            state.mark_delivery_started()
 
 
 async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
@@ -299,10 +370,27 @@ async def iter_metrics_batch_outcomes(entries, *, metrics=None):
             lanes.append(lane)
 
 
+async def iter_metrics_publish_steps(entry, *, metrics=None):
+    """单目标游标每次至多发送一个单调用窗口，让共享 Writer 重新调度。"""
+    _ctx, metrics_data, params, task_id = entry
+    result_id = str(params["collection_result_id"])
+    task_type = params.get("monitor_type") or params.get("plugin_name", params.get("model_id", "unknown"))
+    subject = f"{os.getenv('NATS_METRIC_TOPIC', 'metrics')}.{task_type}"
+    quantum = min(_transport_lines_per_flush(), max(1, int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING_PER_CALL", "64"))))
+    lane = _SubjectPublishLane(subject, [(metrics_data, params, task_id, result_id)], {result_id: None}, metrics=metrics, quantum=quantum)
+    while True:
+        has_more, terminals = await lane.publish_round()
+        if not has_more:
+            for terminal in terminals:
+                yield terminal
+            return
+        yield None, None
+
+
 class _SubjectPublishLane:
     """一个 task/subject lane；每轮每个目标最多发送一个 chunk。"""
 
-    def __init__(self, subject, entries, outcomes, *, metrics=None) -> None:
+    def __init__(self, subject, entries, outcomes, *, metrics=None, quantum=None) -> None:
         self.subject = subject
         self.outcomes = outcomes
         self.metrics = metrics
@@ -323,6 +411,7 @@ class _SubjectPublishLane:
                 "validated": False,
                 "line_count": 0,
                 "byte_count": 0,
+                "quantum": quantum,
             }
             for metrics_data, params, task_id, result_id in entries
         )
@@ -330,10 +419,13 @@ class _SubjectPublishLane:
     @staticmethod
     def _next_state_chunk(state):
         if not state["validated"]:
-            _validate_metric_result(state["metrics_data"], state["params"])
+            cached_lines = []
+            state["total_lines"] = _validate_metric_result(state["metrics_data"], state["params"], encoded_cache=cached_lines)
             state["validated"] = True
+            if len(cached_lines) == state["total_lines"]:
+                state["chunks"] = iter(_iter_line_chunks(cached_lines, max_lines=state["quantum"]))
         if state["chunks"] is None:
-            state["chunks"] = iter(_iter_line_chunks(_iter_metrics_to_influx(state["metrics_data"], state["params"])))
+            state["chunks"] = iter(_iter_line_chunks(_iter_metrics_to_influx(state["metrics_data"], state["params"]), max_lines=state["quantum"]))
         return next(state["chunks"], None)
 
     async def publish_round(self):  # noqa: C901 - 发布轮次集中维护 deadline、公平性和终态归因
@@ -430,6 +522,7 @@ class _SubjectPublishLane:
                         attempted_count=len(result_attempted_indices),
                         attempted_indices=result_attempted_indices,
                         confirmed_indices=result_confirmed_indices,
+                        failed_stage=str(getattr(error, "failed_stage", "") or "publish_call"),
                     )
                     self.failed_result_ids.add(result_id)
                 return
@@ -455,7 +548,9 @@ class _SubjectPublishLane:
                 attempt_state = self.attempt_states.get(state["result_id"])
                 deadline = getattr(attempt_state, "deadline", None)
                 if deadline is not None and now >= deadline:
-                    self.outcomes[state["result_id"]] = PublishDeadlineExceededError("publish deadline expired before metrics encoding")
+                    error = PublishDeadlineExceededError("publish deadline expired before metrics encoding")
+                    error.delivery_detected = state["result_id"] in self.delivered_result_ids
+                    self.outcomes[state["result_id"]] = error
                     self.failed_result_ids.add(state["result_id"])
                     if self.metrics is not None:
                         self.metrics.increment("publish_deadline_expired_total")
@@ -463,26 +558,27 @@ class _SubjectPublishLane:
                 group.append(state)
             if not group:
                 continue
-            started = time.monotonic()
             chunks = await asyncio.gather(
-                *(_run_metrics_encode(self._next_state_chunk, state) for state in group),
+                *(_run_metrics_encode(self._next_state_chunk, state, metrics=self.metrics) for state in group),
                 return_exceptions=True,
             )
-            if self.metrics is not None:
-                self.metrics.observe("publish_encode_duration_seconds", time.monotonic() - started)
             for state, chunk in zip(group, chunks):
                 task_id = state["task_id"]
                 result_id = state["result_id"]
                 attempt_state = self.attempt_states.get(result_id)
                 deadline = getattr(attempt_state, "deadline", None)
                 if deadline is not None and asyncio.get_running_loop().time() >= deadline:
-                    self.outcomes[result_id] = PublishDeadlineExceededError("publish deadline expired during metrics encoding")
+                    error = PublishDeadlineExceededError("publish deadline expired during metrics encoding")
+                    error.delivery_detected = result_id in self.delivered_result_ids
+                    self.outcomes[result_id] = error
                     self.failed_result_ids.add(result_id)
                     if self.metrics is not None:
                         self.metrics.increment("publish_deadline_expired_total")
                     continue
                 error = chunk if isinstance(chunk, BaseException) else None
                 if error is not None:
+                    error.delivery_detected = result_id in self.delivered_result_ids
+                    error.failed_stage = "encode"
                     self.outcomes[result_id] = error
                     self.failed_result_ids.add(result_id)
                     continue
@@ -508,7 +604,8 @@ class _SubjectPublishLane:
                 buffered_bytes += chunk_bytes
                 if len(buffered_lines) >= max_lines_per_flush or buffered_bytes >= MAX_NATS_BYTES_PER_FLUSH:
                     await flush_buffer()
-                continuing_states.append(state)
+                if state["line_count"] < state["total_lines"]:
+                    continuing_states.append(state)
         await flush_buffer()
         continuing_result_ids = {state["result_id"] for state in continuing_states if state["result_id"] not in self.failed_result_ids}
         self.states.extend(state for state in continuing_states if state["result_id"] not in self.failed_result_ids)
@@ -561,6 +658,7 @@ def _iter_line_chunks(
     chunk: list[str] = []
     chunk_bytes = 0
     for line in lines:
+        _check_encode_cancelled()
         line_bytes = len(line.encode("utf-8"))
         if line_bytes > MAX_NATS_LINE_BYTES:
             raise MetricResultTooLargeError("metric line exceeds NATS payload limit")
@@ -574,11 +672,14 @@ def _iter_line_chunks(
         yield chunk
 
 
-def _validate_metric_result(metrics_data, params: Dict[str, Any]) -> None:
-    """发送前完整扫描一次结果，保证单目标超限不会产生部分投递。"""
+def _validate_metric_result(metrics_data, params: Dict[str, Any], *, encoded_cache=None) -> int:
+    """完整校验后才发送；小结果复用编码，超出 900KB 缓存上限则回退有界游标。"""
     line_count = 0
     byte_count = 0
+    cache_bytes = 0
+    caching = encoded_cache is not None
     for line in _iter_metrics_to_influx(metrics_data, params):
+        _check_encode_cancelled()
         line_bytes = len(line.encode("utf-8"))
         if line_bytes > MAX_NATS_LINE_BYTES:
             raise ValueError("metric line exceeds NATS payload limit")
@@ -588,6 +689,14 @@ def _validate_metric_result(metrics_data, params: Dict[str, Any]) -> None:
             raise MetricResultTooLargeError("metric result exceeds line limit")
         if byte_count > MAX_NATS_BYTES_PER_RESULT:
             raise MetricResultTooLargeError("metric result exceeds byte limit")
+        if caching:
+            cache_bytes += sys.getsizeof(line) + 16  # 字符串实际内存及列表引用余量
+            if cache_bytes <= MAX_NATS_BYTES_PER_FLUSH:
+                encoded_cache.append(line)
+            else:
+                encoded_cache.clear()
+                caching = False
+    return line_count
 
 
 def _convert_metrics_to_influx(metrics_data, params: Dict[str, Any]) -> list[str]:
@@ -614,6 +723,7 @@ def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params
         if not isinstance(items, (list, tuple)):
             continue
         for item in items:
+            _check_encode_cancelled()
             if not isinstance(item, dict):
                 continue
             point = Point(f"{model_id}_info")
@@ -671,6 +781,7 @@ def _iter_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> 
     current_type = None
 
     for line in _iter_prometheus_logical_lines(prometheus_data):
+        _check_encode_cancelled()
         # 解析 TYPE 注释，提取指标类型
         if line.startswith("# TYPE "):
             parts = line.split()
@@ -699,6 +810,7 @@ def _iter_prometheus_logical_lines(prometheus_data: str) -> Iterator[str]:
     start = 0
     data_length = len(prometheus_data)
     while start <= data_length:
+        _check_encode_cancelled()
         end = prometheus_data.find("\n", start)
         if end < 0:
             end = data_length

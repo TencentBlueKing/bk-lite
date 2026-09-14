@@ -26,21 +26,19 @@ def test_sync_notify_logs_metadata_without_sensitive_content(caplog):
 
 def test_notify_logs_channel_without_content_or_downstream(caplog):
     secret = "must-not-log-notify-body"
-    downstream = {"token": "must-not-log-notify-result"}
+    downstream = {"result": True, "token": "must-not-log-notify-result"}
     users = [{"username": "u1", "id": 42, "email": "a@b.c"}]
-    with (
-        mock.patch(
-            "apps.alerts.common.notify.notify.SystemMgmtUtils.get_user_all",
-            return_value=users,
-        ),
-        mock.patch(
+    with mock.patch(
+        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_user_all",
+        return_value=users,
+    ):
+        with mock.patch(
             "apps.alerts.common.notify.notify.SystemMgmtUtils.send_msg_with_channel",
             return_value=downstream,
-        ) as send,
-    ):
-        notify = Notify(username_list=["u1"], channel_id=7, title="t", content=secret)
-        with caplog.at_level(logging.INFO, logger="alert"):
-            result = notify.notify()
+        ) as send:
+            notify = Notify(username_list=["u1"], channel_id=7, title="t", content=secret)
+            with caplog.at_level(logging.INFO, logger="alert"):
+                result = notify.notify()
 
     assert result is downstream
     send.assert_called_once_with(
@@ -48,15 +46,59 @@ def test_notify_logs_channel_without_content_or_downstream(caplog):
         title="t",
         content=secret,
         receivers=[42],
+        append_receivers=True,
     )
-    records = [record for record in caplog.records if record.name == "alert" and record.msg.startswith("[AlertNotify] 通知已发送:")]
+    records = [record for record in caplog.records if record.name == "alert" and record.msg.startswith("event=alert_notification_delivery_succeeded")]
     assert len(records) == 1
     record = records[0]
-    assert record.msg == "[AlertNotify] 通知已发送: channel_id=%s, receiver_count=%s"
+    assert record.msg == "event=alert_notification_delivery_succeeded channel_id=%s receiver_count=%s"
     assert record.args == (7, 1)
     rendered = record.getMessage()
-    assert rendered == "[AlertNotify] 通知已发送: channel_id=7, receiver_count=1"
+    assert rendered == "event=alert_notification_delivery_succeeded channel_id=7 receiver_count=1"
     assert secret not in caplog.text
     assert secret not in rendered
     assert "must-not-log-notify-result" not in caplog.text
     assert "must-not-log-notify-result" not in rendered
+
+
+def test_notify_logs_downstream_failure_without_claiming_success_or_leaking_detail(caplog):
+    secret = "must-not-log-notify-body"
+    downstream = {
+        "result": False,
+        "code": "40000",
+        "message": "authentication failed SECRET-SMTP-CREDENTIAL",
+        "error_type": "SMTPAuthenticationError",
+    }
+    users = [{"username": "u1", "id": 42, "email": "a@b.c"}]
+    with mock.patch(
+        "apps.alerts.common.notify.notify.SystemMgmtUtils.get_user_all",
+        return_value=users,
+    ):
+        with mock.patch(
+            "apps.alerts.common.notify.notify.SystemMgmtUtils.send_msg_with_channel",
+            return_value=downstream,
+        ):
+            notify = Notify(username_list=["u1"], channel_id=7, title="t", content=secret)
+            with caplog.at_level(logging.WARNING, logger="alert"):
+                result = notify.notify()
+
+    assert result is downstream
+    records = [record for record in caplog.records if record.name == "alert"]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.WARNING
+    assert record.msg == (
+        "event=alert_notification_delivery_failed correlation_id=channel:%s " "channel_id=%s receiver_count=%s failed_stage=%s error_type=%s"
+    )
+    assert record.args == (7, 7, 1, "channel_delivery", "SMTPAuthenticationError")
+    assert record.exc_info is None
+    rendered = record.getMessage()
+    assert rendered == (
+        "event=alert_notification_delivery_failed correlation_id=channel:7 "
+        "channel_id=7 receiver_count=1 failed_stage=channel_delivery "
+        "error_type=SMTPAuthenticationError"
+    )
+    assert "通知已发送" not in caplog.text
+    assert secret not in caplog.text
+    assert "SECRET-SMTP-CREDENTIAL" not in caplog.text
+    assert downstream["message"] not in caplog.text

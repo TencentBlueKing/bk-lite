@@ -79,7 +79,9 @@ def test_custom_headers_include_network_config_callback_and_device_type():
     assert headers["cmdbdevice_type"] == "cisco_ios"
     assert headers["cmdbcallback_subject"] == "receive_config_file_result"
     assert headers["cmdbconfig_name"] == "running-config"
-    assert headers["cmdbcommands"] == "show running-config\nshow version"
+    assert "\n" not in headers["cmdbcommands"]
+    assert "\r" not in headers["cmdbcommands"]
+    assert headers["cmdbcommands"].startswith("b64:")
 
 
 def test_env_config_contains_password_and_enable_password_without_plain_headers():
@@ -124,6 +126,8 @@ def test_push_params_builds_one_telegraf_child_config_per_target():
     assert '"cmdbhosts" = "10.0.0.2"' in configs[1]["content"]
     assert '"cmdbtarget_instance_uuid" = "223e4567-e89b-42d3-a456-426614174000"' in configs[1]["content"]
     assert all('namedrop = ["collection_request_accepted"]' in item["content"] for item in configs)
+    assert all('"cmdbcommands" = "b64:' in item["content"] for item in configs)
+    assert all("show running-config\\n" not in item["content"] for item in configs)
 
 
 def test_delete_params_cleans_legacy_and_per_target_child_configs():

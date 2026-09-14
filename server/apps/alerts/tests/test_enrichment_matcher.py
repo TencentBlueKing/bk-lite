@@ -7,23 +7,20 @@ def test_empty_rules_match_all():
 
 def test_and_within_group():
     event = {"title": "cpu high", "level": "0"}
-    rules = [[{"key": "title", "operator": "contains", "value": "cpu"},
-              {"key": "level", "operator": "eq", "value": "0"}]]
+    rules = [[{"key": "title", "operator": "contains", "value": "cpu"}, {"key": "level", "operator": "any_of", "value": ["0"]}]]
     assert event_matches(event, rules) is True
-    rules_fail = [[{"key": "title", "operator": "contains", "value": "cpu"},
-                   {"key": "level", "operator": "eq", "value": "2"}]]
+    rules_fail = [[{"key": "title", "operator": "contains", "value": "cpu"}, {"key": "level", "operator": "any_of", "value": ["2"]}]]
     assert event_matches(event, rules_fail) is False
 
 
 def test_or_across_groups():
     event = {"title": "disk full", "level": "1"}
-    rules = [[{"key": "title", "operator": "contains", "value": "cpu"}],
-             [{"key": "level", "operator": "eq", "value": "1"}]]
+    rules = [[{"key": "title", "operator": "contains", "value": "cpu"}], [{"key": "level", "operator": "any_of", "value": ["1"]}]]
     assert event_matches(event, rules) is True
 
 
 def test_missing_field_is_not_match():
-    assert event_matches({"title": "x"}, [[{"key": "level", "operator": "eq", "value": "0"}]]) is False
+    assert event_matches({"title": "x"}, [[{"key": "level", "operator": "any_of", "value": ["0"]}]]) is False
 
 
 def test_regex_operator_matches():

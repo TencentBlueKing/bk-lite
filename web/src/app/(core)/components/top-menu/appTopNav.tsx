@@ -2,12 +2,15 @@
 
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   findActiveApp,
   getAppStripOverflow,
   isAppNavActive,
+  isScreenModeEnabled,
   resolveAppLandingHref,
   shouldStayOnCurrentAppPage,
+  withScreenQuery,
 } from '@/console-layout';
 import type { ClientData, MenuItem } from '@/types/index';
 import Icon from '@/components/icon';
@@ -22,6 +25,8 @@ interface AppTopNavProps {
 
 const AppTopNav = ({ apps, pathname, menus = [] }: AppTopNavProps) => {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const screenMode = isScreenModeEnabled(searchParams);
   const containerRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const origin = typeof window === 'undefined' ? '' : window.location.origin;
@@ -119,6 +124,7 @@ const AppTopNav = ({ apps, pathname, menus = [] }: AppTopNavProps) => {
             active={Boolean(pathname && isAppNavActive(app, pathname, origin))}
             origin={origin}
             menus={menus}
+            screenMode={screenMode}
           />
         ))}
       </div>
@@ -174,16 +180,19 @@ const AppTopNavItem = ({
   active,
   origin,
   menus,
+  screenMode,
 }: {
   app: ClientData;
   active: boolean;
   origin: string;
   menus: MenuItem[];
+  screenMode: boolean;
 }) => {
   const target = useMemo(
     () => resolveAppLandingHref(app, origin, menus),
     [app, origin, menus],
   );
+  const href = withScreenQuery(target.href, screenMode, origin);
   const className = `flex shrink-0 items-center rounded-[10px] px-3 py-2 ${styles.menuCol} ${active ? styles.active : ''}`;
   const label = app.display_name || app.name;
   const icon = <Icon type={app.icon || app.name} className="mr-1.5 h-4 w-4 shrink-0" />;
@@ -203,7 +212,7 @@ const AppTopNavItem = ({
   if (target.mode === 'new-tab') {
     return (
       <a
-        href={target.href}
+        href={href}
         target="_blank"
         rel="noreferrer"
         data-app-active={active ? 'true' : undefined}
@@ -217,7 +226,7 @@ const AppTopNavItem = ({
 
   return (
     <Link
-      href={target.href}
+      href={href}
       prefetch={false}
       aria-current={active ? 'page' : undefined}
       data-app-active={active ? 'true' : undefined}

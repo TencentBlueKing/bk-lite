@@ -17,7 +17,8 @@ import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import BaselineComplianceDetail from '@/app/patch-manager/components/baseline-compliance-detail';
 import FilterToolbar from '@/components/filter-toolbar';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
@@ -32,7 +33,7 @@ import {
 
 export default function BaselineManagementPage() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
   const api = usePatchManagerApi();

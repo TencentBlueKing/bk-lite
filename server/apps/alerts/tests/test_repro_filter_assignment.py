@@ -95,9 +95,9 @@ def _make_assignment(match_rules):
 # source_id 值是 AlertSource.id（数据库主键，前端 matchRule.tsx 选「告警源（按 ID）」时发 String(source.id)）
 FILTER_CASES = [
     pytest.param("title", "CPU", "contains", id="title"),
-    pytest.param("level", "1", "eq", id="level"),
-    pytest.param("resource_type", "pod", "eq", id="resource_type"),
-    pytest.param("resource_id", "pod-123", "eq", id="resource_id"),
+    pytest.param("level", ["1"], "any_of", id="level"),
+    pytest.param("resource_type", ["pod"], "any_of", id="resource_type"),
+    pytest.param("resource_id", ["pod-123"], "any_of", id="resource_id"),
 ]
 
 
@@ -108,36 +108,17 @@ def source_id_value(source):
 
 
 @pytest.mark.django_db
-def test_filter_by_source_id_assigns_k8s_only(sys_user, source, source_with_same_name, source_id_value):
-    """按告警源 ID 过滤时，名称相同但主键不同的来源不能互相误命中。
-
-    复现 2026-07-17 线上 bug:用户配 key=source_id, value=3 的分派策略,
-    但 AlertAssignmentOperator.FIELD_MAPPING 把 source_id 映射到 source_name 字段,
-    实际查询 source_name="3" 永远 0 命中, 告警产生但没处理人。
-    """
+@pytest.mark.parametrize("operator", ["eq", "ne"])
+def test_historical_alert_source_id_does_not_assign(sys_user, source, source_with_same_name, source_id_value, operator):
+    """Alert 无 source_id，已存旧条件整条失效，也不执行其他 OR 分组。"""
     _make_alert(source, "A1")
     _make_alert(source_with_same_name, "A2")
-
-    _make_assignment([[{"key": "source_id", "operator": "eq", "value": source_id_value}]])
-
+    _make_assignment(
+        [[{"key": "source_id", "operator": operator, "value": source_id_value}], [{"key": "title", "operator": "contains", "value": "CPU"}]]
+    )
     AlertAssignmentOperator(["A1", "A2"]).execute_auto_assignment()
-
-    assert Alert.objects.get(alert_id="A1").status == AlertStatus.PENDING, "K8s 源告警应被按 source_id=3 的分派策略命中并分派"
-    assert Alert.objects.get(alert_id="A2").status == AlertStatus.UNASSIGNED, "同名但主键不同的告警源不应被误命中"
-
-
-@pytest.mark.django_db
-def test_filter_by_source_id_ne_excludes_target_source(sys_user, source, source_with_same_name, source_id_value):
-    """反向用例：ne 操作符应排除指定源。"""
-    _make_alert(source, "A1")
-    _make_alert(source_with_same_name, "A2")
-
-    _make_assignment([[{"key": "source_id", "operator": "ne", "value": source_id_value}]])
-
-    AlertAssignmentOperator(["A1", "A2"]).execute_auto_assignment()
-
-    assert Alert.objects.get(alert_id="A1").status == AlertStatus.UNASSIGNED, "K8s 源告警应被 ne 排除"
-    assert Alert.objects.get(alert_id="A2").status == AlertStatus.PENDING, "非 K8s 源告警应被 ne 保留"
+    assert Alert.objects.get(alert_id="A1").status == AlertStatus.UNASSIGNED
+    assert Alert.objects.get(alert_id="A2").status == AlertStatus.UNASSIGNED
 
 
 @pytest.mark.django_db
@@ -145,7 +126,7 @@ def test_filter_by_source_name_assigns_matching_source_only(sys_user, source, so
     """按告警源名称过滤时，只分派名称匹配的告警。"""
     _make_alert(source, "A1")
     _make_alert(source_with_other_name, "A2")
-    _make_assignment([[{"key": "source_name", "operator": "eq", "value": source.name}]])
+    _make_assignment([[{"key": "source_names", "operator": "any_of", "value": [source.name]}]])
 
     AlertAssignmentOperator(["A1", "A2"]).execute_auto_assignment()
 
@@ -154,7 +135,7 @@ def test_filter_by_source_name_assigns_matching_source_only(sys_user, source, so
 
 
 @pytest.mark.django_db
-def test_filter_by_source_id_logs_assignment_once_for_multiple_source_events(sys_user, source, source_id_value):
+def test_filter_by_source_name_logs_assignment_once_for_multiple_source_events(sys_user, source, source_id_value):
     """同一告警关联多条同源事件时只记录一次自动分派。"""
     alert = _make_alert(source, "A1")
     second_event = Event.objects.create(
@@ -167,7 +148,7 @@ def test_filter_by_source_id_logs_assignment_once_for_multiple_source_events(sys
         team=[1],
     )
     alert.events.add(second_event)
-    _make_assignment([[{"key": "source_id", "operator": "eq", "value": source_id_value}]])
+    _make_assignment([[{"key": "source_names", "operator": "any_of", "value": [source.name]}]])
 
     AlertAssignmentOperator(["A1"]).execute_auto_assignment()
 
@@ -209,7 +190,7 @@ def test_end_to_end_aggregation_level_assignment(sys_user, source):
         Level.objects.create(level_id=lid, level_name=f"L{lid}", level_display_name=f"等级{lid}", level_type=LevelType.ALERT)
 
     # 分派策略：按级别(level=1) 过滤
-    _make_assignment([[{"key": "level", "operator": "eq", "value": "1"}]])
+    _make_assignment([[{"key": "level", "operator": "any_of", "value": ["1"]}]])
 
     now = timezone.now()
     for i in range(3):

@@ -3,10 +3,9 @@
 对照 specs/capabilities/legacy-prd-告警中心-告警.md：未分派告警按系统配置渠道生成通知参数；提醒服务推进/停用逻辑。
 """
 
-import pydantic.root_model  # noqa
-
 from datetime import timedelta
 
+import pydantic.root_model  # noqa
 import pytest
 from django.utils import timezone
 
@@ -19,9 +18,7 @@ from apps.alerts.service.un_dispatch import UnDispatchService
 
 
 def _make_alert(alert_id="A1", level="0", status=AlertStatus.UNASSIGNED):
-    return Alert.objects.create(
-        alert_id=alert_id, level=level, title="t", content="c", fingerprint="fp" + alert_id, status=status
-    )
+    return Alert.objects.create(alert_id=alert_id, level=level, title="t", content="c", fingerprint="fp" + alert_id, status=status)
 
 
 def _make_assignment(name="分派", frequency=None):
@@ -29,7 +26,7 @@ def _make_assignment(name="分派", frequency=None):
 
 
 def _fake_build_channel_params(
-    username_list, channels, alerts, object_id, notify_action_object="alert", title=None, content=None
+    username_list, channels, alerts, object_id, notify_action_object="alert", title=None, content=None, scene="assignment"
 ):
     return [
         {
@@ -158,6 +155,7 @@ def test_send_reminder_notification_enqueues_celery(monkeypatch):
 
     calls = {"delay": []}
     import apps.alerts.tasks as tasks_mod
+
     monkeypatch.setattr(
         tasks_mod.deliver_alert_outbox,
         "delay",
@@ -174,6 +172,7 @@ def test_send_reminder_notification_enqueues_celery(monkeypatch):
     assert len(callbacks) == 1
     assert len(calls["delay"]) == 1
     from apps.alerts.models import AlertOutbox
+
     params = AlertOutbox.objects.get().payload["params"]
     assert params[0]["channel_type"] == "email"
     assert params[0]["object_id"] == alert.alert_id
@@ -200,6 +199,7 @@ def test_send_reminder_notification_channel_str_json_parsed(monkeypatch):
 
     calls = {"delay": []}
     import apps.alerts.tasks as tasks_mod
+
     monkeypatch.setattr(
         tasks_mod.deliver_alert_outbox,
         "delay",
@@ -212,6 +212,7 @@ def test_send_reminder_notification_channel_str_json_parsed(monkeypatch):
         result = RS._send_reminder_notification(assignment=assignment, alert=alert)
     assert result is True
     from apps.alerts.models import AlertOutbox
+
     assert AlertOutbox.objects.get().payload["params"][0]["channel_type"] == "sms"
 
 
@@ -242,8 +243,11 @@ def test_update_reminder_task_recomputes_next_time_on_freq_change():
     assignment = _make_assignment()
     now = timezone.now()
     reminder = AlertReminderTask.objects.create(
-        alert=alert, assignment=assignment, is_active=True,
-        current_frequency_minutes=10, current_max_reminders=5,
+        alert=alert,
+        assignment=assignment,
+        is_active=True,
+        current_frequency_minutes=10,
+        current_max_reminders=5,
         last_reminder_time=now - timedelta(minutes=2),
         next_reminder_time=now + timedelta(minutes=8),
     )
@@ -259,8 +263,11 @@ def test_update_reminder_task_negative_max_uses_default():
     alert = _make_alert()
     assignment = _make_assignment()
     reminder = AlertReminderTask.objects.create(
-        alert=alert, assignment=assignment, is_active=True,
-        current_frequency_minutes=10, current_max_reminders=5,
+        alert=alert,
+        assignment=assignment,
+        is_active=True,
+        current_frequency_minutes=10,
+        current_max_reminders=5,
         next_reminder_time=timezone.now(),
     )
     assert RS._update_reminder_task(reminder, 10, -1) is True
@@ -278,8 +285,11 @@ def test_get_effective_max_reminders_uses_current_when_no_level_config():
     alert = _make_alert(level="0")
     assignment = _make_assignment(frequency={})  # 无 level 配置
     reminder = AlertReminderTask.objects.create(
-        alert=alert, assignment=assignment, is_active=True,
-        current_frequency_minutes=30, current_max_reminders=7,
+        alert=alert,
+        assignment=assignment,
+        is_active=True,
+        current_frequency_minutes=30,
+        current_max_reminders=7,
         next_reminder_time=timezone.now(),
     )
     assert RS._get_effective_max_reminders(reminder) == 7
@@ -290,8 +300,11 @@ def test_get_effective_max_reminders_negative_current_uses_default():
     alert = _make_alert(level="0")
     assignment = _make_assignment(frequency={})
     reminder = AlertReminderTask.objects.create(
-        alert=alert, assignment=assignment, is_active=True,
-        current_frequency_minutes=30, current_max_reminders=-1,
+        alert=alert,
+        assignment=assignment,
+        is_active=True,
+        current_frequency_minutes=30,
+        current_max_reminders=-1,
         next_reminder_time=timezone.now(),
     )
     assert RS._get_effective_max_reminders(reminder) == RS.DEFAULT_MAX_REMINDERS

@@ -32,7 +32,7 @@ export default function ApmRouteShell({
 
   return (
     <div className={shellClassName}>
-      <div className={`mx-auto w-full min-w-0 max-w-[1920px] ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
+      <div className={`w-full min-w-0 ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
         <h1 className="sr-only">{title}</h1>
         <div className={fill ? 'min-h-0 min-w-0 flex-1' : 'min-w-0'}>
           {children ?? (

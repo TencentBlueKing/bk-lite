@@ -5,10 +5,10 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-from apps.operation_analysis.models.models import Dashboard, Directory
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, NetworkTopology
 from apps.system_mgmt.models.menu import Menu
 from apps.system_mgmt.models.role import Role
-from apps.system_mgmt.models.user import User
+from apps.system_mgmt.models.user import Group, User
 
 
 @pytest.fixture
@@ -117,6 +117,8 @@ def test_anonymous_prepare_returns_state_without_bearer(settings, dashboard, sha
     assert "state" in response.data
     assert response.data["state"]
     assert "bk_dashboard_share_prep" in response.cookies
+    assert "group_tree" not in response.data
+    assert "space_id" not in response.data
 
 
 @pytest.mark.django_db
@@ -186,6 +188,8 @@ def test_prepare_then_exchange_with_nonce_cookie(settings, dashboard, sharer, vi
     )
     assert exchanged.status_code == 200, exchanged.data
     assert exchanged.data["session_id"]
+    assert "group_tree" not in exchanged.data
+    assert "space_id" not in exchanged.data
 
 
 @pytest.mark.django_db
@@ -240,6 +244,203 @@ def test_cross_tenant_visitor_can_exchange_and_read_dashboard(settings, dashboar
     assert detail.data["id"] == dashboard.id
     assert "groups" not in detail.data
     assert "created_by" not in detail.data
+
+
+def _group_tree_ids(nodes):
+    ids = []
+    for node in nodes:
+        ids.append(node["id"])
+        ids.extend(_group_tree_ids(node.get("subGroups") or []))
+    return ids
+
+
+SHARE_GROUP_TREE_KEYS = {"id", "name", "hasAuth", "subGroupCount", "subGroups", "parentId"}
+ORGANIZATION_FILTER = {
+    "id": "org_id__string",
+    "key": "org_id",
+    "name": "组织",
+    "type": "string",
+    "enabled": True,
+    "order": 0,
+    "inputConfig": {"control": "organization"},
+}
+
+
+def _assert_share_group_tree_allowlist(nodes):
+    for node in nodes:
+        assert set(node) <= SHARE_GROUP_TREE_KEYS
+        _assert_share_group_tree_allowlist(node.get("subGroups") or [])
+
+
+def _open_share_session(sharer, visitor, share_path, current_team):
+    sharer_client = APIClient()
+    sharer_client.force_authenticate(sharer)
+    sharer_client.cookies["current_team"] = str(current_team)
+    created = sharer_client.post(share_path, {}, format="json")
+    token = created.data["url"].rsplit("/", 1)[-1]
+    visitor_client = APIClient()
+    visitor_client.force_authenticate(visitor)
+    exchanged = visitor_client.post(
+        "/api/v1/operation_analysis/api/dashboard_share/exchange/",
+        {"token": token},
+        format="json",
+    )
+    assert exchanged.status_code == 200
+    assert "group_tree" not in exchanged.data
+    assert "space_id" not in exchanged.data
+    detail = visitor_client.get(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{exchanged.data['session_id']}/",
+    )
+    return created, exchanged, detail
+
+
+@pytest.mark.django_db
+def test_share_session_returns_sharer_group_tree_and_space_id(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+
+    parent = Group.objects.create(name=f"share-org-parent-{uuid.uuid4()}", parent_id=0)
+    child = Group.objects.create(name=f"share-org-child-{uuid.uuid4()}", parent_id=parent.id)
+    visitor_group = Group.objects.create(name=f"visitor-org-{uuid.uuid4()}", parent_id=0)
+    alice = User.objects.get(username="alice", domain="domain.com")
+    alice.group_list = [parent.id, child.id]
+    alice.save(update_fields=["group_list"])
+    bob = User.objects.get(username="bob", domain="other.com")
+    bob.group_list = [visitor_group.id]
+    bob.save(update_fields=["group_list"])
+    dashboard.groups = [parent.id]
+    dashboard.filters = [ORGANIZATION_FILTER]
+    dashboard.save(update_fields=["groups", "filters"])
+
+    created, exchanged, detail = _open_share_session(
+        sharer,
+        visitor,
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        parent.id,
+    )
+    assert created.status_code == 200
+    assert "group_tree" not in created.data
+    assert exchanged.status_code == 200
+    assert detail.status_code == 200
+    assert detail.data["space_id"] == parent.id
+    tree_ids = _group_tree_ids(detail.data["group_tree"])
+    assert parent.id in tree_ids
+    assert child.id in tree_ids
+    assert visitor_group.id not in tree_ids
+    assert "permission" not in detail.data
+    assert "roles" not in detail.data
+    assert "role_ids" not in detail.data
+    assert "groups" not in detail.data
+    _assert_share_group_tree_allowlist(detail.data["group_tree"])
+
+
+@pytest.mark.django_db
+def test_share_session_omits_group_tree_when_organization_filter_disabled(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    dashboard.filters = [{**ORGANIZATION_FILTER, "enabled": False}]
+    dashboard.save(update_fields=["filters"])
+
+    _, _, detail = _open_share_session(
+        sharer,
+        visitor,
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        1,
+    )
+    assert detail.status_code == 200
+    assert "group_tree" not in detail.data
+    assert "space_id" not in detail.data
+
+
+@pytest.mark.django_db
+def test_share_session_omits_group_tree_without_organization_filter(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    dashboard.filters = [{"id": "keyword__string", "key": "keyword", "type": "string", "inputConfig": {"control": "input"}}]
+    dashboard.save(update_fields=["filters"])
+
+    _, _, detail = _open_share_session(
+        sharer,
+        visitor,
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        1,
+    )
+    assert detail.status_code == 200
+    assert "group_tree" not in detail.data
+    assert "space_id" not in detail.data
+
+
+@pytest.mark.django_db
+def test_share_session_reads_legacy_input_mode_organization(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    parent = Group.objects.create(name=f"legacy-org-{uuid.uuid4()}", parent_id=0)
+    alice = User.objects.get(username="alice", domain="domain.com")
+    alice.group_list = [parent.id]
+    alice.save(update_fields=["group_list"])
+    dashboard.groups = [parent.id]
+    dashboard.filters = [
+        {
+            "id": "team__string",
+            "key": "team",
+            "type": "string",
+            "enabled": True,
+            "inputMode": "organization",
+        }
+    ]
+    dashboard.save(update_fields=["groups", "filters"])
+
+    _, _, detail = _open_share_session(
+        sharer,
+        visitor,
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        parent.id,
+    )
+    assert detail.status_code == 200
+    assert detail.data["space_id"] == parent.id
+    assert parent.id in _group_tree_ids(detail.data["group_tree"])
+
+
+@pytest.mark.django_db
+def test_share_session_omits_group_tree_for_architecture_and_network_topology(settings, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    directory = Directory.objects.create(name=f"share-no-org-dir-{uuid.uuid4()}", groups=[1], created_by="alice")
+    architecture = Architecture.objects.create(
+        name=f"share-architecture-{uuid.uuid4()}",
+        directory=directory,
+        groups=[1],
+        created_by="alice",
+        domain="domain.com",
+        view_sets=[],
+    )
+    network = NetworkTopology.objects.create(
+        name=f"share-network-{uuid.uuid4()}",
+        directory=directory,
+        groups=[1],
+        created_by="alice",
+        base_url="https://weops.example.com",
+        token="encrypted-token",
+    )
+
+    _, _, architecture_detail = _open_share_session(
+        sharer,
+        visitor,
+        f"/api/v1/operation_analysis/api/architecture/{architecture.id}/share/",
+        1,
+    )
+    _, _, network_detail = _open_share_session(
+        sharer,
+        visitor,
+        f"/api/v1/operation_analysis/api/network_topology/{network.id}/share/",
+        1,
+    )
+    assert architecture_detail.status_code == 200
+    assert "group_tree" not in architecture_detail.data
+    assert "space_id" not in architecture_detail.data
+    assert network_detail.status_code == 200
+    assert "group_tree" not in network_detail.data
+    assert "space_id" not in network_detail.data
 
 
 @pytest.mark.django_db

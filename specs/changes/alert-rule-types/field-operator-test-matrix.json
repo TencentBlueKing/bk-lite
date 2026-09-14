@@ -1,0 +1,26 @@
+{
+  "event": {
+    "title": ["eq", "ne", "contains", "not_contains"],
+    "description": ["eq", "ne", "contains", "not_contains"],
+    "source_name": ["any_of", "none_of"],
+    "level": ["any_of", "none_of"],
+    "resource_type": ["any_of", "none_of"],
+    "resource_id": ["any_of", "none_of"],
+    "push_source_id": ["any_of", "none_of"],
+    "resource_name": ["any_of", "none_of", "contains", "not_contains", "re"],
+    "item": ["any_of", "none_of", "contains", "not_contains", "re"],
+    "service": ["any_of", "none_of", "contains", "not_contains", "re"],
+    "location": ["any_of", "none_of", "contains", "not_contains", "re"]
+  },
+  "alert": {
+    "title": ["eq", "ne", "contains", "not_contains"],
+    "content": ["eq", "ne", "contains", "not_contains"],
+    "source_names": ["any_of", "all_of", "none_of"],
+    "level": ["any_of", "none_of"],
+    "resource_type": ["any_of", "none_of"],
+    "resource_id": ["any_of", "none_of"],
+    "push_source_ids": ["any_of", "all_of", "none_of"],
+    "resource_name": ["any_of", "none_of", "contains", "not_contains", "re"],
+    "item": ["any_of", "none_of", "contains", "not_contains", "re"]
+  }
+}

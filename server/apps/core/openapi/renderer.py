@@ -29,6 +29,7 @@ import time
 from urllib.parse import urlparse
 
 from apps.core.logger import openapi_logger as logger
+from apps.core.openapi.allowlist import host_allowed, load_allowlist
 from apps.core.openapi.kv import fetch_entries
 from apps.core.openapi.registry import SERVICE_NAME_RE
 
@@ -44,42 +45,74 @@ _snapshot = {
     "config": None,
     "services": [],
     "entries": {},
+    # 渲染时已归一化（含解引用后的密钥）的有效条目；读侧按名直取，
+    # 不在请求路径上重新解引用（credential: 引用会查库）
+    "normalized": {},
     "checked_at": 0.0,
     "fetch_started_at": 0.0,
 }
 
 
+REF_ENV_PREFIX = "env:"
+REF_CREDENTIAL_PREFIX = "credential:"
+
+
+def _resolve_credential_ref(spec: str):
+    """解析 "credential:<credential_id>[#<field_id>]"，返回 (value | None, detail)。
+
+    走系统管理「凭据」的服务端专用解析（不做组织范围检查：网关密钥是平台级
+    资源，注册权即使用权）；已禁用、不存在、字段歧义一律解析失败。DB 异常
+    按不可解析处理并告警，不外抛——渲染层的 fail-closed 语义与 env: 一致。
+    """
+    from apps.system_mgmt.services.credential_service import CredentialServiceError, resolve_secret_field
+
+    credential_id, _, field_id = spec.partition("#")
+    if not credential_id:
+        return None, "empty credential id"
+    try:
+        value = resolve_secret_field(credential_id, field_id or None)
+    except CredentialServiceError as exc:
+        return None, f"credential {exc.code}"
+    except Exception as exc:  # DB 不可达等：不可解析而非崩溃
+        logger.warning(
+            "openapi_registry 凭据引用解析失败 failed_stage=credential_lookup error_type=%s",
+            type(exc).__name__,
+        )
+        return None, "credential lookup failed"
+    return (value or None), ("" if value else "credential secret empty")
+
+
 def _resolve_ref(ref):
-    """解析 "env:VAR" 形式的引用；不可解析返回 None。"""
-    if not isinstance(ref, str) or not ref.startswith("env:"):
-        return None
-    return os.getenv(ref[len("env:"):]) or None
+    """解析密钥引用，返回 (value | None, detail)。
+
+    支持两种形式：
+    - "env:VAR"：server 进程环境变量；
+    - "credential:<credential_id>[#<field_id>]"：系统管理凭据（密文落库，
+      改值无需重建 server）。
+    未知前缀或明文一律不可解析。
+    """
+    if not isinstance(ref, str):
+        return None, "ref is not a string"
+    if ref.startswith(REF_ENV_PREFIX):
+        value = os.getenv(ref[len(REF_ENV_PREFIX) :]) or None
+        return value, ("" if value else "env var unset")
+    if ref.startswith(REF_CREDENTIAL_PREFIX):
+        return _resolve_credential_ref(ref[len(REF_CREDENTIAL_PREFIX) :])
+    return None, "unknown ref scheme"
 
 
-def _base_url_allowed(base_url: str) -> bool:
-    allow = [
-        item.strip()
-        for item in os.getenv("OPENAPI_BASEURL_ALLOWLIST", "").split(",")
-        if item.strip()
-    ]
-    if not allow:
-        return False
-    if "*" in allow:
-        return True
-    host = (urlparse(base_url).hostname or "").lower()
-    if not host:
-        return False
-    for item in allow:
-        item = item.lower()
-        # 后缀匹配必须落在点边界上，否则 allow=itsm-svc 会放行 evil-itsm-svc
-        suffix = item if item.startswith(".") else "." + item
-        if host == item.lstrip(".") or host.endswith(suffix):
-            return True
-    return False
+def _base_url_allowed(base_url: str, allow) -> bool:
+    return host_allowed(urlparse(base_url).hostname or "", allow)
 
 
-def validate_entry(name: str, entry, internal_services=()):
-    """返回 (normalized_entry | None, reason)。reason 为空串表示有效。"""
+def validate_entry(name: str, entry, internal_services=(), allowlist=None):
+    """返回 (normalized_entry | None, reason)。reason 为空串表示有效。
+
+    allowlist 由调用方在一次渲染中统一加载后传入；缺省时本函数自行加载，
+    仅供单条校验的直接调用方使用（渲染路径不走该分支，避免每条一次查询）。
+    """
+    if allowlist is None:
+        allowlist, _ = load_allowlist()
     if not isinstance(entry, dict):
         return None, "entry is not an object"
     if name.startswith("_") or not SERVICE_NAME_RE.match(name):
@@ -88,55 +121,48 @@ def validate_entry(name: str, entry, internal_services=()):
         return None, "conflicts with internal service"
 
     schema_version = entry.get("schema_version", 1)
-    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+    if not isinstance(schema_version, int) or schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         return None, f"unsupported schema_version {schema_version!r}"
 
     if entry.get("enabled", True) is False:
         return None, "disabled"
 
     entry_type = entry.get("type")
-    if entry_type not in VALID_TYPES:
+    if not isinstance(entry_type, str) or entry_type not in VALID_TYPES:
         return None, f"unknown type {entry_type!r}"
 
     base_url = entry.get("base_url")
     if not isinstance(base_url, str) or urlparse(base_url).scheme not in ("http", "https"):
         return None, "invalid base_url"
-    if not _base_url_allowed(base_url):
+    if not _base_url_allowed(base_url, allowlist):
         return None, "base_url not in allowlist"
 
     auth_mode = entry.get("auth_mode")
-    if auth_mode not in VALID_AUTH_MODES:
+    if not isinstance(auth_mode, str) or auth_mode not in VALID_AUTH_MODES:
         return None, f"unknown auth_mode {auth_mode!r}"
 
     secrets = {}
     if auth_mode == "trusted-header":
-        secret = _resolve_ref(entry.get("shared_secret_ref"))
+        secret, detail = _resolve_ref(entry.get("shared_secret_ref"))
         if not secret:
-            return None, "shared_secret_ref unresolvable"
+            return None, f"shared_secret_ref unresolvable ({detail})"
         secrets["shared_secret"] = secret
     else:  # service-token
-        token = _resolve_ref(entry.get("token_ref"))
+        token, detail = _resolve_ref(entry.get("token_ref"))
         if not token:
-            return None, "token_ref unresolvable"
+            return None, f"token_ref unresolvable ({detail})"
         secrets["service_token"] = token
 
     paths = entry.get("paths")
-    if paths is not None and (
-        not isinstance(paths, list) or not all(isinstance(p, str) and p for p in paths)
-    ):
+    if paths is not None and (not isinstance(paths, list) or not all(isinstance(p, str) and p for p in paths)):
         return None, "invalid paths"
 
     rate_limit = entry.get("rate_limit")
-    if rate_limit is not None and (
-        not isinstance(rate_limit, dict)
-        or not all(isinstance(rate_limit.get(k), int) for k in ("average", "burst"))
-    ):
+    if rate_limit is not None and (not isinstance(rate_limit, dict) or not all(isinstance(rate_limit.get(k), int) for k in ("average", "burst"))):
         return None, "invalid rate_limit"
 
     versions = entry.get("gateway_versions")
-    if versions is not None and (
-        not isinstance(versions, list) or not all(isinstance(v, str) for v in versions)
-    ):
+    if versions is not None and (not isinstance(versions, list) or not all(isinstance(v, str) for v in versions)):
         return None, "invalid gateway_versions"
     active = [v for v in (versions or ACTIVE_GATEWAY_VERSIONS) if v in ACTIVE_GATEWAY_VERSIONS]
     if not active:
@@ -175,14 +201,16 @@ def _router_rule(version: str, name: str, paths) -> str:
     return " || ".join(prefixes)
 
 
-def render_traefik_config(entries: dict, internal_services=()):
+def render_traefik_config(entries: dict, internal_services=(), allowlist=None):
     """将注册条目渲染为 Traefik 动态配置（原生格式，供 providers.http）。
 
     返回 (config, report)。KV 字段与 Traefik 参数经本函数显式映射，
     两端命名不耦合。
     """
-    report = {"rendered": [], "skipped": {}}
+    report = {"rendered": [], "skipped": {}, "normalized": {}}
     routers, middlewares, services = {}, {}, {}
+    if allowlist is None:
+        allowlist, _ = load_allowlist()
 
     auth_address = os.getenv("OPENAPI_AUTH_ADDRESS", "")
     if not auth_address:
@@ -209,7 +237,7 @@ def render_traefik_config(entries: dict, internal_services=()):
     }
 
     for name in sorted(entries):
-        normalized, reason = validate_entry(name, entries[name], internal_services)
+        normalized, reason = validate_entry(name, entries[name], internal_services, allowlist)
         if normalized is None:
             report["skipped"][name] = reason
             if reason != "disabled":
@@ -243,26 +271,16 @@ def render_traefik_config(entries: dict, internal_services=()):
                 }
             }
         else:
-            middlewares[inject] = {
-                "headers": {
-                    "customRequestHeaders": {
-                        "Authorization": f"Bearer {normalized['secrets']['service_token']}"
-                    }
-                }
-            }
+            middlewares[inject] = {"headers": {"customRequestHeaders": {"Authorization": f"Bearer {normalized['secrets']['service_token']}"}}}
         chain.append(inject)
 
-        services[f"openapi-{name}"] = {
-            "loadBalancer": {"servers": [{"url": normalized["base_url"]}]}
-        }
+        services[f"openapi-{name}"] = {"loadBalancer": {"servers": [{"url": normalized["base_url"]}]}}
 
         for version in normalized["versions"]:
             router_chain = list(chain)
             if normalized["strip_prefix"]:
                 strip = f"openapi-{name}-strip-{version}"
-                middlewares[strip] = {
-                    "stripPrefix": {"prefixes": [f"/openapi/{version}/{name}"]}
-                }
+                middlewares[strip] = {"stripPrefix": {"prefixes": [f"/openapi/{version}/{name}"]}}
                 router_chain.append(strip)
             routers[f"openapi-{version}-{name}"] = {
                 "rule": _router_rule(version, name, normalized["paths"]),
@@ -270,6 +288,7 @@ def render_traefik_config(entries: dict, internal_services=()):
                 "middlewares": router_chain,
             }
         report["rendered"].append(name)
+        report["normalized"][name] = normalized
 
     return _pack(routers, middlewares, services), report
 
@@ -318,10 +337,19 @@ def refresh_snapshot(internal_services=()):
         if started < _snapshot["fetch_started_at"]:
             logger.warning("openapi_registry 乱序回源结果被丢弃（发起早于当前快照数据）")
             return _snapshot["config"]
+
+        allowlist, db_ok = load_allowlist()
+        if not db_ok and _snapshot["config"] is not None:
+            # 仅 env 一半的清单会让登记在 DB 的主机整批落选，已在线的路由被
+            # 摘除；宁可沿用上一份配置等 DB 恢复，也不下发收缩过的清单
+            logger.warning("openapi allowlist DB 不可达，沿用最近一次成功快照")
+            return _snapshot["config"]
+
         _snapshot["fetch_started_at"] = started
-        config, report = render_traefik_config(entries, internal_services)
+        config, report = render_traefik_config(entries, internal_services, allowlist)
         _snapshot["config"] = config
         _snapshot["entries"] = entries
+        _snapshot["normalized"] = dict(report["normalized"])
         _snapshot["services"] = list(report["rendered"])
         return config
 
@@ -375,10 +403,15 @@ def _ensure_snapshot_fresh():
 
 
 def _background_refresh_run():
+    from django.db import connections
+
     try:
         refresh_snapshot(internal_services=_internal_services())
     except Exception:  # 后台对账绝不外抛
         logger.exception("openapi_registry 后台对账失败")
+    finally:
+        # credential: 引用解析会在本线程开 DB 连接；线程即将结束，显式归还
+        connections.close_all()
 
 
 def _refresh_in_background():
@@ -386,12 +419,9 @@ def _refresh_in_background():
 
 
 def _get_entry_normalized(name: str):
+    """读侧按名取渲染期已归一化的条目；未渲染成功（被跳过）即视为不存在。"""
     with _lock:
-        entry = _snapshot["entries"].get(name)
-    if entry is None:
-        return None
-    normalized, _ = validate_entry(name, entry)
-    return normalized
+        return _snapshot["normalized"].get(name)
 
 
 def get_external_services():

@@ -12,6 +12,7 @@ import {
   buildFiltersFromNodes,
   syncFilterValuesWithDefinitions,
 } from '../utils/namespaceUtils';
+import { syncAndFillOrganizationFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
 import type { useTopologyState } from './useTopologyState';
 
 interface UseTopologyLifecycleParams {
@@ -35,6 +36,7 @@ interface UseTopologyLifecycleParams {
     refreshInterval?: number;
   }>;
   onLoadedRefreshInterval?: (interval: number) => void;
+  organizationId?: string | number | null;
   loadCanvasNamespaces: (namespaceIds?: (string | number)[]) => unknown;
   refreshAllSingleValueNodes: (
     values?: Record<string, FilterValue>,
@@ -83,6 +85,7 @@ export const useTopologyLifecycle = ({
   syncTopologyCanvasResources,
   toggleEditMode,
   onLoadedRefreshInterval,
+  organizationId,
 }: UseTopologyLifecycleParams) => {
   const [originalGraphState, setOriginalGraphState] =
     useState<Model.FromJSONData | null>(null);
@@ -155,9 +158,10 @@ export const useTopologyLifecycle = ({
             loadedFilters,
           );
 
-          const syncedValues = syncFilterValuesWithDefinitions(
+          const syncedValues = syncAndFillOrganizationFilterValues(
             autoBuiltFilters,
             {},
+            organizationId,
           );
           if (autoBuiltFilters.length > 0) {
             setDefinitions(autoBuiltFilters);
@@ -203,6 +207,7 @@ export const useTopologyLifecycle = ({
     selectedTopology?.data_id,
     state.graphInstance,
     loadCanvasNamespaces,
+    organizationId,
     scheduleTopologyInitialization,
     syncTopologyCanvasResources,
   ]);

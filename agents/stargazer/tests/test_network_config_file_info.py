@@ -2,7 +2,7 @@ import asyncio
 import base64
 
 import pytest
-from plugins.inputs.network_config_file.network_config_file_info import NetworkConfigFileInfo, validate_safe_command
+from plugins.inputs.network_config_file.network_config_file_info import NetworkConfigFileInfo, decode_http_header_commands, validate_safe_command
 
 INSTANCE_UUID = "123e4567-e89b-42d3-a456-426614174000"
 
@@ -74,6 +74,13 @@ def _base_params(**extra):
     }
     params.update(extra)
     return params
+
+
+def test_header_encoded_commands_decode_to_plain_lines():
+    encoded = "b64:" + base64.urlsafe_b64encode(b"show running-config\nshow version").decode()
+    plugin = NetworkConfigFileInfo(_base_params(commands=encoded))
+    assert plugin._commands() == ["show running-config", "show version"]
+    assert decode_http_header_commands("show version") == "show version"
 
 
 def test_collect_builds_success_payload(monkeypatch):
@@ -174,14 +181,15 @@ def test_close_failure_does_not_override_successful_collection(monkeypatch):
     assert result["success"] is True
 
 
-def test_connect_params_use_native_async_transport_and_strict_host_key():
+def test_connect_params_skip_host_key_check_for_task_selected_targets():
     plugin = NetworkConfigFileInfo(_base_params())
 
     connect_params = plugin._connect_params()
 
     assert connect_params["platform"] == "cisco_iosxe"
     assert connect_params["transport"] == "asyncssh"
-    assert connect_params["auth_strict_key"] is True
+    assert connect_params["auth_strict_key"] is False
+    assert "ssh_known_hosts_file" not in connect_params
 
 
 @pytest.mark.parametrize(

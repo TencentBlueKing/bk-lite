@@ -3,7 +3,7 @@ import { useMonitorConfig } from '../index';
 import { normalizeDashboardDisplay } from '../configContracts';
 
 export const useObjectConfigInfo = (objectName?: string | null) => {
-  const { resolveConfig, ready } = useMonitorConfig(objectName);
+  const { resolveConfig, ready, error, retry } = useMonitorConfig(objectName);
 
   const getCollectType = useCallback(
     (name: string, pluginName: string) => {
@@ -39,6 +39,8 @@ export const useObjectConfigInfo = (objectName?: string | null) => {
 
   return {
     ready,
+    error,
+    retry,
     getCollectType,
     getInstanceType,
     getGroupIds,

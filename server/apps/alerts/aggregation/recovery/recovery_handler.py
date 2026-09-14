@@ -1,14 +1,15 @@
 # -- coding: utf-8 --
-from typing import List, Optional, Tuple
 from collections import defaultdict
+from typing import List, Optional, Tuple
 
 from django.db import transaction
 from django.db.models import Q
 
-from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
 from apps.alerts.aggregation.recovery.match_key import build_recovery_match_key
-from apps.alerts.models.models import Alert, Event
+from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
 from apps.alerts.constants.constants import AlertStatus, EventAction
+from apps.alerts.models.models import Alert, Event
+from apps.alerts.service.monitor_sources import associate_event_with_monitor_sources
 from apps.core.logger import alert_logger as logger
 
 
@@ -60,8 +61,21 @@ class RecoveryHandler:
 
         logger.info(
             "[AlertRecovery] 恢复事件批量处理完成: 处理 %s 个恢复事件, 新增关联 %s 个, 跳过重复 %s 个, 推进恢复 %s 个",
-            total_events, total_added, total_skipped, recovered_count,
+            total_events,
+            total_added,
+            total_skipped,
+            recovered_count,
         )
+
+    @staticmethod
+    def _unique_alerts(alerts):
+        result = []
+        seen = set()
+        for alert in alerts:
+            if alert.pk not in seen:
+                result.append(alert)
+                seen.add(alert.pk)
+        return result
 
     @staticmethod
     def handle_recovery_events(recovery_events: List[Event]):
@@ -114,10 +128,7 @@ class RecoveryHandler:
             )
 
         affected_alerts = (
-            Alert.objects.filter(status__in=AlertStatus.ACTIVATE_STATUS)
-            .filter(candidate_q)
-            .prefetch_related("events__source")
-            .distinct()
+            Alert.objects.filter(status__in=AlertStatus.ACTIVATE_STATUS).filter(candidate_q).prefetch_related("events__source").distinct()
         )
 
         if not affected_alerts.exists():
@@ -156,20 +167,13 @@ class RecoveryHandler:
                 continue
 
             # 查找匹配的 Alert
-            matching_alerts = alerts_by_match_key.get(
-                build_recovery_match_key(recovery_event), []
-            )
+            matching_alerts = alerts_by_match_key.get(build_recovery_match_key(recovery_event), [])
 
             if not matching_alerts:
                 fallback_key = RecoveryHandler._build_fallback_key(recovery_event)
                 if RecoveryHandler._supports_unique_fallback(recovery_event) and fallback_key:
                     fallback_alerts = alerts_by_fallback_key.get(fallback_key, [])
-                    unique_alerts = []
-                    seen_alert_ids = set()
-                    for alert in fallback_alerts:
-                        if alert.pk not in seen_alert_ids:
-                            unique_alerts.append(alert)
-                            seen_alert_ids.add(alert.pk)
+                    unique_alerts = RecoveryHandler._unique_alerts(fallback_alerts)
                     if len(unique_alerts) == 1:
                         matching_alerts = unique_alerts
                         logger.info(
@@ -188,20 +192,13 @@ class RecoveryHandler:
                 logger.debug("[AlertRecovery] 恢复事件 %s 未找到匹配的 Alert (external_id=%s)", recovery_event.event_id, external_id)
                 continue
 
-            unique_matching_alerts = []
-            seen_alert_ids = set()
-            for alert in matching_alerts:
-                if alert.pk in seen_alert_ids:
-                    continue
-                unique_matching_alerts.append(alert)
-                seen_alert_ids.add(alert.pk)
+            unique_matching_alerts = RecoveryHandler._unique_alerts(matching_alerts)
 
             # 批量添加到匹配的 Alert
             for alert in unique_matching_alerts:
                 touched_alerts[alert.pk] = alert
-                # 检查是否已关联（使用预加载的数据，无额外查询）
-                if recovery_event.event_id not in alert_existing_events[alert.pk]:
-                    alert.events.add(recovery_event)
+                # 行锁内重查关系，同时维护来源快照，避免与聚合/回填并发覆盖。
+                if associate_event_with_monitor_sources(alert.pk, recovery_event):
                     alert_existing_events[alert.pk].add(recovery_event.event_id)
                     total_added += 1
                     logger.debug("[AlertRecovery] 恢复事件 %s 已关联到 Alert %s", recovery_event.event_id, alert.alert_id)
@@ -212,7 +209,9 @@ class RecoveryHandler:
         if not touched_alerts:
             logger.info(
                 "[AlertRecovery] 恢复事件批量处理完成: 处理 %s 个恢复事件, 新增关联 %s 个, 跳过重复 %s 个, 推进恢复 0 个",
-                len(recovery_events), total_added, total_skipped,
+                len(recovery_events),
+                total_added,
+                total_skipped,
             )
             return
 

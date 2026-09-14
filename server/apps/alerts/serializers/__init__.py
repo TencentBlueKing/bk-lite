@@ -35,6 +35,7 @@ from .incident_update import IncidentUpdateSerializer
 
 # 告警等级
 from .level import LevelModelSerializer
+from .notification_template import NotificationTemplateSerializer
 
 # 操作日志
 from .operator_log import OperatorLogModelSerializer
@@ -73,6 +74,7 @@ __all__ = [
     "AlarmStrategySerializer",
     # 告警丰富
     "EnrichmentRuleModelSerializer",
+    "NotificationTemplateSerializer",
 ]
 # @File: __init__.py.py
 # @Time: 2025/5/9 14:59

@@ -51,14 +51,14 @@ executors:
     )
 
     assert plan.preflight_timeout_seconds == 13
-    assert plan.probe_timeout_seconds == 14
+    assert plan.probe_timeout_seconds is None
     assert plan.collection_timeout_seconds == 90
     assert plan.publish_timeout_seconds == 30
     assert plan.execution_mode == "async"
     assert plan.capacity_group == "snmp"
 
 
-def test_snmp_execution_plan_preserves_internal_retry_budget(monkeypatch):
+def test_snmp_execution_plan_relies_on_internal_probe_budget(monkeypatch):
     metrics = CollectionMetrics()
     warning_logs = []
     monkeypatch.setattr(
@@ -78,7 +78,7 @@ def test_snmp_execution_plan_preserves_internal_retry_budget(monkeypatch):
         )
     )
 
-    assert plan.probe_timeout_seconds == 25
+    assert plan.probe_timeout_seconds is None
     assert plan.collection_timeout_seconds == 30
     assert metrics.snapshot()["snmp_timeout_clamped_total"] == 1
     assert len(warning_logs) == 1
@@ -268,7 +268,7 @@ def test_execution_plan_uses_final_fallback_executor_config_without_rereading_ya
     )
 
     assert plan.preflight_timeout_seconds == 15
-    assert plan.probe_timeout_seconds == 25
+    assert plan.probe_timeout_seconds is None
     assert plan.collection_timeout_seconds == 45
     assert plan.execution_mode == "async"
     assert plan.capacity_group == "snmp"

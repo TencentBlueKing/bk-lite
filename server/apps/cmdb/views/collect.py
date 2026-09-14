@@ -84,7 +84,7 @@ class CollectModelViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="network_config_file_supported_brands")
     def network_config_file_supported_brands(self, request):
-        return Response({"items": get_supported_brand_options()})
+        return Response({"items": get_supported_brand_options(getattr(request.user, "locale", None))})
 
     @staticmethod
     def _parse_positive_int(value, field_name, default):

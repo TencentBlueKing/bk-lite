@@ -30,6 +30,9 @@ export type FormFieldOptionControls = Record<
   {
     loading?: boolean;
     onRefresh?: () => void;
+    refreshTip?: string;
+    /** 云地域：true=腾讯云多选，false=阿里云单选；用来覆盖 UI.json 残留的 mode。 */
+    multiple?: boolean;
   }
 >;
 
@@ -47,9 +50,22 @@ const SelectWithRefresh = React.forwardRef<any, SelectWithRefreshProps>(
     { onRefresh, refreshLabel, refreshTip, regionLoading, ...selectProps },
     ref
   ) {
+    const popupWrapRef = React.useRef<HTMLDivElement>(null);
     return (
-      <div className="mr-[10px] inline-flex items-center gap-1">
-        <Select ref={ref} {...selectProps} />
+      <div
+        ref={popupWrapRef}
+        className="relative z-[20] mr-[10px] inline-flex items-center gap-1"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <Select
+          ref={ref}
+          {...selectProps}
+          virtual={selectProps.virtual ?? false}
+          getPopupContainer={
+            selectProps.getPopupContainer ||
+            (() => popupWrapRef.current || document.body)
+          }
+        />
         <Tooltip title={refreshTip}>
           <Button
             type="text"
@@ -441,9 +457,17 @@ export const useConfigRenderer = () => {
             (Boolean(showRefresh) ||
               resolvedOptionsKey === 'region_option' ||
               name === 'region');
+          const regionMultiple = optionControl?.multiple;
+          const selectMode = allowCustomTags
+            ? ('tags' as const)
+            : typeof regionMultiple === 'boolean'
+              ? regionMultiple
+                ? ('multiple' as const)
+                : undefined
+              : widget_props.mode;
           const selectProps = {
             ...restSelectProps,
-            mode: allowCustomTags ? ('tags' as const) : widget_props.mode,
+            mode: selectMode,
             tokenSeparators: allowCustomTags
               ? widget_props.tokenSeparators || [',']
               : widget_props.tokenSeparators,
@@ -456,7 +480,7 @@ export const useConfigRenderer = () => {
             showSearch: true as const,
             optionFilterProp: 'label' as const,
             maxTagCount:
-              widget_props.mode === 'multiple'
+              selectMode === 'multiple'
                 ? widget_props.maxTagCount || 'responsive'
                 : widget_props.maxTagCount,
             style: formWidgetWidthStyle(widgetStyle),
@@ -498,10 +522,13 @@ export const useConfigRenderer = () => {
                   'monitor.integrations.fetchCloudRegions',
                   '获取地域'
                 )}
-                refreshTip={t(
-                  'monitor.integrations.refreshCloudRegionsTip',
-                  '根据已填密钥刷新可用地域'
-                )}
+                refreshTip={
+                  optionControl.refreshTip ||
+                  t(
+                    'monitor.integrations.refreshCloudRegionsTip',
+                    '根据已填密钥刷新可用地域'
+                  )
+                }
                 regionLoading={regionLoading}
               >
                 {optionNodes}

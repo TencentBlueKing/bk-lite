@@ -11,6 +11,7 @@ import { useIntl } from 'react-intl';
 import styles from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { useShareOrganizationSeed } from '@/app/ops-analysis/context/shareOrganization';
 import { setLocaleData } from './utils/localeStore';
 import { Select } from 'antd';
 import { useTopologyState } from './hooks/useTopologyState';
@@ -64,7 +65,7 @@ import {
   toCanvasDraftResourceId,
   type CanvasDraftPayload,
 } from '@/app/ops-analysis/api/canvasDraft';
-import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { syncAndFillOrganizationFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
@@ -113,6 +114,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const state = useTopologyState();
     const dataSourceManager = useDataSourceManager();
     const { loadCanvasNamespaces } = useOpsAnalysis();
+    const shareOrganizationSeed = useShareOrganizationSeed();
 
     const {
       definitions,
@@ -227,6 +229,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       refreshAllSingleValueNodes,
       refreshAllChartNodes,
       updateDefinitions,
+      organizationId: shareOrganizationSeed,
     });
 
     const canPersistRefreshInterval = canPersistCanvasRefreshInterval({
@@ -378,7 +381,11 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         const loadedDefinitions = Array.isArray(viewSets.filters)
           ? viewSets.filters
           : [];
-        const nextValues = syncFilterValuesWithDefinitions(loadedDefinitions, {});
+        const nextValues = syncAndFillOrganizationFilterValues(
+          loadedDefinitions,
+          {},
+          shareOrganizationSeed,
+        );
 
         restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
         loadTopologyData(viewSets);
@@ -402,6 +409,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         setDefinitions,
         setFilterValues,
         setSavedRefreshInterval,
+        shareOrganizationSeed,
         syncTopologyCanvasResources,
       ],
     );
@@ -461,6 +469,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       onLoadedRefreshInterval: (interval) => {
         setSavedRefreshInterval(normalizeCanvasRefreshInterval(interval));
       },
+      organizationId: shareOrganizationSeed,
     });
 
     const onCancelEdit = () => {

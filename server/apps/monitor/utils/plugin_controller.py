@@ -215,6 +215,9 @@ def _plugin_types(context: dict) -> set[str]:
     types = {
         str(context.get("instance_type") or "").strip().lower(),
         str(context.get("type") or "").strip().lower(),
+        str(context.get("object_name") or "").strip().lower(),
+        str(context.get("name") or "").strip().lower(),
+        str(context.get("monitor_object_name") or "").strip().lower(),
     }
     config_type = context.get("config_type")
     if isinstance(config_type, (list, tuple)):
@@ -223,6 +226,14 @@ def _plugin_types(context: dict) -> set[str]:
         types.add(str(config_type).strip().lower())
     types.discard("")
     return types
+
+
+def _is_aliyun_plugin(plugin_types: set[str]) -> bool:
+    return any("aliyun" in item or "阿里云" in item for item in plugin_types)
+
+
+def _is_qcloud_plugin(plugin_types: set[str]) -> bool:
+    return any("qcloud" in item or "tencent" in item or "腾讯云" in item for item in plugin_types)
 
 
 def _normalize_qcloud_region(value) -> str:
@@ -260,11 +271,11 @@ def _normalize_template_context(context: dict) -> dict:
     if _is_rabbitmq_collect_config(normalized) and normalized.get("url") not in (None, ""):
         normalized["url"] = normalize_rabbitmq_management_url(normalized.get("url"))
     plugin_types = _plugin_types(normalized)
-    # 腾讯云地域：表单未填时回落广州，与 Stargazer 采集缺省一致。
-    if "qcloud" in plugin_types:
-        normalized["region"] = _normalize_qcloud_region(normalized.get("region"))
-    elif "aliyun" in plugin_types:
+    # 阿里云对象即使 UI 残留 qcloud instance_type，也必须单选并回落杭州。
+    if _is_aliyun_plugin(plugin_types):
         normalized["region"] = _normalize_aliyun_region(normalized.get("region"))
+    elif _is_qcloud_plugin(plugin_types):
+        normalized["region"] = _normalize_qcloud_region(normalized.get("region"))
     return normalized
 
 
@@ -375,7 +386,8 @@ class Controller:
             template_content = ensure_snmp_interface_filter_jinja(template_content)
         template_content = ensure_qcloud_region_jinja(template_content)
         if 'region = "{{ region }}"' in template_content and not str(_context.get("region") or "").strip():
-            _context["region"] = "ap-guangzhou"
+            plugin_types = _plugin_types(_context)
+            _context["region"] = "cn-hangzhou" if _is_aliyun_plugin(plugin_types) else "ap-guangzhou"
 
         safe_context = sanitize_template_context(_context)
         if escape_toml_strings:

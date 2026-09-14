@@ -4,7 +4,7 @@ import { Menu, Input, Button, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list/index';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
@@ -16,7 +16,7 @@ import { cloneDeep } from 'lodash';
 const { Search } = Input;
 
 const Controller = () => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const { getControllerList } = useNodeManagerApi();

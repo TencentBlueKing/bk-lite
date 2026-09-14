@@ -1067,7 +1067,7 @@ function renderCredentialFields({
         </InputRow>
       )}
       {shape === 'network_config_file' && (
-        <InputRow label="特权密码" required={false}>
+        <InputRow label={t('Collection.credentialPool.enablePassword', '特权密码')} required={false}>
           <SecretInput
             value={item.enable_password}
             placeholder={t('common.inputTip', '请输入')}

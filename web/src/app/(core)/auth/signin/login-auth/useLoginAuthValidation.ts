@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toSafeRelativeCallbackUrl } from "@/utils/authRedirect";
+import { createLoginAuthRequestGuard } from "./loginAuthRequestGuard";
 import {
   resolveBindingsLoadState,
   resolveInitialBindingId,
@@ -70,6 +71,7 @@ export function useLoginAuthValidation({
   const [activeRequest, setActiveRequest] = useState<ActiveRequestMeta | null>(null);
   const pollingTimerRef = useRef<number | null>(null);
   const pollingInFlightRef = useRef(false);
+  const [requestGuard] = useState(createLoginAuthRequestGuard);
   const selectedBinding = resolveSelectedBinding(bindings, selectedBindingId);
 
   const stopPolling = () => {
@@ -148,13 +150,20 @@ export function useLoginAuthValidation({
     void loadBindings();
   }, [enabled]);
 
-  useEffect(() => () => {
-    if (pollingTimerRef.current !== null) {
-      window.clearInterval(pollingTimerRef.current);
-    }
-  }, []);
+  useEffect(() => {
+    return () => {
+      requestGuard.invalidate();
+      if (pollingTimerRef.current !== null) {
+        window.clearInterval(pollingTimerRef.current);
+      }
+    };
+  }, [requestGuard]);
 
-  const resolveTerminalStatus = async (statusData: LoginAuthStatusResponseData) => {
+  const resolveTerminalStatus = async (statusData: LoginAuthStatusResponseData, generation: number) => {
+    if (!requestGuard.shouldContinue(generation)) {
+      return;
+    }
+
     const status = statusData.status;
 
     if (status === "expired" || status === "failed" || status === "cancelled") {
@@ -178,6 +187,9 @@ export function useLoginAuthValidation({
 
     const loginResult = statusData.login_result;
     if (isOtpChallengeResult(loginResult)) {
+      if (!requestGuard.shouldContinue(generation)) {
+        return;
+      }
       onOtpRequired(loginResult as LoginAuthLoginResult);
       return;
     }
@@ -187,13 +199,19 @@ export function useLoginAuthValidation({
       return;
     }
 
+    if (!requestGuard.shouldContinue(generation)) {
+      return;
+    }
     const synced = await onSessionSync(loginResult as LoginAuthLoginResult);
+    if (!requestGuard.shouldContinue(generation)) {
+      return;
+    }
     if (!synced) {
       resetSelectionState("failed", messages.syncFailed);
     }
   };
 
-  const pollStatus = async (requestMeta: ActiveRequestMeta) => {
+  const pollStatus = async (requestMeta: ActiveRequestMeta, generation: number) => {
     if (pollingInFlightRef.current) {
       return;
     }
@@ -212,6 +230,9 @@ export function useLoginAuthValidation({
         },
       );
       const responseData = await response.json();
+      if (!requestGuard.shouldContinue(generation)) {
+        return;
+      }
 
       if (!response.ok || !responseData?.result) {
         stopPolling();
@@ -225,8 +246,11 @@ export function useLoginAuthValidation({
       }
 
       stopPolling();
-      await resolveTerminalStatus(statusData);
+      await resolveTerminalStatus(statusData, generation);
     } catch (error) {
+      if (!requestGuard.shouldContinue(generation)) {
+        return;
+      }
       console.error("Failed to poll login auth status:", error);
       resetSelectionState("failed", messages.queryStatusFailed);
     } finally {
@@ -245,6 +269,8 @@ export function useLoginAuthValidation({
 
   const startLoginAuth = async (binding: LoginAuthBindingItem) => {
     stopPolling();
+    requestGuard.invalidate();
+    const generation = requestGuard.begin();
     setErrorMessage("");
     setSelectedBindingId(binding.id);
     setActiveBindingId(binding.id);
@@ -272,6 +298,9 @@ export function useLoginAuthValidation({
         }),
       });
       const responseData = await response.json();
+      if (!requestGuard.shouldContinue(generation)) {
+        return;
+      }
 
       if (!response.ok || !responseData?.result) {
         resetSelectionState("failed", responseData?.message || messages.startFailed);
@@ -279,6 +308,9 @@ export function useLoginAuthValidation({
       }
 
       const startData = responseData.data as StartLoginAuthResponseData;
+      if (!requestGuard.shouldContinue(generation)) {
+        return;
+      }
       const openedWindow = window.open(startData.login_url, "_blank");
       if (!openedWindow) {
         resetSelectionState("failed", messages.popupBlocked);
@@ -295,11 +327,17 @@ export function useLoginAuthValidation({
       setActiveRequest(nextRequest);
       setViewState("waiting");
 
-      void pollStatus(nextRequest);
+      void pollStatus(nextRequest, generation);
+      if (!requestGuard.shouldContinue(generation)) {
+        return;
+      }
       pollingTimerRef.current = window.setInterval(() => {
-        void pollStatus(nextRequest);
+        void pollStatus(nextRequest, generation);
       }, 3000);
     } catch (error) {
+      if (!requestGuard.shouldContinue(generation)) {
+        return;
+      }
       console.error("Failed to start login auth:", error);
       resetSelectionState("failed", messages.startFailed);
     }

@@ -60,7 +60,7 @@ class MonitorPluginService:
     def get_ui_template_by_params(collector, collect_type, monitor_object_id, monitor_plugin_id=None):
         """获取插件的 UI 模板。
 
-        Telegraf/http 下 Host AIX Remote、Host Remote、Windows WMI 共享
+        Telegraf/http 下 Host AIX Remote、Host FreeBSD Remote、Host HP-UX Remote、Host Solaris Remote、Host Remote、Windows WMI 共享
         collector+collect_type+对象，必须按 plugin id 取值；多个匹配且未指定
         plugin 时不返回，避免把 WMI 用户名帮助套到 SSH 表单。
         """

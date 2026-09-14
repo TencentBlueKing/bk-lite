@@ -220,42 +220,38 @@ export default function ApmEndpointsPage() {
     setSamplesLoading(true);
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - RANGE_MS[timeRange]);
-    Promise.all([
-      getTraces({
-        service_namespace: selected.namespace,
-        service_name: selected.serviceName,
-        environment: selected.environment,
-        span_name: selected.route,
-        started_at: startedAt.toISOString(),
-        ended_at: endedAt.toISOString(),
-        limit: 20,
-      }),
-      getServiceRed(
-        selected.serviceId,
-        selected.environment,
-        startedAt.toISOString(),
-        endedAt.toISOString(),
-        selected.endpoint,
-      ),
-    ])
-      .then(([page, red]) => {
-        if (!active) return;
-        const matched = page.items.filter((item) => (
-          item.root_span_name === selected.endpoint
-          || item.root_span_name.includes(selected.route)
-        ));
-        setSampleTraces(matched.length ? matched : page.items.slice(0, 8));
-        setEndpointRed(red);
-      })
-      .catch(() => {
-        if (active) {
-          setSampleTraces([]);
-          setEndpointRed(null);
-        }
-      })
-      .finally(() => {
-        if (active) setSamplesLoading(false);
-      });
+    const tracesRequest = getTraces({
+      service_namespace: selected.namespace,
+      service_name: selected.serviceName,
+      environment: selected.environment,
+      span_name: selected.route,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      limit: 20,
+    }).then((page) => {
+      if (!active) return;
+      const matched = page.items.filter((item) => (
+        item.root_span_name === selected.endpoint
+        || item.root_span_name.includes(selected.route)
+      ));
+      setSampleTraces(matched.length ? matched : page.items.slice(0, 8));
+    }).catch(() => {
+      if (active) setSampleTraces([]);
+    });
+    const redRequest = getServiceRed(
+      selected.serviceId,
+      selected.environment,
+      startedAt.toISOString(),
+      endedAt.toISOString(),
+      selected.endpoint,
+    ).then((red) => {
+      if (active) setEndpointRed(red);
+    }).catch(() => {
+      if (active) setEndpointRed(null);
+    });
+    void Promise.all([tracesRequest, redRequest]).finally(() => {
+      if (active) setSamplesLoading(false);
+    });
     return () => {
       active = false;
     };
@@ -393,7 +389,7 @@ export default function ApmEndpointsPage() {
               <Input
                 allowClear
                 aria-label={t('apm.explore.searchEndpoint', '搜索路径模板或服务')}
-                className="w-72"
+                className="w-full sm:w-72"
                 placeholder={t('apm.explore.searchEndpointPlaceholder', '搜索路径模板 / 服务')}
                 prefix={<SearchOutlined aria-hidden="true" />}
                 value={keyword}

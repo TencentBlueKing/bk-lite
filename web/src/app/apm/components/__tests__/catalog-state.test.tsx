@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import CatalogState from '../catalog-state';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { HandledRequestError } from '@/utils/request';
 
 afterEach(cleanup);
 
@@ -42,5 +43,22 @@ describe('CatalogState', () => {
 
     expect(screen.queryByRole('button', { name: '重新加载' })).toBeNull();
     expect(screen.getByText('请联系组织管理员申请查看权限。')).not.toBeNull();
+  });
+
+  it('容量超限 503 不伪装成遥测存储不可用', () => {
+    renderWithApmIntl(
+      <CatalogState
+        kind="degraded"
+        error={new HandledRequestError('VictoriaTraces 响应超过大小上限', {
+          status: 503,
+          code: 'query_too_large',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('本次查询数据量过大')).not.toBeNull();
+    expect(screen.getByText('请缩小时间窗后重试。目录与已加载指标仍然可用。')).not.toBeNull();
+    expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
+    expect(screen.queryByText('VictoriaTraces 响应超过大小上限')).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Form, Input, Radio, Select } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 import { useSearchParams } from 'next/navigation';
@@ -9,6 +9,7 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import useMonitorApi from '@/app/monitor/api';
 import { useTranslation } from '@/utils/i18n';
 import type { K3sCommandData } from '@/app/monitor/types/integration';
+import { createK3sAccessListLoad } from './k3sAccessListLoad';
 
 interface AccessConfigProps {
   commandData: K3sCommandData | null;
@@ -29,15 +30,35 @@ const AccessConfig: React.FC<AccessConfigProps> = ({
   const { getCloudRegionList, createK3sInstance, getK3sCommands } =
     useIntegrationApi();
   const { getInstanceList } = useMonitorApi();
+  const getCloudRegionListRef = useRef(getCloudRegionList);
+  const getInstanceListRef = useRef(getInstanceList);
+  const listLoadRef = useRef(createK3sAccessListLoad());
 
   useEffect(() => {
-    void getCloudRegionList({ page_size: -1 }).then((items) =>
-      setCloudRegions(items || [])
-    );
-    void getInstanceList(objectId, { page_size: -1 }).then((result) =>
-      setClusters(result?.results || [])
-    );
-  }, [getCloudRegionList, getInstanceList, objectId]);
+    getCloudRegionListRef.current = getCloudRegionList;
+  }, [getCloudRegionList]);
+
+  useEffect(() => {
+    getInstanceListRef.current = getInstanceList;
+  }, [getInstanceList]);
+
+  useEffect(() => {
+    const listLoad = listLoadRef.current;
+    const ticket = listLoad.begin(objectId);
+    void getCloudRegionListRef.current({ page_size: -1 }).then((items) => {
+      if (listLoad.shouldApply(ticket)) {
+        setCloudRegions(items || []);
+      }
+    });
+    void getInstanceListRef.current(objectId, { page_size: -1 }).then((result) => {
+      if (listLoad.shouldApply(ticket)) {
+        setClusters(result?.results || []);
+      }
+    });
+    return () => {
+      listLoad.invalidate();
+    };
+  }, [objectId]);
 
   useEffect(() => {
     if (commandData) {

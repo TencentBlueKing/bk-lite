@@ -4,7 +4,7 @@ import List from './list';
 import { useModelApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
 import { Spin, Modal, Button, Space, Empty, message } from 'antd';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCmdbUserList } from '@/app/cmdb/context/common';
 import {
   ensureCollectTaskMap,
 } from '@/app/cmdb/utils/collectTask';
@@ -29,9 +29,7 @@ const BaseInfo = () => {
 
   const searchParams = useSearchParams();
   const { selectedGroup, userId } = useUserInfoContext();
-  const commonContext = useCommon();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = useCmdbUserList();
   const [propertyList, setPropertyList] = useState<AttrFieldType[]>([]);
   const [subscriptionDrawerOpen, setSubscriptionDrawerOpen] = useState(false);
   const [quickSubscribeModalOpen, setQuickSubscribeModalOpen] = useState(false);

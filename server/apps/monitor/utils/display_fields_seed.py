@@ -19,7 +19,7 @@ def merge_display_fields_bindings(*blocks):
     """后写块决定列名与顺序，同名列的 (plugin, metric) 绑定取并集。
 
     多个插件共享同一 MonitorObject（如 Host / Host Remote / Windows WMI /
-    Host AIX Remote）时，plugin_init 不能用最后一份 display_fields 整表覆盖，
+    Host AIX Remote / Host FreeBSD Remote / Host HP-UX Remote / Host Solaris Remote）时，plugin_init 不能用最后一份 display_fields 整表覆盖，
     否则会丢掉先写入的跨插件绑定。不新增后写块没有的列名。
     """
     present = [list(block) for block in blocks if block]

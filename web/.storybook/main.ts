@@ -23,6 +23,7 @@ const mocks = {
  * 不用 require('webpack')：仓库里有 webpack@0.9.0，会把 main.ts 评估直接打挂。
  */
 const requestReplacements: Array<{ pattern: RegExp; target: string }> = [
+  { pattern: /^@\/app\/alarm\/api\/common$/, target: path.resolve(__dirname, './mocks/alarm/common-api.ts') },
   { pattern: /^@\/context\/auth(\.tsx)?$/, target: mocks.auth },
   { pattern: /^@\/context\/client(\.tsx)?$/, target: mocks.client },
   { pattern: /^@\/context\/userInfo(\.tsx)?$/, target: mocks.userInfo },
@@ -40,6 +41,7 @@ const requestReplacements: Array<{ pattern: RegExp; target: string }> = [
 ];
 
 const mockAliasMap: Record<string, string> = {
+  '@/app/alarm/api/common': path.resolve(__dirname, './mocks/alarm/common-api.ts'),
   '@/context/auth': mocks.auth,
   '@/context/client': mocks.client,
   '@/context/userInfo': mocks.userInfo,

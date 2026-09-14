@@ -32,7 +32,7 @@ class TimeoutDefaults:
 @dataclass(frozen=True)
 class ExecutionPlan:
     preflight_timeout_seconds: float
-    probe_timeout_seconds: float
+    probe_timeout_seconds: float | None
     collection_timeout_seconds: float
     publish_timeout_seconds: float
     execution_mode: str
@@ -41,11 +41,15 @@ class ExecutionPlan:
     def __post_init__(self) -> None:
         for field_name in (
             "preflight_timeout_seconds",
-            "probe_timeout_seconds",
             "collection_timeout_seconds",
             "publish_timeout_seconds",
         ):
             _positive_timeout(field_name, getattr(self, field_name))
+        if self.probe_timeout_seconds is not None:
+            _positive_timeout(
+                "probe_timeout_seconds",
+                self.probe_timeout_seconds,
+            )
         if self.execution_mode not in _EXECUTION_MODES:
             raise ValueError(f"execution_mode must be one of {sorted(_EXECUTION_MODES)}")
         if self.capacity_group not in _CAPACITY_GROUPS:
@@ -135,11 +139,16 @@ class ExecutionPlanResolver:
                 self._defaults.preflight_seconds,
                 "preflight_timeout_seconds",
             ),
-            probe_timeout_seconds=_configured_timeout(
-                config,
-                "probe_timeout",
-                self._defaults.probe_seconds,
-                "probe_timeout_seconds",
+            # SNMP 插件自带有界请求超时与重试，不再叠加外层预算。
+            probe_timeout_seconds=(
+                None
+                if target_policy_mode == "snmp"
+                else _configured_timeout(
+                    config,
+                    "probe_timeout",
+                    self._defaults.probe_seconds,
+                    "probe_timeout_seconds",
+                )
             ),
             collection_timeout_seconds=collection_timeout,
             publish_timeout_seconds=self._defaults.publish_seconds,

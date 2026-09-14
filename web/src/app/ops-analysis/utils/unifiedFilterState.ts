@@ -3,9 +3,9 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
-import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+import { isOrganizationControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import {
   coerceFilterValuesForDefinitions,
   logStringParamMigrationWarnings,
@@ -164,8 +164,33 @@ export const syncFilterValuesWithDefinitions = (
 export const isOrganizationFilterDefinition = (
   definition: UnifiedFilterDefinition,
 ): boolean => definition.type === 'string'
-  && definition.key === 'organization'
-  && normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization';
+  && isOrganizationControl(definition);
+
+export const resolveCanvasOrganizationId = ({
+  shareMode,
+  renderMode = false,
+  shareSpaceId,
+  selectedGroupId,
+}: {
+  shareMode: boolean;
+  renderMode?: boolean;
+  shareSpaceId?: string | number | null;
+  selectedGroupId?: string | number | null;
+}): string | number | undefined => {
+  if (renderMode) {
+    return undefined;
+  }
+  if (shareMode) {
+    if (shareSpaceId === undefined || shareSpaceId === null || shareSpaceId === '') {
+      return undefined;
+    }
+    return shareSpaceId;
+  }
+  if (selectedGroupId === undefined || selectedGroupId === null || selectedGroupId === '') {
+    return undefined;
+  }
+  return selectedGroupId;
+};
 
 export const applySelectedOrganizationToFilterValues = (
   definitions: UnifiedFilterDefinition[],
@@ -219,6 +244,16 @@ export const fillMissingOrganizationFilterValues = (
   });
   return changed ? nextValues : values;
 };
+
+export const syncAndFillOrganizationFilterValues = (
+  definitions: UnifiedFilterDefinition[],
+  values: Record<string, FilterValue>,
+  selectedOrganizationId?: string | number | null,
+): Record<string, FilterValue> => fillMissingOrganizationFilterValues(
+  definitions,
+  syncFilterValuesWithDefinitions(definitions, values),
+  selectedOrganizationId,
+);
 
 /** 筛选配置确认：draft/applied 使用同一版 definitions 规范化 values。 */
 export interface FilterConfigConfirmSnapshot {

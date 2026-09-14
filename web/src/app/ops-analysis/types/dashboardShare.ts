@@ -1,3 +1,5 @@
+import type { Group } from '@/types/index';
+
 export type CanvasShareResourceType =
   | 'dashboard'
   | 'screen'
@@ -25,6 +27,8 @@ export interface SharedCanvasDto {
   is_build_in: boolean;
   refresh_interval?: number;
   status?: string;
+  space_id?: number;
+  group_tree?: Group[];
 }
 
 /** @deprecated Use SharedCanvasDto */

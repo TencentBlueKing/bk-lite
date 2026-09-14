@@ -14,13 +14,47 @@ describe('global webchat visibility', () => {
     expect(hasOpsPilotClientAccess([{ name: 'opspilot' }])).toBe(true);
   });
 
-  it('hides only on login and permission error routes', () => {
+  it('hides on login, permission error, and ops-analysis share routes', () => {
     expect(isGlobalWebchatExcludedPath('/auth/signin')).toBe(true);
     expect(isGlobalWebchatExcludedPath('/no-permission')).toBe(true);
     expect(isGlobalWebchatExcludedPath('/opspilot/studio/chat')).toBe(false);
-    expect(isGlobalWebchatExcludedPath('/ops-analysis/share/abc')).toBe(false);
+    expect(isGlobalWebchatExcludedPath('/ops-analysis/share/abc')).toBe(true);
+    expect(isGlobalWebchatExcludedPath('/ops-analysis/share/continue')).toBe(true);
+    expect(isGlobalWebchatExcludedPath('/ops-analysis/share/session/xyz')).toBe(true);
+    expect(isGlobalWebchatExcludedPath('/ops-analysis/view')).toBe(false);
     expect(isGlobalWebchatExcludedPath('/ops-analysis/render/execution/7')).toBe(false);
     expect(isGlobalWebchatExcludedPath('/monitor/dashboard')).toBe(false);
+  });
+
+  it('hides on screen mode even when the path is otherwise eligible', () => {
+    expect(
+      shouldMountGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/ops-analysis/view',
+        screenMode: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldKeepGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/cmdb/assetOverview',
+        alreadyMounted: true,
+        screenMode: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldMountGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/ops-analysis/view',
+        screenMode: false,
+      }),
+    ).toBe(true);
   });
 
   it('waits for client loading and OpsPilot access before mounting', () => {
@@ -107,6 +141,15 @@ describe('global webchat visibility', () => {
         alreadyMounted: true,
       }),
     ).toBe(true);
+    expect(
+      shouldKeepGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/ops-analysis/share/session/xyz',
+        alreadyMounted: true,
+      }),
+    ).toBe(false);
   });
 
   it('falls back to the first app when the stored id is gone after a team switch', () => {

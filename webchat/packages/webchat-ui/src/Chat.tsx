@@ -800,7 +800,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
       {/* Messages Area */}
       <div
-        className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${wideLayout || panelFullscreen ? 'px-6 py-5' : 'px-4 py-4'}`}
+        className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${wideLayout || panelFullscreen ? 'px-6 pb-2 pt-5' : 'px-4 pb-1.5 pt-4'}`}
         style={{ background: WC.stage }}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col space-y-5">
@@ -882,27 +882,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
       {/* Input Area */}
       <div
-        className={`relative flex-shrink-0 ${wideLayout || panelFullscreen ? 'px-5 py-3.5' : 'px-3 py-3'}`}
+        className={`relative flex-shrink-0 ${wideLayout || panelFullscreen ? 'px-5 pb-3.5 pt-1.5' : 'px-3 pb-3 pt-1'}`}
         style={{ background: WC.composerWash }}
       >
-        {(conversationHistoryEnabled || showClearButton) && (
-          <div className="absolute right-4 z-10 flex items-center gap-1" style={{ top: '-2.25rem' }}>
-            {conversationHistoryEnabled ? <ContextUsageRing usage={contextUsage} /> : null}
-            {showClearButton ? (
-              <button
-                onClick={() => setShowClearConfirm(true)}
-                className="rounded p-1.5"
-                style={{ color: WC.muted }}
-                title="清除对话"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
-                </svg>
-              </button>
-            ) : null}
-          </div>
-        )}
-        
         {/* Image preview area */}
         {imageSelectionError && (
           <p role="alert" className="px-4 pt-2 text-xs" style={{ color: 'var(--color-fail)' }}>
@@ -938,6 +920,11 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           </div>
         )}
         
+              {conversationHistoryEnabled ? (
+                <div className="mb-1 flex h-8 items-center justify-end">
+                  <ContextUsageRing usage={contextUsage} />
+                </div>
+              ) : null}
               <PillComposer
                 value={inputValue}
                 onChange={setInputValue}
@@ -948,6 +935,21 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 placeholder={placeholder}
                 loading={isLoading}
                 onPaste={handlePaste}
+                leftExtra={
+                  showClearButton ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(true)}
+                      className="flex h-7 w-7 items-center justify-center rounded"
+                      style={{ color: WC.muted }}
+                      title="清除对话"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
+                      </svg>
+                    </button>
+                  ) : undefined
+                }
                 imageSlot={
                   <label
                     style={{

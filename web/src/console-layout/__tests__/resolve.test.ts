@@ -8,6 +8,7 @@ import {
   getAppStripOverflow,
   isConsoleChromeException,
   isDetailChromeContext,
+  shouldHideConsoleChrome,
   shouldHideConsoleTopNav,
   resolveAppLandingHref,
   resolveAppNavigation,
@@ -104,6 +105,24 @@ describe('console chrome layout resolve', () => {
     expect(shouldHideConsoleTopNav('/opspilot/studio')).toBe(false);
     expect(shouldHideConsoleTopNav('/opspilot/skill/detail/settings')).toBe(false);
     expect(shouldHideConsoleTopNav('/cmdb/assetOverview')).toBe(false);
+  });
+
+  it('hides the console top nav on ops-analysis share destinations but not in-product view', () => {
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/abc')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/continue')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/share/session/xyz')).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/view')).toBe(false);
+    expect(shouldHideConsoleTopNav('/ops-analysis/render/execution/7')).toBe(false);
+    expect(shouldShowAppTopSideNav('app-top', '/ops-analysis/share/abc', opspilotMenus)).toBe(false);
+  });
+
+  it('hides console chrome for screen mode without changing path-only immersives', () => {
+    expect(shouldHideConsoleChrome('/ops-analysis/view', false)).toBe(false);
+    expect(shouldHideConsoleChrome('/ops-analysis/view', true)).toBe(true);
+    expect(shouldHideConsoleChrome('/cmdb/assetOverview', true)).toBe(true);
+    expect(shouldHideConsoleChrome('/ops-analysis/share/abc', false)).toBe(true);
+    expect(shouldHideConsoleChrome('/opspilot/studio/chat', true)).toBe(true);
+    expect(shouldHideConsoleTopNav('/ops-analysis/view')).toBe(false);
   });
 
   it('keeps first-layer items flat and leaves children to the original in-page side menu', () => {

@@ -1,1 +1,5 @@
-from apps.alerts.enrichment.matcher import event_matches  # noqa: F401  复用 OR-of-AND
+from apps.alerts.utils.typed_rules import matches_payload
+
+
+def event_matches(event, match_rules):
+    return matches_payload(event, match_rules, "action")

@@ -642,18 +642,25 @@ async def test_default_nats_pipeline_forwards_per_target_terminal_events(monkeyp
     )
     lease = RunLease(request.task_id, request.digest, "pod-a", 9, 999999)
 
-    async def iter_outcomes(entries, *, metrics=None):
-        del metrics
-        result_ids = [entry[2]["collection_result_id"] for entry in entries]
-        yield result_ids[0], None
-        fast_terminal.set()
-        await release_slow.wait()
-        yield result_ids[1], None
+    from core.infra.jetstream_publish_window import JetStreamPublishWindow
 
-    monkeypatch.setattr(
-        "tasks.utils.nats_helper.iter_metrics_batch_outcomes",
-        iter_outcomes,
-    )
+    class JetStream:
+        async def publish_async(self, _subject, payload, **_kwargs):
+            future = asyncio.get_running_loop().create_future()
+            if b"10.10.25.1" in payload:
+                future.set_result(None)
+                fast_terminal.set()
+            else:
+
+                async def confirm():
+                    await release_slow.wait()
+                    if not future.done():
+                        future.set_result(None)
+
+                asyncio.create_task(confirm())
+            return future
+
+    monkeypatch.setattr(nats_utils, "_metrics_js_window", JetStreamPublishWindow(lambda: JetStream()))
     publisher = BufferedResultPublisher(
         NatsResultPublisher(),
         capacity=2,
@@ -677,7 +684,7 @@ async def test_default_nats_pipeline_forwards_per_target_terminal_events(monkeyp
     )
 
     await asyncio.wait_for(fast_terminal.wait(), timeout=1)
-    await asyncio.sleep(0)
+    await asyncio.wait_for(receipts[0].wait(), timeout=1)
 
     assert receipts[0].done() is True
     assert receipts[1].done() is False

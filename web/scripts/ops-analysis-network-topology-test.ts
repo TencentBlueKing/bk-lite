@@ -1261,15 +1261,20 @@ const networkToolbarSource = readRepoFile(
   'src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx',
 );
 const timeSelectorSource = readRepoFile('src/components/time-selector/index.tsx');
-assert.doesNotMatch(
+assert.match(
   networkToolbarSource,
-  /ShareAltOutlined|onOpenShare|network-toolbar-share/,
-  'network topology toolbar should not expose a share button',
+  /ShareAltOutlined/,
+  'network topology toolbar should expose a share button',
 );
-assert.doesNotMatch(
+assert.match(
+  networkToolbarSource,
+  /!shareMode && !editMode && onOpenShare/,
+  'network topology share button is view-mode only',
+);
+assert.match(
   topologyIndexSource,
-  /useCanvasShareAction/,
-  'network topology view should not create a share action from the toolbar',
+  /useCanvasShareAction\(['"]networkTopology['"]\)/,
+  'network topology view should create a share action from the toolbar',
 );
 assert.match(
   networkToolbarSource,

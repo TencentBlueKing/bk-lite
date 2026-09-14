@@ -1,5 +1,7 @@
 'use client';
 
+import { formatMatchRules } from '@/app/alarm/utils/multivalueRules';
+
 import React, { useMemo } from 'react';
 import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
@@ -51,14 +53,7 @@ const ActionRules: React.FC = () => {
 
   const renderMatchRulesSummary = (matchRules: ActionRuleListItem['match_rules']): string => {
     if (!matchRules || matchRules.length === 0) return '--';
-    const orParts = matchRules.map((orGroup) => {
-      if (!orGroup || orGroup.length === 0) return '';
-      return orGroup
-        .map((cond) => `${cond.key} ${cond.operator} ${cond.value}`)
-        .join(' AND ');
-    });
-    const summary = orParts.filter(Boolean).join(' OR ');
-    return summary.length > 60 ? `${summary.slice(0, 60)}...` : summary;
+    return formatMatchRules(matchRules, t);
   };
 
   const columns = useMemo(

@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
-import { ModalRef, TableDataItem } from '@/app/node-manager/types';
+import { ModalRef, Pagination, TableDataItem } from '@/app/node-manager/types';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import { useGroupNames } from '@/app/node-manager/hooks/node';
 import useCommandCopyDialog from '@/app/node-manager/hooks/useCommandCopyDialog';
@@ -40,6 +40,15 @@ import {
   normalizeControllerInstallRows,
   normalizeInstallerStatus
 } from '@/app/node-manager/utils/installerProgress';
+import { createOperationProgressRequestGuard } from './operationProgressRequestGuard';
+import {
+  buildCollectorTaskNodesPageQuery,
+  resolveCollectorTaskNodesPage
+} from './collectorTaskNodesPage';
+import {
+  mergeCollectorRetryRows,
+  readCollectorRetryTaskId
+} from './collectorRetryTaskState';
 
 // 操作类型
 export type OperationType =
@@ -141,8 +150,19 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
   const retryModalRef = useRef<ModalRef>(null);
   const operationGuidanceRef = useRef<ModalRef>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGuardRef = useRef(createOperationProgressRequestGuard());
+  const requestGenerationRef = useRef(0);
+  const collectorRetryTaskIdsRef = useRef<Map<string, string>>(new Map());
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<ControllerInstallProgressRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 20
+  });
+  const paginationRef = useRef(pagination);
+  paginationRef.current = pagination;
   // 使用 ref 保存 currentViewingNode 的最新值，避免闭包问题
   const currentViewingNodeRef = useRef<ControllerInstallProgressRow | null>(null);
   const [copyingNodeIds, setCopyingNodeIds] = useState<Array<string | number>>([]);
@@ -599,17 +619,39 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
 
   useEffect(() => {
     if (taskIds && !isLoading) {
-      getNodeList('refresh');
-      schedulePolling();
+      requestGenerationRef.current = requestGuardRef.current.begin();
+      const generation = requestGenerationRef.current;
+      getNodeList('refresh', generation);
+      schedulePolling(undefined, generation);
       return () => {
-        clearTimer();
+        stopProgressRequests();
       };
     }
-  }, [taskIds, isLoading, isInstallController, installMethod]);
+  }, [
+    taskIds,
+    isLoading,
+    isInstallController,
+    installMethod,
+    pagination.current,
+    pagination.pageSize
+  ]);
 
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+  };
+
+  const clearAutoAdvanceTimer = () => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+  };
+
+  const stopProgressRequests = () => {
+    requestGuardRef.current.invalidate();
+    clearTimer();
+    clearAutoAdvanceTimer();
   };
 
   const getPollingInterval = (rows?: ControllerInstallProgressRow[]) => {
@@ -642,17 +684,29 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       : CONTROLLER_INSTALL_CONNECTIVITY_POLL_INTERVAL;
   };
 
-  const schedulePolling = (rows?: ControllerInstallProgressRow[]) => {
+  const schedulePolling = (
+    rows?: ControllerInstallProgressRow[],
+    generation?: number
+  ) => {
+    const currentGeneration = generation ?? requestGenerationRef.current;
     clearTimer();
+    if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+      return;
+    }
     timerRef.current = setInterval(() => {
-      getNodeList('timer');
+      if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+        return;
+      }
+      getNodeList('timer', currentGeneration);
     }, getPollingInterval(rows));
   };
 
   // 重新启动轮询（重试成功后调用）
   const restartPolling = () => {
-    getNodeList('refresh');
-    schedulePolling();
+    requestGenerationRef.current = requestGuardRef.current.begin();
+    const generation = requestGenerationRef.current;
+    getNodeList('refresh', generation);
+    schedulePolling(undefined, generation);
   };
 
   const checkDetail = (type: string, row: ControllerInstallProgressRow) => {
@@ -675,7 +729,11 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     });
   };
 
-  const getNodeList = async (refreshType: string) => {
+  const getNodeList = async (refreshType: string, generation?: number) => {
+    const currentGeneration = generation ?? requestGenerationRef.current;
+    if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+      return;
+    }
     try {
       setPageLoading(refreshType !== 'timer');
       let data: ControllerInstallProgressRow[] = [];
@@ -693,12 +751,18 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         if (installMethod === 'remoteInstall' || isUninstallController) {
           // 远程安装或卸载控制器，都使用 getControllerNodes 接口
           data = await getControllerNodes({ taskId: taskIds });
+          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+            return;
+          }
         } else {
           // 手动安装控制器
           if (manualTaskList.length > 0) {
             const statusData = await getManualInstallStatus({
               node_ids: taskIds
             });
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
             data = manualTaskList.map((item: TableDataItem) => {
               const statusInfo = statusData.find(
                 (status: ControllerManualInstallStatusItem) =>
@@ -713,22 +777,64 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           }
         }
       } else {
-        // 组件操作的逻辑
-        if (operationType === 'installCollector') {
-          // 安装采集器使用原接口
-          const response = await getCollectorNodes({ taskId: taskIds });
-          data = response?.items || [];
-          taskStatus = response?.status || 'running';
-          taskSummary = response?.summary || null;
-        } else {
-          // 启动、停止、重启使用新接口
-          const response = await getCollectorOperationNodes({
-            taskId: taskIds
-          });
-          data = response?.items || [];
-          taskStatus = response?.status || 'running';
-          taskSummary = response?.summary || null;
+        // 组件操作：按当前页向服务端分页拉取，用 count 作为表格 total
+        const pageQuery = buildCollectorTaskNodesPageQuery({
+          current: paginationRef.current.current,
+          pageSize: paginationRef.current.pageSize
+        });
+        const response =
+          operationType === 'installCollector'
+            ? await getCollectorNodes({
+                taskId: taskIds,
+                page: pageQuery.page,
+                page_size: pageQuery.page_size
+              })
+            : await getCollectorOperationNodes({
+                taskId: taskIds,
+                page: pageQuery.page,
+                page_size: pageQuery.page_size
+              });
+        if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+          return;
         }
+        const resolvedPage =
+          resolveCollectorTaskNodesPage<ControllerInstallProgressRow>(response);
+        data = resolvedPage.items;
+        taskStatus = response?.status || 'running';
+        taskSummary = response?.summary || null;
+        setPagination((prev) =>
+          prev.total === resolvedPage.total
+            ? prev
+            : {
+                ...prev,
+                total: resolvedPage.total
+              }
+        );
+        const retryTaskIds = Array.from(
+          new Set(collectorRetryTaskIdsRef.current.values())
+        );
+        if (retryTaskIds.length > 0) {
+          const fetchRetryNodes =
+            operationType === 'installCollector'
+              ? getCollectorNodes
+              : getCollectorOperationNodes;
+          for (const retryTaskId of retryTaskIds) {
+            const retryResponse = await fetchRetryNodes({
+              taskId: retryTaskId
+            });
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
+            data = mergeCollectorRetryRows(
+              data,
+              retryResponse?.items || []
+            );
+          }
+        }
+      }
+
+      if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+        return;
       }
 
       const newTableData = normalizeControllerInstallRows(
@@ -742,7 +848,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       setTableData(newTableData);
 
       if (refreshType === 'timer' || refreshType === 'refresh') {
-        schedulePolling(newTableData);
+        schedulePolling(newTableData, currentGeneration);
       }
 
       // 如果弹窗正在查看某个节点的日志,实时更新该节点的日志（仅远程安装模式）
@@ -781,16 +887,29 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           ['success', 'installed'].includes(item.status || '')
         );
         if (allSuccess && newTableData.length > 0) {
+          if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+            return;
+          }
           clearTimer();
-          // 延迟5秒再跳转
-          setTimeout(() => {
+          clearAutoAdvanceTimer();
+          autoAdvanceTimerRef.current = setTimeout(() => {
+            autoAdvanceTimerRef.current = null;
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
             onNext();
           }, AUTO_ADVANCE_DELAY);
         }
       } else {
         // 组件操作：根据返回的 status 和 summary 判断
-        // 当 status 为 'finished' 时，停止轮询
-        if (taskStatus === 'finished') {
+        const hasActiveCollectorRows = newTableData.some(
+          (item) =>
+            !['error', 'success', 'installed', 'timeout'].includes(
+              item.status || ''
+            )
+        );
+        // 当旧批次已结束但仍有重试行在跑时，继续轮询新任务
+        if (taskStatus === 'finished' && !hasActiveCollectorRows) {
           clearTimer();
           // 只有当 total === success 时才自动进入下一步
           if (
@@ -798,15 +917,24 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
             taskSummary.total === taskSummary.success &&
             taskSummary.total > 0
           ) {
-            // 延迟5秒再跳转
-            setTimeout(() => {
+            if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+              return;
+            }
+            clearAutoAdvanceTimer();
+            autoAdvanceTimerRef.current = setTimeout(() => {
+              autoAdvanceTimerRef.current = null;
+              if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
+                return;
+              }
               onNext();
             }, AUTO_ADVANCE_DELAY);
           }
         }
       }
     } finally {
-      setPageLoading(false);
+      if (requestGuardRef.current.shouldContinue(currentGeneration)) {
+        setPageLoading(false);
+      }
     }
   };
 
@@ -858,6 +986,17 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     return operationTextMap[operationType];
   }, [operationType, t]);
 
+  const handleTableChange = (nextPagination: {
+    current?: number;
+    pageSize?: number;
+  }) => {
+    setPagination((prev) => ({
+      ...prev,
+      current: nextPagination.current ?? prev.current,
+      pageSize: nextPagination.pageSize ?? prev.pageSize
+    }));
+  };
+
   const handleFinish = () => {
     const installingCount = tableData.filter(
       (item) =>
@@ -866,7 +1005,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
 
     // 如果没有进行中的节点，直接返回，不需要二次确认
     if (installingCount === 0) {
-      clearTimer();
+      stopProgressRequests();
       cancel();
       return;
     }
@@ -887,7 +1026,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       okText: t('node-manager.cloudregion.node.confirmFinish'),
       cancelText: t('common.cancel'),
       onOk: () => {
-        clearTimer();
+        stopProgressRequests();
         cancel();
       }
     });
@@ -924,6 +1063,13 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
     try {
       setRetryingNodeIds((prev) => [...prev, String(nodeId)]);
 
+      const rememberCollectorRetryTask = (payload: unknown) => {
+        const retryTaskId = readCollectorRetryTaskId(payload);
+        if (retryTaskId) {
+          collectorRetryTaskIdsRef.current.set(String(nodeId), retryTaskId);
+        }
+      };
+
       if (operationType === 'installCollector') {
         // 安装组件重试
         if (!collectorPackageId) {
@@ -933,10 +1079,11 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           });
           return;
         }
-        await installCollector({
+        const retryPayload = await installCollector({
           collector_package: collectorPackageId,
           nodes: [String(nodeId)]
         });
+        rememberCollectorRetryTask(retryPayload);
       } else {
         // 启动/停止/重启组件重试
         if (!collectorId) {
@@ -951,11 +1098,12 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           stopCollector: 'stop',
           restartCollector: 'restart'
         };
-        await batchOperationCollector({
+        const retryPayload = await batchOperationCollector({
           node_ids: [String(nodeId)],
           collector_id: collectorId,
           operation: operationMap[operationType]
         });
+        rememberCollectorRetryTask(retryPayload);
       }
 
       notification.success({
@@ -1025,6 +1173,8 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           loading={pageLoading}
           columns={columns}
           dataSource={tableData}
+          pagination={isControllerOperation ? undefined : pagination}
+          onChange={isControllerOperation ? undefined : handleTableChange}
         />
       </div>
       <div className="pt-[16px] flex justify-center">

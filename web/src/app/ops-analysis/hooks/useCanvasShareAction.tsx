@@ -8,7 +8,7 @@ import { useTranslation } from '@/utils/i18n';
 
 /**
  * 统一创建分享入口：createShare → 拼装链接 → 复制 → 提示。
- * Dashboard / Screen / Topology / Architecture / Report 共用，避免各页面各自维护。
+ * Dashboard / Screen / Topology / Architecture / Report / NetworkTopology 共用，避免各页面各自维护。
  */
 export function useCanvasShareAction(resourceType: CanvasShareResourceType) {
   const { t } = useTranslation();

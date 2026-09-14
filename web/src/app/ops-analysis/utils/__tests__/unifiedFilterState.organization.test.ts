@@ -4,6 +4,7 @@ import {
   applySelectedOrganizationToFilterValues,
   fillMissingOrganizationFilterValues,
   isOrganizationFilterDefinition,
+  resolveCanvasOrganizationId,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 const ORGANIZATION_FILTER: UnifiedFilterDefinition = {
@@ -30,6 +31,24 @@ describe('applySelectedOrganizationToFilterValues', () => {
   test('识别组织树筛选定义', () => {
     expect(isOrganizationFilterDefinition(ORGANIZATION_FILTER)).toBe(true);
     expect(isOrganizationFilterDefinition(TIME_FILTER)).toBe(false);
+  });
+
+  test('改名后的组织控件仍识别，不要求 key 为 organization', () => {
+    expect(isOrganizationFilterDefinition({
+      ...ORGANIZATION_FILTER,
+      id: 'org_id__string',
+      key: 'org_id',
+      inputMode: undefined,
+      inputConfig: { control: 'organization' },
+    })).toBe(true);
+  });
+
+  test('仅参数名为 organization 但控件不是组织时不识别', () => {
+    expect(isOrganizationFilterDefinition({
+      ...ORGANIZATION_FILTER,
+      inputMode: 'input',
+      inputConfig: { control: 'input' },
+    })).toBe(false);
   });
 
   test('用当前工作组织填入空的组织筛选，不改时间筛选', () => {
@@ -65,6 +84,41 @@ describe('applySelectedOrganizationToFilterValues', () => {
     const current = { organization__string: '3' };
     expect(
       applySelectedOrganizationToFilterValues([ORGANIZATION_FILTER], current, null),
+    ).toBe(current);
+  });
+
+  test('分享态用 space_id 作缺省组织，不用登录态工作组织', () => {
+    expect(resolveCanvasOrganizationId({
+      shareMode: true,
+      shareSpaceId: 8,
+      selectedGroupId: 99,
+    })).toBe(8);
+  });
+
+  test('非分享查看态用当前工作组织', () => {
+    expect(resolveCanvasOrganizationId({
+      shareMode: false,
+      selectedGroupId: 12,
+      shareSpaceId: 8,
+    })).toBe(12);
+  });
+
+  test('订阅渲染不回填组织', () => {
+    expect(resolveCanvasOrganizationId({
+      shareMode: false,
+      renderMode: true,
+      selectedGroupId: 12,
+      shareSpaceId: 8,
+    })).toBeUndefined();
+  });
+
+  test('分享态缺省填入 space_id，保留已选组织', () => {
+    const current = { organization__string: '3' };
+    expect(
+      fillMissingOrganizationFilterValues([ORGANIZATION_FILTER], {}, 8),
+    ).toEqual({ organization__string: '8' });
+    expect(
+      fillMissingOrganizationFilterValues([ORGANIZATION_FILTER], current, 8),
     ).toBe(current);
   });
 });

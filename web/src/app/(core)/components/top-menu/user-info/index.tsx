@@ -167,7 +167,7 @@ const UserInfo: React.FC = () => {
       await signOut({ redirect: false });
 
       // Build login page URL with current page as callback URL after successful login
-      const currentPageUrl = `${window.location.origin}${pathname}`;
+      const currentPageUrl = `${window.location.origin}${pathname || ''}${window.location.search}`;
       const loginUrl = `/auth/signin?callbackUrl=${encodeURIComponent(currentPageUrl)}`;
 
       // Redirect to login page
@@ -180,7 +180,7 @@ const UserInfo: React.FC = () => {
       clearAuthToken();
       await signOut({ redirect: false });
 
-      const currentPageUrl = `${window.location.origin}${pathname}`;
+      const currentPageUrl = `${window.location.origin}${pathname || ''}${window.location.search}`;
       const loginUrl = `/auth/signin?callbackUrl=${encodeURIComponent(currentPageUrl)}`;
       window.location.href = loginUrl;
     } finally {

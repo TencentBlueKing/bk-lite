@@ -19,6 +19,7 @@ export {
   isAppNavActive,
   isConsoleChromeException,
   isDetailChromeContext,
+  shouldHideConsoleChrome,
   shouldHideConsoleTopNav,
   resolveAppLandingHref,
   resolveAppNavigation,
@@ -29,3 +30,13 @@ export {
   shouldShowClassicSegmentedNav,
   splitOverflowApps,
 } from './resolve';
+export {
+  applySameOriginNavigation,
+  applyScreenAwareHref,
+  isScreenModeEnabled,
+  resolveSameOriginNavigation,
+  syncScreenModePersistence,
+  toSearchParams,
+  withScreenQuery,
+} from './screenMode';
+export { useScreenAwareRouter } from './useScreenAwareRouter';

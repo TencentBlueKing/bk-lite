@@ -11,6 +11,7 @@ import requests
 from django.http import JsonResponse
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
@@ -20,6 +21,10 @@ DINGTALK_ALLOWED_DOMAINS = [
     "oapi.dingtalk.com",
     "api.dingtalk.com",
 ]
+
+# 单进程内每个 Bot 只保留一个活动客户端；当前不保证多进程唯一性。
+_dingtalk_stream_clients: dict[int, object] = {}
+_dingtalk_stream_clients_lock = threading.RLock()
 
 
 def is_valid_dingtalk_url(url: str) -> bool:
@@ -424,41 +429,68 @@ def start_dingtalk_stream_client(bot_id, bot_chat_flow, dingtalk_config):
     Returns:
         bool: 是否成功启动
     """
+    failed_stage = "read_config"
     try:
         client_id = dingtalk_config.get("client_id")
         client_secret = dingtalk_config.get("client_secret")
 
         if not client_id or not client_secret:
-            logger.error(f"钉钉Stream启动失败：缺少client_id或client_secret，Bot {bot_id}")
+            logger.warning(
+                "event=dingtalk_stream_start_rejected bot_id=%s " "failed_stage=validate_config error_type=missing_credentials",
+                bot_id,
+            )
             return False
 
-        # 创建凭证和客户端
-        credential = dingtalk_stream.Credential(client_id, client_secret)
-        client = dingtalk_stream.DingTalkStreamClient(credential)
+        failed_stage = "acquire_start_lock"
+        with _dingtalk_stream_clients_lock:
+            if bot_id in _dingtalk_stream_clients:
+                logger.debug("event=dingtalk_stream_start_reused bot_id=%s", bot_id)
+                return True
 
-        # 注册事件处理器
-        client.register_all_event_handler(DingTalkStreamEventHandler(bot_id))
+            failed_stage = "build_client"
+            credential = dingtalk_stream.Credential(client_id, client_secret)
+            client = dingtalk_stream.DingTalkStreamClient(credential)
+            client.register_all_event_handler(DingTalkStreamEventHandler(bot_id))
 
-        # 注册回调处理器
-        callback_handler = DingTalkStreamCallbackHandler(bot_id, bot_chat_flow, dingtalk_config)
-        client.register_callback_handler(dingtalk_stream.ChatbotMessage.TOPIC, callback_handler)
+            callback_handler = DingTalkStreamCallbackHandler(bot_id, bot_chat_flow, dingtalk_config)
+            client.register_callback_handler(dingtalk_stream.ChatbotMessage.TOPIC, callback_handler)
 
-        # 在新线程中启动客户端
-        def start_client():
+            def start_client():
+                try:
+                    logger.debug("event=dingtalk_stream_client_starting bot_id=%s", bot_id)
+                    client.start_forever()
+                except Exception as error:
+                    logger.error(
+                        "event=dingtalk_stream_runtime_failed bot_id=%s " "failed_stage=start_forever error_type=%s",
+                        bot_id,
+                        type(error).__name__,
+                        exc_info=safe_exception_info(error),
+                    )
+                finally:
+                    with _dingtalk_stream_clients_lock:
+                        if _dingtalk_stream_clients.get(bot_id) is client:
+                            _dingtalk_stream_clients.pop(bot_id)
+                    logger.info("event=dingtalk_stream_client_exited bot_id=%s", bot_id)
+
+            thread = threading.Thread(target=start_client, daemon=True)
+            _dingtalk_stream_clients[bot_id] = client
+            failed_stage = "thread_start"
             try:
-                logger.info(f"钉钉Stream客户端启动中，Bot {bot_id}")
-                client.start_forever()
-            except Exception as e:
-                logger.error(f"钉钉Stream客户端运行异常，Bot {bot_id}，错误: {str(e)}")
-                logger.exception(e)
+                thread.start()
+            except Exception:
+                if _dingtalk_stream_clients.get(bot_id) is client:
+                    _dingtalk_stream_clients.pop(bot_id)
+                raise
 
-        thread = threading.Thread(target=start_client, daemon=True)
-        thread.start()
-
-        logger.info(f"钉钉Stream客户端已启动，Bot {bot_id}")
+        logger.info("event=dingtalk_stream_start_accepted bot_id=%s", bot_id)
         return True
 
-    except Exception as e:
-        logger.error(f"钉钉Stream客户端启动失败，Bot {bot_id}，错误: {str(e)}")
-        logger.exception(e)
+    except Exception as error:
+        logger.error(
+            "event=dingtalk_stream_start_failed bot_id=%s failed_stage=%s error_type=%s",
+            bot_id,
+            failed_stage,
+            type(error).__name__,
+            exc_info=safe_exception_info(error),
+        )
         return False

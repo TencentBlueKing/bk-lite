@@ -13,6 +13,7 @@ import { useCanvasShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import { ShareCanvasDetailProvider } from '@/app/ops-analysis/context/shareCanvasDetail';
 import { ShareDataSourceProvider } from '@/app/ops-analysis/context/shareDataSource';
 import { ShareModeProvider } from '@/app/ops-analysis/context/shareMode';
+import { ShareOrganizationProvider } from '@/app/ops-analysis/context/shareOrganization';
 import { ShareNetworkTopologyRuntimeProvider } from '@/app/ops-analysis/context/shareNetworkTopologyRuntime';
 import { OpsAnalysisProvider } from '@/app/ops-analysis/context/common';
 import { useTranslation } from '@/utils/i18n';
@@ -53,6 +54,13 @@ export default function ShareDashboardPage() {
   );
 
   const getDetailOverride = useCallback(async () => canvas, [canvas]);
+  const shareOrganization = useMemo(
+    () => ({
+      spaceId: canvas?.space_id,
+      groupTree: Array.isArray(canvas?.group_tree) ? canvas.group_tree : [],
+    }),
+    [canvas],
+  );
   const queryDataSource = useCallback(
     (
       dataSourceId: number,
@@ -149,9 +157,11 @@ export default function ShareDashboardPage() {
   let body = (
     <ShareCanvasDetailProvider value={getDetailOverride}>
       <ShareModeProvider value>
-        <OpsAnalysisProvider>
-          <main className="h-full w-full overflow-hidden">{content}</main>
-        </OpsAnalysisProvider>
+        <ShareOrganizationProvider value={shareOrganization}>
+          <OpsAnalysisProvider>
+            <main className="h-full w-full overflow-hidden">{content}</main>
+          </OpsAnalysisProvider>
+        </ShareOrganizationProvider>
       </ShareModeProvider>
     </ShareCanvasDetailProvider>
   );

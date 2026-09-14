@@ -56,6 +56,15 @@ class UnauthorizedException(BaseAppException):
     LOG_LEVEL = logging.ERROR
 
 
+class ForbiddenException(BaseAppException):
+    """已认证但无权访问，返回403。不得用 401，前端会把 401 当成登录过期。"""
+
+    ERROR_CODE = "4030001"
+    MESSAGE = "无权限访问"
+    STATUS_CODE = 403
+    LOG_LEVEL = logging.WARNING
+
+
 class ValidationAppException(BaseAppException):
     """校验失败异常，返回400状态码"""
 

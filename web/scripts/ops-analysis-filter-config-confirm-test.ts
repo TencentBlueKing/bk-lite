@@ -81,7 +81,7 @@ const buildRequestFromApplied = (
 
   assert.equal(
     appliedDefinitions[0].inputConfig &&
-      appliedDefinitions[0].inputConfig.control !== 'input' &&
+      appliedDefinitions[0].inputConfig.control === 'select' &&
       !appliedDefinitions[0].inputConfig.multiple,
     true,
     'Dashboard applied definition 应为 multiple=false',
@@ -141,7 +141,7 @@ const buildRequestFromApplied = (
   assert.equal(filterValues[hostFilterScalar.id], 'h1');
   assert.equal(
     appliedFilterDefinitions[0].inputConfig &&
-      appliedFilterDefinitions[0].inputConfig.control !== 'input' &&
+      appliedFilterDefinitions[0].inputConfig.control === 'select' &&
       !appliedFilterDefinitions[0].inputConfig.multiple,
     true,
   );

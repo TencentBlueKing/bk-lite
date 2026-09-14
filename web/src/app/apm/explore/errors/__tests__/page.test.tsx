@@ -79,6 +79,7 @@ describe('APM 错误页信息层级', () => {
     renderWithApmIntl(<ApmErrorsPage />);
 
     expect(await screen.findByText('PaymentError')).not.toBeNull();
+    expect(screen.getByText('已加载 1 类错误')).not.toBeNull();
     expect(screen.getByText('card declined')).not.toBeNull();
     expect(screen.getByText('完整堆栈与分布')).not.toBeNull();
     expect(document.querySelector('details pre')?.textContent).toContain('at charge(payment.py:42)');

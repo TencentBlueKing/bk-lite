@@ -7,6 +7,7 @@ from apps.alerts.constants import AlarmStrategyType, HeartbeatActivationMode, He
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.utils.enrichment import is_enrichment_path
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
+from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 from apps.alerts.utils.util import parse_aggregation_window_size
 
 # 允许的聚合维度白名单（防止 SQL 注入）
@@ -40,6 +41,9 @@ def is_allowed_dimension(dimension: str) -> bool:
 
 class AlarmStrategySerializer(serializers.ModelSerializer):
     """聚合规则序列化器"""
+
+    def validate_match_rules(self, value):
+        return validate_rules_for_serializer(value, "correlation")
 
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)

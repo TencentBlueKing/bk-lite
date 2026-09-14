@@ -1,0 +1,108 @@
+# HELP os_info FreeBSD uname version and architecture
+# TYPE os_info gauge
+os_info{instance_id="sample-1",os_type="freebsd",os_version="14.1-RELEASE",arch="amd64",machine="amd64"} 1 1700000000000
+# HELP cpu_usage_total CPU usage percentage (user+sys+iowait)
+# TYPE cpu_usage_total gauge
+cpu_usage_total{instance_id="sample-1",os_type="freebsd"} 12.5 1700000000000
+# HELP host_cpu_usage_percent CPU usage percentage
+# TYPE host_cpu_usage_percent gauge
+host_cpu_usage_percent{instance_id="sample-1",os_type="freebsd"} 12.5 1700000000000
+# HELP cpu_usage_user_total CPU user usage percentage
+# TYPE cpu_usage_user_total gauge
+cpu_usage_user_total{instance_id="sample-1",os_type="freebsd"} 8.0 1700000000000
+# HELP cpu_usage_system_total CPU system usage percentage
+# TYPE cpu_usage_system_total gauge
+cpu_usage_system_total{instance_id="sample-1",os_type="freebsd"} 4.5 1700000000000
+# HELP cpu_usage_iowait_total CPU iowait usage percentage
+# TYPE cpu_usage_iowait_total gauge
+cpu_usage_iowait_total{instance_id="sample-1",os_type="freebsd"} 0 1700000000000
+# HELP mem_total Memory total bytes
+# TYPE mem_total gauge
+mem_total{instance_id="sample-1",os_type="freebsd"} 8589934592 1700000000000
+# HELP mem_used_percent Memory used percent
+# TYPE mem_used_percent gauge
+mem_used_percent{instance_id="sample-1",os_type="freebsd"} 50.0 1700000000000
+# HELP host_mem_used_percent Memory used percent
+# TYPE host_mem_used_percent gauge
+host_mem_used_percent{instance_id="sample-1",os_type="freebsd"} 50.0 1700000000000
+# HELP mem_swap_free Swap free bytes
+# TYPE mem_swap_free gauge
+mem_swap_free{instance_id="sample-1",os_type="freebsd"} 1073741824 1700000000000
+# HELP mem_swap_total Swap total bytes
+# TYPE mem_swap_total gauge
+mem_swap_total{instance_id="sample-1",os_type="freebsd"} 2147483648.0 1700000000000
+# HELP disk_total Disk total bytes
+# TYPE disk_total gauge
+disk_total{instance_id="sample-1",os_type="freebsd",mount="/",path="/",fstype="ufs"} 100.0 1700000000000
+# HELP disk_free Disk free bytes
+# TYPE disk_free gauge
+disk_free{instance_id="sample-1",os_type="freebsd",mount="/",path="/",fstype="ufs"} 60.0 1700000000000
+# HELP disk_used_percent Disk used percent
+# TYPE disk_used_percent gauge
+disk_used_percent{instance_id="sample-1",os_type="freebsd",mount="/",path="/",fstype="ufs"} 40 1700000000000
+# HELP host_disk_used_percent Disk used percent
+# TYPE host_disk_used_percent gauge
+host_disk_used_percent{instance_id="sample-1",os_type="freebsd",mount="/",path="/",fstype="ufs"} 40 1700000000000
+# HELP disk_inodes_used_percent Disk inode used percent
+# TYPE disk_inodes_used_percent gauge
+disk_inodes_used_percent{instance_id="sample-1",os_type="freebsd",mount="/",path="/",fstype="ufs"} 10 1700000000000
+# HELP disk_iused Used inode count
+# TYPE disk_iused gauge
+disk_iused{instance_id="sample-1",os_type="freebsd",mount="/",path="/",fstype="ufs"} 1 1700000000000
+# HELP disk_ifree Free inode count
+# TYPE disk_ifree gauge
+disk_ifree{instance_id="sample-1",os_type="freebsd",mount="/",path="/",fstype="ufs"} 9 1700000000000
+# HELP disk_total Disk total bytes
+# TYPE disk_total gauge
+disk_total{instance_id="sample-1",os_type="freebsd",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird",fstype="ufs"} 200.0 1700000000000
+# HELP disk_free Disk free bytes
+# TYPE disk_free gauge
+disk_free{instance_id="sample-1",os_type="freebsd",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird",fstype="ufs"} 150.0 1700000000000
+# HELP disk_used_percent Disk used percent
+# TYPE disk_used_percent gauge
+disk_used_percent{instance_id="sample-1",os_type="freebsd",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird",fstype="ufs"} 25 1700000000000
+# HELP host_disk_used_percent Disk used percent
+# TYPE host_disk_used_percent gauge
+host_disk_used_percent{instance_id="sample-1",os_type="freebsd",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird",fstype="ufs"} 25 1700000000000
+# HELP disk_inodes_used_percent Disk inode used percent
+# TYPE disk_inodes_used_percent gauge
+disk_inodes_used_percent{instance_id="sample-1",os_type="freebsd",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird",fstype="ufs"} 5 1700000000000
+# HELP disk_iused Used inode count
+# TYPE disk_iused gauge
+disk_iused{instance_id="sample-1",os_type="freebsd",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird",fstype="ufs"} 2 1700000000000
+# HELP disk_ifree Free inode count
+# TYPE disk_ifree gauge
+disk_ifree{instance_id="sample-1",os_type="freebsd",mount="/mnt/data\"q /weird",path="/mnt/data\"q /weird",fstype="ufs"} 38 1700000000000
+# HELP net_bytes_recv Network received bytes counter
+# TYPE net_bytes_recv gauge
+net_bytes_recv{instance_id="sample-1",os_type="freebsd",interface="em0"} 1000 1700000000000
+# HELP net_bytes_sent Network transmitted bytes counter
+# TYPE net_bytes_sent gauge
+net_bytes_sent{instance_id="sample-1",os_type="freebsd",interface="em0"} 2000 1700000000000
+# HELP net_err_in Network receive errors counter
+# TYPE net_err_in gauge
+net_err_in{instance_id="sample-1",os_type="freebsd",interface="em0"} 1 1700000000000
+# HELP net_err_out Network transmit errors counter
+# TYPE net_err_out gauge
+net_err_out{instance_id="sample-1",os_type="freebsd",interface="em0"} 0 1700000000000
+# HELP diskio_read_bytes Disk read bytes from iostat interval sample
+# TYPE diskio_read_bytes gauge
+diskio_read_bytes{instance_id="sample-1",os_type="freebsd",device="ada0"} 8192 1700000000000
+# HELP diskio_write_bytes Disk write bytes from iostat interval sample
+# TYPE diskio_write_bytes gauge
+diskio_write_bytes{instance_id="sample-1",os_type="freebsd",device="ada0"} 4096 1700000000000
+# HELP disk_tm_act Disk busy percent from iostat %b
+# TYPE disk_tm_act gauge
+disk_tm_act{instance_id="sample-1",os_type="freebsd",device="ada0"} 3.5 1700000000000
+# HELP system_uptime System uptime seconds
+# TYPE system_uptime gauge
+system_uptime{instance_id="sample-1",os_type="freebsd"} 3600 1700000000000
+# HELP system_load1 System load 1 minute
+# TYPE system_load1 gauge
+system_load1{instance_id="sample-1",os_type="freebsd"} 0.2 1700000000000
+# HELP system_load5 System load 5 minutes
+# TYPE system_load5 gauge
+system_load5{instance_id="sample-1",os_type="freebsd"} 0.3 1700000000000
+# HELP system_load15 System load 15 minutes
+# TYPE system_load15 gauge
+system_load15{instance_id="sample-1",os_type="freebsd"} 0.4 1700000000000

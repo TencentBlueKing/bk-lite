@@ -9,7 +9,6 @@ from django.utils import timezone
 from apps.alerts.constants.constants import AlertOperate, AlertStatus, LogAction, LogTargetType
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
-from apps.alerts.service.base import get_default_notify_params
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.operator_scope import validate_alert_assignees, validate_usernames_in_groups
 from apps.core.logger import alert_logger as logger
@@ -223,8 +222,8 @@ class AlertOperator(object):
 
             transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "assigned"))
 
-            # 通知分流：auto-dispatch(有策略) 严格按勾选的通知方式发(勾哪个发哪个,含 opspilot)；
-            # manual(无策略) 维持默认邮件。
+            # 通知分流：auto-dispatch(有策略)严格按策略配置发送；
+            # manual(无有效策略)使用当前团队唯一的告警操作通知模板。
             if assignment:
                 notify_param = self.format_assignment_notify_data(assignment, assignee, alert)
             else:
@@ -430,14 +429,19 @@ class AlertOperator(object):
                 AlertStatus.PENDING,
             )
 
-            notify_param = self.format_notify_data(new_assignee, alert)
+            notify_param = self.format_notify_data(
+                new_assignee,
+                alert,
+                scene="reassignment",
+                previous_assignee=old_assignee,
+            )
             if notify_param:
                 from apps.alerts.common.notify.dispatcher import enqueue_notifications
 
                 enqueue_notifications(notify_param)
             else:
                 logger.warning(
-                    "[AlertOperator] 未找到有效的email通知参数，邮件通知失败！alert_id=%s, assignee=%s",
+                    "[AlertOperator] 未找到有效的告警操作通知配置，通知失败！alert_id=%s, assignee=%s",
                     alert_id,
                     new_assignee,
                 )
@@ -634,22 +638,41 @@ class AlertOperator(object):
                 },
             }
 
-    def format_notify_data(self, assignee, alert):
+    def format_notify_data(self, assignee, alert, scene="assignment", previous_assignee=None):
         """
         格式化通知数据。走统一通知出口,返回 sync_notify 期望的 list[dict];
         无渠道或无接收人 → 返回 []。
         """
         from apps.alerts.common.notify.dispatcher import build_channel_params
+        from apps.alerts.notification_templates.operation import get_alert_operation_channel
 
-        channel, channel_id = get_default_notify_params()
-        if not channel_id:
+        selected_channel = get_alert_operation_channel(alert)
+        if not selected_channel:
             return []
-        user_list = [i for i in assignee if i != self.user]
+        actor_name = "系统" if str(self.user).lower() == "system" else str(self.user or "系统")
+        receiver_names = "、".join(str(item) for item in assignee)
+        previous_receiver_names = "、".join(str(item) for item in (previous_assignee or []))
+        if scene == "reassignment":
+            action_summary = f"该告警已由 {actor_name} 从 {previous_receiver_names or '—'} 转派给 {receiver_names}，" "请新的处理人及时认领并处理。"
+        else:
+            action_summary = f"该告警已由 {actor_name} 分派给 {receiver_names}，请及时认领并处理。"
+        action_time = getattr(alert, "updated_at", None)
+        if action_time:
+            if timezone.is_aware(action_time):
+                action_time = timezone.localtime(action_time)
+            action_time = action_time.strftime("%Y-%m-%d %H:%M:%S")
         return build_channel_params(
-            user_list,
-            [{"channel_type": channel, "id": channel_id}],
+            list(assignee),
+            [selected_channel],
             [alert],
             alert.alert_id,
+            scene=scene,
+            notification_context={
+                "action_summary": action_summary,
+                "actor_name": actor_name,
+                "previous_receiver_names": previous_receiver_names,
+                "action_time": action_time or "",
+            },
         )
 
     def format_assignment_notify_data(self, assignment, assignee, alert):
@@ -672,7 +695,7 @@ class AlertOperator(object):
             channels,
             user_list,
         )
-        params = build_channel_params(user_list, channels, [alert], alert.alert_id)
+        params = build_channel_params(user_list, channels, [alert], alert.alert_id, scene="assignment")
         logger.info(
             "[AlertNotify] 分派通知构造结果: alert_id=%s, 参数数=%s, 渠道=%s",
             alert.alert_id,

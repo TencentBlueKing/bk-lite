@@ -578,7 +578,7 @@
             "value": "",
             "alias_name": "组织",
             "filterType": "filter",
-            "inputMode": "organization"
+            "inputConfig": { "control": "organization" }
         }
     ],
     "field_schema": [

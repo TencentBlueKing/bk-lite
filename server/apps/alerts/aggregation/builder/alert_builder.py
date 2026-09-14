@@ -10,6 +10,7 @@ from apps.alerts.enrichment.merge import merge_namespace_payload
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
+from apps.alerts.service.monitor_sources import collect_push_source_ids
 from apps.alerts.utils.enrichment import resolve_data_path
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
@@ -170,6 +171,7 @@ class AlertBuilder:
         if not event_list:
             return {
                 "source_name": None,
+                "push_source_ids": [],
                 "resource_id": None,
                 "resource_name": None,
                 "resource_type": None,
@@ -181,6 +183,7 @@ class AlertBuilder:
 
         return {
             "source_name": AlertBuilder._get_unique_scalar_value([event.source.name for event in event_list]),
+            "push_source_ids": collect_push_source_ids(event_list),
             "resource_id": AlertBuilder._get_unique_scalar_value([event.resource_id for event in event_list]),
             "resource_name": AlertBuilder._get_unique_scalar_value([event.resource_name for event in event_list]),
             "resource_type": AlertBuilder._get_unique_scalar_value([event.resource_type for event in event_list]),
@@ -287,6 +290,7 @@ class AlertBuilder:
             resource_type=standard_fields["resource_type"],
             monitor_objects=monitor_objects,
             source_name=standard_fields["source_name"],
+            push_source_ids=standard_fields["push_source_ids"],
             group_by_field=group_by_field,
             dimensions=dimensions,
             is_session_alert=is_session_alert,
@@ -317,6 +321,8 @@ class AlertBuilder:
         event_ids: List,
         strategy: AlarmStrategy,
     ) -> Alert:
+        # 与恢复事件关联、历史回填共用 Alert 行锁；锁内重读快照。
+        alert = Alert.objects.select_for_update().get(pk=alert.pk)
         alert.last_event_time = result["last_event_time"]
         # 确保level在ALERT类型的有效范围内
         alert.level = AlertBuilder._map_event_level_to_alert(result["alert_level"])
@@ -331,18 +337,13 @@ class AlertBuilder:
                 alert.session_end_time = window_config.get_session_end_time()
 
         if event_ids:
-            # 性能优化：使用类级别缓存避免重复查询已关联的event_id
-            if alert.pk not in AlertBuilder._alert_event_cache:
-                AlertBuilder._alert_event_cache[alert.pk] = set(alert.events.values_list("event_id", flat=True))
-
-            existing_event_ids = AlertBuilder._alert_event_cache[alert.pk]
+            # 事务回滚不会回滚进程缓存；锁内以数据库关系为准，保证重试不会漏关联。
+            existing_event_ids = set(alert.events.filter(event_id__in=event_ids).values_list("event_id", flat=True))
             new_event_ids = [eid for eid in event_ids if eid not in existing_event_ids]
 
             if new_event_ids:
                 new_events = Event.objects.filter(event_id__in=new_event_ids)
                 alert.events.add(*new_events)
-                # 更新缓存
-                existing_event_ids.update(new_event_ids)
 
         related_events = alert.events.select_related("source").all().order_by("pk")
         standard_fields = AlertBuilder._resolve_standard_fields(related_events)
@@ -352,6 +353,7 @@ class AlertBuilder:
             alert.group_by_field or "",
         )
         alert.source_name = standard_fields["source_name"]
+        alert.push_source_ids = standard_fields["push_source_ids"]
         alert.resource_id = standard_fields["resource_id"]
         alert.resource_name = standard_fields["resource_name"]
         alert.resource_type = standard_fields["resource_type"]
@@ -367,6 +369,7 @@ class AlertBuilder:
                 "updated_at",
                 "session_end_time",
                 "source_name",
+                "push_source_ids",
                 "resource_id",
                 "resource_name",
                 "resource_type",

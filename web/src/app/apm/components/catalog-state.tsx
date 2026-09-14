@@ -15,12 +15,17 @@ export interface CatalogStateProps {
   onRetry?: () => void;
   retryLoading?: boolean;
   compact?: boolean;
+  error?: unknown;
 }
 
 export function catalogErrorKind(error: unknown): Exclude<CatalogStateKind, 'loading' | 'empty'> {
   if (error instanceof HandledRequestError && error.status === 403) return 'forbidden';
   if (error instanceof HandledRequestError && error.status === 503) return 'degraded';
   return 'error';
+}
+
+export function isTelemetryCapacityError(error: unknown): boolean {
+  return error instanceof HandledRequestError && error.code === 'query_too_large';
 }
 
 export default function CatalogState({
@@ -31,11 +36,15 @@ export default function CatalogState({
   onRetry,
   retryLoading = false,
   compact = false,
+  error,
 }: CatalogStateProps) {
   const { t } = useTranslation();
+  const capacity = kind === 'degraded' && isTelemetryCapacityError(error);
   const defaultTitle: Record<Exclude<CatalogStateKind, 'loading' | 'empty'>, string> = {
     forbidden: t('apm.catalog.forbiddenTitle', '无权访问当前组织的 APM 数据'),
-    degraded: t('apm.catalog.degradedTitle', '遥测存储暂不可用'),
+    degraded: capacity
+      ? t('apm.catalog.capacityTitle', '本次查询数据量过大')
+      : t('apm.catalog.degradedTitle', '遥测存储暂不可用'),
     error: t('apm.catalog.errorTitle', 'APM 数据加载失败'),
   };
 
@@ -85,7 +94,9 @@ export default function CatalogState({
         status={kind === 'degraded' ? 'warning' : 'error'}
         title={title ?? defaultTitle[kind]}
         subTitle={description ?? (kind === 'degraded'
-          ? t('apm.catalog.degradedDescription', '目录元数据仍然可用，请稍后重试遥测查询。')
+          ? (capacity
+            ? t('apm.catalog.capacityDescription', '请缩小时间窗后重试。目录与已加载指标仍然可用。')
+            : t('apm.catalog.degradedDescription', '目录元数据仍然可用，请稍后重试遥测查询。'))
           : t('apm.catalog.errorDescription', '请检查筛选条件或网络状态后重试。'))}
         extra={recoveryAction}
       />

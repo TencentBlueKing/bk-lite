@@ -13,13 +13,13 @@ export default function SigninPageFrame({ title, children }: SigninPageFrameProp
   const { logoUrl, portalName } = usePortalBranding();
 
   return (
-    <div className="grid min-h-screen w-[calc(100%+2rem)] -m-4 overflow-y-auto bg-[#f5f7fb] lg:grid-cols-[minmax(0,1fr)_clamp(420px,26vw,460px)]">
+    <div className="grid min-h-screen w-[calc(100%+2rem)] -m-4 overflow-y-auto bg-[var(--color-bg-1)] lg:grid-cols-[minmax(0,1fr)_clamp(420px,26vw,460px)]">
       <aside
         aria-hidden="true"
         className="hidden min-h-screen bg-cover bg-center bg-no-repeat lg:block"
         style={{ backgroundImage: "url('/system-login-bg-plain.jpg')" }}
       />
-      <main className="relative flex min-h-screen flex-col bg-[radial-gradient(ellipse_at_center,rgba(224,235,255,0.38)_0%,rgba(245,247,251,0)_68%)] px-5 py-5 sm:px-8 sm:py-8 lg:px-7 lg:py-8 lg:shadow-[-10px_0_24px_rgba(31,55,87,0.08)]">
+      <main className="relative flex min-h-screen flex-col bg-[var(--color-bg-1)] px-5 py-5 sm:px-8 sm:py-8 lg:px-7 lg:py-8 lg:shadow-[-10px_0_24px_var(--color-fill-4)]">
         <header className="flex items-center justify-between gap-3">
           <h1
             className="min-w-0 truncate text-lg font-semibold text-(--color-text-1)"

@@ -71,6 +71,47 @@ def test_red_endpoint_requires_one_environment_and_does_not_mix_views(apm_api_cl
     assert metric_query.call_args.args[0].include_breakdown is True
 
 
+def test_red_endpoint_honors_include_breakdown_false(apm_api_client, mocker):
+    service = _service()
+    metric_query = mocker.patch(
+        "apps.apm.views.control_plane.DjangoTelemetryQueryService.service_red",
+        return_value=ServiceRed(request_rate=1, error_rate=0, p95_ms=10, p99_ms=20),
+    )
+
+    response = apm_api_client.get(
+        f"/api/v1/apm/services/{service.id}/metrics/",
+        {"environment": "production", "include_breakdown": "false"},
+    )
+
+    assert response.status_code == 200
+    assert metric_query.call_args.args[0].include_breakdown is False
+
+
+def test_red_batch_queries_visible_services_in_one_request(apm_api_client, mocker):
+    service = _service()
+    metric_query = mocker.patch(
+        "apps.apm.views.control_plane.DjangoTelemetryQueryService.service_red",
+        return_value=ServiceRed(request_rate=2, error_rate=0, p95_ms=10, p99_ms=20),
+    )
+
+    response = apm_api_client.post(
+        "/api/v1/apm/services/metrics/batch/",
+        {
+            "started_at": timezone.now().isoformat(),
+            "ended_at": (timezone.now() + timedelta(minutes=1)).isoformat(),
+            "include_breakdown": True,
+            "targets": [{"service_id": str(service.id), "environment": "production"}],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["items"][0]["ok"] is True
+    assert response.data["items"][0]["service_id"] == str(service.id)
+    assert metric_query.call_count == 1
+    assert metric_query.call_args.args[0].include_breakdown is True
+
+
 def test_red_endpoint_passes_the_selected_endpoint_to_the_bounded_query(apm_api_client, mocker):
     service = _service()
     metric_query = mocker.patch(

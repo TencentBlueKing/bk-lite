@@ -15,9 +15,15 @@ export const shouldHideConsoleTopNav = (pathname: string | null | undefined): bo
   return (
     pathname.startsWith('/opspilot/studio/chat')
     || pathname.startsWith('/opspilot/skill/chat')
+    || pathname.startsWith('/ops-analysis/share/')
     || pathname.startsWith('/opspilot/memory/document')
   );
 };
+
+export const shouldHideConsoleChrome = (
+  pathname: string | null | undefined,
+  screenMode = false,
+): boolean => screenMode || shouldHideConsoleTopNav(pathname);
 
 export const isConsoleChromeException = (pathname: string | null | undefined): boolean => {
   if (!pathname) {
@@ -29,7 +35,6 @@ export const isConsoleChromeException = (pathname: string | null | undefined): b
     || pathname === '/no-permission'
     || pathname === '/no-found'
     || shouldHideConsoleTopNav(pathname)
-    || pathname.startsWith('/ops-analysis/share/')
     || pathname.startsWith('/ops-analysis/render/execution/')
     || pathname.startsWith('/monitor/view/dashboard/')
     || pathname.startsWith('/ops-console')

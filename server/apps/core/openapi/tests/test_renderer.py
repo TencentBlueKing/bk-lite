@@ -61,12 +61,8 @@ def test_good_entry_full_structure(env):
     # 注入共享密钥的同时必须清除调用方的平台凭据，避免上游拿到 API 令牌后冒充调用方
     assert inject == {"X-BK-Gateway-Auth": "s3cret", "Authorization": ""}
 
-    assert http["middlewares"]["openapi-itsm-strip-v1"]["stripPrefix"]["prefixes"] == [
-        "/openapi/v1/itsm"
-    ]
-    assert http["services"]["openapi-itsm"]["loadBalancer"]["servers"] == [
-        {"url": "http://itsm-svc:8000"}
-    ]
+    assert http["middlewares"]["openapi-itsm-strip-v1"]["stripPrefix"]["prefixes"] == ["/openapi/v1/itsm"]
+    assert http["services"]["openapi-itsm"]["loadBalancer"]["servers"] == [{"url": "http://itsm-svc:8000"}]
 
 
 def test_service_token_mode_injects_authorization(env):
@@ -74,9 +70,7 @@ def test_service_token_mode_injects_authorization(env):
     entry.pop("shared_secret_ref")
     config, report = render_one(entry)
     assert report["rendered"] == ["itsm"]
-    inject = config["http"]["middlewares"]["openapi-itsm-inject"]["headers"][
-        "customRequestHeaders"
-    ]
+    inject = config["http"]["middlewares"]["openapi-itsm-inject"]["headers"]["customRequestHeaders"]
     assert inject == {"Authorization": "Bearer tok-abc"}
 
 
@@ -84,10 +78,7 @@ def test_no_paths_renders_whole_prefix(env):
     entry = dict(GOOD)
     entry.pop("paths")
     config, _ = render_one(entry)
-    assert (
-        config["http"]["routers"]["openapi-v1-itsm"]["rule"]
-        == "PathPrefix(`/openapi/v1/itsm`)"
-    )
+    assert config["http"]["routers"]["openapi-v1-itsm"]["rule"] == "PathPrefix(`/openapi/v1/itsm`)"
 
 
 def test_unknown_fields_ignored(env):
@@ -119,6 +110,41 @@ def test_bad_entries_skipped(env, mutation, reason_part):
     assert "routers" not in config["http"]
 
 
+@pytest.mark.parametrize(
+    "mutation, reason_part",
+    [
+        ({"schema_version": []}, "schema_version"),
+        ({"type": []}, "type"),
+        ({"auth_mode": {}}, "auth_mode"),
+    ],
+)
+def test_unhashable_enum_fields_skipped(env, mutation, reason_part):
+    """JSON list/dict 不可哈希：成员判断不得抛 TypeError，整条跳过。"""
+    entry = dict(GOOD, **mutation)
+    normalized, reason = renderer.validate_entry("itsm", entry)
+    assert normalized is None
+    assert reason_part in reason
+
+    config, report = render_one(entry)
+    assert report["rendered"] == []
+    assert reason_part in report["skipped"]["itsm"]
+    assert "routers" not in config["http"]
+
+
+def test_unhashable_entry_does_not_abort_batch(env):
+    """一条不可哈希枚举不得中断同批合法条目的渲染。"""
+    config, report = renderer.render_traefik_config(
+        {
+            "broken": dict(GOOD, schema_version=[]),
+            "itsm": dict(GOOD),
+        }
+    )
+    assert "itsm" in report["rendered"]
+    assert "schema_version" in report["skipped"]["broken"]
+    assert "openapi-v1-itsm" in config["http"]["routers"]
+    assert "openapi-v1-broken" not in config["http"].get("routers", {})
+
+
 def test_disabled_entry_skipped_quietly(env):
     _, report = render_one(dict(GOOD, enabled=False))
     assert report["skipped"]["itsm"] == "disabled"
@@ -142,11 +168,11 @@ def test_reserved_name_rejected(env):
 @pytest.mark.parametrize(
     "host, allowed",
     [
-        ("itsm-svc", True),           # 精确匹配
-        ("a.itsm-svc", True),         # 点边界后缀
-        ("evil-itsm-svc", False),     # 同尾但非点边界，必须拒绝
+        ("itsm-svc", True),  # 精确匹配
+        ("a.itsm-svc", True),  # 点边界后缀
+        ("evil-itsm-svc", False),  # 同尾但非点边界，必须拒绝
         ("xitsm-svc", False),
-        ("svc.internal", True),       # allowlist 中的 .internal 后缀
+        ("svc.internal", True),  # allowlist 中的 .internal 后缀
         ("evilinternal", False),
     ],
 )
@@ -226,6 +252,7 @@ def clock(monkeypatch):
             "config": None,
             "services": [],
             "entries": {},
+            "normalized": {},
             "checked_at": 0.0,
             "fetch_started_at": 0.0,
         },

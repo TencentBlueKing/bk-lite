@@ -23,7 +23,8 @@ import { findLabelById } from '@/app/monitor/utils/common';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PlusOutlined } from '@ant-design/icons';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
@@ -49,7 +50,7 @@ const Strategy: React.FC = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const commonContext = useCommon();
   const userList: UserItem[] = commonContext?.userList || [];
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { syncObjectId } = useMonitorObjectQuery();
   const instRef = useRef<ModalRef>(null);
   const policyAbortControllerRef = useRef<AbortController | null>(null);

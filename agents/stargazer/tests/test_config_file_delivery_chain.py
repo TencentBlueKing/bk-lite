@@ -83,7 +83,7 @@ async def test_telegraf_http_to_network_plugin_to_nats_callback_chain(monkeypatc
                 "cmdbusername": "readonly",
                 "cmdbpassword": "test-secret",
                 "cmdbdevice_type": "cisco_ios",
-                "cmdbcommands": "show running-config",
+                "cmdbcommands": "b64:" + base64.urlsafe_b64encode(b"show running-config\nshow version").decode(),
                 "cmdbconfig_name": "running-config",
                 "cmdbcollect_task_id": "42",
                 "cmdbtarget_model_id": "switch",
@@ -159,7 +159,7 @@ async def test_telegraf_http_to_network_plugin_to_nats_callback_chain(monkeypatc
 
     assert metrics_called is False
     assert connection.closed is True
-    assert "show running-config" in connection.commands
+    assert connection.commands == ["terminal length 0", "show running-config", "show version"]
     assert len(callbacks) == 1
     payload, callback_params, _task_id = callbacks[0]
     assert callback_params["callback_subject"] == "receive_config_file_result"

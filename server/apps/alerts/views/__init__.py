@@ -5,18 +5,20 @@ Alerts Views
 统一导出所有视图集，保持向后兼容
 """
 
-# 告警源
-from .alert_source import AlertSourceModelViewSet
-from .open_api_k8s import K8sOpenAPIViewSet
-
 # 告警
 from .alert import AlertModelViewSet
 
+# 告警源
+from .alert_source import AlertSourceModelViewSet
+
+# 分派与屏蔽
+from .assignment_shield import AlertAssignmentModelViewSet, AlertShieldModelViewSet
+
+# 告警丰富
+from .enrichment import EnrichmentRuleModelViewSet
+
 # 事件
 from .event import EventModelViewSet
-
-# 告警等级
-from .level import LevelModelViewSet
 
 # 事故
 from .incident import IncidentModelViewSet
@@ -24,30 +26,22 @@ from .incident import IncidentModelViewSet
 # 事故协作更新
 from .incident_update import IncidentUpdateViewSet
 
-# 分派与屏蔽
-from .assignment_shield import (
-    AlertAssignmentModelViewSet,
-    AlertShieldModelViewSet,
-)
-
-# 系统设置
-from .system_setting import SystemSettingModelViewSet
+# 告警等级
+from .level import LevelModelViewSet
+from .notification_template import NotificationTemplateViewSet
+from .open_api_k8s import K8sOpenAPIViewSet
 
 # 操作日志
 from .operator_log import SystemLogModelViewSet
 
+# 接收器
+from .receiver import receiver_data, receiver_source_data, request_test
+
 # 策略
 from .strategy import AlarmStrategyModelViewSet
 
-# 告警丰富
-from .enrichment import EnrichmentRuleModelViewSet
-
-# 接收器
-from .receiver import (
-    receiver_data,
-    receiver_source_data,
-    request_test,
-)
+# 系统设置
+from .system_setting import SystemSettingModelViewSet
 
 __all__ = [
     # 告警源
@@ -73,6 +67,7 @@ __all__ = [
     "AlarmStrategyModelViewSet",
     # 告警丰富
     "EnrichmentRuleModelViewSet",
+    "NotificationTemplateViewSet",
     # 接收器
     "receiver_data",
     "receiver_source_data",

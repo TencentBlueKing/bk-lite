@@ -285,7 +285,7 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
     [
         ("python", '--no-index --find-links otel-python-wheels "opentelemetry-distro[otlp]"', "opentelemetry-instrument python app.py"),
         ("nodejs", "npm install --offline --save ./opentelemetry-js-auto.tgz", "node --require"),
-        ("java", "curl --fail --silent --show-error --location", "java -javaagent:./opentelemetry-javaagent.jar"),
+        ("java", "curl --fail --silent --show-error --location --insecure", "java -javaagent:./opentelemetry-javaagent.jar"),
         ("go", 'export GOPROXY="file://$(pwd)/.otel-go-sdk"', "Go 无通用零代码探针"),
         ("dotnet", ". \"$OTEL_DOTNET_AUTO_HOME/instrument.sh\"", "dotnet App.dll"),
     ],
@@ -332,6 +332,7 @@ def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_i
     )
 
     assert _PROBE_DOWNLOAD_URLS[language] in snippet.code
+    assert "--insecure" in snippet.code
     assert "github.com" not in snippet.code
     assert "pypi.org" not in snippet.code
     assert "npmjs" not in snippet.code

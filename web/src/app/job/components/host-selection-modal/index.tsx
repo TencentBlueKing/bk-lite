@@ -30,6 +30,7 @@ export interface FetchHostsParams {
   pageSize: number;
   filters?: SearchFilters;
   source: TargetSourceType;
+  signal: AbortSignal;
 }
 
 export interface FetchHostsResult {
@@ -90,11 +91,13 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedHostsMap, setSelectedHostsMap] = useState<Record<string, HostItem>>({});
   const fetchHostsRef = useRef(fetchHosts);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
   const pendingFilterSignatureRef = useRef<string | null>(null);
   const filterFields = useMemo<FieldConfig[]>(() => [
     {
-      name: 'ip',
-      label: t('job.ipAddress'),
+      name: 'keyword',
+      label: t('job.hostNameOrIp'),
       lookup_expr: 'icontains',
     },
     {
@@ -112,8 +115,18 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
     fetchHostsRef.current = fetchHosts;
   }, [fetchHosts]);
 
+  const cancelPendingRequest = useCallback(() => {
+    requestIdRef.current += 1;
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+  }, []);
+
   const fetchData = useCallback(
     async (page: number, nextPageSize: number, nextFilters?: SearchFilters) => {
+      cancelPendingRequest();
+      const controller = new AbortController();
+      const requestId = requestIdRef.current;
+      requestControllerRef.current = controller;
       setLoading(true);
       try {
         const result = await fetchHostsRef.current({
@@ -121,27 +134,40 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
           pageSize: nextPageSize,
           filters: nextFilters,
           source,
+          signal: controller.signal,
         });
+        if (requestId !== requestIdRef.current || controller.signal.aborted) return;
         setDataSource(result.items);
         setTotal(result.total);
       } catch {
+        if (requestId !== requestIdRef.current || controller.signal.aborted) return;
         setDataSource([]);
         setTotal(0);
       } finally {
-        setLoading(false);
+        if (requestId === requestIdRef.current) {
+          requestControllerRef.current = null;
+          setLoading(false);
+        }
       }
     },
-    [source],
+    [cancelPendingRequest, source],
   );
 
   useEffect(() => {
-    if (open) {
-      setFilters({});
-      setCurrentPage(1);
-      setPageSize(DEFAULT_PAGE_SIZE);
-      fetchData(1, DEFAULT_PAGE_SIZE);
+    if (!open) {
+      setLoading(false);
+      return;
     }
-  }, [fetchData, open]);
+
+    setFilters({});
+    setCurrentPage(1);
+    setPageSize(DEFAULT_PAGE_SIZE);
+    setDataSource([]);
+    setTotal(0);
+    void fetchData(1, DEFAULT_PAGE_SIZE);
+
+    return cancelPendingRequest;
+  }, [cancelPendingRequest, fetchData, open]);
 
   useEffect(() => {
     if (open) {

@@ -48,10 +48,12 @@ vi.mock('@/components/selection-preview-layout', () => ({
 vi.mock('@/components/custom-table', () => ({
   default: ({
     dataSource,
+    loading,
     rowSelection,
     pagination,
   }: {
     dataSource: HostItem[];
+    loading: boolean;
     rowSelection: {
       selectedRowKeys: React.Key[];
       preserveSelectedRowKeys?: boolean;
@@ -66,7 +68,7 @@ vi.mock('@/components/custom-table', () => ({
     const pageKeys = new Set(dataSource.map((host) => host.key));
 
     return (
-      <div>
+      <div data-testid="host-table" data-loading={String(loading)}>
         {dataSource.map((host) => (
           <button
             key={host.key}
@@ -111,7 +113,60 @@ const hostsByPage: Record<number, HostItem[]> = {
 };
 
 describe('JobHostSelectionModal cross-page selection', () => {
-  it('requests the IP filter once when Enter commits the search value', async () => {
+  it('cancels the previous request on close and starts a fresh loading cycle when reopened', async () => {
+    let resolveFirst!: (result: { items: HostItem[]; total: number }) => void;
+    let resolveSecond!: (result: { items: HostItem[]; total: number }) => void;
+    const firstResult = new Promise<{ items: HostItem[]; total: number }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResult = new Promise<{ items: HostItem[]; total: number }>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const request = vi.fn<JobHostSelectionModalProps['fetchHosts']>()
+      .mockReturnValueOnce(firstResult)
+      .mockReturnValueOnce(secondResult);
+    const renderModal = (open: boolean) => (
+      <JobHostSelectionModal
+        open={open}
+        selectedKeys={[]}
+        selectedHosts={[]}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        fetchHosts={request}
+      />
+    );
+
+    const { rerender } = render(renderModal(true));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    const firstSignal = request.mock.calls[0][0].signal;
+    expect(firstSignal).toBeInstanceOf(AbortSignal);
+    expect(screen.getByTestId('host-table').getAttribute('data-loading')).toBe('true');
+
+    rerender(renderModal(false));
+    await waitFor(() => {
+      expect(firstSignal?.aborted).toBe(true);
+      expect(screen.getByTestId('host-table').getAttribute('data-loading')).toBe('false');
+    });
+
+    rerender(renderModal(true));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    const secondSignal = request.mock.calls[1][0].signal;
+    expect(secondSignal).toBeInstanceOf(AbortSignal);
+    expect(secondSignal).not.toBe(firstSignal);
+    expect(secondSignal?.aborted).toBe(false);
+    expect(screen.getByTestId('host-table').getAttribute('data-loading')).toBe('true');
+
+    resolveFirst({ items: [{ ...hostsByPage[1][0], key: 'stale-host' }], total: 1 });
+    await Promise.resolve();
+    expect(screen.queryByRole('button', { name: 'select-stale-host' })).toBeNull();
+    expect(screen.getByTestId('host-table').getAttribute('data-loading')).toBe('true');
+
+    resolveSecond({ items: [{ ...hostsByPage[1][0], key: 'fresh-host' }], total: 1 });
+    expect(await screen.findByRole('button', { name: 'select-fresh-host' })).not.toBeNull();
+    expect(screen.getByTestId('host-table').getAttribute('data-loading')).toBe('false');
+  });
+
+  it('requests the active text filter once when Enter commits the search value', async () => {
     const user = userEvent.setup();
     const request = vi.fn<JobHostSelectionModalProps['fetchHosts']>(
       async () => ({ items: [], total: 0 }),
@@ -137,7 +192,7 @@ describe('JobHostSelectionModal cross-page selection', () => {
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
     expect(request).toHaveBeenLastCalledWith(expect.objectContaining({
       filters: {
-        ip: [{ lookup_expr: 'icontains', value: '10' }],
+        keyword: [{ lookup_expr: 'icontains', value: '10' }],
       },
     }));
   });

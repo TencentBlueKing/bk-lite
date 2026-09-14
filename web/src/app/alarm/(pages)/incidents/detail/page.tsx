@@ -45,6 +45,8 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { TimeLineItem } from '@/app/alarm/types/types';
 import { useUserInfoContext } from '@/context/userInfo';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { useAiPageContext } from '@/components/ai-page-context';
+import { buildIncidentDetailPageContext } from './incidentDetail.context';
 
 const { TabPane } = Tabs;
 
@@ -252,6 +254,44 @@ const IncidentDetail: React.FC = () => {
       .map(id => flatGroups.find(g => Number(g.id) === id)?.name || id)
       .join(', ');
   }, [preTeams, flatGroups]);
+
+  const incidentContextLabels = useMemo(
+    () => ({
+      level: (value?: string | number) =>
+        levelListIncident.find((item) => item.level_id === Number(value))
+          ?.level_display_name || String(value ?? '--'),
+      state: (value?: string) =>
+        (value ? STATE_MAP[value as keyof typeof STATE_MAP] : undefined) ||
+        value ||
+        '--',
+      formatTime: (value?: string) =>
+        value ? convertToLocalizedTime(value) : '--',
+      team: () => {
+        const text = getTeamDisplay();
+        return text && text !== '--' ? text : '';
+      },
+    }),
+    [STATE_MAP, convertToLocalizedTime, getTeamDisplay, levelListIncident],
+  );
+
+  useAiPageContext(
+    () =>
+      buildIncidentDetailPageContext({
+        visible: true,
+        pageLoading: loadingDetail,
+        alertLoading: tabLoading,
+        incident: incidentDetail,
+        alerts: tableData,
+        labels: incidentContextLabels,
+      }),
+    [
+      loadingDetail,
+      tabLoading,
+      incidentDetail,
+      tableData,
+      incidentContextLabels,
+    ],
+  );
 
   const onTabTableChange = useCallback(() => {
     fetchAlarmList();

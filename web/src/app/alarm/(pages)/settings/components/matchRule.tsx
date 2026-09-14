@@ -1,303 +1,104 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import styles from './match.module.scss';
-import { AlertSourceOption } from '@/app/alarm/types/integration';
-import { useSourceApi } from '@/app/alarm/api/integration';
 import { useTranslation } from '@/utils/i18n';
 import { Select, Button, Input } from 'antd';
-import { PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/alarm/context/common';
-import {
-  ruleList,
-  initialConditionLists,
-} from '@/app/alarm/constants/settings';
-import {
-  MatchRuleValue,
-  getMatchRuleOperatorOptions,
-  getMatchRuleValueAfterOperatorChange,
-  getMatchRuleValueSelectState,
-} from './matchRuleValue';
+import { type RuleScope, type RuleCondition, ruleFields, ruleField, operatorTranslation, invalidRuleCondition, isMultiOperator, normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
+import { MatchRuleValue } from './matchRuleValue';
+import MatchRuleHelp from './matchRuleHelp';
 
-const { Option } = Select;
-
-interface PolicyItem {
-  key: string | undefined;
-  operator: string | undefined;
-  value: MatchRuleValue;
-}
-
-interface MatchRuleProps {
+interface PolicyItem { key: string | undefined; operator: string | undefined; value: MatchRuleValue }
+export interface MatchRuleProps {
+  scope?: RuleScope;
   value?: PolicyItem[][];
   onChange?: (val: PolicyItem[][]) => void;
-  ruleOptions?: { name: string; verbose_name: string }[];
-  conditionOptions?: Record<string, { name: string; desc: string }[]>;
   levelType?: 'alert' | 'event' | 'incident';
-  enableLevelMultiSelect?: boolean;
+  monitorSourceField?: 'push_source_ids' | 'push_source_id';
 }
+const emptyCondition = (): PolicyItem => ({ key: undefined, operator: undefined, value: undefined });
 
-const RulesMatch: React.FC<MatchRuleProps> = ({
-  value,
-  onChange,
-  ruleOptions,
-  conditionOptions,
-  levelType = 'event',
-  enableLevelMultiSelect = false,
-}) => {
-  const { getAlertSourceOptions } = useSourceApi();
+const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange, scope: suppliedScope, levelType = 'event', monitorSourceField }) => {
+  const scope = suppliedScope || (monitorSourceField === 'push_source_ids' ? 'assignment' : 'enrichment');
   const { levelMeta } = useCommon();
   const { t } = useTranslation();
-  const [sourceList, setSourceList] = useState<AlertSourceOption[]>([]);
-  const [sourceLoading, setSourceLoading] = useState<boolean>(false);
-  const [policyList, setPolicyList] = useState<PolicyItem[][]>(
-    value || [
-      [
-        {
-          key: undefined,
-          operator: undefined,
-          value: undefined,
-        },
-      ],
-    ]
-  );
-  const policyItem: PolicyItem[] = [
-    {
-      key: undefined,
-      operator: undefined,
-      value: undefined,
-    },
-  ];
+  const [policyList, setPolicyList] = useState<PolicyItem[][]>(value?.length ? value : [[emptyCondition()]]);
   const levelOptions = levelMeta[levelType]?.list || [];
+  const publish = (next: PolicyItem[][]) => { setPolicyList(next); onChange?.(next); };
+  const change = (groupIndex: number, conditionIndex: number, update: Partial<RuleCondition>) =>
+    publish(policyList.map((group, g) => group.map((condition, c) => g === groupIndex && c === conditionIndex ? { ...condition, ...update } : condition)));
 
-  useEffect(() => {
-    if (value?.length) {
-      setPolicyList(value);
-    } else {
-      setPolicyList([
-        [
-          {
-            key: undefined,
-            operator: undefined,
-            value: undefined,
-          },
-        ],
-      ]);
-    }
-  }, [value]);
+  useEffect(() => { setPolicyList(value?.length ? value : [[emptyCondition()]]); }, [value]);
 
-  useEffect(() => {
-    fetchAlarmSource();
-  }, []);
 
-  const changeSelect = async (val: string, index: number, ind: number) => {
-    const updatedPolicyList = [...policyList];
-    const item = updatedPolicyList[index][ind];
-    item.key = val;
-    item.operator = undefined;
-    item.value = undefined;
-    setPolicyList(updatedPolicyList);
-    onChange?.(updatedPolicyList);
-  };
-
-  const addOr = () => {
-    const updated = [...policyList, JSON.parse(JSON.stringify(policyItem))];
-    setPolicyList(updated);
-    onChange?.(updated);
-  };
-
-  const deleteOr = (index: number) => {
-    const updated = [...policyList];
-    updated.splice(index, 1);
-    setPolicyList(updated);
-    onChange?.(updated);
-  };
-
-  const addAnd = (index: number) => {
-    const updated = [...policyList];
-    updated[index].push({ ...policyItem[0] });
-    setPolicyList(updated);
-    onChange?.(updated);
-  };
-
-  const deleteAnd = (index: number, ind: number) => {
-    const updated = [...policyList];
-    updated[index].splice(ind, 1);
-    setPolicyList(updated);
-    onChange?.(updated);
-  };
-
-  const fetchAlarmSource = async () => {
-    setSourceLoading(true);
-    try {
-      const data: AlertSourceOption[] = await getAlertSourceOptions();
-      if (data) setSourceList(data);
-      else console.error('获取告警源列表失败');
-    } finally {
-      setSourceLoading(false);
-    }
-  };
-
-  return (
-    <div className="pl-[2px] border-l border-[#c4c6cc] w-full ml-[10px] mb-[2px]">
-      {policyList.map?.((orItem, index) => (
-        <div key={index} className="relative -left-[15px] pb-[10px]">
-          <div className={`absolute text-center ${styles.ruleOr}`}>{t('common.or')}</div>
-          <div className="bg-[var(--color-bg-4)] ml-[33px] relative top-[15px]">
-            <div className="px-[12px] py-[12px] space-y-3">
-              {orItem.map((i, ind) => (
-                <div key={ind} className="relative">
-                  <div className={`ml-[8px] flex items-center`}>
-                    <div className={styles.ruleAnd}>{t('common.and')}</div>
-                    <div className={`${styles.ruleItem} mr-[4px]`}>
-                      <div className={styles.keySelect}>
-                        <Select
-                          allowClear
-                          value={i.key}
-                          placeholder={`${t('common.selectTip')}`}
-                          onChange={(value) => changeSelect(value, index, ind)}
-                        >
-                          {(ruleOptions || ruleList).map((item) => (
-                            <Option key={item.name} value={item.name}>
-                              {item.verbose_name}
-                            </Option>
-                          ))}
-                        </Select>
-                      </div>
-                      <div className={styles.condSelect}>
-                        <Select
-                          allowClear
-                          value={i.operator}
-                          placeholder={`${t('common.selectTip')}`}
-                          onChange={(value) => {
-                            const updatedPolicyList = [...policyList];
-                            const item = updatedPolicyList[index][ind];
-                            item.operator = value;
-                            item.value = getMatchRuleValueAfterOperatorChange(
-                              item.key,
-                              enableLevelMultiSelect,
-                              item.value,
-                            );
-                            setPolicyList(updatedPolicyList);
-                            onChange?.(updatedPolicyList);
-                          }}
-                        >
-                          {getMatchRuleOperatorOptions(
-                            i.key,
-                            enableLevelMultiSelect,
-                            (conditionOptions || initialConditionLists)[
-                              i.key as string
-                            ] || [],
-                          ).map((item) => (
-                              <Option key={item.name} value={item.name}>
-                                {item.desc}
-                              </Option>
-                          ))}
-                        </Select>
-                      </div>
-                      <div className={styles.valueInput}>
-                        {['level', 'source_id', 'source_name'].includes(i.key as string) ? (
-                          <Select
-                            mode={
-                              getMatchRuleValueSelectState(
-                                i.key,
-                                enableLevelMultiSelect,
-                                i.value,
-                              ).mode
-                            }
-                            value={
-                              getMatchRuleValueSelectState(
-                                i.key,
-                                enableLevelMultiSelect,
-                                i.value,
-                              ).value
-                            }
-                            showSearch
-                            loading={(i.key === 'source_id' || i.key === 'source_name') && sourceLoading}
-                            placeholder={`${t('common.selectTip')}`}
-                            onChange={(value) => {
-                              const updatedPolicyList = [...policyList];
-                              updatedPolicyList[index][ind].value = value;
-                              setPolicyList(updatedPolicyList);
-                              onChange?.(updatedPolicyList);
-                            }}
-                          >
-                            {i.key === 'level' &&
-                              levelOptions.map(
-                                ({ level_id, level_display_name }) => (
-                                  <Option key={level_id} value={level_id}>
-                                    {level_display_name}
-                                  </Option>
-                                ),
-                              )}
-                            {(i.key === 'source_id' || i.key === 'source_name') &&
-                              sourceList.map((source) => {
-                                // source_id 存 AlertSource.id（向后兼容老数据）；
-                                // source_name 存 AlertSource.name 字符串（推荐新规则用）。
-                                const optionValue =
-                                  i.key === 'source_name' ? String(source.name) : String(source.id);
-                                return (
-                                  <Option key={optionValue} value={optionValue}>
-                                    {source.name}
-                                  </Option>
-                                );
-                              })}
-                          </Select>
-                        ) : (
-                          <Input
-                            value={Array.isArray(i.value) ? undefined : i.value}
-                            placeholder={t('common.inputTip')}
-                            onChange={(e) => {
-                              const updatedPolicyList = [...policyList];
-                              updatedPolicyList[index][ind].value =
-                                e.target.value;
-                              setPolicyList(updatedPolicyList);
-                              onChange?.(updatedPolicyList);
-                            }}
-                          />
-                        )}
-                      </div>
-                      <span className={styles.action}>
-                        <PlusCircleOutlined
-                          title={t('common.addNew')}
-                          onClick={() => addAnd(index)}
-                        />
-                      </span>
-                      <span className={styles.action}>
-                        {orItem.length > 1 && (
-                          <MinusCircleOutlined
-                            title={t('common.delete')}
-                            onClick={() => deleteAnd(index, ind)}
-                          />
-                        )}
-                      </span>
-                    </div>
-
-                    {ind > 0 && (
-                      <div className="absolute left-[12px] -top-[20px] h-[25px] border-l border-[#c4c6cc]"></div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+  return <div className="w-full min-w-0 space-y-3">
+    {policyList.map((group, groupIndex) => <React.Fragment key={groupIndex}>
+      {groupIndex > 0 && <div className="flex items-center gap-3 text-xs text-[var(--color-text-3)]">
+        <span className="h-px flex-1 bg-[var(--color-border-1)]" />{t('common.or')}<span className="h-px flex-1 bg-[var(--color-border-1)]" />
+      </div>}
+      <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-4)] p-3">
+        <div className="mb-3 flex min-h-6 items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-xs text-[var(--color-text-3)]">{t('alarmCommon.allRuleConditions')}</span>
+            <MatchRuleHelp scope={scope} />
           </div>
-          <span
-            className={`${styles.action} absolute right-[-5px] top-[6px] z-10`}
-          >
-            {policyList.length > 1 && (
-              <MinusCircleOutlined onClick={() => deleteOr(index)} />
-            )}
-          </span>
+          {policyList.length > 1 && <Button type="text" size="small" icon={<DeleteOutlined />} aria-label={t('alarmCommon.removeRuleGroup')}
+            onClick={() => publish(policyList.filter((_, index) => index !== groupIndex))} />}
         </div>
-      ))}
-      <div className="relative -left-[15px] transform translate-y-[5px]">
-        <Button onClick={addOr} size="small" className="add-button">
-          <div className="relative text-[22px] text-[#979BA5] -top-[2px]">
-            +
-          </div>
-        </Button>
+        <div className="space-y-3">
+          {group.map((condition, conditionIndex) => {
+            const field = ruleField(condition.key, scope);
+            const operatorValid = !!field && (field.operators as readonly string[]).includes(condition.operator || '');
+            const invalid = invalidRuleCondition(condition, scope);
+            const updateValue = (value: MatchRuleValue) => change(groupIndex, conditionIndex, { value });
+            const enabled = !!field && operatorValid;
+            const multi = isMultiOperator(condition.operator);
+            const missing = condition.value === undefined || condition.value === '' || (Array.isArray(condition.value) && !condition.value.length);
+            return <div key={conditionIndex}>
+              <div className="flex flex-wrap items-start gap-2">
+                <div className="w-36 shrink-0">
+                  <Select className="w-full" popupMatchSelectWidth={220} allowClear value={field?.key}
+                    status={condition.key && !field ? 'error' : undefined} placeholder={t('common.selectTip')}
+                    options={ruleFields(scope).map(item => ({ value: item.key, label: t(`alarmCommon.ruleFields.${item.key}`) }))}
+                    onChange={key => change(groupIndex, conditionIndex, { key, operator: undefined, value: undefined })} />
+                </div>
+                <div className="w-48 shrink-0">
+                  <Select className="w-full" popupMatchSelectWidth={260} allowClear disabled={!field}
+                    value={operatorValid ? condition.operator : undefined} status={condition.operator && !operatorValid ? 'error' : undefined}
+                    placeholder={t('common.selectTip')} options={(field?.operators || []).map(operator => ({ value: operator, label: t(operatorTranslation(field?.key, operator)) }))}
+                    onChange={operator => change(groupIndex, conditionIndex, { operator, value: isMultiOperator(operator) === multi ? condition.value : undefined })} />
+                </div>
+                <div className="min-w-[180px] flex-1">
+                  {field?.options === 'level' ? <Select<string[]> className="w-full" mode="multiple" showSearch allowClear optionFilterProp="label"
+                    disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
+                    placeholder={t('common.selectTip')} status={invalid && !missing ? 'error' : undefined}
+                    options={levelOptions.map(level => ({ value: String(level.level_id), label: level.level_display_name }))}
+                    onChange={updateValue} />
+                  : multi ? <Select className="w-full" mode="tags" open={false} suffixIcon={null} options={[]} aria-label={t('alarmCommon.multiValueInput')}
+                    disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
+                    maxCount={50} maxLength={256} placeholder={t('alarmCommon.multiValuePlaceholder')}
+                    status={invalid && !missing ? 'error' : undefined}
+                    onChange={values => updateValue(normalizeRuleTags(values))} />
+                  : <Input disabled={!enabled} value={typeof condition.value === 'string' ? condition.value : ''}
+                      maxLength={256} placeholder={t('common.inputTip')} status={invalid && !missing ? 'error' : undefined}
+                      onChange={event => updateValue(event.target.value)} />}
+                </div>
+                <Button type="text" className="shrink-0" icon={<MinusCircleOutlined />} disabled={group.length === 1}
+                  aria-label={t('alarmCommon.removeRuleCondition')}
+                  onClick={() => publish(policyList.map((item, index) => index === groupIndex ? item.filter((_, index) => index !== conditionIndex) : item))} />
+              </div>
+              {((condition.key && !field) || (condition.operator && !operatorValid) || (!missing && invalid)) &&
+                <p role="alert" className="mb-0 mt-2 text-xs text-[var(--color-fail)]">{t('alarmCommon.invalidRuleCondition')}</p>}
+              {multi && operatorValid && <p className="mb-0 mt-2 text-xs leading-5 text-[var(--color-text-3)]">{t(`alarmCommon.multiHints.${condition.operator}${field?.type === 'list' && condition.operator === 'any_of' ? 'List' : ''}`)}</p>}
+            </div>;
+          })}
+        </div>
+        <Button type="link" size="small" className="mt-3 px-0" icon={<PlusOutlined aria-hidden />}
+          onClick={() => publish(policyList.map((item, index) => index === groupIndex ? [...item, emptyCondition()] : item))}>{t('alarmCommon.addRuleCondition')}</Button>
       </div>
-    </div>
-  );
+    </React.Fragment>)}
+    <Button type="dashed" block icon={<PlusOutlined aria-hidden />} onClick={() => publish([...policyList, [emptyCondition()]])}>{t('alarmCommon.addRuleGroup')}</Button>
+  </div>;
 };
-
 export default RulesMatch;

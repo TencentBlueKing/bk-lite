@@ -186,7 +186,11 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
 
         return {"result": True, "message": "Successfully sent email"}
     except Exception as e:
-        return {"result": False, "message": f"Error sending email: {str(e)}"}
+        return {
+            "result": False,
+            "message": f"Error sending email: {str(e)}",
+            "error_type": type(e).__name__,
+        }
 
 
 def send_by_wecom_bot(channel_obj: Channel, content, receivers):

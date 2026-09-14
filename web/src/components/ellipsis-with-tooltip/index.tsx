@@ -6,6 +6,9 @@ const OVERFLOW_MEASUREMENT_TOLERANCE = 1;
 export interface EllipsisWithTooltipProps {
   text: React.ReactNode;
   className?: string;
+  /** 溢出时的提示；自定义渲染时传纯文本，避免把截断节点再当标题。 */
+  tooltip?: React.ReactNode;
+  getPopupContainer?: (node: HTMLElement) => HTMLElement;
   /**
    * `hover` 保持原有行为；`interactive` 让实际溢出的文本也可通过
    * 键盘聚焦和点击查看完整内容。
@@ -16,6 +19,8 @@ export interface EllipsisWithTooltipProps {
 const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({
   text,
   className = '',
+  tooltip,
+  getPopupContainer,
   disclosure = 'hover',
 }) => {
   const textRef = useRef<HTMLDivElement>(null);
@@ -57,7 +62,8 @@ const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({
     <>
       {isOverflow ? (
         <Tooltip
-          title={text}
+          title={tooltip ?? text}
+          getPopupContainer={getPopupContainer}
           // 可聚焦元素在鼠标点击时会触发 focus；不再叠加 click trigger，
           // 避免同一次点击先打开又被 click toggle 关闭。
           trigger={disclosure === 'interactive' ? ['hover', 'focus'] : 'hover'}

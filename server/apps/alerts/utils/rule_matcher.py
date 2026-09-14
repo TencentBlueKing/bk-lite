@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from django.db.models import Q, QuerySet
 
 from apps.alerts.utils.enrichment import enrichment_orm_lookups, is_enrichment_path
+from apps.alerts.utils.multivalue_rules import MULTIVALUE_OPERATORS, build_multivalue_q
 from apps.core.logger import alert_logger as logger
 
 
@@ -56,7 +57,7 @@ class RuleMatcher:
             匹配的ID列表
         """
         if not match_rules:
-            return list(queryset.values_list("id", flat=True))
+            return list(queryset.values_list("id", flat=True).distinct())
 
         final_q = self._build_combined_q(match_rules)
 
@@ -66,7 +67,7 @@ class RuleMatcher:
             # 如果没有有效的规则，返回空结果集
             queryset = queryset.none()
 
-        return list(queryset.values_list("id", flat=True))
+        return list(queryset.values_list("id", flat=True).distinct())
 
     def _build_combined_q(self, match_rules: List[List[Dict[str, Any]]]) -> Optional[Q]:
         """
@@ -159,6 +160,8 @@ class RuleMatcher:
             return None
 
         try:
+            if operator in MULTIVALUE_OPERATORS:
+                return build_multivalue_q(model_field, operator, value)
             if operator == "eq":
                 if isinstance(value, list):
                     query = Q(**{f"{model_field}__in": value})

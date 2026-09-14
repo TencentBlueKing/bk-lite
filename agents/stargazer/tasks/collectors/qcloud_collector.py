@@ -94,10 +94,10 @@ class QCloudCollector(BaseCollector):
         username = self.params["username"]
         password = self.params["password"]
         minutes = self.params.get("minutes", 5)
+        host = self.params.get("host") or ""
+        task_id = self.params.get("collection_task_id") or self.params.get("task_id") or ""
         # 与 API 缺省一致：旧配置未传地域时仍采广州，避免无数据行为突变。
         regions = _parse_qcloud_regions(self.params.get("region"))
-
-        logger.info("[QCloud Collector] Minutes=%s Region=%s", minutes, ",".join(regions))
 
         # 获取时间范围
         end_time = datetime.datetime.now()
@@ -105,51 +105,63 @@ class QCloudCollector(BaseCollector):
         start_time_str = start_time.strftime("%Y-%m-%d %H:%M") + ":00"
         end_time_str = end_time.strftime("%Y-%m-%d %H:%M") + ":00"
 
-        logger.info("[QCloud Collector] Time range: %s to %s", start_time_str, end_time_str)
-
         metric_dict = {}
         total_resources_processed = 0
         listed_ok = False
+        object_type_count = 0
+        object_type_failed = 0
 
         for region in regions:
             driver = CMPDriver(username, password, "qcloud", region=region)
             try:
                 all_resources = driver.list_all_resources()
-            except Exception as e:
+            except Exception as err:
                 logger.exception(
-                    "event=qcloud_collect_failed Region=%s failed_stage=list_all_resources error_type=%s",
+                    "event=qcloud_collect_failed host=%s task_id=%s region=%s failed_stage=%s error_type=%s",
+                    host,
+                    task_id,
                     region,
-                    type(e).__name__,
+                    "list_all_resources",
+                    type(err).__name__,
                 )
                 continue
 
             listed_ok = True
             if not all_resources.get("data"):
-                logger.warning("[QCloud Collector] No resources found Region=%s", region)
+                logger.warning(
+                    "event=qcloud_collect_empty host=%s task_id=%s region=%s failed_stage=%s",
+                    host,
+                    task_id,
+                    region,
+                    "list_all_resources",
+                )
                 continue
-
-            total_resource_count = sum(len(resources) if resources else 0 for resources in all_resources.get("data", {}).values())
-            logger.info(
-                "[QCloud Collector] Connected Region=%s object_types=%s resources=%s",
-                region,
-                len(all_resources.get("data", {})),
-                total_resource_count,
-            )
 
             for object_id, resources in all_resources.get("data", {}).items():
                 if not resources:
                     continue
 
+                object_type_count += 1
                 resource_ids = [resource.get("resource_id") for resource in resources if resource.get("resource_id")]
                 if not resource_ids:
                     logger.warning(
-                        "[QCloud Collector] Skip object without resource_id Region=%s object=%s",
+                        "event=qcloud_collect_skip host=%s task_id=%s region=%s object_type=%s failed_stage=%s",
+                        host,
+                        task_id,
                         region,
                         object_id,
+                        "missing_resource_id",
                     )
                     continue
                 ip_by_resource = _cvm_resource_ip_map(resources) if object_id == QCLOUD_CVM_OBJECT_ID else {}
-                logger.info("[QCloud Collector] Processing Region=%s object=%s count=%s", region, object_id, len(resource_ids))
+                logger.debug(
+                    "event=qcloud_collect_object_debug host=%s task_id=%s region=%s object_type=%s count=%s",
+                    host,
+                    task_id,
+                    region,
+                    object_id,
+                    len(resource_ids),
+                )
 
                 try:
                     data = driver.get_weops_monitor_data(
@@ -162,7 +174,16 @@ class QCloudCollector(BaseCollector):
                     )
 
                     if not data["result"]:
-                        logger.error("[QCloud Collector] Monitor data failed Region=%s object=%s", region, object_id)
+                        object_type_failed += 1
+                        logger.error(
+                            "event=qcloud_collect_failed host=%s task_id=%s region=%s object_type=%s failed_stage=%s error_type=%s",
+                            host,
+                            task_id,
+                            region,
+                            object_id,
+                            "get_weops_monitor_data",
+                            "result_false",
+                        )
                         continue
 
                     for resource_id, metrics in data["data"].items():
@@ -172,19 +193,16 @@ class QCloudCollector(BaseCollector):
                         metric_dict[(resource_id, object_id)] = metrics
 
                     total_resources_processed += len(data["data"])
-                    logger.info(
-                        "[QCloud Collector] Processed Region=%s object=%s count=%s",
+                except Exception as err:
+                    object_type_failed += 1
+                    logger.exception(
+                        "event=qcloud_collect_failed host=%s task_id=%s region=%s object_type=%s failed_stage=%s error_type=%s",
+                        host,
+                        task_id,
                         region,
                         object_id,
-                        len(data["data"]),
-                    )
-
-                except Exception as e:
-                    logger.error(
-                        "[QCloud Collector] Error processing Region=%s object=%s error_type=%s",
-                        region,
-                        object_id,
-                        type(e).__name__,
+                        "get_weops_monitor_data",
+                        type(err).__name__,
                     )
                     continue
 
@@ -193,7 +211,11 @@ class QCloudCollector(BaseCollector):
         influxdb_data = "\n".join(connect_lines + metric_list) + "\n"
 
         logger.info(
-            "[QCloud Collector] Completed resources=%s bytes=%s connected=%s",
+            "event=qcloud_collect_summary host=%s task_id=%s object_types=%s object_type_failed=%s resources=%s bytes=%s connected=%s",
+            host,
+            task_id,
+            object_type_count,
+            object_type_failed,
             total_resources_processed,
             len(influxdb_data),
             listed_ok,

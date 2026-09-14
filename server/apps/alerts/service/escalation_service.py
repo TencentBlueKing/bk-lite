@@ -99,15 +99,9 @@ class EscalationService:
         )
 
     @classmethod
-    def resolve_roster(
-        cls, layers: List[dict], current_index: int, mode: str
-    ) -> List[str]:
+    def resolve_roster(cls, layers: List[dict], current_index: int, mode: str) -> List[str]:
         """动态解析当前在岗集合；append 合并截至当前层的全部目标。"""
-        active_layers = (
-            [layers[current_index]]
-            if mode == "replace"
-            else layers[: current_index + 1]
-        )
+        active_layers = [layers[current_index]] if mode == "replace" else layers[: current_index + 1]
         roster: List[str] = []
         for layer in active_layers:
             roster.extend(cls.resolve_layer_roster(layer))
@@ -122,9 +116,7 @@ class EscalationService:
             alert.save(update_fields=["operator", "updated_at"])
 
     @classmethod
-    def build_effective_chain(
-        cls, assignment: AlertAssignment, ui_layers: List[dict]
-    ) -> List[dict]:
+    def build_effective_chain(cls, assignment: AlertAssignment, ui_layers: List[dict]) -> List[dict]:
         """构造运行期的有效升级链 = [初始分派人] + 各升级层。
 
         语义（B 模型）：初始分派人是第一棒；UI 里配置的「升级层级 N」是分派之后
@@ -136,9 +128,7 @@ class EscalationService:
           - 通知渠道：初始分派人用分派规则渠道；其余棒用各自 UI 层渠道。
         如此推进/扫描/终止逻辑无需改动，只是链头多了初始分派人这一棒。
         """
-        assignment_config = (
-            assignment.config if isinstance(assignment.config, dict) else {}
-        )
+        assignment_config = assignment.config if isinstance(assignment.config, dict) else {}
         has_structured_initial_target = "notification_target" in assignment_config
         raw_initial_target = read_notification_target(assignment_config)
         initial_target = normalize_notification_target(
@@ -156,27 +146,26 @@ class EscalationService:
             if has_structured_initial_target:
                 initial_layer["notification_target"] = initial_target
             chain.append(initial_layer)
+        from apps.alerts.notification_templates.binding import merge_channel_template_bindings
+
         for k in range(len(ui_layers)):
             # 第 k 个 UI 层的处理人，其窗口 = 下一个 UI 层的等待时长（末棒终止 = 0）
-            nxt_wait = (
-                ui_layers[k + 1]["wait_minutes"] if k + 1 < len(ui_layers) else 0
-            )
+            nxt_wait = ui_layers[k + 1]["wait_minutes"] if k + 1 < len(ui_layers) else 0
             effective_layer = {
                 "personnel": ui_layers[k]["personnel"],
                 "wait_minutes": nxt_wait,
-                "notify_channels": ui_layers[k].get("notify_channels") or [],
+                "notify_channels": merge_channel_template_bindings(
+                    ui_layers[k].get("notify_channels") or [],
+                    assignment.notify_channels or [],
+                ),
             }
             if "notification_target" in ui_layers[k]:
-                effective_layer["notification_target"] = ui_layers[k][
-                    "notification_target"
-                ]
+                effective_layer["notification_target"] = ui_layers[k]["notification_target"]
             chain.append(effective_layer)
         return chain
 
     @classmethod
-    def create_escalation_task(
-        cls, alert: Alert, assignment: AlertAssignment
-    ) -> Optional[AlertEscalationTask]:
+    def create_escalation_task(cls, alert: Alert, assignment: AlertAssignment) -> Optional[AlertEscalationTask]:
         """分派时创建升级任务（命中规则配了升级链才创建）。"""
         normalized = cls.parse_escalation_config(assignment.config)
         if not normalized:
@@ -185,10 +174,7 @@ class EscalationService:
         if not effective:
             return None
         # 组织目标保留初始分派时已解析的成员快照；历史/用户目标继续沿用 personnel。
-        if (
-            effective[0].get("notification_target", {}).get("type")
-            == ORGANIZATION_TARGET
-        ):
+        if effective[0].get("notification_target", {}).get("type") == ORGANIZATION_TARGET:
             effective[0]["personnel"] = list(alert.operator or [])
         now = timezone.now()
         task, _ = AlertEscalationTask.objects.update_or_create(
@@ -203,23 +189,27 @@ class EscalationService:
                 "next_escalation_at": cls._next_escalation_at(effective, 0, now),
             },
         )
+        from apps.alerts.notification_templates.binding import sync_escalation_template_references
+
+        sync_escalation_template_references(task)
         cls._union_into_operator(alert, effective[0]["personnel"])
-        logger.info("创建升级任务: alert_id=%s, mode=%s, 有效链长度=%s",
-                    alert.alert_id, normalized["mode"], len(effective))
+        logger.info("创建升级任务: alert_id=%s, mode=%s, 有效链长度=%s", alert.alert_id, normalized["mode"], len(effective))
         return task
 
     @classmethod
     def stop_escalation_task(cls, alert: Alert) -> bool:
         """认领/解决/关闭后停止升级。"""
-        updated = AlertEscalationTask.objects.filter(
-            alert=alert, is_active=True
-        ).update(is_active=False, next_escalation_at=None, updated_at=timezone.now())
+        updated = AlertEscalationTask.objects.filter(alert=alert, is_active=True).update(
+            is_active=False, next_escalation_at=None, updated_at=timezone.now()
+        )
+        if updated:
+            from apps.alerts.notification_templates.binding import release_escalation_template_references
+
+            release_escalation_template_references(alert.alert_id)
         return updated > 0
 
     @classmethod
-    def reset_escalation_task(
-        cls, alert: Alert, assignment: Optional[AlertAssignment]
-    ) -> Optional[AlertEscalationTask]:
+    def reset_escalation_task(cls, alert: Alert, assignment: Optional[AlertAssignment]) -> Optional[AlertEscalationTask]:
         """改派后升级计时重置到第 0 层。assignment 为空时沿用既有任务的策略。"""
         if assignment is None:
             existing = AlertEscalationTask.objects.filter(alert=alert).select_related("assignment").first()
@@ -238,18 +228,25 @@ class EscalationService:
         reminder.reminder_count = 0
         reminder.is_active = True
         reminder.last_reminder_time = None
-        reminder.next_reminder_time = now + timedelta(
-            minutes=reminder.current_frequency_minutes
+        reminder.next_reminder_time = now + timedelta(minutes=reminder.current_frequency_minutes)
+        reminder.save(
+            update_fields=[
+                "reminder_count",
+                "is_active",
+                "last_reminder_time",
+                "next_reminder_time",
+                "updated_at",
+            ]
         )
-        reminder.save(update_fields=[
-            "reminder_count", "is_active", "last_reminder_time",
-            "next_reminder_time", "updated_at",
-        ])
 
     @classmethod
     def _send_escalation_notification(
-        cls, alert: Alert, assignment: AlertAssignment,
-        roster: List[str], layer_channels: List[dict], idempotency_key: str = None,
+        cls,
+        alert: Alert,
+        assignment: AlertAssignment,
+        roster: List[str],
+        layer_channels: List[dict],
+        idempotency_key: str = None,
     ) -> bool:
         """升级通知：走统一通知出口(build_channel_params + enqueue_notifications)。"""
         from apps.alerts.common.notify.dispatcher import build_channel_params, enqueue_notifications
@@ -264,7 +261,7 @@ class EscalationService:
             logger.warning("升级通知无可用渠道: alert_id=%s", alert.alert_id)
             return False
 
-        params = build_channel_params(roster, channels, [alert], alert.alert_id)
+        params = build_channel_params(roster, channels, [alert], alert.alert_id, scene="escalation")
         return enqueue_notifications(params, idempotency_key=idempotency_key)
 
     @classmethod
@@ -279,8 +276,7 @@ class EscalationService:
             next_layer.get("personnel"),
         )
         logger.info(
-            "告警升级目标解析: assignment_id=%s, alert_id=%s, layer=%s, type=%s, "
-            "organization_ids=%s, resolved_count=%s",
+            "告警升级目标解析: assignment_id=%s, alert_id=%s, layer=%s, type=%s, " "organization_ids=%s, resolved_count=%s",
             task.assignment_id,
             alert.alert_id,
             next_index,
@@ -290,8 +286,7 @@ class EscalationService:
         )
         if not next_personnel:
             logger.warning(
-                "告警升级层当前无有效处理人，停留重试: assignment_id=%s, "
-                "alert_id=%s, layer=%s, reason=no_active_recipient",
+                "告警升级层当前无有效处理人，停留重试: assignment_id=%s, " "alert_id=%s, layer=%s, reason=no_active_recipient",
                 task.assignment_id,
                 alert.alert_id,
                 next_index,
@@ -318,8 +313,7 @@ class EscalationService:
             task.layers[next_index].get("notify_channels") or [],
             idempotency_key=f"escalation:{alert.alert_id}:{next_index}",
         )
-        logger.info("告警升级到第 %s 层: alert_id=%s, roster=%s",
-                    next_index, alert.alert_id, roster)
+        logger.info("告警升级到第 %s 层: alert_id=%s, roster=%s", next_index, alert.alert_id, roster)
         return True
 
     @classmethod
@@ -343,9 +337,7 @@ class EscalationService:
                 try:
                     with transaction.atomic():
                         task = (
-                            AlertEscalationTask.objects.select_for_update(
-                                **select_for_update_kwargs
-                            )
+                            AlertEscalationTask.objects.select_for_update(**select_for_update_kwargs)
                             .select_related("alert", "assignment")
                             .filter(alert_id=alert_id, is_active=True)
                             .first()
@@ -358,11 +350,12 @@ class EscalationService:
                             task.is_active = False
                             task.next_escalation_at = None
                             task.save(update_fields=["is_active", "next_escalation_at", "updated_at"])
+                            from apps.alerts.notification_templates.binding import release_escalation_template_references
+
+                            release_escalation_template_references(task.alert.alert_id)
                             continue
 
-                        deadline = task.next_escalation_at or cls._next_escalation_at(
-                            task.layers, task.current_layer_index, task.layer_started_at
-                        )
+                        deadline = task.next_escalation_at or cls._next_escalation_at(task.layers, task.current_layer_index, task.layer_started_at)
                         if now < deadline:
                             if task.next_escalation_at is None:
                                 task.next_escalation_at = deadline
@@ -374,6 +367,9 @@ class EscalationService:
                             task.is_active = False
                             task.next_escalation_at = None
                             task.save(update_fields=["is_active", "next_escalation_at", "updated_at"])
+                            from apps.alerts.notification_templates.binding import release_escalation_template_references
+
+                            release_escalation_template_references(task.alert.alert_id)
                             logger.info("告警已达最后一层，不再升级: alert_id=%s", task.alert.alert_id)
                             continue
 
@@ -392,16 +388,20 @@ class EscalationService:
         task = AlertEscalationTask.objects.filter(alert=alert).first()
         if not task:
             return None, None
-        roster = cls.resolve_roster(
-            task.layers, task.current_layer_index, task.mode
-        )
+        roster = cls.resolve_roster(task.layers, task.current_layer_index, task.mode)
         channels = task.layers[task.current_layer_index].get("notify_channels") or None
         return roster, channels
 
     @classmethod
     def cleanup_expired_escalations(cls) -> int:
         cutoff = timezone.now() - timedelta(days=cls.EXPIRED_DAYS)
-        deleted, _ = AlertEscalationTask.objects.filter(
-            is_active=False, updated_at__lt=cutoff
-        ).delete()
+        queryset = AlertEscalationTask.objects.filter(is_active=False, updated_at__lt=cutoff)
+        alert_ids = list(queryset.values_list("alert__alert_id", flat=True))
+        if alert_ids:
+            from apps.alerts.models.notification_template import NotificationTemplateReference
+
+            NotificationTemplateReference.objects.filter(
+                source_type="escalation_task", source_id__in=[str(alert_id) for alert_id in alert_ids]
+            ).delete()
+        deleted, _ = queryset.delete()
         return deleted

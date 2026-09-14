@@ -95,6 +95,7 @@ export default function ApmPolicyListPage() {
       title: t('apm.policies.creatorColumn', '创建人'),
       dataIndex: 'created_by',
       width: APM_TABLE_COLUMN_WIDTHS.organization,
+      responsive: ['md'],
       render: (value: string) => {
         const creator = value?.trim() || t('apm.policies.system', '系统');
         return (
@@ -109,6 +110,7 @@ export default function ApmPolicyListPage() {
       title: t('apm.policies.createdAt', '创建时间'),
       dataIndex: 'created_at',
       width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      responsive: ['lg'],
       render: (value: string) => (
         <span className={styles.policyTimeCell}>
           <ClockCircleOutlined aria-hidden="true" />
@@ -119,6 +121,7 @@ export default function ApmPolicyListPage() {
     {
       title: t('apm.policies.executionTime', '执行时间'),
       width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      responsive: ['xl'],
       render: (_, item) => {
         const execution = formatExecutionTime(item, (time) => t('apm.policies.evaluationFailed', '评估失败 {time}', { time }));
         return (
@@ -203,7 +206,7 @@ export default function ApmPolicyListPage() {
         <SearchActionBar
           spacing="flush"
           className={styles.policyToolbar}
-          searchClassName="!w-80"
+          searchClassName="w-full sm:!w-80"
           searchProps={{
             placeholder: t('apm.policies.searchPlaceholder', '搜索策略、服务、环境或端点'),
             value: keyword,
@@ -230,7 +233,6 @@ export default function ApmPolicyListPage() {
             dataSource={visible}
             locale={{ emptyText: t('apm.policies.noMatching', '没有匹配的策略，请调整搜索条件。') }}
             pagination={{ pageSize: 20 }}
-            scroll={{ x: 1160 }}
           />
         ) : (
           <CatalogState

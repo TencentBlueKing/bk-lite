@@ -9,6 +9,10 @@ import {
   seedNoticeUsersFromHandlers,
   shouldRequireNoticeUsers
 } from './policyFormUtils';
+import {
+  buildNotifierUserIndex,
+  filterNotifierOption
+} from './notifierSearch';
 
 const { Option } = Select;
 
@@ -82,6 +86,8 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
     form.setFieldValue('notice_users', []);
   };
 
+  const userIndex = useMemo(() => buildNotifierUserIndex(userList), [userList]);
+
   // 将 channelList 转换为 SelectCard 需要的数据格式
   const channelCardData: CardItem[] = useMemo(() => {
     return channelList.map((item) => {
@@ -110,15 +116,9 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
           maxTagCount="responsive"
           placeholder={t('log.event.handler')}
           virtual
-          filterOption={(input, option) => {
-            const user = userList.find((u) => u.id === option?.value);
-            if (!user) return false;
-            const searchText = input.toLowerCase();
-            return (
-              user.display_name?.toLowerCase().includes(searchText) ||
-              user.username.toLowerCase().includes(searchText)
-            );
-          }}
+          filterOption={(input, option) =>
+            filterNotifierOption(input, option, userIndex)
+          }
           optionLabelProp="label"
         >
           {userList.map((item) => (
@@ -229,19 +229,9 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                           maxTagCount="responsive"
                           placeholder={t('log.event.notifier')}
                           virtual
-                          filterOption={(input, option) => {
-                            const user = userList.find(
-                              (u) => u.id === option?.value
-                            );
-                            if (!user) return false;
-                            const searchText = input.toLowerCase();
-                            return (
-                              user.display_name
-                                ?.toLowerCase()
-                                .includes(searchText) ||
-                              user.username.toLowerCase().includes(searchText)
-                            );
-                          }}
+                          filterOption={(input, option) =>
+                            filterNotifierOption(input, option, userIndex)
+                          }
                           optionLabelProp="label"
                         >
                           {userList.map((item) => (

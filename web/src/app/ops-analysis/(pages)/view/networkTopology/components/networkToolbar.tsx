@@ -8,6 +8,7 @@ import {
   FullscreenExitOutlined,
   EditOutlined,
   ReloadOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import TimeSelector from '@/components/time-selector';
@@ -17,6 +18,8 @@ export interface NetworkToolbarProps {
   dirty: boolean;
   saving: boolean;
   shareMode?: boolean;
+  shareLoading?: boolean;
+  onOpenShare?: () => void;
   /** 节点缩放 / 自适应。 */
   onZoomIn?: () => void;
   onZoomOut?: () => void;
@@ -43,7 +46,7 @@ const MIN_REFRESH_LOADING_MS = 300;
  * - `flex items-center gap-1.5` 极简布局
  * - 左:zoom / fit / fullscreen(读 / 写共用)
  * - 中:刷新(对应 reference 的 TimeSelector 仅刷新模式)
- * - 右:只读 → 编辑;编辑 → 取消 + 保存
+ * - 右:只读 → 分享 + 编辑;编辑 → 取消 + 保存
  *
  * P0 范围(对照 spec §2.2):
  * - 不提供 undo/redo(节点位置保存即生效,无需撤销栈)
@@ -51,13 +54,15 @@ const MIN_REFRESH_LOADING_MS = 300;
  * - 不提供 setting / filterConfig(无 filter 概念)
  * - 不提供节点 / 链路级删除按钮(由 Drawer 提供)
  * - 不提供状态计数(节点 / 链路状态展示由节点外层颜色和连线颜色表达,见 spec §5/§6)
- * - 不提供分享入口;刷新 loading 留在工具栏内部,避免带动画布重渲染
+ * 刷新 loading 留在工具栏内部,避免带动画布重渲染。
  */
 const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   editMode,
   dirty,
   saving,
   shareMode = false,
+  shareLoading = false,
+  onOpenShare,
   onZoomIn,
   onZoomOut,
   onFit,
@@ -171,6 +176,20 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
               }
               onClick={onFullscreenToggle}
               className={iconButtonClassName}
+            />
+          </Tooltip>
+        )}
+        {!shareMode && !editMode && onOpenShare && (
+          <Tooltip title={t('dashboard.share')}>
+            <Button
+              type="text"
+              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+              loading={shareLoading}
+              disabled={shareLoading}
+              aria-label={t('dashboard.share')}
+              onClick={onOpenShare}
+              className={iconButtonClassName}
+              data-testid="network-toolbar-share"
             />
           </Tooltip>
         )}

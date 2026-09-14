@@ -2,7 +2,8 @@
 
 import './application3DChrome.css';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Select, Spin } from 'antd';
+import { Alert, Button, Select, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -613,7 +614,7 @@ export default function Application3D({
       )}
       {!loading && !error && wall?.items.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
-          <Empty description={t('dashboard.application3DEmpty')} />
+          <CompactEmptyState description={t('dashboard.application3DEmpty')} />
         </div>
       )}
       {!editMode && (

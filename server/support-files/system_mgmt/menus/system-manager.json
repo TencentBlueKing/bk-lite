@@ -219,6 +219,13 @@
             "Edit",
             "Delete"
           ]
+        },
+        {
+          "id": "openapi_docs",
+          "name": "Interface Documentation",
+          "operation": [
+            "View"
+          ]
         }
       ]
     }

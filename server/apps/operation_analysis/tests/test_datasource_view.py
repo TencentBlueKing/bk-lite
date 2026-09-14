@@ -10,6 +10,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR
 from apps.operation_analysis.services.datasource_preview.base import PreviewResult
 from apps.operation_analysis.views import datasource_view
+from apps.operation_analysis.views.datasource_view import _resolve_request_params
 
 
 def _build_request(user, data=None):
@@ -653,6 +654,21 @@ def test_get_source_data_rejects_unknown_params(authenticated_user, monkeypatch)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert payload["result"] is False
     assert "存在未声明参数" in payload["message"]
+
+
+def test_resolve_request_params_allows_organization_param_runtime_marker():
+    instance = SimpleNamespace(
+        rest_api="monitor/query_latest_active_alerts",
+        params=[
+            {"name": "org_id", "type": "string", "value": "", "filterType": "filter"},
+        ],
+    )
+    resolved = _resolve_request_params(
+        instance,
+        {"org_id": "12", "organization_param": "org_id"},
+    )
+    assert resolved["org_id"] == "12"
+    assert resolved["organization_param"] == "org_id"
 
 
 @pytest.mark.django_db

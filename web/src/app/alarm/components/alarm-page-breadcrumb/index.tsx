@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { Breadcrumb } from 'antd';
 import Icon from '@/components/icon';
 import styles from './index.module.scss';
@@ -30,7 +31,7 @@ const AlarmPageBreadcrumb: React.FC<AlarmPageBreadcrumbProps> = ({
   menus = defaultAlarmBreadcrumbMenus,
   onNavigate,
 }) => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathnameFromHook = usePathname();
   const pathname = pathnameOverride || pathnameFromHook;
   const parentPath =

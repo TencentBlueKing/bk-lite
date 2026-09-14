@@ -21,5 +21,4 @@ executors:
       class: NetworkConfigFileInfo
     target_policy:
       mode: remote_channel
-      port: 22
 default_executor: protocol

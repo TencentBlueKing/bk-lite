@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.job_mgmt.constants import DangerousLevel, ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, Script
+from apps.system_mgmt.models import Group, Role, User
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
@@ -223,3 +224,37 @@ class TestTargetsAndList:
         execution = _make_execution()
         assert su_client.get(URL).status_code == 200
         assert su_client.get(f"{URL}{execution.id}/").status_code == 200
+
+    def test_admin_include_children_lists_execution_from_deep_descendant(self, su_client, authenticated_user):
+        group_a = Group.objects.create(name="A", parent_id=0)
+        group_b = Group.objects.create(name="B", parent_id=group_a.id)
+        group_c = Group.objects.create(name="C", parent_id=group_b.id)
+        admin_role = Role.objects.create(name="admin", app="")
+        User.objects.create(
+            username=authenticated_user.username,
+            domain=authenticated_user.domain,
+            display_name="Admin",
+            email="admin@example.com",
+            password="unused",
+            group_list=[group_a.id],
+            role_list=[admin_role.id],
+        )
+        authenticated_user.group_tree = [
+            {
+                "id": group_a.id,
+                "subGroups": [{"id": group_b.id, "subGroups": [{"id": group_c.id, "subGroups": []}]}],
+            }
+        ]
+        descendant_execution = _make_execution(name="deep-descendant-job", team=[group_c.id])
+
+        su_client.cookies["current_team"] = str(group_c.id)
+        su_client.cookies["include_children"] = "0"
+        direct_response = su_client.get(URL)
+        assert direct_response.status_code == 200
+        assert descendant_execution.id in {item["id"] for item in direct_response.data}
+
+        su_client.cookies["current_team"] = str(group_a.id)
+        su_client.cookies["include_children"] = "1"
+        parent_response = su_client.get(URL)
+        assert parent_response.status_code == 200
+        assert descendant_execution.id in {item["id"] for item in parent_response.data}

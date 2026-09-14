@@ -50,6 +50,12 @@ const FamilyOverview = () => {
                 description="No records are available for the current table view."
                 className="py-6"
               />
+              <CompactEmptyState
+                description="Failed to load integration metadata."
+                className="py-6"
+              >
+                <Button type="primary">Retry</Button>
+              </CompactEmptyState>
             </div>
           </div>
 

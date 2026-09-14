@@ -6,11 +6,13 @@ import { Empty } from 'antd';
 export interface CompactEmptyStateProps {
   description: React.ReactNode;
   className?: string;
+  children?: React.ReactNode;
 }
 
 const CompactEmptyState: React.FC<CompactEmptyStateProps> = ({
   description,
   className = '',
+  children,
 }) => {
   return (
     <div className={`py-1 ${className}`.trim()}>
@@ -30,7 +32,9 @@ const CompactEmptyState: React.FC<CompactEmptyStateProps> = ({
             {description}
           </span>
         }
-      />
+      >
+        {children}
+      </Empty>
     </div>
   );
 };

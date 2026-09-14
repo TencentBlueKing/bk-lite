@@ -61,4 +61,16 @@ describe("wikiMaterialRoutes", () => {
       "/opspilot/wiki/detail?id=11&name=22&tab=knowledge&wiki_page=83&wiki_view=page",
     );
   });
+
+  it("keeps screen when switching left-menu tabs from a whitelist copy", () => {
+    expect(
+      buildWikiDetailTabPath({
+        kbId: 11,
+        tab: "knowledge",
+        searchParams: "id=11&name=22&tab=material&materialId=16&screen=true",
+      }),
+    ).toBe(
+      "/opspilot/wiki/detail?id=11&name=22&tab=knowledge&screen=true",
+    );
+  });
 });

@@ -4,6 +4,7 @@ import React from 'react';
 import { Segmented, Select } from 'antd';
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import { isOptionInputControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import ScreenWidgetThemeProvider from '@/app/ops-analysis/components/screenWidgetThemeProvider';
 
 interface ComponentParamSwitchControlProps {
@@ -23,7 +24,7 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
   block = false,
   chartThemeMode,
 }) => {
-  if (!inputConfig || inputConfig.control === 'input' || !options.length || value === undefined) {
+  if (!isOptionInputControl(inputConfig) || !options.length || value === undefined) {
     return null;
   }
 

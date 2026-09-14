@@ -494,6 +494,7 @@ def test_existing_collect_task_only_persists_delivery_intent(mocker):
     run = NodeMgmtSyncService.acquire_run("sync")
     collect_task = SimpleNamespace(
         id=21,
+        params={},
         instances=[],
         access_point=[],
         save=mocker.Mock(),

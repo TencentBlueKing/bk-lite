@@ -20,7 +20,7 @@ def _cmdb_rule(**overrides):
         "on_multiple": "first",
         "resolved_namespace": "cmdb",
         "namespace": "cmdb",
-        "match_rules": [[{"key": "source_name", "operator": "eq", "value": "Prometheus"}]],
+        "match_rules": [[{"key": "source_name", "operator": "any_of", "value": ["Prometheus"]}]],
         "team": [7],
     }
     data.update(overrides)
@@ -86,7 +86,7 @@ def test_ingestion_adds_source_context_before_enrichment(monkeypatch):
             return []
 
     adapter = object.__new__(_Adapter)
-    adapter.alert_source = SimpleNamespace(source_id="prometheus", name="Prometheus")
+    adapter.alert_source = SimpleNamespace(source_id="prometheus", name="Prometheus", pk=7)
     adapter.mapping_fields_to_event = MagicMock(
         return_value={
             "title": "CPU high",
@@ -108,6 +108,7 @@ def test_ingestion_adds_source_context_before_enrichment(monkeypatch):
 
     assert captured[0]["source_id"] == "prometheus"
     assert captured[0]["source_name"] == "Prometheus"
+    assert "_rule_source_id" not in captured[0]
     constructed_data = adapter.add_base_fields.call_args.args[0]
     assert getattr(constructed_data, "source_id", None) is None
 
@@ -211,3 +212,16 @@ def test_persisted_ingestion_to_alert_full_chain(mock_cmdb_cls):
     }
     assert alert.dimensions == {"enrichment.cmdb.owner": "alice"}
     assert list(alert.events.values_list("event_id", flat=True)) == [event.event_id]
+
+
+def test_rule_foreign_key_context_does_not_change_provider_binding(monkeypatch):
+    provider = MagicMock()
+    provider.fetch_batch.side_effect = lambda keys, config: {key: [{"owner": "ops"}] for key in keys}
+    monkeypatch.setattr("apps.alerts.enrichment.engine.get_provider", lambda kind: provider)
+    event = {"source_id": "business-code", "source_name": "Prometheus", "resource_type": "host", "team": [7], "enrichment": {}}
+    rule = _cmdb_rule(input_binding={"model_id": "resource_type", "inst_uuid": "source_id"})
+    EnrichmentEngine(rules=[rule]).enrich_batch([event])
+    provider.fetch_batch.assert_called_once()
+    assert "business-code" in str(provider.fetch_batch.call_args.args[0])
+    assert event["source_id"] == "business-code"
+    assert event["enrichment"] == {"cmdb": {"owner": "ops"}}

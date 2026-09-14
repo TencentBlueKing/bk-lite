@@ -38,6 +38,7 @@ class FirstCollectionRun(TimeInfo):
     config_attempt = models.PositiveSmallIntegerField(default=0)
     dispatch_attempt = models.PositiveSmallIntegerField(default=0)
     attempt = models.PositiveSmallIntegerField(default=0)
+    lock_retries = models.PositiveSmallIntegerField(default=0)
     claim_token = models.CharField(max_length=64, blank=True, default="")
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     channel_results = JSONField(default=dict)

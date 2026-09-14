@@ -81,6 +81,100 @@ def test_returning_to_an_earlier_configuration_creates_a_new_run(mocker):
     send_task.assert_called_once_with(FirstCollectionOrchestrator.CELERY_TASK, args=[returned.id])
 
 
+@pytest.mark.parametrize("old_status", ["pending", "waiting_config"])
+def test_queued_old_revision_is_skipped_after_configuration_returns_to_a(mocker, old_status):
+    from apps.cmdb.models.first_collection_run import FirstCollectionRun
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+
+    task = create_collect_task()
+    original = FirstCollectionOrchestrator.schedule(task)
+    FirstCollectionRun.objects.filter(id=original.id).update(status=old_status, updated_at=timezone.now() - timedelta(minutes=2))
+    version_a = CollectModels.objects.get(id=task.id)
+    task.timeout += 1
+    task.save()
+    FirstCollectionOrchestrator.schedule(task, old_task=version_a)
+    version_b = CollectModels.objects.get(id=task.id)
+    task.timeout = version_a.timeout
+    task.save()
+    current = FirstCollectionOrchestrator.schedule(task, old_task=version_b)
+    node_mgmt = mocker.patch("apps.cmdb.services.first_collection_orchestrator.NodeMgmt")
+    push = mocker.patch("apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params")
+    delete = mocker.patch("apps.cmdb.services.collect_service.CollectModelService.delete_butch_node_params")
+    mocker.patch("apps.cmdb.services.first_collection_orchestrator.current_app.send_task")
+
+    if old_status == "waiting_config":
+        FirstCollectionOrchestrator.recover()
+    else:
+        assert FirstCollectionOrchestrator.execute(original.id) == {"run_id": original.id, "status": "stale"}
+    original.refresh_from_db()
+    assert original.status == "skipped"
+    assert original.failed_stage == "stale"
+    node_mgmt.assert_not_called()
+    push.assert_not_called()
+    delete.assert_not_called()
+
+    FirstCollectionRun.objects.filter(id=current.id).update(status="pending")
+    node_mgmt.return_value.run_telegraf_child_configs_once.return_value = {
+        "channels": {f"cmdb_{task.id}": {"status": "accepted", "task_id": "current-run", "retryable": False}},
+    }
+    assert FirstCollectionOrchestrator.execute(current.id)["status"] == "accepted"
+
+
+def test_governance_edit_keeps_pending_first_collection_valid(mocker):
+    from apps.cmdb.models.first_collection_run import FirstCollectionRun
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+
+    task = create_collect_task()
+    run = FirstCollectionOrchestrator.schedule(task)
+    FirstCollectionRun.objects.filter(id=run.id).update(status="pending")
+    previous = CollectModels.objects.get(id=task.id)
+    task.name = "renamed"
+    task.save()
+    assert FirstCollectionOrchestrator.schedule(task, old_task=previous) is None
+    node_mgmt = mocker.patch("apps.cmdb.services.first_collection_orchestrator.NodeMgmt")
+    node_mgmt.return_value.run_telegraf_child_configs_once.return_value = {
+        "channels": {f"cmdb_{task.id}": {"status": "accepted", "task_id": "original-run", "retryable": False}},
+    }
+    assert FirstCollectionOrchestrator.execute(run.id)["status"] == "accepted"
+
+
+@pytest.mark.parametrize(
+    ("device_minutes", "topology_minutes", "topology_enabled", "suffixes"),
+    [
+        (5, 30, True, ["_topology"]),
+        (30, 5, True, [""]),
+        (15, 15, True, ["", "_topology"]),
+        (5, None, True, ["_topology"]),
+        (2, None, True, []),
+        (5, 30, False, []),
+        (30, 30, False, [""]),
+    ],
+)
+def test_network_first_collection_dispatches_only_long_interval_channels(mocker, device_minutes, topology_minutes, topology_enabled, suffixes):
+    from apps.cmdb.models.first_collection_run import FirstCollectionRun
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+
+    task = create_collect_task(
+        task_type="snmp",
+        model_id="network",
+        cycle_value=str(device_minutes),
+        params={"has_network_topo": topology_enabled, "topology_interval_minutes": topology_minutes},
+    )
+    run = FirstCollectionOrchestrator.schedule(task)
+    expected_ids = [f"cmdb_{task.id}{suffix}" for suffix in suffixes]
+    if not expected_ids:
+        assert run is None
+        return
+    assert list(run.channel_results) == expected_ids
+    FirstCollectionRun.objects.filter(id=run.id).update(status="pending")
+    node_mgmt = mocker.patch("apps.cmdb.services.first_collection_orchestrator.NodeMgmt")
+    node_mgmt.return_value.run_telegraf_child_configs_once.return_value = {
+        "channels": {config_id: {"status": "accepted", "task_id": f"accepted-{config_id}", "retryable": False} for config_id in expected_ids},
+    }
+    assert FirstCollectionOrchestrator.execute(run.id)["status"] == "accepted"
+    assert node_mgmt.return_value.run_telegraf_child_configs_once.call_args.kwargs["config_ids"] == expected_ids
+
+
 def test_outer_transaction_rollback_removes_intent_and_never_dispatches(mocker):
     from apps.cmdb.models.first_collection_run import FirstCollectionRun
     from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
@@ -633,6 +727,85 @@ def test_node_lock_contention_retries_without_consuming_collection_attempt(mocke
     assert run.finished_at is None
 
 
+@pytest.mark.parametrize("device_accepted", [False, True])
+def test_node_busy_budget_survives_recovery_and_finishes_without_redispatch(mocker, device_accepted):
+    from apps.cmdb.models.first_collection_run import FirstCollectionRun
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+    from apps.cmdb.tasks.celery_tasks import execute_first_collection_run
+
+    task = create_collect_task(task_type="snmp", model_id="network", params={"has_network_topo": device_accepted})
+    run = FirstCollectionOrchestrator.schedule(task)
+    channels = run.channel_results
+    if device_accepted:
+        channels[f"cmdb_{task.id}"] = {"status": "accepted", "task_id": "device-run", "retryable": False}
+    FirstCollectionRun.objects.filter(id=run.id).update(status="pending", channel_results=channels)
+    remaining_id = f"cmdb_{task.id}_topology" if device_accepted else f"cmdb_{task.id}"
+    node_mgmt = mocker.patch("apps.cmdb.services.first_collection_orchestrator.NodeMgmt")
+    node_mgmt.return_value.run_telegraf_child_configs_once.return_value = {
+        "channels": {remaining_id: {"status": "failed", "retryable": True, "error_type": "NodeBusy"}},
+    }
+    dispatch = mocker.patch("apps.cmdb.services.first_collection_orchestrator.current_app.send_task")
+
+    for index in range(8):
+        assert FirstCollectionOrchestrator.execute(run.id)["status"] == "retry_wait"
+        if index == 3:
+            FirstCollectionRun.objects.filter(id=run.id).update(updated_at=timezone.now() - timedelta(minutes=2))
+            assert FirstCollectionOrchestrator.recover()["dispatched"] == 1
+
+    execute_first_collection_run.push_request(args=[run.id], kwargs={}, retries=8, called_directly=False, is_eager=False)
+    try:
+        result = execute_first_collection_run.run(run.id)
+    finally:
+        execute_first_collection_run.pop_request()
+
+    terminal_status = "partial" if device_accepted else "failed"
+    assert result == {"run_id": run.id, "status": terminal_status}
+    run.refresh_from_db()
+    assert run.attempt == 0
+    assert run.status == terminal_status
+    assert run.finished_at is not None
+    assert run.error_type == "NodeBusy"
+    if device_accepted:
+        assert run.channel_results[f"cmdb_{task.id}"]["task_id"] == "device-run"
+    FirstCollectionRun.objects.filter(id=run.id).update(updated_at=timezone.now() - timedelta(minutes=2))
+    dispatch.reset_mock()
+    assert FirstCollectionOrchestrator.recover()["dispatched"] == 0
+    dispatch.assert_not_called()
+
+
+def test_celery_preserves_business_attempts_after_eight_node_busy_retries(mocker):
+    from celery.canvas import Signature
+    from celery.exceptions import Retry
+
+    from apps.cmdb.models.first_collection_run import FirstCollectionRun
+    from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
+    from apps.cmdb.tasks.celery_tasks import execute_first_collection_run
+
+    task = create_collect_task()
+    run = FirstCollectionOrchestrator.schedule(task)
+    FirstCollectionRun.objects.filter(id=run.id).update(status="pending")
+    channel_id = f"cmdb_{task.id}"
+    busy = {"channels": {channel_id: {"status": "failed", "retryable": True, "error_type": "NodeBusy"}}}
+    unavailable = {"channels": {channel_id: {"status": "failed", "retryable": True, "error_type": "TimeoutError"}}}
+    accepted = {"channels": {channel_id: {"status": "accepted", "retryable": False, "task_id": "accepted-run"}}}
+    node_mgmt = mocker.patch("apps.cmdb.services.first_collection_orchestrator.NodeMgmt")
+    node_mgmt.return_value.run_telegraf_child_configs_once.side_effect = [busy] * 8 + [unavailable] * 2 + [accepted]
+    mocker.patch.object(Signature, "apply_async", autospec=True)
+
+    for retries in range(11):
+        execute_first_collection_run.push_request(args=[run.id], kwargs={}, retries=retries, called_directly=False, is_eager=False)
+        try:
+            if retries < 10:
+                with pytest.raises(Retry):
+                    execute_first_collection_run.run(run.id)
+            else:
+                assert execute_first_collection_run.run(run.id) == {"run_id": run.id, "status": "accepted"}
+        finally:
+            execute_first_collection_run.pop_request()
+    run.refresh_from_db()
+    assert run.attempt == 3
+
+
 def test_node_mgmt_rpc_exception_has_one_safe_traceback_owner(mocker, caplog):
     from apps.cmdb.models.first_collection_run import FirstCollectionRun
     from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
@@ -701,6 +874,7 @@ def test_recovery_failure_has_one_safe_traceback_and_keeps_waiting_config(mocker
         updated_at=timezone.now() - FirstCollectionOrchestrator.RECOVERY_STALE_AFTER,
     )
     original_error = RuntimeError("token=recovery-secret")
+    mocker.patch("apps.cmdb.services.collect_service.CollectModelService.delete_butch_node_params")
     mocker.patch(
         "apps.cmdb.services.collect_service.CollectModelService.push_butch_node_params",
         side_effect=original_error,

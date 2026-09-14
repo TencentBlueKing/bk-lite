@@ -2,31 +2,20 @@
 # @File: assignment.py
 # @Time: 2025/6/10 17:43
 # @Author: windyzhao
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from django.db import transaction
-from django.utils import timezone
 
-from apps.alerts.common.notification_target import (
-    normalize_notification_target,
-    read_notification_target,
-    resolve_notification_target_with_scope,
-)
-from apps.alerts.constants.constants import (
-    SYSTEM_OPERATOR_USER,
-    AlertAssignmentMatchType,
-    AlertStatus,
-    LogAction,
-    LogTargetType,
-    SessionStatus,
-)
+from apps.alerts.common.notification_target import normalize_notification_target, read_notification_target, resolve_notification_target_with_scope
+from apps.alerts.constants.constants import SYSTEM_OPERATOR_USER, AlertAssignmentMatchType, AlertStatus, LogAction, LogTargetType, SessionStatus
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.un_dispatch import UnDispatchService
+from apps.alerts.utils.monitor_source_rules import MonitorSourceRuleMatcher
 from apps.alerts.utils.operator_log import record_operator_logs_bulk
-from apps.alerts.utils.rule_matcher import RuleMatcher
+from apps.alerts.utils.rule_catalog import model_fields
 from apps.alerts.utils.time_range_checker import TimeRangeChecker
 from apps.core.logger import alert_logger as logger
 
@@ -71,19 +60,7 @@ class AlertAssignmentOperator:
     """
 
     # 字段映射到模型字段
-    FIELD_MAPPING = {
-        "source_id": "events__source_id",
-        "source_name": "source_name",
-        # 前端 matchRule 组件下发的级别条件 key 是 `level`（分派弹窗用默认 ruleList），
-        # value 为 level_id；Alert.level 存的也是 level_id。保留 `level_id` 兼容历史数据。
-        "level": "level",
-        "level_id": "level",
-        "resource_type": "resource_type",
-        "resource_id": "resource_id",
-        "content": "content",
-        "title": "title",
-        "alert_id": "alert_id",
-    }
+    FIELD_MAPPING = model_fields("assignment")
 
     def __init__(self, alert_id_list: List[str]):
         self.alert_id_list = alert_id_list
@@ -92,9 +69,7 @@ class AlertAssignmentOperator:
         # 查不到只能说明行已被删除（如历史残留 outbox 记录被 beat 重投）。
         # 记 WARNING 保留可见性并继续，不再 raise（raise 只会被任务层裸 catch
         # 翻译成 ERROR 噪音，且 outbox 照样标 DELIVERED）。
-        missing_ids = set(self.alert_id_list) - {
-            alert.alert_id for alert in self.alerts.values()
-        }
+        missing_ids = set(self.alert_id_list) - {alert.alert_id for alert in self.alerts.values()}
         if missing_ids:
             logger.warning(
                 "[AlertAssign] 部分告警已不存在，跳过其自动分派: missing=%s, requested=%s, found=%s",
@@ -103,7 +78,7 @@ class AlertAssignmentOperator:
                 len(self.alerts),
             )
         # 初始化规则匹配器
-        self.rule_matcher = RuleMatcher(self.FIELD_MAPPING)
+        self.rule_matcher = MonitorSourceRuleMatcher(self.FIELD_MAPPING, source_field="push_source_ids")
 
     def get_alert_map(self) -> Dict[int, Alert]:
         """获取告警实例映射"""
@@ -130,9 +105,7 @@ class AlertAssignmentOperator:
             }
 
         # 获取所有活跃的分派策略
-        active_assignments = AlertAssignment.objects.filter(is_active=True).order_by(
-            "created_at"
-        )
+        active_assignments = AlertAssignment.objects.filter(is_active=True).order_by("-priority", "-created_at", "-id")
 
         results = {
             "total_alerts": len(self.alerts),
@@ -141,31 +114,21 @@ class AlertAssignmentOperator:
             "assignment_results": [],
         }
 
-        # 记录已分派的告警ID，避免重复分派
-        # TODO(多策略都生效): 当前为"先到先得+排他"——按 created_at 最早创建的命中策略
-        #   抢走告警，后续策略因 assigned_alert_ids 被排除而拿不到。导致一个告警即使命中
-        #   多个策略，也只有一个策略生效(处理人/通知/提醒/升级都来自它)。
-        #   期望改为"逐告警聚合命中"：收集某告警命中的全部策略 → 处理人取并集、每个策略各发
-        #   自己的通知(含 opspilot)。注意约束：AlertReminderTask/AlertEscalationTask 的 alert
-        #   是 OneToOne 主键，一个告警只能存一份提醒/升级任务——若要每个策略各自独立提醒/升级，
-        #   需把这两张表 OneToOne→FK + unique(alert, assignment) 并写数据迁移。详见探讨记录。
+        # 记录已分派的告警ID，避免重复分派。策略已经按优先级、创建时间和 ID
+        # 从高到低排序，因此同一告警只会被第一个成功分派的策略处理。
         assigned_alert_ids = set()
 
         # 按分派策略批量处理告警
         for assignment in active_assignments:
             try:
                 # 批量查找匹配该分派策略的告警（包含时间范围和内容过滤，排除已分派的）
-                matched_alert_ids = self._batch_find_matching_alerts(
-                    assignment, assigned_alert_ids
-                )
+                matched_alert_ids = self._batch_find_matching_alerts(assignment, assigned_alert_ids)
 
                 if not matched_alert_ids:
                     continue
 
                 # 批量执行分派操作
-                assignment_results = self._batch_execute_assignment(
-                    matched_alert_ids, assignment
-                )
+                assignment_results = self._batch_execute_assignment(matched_alert_ids, assignment)
                 results["assignment_results"].extend(assignment_results)
 
                 # 统计结果并记录已分派的告警
@@ -183,7 +146,9 @@ class AlertAssignmentOperator:
                 except Exception as log_error:
                     logger.error(
                         "[AlertAssign] 创建分派日志失败 assignment_id=%s: %s",
-                        assignment.id, log_error, exc_info=True,
+                        assignment.id,
+                        log_error,
+                        exc_info=True,
                     )
 
             except Exception as e:
@@ -215,9 +180,7 @@ class AlertAssignmentOperator:
             )
         record_operator_logs_bulk(bulk_data)
 
-    def _batch_find_matching_alerts(
-        self, assignment: AlertAssignment, excluded_ids: set = None
-    ) -> List[int]:
+    def _batch_find_matching_alerts(self, assignment: AlertAssignment, excluded_ids: set = None) -> List[int]:
         """
         批量查找匹配指定分派策略的告警ID列表
 
@@ -229,9 +192,7 @@ class AlertAssignmentOperator:
             匹配的告警ID列表
         """
         # 先过滤未分派状态的告警
-        base_queryset = Alert.objects.filter(
-            alert_id__in=self.alert_id_list, status=AlertStatus.UNASSIGNED
-        ).exclude(
+        base_queryset = Alert.objects.filter(alert_id__in=self.alert_id_list, status=AlertStatus.UNASSIGNED).exclude(
             is_session_alert=True,
             session_status__in=SessionStatus.NO_CONFIRMED,
         )
@@ -269,16 +230,12 @@ class AlertAssignmentOperator:
 
         elif assignment.match_type == AlertAssignmentMatchType.FILTER:
             # 过滤匹配，使用规则匹配器
-            matched_ids = self.rule_matcher.filter_queryset(
-                time_filtered_queryset, assignment.match_rules or []
-            )
+            matched_ids = self.rule_matcher.filter_queryset(time_filtered_queryset, assignment.match_rules or [])
             return list(dict.fromkeys(matched_ids))
 
         return []
 
-    def _batch_execute_assignment(
-        self, alert_ids: List[int], assignment: AlertAssignment
-    ) -> List[Dict[str, Any]]:
+    def _batch_execute_assignment(self, alert_ids: List[int], assignment: AlertAssignment) -> List[Dict[str, Any]]:
         """
         批量执行告警分派操作
 
@@ -303,8 +260,7 @@ class AlertAssignmentOperator:
             assignment.personnel,
         )
         logger.info(
-            "[AlertAssign] 通知目标解析: assignment_id=%s, type=%s, "
-            "organization_ids=%s, resolved_count=%s",
+            "[AlertAssign] 通知目标解析: assignment_id=%s, type=%s, " "organization_ids=%s, resolved_count=%s",
             assignment.id,
             normalized_target["type"],
             normalized_target["organization_ids"],
@@ -314,8 +270,7 @@ class AlertAssignmentOperator:
             for alert_id in alert_ids:
                 alert = self.alerts.get(alert_id)
                 logger.warning(
-                    "[AlertAssign] 通知目标为空，跳过分派: assignment_id=%s, "
-                    "alert_id=%s, type=%s, organization_ids=%s, reason=no_active_recipient",
+                    "[AlertAssign] 通知目标为空，跳过分派: assignment_id=%s, " "alert_id=%s, type=%s, organization_ids=%s, reason=no_active_recipient",
                     assignment.id,
                     alert.alert_id if alert else alert_id,
                     normalized_target["type"],
@@ -335,16 +290,11 @@ class AlertAssignmentOperator:
         try:
             with transaction.atomic():
                 # 批量获取告警实例
-                alerts = Alert.objects.filter(
-                    id__in=alert_ids, status=AlertStatus.UNASSIGNED
-                )
+                alerts = Alert.objects.filter(id__in=alert_ids, status=AlertStatus.UNASSIGNED)
 
                 for alert in alerts:
                     try:
-                        if (
-                            alert.is_session_alert
-                            and alert.session_status != SessionStatus.CONFIRMED
-                        ):
+                        if alert.is_session_alert and alert.session_status != SessionStatus.CONFIRMED:
                             logger.info(
                                 "跳过会话观察期告警的自动分派: alert_id=%s, session_status=%s",
                                 alert.alert_id,
@@ -363,9 +313,7 @@ class AlertAssignmentOperator:
                             )
                             continue
                         # 使用AlertOperator执alert.alert_id行分派操作
-                        operator = AlertOperator(
-                            user=SYSTEM_OPERATOR_USER
-                        )  # 假设使用admin用户执行操作
+                        operator = AlertOperator(user=SYSTEM_OPERATOR_USER)  # 假设使用admin用户执行操作
 
                         # 执行分派操作
                         result = operator.operate(
@@ -390,7 +338,9 @@ class AlertAssignmentOperator:
                             continue
                         logger.debug(
                             "[AlertAssign] 告警 %s 成功分派给 %s, result=%s",
-                            alert.alert_id, personnel, result,
+                            alert.alert_id,
+                            personnel,
+                            result,
                         )
 
                         # 分派通知已在 operate("assign") 内经 transaction.on_commit 发送（见
@@ -407,10 +357,8 @@ class AlertAssignmentOperator:
                             }
                         )
 
-                    except Exception as e:
-                        logger.exception(
-                            "[AlertAssign] 执行分派失败 alert_id=%s", alert.alert_id
-                        )
+                    except Exception:
+                        logger.exception("[AlertAssign] 执行分派失败 alert_id=%s", alert.alert_id)
                         raise
 
         except Exception as e:
@@ -446,9 +394,7 @@ def execute_auto_assignment_for_alerts(alert_ids: List[str]) -> Dict[str, Any]:
     # 匹配到策略但分派失败的告警也应进入兜底，否则会在即时兜底中被漏掉。
     # 排除仍在观察期的会话告警（与 _batch_find_matching_alerts 口径一致）。
     not_assignment_ids = set(
-        Alert.objects.filter(
-            alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED
-        )
+        Alert.objects.filter(alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED)
         .exclude(
             is_session_alert=True,
             session_status__in=SessionStatus.NO_CONFIRMED,
@@ -467,12 +413,8 @@ def not_assignment_alert_notify(alert_ids):
     获取未分派告警通知设置
     :return: SystemSetting 实例
     """
-    alert_instances = list(
-        Alert.objects.filter(alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED)
-    )
-    params = UnDispatchService.notify_un_dispatched_alert_params_format(
-        alerts=alert_instances
-    )
+    alert_instances = list(Alert.objects.filter(alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED))
+    params = UnDispatchService.notify_un_dispatched_alert_params_format(alerts=alert_instances)
     from apps.alerts.common.notify.dispatcher import enqueue_notifications
 
     enqueue_notifications(params)

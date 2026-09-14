@@ -7,6 +7,7 @@ import { useDetailColumns } from '@/app/node-manager/hooks';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useApiClient from '@/utils/request';
 import type { Pagination, TableDataItem } from '@/app/node-manager/types';
+import { resolvePackageListPagination } from '@/app/node-manager/components/sidecar/packageListPagination';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
 import PermissionWrapper from '@/components/permission';
@@ -65,11 +66,12 @@ const Collectordetail = () => {
       const res = await Promise.all([getPackage]);
       const packageInfo = res[0];
       setTableData(packageInfo?.items || []);
-      setPagination((prev: Pagination) => ({
-        ...prev,
-        total: packageInfo?.count || 0,
-        current: 1
-      }));
+      setPagination((prev: Pagination) =>
+        resolvePackageListPagination(prev, {
+          count: packageInfo?.count || 0,
+          itemCount: (packageInfo?.items || []).length
+        })
+      );
     } finally {
       setTableLoading(false);
     }

@@ -192,7 +192,7 @@ async def test_enterprise_load_fallback_drives_final_application_policy_and_plan
     assert captured["request"].params["preflight_kind"] == "snmp"
     assert captured["request"].params["port"] == 161
     assert captured["plan"].preflight_timeout_seconds == 15
-    assert captured["plan"].probe_timeout_seconds == 25
+    assert captured["plan"].probe_timeout_seconds is None
     assert captured["plan"].collection_timeout_seconds == 45
     assert captured["plan"].execution_mode == "async"
     assert captured["plan"].capacity_group == "snmp"

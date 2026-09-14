@@ -21,10 +21,11 @@ _DIRECT_MASK_KEYS = {
 _RECURSE_ONLY_KEYS = {"host_credentials"}
 
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"(?P<key>"
+    r"(?P<q>['\"])?(?P<key>"
     r"password|passphrase|private_key|private_key_content|private_key_passphrase|inventory_content|"
     r"ansible_password|ansible_ssh_passphrase|ansible_become_password"
-    r")(?P<sep>\s*[:=]\s*)(?P<value>'[^']*'|\"[^\"]*\"|[^,\s}\]]+)",
+    r")(?(q)(?P=q))(?P<sep>\s*[:=]\s*)"
+    r"(?P<value>\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|[^,\s}\]]+)",
     re.IGNORECASE,
 )
 _PRIVATE_KEY_BLOCK_RE = re.compile(
@@ -35,11 +36,12 @@ _PRIVATE_KEY_BLOCK_RE = re.compile(
 
 def _mask_match(match: re.Match[str]) -> str:
     value = match.group("value")
-    if value.startswith(("'", '"')) and value.endswith(value[0]):
+    if value.startswith(("'", '"')) and len(value) >= 2 and value.endswith(value[0]):
         masked = f"{value[0]}{MASKED_VALUE}{value[0]}"
     else:
         masked = MASKED_VALUE
-    return f"{match.group('key')}{match.group('sep')}{masked}"
+    quote = match.group("q") or ""
+    return f"{quote}{match.group('key')}{quote}{match.group('sep')}{masked}"
 
 
 def _sanitize_string(value: str) -> str:

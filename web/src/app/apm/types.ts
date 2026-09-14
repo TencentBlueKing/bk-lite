@@ -59,6 +59,12 @@ export interface ApmServiceRed {
   top_endpoints: ApmServiceEndpointRed[];
 }
 
+export type ApmServiceRedBatchItem = ApmServiceRed & {
+  ok?: boolean;
+  code?: string;
+  detail?: string;
+};
+
 export interface ApmServiceRedPoint {
   timestamp: string;
   request_rate: number | null;

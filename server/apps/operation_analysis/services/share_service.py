@@ -471,7 +471,7 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
     随后由 filter_share_query_params 强制覆盖为画布值。
     不再并入数据源 schema 的非 fixed 参数，避免访客扩大未声明查询面。
     """
-    allowed = {"page", "page_size", "namespace_id"}
+    allowed = {"page", "page_size", "namespace_id", "organization_param"}
     filter_defs = {item.get("id"): item for item in _resource_filter_definitions(dashboard) if item.get("id")}
     matched_widget = False
     allow_query_list = False

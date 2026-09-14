@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { getProfessionalDashboardKey, getProfessionalDashboardUrl, getProfessionalObjectDisplayName } from '../registry';
@@ -48,7 +49,7 @@ const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
 };
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();

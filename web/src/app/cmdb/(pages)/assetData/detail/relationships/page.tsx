@@ -19,7 +19,7 @@ import DeviceDetailDrawer from './deviceDetailDrawer';
 import IpamMatrix from '../ipView/ipamMatrix';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
-import { useCommon } from '@/app/cmdb/context/common';
+import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { useRelationships } from '@/app/cmdb/context/relationships';
@@ -36,13 +36,11 @@ import {
 
 const Ralationships = () => {
   const { t } = useTranslation();
-  const commonContext = useCommon();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
   const { modelList, assoTypes, loading } = useRelationships();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
+  const userList: UserItem[] = useCmdbUserList();
   const assoListRef = useRef<AssoListRef>(null);
   const [isExpand, setIsExpand] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>(

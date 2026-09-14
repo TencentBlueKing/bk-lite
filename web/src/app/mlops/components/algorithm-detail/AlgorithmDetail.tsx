@@ -183,7 +183,7 @@ const AlgorithmDetail = ({ datasetType }: AlgorithmDetailProps) => {
     }
     catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [t, searchParams]);
+  }, [datasetType, datasetId, pagination.current, pagination.pageSize, getTrainDataByDataset]);
 
   const onUpload = () => {
     const data = {

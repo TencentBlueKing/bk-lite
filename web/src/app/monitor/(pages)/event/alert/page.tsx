@@ -1,4 +1,5 @@
 'use client';
+import './register-alert-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,

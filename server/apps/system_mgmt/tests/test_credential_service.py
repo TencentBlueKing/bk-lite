@@ -79,11 +79,13 @@ def test_seed_builtin_types_is_idempotent_and_authoritative():
         "network_cli",
         "token",
         "oauth_client",
+        "gateway_secret",
     }
     assert CredentialType.objects.get(key="platform_api").categories == ["cloud", "storage"]
     assert CredentialType.objects.get(key="network_cli").categories == ["network"]
     assert CredentialType.objects.get(key="token").categories == ["database", "other"]
     assert CredentialType.objects.get(key="oauth_client").categories == ["cloud"]
+    assert CredentialType.objects.get(key="gateway_secret").categories == ["other"]
     ssh_fields = {field["id"]: field for field in CredentialType.objects.get(key="ssh").fields}
     assert ssh_fields["username"]["name"] == "用户名"
     assert ssh_fields["auth_method"]["name"] == "认证方式"

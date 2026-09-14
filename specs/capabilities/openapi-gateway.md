@@ -75,10 +75,20 @@
 
 ## 5. 外部服务注册与部署侧红线
 
-- ✅ **注册条目只存引用不存明文**：`shared_secret_ref` / `token_ref` 用 `env:VAR` 形式。
+- ✅ **注册条目只存引用不存明文**：`shared_secret_ref` / `token_ref` 用 `credential:<凭据ID>[#<字段ID>]`
+  （系统管理凭据，密文落库，改值无需重建 server）或 `env:VAR`（server 环境变量）形式；
+  渲染器只认这两种前缀，其余一律不可解析。
   - ❌ 把密钥明文写进 KV 条目——KV 无加密语义，读权限即等于拿到凭据。
-- ✅ **`base_url` 允许清单 fail-closed**：未配置 `OPENAPI_BASEURL_ALLOWLIST` 即拒绝一切外部条目；
-  后缀匹配须落在**点边界**（`itsm-svc` 不得放行 `evil-itsm-svc`）。
+  - ⚠️ `credential:` 解析不做组织范围检查（网关密钥是平台级资源），且只在渲染期查库；
+    读侧（`_auth` / `_docs` / `_me`）从快照取已归一化条目，**不得**在请求路径上重新解引用。
+- ✅ **`base_url` 允许清单 fail-closed**：清单为空即拒绝一切外部条目；后缀匹配须落在**点边界**
+  （`itsm-svc` 不得放行 `evil-itsm-svc`）。清单取 DB（`SystemSettings`，用
+  `manage.py openapi_allowlist` 维护，改动一个拉取周期内生效）与环境变量
+  `OPENAPI_BASEURL_ALLOWLIST`（存量方式，改动需重建 server）的并集。
+  - ❌ DB 读不到时退化成「只剩 env」继续渲染——仅登记在 DB 的主机会整批落选，
+    已在线的路由被摘除；必须沿用最近一次成功快照等 DB 恢复。
+  - ⚠️ 清单在**一次渲染中只加载一次**并逐条复用；不得在 `validate_entry` 里按条查库
+    （provider 每 5 秒被拉一次，按条查库会把渲染放大成 N 次查询）。
 - ✅ **注册即封锁直连**：外部服务端口若可绕过 Traefik 直达，统一认证 / 审计 / 限流即成摆设；
   用 `wxc openapi register --probe host:port` 复测验收。
 - ✅ **Traefik 中间件链第一跳清除入站 `X-BK-*` 头**；`trusted-header` 模式同时清空转发给上游的

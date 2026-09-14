@@ -3,12 +3,23 @@ import { Descriptions } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { AlarmTableDataItem } from '@/app/alarm/types/alarms';
 import MonitorObjectList from '@/app/alarm/components/monitor-object-list';
+import MonitorSourceList from '@/app/alarm/components/monitor-source-list';
 import NotificationStatusTooltip from './notificationStatusTooltip';
 
 const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
   const { t } = useTranslation();
   const hasMonitorObjects = Boolean(detail.monitor_objects?.length);
   const descriptionItems = [
+    {
+      key: 'source_names',
+      label: t('alarmCommon.ruleFields.source_names'),
+      value: <MonitorSourceList sources={detail.source_names} showCopy={false} />,
+    },
+    {
+      key: 'push_source_ids',
+      label: t('alarmCommon.monitorSource'),
+      value: <MonitorSourceList sources={detail.push_source_ids} />,
+    },
     {
       key: 'operator',
       label: t('alarmCommon.operator'),

@@ -3,7 +3,10 @@ import type {
   FilterValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
+import {
+  syncAndFillOrganizationFilterValues,
+  syncFilterValuesWithDefinitions,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
 
 interface QuerySnapshot {
   definitions: UnifiedFilterDefinition[];
@@ -11,6 +14,7 @@ interface QuerySnapshot {
   appliedFilterValues: Record<string, FilterValue>;
   namespaceDraftId?: number;
   appliedNamespaceId?: number;
+  organizationId?: string | number | null;
 }
 
 export const useOpsAnalysisQueryState = () => {
@@ -31,16 +35,21 @@ export const useOpsAnalysisQueryState = () => {
   >();
   const [filterSearchVersion, setFilterSearchVersion] = useState(0);
   const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
+  const [organizationId, setOrganizationId] = useState<
+    string | number | null | undefined
+  >();
 
   const resetQueryState = useCallback((snapshot?: Partial<QuerySnapshot>) => {
     const nextDefinitions = snapshot?.definitions ?? [];
-    const nextValues = syncFilterValuesWithDefinitions(
+    const nextValues = syncAndFillOrganizationFilterValues(
       nextDefinitions,
       snapshot?.filterValues ?? {},
+      snapshot?.organizationId,
     );
-    const nextAppliedValues = syncFilterValuesWithDefinitions(
+    const nextAppliedValues = syncAndFillOrganizationFilterValues(
       nextDefinitions,
       snapshot?.appliedFilterValues ?? nextValues,
+      snapshot?.organizationId,
     );
 
     setDefinitionsState(nextDefinitions);
@@ -48,6 +57,7 @@ export const useOpsAnalysisQueryState = () => {
     setAppliedFilterValuesState(nextAppliedValues);
     setNamespaceDraftId(snapshot?.namespaceDraftId);
     setAppliedNamespaceId(snapshot?.appliedNamespaceId);
+    setOrganizationId(snapshot?.organizationId);
     setFilterSearchVersion(0);
     setNamespaceSearchVersion(0);
   }, []);
@@ -83,12 +93,16 @@ export const useOpsAnalysisQueryState = () => {
 
   const applyFilters = useCallback(
     (values: Record<string, FilterValue>) => {
-      const nextValues = syncFilterValuesWithDefinitions(definitions, values);
+      const nextValues = syncAndFillOrganizationFilterValues(
+        definitions,
+        values,
+        organizationId,
+      );
       setFilterValuesState(nextValues);
       setAppliedFilterValuesState(nextValues);
       setFilterSearchVersion((current) => current + 1);
     },
-    [definitions],
+    [definitions, organizationId],
   );
 
   const applyNamespace = useCallback((namespaceId: number | undefined) => {
@@ -99,7 +113,11 @@ export const useOpsAnalysisQueryState = () => {
 
   const applyQuery = useCallback(
     (values: Record<string, FilterValue>, namespaceId: number | undefined) => {
-      const nextValues = syncFilterValuesWithDefinitions(definitions, values);
+      const nextValues = syncAndFillOrganizationFilterValues(
+        definitions,
+        values,
+        organizationId,
+      );
       const namespaceChanged = appliedNamespaceId !== namespaceId;
       setFilterValuesState(nextValues);
       setAppliedFilterValuesState(nextValues);
@@ -110,7 +128,7 @@ export const useOpsAnalysisQueryState = () => {
         setNamespaceSearchVersion((current) => current + 1);
       }
     },
-    [appliedNamespaceId, definitions],
+    [appliedNamespaceId, definitions, organizationId],
   );
 
   return {

@@ -564,7 +564,7 @@ def dispatch_notification(
 
 
 @nats_client.register
-def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None):
+def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None, append_receivers=True):
     """
     通过指定通道发送消息
     :param channel_id: 通道ID
@@ -585,13 +585,13 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         organizations = _alert_event_organizations(content)
         trusted_caller = content["pusher"] in TRUSTED_INTERNAL_EVENT_CALLERS
         if trusted_caller:
-            if organizations is None or (
-                organizations and _channel_delivery_organizations(channel_obj, organizations) != sorted(set(organizations))
-            ):
+            if organizations is None or (organizations and _channel_delivery_organizations(channel_obj, organizations) != sorted(set(organizations))):
                 return _notification_failure("channel_forbidden", "告警事件组织不属于通知渠道范围。")
         request_payload = build_internal_event_payload("system_mgmt.send_msg_with_channel", locals())
-        if organizations and trusted_caller and not _accept_internal_request(
-            "system_mgmt.send_msg_with_channel", request_payload, internal_auth, caller=content.get("pusher")
+        if (
+            organizations
+            and trusted_caller
+            and not _accept_internal_request("system_mgmt.send_msg_with_channel", request_payload, internal_auth, caller=content.get("pusher"))
         ):
             return _internal_auth_failure()
     # 兼容用户ID列表和用户名列表两种情况
@@ -606,21 +606,21 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
             display_names = list(user_list.values_list("display_name", flat=True))
         else:
             display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_wecom_bot(channel_obj, content, display_names)
+        return send_by_wecom_bot(channel_obj, content, display_names if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.FEISHU_BOT:
         if user_list is not None:
             display_names = list(user_list.values_list("display_name", flat=True))
         else:
             display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_feishu_bot(channel_obj, title, content, display_names)
+        return send_by_feishu_bot(channel_obj, title, content, display_names if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.DINGTALK_BOT:
         if user_list is not None:
             display_names = list(user_list.values_list("display_name", flat=True))
         else:
             display_names = receivers if isinstance(receivers, list) else [receivers]
-        return send_by_dingtalk_bot(channel_obj, title, content, display_names)
+        return send_by_dingtalk_bot(channel_obj, title, content, display_names if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.CUSTOM_WEBHOOK:
-        return send_by_custom_webhook(channel_obj, content, receivers)
+        return send_by_custom_webhook(channel_obj, content, receivers if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.NATS:
         if nats_notifications is not None and nats_notifications.handles_config(channel_obj.config or {}):
             return send_nats_message(channel_obj, content, title=title)
@@ -773,14 +773,15 @@ def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=Fals
         if not normalized_teams:
             return {"result": True, "data": []}
 
-        team_filter = Q(team__contains=normalized_teams[0])
-        for team_id in normalized_teams[1:]:
-            team_filter |= Q(team__contains=team_id)
-        channels = channels.filter(team_filter)
+        allowed_team_ids = {str(team_id) for team_id in normalized_teams}
+    else:
+        allowed_team_ids = None
 
     # DB 无关：在 Python 侧按 config.source（及可选 bot_id）过滤
     data = []
     for channel in channels:
+        if allowed_team_ids is not None and not allowed_team_ids.intersection(str(team_id) for team_id in (channel.team or [])):
+            continue
         config = channel.config or {}
         if config.get("source") != OPSPILOT_CHANNEL_SOURCE:
             continue

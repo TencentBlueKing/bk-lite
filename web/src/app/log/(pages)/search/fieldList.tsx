@@ -8,7 +8,8 @@ import {
   CaretRightFilled,
   CaretDownFilled
 } from '@ant-design/icons';
-import { Input, Empty, Button, Spin, Progress } from 'antd';
+import { Input, Button, Spin, Progress } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import VirtualList from 'rc-virtual-list';
 import CustomPopover from './customPopover';
 import { useTranslation } from '@/utils/i18n';
@@ -393,7 +394,7 @@ const FieldList: React.FC<FieldListProps> = ({
       />
       <div className={searchStyle.fields} style={style}>
         {!hasData ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <CompactEmptyState description="" />
         ) : (
           <div className={searchStyle.displayFields}>
             {/* 表格展示字段（带拖拽排序） */}

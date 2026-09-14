@@ -39,6 +39,35 @@ export interface NetworkWhiteListPage {
   items: NetworkWhiteListItem[];
 }
 
+export interface OpenAPIFieldSpec {
+  type: string;
+  required: boolean;
+  default?: unknown;
+  choices?: unknown;
+  min_value?: number;
+  max_value?: number;
+}
+
+export interface OpenAPIInternalEndpoint {
+  path: string;
+  method: string;
+  summary: string;
+  inject: string | null;
+  permission: string;
+  request_schema: Record<string, OpenAPIFieldSpec>;
+}
+
+export interface OpenAPIService {
+  name: string;
+  kind: 'internal' | 'external';
+  endpoints?: OpenAPIInternalEndpoint[];
+  doc_url?: string;
+}
+
+export interface OpenAPIDocsCatalog {
+  services: OpenAPIService[];
+}
+
 export const useSettingsApi = () => {
   const { get, post, del, patch } = useApiClient();
 
@@ -113,6 +142,10 @@ export const useSettingsApi = () => {
     await del(`/system_mgmt/network_white_list/${id}/`);
   }, [del]);
 
+  const fetchOpenApiDocs = useCallback(async (): Promise<OpenAPIDocsCatalog> => {
+    return get('/system_mgmt/openapi_docs/');
+  }, [get]);
+
   return {
     getPortalSettings,
     updatePortalSettings,
@@ -124,5 +157,6 @@ export const useSettingsApi = () => {
     createNetworkWhiteList,
     updateNetworkWhiteList,
     deleteNetworkWhiteList,
+    fetchOpenApiDocs,
   };
 };

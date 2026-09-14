@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button,  Segmented, Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
@@ -52,7 +53,7 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
   children,
 }) => {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const searchParams = useSearchParams();
   const { userId } = useUserInfoContext();
   const common = useCommon();

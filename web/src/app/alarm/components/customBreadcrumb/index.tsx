@@ -2,7 +2,8 @@ import React from 'react';
 import Icon from '@/components/icon';
 import menu from '@/app/alarm/constants/menu.json';
 import commonStyles from './index.module.scss';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { Breadcrumb } from 'antd';
 interface Props {
   children?: React.ReactNode;
@@ -14,7 +15,7 @@ interface Crumb {
 }
 
 const PageBreadcrumb: React.FC<Props> = ({ children }) => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const pathname = usePathname();
   const parentPath =
     pathname.lastIndexOf('/') > 0

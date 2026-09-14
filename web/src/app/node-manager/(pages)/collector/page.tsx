@@ -4,7 +4,7 @@ import { Menu, Input, Button, message, Modal, Tag, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list/index';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
@@ -17,7 +17,7 @@ const { Search } = Input;
 const { confirm } = Modal;
 
 const Collector = () => {
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const { getCollectorlist, deleteCollector } = useNodeManagerApi();

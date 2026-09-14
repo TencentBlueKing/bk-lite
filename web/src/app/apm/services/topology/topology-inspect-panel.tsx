@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { RadarChartOutlined } from '@ant-design/icons';
-import { Button, Empty, Tag, Typography } from 'antd';
+import { Button, Tag, Typography } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { formatDateTime, formatLatency, formatNumber, formatRequestRate } from '@/app/apm/components/metric-format';
 import ServiceLanguageIcon from '@/app/apm/components/service-language-icon';
 import type { ApmTopologyEdge, ApmTopologyNode, ApmTopologySampleTrace, ApmTraceSummary } from '@/app/apm/types';
@@ -106,7 +107,7 @@ export default function TopologyInspectPanel({
   const selectedServiceHref = selectedNode ? serviceHref(selectedNode) : null;
 
   return (
-    <aside aria-label={t('apm.topology.inspectPanel', '服务概况')} className="flex h-[640px] w-[320px] shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-bg)]">
+    <aside aria-label={t('apm.topology.inspectPanel', '服务概况')} className="flex h-auto max-h-[min(50vh,480px)] w-full shrink-0 flex-col border-t border-[var(--color-border)] bg-[var(--color-bg)] lg:h-full lg:max-h-none lg:w-80 lg:border-l lg:border-t-0 3xl:w-96">
       <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-fill-1)]/50 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="mb-0.5 flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
@@ -242,7 +243,10 @@ export default function TopologyInspectPanel({
                 })}
               </ul>
             ) : (
-              <Empty className="!mt-3" image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.topology.noSampleTraces', '当前选择没有样本 Trace')} />
+              <CompactEmptyState
+                className="mt-3"
+                description={t('apm.topology.noSampleTraces', '当前选择没有样本 Trace')}
+              />
             )}
           </section>
         ) : null}
@@ -275,7 +279,11 @@ function OverviewList({ nodes, onSelectNode }: { nodes: ApmTopologyNode[]; onSel
   const { t } = useTranslation();
   const sorted = [...nodes].sort((left, right) => left.service_name.localeCompare(right.service_name));
   if (!sorted.length) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.topology.empty', '当前范围内没有观测到可用于构建拓扑的调用链。')} />;
+    return (
+      <CompactEmptyState
+        description={t('apm.topology.empty', '当前范围内没有观测到可用于构建拓扑的调用链。')}
+      />
+    );
   }
   return (
     <div className="flex flex-col gap-1.5">

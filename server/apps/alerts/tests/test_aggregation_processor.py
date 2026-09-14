@@ -570,7 +570,7 @@ def _missing_strategy(**param_over):
         is_active=True,
         team=[1],
         dispatch_team=[1],
-        match_rules=[[{"key": "item", "operator": "eq", "value": "heartbeat"}]],
+        match_rules=[[{"key": "item", "operator": "any_of", "value": ["heartbeat"]}]],
         params=params,
     )
 
@@ -595,6 +595,24 @@ def test_process_missing_detection_with_heartbeat(source):
 
     # 有心跳，不应触发缺失告警
     assert not Alert.objects.filter(title="心跳缺失").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("item,expected", [("heartbeat-b", "monitoring"), ("unrelated", "waiting")])
+def test_missing_detection_multiple_candidates_only_activate_for_matching_heartbeat(source, item, expected):
+    strategy = _missing_strategy(activation_mode="first_heartbeat")
+    strategy.match_rules = [
+        [{"key": "item", "operator": "any_of", "value": ["heartbeat-a"]}],
+        [{"key": "item", "operator": "any_of", "value": ["heartbeat-b"]}],
+    ]
+    strategy.save(update_fields=["match_rules"])
+    Event.objects.create(
+        source=source, raw_data={}, title="hb", level="1", start_time=timezone.now(), event_id="multi-hb", action=EventAction.CREATED, item=item
+    )
+    AggregationProcessor().process_aggregation()
+    strategy.refresh_from_db()
+    assert strategy.params["heartbeat_status"] == expected
+    assert not Alert.objects.exists()
 
 
 @pytest.mark.django_db

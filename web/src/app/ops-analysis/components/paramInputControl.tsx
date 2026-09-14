@@ -7,6 +7,8 @@ import { useParamInputOptions } from '@/app/ops-analysis/hooks/useParamInputOpti
 import { createParamInputOptionsNotifier } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
 import { normalizeParamInputChangeValue } from '@/app/ops-analysis/components/normalizeParamInputChangeValue';
 import ParamInputTableSelect from '@/app/ops-analysis/components/paramInputTableSelect';
+import { toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import GroupTreeSelect from '@/components/group-tree-select';
 
 interface ParamInputControlProps {
   inputConfig?: InputControlConfig;
@@ -57,6 +59,25 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   }, [state]);
 
   if (!inputConfig || inputConfig.control === 'input') return <>{renderFallback()}</>;
+
+  if (inputConfig.control === 'organization') {
+    return (
+      <GroupTreeSelect
+        value={toSingleOrganizationValue(value)}
+        onChange={(nextValue) => {
+          const scalar = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+          onChange?.(scalar ?? null);
+        }}
+        multiple={false}
+        mode="ownership"
+        allowClear={allowClear}
+        disabled={disabled}
+        placeholder={placeholder || ' '}
+        style={{ minWidth: 180, ...style }}
+      />
+    );
+  }
+
   if (state.status === 'loading') return <Spin size="small" />;
 
   const options = state.status === 'success' ? state.options : [];

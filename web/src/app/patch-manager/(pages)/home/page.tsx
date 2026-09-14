@@ -21,7 +21,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import { PatchDashboardStats, ComplianceDistributionItem, RecentTaskItem, TopRiskItem } from '@/app/patch-manager/types';
@@ -44,7 +44,7 @@ export default function HomePage() {
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const { locale } = useIntl();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const [stats, setStats] = useState<PatchDashboardStats | null>(null);
   const [assessLoading, setAssessLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);

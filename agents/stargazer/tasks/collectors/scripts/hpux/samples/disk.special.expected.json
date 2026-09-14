@@ -1,0 +1,26 @@
+[
+  {
+    "mount": "/",
+    "path": "/",
+    "fstype": "",
+    "total_bytes": 104857600,
+    "used_bytes": 41943040,
+    "free_bytes": 62914560,
+    "used_percent": 40.0,
+    "inodes_used_percent": 10.0,
+    "iused": 1,
+    "ifree": 9
+  },
+  {
+    "mount": "/mnt/data\"q /weird",
+    "path": "/mnt/data\"q /weird",
+    "fstype": "",
+    "total_bytes": 209715200,
+    "used_bytes": 52428800,
+    "free_bytes": 157286400,
+    "used_percent": 25.0,
+    "inodes_used_percent": 5.0,
+    "iused": 2,
+    "ifree": 38
+  }
+]

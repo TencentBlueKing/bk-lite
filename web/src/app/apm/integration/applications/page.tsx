@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AppstoreAddOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Drawer, Form, Input, message, Space, type TableColumnsType } from 'antd';
+import { Button, Drawer, Form, Input, Popconfirm, message, Space, type TableColumnsType } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -24,13 +24,14 @@ export default function ApmApplicationsPage() {
   const { t } = useTranslation();
   const router = useRouter();
   const [messageApi, messageContextHolder] = message.useMessage();
-  const { getApplications, createApplication, updateApplication, isLoading } = useApmApi();
+  const { getApplications, createApplication, updateApplication, deleteApplication, isLoading } = useApmApi();
   const { flatGroups } = useUserInfoContext();
   const [form] = Form.useForm<ApmApplicationInput>();
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [editing, setEditing] = useState<ApmApplication | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -72,6 +73,17 @@ export default function ApmApplicationsPage() {
       organization_ids: application.organization_ids,
     });
     setDrawerOpen(true);
+  };
+
+  const remove = async (application: ApmApplication) => {
+    setDeletingId(application.id);
+    try {
+      await deleteApplication(application.id);
+      messageApi.success(t('apm.applications.deleted', '应用已删除'));
+      await load();
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const submit = async (values: ApmApplicationInput) => {
@@ -135,7 +147,7 @@ export default function ApmApplicationsPage() {
     },
     { title: t('apm.applications.updatedAt', '更新时间'), dataIndex: 'updated_at', width: APM_TABLE_COLUMN_WIDTHS.timestamp, responsive: ['xxl'], className: 'tabular-nums', render: (value) => formatDateTime(value, false) },
     {
-      title: t('apm.common.operation', '操作'), key: 'action', width: APM_TABLE_COLUMN_WIDTHS.actionGroup, align: 'right', fixed: 'right',
+      title: t('apm.common.operation', '操作'), key: 'action', width: APM_TABLE_COLUMN_WIDTHS.actionGroupWide, align: 'right', fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
           <Space className="whitespace-nowrap" size={8}>
@@ -158,6 +170,21 @@ export default function ApmApplicationsPage() {
             <Button className="!px-0" size="small" type="link" onClick={() => openEdit(item)}>
               {t('common.edit', '编辑')}
             </Button>
+            <Popconfirm
+              title={t('apm.applications.deleteConfirm', '确认删除这个应用？')}
+              description={
+                item.service_count
+                  ? t('apm.applications.deleteWithServicesHint', '其下 {count} 个服务将不再归属此应用，服务目录不再展示它们；调用链数据仍保留。', { count: item.service_count })
+                  : t('apm.applications.deleteHint', '删除后不可恢复。调用链数据仍保留。')
+              }
+              okButtonProps={{ danger: true, loading: deletingId === item.id }}
+              okText={t('common.delete', '删除')}
+              onConfirm={() => void remove(item)}
+            >
+              <Button className="!px-0" danger disabled={deletingId === item.id} size="small" type="link">
+                {t('common.delete', '删除')}
+              </Button>
+            </Popconfirm>
           </Space>
         </Permission>
       ),

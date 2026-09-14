@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from 'antd';
 import {
   FullscreenOutlined,
+  ReloadOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons';
@@ -163,9 +164,13 @@ const ensureNodeRegistered = () => {
 
 interface RelatedTopologyGraphViewProps {
   model: RelatedTopologyGraphModel;
+  onRefresh?: () => void;
 }
 
-const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
+const RelatedTopologyGraphView = ({
+  model,
+  onRefresh,
+}: RelatedTopologyGraphViewProps) => {
   const { t } = useTranslation();
   const shellRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -223,7 +228,7 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
         panning: { enabled: true },
         mousewheel: { enabled: true, minScale: MIN_SCALE, maxScale: MAX_SCALE },
         interacting: {
-          nodeMovable: false,
+          nodeMovable: true,
           edgeMovable: false,
           edgeLabelMovable: false,
         },
@@ -258,6 +263,8 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
       };
       graph.on('node:mouseenter', showNameTooltip);
       graph.on('node:mouseleave', () => setNameTooltip(null));
+      graph.on('node:mousedown', () => setNameTooltip(null));
+      graph.on('node:move', refreshNameTooltip);
       graph.on('blank:mouseenter', () => setNameTooltip(null));
       graph.on('scale', refreshNameTooltip);
       graph.on('translate', refreshNameTooltip);
@@ -314,8 +321,7 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          connector: { name: 'rounded', args: { radius: 12 } },
-          router: { name: 'er', args: { direction: 'H', offset: 24 } },
+          connector: { name: 'normal' },
           attrs: {
             line: {
               stroke: RELATED_TOPOLOGY_VISUAL.edge.stroke,
@@ -426,6 +432,17 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
               onClick={() => graphRef.current?.zoomToFit(FIT_VIEW_OPTIONS)}
             />
           </Tooltip>
+          {onRefresh ? (
+            <Tooltip title={t('common.refresh')}>
+              <Button
+                size="small"
+                type="text"
+                aria-label={t('common.refresh')}
+                icon={<ReloadOutlined />}
+                onClick={onRefresh}
+              />
+            </Tooltip>
+          ) : null}
         </div>
       </div>
     </div>

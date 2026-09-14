@@ -1,7 +1,10 @@
+'use client';
+
 import React from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue } from '@/types';
 import { DEFAULT_REFRESH_FREQUENCY_LIST } from '../utils';
+import { useDashboardText } from '../utils/content-i18n';
 import { InstanceSelector } from './instance-selector';
 
 export interface DashboardInstanceCardStyles {
@@ -55,6 +58,7 @@ export function DashboardInstanceCard({
   timeSelectorProps,
   styles
 }: DashboardInstanceCardProps) {
+  const { dt } = useDashboardText();
   const cardClassName = `${styles.instanceCard}${!isDashboardMode && styles.instanceCardFull ? ` ${styles.instanceCardFull}` : ''}`;
 
   return (
@@ -79,11 +83,11 @@ export function DashboardInstanceCard({
         {clusterOptions && clusterOptions.length > 0 && onClusterChange ? (
           <InstanceSelector
             styles={styles}
-            label="集群"
+            label={dt('集群')}
             value={clusterValue}
             options={clusterOptions}
             onChange={onClusterChange}
-            placeholder="选择集群"
+            placeholder={dt('选择集群')}
             title={clusterValue}
             popupWidth={220}
           />
@@ -94,8 +98,9 @@ export function DashboardInstanceCard({
           loading={selectorLoading}
           options={selectorOptions}
           onChange={onInstanceChange}
-          placeholder={selectorPlaceholder}
+          placeholder={dt(selectorPlaceholder)}
           title={selectorTitle}
+          label={dt('实例')}
         />
         {timeSelectorProps ? (
           <div className={styles.toolbarTimeSelector}>

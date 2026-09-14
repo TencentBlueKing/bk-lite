@@ -858,6 +858,30 @@ def test_topology_api_inferred_mysql_does_not_appear_in_service_catalog(apm_api_
     assert not ApmService.objects.filter(name="mysql").exists()
 
 
+@pytest.mark.django_db
+def test_topology_api_application_id_samples_only_that_application(apm_api_client, mocker):
+    now = timezone.now()
+    create_application("shop", (10,))
+    create_application("billing", (10,))
+    catalog = DjangoTelemetryCatalogService()
+    catalog.discover(CatalogDiscovery("shop", "checkout", "checkout-1", "prod", seen_at=now))
+    catalog.discover(CatalogDiscovery("billing", "invoice", "invoice-1", "prod", seen_at=now))
+    captured: dict[str, tuple[str, ...]] = {}
+
+    class _Store(InMemoryTraceStore):
+        def sample_traces(self, query):
+            captured["names"] = query.service_names
+            return super().sample_traces(query)
+
+    service = DjangoApmTopologyService(_Store())
+    mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
+
+    response = apm_api_client.get("/api/v1/apm/topology/", {"environment": "prod", "application_id": "shop"})
+
+    assert response.status_code == 200
+    assert captured["names"] == ("checkout",)
+
+
 def test_sample_traces_span_fetch_failure_is_unavailable_not_empty(caplog):
     from apps.apm.adapters.victoriatraces import VictoriaTracesTelemetryStore
 

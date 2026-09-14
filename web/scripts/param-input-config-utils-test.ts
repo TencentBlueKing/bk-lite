@@ -4,6 +4,7 @@ import {
   mapDynamicItems,
   normalizeInputConfig,
   resolveDynamicSourceId,
+  toSingleOrganizationValue,
 } from '../src/app/ops-analysis/utils/paramInputConfigUtils';
 
 const staticOptions = [
@@ -32,6 +33,38 @@ assert.deepEqual(
 );
 
 assert.equal(normalizeInputConfig({}), undefined);
+
+assert.deepEqual(
+  normalizeInputConfig({
+    inputMode: 'organization',
+  }),
+  { control: 'organization' },
+);
+
+assert.deepEqual(
+  normalizeInputConfig({
+    inputConfig: { control: 'organization' },
+    inputMode: 'select',
+  }),
+  { control: 'organization' },
+);
+
+assert.deepEqual(
+  normalizeInputConfig({
+    inputConfig: {
+      control: 'select',
+      optionsSource: { type: 'static', staticItems: staticOptions },
+    },
+    inputMode: 'organization',
+  }),
+  {
+    control: 'select',
+    optionsSource: {
+      type: 'static',
+      staticItems: staticOptions,
+    },
+  },
+);
 
 assert.equal(
   resolveDynamicSourceId(
@@ -133,5 +166,12 @@ assert.deepEqual(
     { value: 2, label: '' },
   ],
 );
+
+assert.equal(toSingleOrganizationValue(12), 12);
+assert.equal(toSingleOrganizationValue('12'), 12);
+assert.equal(toSingleOrganizationValue(''), 0);
+assert.equal(toSingleOrganizationValue(null), undefined);
+assert.equal(toSingleOrganizationValue(['12']), undefined);
+assert.equal(toSingleOrganizationValue('not-a-number'), undefined);
 
 console.log('✓ param-input-config-utils-test.ts 全部通过');

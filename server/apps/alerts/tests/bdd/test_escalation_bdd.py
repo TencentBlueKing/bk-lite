@@ -74,7 +74,8 @@ def _pending_overdue(ctx, _db):
     task = EscalationService.create_escalation_task(alert, ctx["assignment"])
     # 初始分派人(zhang)的窗口 = 第一个升级层的 10 分钟；拨早 15 分钟使其超时
     task.layer_started_at = timezone.now() - timedelta(minutes=15)
-    task.save(update_fields=["layer_started_at"])
+    task.next_escalation_at = timezone.now() - timedelta(minutes=5)
+    task.save(update_fields=["layer_started_at", "next_escalation_at"])
     ctx["alert"] = alert
 
 
@@ -93,7 +94,8 @@ def _processing(ctx, _db):
     )
     task = EscalationService.create_escalation_task(alert, ctx["assignment"])
     task.layer_started_at = timezone.now() - timedelta(minutes=15)
-    task.save(update_fields=["layer_started_at"])
+    task.next_escalation_at = timezone.now() - timedelta(minutes=5)
+    task.save(update_fields=["layer_started_at", "next_escalation_at"])
     ctx["alert"] = alert
 
 
@@ -118,23 +120,15 @@ def _run(ctx, monkeypatch):
 @then("告警升级到第一个升级层并通知该层处理人")
 def _at_first_escalation(ctx):
     # 有效链 [zhang, li, wang]：第0层(zhang)超时 -> 升到第1层(li)
-    assert ctx["task"].current_layer_index == 1, (
-        f"期望 current_layer_index=1，实际={ctx['task'].current_layer_index}"
-    )
+    assert ctx["task"].current_layer_index == 1, f"期望 current_layer_index=1，实际={ctx['task'].current_layer_index}"
 
 
 @then("第一个升级层处理人具备认领资格")
 def _claimable(ctx):
-    assert "li" in ctx["alert"].operator, (
-        f"期望 li 在 operator 中，实际={ctx['alert'].operator}"
-    )
+    assert "li" in ctx["alert"].operator, f"期望 li 在 operator 中，实际={ctx['alert'].operator}"
 
 
 @then("升级任务被停用且层级不变")
 def _stopped(ctx):
-    assert ctx["task"].is_active is False, (
-        f"期望 is_active=False，实际={ctx['task'].is_active}"
-    )
-    assert ctx["task"].current_layer_index == 0, (
-        f"期望 current_layer_index=0，实际={ctx['task'].current_layer_index}"
-    )
+    assert ctx["task"].is_active is False, f"期望 is_active=False，实际={ctx['task'].is_active}"
+    assert ctx["task"].current_layer_index == 0, f"期望 current_layer_index=0，实际={ctx['task'].current_layer_index}"

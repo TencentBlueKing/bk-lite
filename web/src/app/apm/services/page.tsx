@@ -296,7 +296,14 @@ export default function ApmServicesPage() {
     setMetricFailureKeys([]);
     Promise.allSettled(targets.map(async (row) => ({
       key: metricKey(row.serviceId, row.environment),
-      metric: await getServiceRed(row.serviceId, row.environment, startedAt.toISOString(), endedAt.toISOString()),
+      metric: await getServiceRed(
+        row.serviceId,
+        row.environment,
+        startedAt.toISOString(),
+        endedAt.toISOString(),
+        undefined,
+        { include_breakdown: false },
+      ),
     })))
       .then((results) => {
         if (!active) return;

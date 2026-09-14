@@ -17,6 +17,7 @@ import {
   buildDashboardActionUrl,
   resolveDashboardActionParams,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
+import { applySameOriginNavigation } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
@@ -145,12 +146,10 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
         return;
       }
 
-      if (action.openMode === 'newTab') {
-        window.open(url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
-      window.location.href = url;
+      applySameOriginNavigation(url, {
+        currentSearch: window.location.search,
+        explicitNewWindow: action.openMode === 'newTab',
+      });
     },
     [shareMode, t],
   );

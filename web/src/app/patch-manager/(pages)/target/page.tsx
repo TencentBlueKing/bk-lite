@@ -19,7 +19,8 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import FilterToolbar from '@/components/filter-toolbar';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import {
   buildTargetFilterSearch,
   parseBaselineFilter,
@@ -153,7 +154,7 @@ function targetConnectionSignature(
 
 export default function TargetPage() {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const searchParams = useSearchParams();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();

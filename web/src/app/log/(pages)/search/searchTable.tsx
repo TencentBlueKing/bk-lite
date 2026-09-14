@@ -128,15 +128,6 @@ const SearchTable: React.FC<SearchTableProps> = ({
               </span>
               <span>{record.collect_type || '--'}</span>
             </span>
-            {onCreateExtractor && (
-              <Button
-                type="link"
-                className="ml-3 px-0"
-                onClick={() => onCreateExtractor(record)}
-              >
-                {t('log.extractor.createFromLog')}
-              </Button>
-            )}
           </div>
         </div>
         <ul>
@@ -165,6 +156,20 @@ const SearchTable: React.FC<SearchTableProps> = ({
                             {t('log.search.addToQuery')}
                           </Button>
                         </li>
+                        {onCreateExtractor && (
+                          <li>
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => {
+                                onClose();
+                                onCreateExtractor(record, String(item.label));
+                              }}
+                            >
+                              {t('log.extractor.createFromLog')}
+                            </Button>
+                          </li>
+                        )}
                       </ul>
                     )}
                   >

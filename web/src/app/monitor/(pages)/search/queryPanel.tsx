@@ -56,6 +56,10 @@ import SavedQueryDrawer from './savedQueryDrawer';
 import SaveQueryModal from './saveQueryModal';
 import { loadSavedQueryResources } from './savedQueryLoading';
 import {
+  getMetricsAbortKey,
+  mergeMetricsById
+} from './savedQueryMetricMerge';
+import {
   generateSearchId,
   getMetricsMapKey,
   extractDimensionLabelValues,
@@ -380,7 +384,12 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       keyword = ''
     ): Promise<MetricItem[]> => {
       const key = getMetricsMapKey(objectId, pluginId);
-      const requestKey = keyword.trim() && groupId ? `${key}|${groupId}` : key;
+      const requestKey = getMetricsAbortKey(
+        key,
+        keyword,
+        groupId,
+        selectedMetricId
+      );
       metricsAbortControllerRef.current[requestKey]?.abort();
       const abortController = new AbortController();
       metricsAbortControllerRef.current[requestKey] = abortController;
@@ -427,7 +436,10 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         }
         const metricData = cloneDeep(metricsList.items);
         if (!keyword.trim()) {
-          setMetricsMap((prev) => ({ ...prev, [key]: metricsList.items }));
+          setMetricsMap((prev) => ({
+            ...prev,
+            [key]: mergeMetricsById(prev[key], metricsList.items)
+          }));
         }
         const groupData: IndexViewItem[] = (
           metricsList.metric_groups || groupList.items

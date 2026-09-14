@@ -8,7 +8,7 @@ import { Button, Menu, Modal, message } from 'antd';
 import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
 import TopSection from '@/components/top-section';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type { IntegrationInstance, ProviderManifest } from '@/app/system-manager/types/integration-center';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -21,7 +21,7 @@ import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, get
 
 const IntegrationCenterPage: React.FC = () => {
   const { t } = useTranslation();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { selectedGroup } = useUserInfoContext();
   const { getProviders, getInstances, createInstance, updateInstance, deleteInstance } = useIntegrationCenterApi();
 

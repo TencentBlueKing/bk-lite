@@ -17,7 +17,7 @@ import type { ModelIconItem } from '@/app/cmdb/types/assetManage';
 const { Option } = Select;
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
-import { useRouter } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 
 interface CopyModelModalProps {
   onSuccess: (info?: unknown) => void;
@@ -40,7 +40,7 @@ const CopyModelModal = forwardRef<CopyModelModalRef, CopyModelModalProps>(
   ({ onSuccess, modelGroupList }, ref) => {
     const { copyModel } = useModelApi();
     const { t } = useTranslation();
-    const router = useRouter();
+    const router = useScreenAwareRouter();
     const formRef = useRef<FormInstance>(null);
     const selectIconRef = useRef<any>(null);
     const [modalVisible, setModalVisible] = useState<boolean>(false);

@@ -75,6 +75,17 @@
           ]
         },
         {
+          "id": "notification_templates",
+          "name": "Notification Templates",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete",
+            "Test"
+          ]
+        },
+        {
           "id": "shield_strategy",
           "name": "Shield Strategy",
           "operation": [
@@ -145,6 +156,7 @@
         "Alarms-View",
         "correlation_rules-View",
         "alert_assign-View",
+        "notification_templates-View",
         "shield_strategy-View",
         "alert_enrichment-View",
         "action_rules-View",

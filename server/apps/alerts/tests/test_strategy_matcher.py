@@ -59,7 +59,7 @@ def test_build_condition_q_not_contains_empty_invalid():
 
 def test_build_condition_q_in_requires_list():
     assert StrategyMatcher._build_condition_q({"key": "level", "operator": "in", "value": "notalist"}) is None
-    assert StrategyMatcher._build_condition_q({"key": "level", "operator": "in", "value": ["0", "1"]}) is not None
+    assert StrategyMatcher._build_condition_q({"key": "level", "operator": "in", "value": ["0", "1"]}) is None
 
 
 def test_build_condition_q_invalid_regex():
@@ -68,7 +68,7 @@ def test_build_condition_q_invalid_regex():
 
 def test_build_condition_q_chinese_aliases():
     q = StrategyMatcher._build_condition_q({"key": "标题", "operator": "包含", "value": "x"})
-    assert isinstance(q, Q)
+    assert q is None
 
 
 # --------------------------------------------------------------------------
@@ -88,7 +88,7 @@ def test_match_no_rules_returns_all(source):
 def test_match_and_group(source):
     _make_event(source, "E1", title="CPU", level="0")
     _make_event(source, "E2", title="CPU", level="1")
-    rules = [[{"key": "title", "operator": "eq", "value": "CPU"}, {"key": "level", "operator": "eq", "value": "0"}]]
+    rules = [[{"key": "title", "operator": "eq", "value": "CPU"}, {"key": "level", "operator": "any_of", "value": ["0"]}]]
     result = StrategyMatcher.match_events_to_strategy(Event.objects.all(), rules)
     assert {e.event_id for e in result} == {"E1"}
 
@@ -127,9 +127,7 @@ def test_match_all_invalid_returns_none(source):
 
 
 @pytest.mark.django_db
-def test_event_to_dict_merges_labels_tags(source):
-    event = _make_event(source, "E1", labels={"region": "us"}, tags={"env": "prod"})
-    d = StrategyMatcher._event_to_dict(event)
-    assert d["event_id"] == "E1"
-    assert d["region"] == "us"
-    assert d["env"] == "prod"
+def test_unknown_fields_do_not_fall_back_to_labels_or_tags(source):
+    _make_event(source, "E1", labels={"region": "us"}, tags={"env": "prod"})
+    for key, value in [("region", "us"), ("env", "prod")]:
+        assert not StrategyMatcher.match_events_to_strategy(Event.objects.all(), [[{"key": key, "operator": "eq", "value": value}]]).exists()

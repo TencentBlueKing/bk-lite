@@ -3,7 +3,8 @@
 import React, { useMemo } from 'react';
 import { Tooltip } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import { MenuItem } from '@/types/index';
 import { isTypeScopedCollectType } from '@/app/log/(pages)/integration/receive/logExtractorLogic';
@@ -14,7 +15,7 @@ const IntegrationDetailLayout = ({
   children: React.ReactNode;
 }) => {
   const searchParams = useSearchParams();
-  const router = useRouter();
+  const router = useScreenAwareRouter();
   const { t } = useTranslation();
   const pluginDisplayName = searchParams.get('display_name');
   const desc = searchParams.get('description');

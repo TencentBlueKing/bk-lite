@@ -1,5 +1,7 @@
 /** 知识库资料详情：同页 ?tab=material&materialId= */
 
+import { applyScreenAwareHref } from "@/console-layout";
+
 const WIKI_SHARED_QUERY_KEYS = ["id", "name", "desc"] as const;
 
 /** 各左侧页签私有查询参数；切走页签时不应残留。 */
@@ -54,7 +56,10 @@ export function buildWikiDetailTabPath(options: {
     if (value) params.set(key, value);
   }
 
-  return `/opspilot/wiki/detail?${params.toString()}`;
+  return applyScreenAwareHref(
+    `/opspilot/wiki/detail?${params.toString()}`,
+    incoming,
+  );
 }
 
 export function buildWikiMaterialDetailPath(options: {
