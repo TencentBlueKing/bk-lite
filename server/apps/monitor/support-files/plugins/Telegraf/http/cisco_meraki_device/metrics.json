@@ -1,0 +1,248 @@
+{
+  "plugin": "Cisco Meraki Device",
+  "plugin_desc": "Collect Cisco Meraki device inventory, availability, and uplink loss/latency from Dashboard API v1.",
+  "collector": "Telegraf",
+  "collect_type": "http",
+  "status_query": "any({instance_type='cisco_meraki_device', collect_type='http'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "collector.nodes",
+      "value_type": "node_ref_list",
+      "resolver": "selected_nodes",
+      "options": {
+        "selection_field": "node_ids"
+      }
+    },
+    {
+      "fact": "probe.target",
+      "value_type": "endpoint",
+      "resolver": "input",
+      "options": {
+        "field": "base_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "collector.nodes",
+      "title": "monitor.views.probeNodes",
+      "order": 10
+    },
+    {
+      "fact": "probe.target",
+      "title": "monitor.views.probeTarget",
+      "order": 20
+    }
+  ],
+  "node_selector": {
+    "is_container": true
+  },
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "Meraki Device Inventory",
+      "icon": "mm-hardwareDevice_硬件设备",
+      "type": "Cisco Meraki",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='cisco_meraki_device'}) by (instance_id)",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_device_connect_status",
+        "meraki_device_inventory_count"
+      ],
+      "display_fields": [
+        {
+          "name": "Connect Status",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Device",
+              "metric": "meraki_device_connect_status"
+            }
+          ]
+        },
+        {
+          "name": "Device Count",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Device",
+              "metric": "meraki_device_inventory_count"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Base",
+          "name": "meraki_device_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for device collection.",
+          "query": "meraki_device_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_device_inventory_count",
+          "display_name": "Device Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of devices returned in the organization inventory.",
+          "query": "meraki_device_inventory_count{__$labels__}"
+        },
+        {
+          "metric_group": "Availability",
+          "name": "meraki_device_online_count",
+          "display_name": "Online Device Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of devices whose availability status is online.",
+          "query": "meraki_device_online_count{__$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Device",
+      "icon": "mm-hardwareDevice_硬件设备",
+      "type": "Cisco Meraki",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_device'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_device_availability_status",
+        "meraki_device_uplink_latency_ms"
+      ],
+      "display_fields": [
+        {
+          "name": "IP 地址",
+          "type": "field",
+          "role": "resource_ip",
+          "variable_id": "vm_ip",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Device",
+              "metric": "meraki_device_availability_status",
+              "field": "resource_ip"
+            }
+          ]
+        },
+        {
+          "name": "Availability Status",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Device",
+              "metric": "meraki_device_availability_status"
+            }
+          ]
+        },
+        {
+          "name": "Uplink Latency",
+          "sort_order": 2,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Device",
+              "metric": "meraki_device_uplink_latency_ms"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Availability",
+          "name": "meraki_device_availability_status",
+          "display_name": "Availability Status",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"offline\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"online\", \"id\": 1, \"color\": \"#1ac44a\"}, {\"name\": \"alerting\", \"id\": 2, \"color\": \"#faad14\"}, {\"name\": \"dormant\", \"id\": 3, \"color\": \"#d9d9d9\"}]",
+          "dimensions": [
+            {
+              "name": "serial",
+              "description": "Device serial"
+            },
+            {
+              "name": "model",
+              "description": "Device model"
+            },
+            {
+              "name": "product_type",
+              "description": "Product type"
+            }
+          ],
+          "description": "Device availability status from Dashboard: offline, online, alerting, or dormant. Omitted when Dashboard does not return an availability status.",
+          "query": "meraki_device_availability_status{resource_type=\"meraki_device\", __$labels__}"
+        },
+        {
+          "metric_group": "Uplink",
+          "name": "meraki_device_uplink_latency_ms",
+          "display_name": "Uplink Latency",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [
+            {
+              "name": "uplink",
+              "description": "Uplink name"
+            },
+            {
+              "name": "ip",
+              "description": "Uplink probe IP"
+            }
+          ],
+          "description": "Uplink latency in milliseconds reported by Dashboard.",
+          "query": "meraki_device_uplink_latency_ms{resource_type=\"meraki_device\", __$labels__}"
+        },
+        {
+          "metric_group": "Uplink",
+          "name": "meraki_device_uplink_loss_percent",
+          "display_name": "Uplink Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [
+            {
+              "name": "uplink",
+              "description": "Uplink name"
+            },
+            {
+              "name": "ip",
+              "description": "Uplink probe IP"
+            }
+          ],
+          "description": "Uplink packet loss percentage reported by Dashboard.",
+          "query": "meraki_device_uplink_loss_percent{resource_type=\"meraki_device\", __$labels__}"
+        }
+      ]
+    }
+  ]
+}
