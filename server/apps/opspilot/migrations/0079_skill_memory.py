@@ -38,16 +38,11 @@ def backfill_memory_owner_user_id(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("opspilot", "0077_alter_llmskill_show_think"),
+        ("opspilot", "0078_llmskill_force_wiki_grounded"),
         ("system_mgmt", "0039_user_user_id"),
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="llmskill",
-            name="force_wiki_grounded",
-            field=models.BooleanField(default=False, verbose_name="强制知识库回答"),
-        ),
         migrations.AddField(
             model_name="llmskill",
             name="memory_space",
