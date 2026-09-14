@@ -1,0 +1,85 @@
+{% set component_suffix = ((config_id | default(instance_id, true)) | lower | replace('-', '_')) %}
+{% set consumer_group = group_id | default('', true) | trim %}
+{% if not consumer_group %}
+{% set consumer_group = 'bk-lite-' ~ instance_id %}
+{% endif %}
+{% if bootstrap_servers is string %}
+{% set brokers = bootstrap_servers %}
+{% else %}
+{% set brokers = bootstrap_servers | join(',') %}
+{% endif %}
+{% set os_name = (operating_system | default('', true) | lower) %}
+
+# ====================================
+# kafka 日志订阅源
+# ====================================
+[sources.kafka_subscribe_{{ component_suffix }}]
+type = "kafka"
+bootstrap_servers = {{ brokers | tojson }}
+group_id = {{ consumer_group | tojson }}
+topics = [{{ topics | map('tojson') | join(', ') }}]
+auto_offset_reset = {{ (auto_offset_reset | default('latest', true)) | tojson }}
+
+[sources.kafka_subscribe_{{ component_suffix }}.decoding]
+codec = "bytes"
+
+{% if sasl_enabled %}
+[sources.kafka_subscribe_{{ component_suffix }}.sasl]
+enabled = true
+mechanism = {{ (sasl_mechanism | default('PLAIN', true)) | tojson }}
+username = {{ (sasl_username | default('', true)) | tojson }}
+password = {{ (sasl_password | default('', true)) | tojson }}
+{% endif %}
+
+{% if tls_enabled %}
+[sources.kafka_subscribe_{{ component_suffix }}.tls]
+enabled = true
+{% endif %}
+
+# ====================================
+# enrich（字段补全）
+# ====================================
+[transforms.kafka_subscribe_enrich_{{ component_suffix }}]
+type = "remap"
+inputs = ["kafka_subscribe_{{ component_suffix }}"]
+source = '''
+.collector = "Vector"
+.collect_type = "kafka_subscribe"
+.instance_id = "{{ instance_id }}"
+.config_id = "{{ config_id | default('', true) }}"
+# bk-lite:vector-host-metadata:v1 begin
+.host_name = decode_base64!("${node.name_b64}")
+.host_ip = decode_base64!("${node.ip_b64}")
+# bk-lite:vector-host-metadata:v1 end
+'''
+
+# ====================================
+# sinks
+# ====================================
+[sinks.vmlogs_{{ component_suffix }}]
+type = "nats"
+inputs = ["kafka_subscribe_enrich_{{ component_suffix }}"]
+subject = "vector"
+url = "${NATS_PROTOCOL}://${NATS_SERVERS}"
+
+[sinks.vmlogs_{{ component_suffix }}.auth]
+strategy = "user_password"
+
+[sinks.vmlogs_{{ component_suffix }}.auth.user_password]
+user = "${NATS_USERNAME}"
+password = "${NATS_PASSWORD}"
+
+{% if NATS_PROTOCOL == "tls" %}
+# TLS 配置
+[sinks.vmlogs_{{ component_suffix }}.tls]
+enabled = true
+verify_certificate = true
+{% if os_name == "windows" %}
+ca_file = "${NATS_TLS_CA_WIN_FILE}"
+{% else %}
+ca_file = "${NATS_TLS_CA_FILE}"
+{% endif %}
+{% endif %}
+
+[sinks.vmlogs_{{ component_suffix }}.encoding]
+codec = "json"

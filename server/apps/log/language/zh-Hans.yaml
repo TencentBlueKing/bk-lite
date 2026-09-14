@@ -22,6 +22,9 @@ collect_type:
     file:
       description: 从文件采集日志数据，用于集中式日志记录和分析。
       name: 文件采集
+    kafka_subscribe:
+      name: Kafka 日志订阅
+      description: 订阅平台外 Kafka Topic 中的日志并转发到日志系统，不是采集 Kafka 进程日志文件。
   Packetbeat:
     http:
       description: 监控 HTTP 流量，分析 Web 应用程序性能并检测异常。

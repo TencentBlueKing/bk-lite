@@ -8,6 +8,9 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   getVectorFileDefaultForm,
   getVectorFileParams
@@ -16,6 +19,10 @@ import {
   getVectorDockerDefaultForm,
   getVectorDockerParams
 } from '../src/app/log/hooks/integration/collectors/vector/dockerDefaults';
+import {
+  getVectorKafkaSubscribeDefaultForm,
+  getVectorKafkaSubscribeParams
+} from '../src/app/log/hooks/integration/collectors/vector/kafkaSubscribeDefaults';
 
 // ============ file.tsx ============
 
@@ -287,4 +294,134 @@ assert.deepEqual(
   assert.equal(loaded.endpoint, 'tcp://10.0.0.1:2376');
 }
 
-console.log('log-vector-config tests passed: 13 cases');
+// ============ kafka_subscribe ============
+
+{
+  const loaded = getVectorKafkaSubscribeDefaultForm({
+    child: {
+      content: {
+        sources: {
+          kafka_subscribe_0198f0d7_1d4e_7db1_b7c2_132807fa330e: {
+            type: 'kafka',
+            bootstrap_servers: 'kafka.example:9092,kafka-2.example:9092',
+            group_id: 'ops-log-reader',
+            topics: ['app-logs', 'audit-logs'],
+            auto_offset_reset: 'earliest',
+            sasl: {
+              enabled: true,
+              mechanism: 'SCRAM-SHA-256',
+              username: 'log-user',
+              password: 'secret'
+            },
+            tls: {
+              enabled: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(loaded.topics, ['app-logs', 'audit-logs']);
+  assert.deepEqual(loaded.bootstrap_servers, [
+    'kafka.example:9092',
+    'kafka-2.example:9092'
+  ]);
+  assert.equal(loaded.group_id, 'ops-log-reader');
+  assert.equal(loaded.auto_offset_reset, 'earliest');
+  assert.equal(loaded.sasl.enabled, true);
+  assert.equal(loaded.sasl.mechanism, 'SCRAM-SHA-256');
+  assert.equal(loaded.sasl.username, 'log-user');
+  assert.equal(loaded.sasl.password, 'secret');
+  assert.equal(loaded.tls_enabled, true);
+}
+
+{
+  const form = {
+    topics: ['app-logs'],
+    bootstrap_servers: ['kafka.example:9092'],
+    group_id: 'bk-lite-ks-1',
+    auto_offset_reset: 'latest',
+    sasl: {
+      enabled: false,
+      mechanism: 'PLAIN',
+      username: 'should-not-keep',
+      password: 'should-not-keep'
+    },
+    tls_enabled: false
+  };
+  const params = getVectorKafkaSubscribeParams(form, {});
+  const content = (params.child as Record<string, unknown>).content as Record<
+    string,
+    unknown
+  >;
+  assert.equal(content.sasl_enabled, false);
+  assert.equal('sasl_username' in content, false);
+  assert.equal('sasl_password' in content, false);
+  const loaded = getVectorKafkaSubscribeDefaultForm({ child: params.child });
+  assert.deepEqual(loaded.topics, form.topics);
+  assert.deepEqual(loaded.bootstrap_servers, form.bootstrap_servers);
+  assert.equal(loaded.group_id, form.group_id);
+  assert.equal(loaded.auto_offset_reset, 'latest');
+  assert.equal(loaded.sasl.enabled, false);
+  assert.equal(loaded.sasl.username, '');
+  assert.equal(loaded.sasl.password, '');
+}
+
+{
+  const form = {
+    topics: ['secure-logs'],
+    bootstrap_servers: ['kafka.secure:9093'],
+    group_id: '',
+    auto_offset_reset: 'latest',
+    sasl: {
+      enabled: true,
+      mechanism: 'PLAIN',
+      username: '  log-user  ',
+      password: '  secret  '
+    },
+    tls_enabled: true
+  };
+  const params = getVectorKafkaSubscribeParams(form, {});
+  const content = (params.child as Record<string, unknown>).content as Record<
+    string,
+    unknown
+  >;
+  assert.equal(content.sasl_enabled, true);
+  assert.equal(content.sasl_username, 'log-user');
+  assert.equal(content.sasl_password, 'secret');
+  assert.equal(content.tls_enabled, true);
+  const loaded = getVectorKafkaSubscribeDefaultForm({ child: params.child });
+  assert.equal(loaded.sasl.enabled, true);
+  assert.equal(loaded.sasl.username, 'log-user');
+  assert.equal(loaded.sasl.password, 'secret');
+  assert.equal(loaded.tls_enabled, true);
+}
+
+{
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const registry = readFileSync(
+    path.join(root, 'src/app/log/hooks/integration/index.tsx'),
+    'utf8'
+  );
+  const kafkaType = readFileSync(
+    path.join(root, 'src/app/log/hooks/integration/collectTypes/kafka.tsx'),
+    'utf8'
+  );
+  const subscribeType = readFileSync(
+    path.join(
+      root,
+      'src/app/log/hooks/integration/collectTypes/kafkaSubscribe.tsx'
+    ),
+    'utf8'
+  );
+  assert.match(registry, /kafka_subscribe:\s*kafkaSubscribeConfig/);
+  assert.match(registry, /kafka:\s*kafkaConfig/);
+  assert.match(kafkaType, /type:\s*'kafka'/);
+  assert.match(kafkaType, /Filebeat/);
+  assert.equal(kafkaType.includes('Vector'), false);
+  assert.match(subscribeType, /type:\s*'kafka_subscribe'/);
+  assert.match(subscribeType, /Vector/);
+}
+
+console.log('log-vector-config tests passed: 17 cases');

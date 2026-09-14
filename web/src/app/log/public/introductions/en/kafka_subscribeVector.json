@@ -1,0 +1,42 @@
+{
+  "overview": {
+    "title": "Overview",
+    "paragraphs": [
+      "Kafka log subscription uses Vector on a managed node to consume external Kafka topics and forward events onto the existing NATS path. Use it when a third-party system can only write to Kafka and the platform does not run an embedded Kafka cluster. This is different from the Kafka collect type, which reads Kafka broker log files."
+    ]
+  },
+  "features": {
+    "title": "Features",
+    "items": [
+      {
+        "icon": "🛰️",
+        "title": "External topic subscription",
+        "description": "Consume the customer Kafka as a client. The platform does not deploy Kafka."
+      },
+      {
+        "icon": "🔐",
+        "title": "Optional authentication",
+        "description": "Supports PLAIN / SCRAM SASL and a TLS switch for typical secured clusters"
+      },
+      {
+        "icon": "🧭",
+        "title": "Consumer group isolation",
+        "description": "Set a consumer group, or leave it empty to use bk-lite-<instance ID> and avoid stealing existing consumers"
+      },
+      {
+        "icon": "⚡",
+        "title": "Existing ingest path",
+        "description": "Events go to NATS subject vector, then search, extractors, and alerts reuse the current log pipeline"
+      }
+    ]
+  },
+  "bestPractices": {
+    "title": "Access notes",
+    "items": [
+      "Bind a managed node that can reach Kafka advertised.listeners",
+      "First attach starts from latest by default to avoid replaying historical partitions",
+      "The same group on multiple nodes shares partitions; different groups duplicate consumption",
+      "Payloads are stored in message; use log extractors for further structured parsing"
+    ]
+  }
+}
