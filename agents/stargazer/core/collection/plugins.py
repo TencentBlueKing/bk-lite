@@ -440,4 +440,8 @@ def _load_monitor_collector(monitor_type: str):
         from tasks.collectors.cisco_meraki_switch_collector import CiscoMerakiSwitchCollector
 
         return CiscoMerakiSwitchCollector
+    if monitor_type == "cisco_meraki_appliance":
+        from tasks.collectors.cisco_meraki_appliance_collector import CiscoMerakiApplianceCollector
+
+        return CiscoMerakiApplianceCollector
     raise ValueError(f"unsupported monitor_type: {monitor_type}")
