@@ -1,0 +1,36 @@
+Cisco Meraki Switch:
+  name: Cisco Meraki 交换机
+  desc: 通过 Meraki Dashboard API v1 采集交换机端口总览、分交换机端口与功耗历史。
+monitor_object:
+  Meraki Switch Inventory: Meraki 交换机清单
+  Meraki Switch: Meraki 交换机
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Switch Inventory:
+    Base: 基础
+    Ports: 端口
+    Power: 功耗
+  Meraki Switch:
+    Ports: 端口
+monitor_object_metric:
+  Meraki Switch Inventory:
+    meraki_switch_connect_status:
+      name: 连接状态
+      desc: 交换机采集所用 Dashboard API 是否可用。
+    meraki_switch_port_active_count:
+      name: 活动端口数
+      desc: 组织内活动交换机端口数量。
+    meraki_switch_port_inactive_count:
+      name: 非活动端口数
+      desc: 组织内非活动交换机端口数量。
+    meraki_switch_power_draw_w:
+      name: 交换机 PoE 功耗
+      desc: 功耗历史中最近一个采样的 PoE 功率（瓦）。
+  Meraki Switch:
+    meraki_switch_port_enabled:
+      name: 端口已启用
+      desc: 交换机端口是否管理启用。
+    meraki_switch_port_poe_enabled:
+      name: 端口 PoE 已启用
+      desc: 交换机端口是否启用 PoE。

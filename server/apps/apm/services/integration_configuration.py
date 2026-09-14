@@ -282,7 +282,7 @@ def _kubernetes_snippet(language: str, environment: dict[str, str], probe_downlo
 def _curl_download(url: str, output: str) -> str:
     return " \\\n  ".join(
         (
-            "curl --fail --silent --show-error --location",
+            "curl --fail --silent --show-error --location --insecure",
             shlex.quote(url),
             f"--output {output}",
         )
@@ -347,7 +347,7 @@ def _docker_install_commands(language: str, probe_download_url: str) -> str:
     if language == "python":
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location {quoted_url} --output /tmp/{PYTHON_WHEELS_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{PYTHON_WHEELS_ARTIFACT_NAME}",
                 "mkdir -p /opt/otel-python-wheels",
                 f"tar -xf /tmp/{PYTHON_WHEELS_ARTIFACT_NAME} -C /opt/otel-python-wheels",
                 'python -m pip install --no-index --find-links /opt/otel-python-wheels "opentelemetry-distro[otlp]"',
@@ -358,14 +358,14 @@ def _docker_install_commands(language: str, probe_download_url: str) -> str:
     if language == "nodejs":
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location {quoted_url} --output /tmp/{NODEJS_AUTO_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{NODEJS_AUTO_ARTIFACT_NAME}",
                 f"npm install --offline --save /tmp/{NODEJS_AUTO_ARTIFACT_NAME}",
             )
         )
     if language == "java":
         return " \\\n  ".join(
             (
-                "RUN curl --fail --silent --show-error --location",
+                "RUN curl --fail --silent --show-error --location --insecure",
                 quoted_url,
                 f"--output /opt/{JAVA_AGENT_ARTIFACT_NAME}",
             )
@@ -373,7 +373,7 @@ def _docker_install_commands(language: str, probe_download_url: str) -> str:
     if language == "go":
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location {quoted_url} --output /tmp/{GO_SDK_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{GO_SDK_ARTIFACT_NAME}",
                 "mkdir -p /opt/otel-go-sdk",
                 f"unzip -o -q /tmp/{GO_SDK_ARTIFACT_NAME} -d /opt/otel-go-sdk",
                 "GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off go mod download go.opentelemetry.io/otel go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
@@ -382,7 +382,7 @@ def _docker_install_commands(language: str, probe_download_url: str) -> str:
     if language == "dotnet":
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location {quoted_url} --output /tmp/{DOTNET_AUTO_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{DOTNET_AUTO_ARTIFACT_NAME}",
                 f"mkdir -p {_DOTNET_CONTAINER_HOME}",
                 f"unzip -o -q /tmp/{DOTNET_AUTO_ARTIFACT_NAME} -d {_DOTNET_CONTAINER_HOME}",
             )

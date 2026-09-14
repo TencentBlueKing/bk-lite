@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from 'antd';
 import {
   FullscreenOutlined,
+  ReloadOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons';
@@ -165,11 +166,13 @@ const ensureNodeRegistered = () => {
 interface RelatedTopologyGraphViewProps {
   model: RelatedTopologyGraphModel;
   chartThemeMode?: OpsChartThemeMode;
+  onRefresh?: () => void;
 }
 
 const RelatedTopologyGraphView = ({
   model,
   chartThemeMode,
+  onRefresh,
 }: RelatedTopologyGraphViewProps) => {
   const { t } = useTranslation();
   const usesScreenTheme = isScreenChartThemeMode(chartThemeMode);
@@ -230,7 +233,7 @@ const RelatedTopologyGraphView = ({
         panning: { enabled: true },
         mousewheel: { enabled: true, minScale: MIN_SCALE, maxScale: MAX_SCALE },
         interacting: {
-          nodeMovable: false,
+          nodeMovable: true,
           edgeMovable: false,
           edgeLabelMovable: false,
         },
@@ -265,6 +268,8 @@ const RelatedTopologyGraphView = ({
       };
       graph.on('node:mouseenter', showNameTooltip);
       graph.on('node:mouseleave', () => setNameTooltip(null));
+      graph.on('node:mousedown', () => setNameTooltip(null));
+      graph.on('node:move', refreshNameTooltip);
       graph.on('blank:mouseenter', () => setNameTooltip(null));
       graph.on('scale', refreshNameTooltip);
       graph.on('translate', refreshNameTooltip);
@@ -317,8 +322,7 @@ const RelatedTopologyGraphView = ({
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          connector: { name: 'rounded', args: { radius: 12 } },
-          router: { name: 'er', args: { direction: 'H', offset: 24 } },
+          connector: { name: 'normal' },
           attrs: {
             line: {
               stroke: chrome.edgeStroke,
@@ -429,6 +433,17 @@ const RelatedTopologyGraphView = ({
               onClick={() => graphRef.current?.zoomToFit(FIT_VIEW_OPTIONS)}
             />
           </Tooltip>
+          {onRefresh ? (
+            <Tooltip title={t('common.refresh')}>
+              <Button
+                size="small"
+                type="text"
+                aria-label={t('common.refresh')}
+                icon={<ReloadOutlined />}
+                onClick={onRefresh}
+              />
+            </Tooltip>
+          ) : null}
         </div>
       </div>
     </div>

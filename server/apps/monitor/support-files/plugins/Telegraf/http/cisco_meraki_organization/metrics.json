@@ -1,0 +1,173 @@
+{
+  "plugin": "Cisco Meraki Organization",
+  "plugin_desc": "Collect Cisco Meraki organization inventory, network list, and basic Dashboard API health from Dashboard API v1.",
+  "collector": "Telegraf",
+  "collect_type": "http",
+  "status_query": "any({instance_type='cisco_meraki_organization', collect_type='http'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "collector.nodes",
+      "value_type": "node_ref_list",
+      "resolver": "selected_nodes",
+      "options": {
+        "selection_field": "node_ids"
+      }
+    },
+    {
+      "fact": "probe.target",
+      "value_type": "endpoint",
+      "resolver": "input",
+      "options": {
+        "field": "base_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "collector.nodes",
+      "title": "monitor.views.probeNodes",
+      "order": 10
+    },
+    {
+      "fact": "probe.target",
+      "title": "monitor.views.probeTarget",
+      "order": 20
+    }
+  ],
+  "node_selector": {
+    "is_container": true
+  },
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "Meraki Organization",
+      "icon": "mm-website_网站",
+      "type": "Cisco Meraki",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='cisco_meraki_organization'}) by (instance_id)",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_org_connect_status",
+        "meraki_org_network_count"
+      ],
+      "display_fields": [
+        {
+          "name": "Connect Status",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Organization",
+              "metric": "meraki_org_connect_status"
+            }
+          ]
+        },
+        {
+          "name": "Network Count",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Organization",
+              "metric": "meraki_org_network_count"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Base",
+          "name": "meraki_org_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether the Dashboard API accepted the organization API key and returned the organization resource.",
+          "query": "meraki_org_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Base",
+          "name": "meraki_org_api_enabled",
+          "display_name": "API Enabled",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether the organization has Dashboard API access enabled.",
+          "query": "meraki_org_api_enabled{__$labels__}"
+        },
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_org_network_count",
+          "display_name": "Network Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of networks returned for the organization.",
+          "query": "meraki_org_network_count{__$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Network",
+      "icon": "mm-router_路由器",
+      "type": "Cisco Meraki",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_network'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_network_present"
+      ],
+      "display_fields": [
+        {
+          "name": "Network Present",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Organization",
+              "metric": "meraki_network_present"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_network_present",
+          "display_name": "Network Present",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [
+            {
+              "name": "network_name",
+              "description": "Network name"
+            },
+            {
+              "name": "product_types",
+              "description": "Network product types"
+            }
+          ],
+          "description": "Presence gauge for each network in the organization.",
+          "query": "meraki_network_present{resource_type=\"meraki_network\", __$labels__}"
+        }
+      ]
+    }
+  ]
+}

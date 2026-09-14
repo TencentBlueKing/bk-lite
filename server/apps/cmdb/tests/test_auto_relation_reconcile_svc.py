@@ -343,7 +343,7 @@ def test_list_enabled_rules_by_src_model_filters(monkeypatch):
         },
     ]
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.model_association_search", lambda mid: associations
+        "apps.cmdb.services.auto_relation_reconcile.model_association_search", lambda mid: associations
     )
     out = SVC._list_enabled_rules_by_src_model("vm")
     assert len(out) == 1
@@ -368,7 +368,7 @@ def test_list_enabled_rule_ids_by_dst_model(monkeypatch):
         },
     ]
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.model_association_search", lambda mid: associations
+        "apps.cmdb.services.auto_relation_reconcile.model_association_search", lambda mid: associations
     )
     out = SVC._list_enabled_rule_ids_by_dst_model("host")
     assert out == ["vm_run_host"]
@@ -489,7 +489,7 @@ def test_reconcile_for_instances_runs_source_locally_and_reports_missing(monkeyp
 # --------------------------------------------------------------------------
 def test_full_sync_rule_cleanup_when_no_enabled_rules(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.model_association_info_search", lambda mid: None
+        "apps.cmdb.services.auto_relation_reconcile.model_association_info_search", lambda mid: None
     )
     monkeypatch.setattr(SVC, "cleanup_auto_edges_by_rule", classmethod(lambda cls, mid: 7))
     out = SVC.full_sync_rule("dead_rule")
@@ -507,7 +507,7 @@ def test_full_sync_rule_full_sync_path(monkeypatch):
         "auto_relation_rule": {"version": 1, "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}]},
     }
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.model_association_info_search", lambda mid: association
+        "apps.cmdb.services.auto_relation_reconcile.model_association_info_search", lambda mid: association
     )
     # 目标 + 源
     monkeypatch.setattr(

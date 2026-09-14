@@ -11,7 +11,8 @@ from django.db import transaction
 from django.utils.timezone import now
 
 from apps.cmdb.collection.round_sync import uses_vm_reconciliation
-from apps.cmdb.constants.constants import OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
+from apps.cmdb.constants.constants import INSTANCE, OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
+from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.models.collect_model import CollectModels
@@ -19,6 +20,8 @@ from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.services.collect_credential_contract import API_SECRET_MASK
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
+from apps.cmdb.services.collection_offset_policy import restore_owned_offsets
+from apps.cmdb.services.collection_offset_service import CollectionOffsetService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
 from apps.cmdb.utils.base import get_current_team_from_request
@@ -500,12 +503,14 @@ class CollectModelService(object):
             CollectCredentialPoolService.validate_pool_shape(create_data["credential"], max_size=credential_pool_max_size)
         cls.enrich_host_cloud_snapshot_payload(create_data)
 
-        # 使用数据库事务保证原子性：DB + 外部操作要么全成功，要么全失败
-        with transaction.atomic():
+        restore_owned_offsets(create_data)
+        # 偏移与任务一起提交；外部配置仍在提交后下发。
+        with transaction.atomic(), CollectionOffsetService.serialize(create_data):
             serializer = view_self.get_serializer(data=create_data)
             serializer.is_valid(raise_exception=True)
             view_self.perform_create(serializer)
             instance = serializer.instance
+            CollectionOffsetService.apply(instance)
 
             def sync_external_resources():
                 from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
@@ -605,7 +610,14 @@ class CollectModelService(object):
 
     @classmethod
     def update(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
-        # 获取旧实例数据（在事务外）
+        initial = view_self.get_object()
+        source = cls._request_payload(request, payload)
+        with transaction.atomic(), CollectionOffsetService.serialize(initial, data=source):
+            return cls._update_under_lock(request, view_self, payload, credential_pool_max_size=credential_pool_max_size)
+
+    @classmethod
+    def _update_under_lock(cls, request, view_self, payload, *, credential_pool_max_size):
+        # 取得分配锁后重新读取任务，避免使用锁前的偏移/周期/权限状态。
         instance = view_self.get_object()
         old_instance = copy.deepcopy(instance)
         source = cls._request_payload(request, payload)
@@ -623,12 +635,14 @@ class CollectModelService(object):
         else:
             credential_pool_diff = ([], [], [])
         cls.enrich_host_cloud_snapshot_payload(update_data)
+        restore_owned_offsets(update_data, old_instance)
         cls._bump_network_channel_versions(old_instance, update_data)
         # 使用数据库事务保证原子性
         with transaction.atomic():
             serializer = view_self.get_serializer(instance, data=update_data, partial=True)
             serializer.is_valid(raise_exception=True)
             view_self.perform_update(serializer)
+            CollectionOffsetService.apply(instance, previous=old_instance)
 
             def sync_external_resources():
                 from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
@@ -728,6 +742,9 @@ class CollectModelService(object):
                 # RPC 调用：删除节点参数
                 if cls.should_sync_node_params(instance_copy):
                     cls.delete_butch_node_params(instance_copy)
+
+                # 图中资产实例只把所属配置任务字段置空，不删除字段或实例。
+                cls.clear_instance_collect_task(instance_id)
             except Exception as e:
                 # 外部资源清理失败，记录错误并抛出异常，触发事务回滚
                 logger.error(
@@ -755,6 +772,28 @@ class CollectModelService(object):
         cls.delete_team(instance_copy.id, instance_copy.team, [], view_self)
 
         return instance_id
+
+    @classmethod
+    def clear_instance_collect_task(cls, task_id):
+        """把图中 collect_task 等于当前任务 ID 的值置空，保留字段，兼容 int/str 两种历史写入。"""
+        task_id_int = int(task_id)
+        match_params = [
+            [{"field": "collect_task", "type": "int=", "value": task_id_int}],
+            [{"field": "collect_task", "type": "str=", "value": str(task_id_int)}],
+        ]
+        entity_ids = []
+        seen = set()
+        with GraphClient() as ag:
+            for params in match_params:
+                instances, _ = ag.query_entity(INSTANCE, params)
+                for instance in instances or []:
+                    inst_id = instance.get("_id")
+                    if inst_id is None or inst_id in seen:
+                        continue
+                    seen.add(inst_id)
+                    entity_ids.append(inst_id)
+            if entity_ids:
+                ag.batch_update_node_properties(INSTANCE, entity_ids, {"collect_task": ""})
 
     @classmethod
     def _normalize_cloud_regions(cls, model_id, regions):

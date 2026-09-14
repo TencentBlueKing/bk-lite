@@ -275,6 +275,7 @@ class AgentNode(BaseNodeExecutor):
             # 触发 augment_prompt 路径,自动检索并把相关页面片段注入系统提示词。
             # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
             "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
+            "force_wiki_grounded": bool(getattr(skill, "force_wiki_grounded", False)),
         }
         entry_type = flow_input.get("entry_type")
         if isinstance(entry_type, str) and entry_type.strip():

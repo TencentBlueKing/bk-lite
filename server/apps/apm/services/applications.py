@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.apm.models import (
     ApmApplication,
@@ -120,3 +121,17 @@ class DjangoApmApplicationService:
             ],
             ignore_conflicts=True,
         )
+
+    @transaction.atomic
+    def delete(self, application_id: UUID, *, actor: str) -> None:
+        application = ApmApplication.objects.select_for_update().get(id=application_id)
+        if application.is_builtin:
+            raise ValueError("内置应用不可删除")
+        services = list(ApmService.objects.select_for_update().filter(application=application))
+        if services:
+            ApmService.objects.filter(id__in=[service.id for service in services]).update(
+                application=None,
+                updated_by=actor,
+                updated_at=timezone.now(),
+            )
+        application.delete()

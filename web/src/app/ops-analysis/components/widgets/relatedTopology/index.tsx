@@ -93,7 +93,11 @@ const RelatedTopology = ({ instUuid, chartThemeMode }: RelatedTopologyProps) => 
 
   return (
     <div className="h-full min-h-[280px] min-w-0 w-full overflow-hidden">
-      <RelatedTopologyGraphView model={graph} chartThemeMode={chartThemeMode} />
+      <RelatedTopologyGraphView
+        model={graph}
+        chartThemeMode={chartThemeMode}
+        onRefresh={load}
+      />
     </div>
   );
 };

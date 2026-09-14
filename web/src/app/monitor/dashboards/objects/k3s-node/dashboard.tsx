@@ -12,7 +12,7 @@ import {
   FlexiblePanelSection,
   DetailPanelCard, DashboardSectionLabel } from '../common/dashboard-components';
 import { RingChartPanel, HorizontalBarPanel } from '../../shared/widgets';
-import { buildSearchParams, parseLegacyParamList, normalizeDisplayText } from '../../shared/utils';
+import { buildSearchParams } from '../../shared/utils';
 import { buildTopBars, coresDisplay, bytesDisplay } from '../k3s-cluster/parse';
 import { createNodeTopPodLoadCoordinator } from '../common/nodeTopPodLoad';
 import { NODE_DASHBOARD_CONFIG } from './config';
@@ -25,15 +25,8 @@ export default function K3sNodeDashboardPage() {
   const { getInstanceQuery } = useViewApi();
   const searchParams = useSearchParams();
   const instanceIdKeys = (searchParams.get('instance_id_keys') || 'instance_id,node').split(',').filter(Boolean);
-  const idValues = useMemo(() => {
-    const explicit = parseLegacyParamList(searchParams.get('instance_id_values'));
-    if (explicit.length > 0) return explicit;
-    const legacy = parseLegacyParamList(searchParams.get('instance_id') || '');
-    if (legacy.length > 0) return legacy;
-    const normalized = normalizeDisplayText(searchParams.get('instance_id') || '');
-    return normalized ? [normalized] : [];
-  }, [searchParams]);
-  const idValuesKey = idValues.join('|');
+  const idValues = dashboard.idValues;
+  const idValuesKey = JSON.stringify(idValues);
 
   const [topPodCpuRaw, setTopPodCpuRaw] = useState<any>(null);
   const [topPodMemRaw, setTopPodMemRaw] = useState<any>(null);
@@ -61,7 +54,18 @@ export default function K3sNodeDashboardPage() {
       .then((r) => { if (coordinator.shouldApply(generation)) setTopPodMemRaw(r); })
       .catch(() => { if (coordinator.shouldApply(generation)) setTopPodMemRaw(null); });
     return () => { coordinator.begin(); };
-  }, [idValuesKey, dashboard.currentInstanceInterval, dashboard.timeValues, dashboard.loadTick, dashboard.isDashboardMode]);
+  }, [
+    dashboard.currentInstanceInterval,
+    dashboard.instanceId,
+    dashboard.isDashboardMode,
+    dashboard.loadTick,
+    dashboard.monitorObjectId,
+    dashboard.timeValues,
+    getInstanceQuery,
+    idValues,
+    idValuesKey,
+    instanceIdKeys,
+  ]);
 
   const nodeTopPodCpuBars = useMemo(() => buildTopBars(topPodCpuRaw, 'pod', '#9254de', coresDisplay), [topPodCpuRaw]);
   const nodeTopPodMemBars = useMemo(() => buildTopBars(topPodMemRaw, 'pod', '#13c2c2', bytesDisplay), [topPodMemRaw]);

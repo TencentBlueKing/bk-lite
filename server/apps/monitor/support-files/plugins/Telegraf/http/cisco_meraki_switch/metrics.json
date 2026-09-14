@@ -1,0 +1,232 @@
+{
+  "plugin": "Cisco Meraki Switch",
+  "plugin_desc": "Collect Cisco Meraki switch port overview, per-switch ports, and power history from Dashboard API v1.",
+  "collector": "Telegraf",
+  "collect_type": "http",
+  "status_query": "any({instance_type='cisco_meraki_switch', collect_type='http'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "collector.nodes",
+      "value_type": "node_ref_list",
+      "resolver": "selected_nodes",
+      "options": {
+        "selection_field": "node_ids"
+      }
+    },
+    {
+      "fact": "probe.target",
+      "value_type": "endpoint",
+      "resolver": "input",
+      "options": {
+        "field": "base_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "collector.nodes",
+      "title": "monitor.views.probeNodes",
+      "order": 10
+    },
+    {
+      "fact": "probe.target",
+      "title": "monitor.views.probeTarget",
+      "order": 20
+    }
+  ],
+  "node_selector": {
+    "is_container": true
+  },
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "Meraki Switch Inventory",
+      "icon": "mm-switch_交换机",
+      "type": "Cisco Meraki",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='cisco_meraki_switch'}) by (instance_id)",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_switch_connect_status",
+        "meraki_switch_port_active_count",
+        "meraki_switch_port_inactive_count"
+      ],
+      "display_fields": [
+        {
+          "name": "Connect Status",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Switch",
+              "metric": "meraki_switch_connect_status"
+            }
+          ]
+        },
+        {
+          "name": "Active Port Count",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Switch",
+              "metric": "meraki_switch_port_active_count"
+            }
+          ]
+        },
+        {
+          "name": "Inactive Port Count",
+          "sort_order": 2,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Switch",
+              "metric": "meraki_switch_port_inactive_count"
+            }
+          ]
+        },
+        {
+          "name": "Switch PoE Power Draw",
+          "sort_order": 3,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Switch",
+              "metric": "meraki_switch_power_draw_w"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Base",
+          "name": "meraki_switch_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for switch collection.",
+          "query": "meraki_switch_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_active_count",
+          "display_name": "Active Port Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Organization-wide count of active switch ports from ports overview.",
+          "query": "meraki_switch_port_active_count{__$labels__}"
+        },
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_inactive_count",
+          "display_name": "Inactive Port Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Organization-wide count of inactive switch ports from ports overview.",
+          "query": "meraki_switch_port_inactive_count{__$labels__}"
+        },
+        {
+          "metric_group": "Power",
+          "name": "meraki_switch_power_draw_w",
+          "display_name": "Switch PoE Power Draw",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "watt",
+          "dimensions": [],
+          "description": "Latest organization-wide switch PoE power draw in watts from power history.",
+          "query": "meraki_switch_power_draw_w{__$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Switch",
+      "icon": "mm-switch_交换机",
+      "type": "Cisco Meraki",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_switch'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_switch_port_enabled"
+      ],
+      "display_fields": [
+        {
+          "name": "Port Enabled",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Switch",
+              "metric": "meraki_switch_port_enabled"
+            }
+          ]
+        },
+        {
+          "name": "Port PoE Enabled",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Switch",
+              "metric": "meraki_switch_port_poe_enabled"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_enabled",
+          "display_name": "Port Enabled",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"禁用\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"启用\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "port_id",
+              "description": "Switch port ID"
+            }
+          ],
+          "description": "Whether the switch port is administratively enabled.",
+          "query": "meraki_switch_port_enabled{resource_type=\"meraki_switch\", __$labels__}"
+        },
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_poe_enabled",
+          "display_name": "Port PoE Enabled",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"禁用\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"启用\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "port_id",
+              "description": "Switch port ID"
+            }
+          ],
+          "description": "Whether PoE is enabled on the switch port.",
+          "query": "meraki_switch_port_poe_enabled{resource_type=\"meraki_switch\", __$labels__}"
+        }
+      ]
+    }
+  ]
+}

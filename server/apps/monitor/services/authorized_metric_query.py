@@ -6,7 +6,7 @@ from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import Metric, MonitorInstance, MonitorObject
 from apps.monitor.services.metric_query_contract import AuthorizedMetricQueryError, build_instance_matchers, escape_metric_label_value
 from apps.monitor.services.metrics import Metrics
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.dimension import normalize_instance_identity, parse_instance_id
 
 ALLOWED_AGGREGATIONS = {
     # AVG 按实例 + 已声明维度聚合，丢掉 collection_task_id / 采集器 host 等未声明标签。
@@ -31,6 +31,13 @@ class AuthorizedMetricQuery:
     detect_gaps: bool
     collection_interval: int | None
     card_budget: bool
+
+
+def _storage_instance_id(value) -> str:
+    try:
+        return normalize_instance_identity(value)["storage_instance_key"]
+    except ValueError:
+        return str(value)
 
 
 def _metric_instance_id_keys(metric: Metric) -> list[str]:
@@ -146,7 +153,7 @@ class AuthorizedMetricQueryService:
                 code="instance_ids_required",
             )
 
-        instance_ids = tuple(dict.fromkeys(str(value) for value in raw_instance_ids if value not in (None, "")))
+        instance_ids = tuple(dict.fromkeys(_storage_instance_id(value) for value in raw_instance_ids if value not in (None, "")))
         if not instance_ids:
             raise AuthorizedMetricQueryError(
                 "instance_ids 不能为空",

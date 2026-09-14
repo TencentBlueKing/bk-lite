@@ -12,6 +12,7 @@ import { useSettingsApi } from '@/app/system-manager/api/settings';
 import {
   filterOpenApiRows,
   flattenOpenApiCatalog,
+  formatAuthHeaderPlainText,
   injectDescriptionKey,
   OPENAPI_GATEWAY_PREFIX,
   type OpenAPIDocRow,
@@ -171,7 +172,11 @@ const OpenApiDocsPage: React.FC = () => {
         }),
         kind: t('system.settings.openapiDocs.kind'),
         authHeader: t('system.settings.openapiDocs.authHeader'),
-        authHeaderDesc: t('system.settings.openapiDocs.authHeaderDesc'),
+        authHeaderDesc: formatAuthHeaderPlainText(
+          t('system.settings.openapiDocs.authHeaderDesc'),
+          t('system.settings.openapiDocs.authHeaderKeyHint'),
+          t('system.settings.openapiDocs.authHeaderKeyPath'),
+        ),
         internal: t('system.settings.openapiDocs.internal'),
         external: t('system.settings.openapiDocs.external'),
         service: t('system.settings.openapiDocs.service'),

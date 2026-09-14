@@ -793,7 +793,7 @@ class CmdbModuleIngestService:
             update_attr=changes,
             operator=operator,
             allowed_org_ids=allowed_org_ids,
-            skip_permission_check=False,
+            skip_permission_check=True,
         )
         return updated if isinstance(updated, dict) else {**existing, **changes}
 
@@ -824,7 +824,7 @@ class CmdbModuleIngestService:
             update_attr=changes,
             operator=operator,
             allowed_org_ids=allowed_org_ids,
-            skip_permission_check=False,
+            skip_permission_check=True,
         )
         return updated if isinstance(updated, dict) else {**existing, **changes}
 

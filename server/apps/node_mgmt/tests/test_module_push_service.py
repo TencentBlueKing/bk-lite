@@ -51,6 +51,22 @@ def test_monitor_linkage_uses_local_ingest_client(mocker):
     assert result["id"] == "mon-1"
 
 
+def test_cmdb_linkage_uses_local_ingest_client(mocker):
+    """节点推送已在 server 进程内，CMDB ingest 必须本进程执行。
+
+    走真 NATS 时 sidecar 首次注册的 deferred push 会在 RPC 超时三次后
+    把 push_status 记为 skipped，安装勾选无法自动落库。
+    """
+    cmdb_cls = mocker.patch("apps.node_mgmt.services.module_push.CMDB")
+    cmdb_cls.return_value.ingest_from_source.return_value = {"id": "c1", "created": True}
+    from apps.node_mgmt.services.module_push import CmdbLinkage
+
+    result = CmdbLinkage().ingest_from_source(source_module="node_mgmt")
+
+    cmdb_cls.assert_called_once_with(is_local_client=True)
+    assert result["id"] == "c1"
+
+
 @pytest.mark.django_db
 def test_push_cmdb_only_does_not_call_monitor(mocker, node):
     cmdb = mocker.patch("apps.node_mgmt.services.module_push.CMDB")
@@ -71,6 +87,7 @@ def test_push_cmdb_only_does_not_call_monitor(mocker, node):
     )
 
     cmdb.return_value.ingest_from_source.assert_called_once()
+    cmdb.assert_called_with(is_local_client=True)
     assert monitor.call_count == 0
     node.refresh_from_db()
     assert node.cmdb_id == "99"

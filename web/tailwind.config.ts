@@ -17,6 +17,9 @@ export default {
       colors: {
         primary: '#155AEF', // 定义与 Ant Design 一致的颜色
       },
+      screens: {
+        '3xl': '1920px',
+      },
     },
   },
   plugins: [],

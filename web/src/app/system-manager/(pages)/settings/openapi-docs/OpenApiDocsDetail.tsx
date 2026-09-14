@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import Link from 'next/link';
 import { Button, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -23,6 +24,8 @@ import {
   generateCurlCommand,
   generateSamplePayload,
   injectDescriptionKey,
+  OPENAPI_SECRET_KEY_HREF,
+  splitLinkPlaceholder,
   type OpenAPIDocRow,
 } from '@/app/system-manager/utils/openapiDocs';
 import { useTranslation } from '@/utils/i18n';
@@ -145,6 +148,10 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
     if (!selectedRow || selectedRow.kind === 'external') return '';
     return generateCurlCommand(selectedRow);
   }, [selectedRow]);
+
+  const [authKeyHintBefore, authKeyHintAfter] = splitLinkPlaceholder(
+    t('system.settings.openapiDocs.authHeaderKeyHint'),
+  );
 
   return (
     <aside className="flex w-[min(32rem,44%)] shrink-0 flex-col overflow-hidden rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)]">
@@ -339,7 +346,15 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                             {t('system.settings.openapiDocs.authHeader')}
                           </div>
                           <div className="text-xs leading-relaxed text-[var(--color-text-2)]">
-                            {t('system.settings.openapiDocs.authHeaderDesc')}
+                            {t('system.settings.openapiDocs.authHeaderDesc')}{' '}
+                            {authKeyHintBefore}
+                            <Link
+                              href={OPENAPI_SECRET_KEY_HREF}
+                              className="text-[var(--color-primary)] hover:underline"
+                            >
+                              {t('system.settings.openapiDocs.authHeaderKeyPath')}
+                            </Link>
+                            {authKeyHintAfter}
                           </div>
                         </div>
                       </div>

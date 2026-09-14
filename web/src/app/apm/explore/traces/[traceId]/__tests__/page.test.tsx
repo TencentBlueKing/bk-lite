@@ -113,7 +113,8 @@ describe('APM Trace 详情', () => {
     expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('radio', { name: '火焰图' }));
-    expect(await screen.findByLabelText('checkout · POST /pay')).not.toBeNull();
+    const flameSpan = await screen.findByLabelText('checkout · POST /pay');
+    expect(flameSpan.parentElement?.className).not.toContain('min-w-[640px]');
     expect(screen.getByRole('radio', { name: '火焰图' })).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: '跳到首个错误' }));

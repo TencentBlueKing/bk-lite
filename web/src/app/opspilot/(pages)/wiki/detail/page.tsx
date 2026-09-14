@@ -11,9 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
-import TopSection from '@/components/top-section';
 import WithSideMenuLayout from '@/components/sub-layout';
-import OnelineEllipsisIntro from '@/app/opspilot/components/oneline-ellipsis-intro';
 import { MenuItem } from '@/types/index';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
@@ -24,8 +22,11 @@ import MaterialTab from '@/app/opspilot/components/wiki/MaterialTab';
 import OverviewTab from '@/app/opspilot/components/wiki/OverviewTab';
 import SettingsTab from '@/app/opspilot/components/wiki/SettingsTab';
 import { buildWikiDetailTabPath } from '@/app/opspilot/utils/wikiMaterialRoutes';
+import { pickStableIcon } from '@/app/opspilot/utils/pickStableIcon';
+import OpsPilotEntityDetailIntro from '@/app/opspilot/components/opspilot-entity-detail-intro';
 
 const WIKI_MENU_ICON_CLASS_NAME = 'text-[16px]';
+const WIKI_ICON_POOL = ['zhishiku1', 'zhishiku3', 'zhishiku2', 'zhishiku'];
 
 const WikiDetailPage: React.FC = () => {
   const { t } = useTranslation();
@@ -145,10 +146,23 @@ const WikiDetailPage: React.FC = () => {
     }
   };
 
+  const iconType =
+    pickStableIcon(kbId, WIKI_ICON_POOL, kb?.name) || 'zhishiku1';
+
+  const intro = (
+    <OpsPilotEntityDetailIntro
+      name={kb?.name}
+      description={kb?.introduction}
+      iconType={iconType}
+      fallbackTitle={t('wiki.detail.title', '知识库详情')}
+      emptyIntroText={t('wiki.detail.noIntro', '暂无简介')}
+    />
+  );
+
   return (
     <WithSideMenuLayout
-      topSection={<TopSection title={t('wiki.title')} content={t('wiki.description')} />}
-      intro={<OnelineEllipsisIntro name={kb?.name || ''} desc={kb?.introduction || ''} />}
+      intro={intro}
+      introLayout="unified"
       activeKeyword
       keywordName="tab"
       customMenuItems={menuItems}

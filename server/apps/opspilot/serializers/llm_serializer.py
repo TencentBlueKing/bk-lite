@@ -6,6 +6,7 @@ from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.models import LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
 from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
+from apps.opspilot.services.skill_memory_service import SkillMemoryConfigError, normalize_write_rounds, validate_skill_memory_binding
 from apps.opspilot.utils.skill_package_params import mask_package_params
 
 
@@ -104,6 +105,9 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "instance_id",
             "is_builtin",
             "wiki_knowledge_bases",
+            "force_wiki_grounded",
+            "memory_space",
+            "memory_write_rounds",
             # 只读派生字段（保持现有读取输出不变）
             "permissions",
             "team_name",
@@ -122,6 +126,23 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "updated_by_domain",
             "is_builtin",
         ]
+
+    def validate_memory_space(self, value):
+        if value is None:
+            return None
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request is not None else None
+        try:
+            validate_skill_memory_binding(value.id, user)
+        except SkillMemoryConfigError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
+
+    def validate_memory_write_rounds(self, value):
+        try:
+            return normalize_write_rounds(value)
+        except SkillMemoryConfigError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
     def get_llm_model_name(self, instance: LLMSkill):
         return instance.llm_model.name if instance.llm_model is not None else ""
