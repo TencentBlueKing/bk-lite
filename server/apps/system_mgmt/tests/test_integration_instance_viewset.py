@@ -2,7 +2,15 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
-from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
+from apps.system_mgmt.models import (
+    IMNotificationChannel,
+    IntegrationInstance,
+    IntegrationInstanceStatusChoices,
+    LoginAuthBinding,
+    LoginAuthBindingPlatformFieldChoices,
+    LoginAuthBindingUnmatchedActionChoices,
+    UserSyncSource,
+)
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.viewset import integration_instance_viewset
 
@@ -415,6 +423,47 @@ class TestIntegrationInstanceViewSet:
         assert response.status_code == 200
         assert IntegrationInstance.objects.filter(id=draft_instance.id).exists() is False
         mock_log.assert_called_once()
+
+    def test_destroy_rejects_when_capability_configs_exist(self, api_client, authenticated_user, draft_instance):
+        authenticated_user.is_superuser = True
+        authenticated_user.permission = {"system-manager": {"integration_center-Delete"}}
+        authenticated_user.save(update_fields=["is_superuser"])
+
+        source = UserSyncSource.objects.create(
+            name="source-a",
+            integration_instance=draft_instance,
+            enabled=True,
+            root_group_name="Root A",
+        )
+        channel = IMNotificationChannel.objects.create(
+            name="channel-b",
+            integration_instance=draft_instance,
+            enabled=True,
+        )
+        binding = LoginAuthBinding.objects.create(
+            name="binding-c",
+            integration_instance=draft_instance,
+            enabled=True,
+            external_field="user_id",
+            platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+            unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+        )
+
+        response = api_client.delete(f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/")
+        payload = response.json()
+
+        assert response.status_code == 409
+        assert payload["result"] is False
+        assert payload["code"] == "INTEGRATION_INSTANCE_IN_USE"
+        assert {(item["type"], item["name"]) for item in payload["data"]["references"]} == {
+            ("user_sync", "source-a"),
+            ("im_notification", "channel-b"),
+            ("login_auth", "binding-c"),
+        }
+        assert IntegrationInstance.objects.filter(id=draft_instance.id).exists() is True
+        assert UserSyncSource.objects.filter(id=source.id).exists() is True
+        assert IMNotificationChannel.objects.filter(id=channel.id).exists() is True
+        assert LoginAuthBinding.objects.filter(id=binding.id).exists() is True
 
     def test_providers_returns_public_manifests(self, api_client, authenticated_user):
         authenticated_user.is_superuser = True

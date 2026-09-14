@@ -324,5 +324,20 @@ assert.match(
   /extra=\{isPullDnsListField && field\.help_text/,
   '每行一个 DN 的说明必须常显，不能只藏在 tooltip',
 );
+assert.match(
+  configFields,
+  /form\.setFieldsValue\(\{/,
+  '根部门选中值必须用 setFieldsValue 写入，避免 rc-field-form isEqual 误报 circular references',
+);
+assert.doesNotMatch(
+  configFields,
+  /form\.setFieldValue\(/,
+  '根部门字段不得使用 setFieldValue',
+);
+assert.doesNotMatch(
+  configFields,
+  /form\.setFields\(/,
+  '根部门字段不得使用 setFields 写 errors，EMPTY_ERRORS 共享引用会触发 circular references',
+);
 
 console.log('user sync input mode tests passed');

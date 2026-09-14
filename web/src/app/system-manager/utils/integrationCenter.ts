@@ -17,7 +17,71 @@ export interface IntegrationSummaryItem {
 
 export const INTEGRATION_DETAIL_TAB_ORDER = ['base', 'user_sync', 'login_auth', 'im_notification', 'im_group'] as const;
 
+export const INTEGRATION_INSTANCE_IN_USE_CODE = 'INTEGRATION_INSTANCE_IN_USE';
+
 export type IntegrationDetailTab = typeof INTEGRATION_DETAIL_TAB_ORDER[number];
+
+export interface IntegrationInstanceCapabilityReference {
+  type: string;
+  id: number;
+  name: string;
+}
+
+const IN_USE_REFERENCE_LABEL_KEYS: Record<string, string> = {
+  user_sync: 'system.integrationCenter.capability.userSync',
+  login_auth: 'system.integrationCenter.capability.loginAuth',
+  im_notification: 'system.integrationCenter.capability.imNotification',
+};
+
+export function readIntegrationInstanceInUseReferences(
+  error: unknown,
+): IntegrationInstanceCapabilityReference[] {
+  if (!error || typeof error !== 'object') {
+    return [];
+  }
+  const record = error as { code?: unknown; payload?: unknown };
+  if (record.code !== INTEGRATION_INSTANCE_IN_USE_CODE) {
+    return [];
+  }
+  const payload = record.payload;
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+  const data = (payload as { data?: unknown }).data;
+  if (!data || typeof data !== 'object') {
+    return [];
+  }
+  const refs = (data as { references?: unknown }).references;
+  if (!Array.isArray(refs)) {
+    return [];
+  }
+  return refs.filter((item): item is IntegrationInstanceCapabilityReference => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+    const row = item as { type?: unknown; id?: unknown; name?: unknown };
+    return typeof row.type === 'string' && typeof row.id === 'number' && typeof row.name === 'string';
+  });
+}
+
+export function formatIntegrationInstanceDeleteError(
+  error: unknown,
+  t: (key: string, fallback?: string, values?: Record<string, string>) => string,
+  fallback: string,
+): string {
+  const refs = readIntegrationInstanceInUseReferences(error);
+  if (refs.length === 0) {
+    return error instanceof Error && error.message ? error.message : fallback;
+  }
+  const names = refs
+    .map((ref) => `${t(IN_USE_REFERENCE_LABEL_KEYS[ref.type] || ref.type)}「${ref.name}」`)
+    .join('、');
+  return t(
+    'system.integrationCenter.deleteBlockedInUse',
+    '该集成实例仍被其他配置引用，请先删除这些配置后再试：{names}',
+    { names },
+  );
+}
 
 export function getAvailableIntegrationTabs(
   instance: Pick<IntegrationInstance, 'capability_status'>,
