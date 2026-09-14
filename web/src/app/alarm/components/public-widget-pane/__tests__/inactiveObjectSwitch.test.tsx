@@ -42,7 +42,6 @@ describe('alarm public pane object switch', () => {
     const loadWidget = vi.fn(async () => ({ default: SpyMonitorWidget }));
     const { rerender } = render(
       <PublicWidgetPane
-        widgetKey="monitor.monitorView"
         active
         loadWidget={loadWidget}
         identifier="app3d-demo-host-02"
@@ -59,7 +58,6 @@ describe('alarm public pane object switch', () => {
 
     rerender(
       <PublicWidgetPane
-        widgetKey="monitor.monitorView"
         active={false}
         loadWidget={loadWidget}
         identifier="app3d-demo-host-02"
@@ -68,7 +66,6 @@ describe('alarm public pane object switch', () => {
     );
     rerender(
       <PublicWidgetPane
-        widgetKey="monitor.monitorView"
         active={false}
         loadWidget={loadWidget}
         identifier="app3d-demo-host-09"
@@ -87,7 +84,6 @@ describe('alarm public pane object switch', () => {
     const loadWidget = vi.fn(async () => ({ default: SpyMonitorWidget }));
     const { rerender } = render(
       <PublicWidgetPane
-        widgetKey="monitor.monitorView"
         active
         loadWidget={loadWidget}
         identifier="app3d-demo-host-02"
@@ -102,7 +98,6 @@ describe('alarm public pane object switch', () => {
 
     rerender(
       <PublicWidgetPane
-        widgetKey="monitor.monitorView"
         active={false}
         loadWidget={loadWidget}
         identifier="app3d-demo-host-09"
@@ -111,7 +106,6 @@ describe('alarm public pane object switch', () => {
     );
     rerender(
       <PublicWidgetPane
-        widgetKey="monitor.monitorView"
         active
         loadWidget={loadWidget}
         identifier="app3d-demo-host-09"
@@ -130,11 +124,10 @@ describe('alarm public pane object switch', () => {
     ]);
   });
 
-  it('keeps the host object switcher on the same row as refresh', async () => {
+  it('keeps the object switcher on the host toolbar and does not add a refresh control', async () => {
     const loadWidget = vi.fn(async () => ({ default: SpyMonitorWidget }));
     render(
       <PublicWidgetPane
-        widgetKey="monitor.monitorView"
         active
         loadWidget={loadWidget}
         identifier="app3d-demo-host-02"
@@ -147,9 +140,39 @@ describe('alarm public pane object switch', () => {
       expect(screen.getByTestId('spy-monitor')).toBeTruthy();
     });
 
-    const refresh = screen.getByRole('button', { name: 'common.refresh' });
-    expect(
-      refresh.parentElement?.contains(screen.getByTestId('object-switcher')),
-    ).toBe(true);
+    expect(screen.getByTestId('object-switcher')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'common.refresh' })).toBeNull();
+  });
+
+  it('renders headerAction on the same row opposite toolbarStart', async () => {
+    function SpyActionWidget({
+      onHeaderAction,
+    }: {
+      onHeaderAction?: (node: React.ReactNode) => void;
+    }) {
+      useEffect(() => {
+        onHeaderAction?.(<button type="button">custom-action</button>);
+        return () => onHeaderAction?.(null);
+      }, [onHeaderAction]);
+      return <div>spy-content</div>;
+    }
+    const loadWidget = vi.fn(async () => ({ default: SpyActionWidget }));
+    render(
+      <PublicWidgetPane
+        active
+        loadWidget={loadWidget}
+        identifier="inst-01"
+        identifierProp="instUuid"
+        toolbarStart={<div data-testid="object-switcher">host-a</div>}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('custom-action')).toBeTruthy();
+    });
+
+    const switcher = screen.getByTestId('object-switcher');
+    const action = screen.getByText('custom-action');
+    expect(switcher.closest('.justify-between')).toBe(action.closest('.justify-between'));
   });
 });

@@ -522,7 +522,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
               }
             >
               <PublicWidgetPane
-                widgetKey="monitor.monitorView"
                 active={publicWidgets.monitorView.active}
                 loadWidget={publicWidgets.monitorView.loadWidget}
                 identifier={currentObject?.monitorId || ''}
@@ -540,7 +539,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
               }
             >
               <PublicWidgetPane
-                widgetKey="ops-analysis.relatedTopology"
                 active={publicWidgets.relatedTopology.active}
                 loadWidget={publicWidgets.relatedTopology.loadWidget}
                 identifier={currentObject?.instUuid || ''}
@@ -558,7 +556,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
               }
             >
               <PublicWidgetPane
-                widgetKey="cmdb.baseInfo"
                 active={publicWidgets.assetInfo.active}
                 loadWidget={publicWidgets.assetInfo.loadWidget}
                 identifier={currentObject?.instUuid || ''}

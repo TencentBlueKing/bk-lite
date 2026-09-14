@@ -73,4 +73,26 @@ describe('cmdb base info public widget fetch once', () => {
     await new Promise((resolve) => setTimeout(resolve, 80));
     expect(apis.getInstanceDetail.mock.calls.length).toBe(settled);
   });
+
+  it('delegates open-in-cmdb action to onHeaderAction when provided', async () => {
+    const onHeaderAction = vi.fn();
+    const { unmount } = render(
+      <BaseInfoWidget instUuid={INST_UUID} onHeaderAction={onHeaderAction} />,
+    );
+    await waitFor(() => {
+      expect(onHeaderAction).toHaveBeenCalled();
+      const lastCallArg = onHeaderAction.mock.calls.at(-1)?.[0];
+      expect(lastCallArg).toBeTruthy();
+    });
+    expect(screen.queryByRole('link', { name: 'Model.openInCmdb' })).toBeNull();
+    unmount();
+    expect(onHeaderAction).toHaveBeenLastCalledWith(null);
+  });
+
+  it('renders open-in-cmdb link in self when onHeaderAction is absent', async () => {
+    render(<BaseInfoWidget instUuid={INST_UUID} />);
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Model.openInCmdb' })).toBeTruthy();
+    });
+  });
 });

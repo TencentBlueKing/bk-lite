@@ -37,7 +37,8 @@ describe('alarm public widget host isolation', () => {
     expect(paneSource).toContain('active && Boolean(identifier)');
     expect(paneSource).toContain('useActiveBoundIdentifier');
     expect(paneSource).toContain('toolbarStart');
-    expect(paneSource).toContain("t('common.refresh')");
+    expect(paneSource).not.toContain("t('common.refresh')");
+    expect(paneSource).not.toContain('ReloadOutlined');
     expect(paneSource).not.toContain('520px');
   });
 

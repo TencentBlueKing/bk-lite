@@ -13,9 +13,10 @@ import { publicWidgetErrorMessage } from './publicWidgetError';
 
 export interface BaseInfoWidgetProps {
   instUuid: string;
+  onHeaderAction?: (action: React.ReactNode) => void;
 }
 
-const BaseInfoWidget = ({ instUuid }: BaseInfoWidgetProps) => {
+const BaseInfoWidget = ({ instUuid, onHeaderAction }: BaseInfoWidgetProps) => {
   const { t } = useTranslation();
   const { getModelAttrGroupsFullInfo } = useModelApi();
   const { getInstanceDetail } = useInstanceApi();
@@ -69,6 +70,29 @@ const BaseInfoWidget = ({ instUuid }: BaseInfoWidgetProps) => {
     };
   }, [reloadKey, uuid]);
 
+  const modelId = String(instDetail.model_id || '');
+  const instName = String(instDetail.inst_name || instDetail.name || uuid);
+  const hasData = Boolean(propertyList.length || Object.keys(instDetail).length);
+  const openHref = hasData && uuid
+    ? `/cmdb/assetData/detail/baseInfo?model_id=${encodeURIComponent(modelId)}&inst_uuid=${encodeURIComponent(uuid)}&inst_name=${encodeURIComponent(instName)}`
+    : '';
+
+  useEffect(() => {
+    if (!onHeaderAction) return;
+    if (loading || error || !openHref) {
+      onHeaderAction(null);
+      return;
+    }
+    onHeaderAction(
+      <Button type="link" href={openHref}>
+        {t('Model.openInCmdb')}
+      </Button>,
+    );
+    return () => {
+      onHeaderAction(null);
+    };
+  }, [error, loading, onHeaderAction, openHref, t]);
+
   if (loading) {
     return (
       <div className="flex min-h-[280px] items-center justify-center">
@@ -94,17 +118,15 @@ const BaseInfoWidget = ({ instUuid }: BaseInfoWidgetProps) => {
     );
   }
 
-  const modelId = String(instDetail.model_id || '');
-  const instName = String(instDetail.inst_name || instDetail.name || uuid);
-  const openHref = `/cmdb/assetData/detail/baseInfo?model_id=${encodeURIComponent(modelId)}&inst_uuid=${encodeURIComponent(uuid)}&inst_name=${encodeURIComponent(instName)}`;
-
   return (
     <div className="flex h-full min-h-[280px] min-w-0 flex-col gap-3">
-      <div className="flex justify-end">
-        <Button type="link" href={openHref}>
-          {t('Model.openInCmdb')}
-        </Button>
-      </div>
+      {!onHeaderAction && (
+        <div className="flex justify-end">
+          <Button type="link" href={openHref}>
+            {t('Model.openInCmdb')}
+          </Button>
+        </div>
+      )}
       <InfoList
         readOnly
         instDetail={instDetail}

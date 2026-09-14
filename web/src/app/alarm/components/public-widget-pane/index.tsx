@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Select, Spin } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useClientData } from '@/context/client';
@@ -11,7 +10,6 @@ import {
   useAppWidget,
   useLazyAppWidget,
 } from '@/context/appCapabilities';
-import type { AppWidgetKey } from '@/context/appCapabilities';
 import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
 import {
   alarmHasAnyInstUuid,
@@ -22,7 +20,10 @@ import {
 import { buildAlarmDetailPublicTabs } from '@/app/alarm/utils/alarmDetailPublicTabs';
 import { resolveAlarmPublicWidgetVisibility } from '@/app/alarm/utils/alarmPublicWidgetVisibility';
 
-type InstUuidWidget = React.ComponentType<{ instUuid: string }>;
+type InstUuidWidget = React.ComponentType<{
+  instUuid: string;
+  onHeaderAction?: (action: React.ReactNode) => void;
+}>;
 type MonitorIdWidget = React.ComponentType<{ monitorId: string; metricKey?: string }>;
 
 export function useAlarmPublicWidgets(options: {
@@ -128,14 +129,12 @@ function useActiveBoundIdentifier(identifier: string, active: boolean) {
 }
 
 export function PublicWidgetPane({
-  widgetKey,
   active,
   loadWidget,
   identifier,
   identifierProp,
   toolbarStart,
 }: {
-  widgetKey: AppWidgetKey;
   active: boolean;
   loadWidget: (() => Promise<{ default: unknown }>) | null;
   identifier: string;
@@ -144,8 +143,8 @@ export function PublicWidgetPane({
 }) {
   const { t } = useTranslation();
   const boundIdentifier = useActiveBoundIdentifier(identifier, active);
-  const [refreshNonce, setRefreshNonce] = useState(0);
   const [loadEpoch, setLoadEpoch] = useState(0);
+  const [headerAction, setHeaderAction] = useState<React.ReactNode>(null);
   const { Widget, loadFailed } = useLazyAppWidget({
     loadWidget,
     active: active && Boolean(identifier),
@@ -153,12 +152,12 @@ export function PublicWidgetPane({
   });
 
   useEffect(() => {
-    setRefreshNonce(0);
-  }, [boundIdentifier, widgetKey]);
+    setHeaderAction(null);
+  }, [boundIdentifier]);
 
   const missingIdentifier = (active && !identifier) || !boundIdentifier;
-  const showRefresh = Boolean(Widget) && !loadFailed && !missingIdentifier;
-  const showToolbar = Boolean(toolbarStart) || showRefresh;
+  const hasContent = Boolean(Widget) && !loadFailed && !missingIdentifier;
+  const showToolbar = Boolean(toolbarStart) || Boolean(headerAction);
 
   let body: React.ReactNode;
   if (missingIdentifier) {
@@ -177,15 +176,16 @@ export function PublicWidgetPane({
   } else if (identifierProp === 'instUuid') {
     body = (
       <InstUuidMount
-        key={`${boundIdentifier}:${refreshNonce}`}
+        key={boundIdentifier}
         Widget={Widget as InstUuidWidget}
         instUuid={boundIdentifier}
+        onHeaderAction={setHeaderAction}
       />
     );
   } else {
     body = (
       <MonitorIdMount
-        key={`${boundIdentifier}:${refreshNonce}`}
+        key={boundIdentifier}
         Widget={Widget as MonitorIdWidget}
         monitorId={boundIdentifier}
       />
@@ -194,22 +194,15 @@ export function PublicWidgetPane({
 
   return (
     <div className="flex h-full min-h-[280px] min-w-0 flex-1 flex-col gap-4">
-      {showToolbar && (
-        <div className="flex shrink-0 items-center justify-end gap-3">
-          {toolbarStart ? <div className="min-w-0 flex-1">{toolbarStart}</div> : null}
-          {showRefresh && (
-            <Button
-              type="text"
-              aria-label={t('common.refresh')}
-              icon={<ReloadOutlined />}
-              onClick={() => setRefreshNonce((current) => current + 1)}
-            />
-          )}
+      {showToolbar ? (
+        <div className="flex shrink-0 items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">{toolbarStart}</div>
+          {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
         </div>
-      )}
+      ) : null}
       <div
         className={
-          showRefresh
+          hasContent
             ? 'min-h-0 min-w-0 flex-1 overflow-auto'
             : 'flex min-h-0 min-w-0 flex-1 items-center justify-center'
         }
@@ -223,11 +216,13 @@ export function PublicWidgetPane({
 function InstUuidMount({
   Widget,
   instUuid,
+  onHeaderAction,
 }: {
   Widget: InstUuidWidget;
   instUuid: string;
+  onHeaderAction?: (action: React.ReactNode) => void;
 }) {
-  return <Widget instUuid={instUuid} />;
+  return <Widget instUuid={instUuid} onHeaderAction={onHeaderAction} />;
 }
 
 function MonitorIdMount({
