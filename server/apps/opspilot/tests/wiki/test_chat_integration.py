@@ -102,6 +102,9 @@ def test_should_skip_wiki_retrieval_for_time_tool_queries():
     assert should_skip_wiki_retrieval("现在几点了？") is True
     assert should_skip_wiki_retrieval("现在几点") is True
     assert should_skip_wiki_retrieval("几点了") is True
+    assert should_skip_wiki_retrieval("现在几点钟了") is True
+    assert should_skip_wiki_retrieval("几点钟了") is True
+    assert should_skip_wiki_retrieval("现在几点钟了？") is True
     assert should_skip_wiki_retrieval("what time is it") is True
     assert should_skip_wiki_retrieval("现在几点开会") is False
     assert should_skip_wiki_retrieval("怎么巡检数据库？") is False
