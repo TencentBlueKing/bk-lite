@@ -1,0 +1,189 @@
+Wireless Huawei AC SNMP:
+  name: Huawei WLAN AC (Telegraf)
+  desc: SNMP monitoring template for Huawei WLAN AC. It reports entity CPU, memory, temperature,
+    AP and station counts, radio utilization, and uplink traffic.
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the wireless controller since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand device stability
+        and identify unexpected reboots.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: Per-entity CPU utilization of the Huawei WLAN AC (hwEntityCpuUsage), normalized
+        to a 0-100 percentage. Dimension descr is entPhysicalName. Sustained high CPU usage
+        can indicate heavy AP or station management load.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Per-entity memory utilization of the Huawei WLAN AC (hwEntityMemUsage), reported
+        directly as a 0-100 percentage. High memory pressure can affect AP join handling and
+        station roaming.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Temperature reading of each Huawei WLAN AC hardware sensor (hwEntityTemperature),
+        in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked
+        airflow, or excessive ambient heat.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: Actual operational status of each WLAN AC uplink or service interface.
+    interface_ifHighSpeed:
+      name: Interface High Speed
+      desc: Interface speed in megabits per second from IF-MIB ifHighSpeed on the WLAN AC
+        uplink.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: Average rate of incoming error packets over the past 5 minutes on WLAN AC interfaces.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: Average rate of outgoing error packets over the past 5 minutes on WLAN AC interfaces.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: Average rate of incoming discarded packets over the past 5 minutes on WLAN AC
+        interfaces.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: Average rate of outgoing discarded packets over the past 5 minutes on WLAN AC
+        interfaces.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average inbound byte rate over the past 5 minutes from the 64-bit IF-MIB ifHCInOctets
+        counter on the WLAN AC uplink.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average outbound byte rate over the past 5 minutes from the 64-bit IF-MIB ifHCOutOctets
+        counter on the WLAN AC uplink.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: Average total inbound byte rate of the WLAN AC over the past 5 minutes, summed
+        across interfaces from ifHCInOctets.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: Average total outbound byte rate of the WLAN AC over the past 5 minutes, summed
+        across interfaces from ifHCOutOctets.
+    wlan_cur_joint_ap_num:
+      name: Joined AP Count
+      desc: Current number of APs joined to this Huawei WLAN AC (hwWlanCurJointApNum). A sudden
+        drop means APs went offline from the controller.
+    wlan_ap_count:
+      name: AP Count
+      desc: AP count reported by the Huawei WLAN AC (hwWlanApCount). Compare with joined and
+        normal AP counts to spot inventory drift.
+    wlan_service_normal_ap_count:
+      name: Normal AP Count
+      desc: Number of APs in normal service on this Huawei WLAN AC (hwWlanServiceNormalAPCount).
+        Lower than joined AP count means some APs are joined but not serving.
+    wlan_ap_normal_ratio:
+      name: AP Normal Ratio
+      desc: Ratio of normal-service APs on this Huawei WLAN AC (hwWlanApNormalRatio), as a
+        0-100 percentage. A falling ratio is an early fleet-health signal.
+    wlan_access_max_ap_number:
+      name: Max AP License
+      desc: Maximum AP number allowed on this Huawei WLAN AC (hwWlanAccessMaxApNumber). Joined
+        AP count approaching this value means the controller is near license or scale capacity.
+    wlan_cur_assoc_sta_num:
+      name: Associated STA Count
+      desc: Current associated station count on this Huawei WLAN AC (hwWlanCurAssocStaNum).
+        Sudden drops can indicate RF, authentication, or controller faults.
+    wlan_cur_auth_success_sta_num:
+      name: Auth-Success STA Count
+      desc: Current stations that completed authentication on this Huawei WLAN AC (hwWlanCurAuthSuccessStaNum).
+        A growing gap versus associated count points to auth failures.
+    wlan_sta_cur_num:
+      name: Current STA Count
+      desc: Current station count on this Huawei WLAN AC (hwWlanStaCurNum). Use it together
+        with associated and auth-success counts when the three objects disagree across software
+        versions.
+    wlan_cur_assoc_2g_sta_num:
+      name: Associated 2.4G STA Count
+      desc: Current associated 2.4 GHz station count (hwWlanCurAssoc2gStaNum). Useful for
+        band-steering and 2.4 GHz congestion checks.
+    wlan_cur_assoc_5g_sta_num:
+      name: Associated 5G STA Count
+      desc: Current associated 5 GHz station count (hwWlanCurAssoc5gStaNum).
+    wlan_cur_assoc_6g_sta_num:
+      name: Associated 6G STA Count
+      desc: Current associated 6 GHz station count (hwWlanCurAssoc6gStaNum). Missing values
+        are expected on ACs or APs without 6 GHz radios.
+    wlan_access_max_sta_number:
+      name: Max STA License
+      desc: Maximum station number allowed on this Huawei WLAN AC (hwWlanAccessMaxStaNumber).
+        Associated count approaching this value means the controller is near station scale
+        capacity.
+    wlan_global_up_speed:
+      name: Global Uplink Speed
+      desc: Global wireless uplink speed reported by the Huawei WLAN AC (hwWlanGlobalUpSpeed).
+    wlan_global_down_speed:
+      name: Global Downlink Speed
+      desc: Global wireless downlink speed reported by the Huawei WLAN AC (hwWlanGlobalDownSpeed).
+    wlan_vap_cur_num:
+      name: Current VAP Count
+      desc: Current VAP count on this Huawei WLAN AC (hwVapCurNum). Unexpected change can
+        mean SSID deployment drift.
+    wlan_vap_max_num:
+      name: Max VAP Count
+      desc: Maximum VAP count on this Huawei WLAN AC (hwVapMaxNum). Current VAP count approaching
+        this value means the controller is near VAP scale capacity.
+    wlan_ap_run_state:
+      name: AP Run State
+      desc: Run state of each AP managed by this Huawei WLAN AC (hwWlanApRunState). Fault,
+        configFailed, or idle on an AP that should be serving clients needs immediate investigation.
+    wlan_ap_cpu_usage:
+      name: AP CPU Usage
+      desc: CPU utilization of each managed AP (hwWlanApCpuUsage), as a 0-100 percentage.
+        High AP CPU can drop clients or delay roaming.
+    wlan_ap_mem_usage:
+      name: AP Memory Usage
+      desc: Memory utilization of each managed AP (hwWlanApMemUsage), as a 0-100 percentage.
+        High AP memory can cause restarts or client association failures.
+    wlan_ap_temperature:
+      name: AP Temperature
+      desc: Temperature of each managed AP (hwWlanApTemperature), in degrees Celsius. High
+        values on indoor or outdoor APs indicate cooling or ambient issues.
+    wlan_ap_online_user_num:
+      name: AP Online User Count
+      desc: Online user count of each managed AP (hwWlanApOnlineUserNum). Combined with radio
+        STA counts it locates overloaded APs.
+    wlan_radio_run_state:
+      name: Radio Run State
+      desc: Run state of each radio (hwWlanRadioRunState). A down radio means that band is
+        not serving clients even if the AP is joined.
+    wlan_radio_channel:
+      name: Radio Channel
+      desc: Operating channel of each radio (hwWlanRadioChannel). Unexpected channel changes
+        can indicate radar events or RF planning drift.
+    wlan_radio_noise:
+      name: Radio Noise
+      desc: Noise reading of each radio (hwWlanRadioNoise). Rising noise reduces SNR and client
+        throughput.
+    wlan_radio_util:
+      name: Radio Utilization
+      desc: Channel utilization of each radio (hwWlanRadioUtilization), as a 0-100 percentage.
+        High utilization with modest STA count often means interference or neighbor BSS load.
+    wlan_radio_free:
+      name: Radio Free Airtime
+      desc: Free airtime of each radio (hwWlanRadioFree), as a 0-100 percentage. Low free
+        airtime means the radio cannot accept more load without quality loss.
+    wlan_radio_sta_num:
+      name: Radio STA Count
+      desc: Current station count of each radio (hwWlanRadioStaNum).
+    wlan_radio_sta_max:
+      name: Radio Max STA Count
+      desc: Maximum station count of each radio (hwWlanRadioMaxStaNum). Current count approaching
+        max means that radio is near association capacity.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Status: Status
+    Bandwidth: Bandwidth
+    Packet Error: Packet Error
+    Packet Loss: Packet Loss
+    Traffic: Traffic
+    Wireless: Wireless

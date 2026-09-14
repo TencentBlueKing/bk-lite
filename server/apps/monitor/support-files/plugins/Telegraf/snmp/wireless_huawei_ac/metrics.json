@@ -1,0 +1,720 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_huawei_ac",
+  "plugin": "Wireless Huawei AC SNMP",
+  "plugin_desc": "Huawei WLAN AC SNMP collection for campus WLAN controllers. In addition to entity CPU, memory and temperature plus IF-MIB uplink traffic, it collects joined/normal AP counts, station counts by band, global wireless speed, VAP scale, per-AP run state/CPU/memory/temperature/online users, and per-radio run state, channel, noise, utilization, free airtime and STA counts. Supported brands/models include Huawei AC6005, AC650x and AirEngine 9700 WLAN controllers (sysObjectID family 1.3.6.1.4.1.2011.2.240).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_huawei_ac'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "wlan_cur_joint_ap_num",
+    "wlan_cur_assoc_sta_num",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the wireless controller since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='wireless', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity CPU utilization of the Huawei WLAN AC (hwEntityCpuUsage), normalized to a 0-100 percentage. Dimension descr is entPhysicalName. Sustained high CPU usage can indicate heavy AP or station management load."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "device_memory_usage{instance_type='wireless', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity memory utilization of the Huawei WLAN AC (hwEntityMemUsage), reported directly as a 0-100 percentage. High memory pressure can affect AP join handling and station roaming."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='wireless', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature reading of each Huawei WLAN AC hardware sensor (hwEntityTemperature), in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifOperStatus",
+      "query": "interface_ifOperStatus{instance_type='wireless', __$labels__}",
+      "display_name": "Interface Oper Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Actual operational status of each WLAN AC uplink or service interface."
+    },
+    {
+      "metric_group": "Bandwidth",
+      "name": "interface_ifHighSpeed",
+      "query": "interface_ifHighSpeed{instance_type='wireless', __$labels__}",
+      "display_name": "Interface High Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Interface speed in megabits per second from IF-MIB ifHighSpeed on the WLAN AC uplink."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifInErrors",
+      "query": "rate(interface_ifInErrors{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Incoming Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of incoming error packets over the past 5 minutes on WLAN AC interfaces."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifOutErrors",
+      "query": "rate(interface_ifOutErrors{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Outgoing Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of outgoing error packets over the past 5 minutes on WLAN AC interfaces."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifInDiscards",
+      "query": "rate(interface_ifInDiscards{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Incoming Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of incoming discarded packets over the past 5 minutes on WLAN AC interfaces."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifOutDiscards",
+      "query": "rate(interface_ifOutDiscards{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Outgoing Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of outgoing discarded packets over the past 5 minutes on WLAN AC interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average inbound byte rate over the past 5 minutes from the 64-bit IF-MIB ifHCInOctets counter on the WLAN AC uplink."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifIndex",
+          "description": "ifIndex"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average outbound byte rate over the past 5 minutes from the 64-bit IF-MIB ifHCOutOctets counter on the WLAN AC uplink."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average total inbound byte rate of the WLAN AC over the past 5 minutes, summed across interfaces from ifHCInOctets."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average total outbound byte rate of the WLAN AC over the past 5 minutes, summed across interfaces from ifHCOutOctets."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_cur_joint_ap_num",
+      "query": "wlan_cur_joint_ap_num{instance_type='wireless', __$labels__}",
+      "display_name": "Joined AP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current number of APs joined to this Huawei WLAN AC (hwWlanCurJointApNum). A sudden drop means APs went offline from the controller."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_ap_count",
+      "query": "wlan_ap_count{instance_type='wireless', __$labels__}",
+      "display_name": "AP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "AP count reported by the Huawei WLAN AC (hwWlanApCount). Compare with joined and normal AP counts to spot inventory drift."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_service_normal_ap_count",
+      "query": "wlan_service_normal_ap_count{instance_type='wireless', __$labels__}",
+      "display_name": "Normal AP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of APs in normal service on this Huawei WLAN AC (hwWlanServiceNormalAPCount). Lower than joined AP count means some APs are joined but not serving."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_ap_normal_ratio",
+      "query": "wlan_ap_normal_ratio{instance_type='wireless', __$labels__}",
+      "display_name": "AP Normal Ratio",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ratio of normal-service APs on this Huawei WLAN AC (hwWlanApNormalRatio), as a 0-100 percentage. A falling ratio is an early fleet-health signal."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_access_max_ap_number",
+      "query": "wlan_access_max_ap_number{instance_type='wireless', __$labels__}",
+      "display_name": "Max AP License",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Maximum AP number allowed on this Huawei WLAN AC (hwWlanAccessMaxApNumber). Joined AP count approaching this value means the controller is near license or scale capacity."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_cur_assoc_sta_num",
+      "query": "wlan_cur_assoc_sta_num{instance_type='wireless', __$labels__}",
+      "display_name": "Associated STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current associated station count on this Huawei WLAN AC (hwWlanCurAssocStaNum). Sudden drops can indicate RF, authentication, or controller faults."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_cur_auth_success_sta_num",
+      "query": "wlan_cur_auth_success_sta_num{instance_type='wireless', __$labels__}",
+      "display_name": "Auth-Success STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current stations that completed authentication on this Huawei WLAN AC (hwWlanCurAuthSuccessStaNum). A growing gap versus associated count points to auth failures."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_sta_cur_num",
+      "query": "wlan_sta_cur_num{instance_type='wireless', __$labels__}",
+      "display_name": "Current STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current station count on this Huawei WLAN AC (hwWlanStaCurNum). Use it together with associated and auth-success counts when the three objects disagree across software versions."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_cur_assoc_2g_sta_num",
+      "query": "wlan_cur_assoc_2g_sta_num{instance_type='wireless', __$labels__}",
+      "display_name": "Associated 2.4G STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current associated 2.4 GHz station count (hwWlanCurAssoc2gStaNum). Useful for band-steering and 2.4 GHz congestion checks."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_cur_assoc_5g_sta_num",
+      "query": "wlan_cur_assoc_5g_sta_num{instance_type='wireless', __$labels__}",
+      "display_name": "Associated 5G STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current associated 5 GHz station count (hwWlanCurAssoc5gStaNum)."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_cur_assoc_6g_sta_num",
+      "query": "wlan_cur_assoc_6g_sta_num{instance_type='wireless', __$labels__}",
+      "display_name": "Associated 6G STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current associated 6 GHz station count (hwWlanCurAssoc6gStaNum). Missing values are expected on ACs or APs without 6 GHz radios."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_access_max_sta_number",
+      "query": "wlan_access_max_sta_number{instance_type='wireless', __$labels__}",
+      "display_name": "Max STA License",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Maximum station number allowed on this Huawei WLAN AC (hwWlanAccessMaxStaNumber). Associated count approaching this value means the controller is near station scale capacity."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_global_up_speed",
+      "query": "wlan_global_up_speed{instance_type='wireless', __$labels__}",
+      "display_name": "Global Uplink Speed",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Global wireless uplink speed reported by the Huawei WLAN AC (hwWlanGlobalUpSpeed)."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_global_down_speed",
+      "query": "wlan_global_down_speed{instance_type='wireless', __$labels__}",
+      "display_name": "Global Downlink Speed",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Global wireless downlink speed reported by the Huawei WLAN AC (hwWlanGlobalDownSpeed)."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_vap_cur_num",
+      "query": "wlan_vap_cur_num{instance_type='wireless', __$labels__}",
+      "display_name": "Current VAP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current VAP count on this Huawei WLAN AC (hwVapCurNum). Unexpected change can mean SSID deployment drift."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_vap_max_num",
+      "query": "wlan_vap_max_num{instance_type='wireless', __$labels__}",
+      "display_name": "Max VAP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Maximum VAP count on this Huawei WLAN AC (hwVapMaxNum). Current VAP count approaching this value means the controller is near VAP scale capacity."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_ap_run_state",
+      "query": "wlan_ap_run_state{instance_type='wireless', __$labels__}",
+      "display_name": "AP Run State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"idle\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"autoFind\",\"id\":2,\"color\":\"#1677ff\"},{\"name\":\"typeNotMatch\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"fault\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"config\",\"id\":5,\"color\":\"#faad14\"},{\"name\":\"configFailed\",\"id\":6,\"color\":\"#ff4d4f\"},{\"name\":\"download\",\"id\":7,\"color\":\"#1677ff\"},{\"name\":\"normal\",\"id\":8,\"color\":\"#1ac44a\"},{\"name\":\"upgrading\",\"id\":9,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Run state of each AP managed by this Huawei WLAN AC (hwWlanApRunState). Fault, configFailed, or idle on an AP that should be serving clients needs immediate investigation."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_ap_cpu_usage",
+      "query": "wlan_ap_cpu_usage{instance_type='wireless', __$labels__}",
+      "display_name": "AP CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of each managed AP (hwWlanApCpuUsage), as a 0-100 percentage. High AP CPU can drop clients or delay roaming."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_ap_mem_usage",
+      "query": "wlan_ap_mem_usage{instance_type='wireless', __$labels__}",
+      "display_name": "AP Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of each managed AP (hwWlanApMemUsage), as a 0-100 percentage. High AP memory can cause restarts or client association failures."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_ap_temperature",
+      "query": "wlan_ap_temperature{instance_type='wireless', __$labels__}",
+      "display_name": "AP Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each managed AP (hwWlanApTemperature), in degrees Celsius. High values on indoor or outdoor APs indicate cooling or ambient issues."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_ap_online_user_num",
+      "query": "wlan_ap_online_user_num{instance_type='wireless', __$labels__}",
+      "display_name": "AP Online User Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Online user count of each managed AP (hwWlanApOnlineUserNum). Combined with radio STA counts it locates overloaded APs."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_radio_run_state",
+      "query": "wlan_radio_run_state{instance_type='wireless', __$labels__}",
+      "display_name": "Radio Run State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Run state of each radio (hwWlanRadioRunState). A down radio means that band is not serving clients even if the AP is joined."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_radio_channel",
+      "query": "wlan_radio_channel{instance_type='wireless', __$labels__}",
+      "display_name": "Radio Channel",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operating channel of each radio (hwWlanRadioChannel). Unexpected channel changes can indicate radar events or RF planning drift."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_radio_noise",
+      "query": "wlan_radio_noise{instance_type='wireless', __$labels__}",
+      "display_name": "Radio Noise",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Noise reading of each radio (hwWlanRadioNoise). Rising noise reduces SNR and client throughput."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_radio_util",
+      "query": "wlan_radio_util{instance_type='wireless', __$labels__}",
+      "display_name": "Radio Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Channel utilization of each radio (hwWlanRadioUtilization), as a 0-100 percentage. High utilization with modest STA count often means interference or neighbor BSS load."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_radio_free",
+      "query": "wlan_radio_free{instance_type='wireless', __$labels__}",
+      "display_name": "Radio Free Airtime",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free airtime of each radio (hwWlanRadioFree), as a 0-100 percentage. Low free airtime means the radio cannot accept more load without quality loss."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_radio_sta_num",
+      "query": "wlan_radio_sta_num{instance_type='wireless', __$labels__}",
+      "display_name": "Radio STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current station count of each radio (hwWlanRadioStaNum)."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wlan_radio_sta_max",
+      "query": "wlan_radio_sta_max{instance_type='wireless', __$labels__}",
+      "display_name": "Radio Max STA Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Maximum station count of each radio (hwWlanRadioMaxStaNum). Current count approaching max means that radio is near association capacity."
+    }
+  ]
+}

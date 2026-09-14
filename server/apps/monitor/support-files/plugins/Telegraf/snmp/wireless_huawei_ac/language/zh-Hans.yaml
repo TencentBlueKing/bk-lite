@@ -1,0 +1,149 @@
+Wireless Huawei AC SNMP:
+  name: 华为 WLAN AC（Telegraf）
+  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、AP/终端数量、射频占用和上联流量等主要指标。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示无线控制器自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 华为 WLAN AC 各实体 CPU 使用率（hwEntityCpuUsage，0～100），维度 descr 为 entPhysicalName。持续偏高可能表示
+        AP 或终端管理负载过重。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 华为 WLAN AC 各实体内存使用率（hwEntityMemUsage，直接百分比 0～100），维度 descr 为 entPhysicalName。内存压力过高可能影响
+        AP 上线和终端漫游。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 华为 WLAN AC 各硬件温度传感器读数（hwEntityTemperature），单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热。
+    interface_ifOperStatus:
+      name: 运行状态
+      desc: 无线控制器上联或业务接口的实际运行状态。
+    interface_ifHighSpeed:
+      name: 接口高速带宽
+      desc: 接口高速带宽（IF-MIB ifHighSpeed），单位为兆比特每秒。
+    interface_ifInErrors:
+      name: 入方向错包速率
+      desc: 过去 5 分钟内接口入方向错包的平均速率。
+    interface_ifOutErrors:
+      name: 出方向错包速率
+      desc: 过去 5 分钟内接口出方向错包的平均速率。
+    interface_ifInDiscards:
+      name: 入方向丢包速率
+      desc: 过去 5 分钟内接口入方向丢包的平均速率。
+    interface_ifOutDiscards:
+      name: 出方向丢包速率
+      desc: 过去 5 分钟内接口出方向丢包的平均速率。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 过去 5 分钟内入向字节平均速率，来自 64 位 IF-MIB ifHCInOctets。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 过去 5 分钟内出向字节平均速率，来自 64 位 IF-MIB ifHCOutOctets。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 无线控制器全部接口入向 64 位字节计数在过去 5 分钟的合计平均速率。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 无线控制器全部接口出向 64 位字节计数在过去 5 分钟的合计平均速率。
+    wlan_cur_joint_ap_num:
+      name: 当前关联 AP 数
+      desc: 当前已接入该华为 WLAN AC 的 AP 数量（hwWlanCurJointApNum）。数量骤降表示 AP 从控制器离线。
+    wlan_ap_count:
+      name: AP 总数
+      desc: 无线控制器管理的 AP 数量（hwWlanApCount）。可与已接入、业务正常 AP 数对比，发现清单漂移。
+    wlan_service_normal_ap_count:
+      name: 正常 AP 数
+      desc: 处于业务正常状态的 AP 数量（hwWlanServiceNormalAPCount）。低于已接入数表示部分 AP 已加入但未提供服务。
+    wlan_ap_normal_ratio:
+      name: AP 正常比例
+      desc: 业务正常 AP 占全部 AP 的比例（hwWlanApNormalRatio），0～100。比例下降是集群健康的早期信号。
+    wlan_access_max_ap_number:
+      name: AP 接入上限
+      desc: 无线控制器允许接入的最大 AP 数量（hwWlanAccessMaxApNumber）。已接入数接近该值表示容量或许可接近上限。
+    wlan_cur_assoc_sta_num:
+      name: 当前关联终端数
+      desc: 当前已关联的终端数量（hwWlanCurAssocStaNum）。骤降可能表示射频、认证或控制器故障。
+    wlan_cur_auth_success_sta_num:
+      name: 认证成功终端数
+      desc: 当前认证成功的终端数量（hwWlanCurAuthSuccessStaNum）。与关联数差距扩大通常表示认证失败增多。
+    wlan_sta_cur_num:
+      name: 当前终端数
+      desc: 当前在线终端数量（hwWlanStaCurNum）。当与关联数、认证成功数在不同软件版本上不一致时，可交叉核对。
+    wlan_cur_assoc_2g_sta_num:
+      name: 2.4G 关联终端数
+      desc: 当前 2.4G 频段关联终端数量（hwWlanCurAssoc2gStaNum）。
+    wlan_cur_assoc_5g_sta_num:
+      name: 5G 关联终端数
+      desc: 当前 5G 频段关联终端数量（hwWlanCurAssoc5gStaNum）。
+    wlan_cur_assoc_6g_sta_num:
+      name: 6G 关联终端数
+      desc: 当前 6G 频段关联终端数量（hwWlanCurAssoc6gStaNum）。无 6G 射频的机型可能无值。
+    wlan_access_max_sta_number:
+      name: 终端接入上限
+      desc: 无线控制器允许接入的最大终端数量（hwWlanAccessMaxStaNumber）。
+    wlan_global_up_speed:
+      name: 全局上行速率
+      desc: 无线控制器全局上行速率（hwWlanGlobalUpSpeed）。
+    wlan_global_down_speed:
+      name: 全局下行速率
+      desc: 无线控制器全局下行速率（hwWlanGlobalDownSpeed）。
+    wlan_vap_cur_num:
+      name: 当前 VAP 数
+      desc: 当前虚拟接入点数量（hwVapCurNum）。异常变化可能表示 SSID 部署漂移。
+    wlan_vap_max_num:
+      name: VAP 上限
+      desc: 允许配置的最大虚拟接入点数量（hwVapMaxNum）。
+    wlan_ap_run_state:
+      name: AP 运行状态
+      desc: 接入点运行状态（hwWlanApRunState）。应提供服务的 AP 处于故障、配置失败或空闲时需立即排查。
+    wlan_ap_cpu_usage:
+      name: AP CPU 使用率
+      desc: 各接入点 CPU 使用率（hwWlanApCpuUsage），0～100。偏高可能导致掉线和漫游变慢。
+    wlan_ap_mem_usage:
+      name: AP 内存使用率
+      desc: 各接入点内存使用率（hwWlanApMemUsage），0～100。偏高可能导致重启或关联失败。
+    wlan_ap_temperature:
+      name: AP 温度
+      desc: 各接入点温度（hwWlanApTemperature），单位为摄氏度。
+    wlan_ap_online_user_num:
+      name: AP 在线用户数
+      desc: 各接入点当前在线用户数量（hwWlanApOnlineUserNum）。
+    wlan_radio_run_state:
+      name: 射频运行状态
+      desc: 射频运行状态（hwWlanRadioRunState）。射频关闭表示该频段即使 AP 已接入也不提供服务。
+    wlan_radio_channel:
+      name: 射频信道
+      desc: 射频当前工作信道（hwWlanRadioChannel）。
+    wlan_radio_noise:
+      name: 射频底噪
+      desc: 射频底噪（hwWlanRadioNoise）。底噪升高会降低信噪比和吞吐。
+    wlan_radio_util:
+      name: 射频利用率
+      desc: 射频信道利用率（hwWlanRadioUtilization），0～100。终端不多但利用率很高通常表示干扰或邻区负载。
+    wlan_radio_free:
+      name: 射频空闲率
+      desc: 射频信道空闲比例（hwWlanRadioFree），0～100。空闲过低表示该射频难以再承载更多负载。
+    wlan_radio_sta_num:
+      name: 射频终端数
+      desc: 射频当前接入终端数量（hwWlanRadioStaNum）。
+    wlan_radio_sta_max:
+      name: 射频终端上限
+      desc: 射频允许接入的最大终端数量（hwWlanRadioMaxStaNum）。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Status: 状态
+    Bandwidth: 带宽
+    Packet Error: 错包
+    Packet Loss: 丢包
+    Traffic: 流量
+    Wireless: 无线
