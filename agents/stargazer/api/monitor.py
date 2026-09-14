@@ -735,3 +735,37 @@ async def cisco_meraki_organization_metrics(request):
         error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
         log_name="MerakiOrganization",
     )
+
+
+@monitor_router.get("/cisco_meraki_device/metrics")
+async def cisco_meraki_device_metrics(request):
+    def build_params(req):
+        base_url = (req.headers.get("base_url") or req.headers.get("host") or "https://api.meraki.com").strip()
+        organization_id = (req.headers.get("organization_id") or "").strip()
+        return {
+            "monitor_type": "cisco_meraki_device",
+            "password": req.headers.get("password"),
+            "base_url": base_url,
+            "organization_id": organization_id,
+            "timespan": req.args.get("timespan", 86400),
+            "preflight_kind": "https",
+            "preflight_kind_explicit": True,
+            "host": base_url,
+            "tags": _standard_tags(
+                req,
+                defaults={
+                    "instance_type": "cisco_meraki_device",
+                    "collect_type": "http",
+                    "config_type": "cisco_meraki_device",
+                },
+            ),
+        }
+
+    return await _run_monitor_handler(
+        request,
+        monitor_type="cisco_meraki_device",
+        build_params=build_params,
+        accept_labels=lambda params: {"organization_id": params.get("organization_id")},
+        error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
+        log_name="MerakiDevice",
+    )
