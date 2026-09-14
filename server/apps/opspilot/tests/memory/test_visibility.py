@@ -2,7 +2,8 @@
 
 覆盖 get_visible_memories_qs(user) 的核心规则:
 - 团队空间对任意用户可见
-- 个人空间仅 owner_username/domain 匹配的用户可见
+- 个人空间无系统 UUID 时仅 owner_username/domain 匹配的用户可见
+- 有系统 UUID 时，他人 owner_user_id 即使 username 相同也不可见
 - 个人空间非创建者不可见
 - None user / 无 username user 返回空 queryset 且不抛异常
 - SimpleNamespace 模拟 user(回归测试常用模式)也能正常过滤
@@ -16,6 +17,7 @@ import pytest
 from apps.base.models import User
 from apps.opspilot.memory.visibility import get_visible_memories_qs
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
+from apps.system_mgmt.models import User as SystemUser
 
 pytestmark = pytest.mark.django_db
 
@@ -161,3 +163,41 @@ class TestGetVisibleMemoriesQs:
         # 对非创建者:helper & personal = 0(关键 Bug 场景)
         other_count = get_visible_memories_qs(other).filter(memory_space_id=personal.id).count()
         assert other_count == 0
+
+    def test_username_match_does_not_leak_other_owner_uuid(self):
+        """有系统 UUID 时，username+domain 相同但 owner_user_id 属于他人的记忆不可见。"""
+        alice_uuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        bob_uuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        SystemUser.objects.create(
+            username="alice",
+            domain="domain.com",
+            display_name="alice",
+            email="alice@domain.com",
+            password="x",
+            user_id=alice_uuid,
+        )
+        owner = _make_user("alice", domain="domain.com")
+        personal = _make_personal_space(owner)
+        leaked = Memory.objects.create(
+            memory_space=personal,
+            title="other-owned",
+            content="secret",
+            owner_username="alice",
+            owner_domain="domain.com",
+            owner_user_id=bob_uuid,
+        )
+        own_uuid = Memory.objects.create(
+            memory_space=personal,
+            title="own-uuid",
+            content="mine",
+            owner_username="alice",
+            owner_domain="domain.com",
+            owner_user_id=alice_uuid,
+        )
+        own_legacy = _make_memory(personal, "alice", owner_domain="domain.com")
+
+        visible = get_visible_memories_qs(owner)
+
+        assert visible.filter(id=own_uuid.id).exists()
+        assert visible.filter(id=own_legacy.id).exists()
+        assert not visible.filter(id=leaked.id).exists()
