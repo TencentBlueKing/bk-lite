@@ -498,7 +498,10 @@ def _has_active_assessment(target_id: int) -> bool:
     ).exists()
 
 
-def compute_host_compliance_status(target: PatchTarget) -> str:
+_PROJECTED_UNSET = object()
+
+
+def compute_host_compliance_status(target: PatchTarget, projected=_PROJECTED_UNSET) -> str:
     """计算单台主机的合规状态
 
     优先读 HostBaselineBinding 持久化字段（由评估任务写回）；
@@ -506,16 +509,18 @@ def compute_host_compliance_status(target: PatchTarget) -> str:
     已绑定且存在进行中的 assess/verify 任务时返回 EVALUATING；
     已绑定但尚未完成过评估时返回 PENDING；
     评估完成后按 persistence 状态或 missing_count 推断。
+    projected 可传入已批量算好的活动评估投影，避免再查库。
     """
     binding = getattr(target, "baseline_binding", None)
     if not binding:
         return ComplianceStatus.UNCONFIGURED
 
-    from apps.patch_mgmt.services.governance_convergence import (
-        project_target_assessment_status,
-    )
+    if projected is _PROJECTED_UNSET:
+        from apps.patch_mgmt.services.governance_convergence import (
+            project_target_assessment_status,
+        )
 
-    projected = project_target_assessment_status(target.id)
+        projected = project_target_assessment_status(target.id)
     if projected == "failed":
         return ComplianceStatus.FAILED
     if projected == "evaluating":
