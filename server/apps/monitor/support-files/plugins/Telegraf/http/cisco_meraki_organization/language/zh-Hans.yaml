@@ -1,0 +1,29 @@
+Cisco Meraki Organization:
+  name: Cisco Meraki 组织
+  desc: 通过 Meraki Dashboard API v1 采集组织清单、网络列表和基础组织健康状态。
+monitor_object:
+  Meraki Organization: Meraki 组织
+  Meraki Network: Meraki 网络
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Organization:
+    Base: 基础
+    Inventory: 清单
+  Meraki Network:
+    Inventory: 清单
+monitor_object_metric:
+  Meraki Organization:
+    meraki_org_connect_status:
+      name: 连接状态
+      desc: Dashboard API 是否成功返回该组织。
+    meraki_org_api_enabled:
+      name: API 已启用
+      desc: 组织是否启用 Dashboard API。
+    meraki_org_network_count:
+      name: 网络数量
+      desc: 组织下返回的网络数量。
+  Meraki Network:
+    meraki_network_present:
+      name: 网络存在
+      desc: 组织中每个网络的存在性指标。
