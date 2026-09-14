@@ -625,6 +625,7 @@ def _solaris_os_monitor_params(request, *, config_type: str) -> dict:
         ),
     }
 
+
 @monitor_router.get("/host_solaris_remote/metrics")
 async def host_solaris_remote_metrics(request):
     try:
@@ -640,6 +641,7 @@ async def host_solaris_remote_metrics(request):
         log_name="HostSolarisRemote",
         request_log_level="debug",
     )
+
 
 def _hpux_os_monitor_params(request, *, config_type: str) -> dict:
     host = request.headers.get("host")
@@ -683,6 +685,7 @@ def _hpux_os_monitor_params(request, *, config_type: str) -> dict:
         ),
     }
 
+
 @monitor_router.get("/host_hpux_remote/metrics")
 async def host_hpux_remote_metrics(request):
     try:
@@ -700,3 +703,35 @@ async def host_hpux_remote_metrics(request):
     )
 
 
+@monitor_router.get("/cisco_meraki_organization/metrics")
+async def cisco_meraki_organization_metrics(request):
+    def build_params(req):
+        base_url = (req.headers.get("base_url") or req.headers.get("host") or "https://api.meraki.com").strip()
+        organization_id = (req.headers.get("organization_id") or "").strip()
+        return {
+            "monitor_type": "cisco_meraki_organization",
+            "password": req.headers.get("password"),
+            "base_url": base_url,
+            "organization_id": organization_id,
+            "timespan": req.args.get("timespan", 86400),
+            "preflight_kind": "https",
+            "preflight_kind_explicit": True,
+            "host": base_url,
+            "tags": _standard_tags(
+                req,
+                defaults={
+                    "instance_type": "cisco_meraki_organization",
+                    "collect_type": "http",
+                    "config_type": "cisco_meraki_organization",
+                },
+            ),
+        }
+
+    return await _run_monitor_handler(
+        request,
+        monitor_type="cisco_meraki_organization",
+        build_params=build_params,
+        accept_labels=lambda params: {"organization_id": params.get("organization_id")},
+        error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
+        log_name="MerakiOrganization",
+    )

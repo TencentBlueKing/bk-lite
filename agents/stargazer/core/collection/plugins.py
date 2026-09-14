@@ -424,4 +424,8 @@ def _load_monitor_collector(monitor_type: str):
         from tasks.collectors.host_collector import HostCollector
 
         return HostCollector
+    if monitor_type == "cisco_meraki_organization":
+        from tasks.collectors.cisco_meraki_organization_collector import CiscoMerakiOrganizationCollector
+
+        return CiscoMerakiOrganizationCollector
     raise ValueError(f"unsupported monitor_type: {monitor_type}")
