@@ -68,6 +68,7 @@ class SkillConversation(TimeInfo):
     external_user_id = models.CharField(max_length=255, blank=True, default="", verbose_name="外部用户标识", db_index=True)
     title = models.CharField(max_length=255, blank=True, default="", verbose_name="会话标题")
     is_active = models.BooleanField(default=True, verbose_name="是否活跃")
+    memory_written_message_id = models.BigIntegerField(default=0, verbose_name="已写入记忆的最后消息ID")
 
     class Meta:
         verbose_name = "智能体会话"

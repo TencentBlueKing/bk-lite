@@ -46,6 +46,7 @@ class SceneWidgetViewSet(ViewSet):
             request=request,
             inst_uuids=[str(value) for value in data["inst_uuids"]],
             node_limit=data["node_limit"],
+            depth=data.get("depth"),
         )
         return Response(result)
 
@@ -59,6 +60,7 @@ class SceneWidgetViewSet(ViewSet):
                 Application3DQueryService.wall(
                     request,
                     applied_filters=serializer.validated_data.get("applied_filters"),
+                    application_id=(str(serializer.validated_data["application_id"]) if serializer.validated_data.get("application_id") else None),
                 )
             )
         except Application3DError as exc:

@@ -89,10 +89,13 @@ class Application3DQueryService:
     """Permission-aware CMDB System → Application → Host → Monitor query seam."""
 
     @classmethod
-    def wall(cls, request, applied_filters: dict | None = None) -> dict[str, Any]:
+    def wall(cls, request, applied_filters: dict | None = None, application_id: str | None = None) -> dict[str, Any]:
         filters, allowed_values = cls._filter_definition()
         normalized_filters = cls._validate_applied_filters(applied_filters, allowed_values)
-        applications = cls._visible_applications(request)
+        if application_id:
+            applications = [cls._visible_application(request, str(application_id))]
+        else:
+            applications = cls._visible_applications(request)
 
         selected_statuses = normalized_filters[FILTER_SYSTEM_STATUS]
         if selected_statuses:

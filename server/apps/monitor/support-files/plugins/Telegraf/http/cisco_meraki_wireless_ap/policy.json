@@ -1,0 +1,30 @@
+{
+  "object": "Meraki Wireless AP",
+  "plugin": "Cisco Meraki Wireless AP",
+  "templates": [
+    {
+      "name": "Meraki无线AP上行丢包过高",
+      "alert_name": "Meraki无线AP${resource_id} 上行丢包率过高",
+      "description": "无线 AP 上行丢包率超过阈值时告警。",
+      "metric_name": "meraki_wireless_ap_upstream_loss_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

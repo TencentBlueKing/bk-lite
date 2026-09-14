@@ -200,7 +200,7 @@ def test_unique_rule_write_invalidates_model_attrs(monkeypatch):
 
     invalidated = []
     graph = GraphStub()
-    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_info", lambda model_id: {"_id": 7})
+    monkeypatch.setattr(unique_rule, "search_model_info", lambda model_id: {"_id": 7})
     monkeypatch.setattr("apps.cmdb.graph.drivers.graph_client.GraphClient", lambda: graph)
     monkeypatch.setattr(ExcludeFieldsCache, "invalidate_model_attrs", lambda model_id: invalidated.append(model_id))
 

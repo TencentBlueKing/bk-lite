@@ -1,0 +1,37 @@
+Cisco Meraki Wireless AP:
+  name: Cisco Meraki Wireless AP
+  desc: Collect wireless AP ethernet statuses and packet loss from Meraki Dashboard
+    API v1.
+monitor_object:
+  Meraki Wireless Inventory: Meraki Wireless Inventory
+  Meraki Wireless AP: Meraki Wireless AP
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Wireless Inventory:
+    Base: Base
+    Inventory: Inventory
+  Meraki Wireless AP:
+    Packet Loss: Packet Loss
+    Ethernet: Ethernet
+monitor_object_metric:
+  Meraki Wireless Inventory:
+    meraki_wireless_connect_status:
+      name: Connect Status
+      desc: Whether Dashboard API is available for wireless AP collection.
+    meraki_wireless_ap_count:
+      name: Wireless AP Count
+      desc: Unique wireless AP count from ethernet statuses union packet-loss data.
+  Meraki Wireless AP:
+    meraki_wireless_ap_upstream_loss_percent:
+      name: Upstream Packet Loss
+      desc: Upstream packet loss percentage.
+    meraki_wireless_ap_downstream_loss_percent:
+      name: Downstream Packet Loss
+      desc: Downstream packet loss percentage.
+    meraki_wireless_ap_ethernet_speed_mbps:
+      name: Ethernet Speed
+      desc: Negotiated ethernet port speed.
+    meraki_wireless_ap_ethernet_link_up:
+      name: Ethernet Link Up
+      desc: Ethernet link up prefers status/linkStatus/connected; otherwise speed>0 or duplex full/half.

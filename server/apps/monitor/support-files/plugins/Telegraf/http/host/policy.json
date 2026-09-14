@@ -79,10 +79,11 @@
     },
     {
       "name": "网卡入流量过高",
-      "alert_name": "主机${instance_id}接口${metric_interface} 网卡入流量过高",
+      "alert_name": "主机${instance_id}接口${metric__interface} 网卡入流量过高",
       "description": "监控主机网卡入流量速率，当超出设定阈值时触发告警。",
       "metric_name": "net_bytes_recv_rate",
       "algorithm": "max_over_time",
+      "group_by": ["instance_id", "interface"],
       "threshold": [
         {
           "level": "critical",
@@ -104,10 +105,11 @@
     },
     {
       "name": "网卡出流量过高",
-      "alert_name": "主机${instance_id}接口${metric_interface} 网卡出流量过高",
+      "alert_name": "主机${instance_id}接口${metric__interface} 网卡出流量过高",
       "description": "监控主机网卡出流量速率，当超出设定阈值时触发告警。",
       "metric_name": "net_bytes_sent_rate",
       "algorithm": "max_over_time",
+      "group_by": ["instance_id", "interface"],
       "threshold": [
         {
           "level": "critical",

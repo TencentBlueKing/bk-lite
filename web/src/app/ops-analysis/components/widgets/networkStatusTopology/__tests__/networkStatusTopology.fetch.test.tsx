@@ -33,6 +33,9 @@ vi.mock('@/app/ops-analysis/context/common', () => ({
   useOpsAnalysis: () => ({
     dataSources: overlayState.dataSources,
   }),
+  useOpsAnalysisOptional: () => ({
+    dataSources: overlayState.dataSources,
+  }),
 }));
 
 vi.mock('@/app/ops-analysis/api/dataSource', () => ({
@@ -66,12 +69,18 @@ vi.mock('@/utils/request', () => {
   };
 });
 
-vi.mock('@/app/ops-analysis/api/networkStatusTopology', () => ({
-  useNetworkStatusTopologyApi: () => ({
-    getNetworkStatusTopology: (...args: unknown[]) =>
-      testState.getNetworkStatusTopology(...args),
-  }),
-}));
+vi.mock('@/app/ops-analysis/api/networkStatusTopology', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/app/ops-analysis/api/networkStatusTopology')
+      >('@/app/ops-analysis/api/networkStatusTopology');
+  return {
+    ...actual,
+    useNetworkStatusTopologyApi: () => ({
+      getNetworkStatusTopology: (...args: unknown[]) =>
+        testState.getNetworkStatusTopology(...args),
+    }),
+  };
+});
 
 vi.mock('@/app/cmdb/components/networkTopology', () => ({
   NetworkTopologyX6Canvas: ({
@@ -380,6 +389,7 @@ describe('networkStatusTopology owner requests', () => {
       inst_uuids: ['123e4567-e89b-42d3-a456-426614174000'],
       node_limit: 100,
     });
+    expect(testState.getNetworkStatusTopology.mock.calls[0][0]).not.toHaveProperty('depth');
 
     rerender(
       <NetworkStatusTopology
@@ -391,6 +401,30 @@ describe('networkStatusTopology owner requests', () => {
     );
     await Promise.resolve();
     expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not send leftover canvas depth on the closed-set request', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    render(
+      <NetworkStatusTopology
+        config={{
+          networkStatusTopology: {
+            instUuids: ['123e4567-e89b-42d3-a456-426614174000'],
+            nodeLimit: 100,
+            depth: 2,
+          },
+        }}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(testState.getNetworkStatusTopology).toHaveBeenCalledWith({
+        inst_uuids: ['123e4567-e89b-42d3-a456-426614174000'],
+        node_limit: 100,
+      });
+    });
+    expect(testState.getNetworkStatusTopology.mock.calls[0][0]).not.toHaveProperty('depth');
   });
 
   it('refetches when the toolbar refresh is clicked after a successful load', async () => {

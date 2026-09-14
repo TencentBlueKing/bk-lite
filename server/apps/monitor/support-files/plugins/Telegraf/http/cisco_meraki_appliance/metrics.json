@@ -1,0 +1,257 @@
+{
+  "plugin": "Cisco Meraki Appliance",
+  "plugin_desc": "Collect Cisco Meraki MX VPN statuses/stats and appliance utilization from Dashboard API v1.",
+  "collector": "Telegraf",
+  "collect_type": "http",
+  "status_query": "any({instance_type='cisco_meraki_appliance', collect_type='http'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "collector.nodes",
+      "value_type": "node_ref_list",
+      "resolver": "selected_nodes",
+      "options": {
+        "selection_field": "node_ids"
+      }
+    },
+    {
+      "fact": "probe.target",
+      "value_type": "endpoint",
+      "resolver": "input",
+      "options": {
+        "field": "base_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "collector.nodes",
+      "title": "monitor.views.probeNodes",
+      "order": 10
+    },
+    {
+      "fact": "probe.target",
+      "title": "monitor.views.probeTarget",
+      "order": 20
+    }
+  ],
+  "node_selector": {
+    "is_container": true
+  },
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "Meraki Appliance Inventory",
+      "icon": "mm-firewall_防火墙",
+      "type": "Cisco Meraki",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='cisco_meraki_appliance'}) by (instance_id)",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_appliance_connect_status",
+        "meraki_appliance_vpn_network_count"
+      ],
+      "display_fields": [
+        {
+          "name": "Connect Status",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Appliance",
+              "metric": "meraki_appliance_connect_status"
+            }
+          ]
+        },
+        {
+          "name": "VPN Network Count",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Appliance",
+              "metric": "meraki_appliance_vpn_network_count"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Base",
+          "name": "meraki_appliance_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for appliance collection.",
+          "query": "meraki_appliance_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_network_count",
+          "display_name": "VPN Network Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of appliance networks that reported VPN status.",
+          "query": "meraki_appliance_vpn_network_count{__$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Appliance",
+      "icon": "mm-firewall_防火墙",
+      "type": "Cisco Meraki",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_appliance'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_appliance_vpn_peer_reachable",
+        "meraki_appliance_vpn_avg_latency_ms",
+        "meraki_appliance_vpn_avg_loss_percent",
+        "meraki_appliance_utilization_percent"
+      ],
+      "display_fields": [
+        {
+          "name": "VPN Peer Reachable",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Appliance",
+              "metric": "meraki_appliance_vpn_peer_reachable"
+            }
+          ]
+        },
+        {
+          "name": "VPN Average Latency",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Appliance",
+              "metric": "meraki_appliance_vpn_avg_latency_ms"
+            }
+          ]
+        },
+        {
+          "name": "VPN Average Loss",
+          "sort_order": 2,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Appliance",
+              "metric": "meraki_appliance_vpn_avg_loss_percent"
+            }
+          ]
+        },
+        {
+          "name": "Appliance Utilization",
+          "sort_order": 3,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki Appliance",
+              "metric": "meraki_appliance_utilization_percent"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_peer_reachable",
+          "display_name": "VPN Peer Reachable",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"unreachable\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"reachable\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "peer_network_id",
+              "description": "Peer network ID"
+            }
+          ],
+          "description": "Reachability of a Meraki Auto VPN peer.",
+          "query": "meraki_appliance_vpn_peer_reachable{resource_type=\"meraki_appliance\", __$labels__}"
+        },
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_avg_latency_ms",
+          "display_name": "VPN Average Latency",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [
+            {
+              "name": "peer_network_id",
+              "description": "Peer network ID"
+            },
+            {
+              "name": "sender_uplink",
+              "description": "Sender uplink interface"
+            },
+            {
+              "name": "receiver_uplink",
+              "description": "Receiver uplink interface"
+            }
+          ],
+          "description": "Average Auto VPN latency in milliseconds.",
+          "query": "meraki_appliance_vpn_avg_latency_ms{resource_type=\"meraki_appliance\", __$labels__}"
+        },
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_avg_loss_percent",
+          "display_name": "VPN Average Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [
+            {
+              "name": "peer_network_id",
+              "description": "Peer network ID"
+            },
+            {
+              "name": "sender_uplink",
+              "description": "Sender uplink interface"
+            },
+            {
+              "name": "receiver_uplink",
+              "description": "Receiver uplink interface"
+            }
+          ],
+          "description": "Average Auto VPN packet loss percentage.",
+          "query": "meraki_appliance_vpn_avg_loss_percent{resource_type=\"meraki_appliance\", __$labels__}"
+        },
+        {
+          "metric_group": "Utilization",
+          "name": "meraki_appliance_utilization_percent",
+          "display_name": "Appliance Utilization",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Average appliance utilization percentage from the top-appliances summary.",
+          "query": "meraki_appliance_utilization_percent{resource_type=\"meraki_appliance\", __$labels__}"
+        }
+      ]
+    }
+  ]
+}

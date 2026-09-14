@@ -1899,6 +1899,76 @@ def network_topology_among_uuids(inst_uuids=None, user_info=None, **kwargs):
     }
 
 
+@nats_client.register
+def network_topology_by_uuid(inst_uuid=None, depth=1, node_limit=None, user_info=None, **kwargs):
+    """单中心按跳数展开接口直连；嵌入固定 depth=1，调用方不传模型 ID。"""
+    from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES, NETWORK_STATUS_TOPOLOGY_MAX_NODES
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.cmdb.services.topology_theme import is_network_device_model
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuid if inst_uuid is not None else kwargs.get("inst_uuid")
+    try:
+        normalized = normalize_inst_uuid(raw)
+    except BaseAppException:
+        return _topo_search_lite_failure("invalid_inst_uuid", "inst_uuid 必须是 UUIDv4")
+
+    try:
+        hop = int(1 if depth is None else depth)
+    except (TypeError, ValueError):
+        return {"result": False, "data": {"nodes": [], "links": []}, "message": "depth 仅支持 1"}
+    if hop != 1:
+        return {"result": False, "data": {"nodes": [], "links": []}, "message": "depth 仅支持 1"}
+
+    raw_limit = NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES if node_limit is None else node_limit
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        return {"result": False, "data": {"nodes": [], "links": []}, "message": "node_limit 不合法"}
+    if limit < 1 or limit > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
+        return {
+            "result": False,
+            "data": {"nodes": [], "links": []},
+            "message": f"node_limit 必须在 1 到 {NETWORK_STATUS_TOPOLOGY_MAX_NODES} 之间",
+        }
+
+    instance = InstanceManage.query_entity_by_uuid(normalized)
+    if not instance:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    model_id = str(instance.get("model_id") or "")
+    if not is_network_device_model(model_id):
+        return {"result": False, "data": {"nodes": [], "links": []}, "message": "仅网络设备支持一跳拓扑"}
+
+    permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    if permission_map is None or not InstanceManage._has_topology_view_permission(instance, permission_map, user=user):
+        return _topo_search_lite_failure("permission_denied", "无权限查看该实例")
+
+    try:
+        topology = InstanceManage.network_topology_by_uuid(
+            normalized,
+            model_id,
+            depth=1,
+            permission_map=permission_map,
+            user=user,
+            node_limit=limit,
+        )
+    except BaseAppException:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    return {
+        "result": True,
+        "message": "",
+        "data": {
+            "center": topology.get("center") or {"id": normalized},
+            "nodes": topology.get("nodes") or [],
+            "links": topology.get("links") or [],
+            "truncated": bool(topology.get("truncated")),
+        },
+    }
+
+
 def _topo_search_lite_failure(code: str, message: str):
     return {"result": False, "data": {"code": code}, "message": message}
 

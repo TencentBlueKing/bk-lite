@@ -18,6 +18,7 @@ from apps.cmdb.services.k8s_resource_overview import K8sResourceOverviewService
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
+from apps.cmdb.services.monitor_link import BATCH_PUSH_LIMIT, MonitorLinkService
 from apps.cmdb.services.rack_room import get_rack_layout, get_room_layout, list_racks_grouped_by_room
 from apps.cmdb.services.topology_theme import get_topo_themes
 from apps.cmdb.utils.base import format_group_params, format_groups_params, get_current_team_from_request, get_organization_and_children_ids
@@ -346,6 +347,49 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         )
         return WebUtils.response_success(self._transport_instance(instance))
 
+    def _can_operate_instance(self, request, instance) -> bool:
+        """与 push_to_monitor 一致的实例编辑权判定。"""
+        if self.check_creator_and_organizations(request, instance):
+            return True
+        organizations = self.organizations(request, instance)
+        if not organizations:
+            return False
+        return bool(self.check_instance_permission(request, instance, operator=OPERATE))
+
+    def _is_batch_push_uuid_authorized(self, request, inst_uuid) -> bool:
+        if str(inst_uuid).isdigit():
+            return False
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
+        if not instance or not self._is_instance_model_visible(instance):
+            return False
+        return self._can_operate_instance(request, instance)
+
+    @staticmethod
+    def _merge_batch_push_results(inst_uuids, authorized_flags, service_summary):
+        service_iter = iter(service_summary.get("results") or [])
+        results = []
+        view_failed = 0
+        for inst_uuid, authorized in zip(inst_uuids, authorized_flags):
+            if authorized:
+                results.append(
+                    next(
+                        service_iter,
+                        {"inst_uuid": inst_uuid, "status": "failed", "monitor_id": None},
+                    )
+                )
+            else:
+                view_failed += 1
+                results.append({"inst_uuid": inst_uuid, "status": "failed", "monitor_id": None})
+        return {
+            "total": len(inst_uuids),
+            "ok": service_summary.get("ok", 0),
+            "already_linked": service_summary.get("already_linked", 0),
+            "not_found": service_summary.get("not_found", 0),
+            "conflict": service_summary.get("conflict", 0),
+            "failed": service_summary.get("failed", 0) + view_failed,
+            "results": results,
+        }
+
     @HasPermission("asset_info-Edit")
     @action(methods=["post"], detail=True, url_path="push_to_monitor")
     def push_to_monitor(self, request, pk=None):
@@ -356,13 +400,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        if not self.check_creator_and_organizations(request, instance):
-            organizations = self.organizations(request, instance)
-            if not organizations:
-                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
-            has_permission = self.check_instance_permission(request, instance, operator=OPERATE)
-            if not has_permission:
-                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+        if not self._can_operate_instance(request, instance):
+            return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         actor_scope = build_cmdb_push_actor_scope(request)
         try:
@@ -373,6 +412,171 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             logger.exception("[push_to_monitor] failed inst_uuid=%s", pk)
             return WebUtils.response_error("推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY)
         return WebUtils.response_success(result)
+
+    @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=False, url_path="batch_push_to_monitor")
+    def batch_push_to_monitor(self, request):
+        """列表勾选批量推送到监控：无权/缺失记 failed，不整批 403。"""
+        inst_uuids = request.data.get("inst_uuids") if isinstance(request.data, dict) else None
+        if not isinstance(inst_uuids, list) or not inst_uuids:
+            return WebUtils.response_error("inst_uuids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST)
+        if len(inst_uuids) > BATCH_PUSH_LIMIT:
+            return WebUtils.response_error("inst_uuids 数量超过上限", status_code=status.HTTP_400_BAD_REQUEST)
+
+        authorized = []
+        authorized_flags = []
+        for inst_uuid in inst_uuids:
+            allowed = self._is_batch_push_uuid_authorized(request, inst_uuid)
+            authorized_flags.append(allowed)
+            if allowed:
+                authorized.append(inst_uuid)
+
+        if authorized:
+            actor_scope = build_cmdb_push_actor_scope(request)
+            try:
+                service_summary = MonitorLinkService.batch_push(authorized, actor_scope=actor_scope)
+            except ValueError as exc:
+                return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+            except Exception as exc:
+                logger.error(
+                    "event=cmdb_monitor_link_batch_push_failed failed_stage=%s error_type=%s total=%s",
+                    "batch_push",
+                    type(exc).__name__,
+                    len(inst_uuids),
+                    exc_info=(type(exc), RuntimeError("cmdb monitor link batch push failed"), exc.__traceback__),
+                )
+                return WebUtils.response_error("推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY)
+        else:
+            service_summary = {
+                "total": 0,
+                "ok": 0,
+                "already_linked": 0,
+                "not_found": 0,
+                "conflict": 0,
+                "failed": 0,
+                "results": [],
+            }
+
+        return WebUtils.response_success(self._merge_batch_push_results(inst_uuids, authorized_flags, service_summary))
+
+    def _editable_instance_or_error(self, request, pk):
+        if str(pk).isdigit():
+            return None, WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
+        if not instance or not self._is_instance_model_visible(instance):
+            return None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if not self._can_operate_instance(request, instance):
+            return None, WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+        return instance, None
+
+    @staticmethod
+    def _request_flag(data, key: str) -> bool:
+        if not isinstance(data, dict):
+            return False
+        return data.get(key) in (True, 1, "1", "true", "True")
+
+    @staticmethod
+    def _map_monitor_link_result(result, *, success_data=None, failed_message="关联监控失败"):
+        status_name = (result or {}).get("status")
+        if status_name == "ok":
+            return WebUtils.response_success(success_data if success_data is not None else result)
+        if status_name == "confirm_required":
+            return WebUtils.response_error(
+                result,
+                error_message="已关联其他监控实例，确认后将先解绑再绑定",
+                status_code=status.HTTP_409_CONFLICT,
+            )
+        if status_name == "occupied":
+            return WebUtils.response_error(
+                result,
+                error_message="监控实例已被其他配置项占用",
+                status_code=status.HTTP_409_CONFLICT,
+            )
+        if status_name == "skipped_model":
+            return WebUtils.response_error("该模型不支持关联监控", status_code=status.HTTP_400_BAD_REQUEST)
+        if status_name in ("not_found", "type_mismatch"):
+            return WebUtils.response_error("监控实例不存在或类型不匹配", status_code=status.HTTP_404_NOT_FOUND)
+        return WebUtils.response_error(
+            result or {},
+            error_message=failed_message,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    @HasPermission("asset_info-Edit")
+    @action(methods=["get"], detail=True, url_path="monitor_bind_candidates")
+    def monitor_bind_candidates(self, request, pk=None):
+        _, error = self._editable_instance_or_error(request, pk)
+        if error:
+            return error
+        actor_scope = build_cmdb_push_actor_scope(request)
+        query = request.query_params.get("q") or ""
+        try:
+            result = MonitorLinkService.list_candidates(pk, query, actor_scope)
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.error(
+                "event=cmdb_monitor_link_candidates_view_failed failed_stage=%s error_type=%s inst_uuid=%s",
+                "list_candidates",
+                type(exc).__name__,
+                pk,
+                exc_info=(type(exc), RuntimeError("cmdb monitor link candidates failed"), exc.__traceback__),
+            )
+            return WebUtils.response_error("查询监控候选失败", status_code=status.HTTP_502_BAD_GATEWAY)
+        return self._map_monitor_link_result(result, success_data=result.get("items") or [])
+
+    @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=True, url_path="bind_monitor")
+    def bind_monitor(self, request, pk=None):
+        _, error = self._editable_instance_or_error(request, pk)
+        if error:
+            return error
+        data = request.data if isinstance(request.data, dict) else {}
+        monitor_id = data.get("monitor_id")
+        if monitor_id in (None, ""):
+            return WebUtils.response_error("monitor_id 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        actor_scope = build_cmdb_push_actor_scope(request)
+        try:
+            result = MonitorLinkService.bind(
+                pk,
+                monitor_id,
+                actor_scope,
+                confirm=self._request_flag(data, "confirm"),
+            )
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.error(
+                "event=cmdb_monitor_link_bind_view_failed failed_stage=%s error_type=%s inst_uuid=%s",
+                "bind",
+                type(exc).__name__,
+                pk,
+                exc_info=(type(exc), RuntimeError("cmdb monitor link bind failed"), exc.__traceback__),
+            )
+            return WebUtils.response_error("关联监控失败", status_code=status.HTTP_502_BAD_GATEWAY)
+        return self._map_monitor_link_result(result)
+
+    @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=True, url_path="unbind_monitor")
+    def unbind_monitor(self, request, pk=None):
+        _, error = self._editable_instance_or_error(request, pk)
+        if error:
+            return error
+        actor_scope = build_cmdb_push_actor_scope(request)
+        try:
+            result = MonitorLinkService.unbind(pk, actor_scope)
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.error(
+                "event=cmdb_monitor_link_unbind_view_failed failed_stage=%s error_type=%s inst_uuid=%s",
+                "unbind",
+                type(exc).__name__,
+                pk,
+                exc_info=(type(exc), RuntimeError("cmdb monitor link unbind failed"), exc.__traceback__),
+            )
+            return WebUtils.response_error("解除关联失败", status_code=status.HTTP_502_BAD_GATEWAY)
+        return self._map_monitor_link_result(result, failed_message="解除关联失败")
 
     # ---- 附件/图片文件（企业版；社区版返回未启用） -----------------------
 

@@ -487,7 +487,8 @@
         "topologyMap": "Relationship Topology",
         "nodeGraph": "Communication Graph",
         "networkStatusTopology": "Network Status Topology",
-        "application3D": "3D Applications"
+        "application3D": "3D Applications",
+        "relatedTopology": "Related Topology"
       },
       "widgetDescriptions": {
         "single": "Show key KPIs, alert totals, availability, and summary values",
@@ -506,7 +507,8 @@
         "nodeGraph": "Show directed traffic between IPs or services",
         "room3D": "Show the 3D rack layout of one server room",
         "networkStatusTopology": "Show read-only network relationships and health",
-        "application3D": "Show application-system health, active alarms, and details on a 3D wall"
+        "application3D": "Show application-system health, active alarms, and details on a 3D wall",
+        "relatedTopology": "Show CMDB-homologous neighbors and current alert overlays for one asset"
       }
     },
     "report": {
@@ -807,8 +809,14 @@
     "networkTopoStatusLoadFailed": "Monitor overlay failed to load",
     "networkTopoEmpty": "No network topology relationships",
     "relatedTopology": "Related Topology",
+    "relatedTopologyDesc": "Show CMDB-homologous neighbors and current alert overlays for one asset",
     "relatedTopologyEmpty": "No associations",
     "relatedTopologyLoadFailed": "Failed to load related topology",
+    "relatedTopologySelectAsset": "Select an asset instance to display",
+    "relatedTopologyInstUuidRequired": "Select an asset instance before saving related topology",
+    "relatedTopologyModelIdRequired": "Select an asset model before saving related topology",
+    "relatedTopologyModel": "Asset model",
+    "relatedTopologyAsset": "Asset instance",
     "networkTopoTruncated": "The topology reached the display limit",
     "networkTopoMissingConfig": "Reconfigure the network devices to display",
     "networkTopoLayoutHierarchical": "Layered",

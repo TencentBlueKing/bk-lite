@@ -92,7 +92,30 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
     import('./objects/database/openGauss').then((m) => m.useOpenGaussConfig),
   GBase8a: () => import('./objects/database/gBase8a').then((m) => m.useGBase8aConfig),
   VastBase: () => import('./objects/database/vastBase').then((m) => m.useVastBaseConfig),
-  KingBase: () => import('./objects/database/kingBase').then((m) => m.useKingBaseConfig)
+  KingBase: () => import('./objects/database/kingBase').then((m) => m.useKingBaseConfig),
+
+
+  'Meraki Organization': () =>
+    import('./objects/ciscoMeraki/organization').then((m) => m.useMerakiOrganizationConfig),
+  'Meraki Network': () =>
+    import('./objects/ciscoMeraki/network').then((m) => m.useMerakiNetworkConfig),
+  'Meraki Device Inventory': () =>
+    import('./objects/ciscoMeraki/deviceInventory').then((m) => m.useMerakiDeviceInventoryConfig),
+  'Meraki Device': () =>
+    import('./objects/ciscoMeraki/device').then((m) => m.useMerakiDeviceConfig),
+  'Meraki Wireless Inventory': () =>
+    import('./objects/ciscoMeraki/wirelessInventory').then((m) => m.useMerakiWirelessInventoryConfig),
+  'Meraki Wireless AP': () =>
+    import('./objects/ciscoMeraki/wirelessAp').then((m) => m.useMerakiWirelessApConfig),
+  'Meraki Switch Inventory': () =>
+    import('./objects/ciscoMeraki/switchInventory').then((m) => m.useMerakiSwitchInventoryConfig),
+  'Meraki Switch': () =>
+    import('./objects/ciscoMeraki/switch').then((m) => m.useMerakiSwitchConfig),
+  'Meraki Appliance Inventory': () =>
+    import('./objects/ciscoMeraki/applianceInventory').then((m) => m.useMerakiApplianceInventoryConfig),
+  'Meraki Appliance': () =>
+    import('./objects/ciscoMeraki/appliance').then((m) => m.useMerakiApplianceConfig),
+
 };
 
 const configCache: Record<string, ObjectConfig> = {};

@@ -256,7 +256,7 @@ export default function UnifiedOpsCard({
           </div>
           <div className="min-w-0 flex-1">
             <Tooltip title={name}>
-              <div className="truncate text-[15px] font-semibold leading-snug tracking-[-0.01em] text-[var(--color-text-1)]">
+              <div className="truncate text-sm font-semibold leading-snug tracking-[-0.01em] text-[var(--color-text-1)]">
                 {name}
               </div>
             </Tooltip>

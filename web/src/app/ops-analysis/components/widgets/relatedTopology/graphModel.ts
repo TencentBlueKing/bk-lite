@@ -5,7 +5,11 @@ import type {
   RelatedTopologyResponse,
   RelatedTopologyTreeNode,
 } from './types';
-import { RELATED_TOPOLOGY_VISUAL } from './visual';
+import {
+  RELATED_TOPOLOGY_DEFAULT_CHROME,
+  RELATED_TOPOLOGY_VISUAL,
+  type RelatedTopologyGraphChrome,
+} from './visual';
 
 const HORIZONTAL_GAP = RELATED_TOPOLOGY_VISUAL.columnGap;
 const MIN_VERTICAL_GAP = RELATED_TOPOLOGY_VISUAL.rowGap;
@@ -65,6 +69,64 @@ export function alertCardStroke(
   return {
     stroke: alertBadgeFill(maxLevel),
     strokeWidth: ALERT_CARD_STROKE_WIDTH,
+  };
+}
+
+export type RelatedNodeMonitorState = 'unmapped' | 'quiet' | 'alerting';
+
+
+export function resolveRelatedNodeMonitorState(node: {
+  monitorId?: string | null;
+  alertCount?: number | null;
+}): RelatedNodeMonitorState {
+  const mapped = Boolean(String(node.monitorId || '').trim());
+  if (!mapped || node.alertCount == null) {
+    return 'unmapped';
+  }
+  if (!formatAlertBadgeText(node.alertCount)) {
+    return 'quiet';
+  }
+  return 'alerting';
+}
+
+export function relatedNodeCardAppearance(
+  node: {
+    isCenter: boolean;
+    monitorId?: string | null;
+    alertCount?: number | null;
+    maxLevel?: string | null;
+  },
+  chrome: RelatedTopologyGraphChrome = RELATED_TOPOLOGY_DEFAULT_CHROME,
+): {
+  state: RelatedNodeMonitorState;
+  badge: string | null;
+  body: Record<string, unknown>;
+} {
+  const state = resolveRelatedNodeMonitorState(node);
+  const base = node.isCenter
+    ? chrome.cardActiveBody
+    : chrome.cardDefaultBody;
+
+  if (state === 'unmapped') {
+    return {
+      state,
+      badge: null,
+      body: {
+        ...base,
+        fill: chrome.unmappedFill,
+        stroke: node.isCenter ? base.stroke : chrome.unmappedStroke,
+        strokeDasharray: node.isCenter ? undefined : '4 3',
+      },
+    };
+  }
+
+  return {
+    state,
+    badge: formatAlertBadgeText(node.alertCount),
+    body: {
+      ...base,
+      ...(alertCardStroke(node.alertCount, node.maxLevel) || {}),
+    },
   };
 }
 

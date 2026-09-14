@@ -1,0 +1,30 @@
+{
+  "object": "Meraki Appliance",
+  "plugin": "Cisco Meraki Appliance",
+  "templates": [
+    {
+      "name": "Meraki安全设备利用率过高",
+      "alert_name": "Meraki安全设备${resource_id} 利用率过高",
+      "description": "MX 设备利用率超过阈值时告警。",
+      "metric_name": "meraki_appliance_utilization_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

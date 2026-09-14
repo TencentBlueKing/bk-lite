@@ -1,4 +1,4 @@
-export type SceneWidgetType = 'networkStatusTopology' | 'application3D';
+export type SceneWidgetType = 'networkStatusTopology' | 'application3D' | 'relatedTopology';
 
 export type ApplicationHealthState = 'normal' | 'alarming' | 'unknown';
 
@@ -231,6 +231,10 @@ export interface NetworkStatusTopologyConfig {
    * @deprecated 存量展开深度。
    */
   depth?: number;
+  /**
+   * 嵌入运行时：单中心固定一跳。画布不写此字段，落盘时丢弃。
+   */
+  oneHop?: boolean;
   /** 连线流量文字：入/出；空数组表示都不显示 */
   linkTrafficDisplays?: Array<'inbound' | 'outbound'>;
   inboundTrafficThresholds?: import('@/app/ops-analysis/utils/thresholdUtils').ThresholdColorConfig[];
@@ -250,6 +254,12 @@ export interface NetworkStatusTopologyConfig {
    * @deprecated 仅本地旧草稿读兼容；新写入不再输出。
    */
   linkVertices?: Record<string, NetworkStatusTopologyPoint[]>;
+}
+
+export interface RelatedTopologyConfig {
+  instUuid?: string;
+  /** 配置 UX：筛实例 / 回显。运行时只消费 instUuid。 */
+  modelId?: string;
 }
 
 export type NetworkNodeStatus = 'normal' | 'warning' | 'error' | 'critical' | 'unknown';

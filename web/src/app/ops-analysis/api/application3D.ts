@@ -12,6 +12,7 @@ export interface Application3DTransport {
   getWall: (
     appliedFilters?: Record<string, string[]>,
     signal?: AbortSignal,
+    applicationId?: string,
   ) => Promise<Application3DWallData>;
   getApplicationDetail: (
     applicationId: string,
@@ -44,10 +45,17 @@ export const useApplication3DApi = (
   const requestOptions = { suppressErrorNotification: true } as const;
 
   const getWall = useCallback(
-    (appliedFilters?: Record<string, string[]>, signal?: AbortSignal) =>
+    (
+      appliedFilters?: Record<string, string[]>,
+      signal?: AbortSignal,
+      applicationId?: string,
+    ) =>
       post<Application3DWallData>(
         `${basePath}/wall/`,
-        appliedFilters ? { applied_filters: appliedFilters } : {},
+        {
+          ...(appliedFilters ? { applied_filters: appliedFilters } : {}),
+          ...(applicationId ? { application_id: applicationId } : {}),
+        },
         { ...requestOptions, signal },
       ),
     [basePath, post],

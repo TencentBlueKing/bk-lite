@@ -163,4 +163,83 @@ describe('告警详情信息', () => {
     expect(screen.queryByRole('button', { name: '分派' })).toBeNull();
     expect(screen.getByRole('button', { name: '关闭此告警' })).not.toBeNull();
   });
+
+  it('does not throw when objects is omitted or empty and falls back to --', () => {
+    const formData = {
+      id: 'alert-4',
+      status: 'closed',
+      level: 'critical',
+      content: '磁盘告警',
+      monitor_instance_name: 'node-02',
+      policy: {
+        monitor_object: 1,
+        organizations: [],
+        name: 'Disk',
+        notice: false,
+        notice_users: [],
+        query_condition: { type: 'metric' },
+      },
+      permission: ['Detail'],
+    } as unknown as TableDataItem;
+
+    expect(() =>
+      render(
+        <Information
+          formData={formData}
+          chartData={[]}
+          userList={[]}
+          onClose={vi.fn()}
+          trapData={{}}
+        />,
+      ),
+    ).not.toThrow();
+    expect(screen.getAllByText('--').length).toBeGreaterThan(0);
+
+    cleanup();
+
+    expect(() =>
+      render(
+        <Information
+          formData={formData}
+          chartData={[]}
+          objects={[]}
+          userList={[]}
+          onClose={vi.fn()}
+          trapData={{}}
+        />,
+      ),
+    ).not.toThrow();
+  });
+
+  it('still shows the object display name when objects is provided', () => {
+    const formData = {
+      id: 'alert-5',
+      status: 'closed',
+      level: 'critical',
+      content: '磁盘告警',
+      monitor_instance_name: 'node-02',
+      policy: {
+        monitor_object: 1,
+        organizations: [],
+        name: 'Disk',
+        notice: false,
+        notice_users: [],
+        query_condition: { type: 'metric' },
+      },
+      permission: ['Detail'],
+    } as unknown as TableDataItem;
+
+    render(
+      <Information
+        formData={formData}
+        chartData={[]}
+        objects={[{ id: 1, name: 'Host', display_name: '主机', icon: '' }]}
+        userList={[]}
+        onClose={vi.fn()}
+        trapData={{}}
+      />,
+    );
+    expect(screen.getAllByText('主机').length).toBeGreaterThan(0);
+    expect(screen.getByText('资产类型')).toBeTruthy();
+  });
 });
