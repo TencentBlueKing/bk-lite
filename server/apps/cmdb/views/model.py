@@ -1,28 +1,21 @@
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 
-from apps.cmdb.constants.constants import (
-    ASSOCIATION_TYPE,
-    OPERATOR_MODEL,
-    PERMISSION_MODEL,
-    OPERATE,
-    VIEW,
-)
-from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
-from apps.cmdb.model_ops.extensions import is_file_attr_type
-from apps.cmdb.validators import IdentifierValidator
+from apps.cmdb.constants.constants import ASSOCIATION_TYPE, OPERATE, OPERATOR_MODEL, PERMISSION_MODEL, VIEW
 from apps.cmdb.language.service import SettingLanguage
+from apps.cmdb.model_ops.extensions import is_file_attr_type
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.model_visibility import BusinessModelVisibility
-from apps.cmdb.utils.base import get_default_group_id, get_current_team_from_request
+from apps.cmdb.utils.base import get_current_team_from_request, get_default_group_id
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
+from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.views.mixins import CmdbPermissionMixin
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.web_utils import WebUtils
 
 
@@ -121,9 +114,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         permissions_map[default_group_id] = default_group_id_permission
 
         raw_include = request.query_params.get("include_hidden", "").lower()
-        include_hidden = (
-            raw_include in ("1", "true", "yes") and bool(getattr(request.user, "is_superuser", False))
-        )
+        include_hidden = raw_include in ("1", "true", "yes") and bool(getattr(request.user, "is_superuser", False))
 
         result = ModelManage.search_model(
             language=request.user.locale,
@@ -145,7 +136,8 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def save_layout(self, request):
         if not getattr(request.user, "is_superuser", False):
             return WebUtils.response_error(
-                "permission denied", status_code=status.HTTP_403_FORBIDDEN,
+                "permission denied",
+                status_code=status.HTTP_403_FORBIDDEN,
             )
         classifications = request.data.get("classifications") or []
         models = request.data.get("models") or []
@@ -205,7 +197,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         ModelManage.check_model_exist_inst(pk)
         # 执行删除
         model_info = ModelManage.search_model_info(pk)
-        ModelManage.delete_model(model_info.get("_id"))
+        ModelManage.delete_model(model_info.get("_id"), model_info["model_id"])
 
         create_change_record(
             operator=request.user.username,
@@ -650,11 +642,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         result = ModelManage.search_model_attr(model_id, request.user.locale)
         from apps.cmdb.services.module_ingest import filter_user_facing_attrs
 
-        filtered_attrs = [
-            attr
-            for attr in filter_user_facing_attrs(result)
-            if not attr.get("is_display_field")
-        ]
+        filtered_attrs = [attr for attr in filter_user_facing_attrs(result) if not attr.get("is_display_field")]
         return WebUtils.response_success(filtered_attrs)
 
     @HasPermission("model_management-View")
@@ -695,9 +683,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @action(detail=False, methods=["get", "post"], url_path="(?P<model_id>.+?)/unique_rules")
     def model_unique_rules(self, request, model_id: str):
-        if not BusinessModelVisibility.is_visible(
-            ModelManage.search_model_info(model_id)
-        ):
+        if not BusinessModelVisibility.is_visible(ModelManage.search_model_info(model_id)):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         if request.method == "GET":
             return self._model_unique_rule_list(request, model_id)
@@ -705,9 +691,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @action(detail=False, methods=["put", "delete"], url_path="(?P<model_id>.+?)/unique_rules/(?P<rule_id>.+?)")
     def model_unique_rule_detail(self, request, model_id: str, rule_id: str):
-        if not BusinessModelVisibility.is_visible(
-            ModelManage.search_model_info(model_id)
-        ):
+        if not BusinessModelVisibility.is_visible(ModelManage.search_model_info(model_id)):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         if request.method == "PUT":
             return self._model_unique_rule_update(request, model_id, rule_id)
@@ -730,9 +714,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         # 检查源模型是否存在
         model_info = ModelManage.search_model_info(model_id)
         if not BusinessModelVisibility.is_visible(model_info):
-            return WebUtils.response_error(
-                error_message="源模型不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error(error_message="源模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         # 检查源模型权限
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -831,9 +813,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         model_ids = request.data.get("model_ids") or []
 
-        file_stream = ModelManage.export_model_config(
-            language=request.user.locale, model_ids=model_ids
-        )
+        file_stream = ModelManage.export_model_config(language=request.user.locale, model_ids=model_ids)
 
         response = HttpResponse(
             file_stream.read(),
@@ -854,6 +834,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         ModelManage.import_model_config(file)
         return WebUtils.response_success(response_data="", message="模型配置导入成功")
+
     def _delete_model_association_with_permission(self, request, model_asst_id: str):
         association_info = ModelManage.model_association_info_search(model_asst_id)
         if not association_info:

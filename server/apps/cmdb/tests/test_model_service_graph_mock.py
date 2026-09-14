@@ -27,9 +27,14 @@ class FakeGraph:
 @pytest.fixture
 def patch_graph(monkeypatch):
     def _patch(entities):
+        fake = FakeGraph(entities)
         monkeypatch.setattr(
             "apps.cmdb.services.model.GraphClient",
-            lambda *a, **k: FakeGraph(entities),
+            lambda *a, **k: fake,
+        )
+        monkeypatch.setattr(
+            "apps.cmdb.services.model_graph_query.GraphClient",
+            lambda *a, **k: fake,
         )
 
     return _patch
@@ -101,7 +106,7 @@ def test_delete_model(fake_graph):
     from apps.cmdb.services.model import ModelManage
 
     fake = fake_graph("apps.cmdb.services.model")
-    ModelManage.delete_model(5)
+    ModelManage.delete_model(5, "host")
     # batch_delete_entity 被调用
     assert any(call[0] == "batch_delete_entity" for call in fake.calls)
 

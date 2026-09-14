@@ -17,6 +17,9 @@ def fake_graph(monkeypatch):
         "apps.cmdb.services.model.GraphClient", lambda: fake
     )
     monkeypatch.setattr(
+        "apps.cmdb.services.model_graph_query.GraphClient", lambda: fake
+    )
+    monkeypatch.setattr(
         "apps.cmdb.services.classification.GraphClient", lambda: fake
     )
     return fake

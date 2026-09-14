@@ -79,11 +79,7 @@ class VmwareCollector(BaseCollector):
         password = self.params["password"]
         host = self.params["host"]
         minutes = self.params.get("minutes", 5)
-
-        logger.info(f"[VMware Collector] ===== START COLLECTION =====")
-        logger.info(f"[VMware Collector] Params: {list(self.params.keys())}")
-        logger.info(f"[VMware Collector] Target Host={host}, Minutes={minutes}")
-        logger.info(f"[VMware Collector] ===================================")
+        task_id = self.params.get("collection_task_id") or self.params.get("task_id") or ""
 
         # 获取时间范围
         end_time = datetime.datetime.now()
@@ -91,15 +87,25 @@ class VmwareCollector(BaseCollector):
         start_time_str = start_time.strftime("%Y-%m-%d %H:%M") + ":00"
         end_time_str = end_time.strftime("%Y-%m-%d %H:%M") + ":00"
 
-        logger.info(f"[VMware Collector] Time range: {start_time_str} to {end_time_str}")
-
         try:
             driver = CMPDriver(username, password, "vmware", host=host)
-        except ConnectionError as e:
-            logger.error(f"[VMware Collector] Failed to create driver: {str(e)}")
+        except ConnectionError as err:
+            logger.exception(
+                "event=vmware_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                host,
+                task_id,
+                "create_driver",
+                type(err).__name__,
+            )
             return ""
-        except Exception as e:
-            logger.error(f"[VMware Collector] Unexpected error creating driver: {str(e)}")
+        except Exception as err:
+            logger.exception(
+                "event=vmware_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                host,
+                task_id,
+                "create_driver",
+                type(err).__name__,
+            )
             return ""
 
         try:
@@ -110,24 +116,35 @@ class VmwareCollector(BaseCollector):
             ))
             vmware_manager.connect_vc()
             object_map = vmware_manager.service()
-
-            total_object_count = sum(len(obj_list) if obj_list else 0 for obj_list in object_map.values())
-            logger.info(f"[VMware Collector] Connected: {len(object_map)} object types, {total_object_count} total objects")
-
-        except Exception as e:
-            logger.error(f"[VMware Collector] Connection failed: {str(e)}")
+        except Exception as err:
+            logger.exception(
+                "event=vmware_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                host,
+                task_id,
+                "connect_vc",
+                type(err).__name__,
+            )
             return ""
 
         metric_dict = {}
         total_resources_processed = 0
+        object_type_count = 0
+        object_type_failed = 0
 
         for object_id, object_list in object_map.items():
             if object_id == "vmware_vc" or not object_list:
                 continue
 
+            object_type_count += 1
             ip_by_resource = _resource_ip_map(object_id, object_list)
             resource_ids = [resource["resource_id"] for resource in object_list]
-            logger.info(f"[VMware Collector] Processing '{object_id}': {len(resource_ids)} resources")
+            logger.debug(
+                "event=vmware_collect_object_debug host=%s task_id=%s object_type=%s count=%s",
+                host,
+                task_id,
+                object_id,
+                len(resource_ids),
+            )
 
             try:
                 data = driver.get_weops_monitor_data(
@@ -140,7 +157,15 @@ class VmwareCollector(BaseCollector):
                 )
 
                 if not data["result"]:
-                    logger.error(f"[VMware Collector] Monitor data failed for '{object_id}': {data.get('message')}")
+                    object_type_failed += 1
+                    logger.error(
+                        "event=vmware_collect_failed host=%s task_id=%s object_type=%s failed_stage=%s error_type=%s",
+                        host,
+                        task_id,
+                        object_id,
+                        "get_weops_monitor_data",
+                        "result_false",
+                    )
                     continue
 
                 for resource_id, metrics in data["data"].items():
@@ -150,16 +175,30 @@ class VmwareCollector(BaseCollector):
                     metric_dict[(resource_id, object_id)] = metrics
 
                 total_resources_processed += len(data["data"])
-                logger.info(f"[VMware Collector] '{object_id}' processed: {len(data['data'])} resources")
-
-            except Exception as e:
-                logger.error(f"[VMware Collector] Error processing '{object_id}': {str(e)}")
+            except Exception as err:
+                object_type_failed += 1
+                logger.exception(
+                    "event=vmware_collect_failed host=%s task_id=%s object_type=%s failed_stage=%s error_type=%s",
+                    host,
+                    task_id,
+                    object_id,
+                    "get_weops_monitor_data",
+                    type(err).__name__,
+                )
                 continue
 
         # 转换为 Prometheus 格式
         metric_list = convert_to_prometheus(metric_dict)
         influxdb_data = "\n".join(metric_list) + "\n"
 
-        logger.info(f"[VMware Collector] Completed: {total_resources_processed} resources, {len(influxdb_data)} bytes")
+        logger.info(
+            "event=vmware_collect_summary host=%s task_id=%s object_types=%s object_type_failed=%s resources=%s bytes=%s",
+            host,
+            task_id,
+            object_type_count,
+            object_type_failed,
+            total_resources_processed,
+            len(influxdb_data),
+        )
 
         return influxdb_data

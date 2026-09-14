@@ -1,5 +1,6 @@
-"""跨模块推送写入监控：按 node_id → cmdb_id → 对象类型身份 → 同名 归并 upsert。
+"""跨模块推送写入监控：按 node_id → cmdb_id → 类型身份 → 同名 归并 upsert。
 
+类型身份：主机为 IP+云区域 → 唯一 IP；Docker 只按唯一实例名；其它对象（含网络设备）为唯一 IP，不看云区域。
 节点来源创建/补采集必须命中 Host + Telegraf 主机模板；找不到或套用失败则整次失败。
 """
 
@@ -12,6 +13,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.cmdb.constants.monitor_link import CMDB_MODEL_TO_MONITOR_OBJECT
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.utils.dimension import normalize_instance_identity
@@ -43,19 +45,6 @@ CMDB_CREATE_ADAPTED_MODEL_IDS = frozenset(
 
 # CMDB 带凭据创建资产+默认策略路径：默认关闭，避免节点创建钩子突然建监控。
 CMDB_CREDENTIAL_CREATE_ENABLED = False
-
-CMDB_MODEL_TO_MONITOR_OBJECT = {
-    "host": HOST_OBJECT_NAME,
-    "switch": "Switch",
-    "router": "Router",
-    "firewall": "Firewall",
-    "loadbalance": "Loadbalance",
-    "physcial_server": "Hardware Server",
-    "mysql": "Mysql",
-    "postgresql": "Postgres",
-    "mssql": "MSSQL",
-    "influxdb": "InfluxDB",
-}
 
 # 扫描 / 带凭据创建按插件名查询，禁止写死数字 ID。名称与 builtin metrics.json 对齐。
 CMDB_MODEL_TO_MONITOR_PLUGIN = {
@@ -97,9 +86,6 @@ HOST_REMOTE_CONFIG_TYPE = "host"
 
 class MonitorModuleIngestService:
     """接收 node_mgmt / CMDB 等模块推送的 ingest envelope，写入 MonitorInstance。"""
-
-    IP_CLOUD_CLAIM_MODELS = frozenset({"host", "switch", "router", "firewall", "loadbalance", "physcial_server", "influxdb"})
-    IP_PORT_CLAIM_MODELS = frozenset({"mysql", "postgresql", "mssql"})
 
     @classmethod
     def ingest(cls, params: dict[str, Any]) -> dict[str, Any]:
@@ -1075,61 +1061,102 @@ class MonitorModuleIngestService:
 
     @classmethod
     def _find_by_type_identity(cls, raw: dict[str, Any]) -> MonitorInstance | None:
+        """ID 之后的类型身份：主机 IP+云区域 → 唯一 IP；Docker 只按唯一实例名；其它对象唯一 IP。"""
         model_id = cls._resolve_cmdb_model_id(raw)
         object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id)
         ip = cls._extract_ip(raw)
         if not object_name:
             return None
         cloud = cls._extract_cloud_region_id(raw)
-        claimed: MonitorInstance | None = None
-        if ip and model_id in cls.IP_PORT_CLAIM_MODELS:
-            db_type = {"mysql": "mysql", "postgresql": "postgres", "mssql": "mssql"}[model_id]
-            port = cls._extract_port(raw, default=DB_DEFAULT_PORTS.get(db_type))
-            storage_key = cls._storage_key_after_onboarding(
-                model_id=model_id,
-                raw_instance_id=f"{cloud or 0}_{ip}_{port}",
-                cloud=cloud if cloud is not None else 0,
-                ip=ip,
-            )
-            by_pk = cls._find_by_pk(storage_key)
-            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
-                claimed = by_pk
-        elif ip and model_id in cls.IP_CLOUD_CLAIM_MODELS:
-            if cloud is not None:
+
+        if model_id == "host":
+            claimed = cls._find_host_by_ip_and_cloud(object_name, ip=ip, cloud=cloud)
+            if claimed is not None:
+                return claimed
+
+        # Docker 容器与宿主机同 IP；按 IP 认领会误绑引擎/其它容器，只认唯一实例名。
+        if ip and model_id != "docker":
+            claimed = cls._find_by_unique_ip(object_name, ip=ip)
+            if claimed is not None:
+                return claimed
+
+        explicit_name = str(raw.get("name") or raw.get("inst_name") or "").strip()
+        return cls._find_by_unique_instance_name(object_name, name=explicit_name or None)
+
+    @classmethod
+    def _find_host_by_ip_and_cloud(
+        cls,
+        object_name: str,
+        *,
+        ip: str | None,
+        cloud: int | None,
+    ) -> MonitorInstance | None:
+        """主机优先按 IP+云区域认领；未命中或歧义则返回 None，交给唯一 IP。"""
+        if not ip or cloud is None:
+            return None
+        for raw_instance_id in (f"{cloud}_os_{ip}", f"{cloud}_{ip}"):
+            try:
                 storage_key = cls._storage_key_after_onboarding(
-                    model_id=model_id,
-                    raw_instance_id=f"{cloud}_{ip}",
+                    model_id="host",
+                    raw_instance_id=raw_instance_id,
                     cloud=cloud,
                     ip=ip,
                 )
-                by_pk = cls._find_by_pk(storage_key)
-                if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
-                    claimed = by_pk
-            if claimed is None:
-                qs = MonitorInstance.objects.filter(
-                    ip=ip,
-                    is_deleted=False,
-                    monitor_object__name=object_name,
-                ).select_related("monitor_object")
-                if cloud is not None:
-                    qs = qs.filter(cloud_region_id=cloud)
-                matches = list(qs[:2])
-                if len(matches) == 1:
-                    claimed = matches[0]
-                elif matches:
-                    # IP 身份歧义：不回落到同名，避免误绑
-                    return None
-                else:
-                    claimed = cls._find_by_encoded_network_identity(object_name, ip=ip, cloud=cloud)
-                    if claimed is None:
-                        claimed = cls._find_by_unique_network_name(object_name, ip=ip)
+            except ValueError:
+                continue
+            by_pk = cls._find_by_pk(storage_key)
+            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+                return by_pk
+        matches = list(
+            MonitorInstance.objects.filter(
+                ip=ip,
+                cloud_region_id=cloud,
+                is_deleted=False,
+                monitor_object__name=object_name,
+            ).select_related(
+                "monitor_object"
+            )[:2]
+        )
+        if len(matches) == 1:
+            return matches[0]
+        return None
 
-        if claimed is not None:
-            return claimed
+    @classmethod
+    def _find_by_unique_ip(cls, object_name: str, *, ip: str | None) -> MonitorInstance | None:
+        """同监控对象下按 IP 唯一认领，不要求云区域一致。"""
+        text = str(ip or "").strip()
+        if not text:
+            return None
+        hits: list[MonitorInstance] = []
+        candidates = MonitorInstance.objects.filter(
+            is_deleted=False,
+            monitor_object__name=object_name,
+        ).select_related("monitor_object")
+        for instance in candidates:
+            if text not in cls._identity_ips(instance, object_name):
+                continue
+            hits.append(instance)
+            if len(hits) > 1:
+                return None
+        return hits[0] if hits else None
 
-        # 最低优先级：CMDB 实例名与监控实例名精确且唯一匹配（不用 IP 合成名）
-        explicit_name = str(raw.get("name") or raw.get("inst_name") or "").strip()
-        return cls._find_by_unique_instance_name(object_name, name=explicit_name or None)
+    @classmethod
+    def _identity_ips(cls, instance: MonitorInstance, object_name: str) -> set[str]:
+        ips: set[str] = set()
+        if instance.ip:
+            ips.add(str(instance.ip).strip())
+        facts = instance.summary_facts if isinstance(instance.summary_facts, dict) else {}
+        fact_ip = str(facts.get("asset.ip") or "").strip()
+        if fact_ip:
+            ips.add(fact_ip)
+        from apps.monitor.services.node_mgmt import InstanceConfigService
+
+        if InstanceConfigService._should_use_network_device_identity_adapter(object_name):
+            _, encoded_ip = cls._network_identity_parts(instance)
+            normalized = cls._normalize_network_identity_ip(encoded_ip)
+            if normalized:
+                ips.add(normalized)
+        return {item for item in ips if item}
 
     @classmethod
     def _find_by_unique_instance_name(cls, object_name: str, *, name: str | None) -> MonitorInstance | None:
@@ -1149,53 +1176,6 @@ class MonitorModuleIngestService:
         if len(matches) == 1:
             return matches[0]
         return None
-
-    @classmethod
-    def _find_by_encoded_network_identity(
-        cls,
-        object_name: str,
-        *,
-        ip: str,
-        cloud: int | None,
-    ) -> MonitorInstance | None:
-        from apps.monitor.services.node_mgmt import InstanceConfigService
-
-        if not InstanceConfigService._should_use_network_device_identity_adapter(object_name):
-            return None
-        hits: list[MonitorInstance] = []
-        candidates = MonitorInstance.objects.filter(
-            is_deleted=False,
-            monitor_object__name=object_name,
-        ).select_related("monitor_object")
-        for instance in candidates:
-            encoded_cloud, encoded_ip = cls._network_identity_parts(instance)
-            if cls._normalize_network_identity_ip(encoded_ip) != ip:
-                continue
-            if cloud is not None and encoded_cloud is not None and int(encoded_cloud) != int(cloud):
-                continue
-            hits.append(instance)
-            if len(hits) > 1:
-                return None
-        return hits[0] if hits else None
-
-    @classmethod
-    def _find_by_unique_network_name(cls, object_name: str, *, ip: str) -> MonitorInstance | None:
-        from apps.monitor.services.node_mgmt import InstanceConfigService
-
-        if not InstanceConfigService._should_use_network_device_identity_adapter(object_name):
-            return None
-        suffix = object_name.strip().lower()
-        names = {ip, f"{ip}-{suffix}"}
-        matches = list(
-            MonitorInstance.objects.filter(
-                name__in=names,
-                is_deleted=False,
-                monitor_object__name=object_name,
-            ).select_related(
-                "monitor_object"
-            )[:2]
-        )
-        return matches[0] if len(matches) == 1 else None
 
     @classmethod
     def _normalize_network_identity_ip(cls, value: str | None) -> str | None:

@@ -222,9 +222,10 @@ def test_capacity_log_includes_process_and_cgroup_resources(monkeypatch):
     assert "目标任务[等待执行=80 正在执行=120 本轮已完成=600 累计已完成=1800]" in messages[0]
     assert "目标并发槽位[已用=120/150 可用=30 使用率=80.0% 峰值=145]" in messages[0]
     assert "发布队列[深度=45/150 使用率=30.0%" in messages[0]
-    assert "最老活动发布批次=1250.0ms" in messages[0]
+    assert "最老活动发布单元=1250.0ms" in messages[0]
+    assert "首次投递前P99=" in messages[0]
     assert "Payload[未终态=90/150]" in messages[0]
-    assert ("JetStream[在途=12 等待信贷=7 PubAck-P99=250.0ms " "截止超时=6(+2) 信贷超时=2(+1) 调用超时=1(+1) PubAck超时=3(+1) " "重试=4(+2) 拒绝=5(+1)]") in messages[0]
+    assert ("JetStream[在途=12 等待信贷=7 PubAck-P99=250.0ms " "截止超时=6(+2) 信贷超时=2(+1) 调用超时=1(+1) PubAck超时=3(+1) " "重试=4(+2) 未确认=5(+1)]") in messages[0]
     assert "事件循环[当前延迟=8.0ms P99延迟=35.0ms]" in messages[0]
     assert "进程[CPU=62.5% CPU配额使用率=31.25% RSS内存=384.0MiB 线程=9 FD=128]" in messages[0]
     assert "容器[内存=512.0MiB/1024.0MiB 使用率=50.0% CPU限额=2.0核" in messages[0]
@@ -299,13 +300,13 @@ def test_capacity_status_detects_publisher_and_jetstream_backpressure(monkeypatc
 
     assert "状态=需关注" in messages[0]
     assert "Payload容量使用率超过80%" in messages[0]
-    assert "发布批次超过总期限" in messages[0]
+    assert "发布活动单元驻留较久(含等待，非发送超时)" in messages[0]
     assert "JetStream等待信贷" in messages[0]
-    assert "发布总期限本周期发生超时" in messages[0]
+    assert "发布截止本周期发生超时" in messages[0]
     assert "JetStream信贷等待本周期发生超时" in messages[0]
     assert "JetStream调用本周期发生超时" in messages[0]
     assert "PubAck本周期发生超时" in messages[0]
-    assert "JetStream本周期发生拒绝" in messages[0]
+    assert "JetStream本周期存在未确认消息" in messages[0]
 
 
 def test_capacity_log_displays_unavailable_values_in_chinese(monkeypatch):

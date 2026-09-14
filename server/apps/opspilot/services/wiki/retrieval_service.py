@@ -481,25 +481,142 @@ def _hit_matched_terms(hit):
     return [term for term in terms if term]
 
 
+def _hit_matched_by(hit):
+    matched_by = (hit.get("explanation") or {}).get("matched_by") or []
+    if isinstance(matched_by, str):
+        return [matched_by]
+    return [item for item in matched_by if item]
+
+
+def _is_graph_expansion(hit):
+    return "graph" in _hit_matched_by(hit)
+
+
+# Question/filler tokens that routinely produce keyword near-misses.
+_GENERIC_MATCH_TERMS = frozenset(
+    {
+        "知识",
+        "资料",
+        "相关",
+        "使用",
+        "如何",
+        "怎么",
+        "什么",
+        "哪些",
+        "为何",
+        "为什么",
+        "请问",
+        "介绍",
+        "说明",
+        "问题",
+        "查询",
+        "一下",
+        "the",
+        "a",
+        "an",
+        "of",
+        "to",
+        "in",
+        "for",
+        "and",
+        "or",
+        "is",
+        "are",
+        "what",
+        "how",
+        "why",
+        "which",
+        "please",
+    }
+)
+
+
+def _is_distinctive_term(term):
+    token = str(term or "").strip().lower()
+    if not token or token in _GENERIC_MATCH_TERMS:
+        return False
+    if _has_cjk(token):
+        return len(token) >= 2
+    return len(token) >= 3
+
+
+def _distinctive_matched_terms(hit):
+    return [term for term in _hit_matched_terms(hit) if _is_distinctive_term(term)]
+
+
+def _distinctive_terms_in_title(hit, terms):
+    title = (hit.get("title") or "").lower()
+    if not title:
+        return False
+    return any(str(term).lower() in title for term in terms)
+
+
 def _is_relevant_hit(hit, *, min_strong_score=100, min_weak_score=60, min_weak_terms=2):
     """Drop keyword near-misses that only share generic tokens (e.g. 知识).
 
     Without embeddings, search almost always returns top_k hits; feeding weak hits
     to the LLM causes out-of-KB answers (translation/recipes/etc.).
+
+    Graph hops are not keyword matches (`matched_by: ["graph"]` only). They stay
+    relevant here; `_filter_relevant_contexts` keeps those aligned to a surviving seed.
+    `min_weak_terms` no longer rejects a single distinctive term — generic tokens
+    are excluded first, then one remaining term is enough.
     """
+    if _is_graph_expansion(hit):
+        return True
     score = _hit_relevance_score(hit)
-    terms = _hit_matched_terms(hit)
     if score >= min_strong_score:
         return True
-    if score >= min_weak_score and len(terms) >= min_weak_terms:
+    if (hit.get("explanation") or {}).get("exact_title_or_alias"):
         return True
-    if hit.get("explanation", {}).get("exact_title_or_alias"):
+    distinctive = _distinctive_matched_terms(hit)
+    if not distinctive:
+        return False
+    if _distinctive_terms_in_title(hit, distinctive):
         return True
-    return False
+    needed = 1 if min_weak_terms else 0
+    return score >= min_weak_score and len(distinctive) >= needed
+
+
+def _page_hit_id(hit):
+    if hit.get("kind") not in (None, "page"):
+        return None
+    return hit.get("id")
+
+
+def _graph_source_id(hit):
+    return (hit.get("explanation") or {}).get("graph_source_id")
 
 
 def _filter_relevant_contexts(contexts):
-    return [hit for hit in (contexts or []) if _is_relevant_hit(hit)]
+    hits = list(contexts or [])
+    seeds = []
+    graph_hits = []
+    for hit in hits:
+        if _is_graph_expansion(hit):
+            graph_hits.append(hit)
+        elif _is_relevant_hit(hit):
+            seeds.append(hit)
+    kept_page_ids = {page_id for page_id in (_page_hit_id(hit) for hit in seeds) if page_id is not None}
+    aligned_graph = []
+    remaining = list(graph_hits)
+    progressed = True
+    while remaining and progressed:
+        progressed = False
+        still_pending = []
+        for hit in remaining:
+            if _graph_source_id(hit) in kept_page_ids:
+                aligned_graph.append(hit)
+                page_id = _page_hit_id(hit)
+                if page_id is not None:
+                    kept_page_ids.add(page_id)
+                progressed = True
+            else:
+                still_pending.append(hit)
+        remaining = still_pending
+    keep = {id(hit) for hit in seeds}
+    keep.update(id(hit) for hit in aligned_graph)
+    return [hit for hit in hits if id(hit) in keep]
 
 
 def _adapt_context_k(

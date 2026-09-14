@@ -16,7 +16,6 @@ from apps.cmdb.services.model import ModelManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
-
 PUBLIC_ENUM_LIBRARY_MANAGER: Any = getattr(PublicEnumLibrary, "objects")
 LibraryAuthorizer = Callable[[PublicEnumLibrary], None]
 
@@ -88,11 +87,7 @@ def update_library(
     authorize: LibraryAuthorizer | None = None,
 ) -> dict:
     with transaction.atomic():
-        library = (
-            PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update()
-            .filter(library_id=library_id)
-            .first()
-        )
+        library = PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update().filter(library_id=library_id).first()
         if not library:
             raise BaseAppException("公共选项库不存在")
         if authorize:
@@ -153,11 +148,7 @@ def delete_library(
     authorize: LibraryAuthorizer | None = None,
 ) -> None:
     with transaction.atomic():
-        library = (
-            PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update()
-            .filter(library_id=library_id)
-            .first()
-        )
+        library = PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update().filter(library_id=library_id).first()
         if not library:
             raise BaseAppException("公共选项库不存在")
         if authorize:
@@ -173,10 +164,7 @@ def delete_library(
         )
 
         if references:
-            ref_details = ", ".join(
-                f"{ref['model_name']}({ref['model_id']}).{ref['attr_name']}({ref['attr_id']})"
-                for ref in references
-            )
+            ref_details = ", ".join(f"{ref['model_name']}({ref['model_id']}).{ref['attr_name']}({ref['attr_id']})" for ref in references)
             raise BaseAppException(
                 f"该公共选项库正在被以下属性引用，无法删除: {ref_details}",
                 data={"references": references},
@@ -247,8 +235,8 @@ def list_libraries(team: list | None = None) -> list[dict]:
     for lib in queryset:
         editable = True
         if team is not None:
-            lib_team_set = set(str(t) for t in lib.team)
-            user_team_set = set(str(t) for t in team)
+            lib_team_set = {str(t) for t in lib.team}
+            user_team_set = {str(t) for t in team}
             editable = bool(lib_team_set & user_team_set) if lib_team_set else True
 
         libraries.append(
@@ -317,6 +305,9 @@ def sync_library_snapshots(library_id: str, trigger: str, operator: str | None =
                         False,
                     )
                     affected_models.add(model_id)
+                    from apps.cmdb.display_field import ExcludeFieldsCache
+
+                    ExcludeFieldsCache.invalidate_model_attrs(model_id)
                 except Exception as e:
                     logger.exception(
                         "[SyncPublicEnumSnapshots] failed to update model=%s, error_type=%s, error=%s",

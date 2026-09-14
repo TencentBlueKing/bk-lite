@@ -1183,3 +1183,139 @@ def test_monitor_instance_list_invalid_instance_id_returns_empty(monkeypatch):
 
     assert called["service"] is False
     assert payload["data"] == {"count": 0, "results": []}
+
+
+def _lookup_request(instance_id, *, is_superuser=True, current_team=1):
+    return types.SimpleNamespace(
+        GET={"instance_id": instance_id},
+        COOKIES={"current_team": str(current_team)},
+        user=types.SimpleNamespace(
+            username="tester",
+            domain="default",
+            locale="zh-Hans",
+            is_superuser=is_superuser,
+            group_list=[],
+        ),
+    )
+
+
+def _patch_lookup_scope(monkeypatch, team_id=1, *, is_superuser=True):
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "resolve_current_team_data_scope",
+        lambda request: CurrentTeamDataScope(
+            team_id,
+            frozenset({team_id}),
+            False,
+            "tester",
+            "default",
+            is_superuser,
+        ),
+    )
+
+
+def test_lookup_monitor_instance_finds_tuple_pk_from_scalar_id(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="主机",
+        instance_id_keys=["instance_id"],
+    )
+    MonitorObject.objects.create(name="Ping", display_name="Ping")
+    instance = MonitorInstance.objects.create(
+        id="('app3d-demo-host-01',)",
+        name="web-1",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+    _patch_lookup_scope(monkeypatch)
+
+    response = monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(_lookup_request("app3d-demo-host-01"))
+    payload = json.loads(response.content)
+
+    assert payload["data"]["monitor_object"]["id"] == monitor_object.id
+    assert payload["data"]["monitor_object"]["name"] == "Host"
+    assert payload["data"]["instance"] == {
+        "instance_id": "('app3d-demo-host-01',)",
+        "instance_name": "web-1",
+        "instance_id_values": ["app3d-demo-host-01"],
+        "instance_id_keys": ["instance_id"],
+    }
+
+
+def test_lookup_monitor_instance_finds_scalar_pk(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(name="Host", display_name="主机")
+    instance = MonitorInstance.objects.create(
+        id="app3d-demo-host-01",
+        name="web-1",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+    _patch_lookup_scope(monkeypatch)
+
+    response = monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(_lookup_request("app3d-demo-host-01"))
+    payload = json.loads(response.content)
+
+    assert payload["data"]["instance"]["instance_id"] == "app3d-demo-host-01"
+    assert payload["data"]["monitor_object"]["id"] == monitor_object.id
+
+
+def test_lookup_monitor_instance_hides_other_team(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(name="Host", display_name="主机")
+    instance = MonitorInstance.objects.create(
+        id="('app3d-demo-host-01',)",
+        name="web-1",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=2)
+    _patch_lookup_scope(monkeypatch, team_id=1)
+
+    response = monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(_lookup_request("app3d-demo-host-01"))
+    payload = json.loads(response.content)
+
+    assert payload["result"] is True
+    assert payload["data"] is None
+
+
+def test_lookup_monitor_instance_hides_when_object_permission_empty(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(name="Host", display_name="主机")
+    instance = MonitorInstance.objects.create(
+        id="('app3d-demo-host-01',)",
+        name="web-1",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+    _patch_lookup_scope(monkeypatch, is_superuser=False)
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "get_permission_rules",
+        lambda *args, **kwargs: {"team": [], "instance": []},
+    )
+
+    response = monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(_lookup_request("app3d-demo-host-01", is_superuser=False))
+    payload = json.loads(response.content)
+
+    assert payload["data"] is None
+
+
+def test_lookup_monitor_instance_missing_returns_empty(db, monkeypatch):
+    _patch_lookup_scope(monkeypatch)
+    response = monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(_lookup_request("missing-host"))
+    payload = json.loads(response.content)
+    assert payload["data"] is None
+
+
+def test_lookup_monitor_instance_requires_instance_id():
+    request = types.SimpleNamespace(
+        GET={},
+        COOKIES={"current_team": "1"},
+        user=types.SimpleNamespace(is_superuser=True, group_list=[]),
+    )
+    with pytest.raises(BaseAppException, match="instance_id is required"):
+        monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(request)
+
+
+def test_lookup_monitor_instance_invalid_id_returns_empty(monkeypatch):
+    _patch_lookup_scope(monkeypatch)
+    response = monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(_lookup_request("()"))
+    payload = json.loads(response.content)
+    assert payload["data"] is None

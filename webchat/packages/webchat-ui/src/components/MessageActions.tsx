@@ -15,8 +15,23 @@ interface MessageActionsProps {
   onDelete?: (messageId: string) => void;
 }
 
-export const COPY_SUCCESS_LABEL = '已复制到粘贴板';
+export const COPY_SUCCESS_LABEL = '已复制到剪贴板';
 export const COPY_FEEDBACK_MS = 1600;
+export const WEBCHAT_ROOT_ID = 'webchat-root';
+
+type PortalAnchor = {
+  closest?: (selector: string) => Element | null;
+} | null;
+
+/** Tailwind utilities are scoped to `#webchat-root`; never portal onto `document.body`. */
+export function resolveWebchatPortalTarget(anchor: PortalAnchor): Element | null {
+  if (typeof document === 'undefined') return null;
+  return (
+    document.getElementById(WEBCHAT_ROOT_ID) ??
+    anchor?.closest?.(`#${WEBCHAT_ROOT_ID}`) ??
+    null
+  );
+}
 
 const iconBtnClass =
   'rounded p-1 text-[var(--color-text-3,#86909c)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-[var(--color-fill-2,#f4f6fa)] hover:text-[var(--color-text-1,#1d2129)]';
@@ -95,6 +110,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
 
   const copyLabel = copied ? COPY_SUCCESS_LABEL : '复制';
   const visible = showActions || copied;
+  const portalTarget =
+    copied && tip ? resolveWebchatPortalTarget(copyBtnRef.current) : null;
 
   return (
     <div
@@ -145,14 +162,22 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
         </Icon>
       </button>
-      {copied && tip && typeof document !== 'undefined' && document.body
+      {copied && tip && portalTarget
         ? createPortal(
             <div
               role="status"
-              className="pointer-events-none fixed z-[2100] max-w-[240px] -translate-x-1/2 -translate-y-full rounded-md px-2.5 py-1.5 text-[12px] leading-[18px]"
               style={{
+                position: 'fixed',
                 top: tip.top,
                 left: tip.left,
+                transform: 'translate(-50%, -100%)',
+                zIndex: 2100,
+                maxWidth: 240,
+                padding: '6px 10px',
+                borderRadius: 6,
+                fontSize: 12,
+                lineHeight: '18px',
+                pointerEvents: 'none',
                 background: WC.botText,
                 color: WC.white,
                 boxShadow: WC.shadow,
@@ -160,7 +185,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             >
               {COPY_SUCCESS_LABEL}
             </div>,
-            document.body
+            portalTarget
           )
         : null}
     </div>

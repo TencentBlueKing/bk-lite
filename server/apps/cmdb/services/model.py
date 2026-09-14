@@ -262,6 +262,10 @@ class ModelManage(object):
                 False,
             )
 
+        from apps.cmdb.display_field import ExcludeFieldsCache
+
+        ExcludeFieldsCache.invalidate_model_attrs(model_id)
+
     @staticmethod
     def _validate_attr_id(attr_id: str):
         if not IdentifierValidator.is_valid(attr_id):
@@ -437,7 +441,7 @@ class ModelManage(object):
                 "classification_model_asst_id",
             )
 
-        # 初始化排除字段缓存
+        # 模型结构已变化，失效相关字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
 
         ExcludeFieldsCache.update_on_model_change(data["model_id"])
@@ -606,7 +610,7 @@ class ModelManage(object):
                 "classification_model_asst_id",
             )
 
-        # 初始化排除字段缓存
+        # 模型结构已变化，失效相关字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
 
         ExcludeFieldsCache.update_on_model_change(new_model_id)
@@ -695,18 +699,25 @@ class ModelManage(object):
         except Exception as e:
             # 如果复制过程中出错，删除已创建的模型
             try:
-                ModelManage.delete_model(new_model["_id"])
+                ModelManage.delete_model(new_model["_id"], new_model_id)
             except Exception:  # noqa: BLE001 - 清理失败不应掩盖原始错误
                 pass
             raise e
 
     @staticmethod
-    def delete_model(id: int):
+    def delete_model(id: int, model_id: str = ""):
         """
         删除模型
         """
         with GraphClient() as ag:
+            if not model_id:
+                model_info = ag.query_entity_by_id(id)
+                model_id = str((model_info or {}).get("model_id") or "")
             ag.batch_delete_entity(MODEL, [id])
+
+        from apps.cmdb.display_field import ExcludeFieldsCache
+
+        ExcludeFieldsCache.update_on_model_change(model_id)
 
     @staticmethod
     def _is_builtin_model(model: dict | None) -> bool:
@@ -734,6 +745,8 @@ class ModelManage(object):
         """
         model_id = data.pop("model_id", "")  # 不能更新model_id
         data = dict(data)
+        updates_attrs = "attrs" in data
+        updates_unique_rules = "unique_rules" in data
         ModelManage._apply_app_topo_layer(data, missing="skip")
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str<>", "value": model_id}])
@@ -745,6 +758,14 @@ class ModelManage(object):
             exist_items = [item for item in exist_items if item.get("_id") != id]
             data = ModelManage._restrict_builtin_model_update(current, data)
             model = ag.set_entity_properties(MODEL, [id], data, UPDATE_MODEL_CHECK_ATTR_MAP, exist_items)
+
+        if updates_attrs or updates_unique_rules:
+            from apps.cmdb.display_field import ExcludeFieldsCache
+
+            if updates_attrs:
+                ExcludeFieldsCache.update_on_model_change(model_id)
+            else:
+                ExcludeFieldsCache.invalidate_model_attrs(model_id)
         return model[0]
 
     @staticmethod
@@ -824,7 +845,9 @@ class ModelManage(object):
 
     @staticmethod
     def parse_attrs(attrs: str):
-        return json.loads(attrs.replace('\\"', '"'))
+        from apps.cmdb.services.model_graph_query import parse_attrs as parse_model_attrs
+
+        return parse_model_attrs(attrs)
 
     @staticmethod
     def create_model_attr(model_id, attr_info, username="admin"):
@@ -871,7 +894,7 @@ class ModelManage(object):
 
             result = ag.set_entity_properties(MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False)
 
-        # 更新排除字段缓存
+        # 新字段可能影响全文检索排除项，失效模型与全局字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
 
         updated_attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
@@ -1001,10 +1024,10 @@ class ModelManage(object):
 
         attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
 
-        # 更新排除字段缓存
+        # 字段展示配置变化只影响当前模型 attrs 缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
 
-        ExcludeFieldsCache.update_on_model_change(model_id)
+        ExcludeFieldsCache.invalidate_model_attrs(model_id)
 
         attr = None
         for attr in attrs:
@@ -1279,7 +1302,7 @@ class ModelManage(object):
             model_params = [{"field": "model_id", "type": "str=", "value": model_id}]
             ag.remove_entitys_properties(INSTANCE, model_params, fields_to_remove)
 
-        # 更新排除字段缓存
+        # 删除字段可能影响全文检索排除项，失效模型与全局字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
 
         updated_attrs = ModelManage.parse_attrs(result[0].get("attrs", "[]"))
@@ -1303,24 +1326,9 @@ class ModelManage(object):
         """
         查询模型详情
         """
-        query_data = [{"field": "model_id", "type": "str=", "value": model_id}]
-        with GraphClient() as ag:
-            models, _ = ag.query_entity(MODEL, query_data)
-        if len(models) == 0:
-            return {}
+        from apps.cmdb.services.model_graph_query import search_model_info as query_model_info
 
-        model = models[0]
-
-        # if not display_field:
-        #     return model
-        #
-        # # 过滤掉 is_display_field 为 true 的字段
-        # if "attrs" in model and model["attrs"]:
-        #     attrs = ModelManage.parse_attrs(model["attrs"])
-        #     filtered_attrs = [attr for attr in attrs if not attr.get("is_display_field")]
-        #     model["attrs"] = json.dumps(filtered_attrs, ensure_ascii=False)
-
-        return model
+        return query_model_info(model_id)
 
     @staticmethod
     def get_organization_option(items: list, result: list, name_prefix: str = ""):
@@ -1516,16 +1524,9 @@ class ModelManage(object):
         """
         查询模型关联详情
         """
-        with GraphClient() as ag:
-            query_data = {
-                "field": "model_asst_id",
-                "type": "str=",
-                "value": model_asst_id,
-            }
-            edges = ag.query_edge(MODEL_ASSOCIATION, [query_data])
-        if len(edges) == 0:
-            return {}
-        return edges[0]
+        from apps.cmdb.services.model_graph_query import model_association_info_search as query_association_info
+
+        return query_association_info(model_asst_id)
 
     @staticmethod
     def model_association_search(
@@ -1537,19 +1538,9 @@ class ModelManage(object):
         """
         查询模型所有的关联
         """
-        query_list = [
-            {"field": "src_model_id", "type": "str=", "value": model_id},
-            {"field": "dst_model_id", "type": "str=", "value": model_id},
-        ]
-        with GraphClient() as ag:
-            edges = ag.query_edge(MODEL_ASSOCIATION, query_list, param_type="OR")
+        from apps.cmdb.services.model_graph_query import model_association_search as query_associations
 
-        if business_only:
-            return BusinessModelVisibility.filter_associations(
-                edges,
-                language=language,
-            )
-        return edges
+        return query_associations(model_id, business_only=business_only, language=language)
 
     @staticmethod
     def get_model_auto_relation_rules(model_id: str):
@@ -2206,6 +2197,9 @@ class ModelManage(object):
                         [],
                         False,
                     )
+                    from apps.cmdb.display_field import ExcludeFieldsCache
+
+                    ExcludeFieldsCache.invalidate_model_attrs(model_id)
                     logger.info(
                         "[UniqueRule] attr import success model_id=%s sheet_name=%s rule_count=%s",
                         model_id,

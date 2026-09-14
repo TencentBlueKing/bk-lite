@@ -338,6 +338,7 @@
       "node": "节点",
       "clickhouse_asynchronous_metrics_load_average1": "系统负载（1分钟）",
       "alertList": "告警列表",
+      "publicWidgetNotFound": "监控实例不存在或已失效",
       "monitoringPolicy": "监控策略",
       "noBoundPolicy": "该资产暂无绑定的监控策略",
       "postgresql_numbackends": "当前活跃数据库连接数",

@@ -13,12 +13,22 @@ from django.http import StreamingHttpResponse
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import SKILL_CHANNEL_SKIP_ORG_CHECK, SkillChannelChoices
+from apps.opspilot.memory.identity import resolve_owner_identity
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.history_service import HistoryService
 from apps.opspilot.services.skill_channel_service import channel_allows_team, resolve_ops_pilot_guest_id
+from apps.opspilot.services.skill_memory_service import (
+    annotate_pending_memory_rounds,
+    inject_skill_memory_prompt,
+    maybe_schedule_skill_memory_write,
+    pending_rounds_for_conversation,
+    resolve_skill_conversation_memory_space,
+    resolve_skill_memory_model_id,
+    snapshot_pending_messages,
+)
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.prompt_utils import merge_skill_params
@@ -98,14 +108,17 @@ def authenticate_embedded(request) -> tuple[Any, int]:
 
 
 def saas_external_user_id(user) -> str:
-    username = getattr(user, "username", "") or ""
-    domain = getattr(user, "domain", "") or ""
-    return f"{username}@{domain}" if domain else username
+    owner = resolve_owner_identity(user=user)
+    if owner.user_id:
+        return owner.user_id
+    if owner.domain:
+        return f"{owner.username}@{owner.domain}"
+    return owner.username or ""
 
 
 def get_or_create_conversation(channel: SkillChannel, external_user_id: str, session_id: str | None = None) -> SkillConversation:
     if session_id:
-        conv = SkillConversation.objects.select_related("channel", "skill").filter(session_id=session_id).first()
+        conv = SkillConversation.objects.select_related("channel", "skill", "skill__memory_space").filter(session_id=session_id).first()
         if conv:
             if (conv.external_user_id or "") != (external_user_id or ""):
                 raise SkillChannelChatError("无权使用该会话", status=403)
@@ -656,12 +669,11 @@ def conversation_display_title(conversation: SkillConversation) -> str:
     return f"{text[:50]}..." if len(text) > 50 else text
 
 
-def list_skill_conversations_for_user(*, skill_id: int, external_user_id: str) -> list[dict]:
-    qs = (
-        SkillConversation.objects.filter(skill_id=skill_id, external_user_id=external_user_id, is_active=True)
-        .select_related("channel")
-        .order_by("-updated_at", "-id")
-    )
+def list_skill_conversations_for_user(*, skill_id: int, external_user_id: str, channel_id: int | None = None) -> list[dict]:
+    qs = SkillConversation.objects.filter(skill_id=skill_id, external_user_id=external_user_id, is_active=True)
+    if channel_id is not None:
+        qs = qs.filter(channel_id=channel_id)
+    qs = annotate_pending_memory_rounds(qs.select_related("channel", "skill", "skill__memory_space").order_by("-updated_at", "-id"))
     result = []
     for conv in qs:
         channel = conv.channel
@@ -675,6 +687,7 @@ def list_skill_conversations_for_user(*, skill_id: int, external_user_id: str) -
                 "channel_name": (channel.name if channel else "") or "",
                 "created_at": conv.created_at.isoformat() if conv.created_at else None,
                 "updated_at": conv.updated_at.isoformat() if getattr(conv, "updated_at", None) else None,
+                "pending_memory_rounds": pending_rounds_for_conversation(conv, getattr(conv, "pending_count", None)),
             }
         )
     return result
@@ -714,12 +727,28 @@ def get_skill_session_history(*, session_id: str, external_user_id: str) -> tupl
     return _serialize_session_messages(conv), conv
 
 
-def delete_skill_session(*, session_id: str, external_user_id: str) -> None:
-    conv = SkillConversation.objects.filter(session_id=session_id).first()
+def delete_skill_session(*, session_id: str, external_user_id: str, keep_memory: bool = False) -> None:
+    conv = SkillConversation.objects.select_related("skill", "skill__memory_space").filter(session_id=session_id).first()
     if not conv:
         raise SkillChannelChatError("会话不存在", status=404)
     if (conv.external_user_id or "") != (external_user_id or ""):
         raise SkillChannelChatError("无权删除该会话", status=403)
+    snapshot = snapshot_pending_messages(conv) if keep_memory else []
+    space = resolve_skill_conversation_memory_space(conv.skill)
+    if snapshot and space is not None:
+        from apps.opspilot.tasks.memory import write_skill_conversation_memory
+
+        owner = resolve_owner_identity(external_user_id=conv.external_user_id, assign_if_missing=True)
+        write_skill_conversation_memory.delay(
+            conv.id,
+            True,
+            snapshot,
+            space.id,
+            owner.username,
+            owner.domain,
+            resolve_skill_memory_model_id(conv.skill, space),
+            owner.user_id,
+        )
     conv.delete()
 
 
@@ -738,6 +767,7 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
         "tools": tools,
         "group": (skill.team or [0])[0],
         "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
+        "force_wiki_grounded": bool(getattr(skill, "force_wiki_grounded", False)),
         "skill_params": merge_skill_params([], skill.skill_params or []),
         "temperature": DEFAULT_CHAT_TEMPERATURE,
         "username": getattr(request_user, "username", "") or "",
@@ -925,6 +955,7 @@ def execute_skill_channel_im_sync(
 
     request_user = type("IMUser", (), {"username": external_user_id or "", "id": None, "locale": "en"})()
     params = build_skill_chat_params(skill, user_message, request_user)
+    inject_skill_memory_prompt(params, skill, external_user_id, user_message)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     result = chat_service.chat(params)
     content = ""
@@ -935,6 +966,7 @@ def execute_skill_channel_im_sync(
     if not content:
         content = "处理完成，但未产生可展示内容"
     append_message(conversation, SkillConversationMessage.ROLE_ASSISTANT, content)
+    maybe_schedule_skill_memory_write(conversation)
     return content
 
 
@@ -955,6 +987,7 @@ def stream_skill_channel_chat(
 
     user = identity_user or request.user
     params = build_skill_chat_params(skill, persist_text, user)
+    inject_skill_memory_prompt(params, skill, external_user_id, persist_text)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     focused_titles = _focused_titles_from_page_context(persist_text, page_context)
     params["chat_history"] = _history_for_focused_charts(params["chat_history"], focused_titles)
@@ -1032,11 +1065,13 @@ def _wrap_stream_persist_assistant(response: StreamingHttpResponse, conversation
             content = assemble_assistant_persist_content(events)
             if content:
                 try:
+                    conversation = await sync_to_async(SkillConversation.objects.select_related("skill").get)(id=conversation_id)
                     await sync_to_async(append_message)(
-                        await sync_to_async(SkillConversation.objects.get)(id=conversation_id),
+                        conversation,
                         SkillConversationMessage.ROLE_ASSISTANT,
                         content,
                     )
+                    await sync_to_async(maybe_schedule_skill_memory_write)(conversation)
                 except Exception:
                     logger.exception("persist skill channel assistant message failed: conversation_id=%s", conversation_id)
 

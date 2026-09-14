@@ -138,8 +138,9 @@ export interface AssetDataFieldProps {
   propertyList: AttrFieldType[];
   userList: UserItem[];
   instDetail: InstDetail;
-  onsuccessEdit: () => void;
+  onsuccessEdit?: () => void;
   onSubscribe?: () => void;
+  readOnly?: boolean;
 }
 
 export interface InstDetail {

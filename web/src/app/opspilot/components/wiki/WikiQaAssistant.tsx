@@ -26,6 +26,7 @@ import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
+import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
 import { WikiCitation } from '@/app/opspilot/types/global';
 import WikiCitations from '@/app/opspilot/components/custom-chat-sse/WikiCitations';
 import styles from '@/app/opspilot/components/custom-chat/index.module.scss';
@@ -236,17 +237,21 @@ const InputBar: React.FC<{
   loading: boolean;
   disabled?: boolean;
   t: (k: string) => string;
-}> = ({ value, onChange, onSend, loading, disabled, t }) => (
+}> = ({ value, onChange, onSend, loading, disabled, t }) => {
+  const imeEnterGuard = useImeEnterGuard();
+  return (
   <div className="border-t border-[var(--color-border)] p-3">
     <div className="flex items-end gap-2">
       <Input.TextArea
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onCompositionStart={imeEnterGuard.onCompositionStart}
+        onCompositionEnd={imeEnterGuard.onCompositionEnd}
         onPressEnter={(e) => {
-          if (!e.shiftKey) {
-            e.preventDefault();
-            onSend();
+          if (!imeEnterGuard.handleEnterKey(e)) {
+            return;
           }
+          onSend();
         }}
         placeholder={t('wiki.qaPlaceholder')}
         autoSize={{ minRows: 1, maxRows: 4 }}
@@ -265,7 +270,8 @@ const InputBar: React.FC<{
     </div>
     <div className="mt-1.5 text-[11px] text-[var(--color-text-3)]">{t('wiki.qaSendHint')}</div>
   </div>
-);
+  );
+};
 
 const SaveAnswerModal: React.FC<{
   form: any;

@@ -16,6 +16,7 @@ class NetworkStatusTopologyRequestSerializer(serializers.Serializer):
         min_value=1,
         max_value=NETWORK_STATUS_TOPOLOGY_MAX_NODES,
     )
+    depth = serializers.IntegerField(required=False, min_value=1, max_value=1)
 
     def validate_inst_uuids(self, value):
         strings = [str(item) for item in value]
@@ -28,6 +29,8 @@ class NetworkStatusTopologyRequestSerializer(serializers.Serializer):
         node_limit = attrs.get("node_limit") or NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES
         if len(inst_uuids) > node_limit:
             raise serializers.ValidationError({"inst_uuids": f"不能超过 node_limit {node_limit}"})
+        if attrs.get("depth") is not None and len(inst_uuids) != 1:
+            raise serializers.ValidationError({"depth": "一跳展开只接受单个 inst_uuid"})
         return attrs
 
 
@@ -47,6 +50,7 @@ class Application3DWallRequestSerializer(_Application3DStrictSerializer):
         required=False,
         allow_empty=True,
     )
+    application_id = serializers.UUIDField(required=False)
 
 
 class Application3DApplicationDetailRequestSerializer(_Application3DStrictSerializer):

@@ -46,6 +46,7 @@ class TelegrafOneShotService:
         {
             "urls",
             "interval",
+            "collection_offset",
             "timeout",
             "response_timeout",
             "http_headers",

@@ -12,12 +12,15 @@ import pydantic.root_model  # noqa
 
 策略：纯函数全部真实执行并断言真实输出；RPC/cache 边界打桩，返回真实形态假数据。
 """
+import logging
 from types import SimpleNamespace
 
 import pytest
 
 from apps.core import constants
 from apps.core.utils import permission_utils as pu
+
+SENTINEL_PASSWORD = "SENTINEL_PERM_PASSWORD_MUST_NOT_LOG"
 
 pytestmark = pytest.mark.unit
 
@@ -92,9 +95,52 @@ class TestGetPermissionRules:
         mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
         mocker.patch.object(pu, "set_cached_permission_rules")
         client = mocker.MagicMock()
-        client.get_user_rules_by_app.side_effect = RuntimeError("nats down")
+        original = RuntimeError("nats down")
+        client.get_user_rules_by_app.side_effect = original
         mocker.patch.object(pu, "set_rules_module_params", return_value=("cmdb", "", client, "instance"))
-        assert pu.get_permission_rules(_user(), "5", "cmdb", "instance") == {}
+        mock_log = mocker.patch.object(pu.logger, "exception")
+        assert pu.get_permission_rules(_user(username="alice"), "5", "cmdb", "instance") == {}
+        mock_log.assert_called_once_with(
+            pu._PERMISSION_RPC_FAILED,
+            "alice",
+            "domain.com",
+            "5",
+            "cmdb",
+            "instance",
+            "get_user_rules_by_app",
+            "RuntimeError",
+        )
+
+    def test_rpc_exception_logs_traceback_without_credentials(self, mocker, caplog):
+        mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
+        mocker.patch.object(pu, "set_cached_permission_rules")
+        original = RuntimeError("nats down")
+        client = mocker.MagicMock()
+        client.get_user_rules_by_app.side_effect = original
+        mocker.patch.object(pu, "set_rules_module_params", return_value=("cmdb", "", client, "instance"))
+        user = _user(username="alice")
+        user.password = SENTINEL_PASSWORD
+
+        with caplog.at_level(logging.ERROR, logger="nats"):
+            assert pu.get_permission_rules(user, "5", "cmdb", "instance") == {}
+
+        error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        message = error_records[0].getMessage()
+        assert "event=permission_rpc_failed" in message
+        assert "username=alice" in message
+        assert "team=5" in message
+        assert "app=cmdb" in message
+        assert "permission_key=instance" in message
+        assert "failed_stage=get_user_rules_by_app" in message
+        assert "error_type=RuntimeError" in message
+        assert SENTINEL_PASSWORD not in message
+        assert error_records[0].exc_info is not None
+        assert error_records[0].exc_info[1] is original
+        joined = "\n".join(record.getMessage() for record in caplog.records)
+        assert SENTINEL_PASSWORD not in joined
+        if error_records[0].exc_text:
+            assert SENTINEL_PASSWORD not in error_records[0].exc_text
 
 
 # ---------------------------------------------------------------------------
@@ -195,8 +241,41 @@ class TestGetPermissionsRules:
         client = mocker.MagicMock()
         client.get_user_rules_by_module.side_effect = ValueError("boom")
         mocker.patch.object(pu, "SystemMgmt", return_value=client)
-        assert pu.get_permissions_rules(_user(), "3", "cmdb", "x") == {}
+        mock_log = mocker.patch.object(pu.logger, "exception")
+        assert pu.get_permissions_rules(_user(username="bob"), "3", "cmdb", "x") == {}
         mock_set.assert_not_called()
+        mock_log.assert_called_once_with(
+            pu._PERMISSION_RPC_FAILED,
+            "bob",
+            "domain.com",
+            "3",
+            "cmdb",
+            "x",
+            "get_user_rules_by_module",
+            "ValueError",
+        )
+
+    def test_rpc_exception_logs_traceback_without_credentials(self, mocker, caplog):
+        mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
+        mocker.patch.object(pu, "set_cached_permission_rules")
+        original = ValueError("boom")
+        client = mocker.MagicMock()
+        client.get_user_rules_by_module.side_effect = original
+        mocker.patch.object(pu, "SystemMgmt", return_value=client)
+        user = _user(username="bob")
+        user.password = SENTINEL_PASSWORD
+
+        with caplog.at_level(logging.ERROR, logger="nats"):
+            assert pu.get_permissions_rules(user, "3", "cmdb", "x") == {}
+
+        error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
+        assert len(error_records) == 1
+        message = error_records[0].getMessage()
+        assert "failed_stage=get_user_rules_by_module" in message
+        assert "error_type=ValueError" in message
+        assert SENTINEL_PASSWORD not in message
+        assert error_records[0].exc_info is not None
+        assert error_records[0].exc_info[1] is original
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from apps.cmdb.services.module_ingest import HOST_NODE_ID_ATTR, CmdbModuleIngestService, ensure_host_node_id_attr
+from apps.cmdb.services.module_ingest import HOST_NODE_ID_ATTR, CmdbModuleIngestService, ensure_host_node_id_attr, strip_system_link_fields
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
 
@@ -192,6 +192,7 @@ def test_claim_host_passes_node_id_to_instance_update(mocker):
     )
 
     assert update.call_args.kwargs["update_attr"]["node_id"] == "n2"
+    assert update.call_args.kwargs["skip_permission_check"] is True
 
 
 def test_update_host_passes_node_id_when_changed(mocker):
@@ -217,6 +218,68 @@ def test_update_host_passes_node_id_when_changed(mocker):
     )
 
     assert update.call_args.kwargs["update_attr"]["node_id"] == "n1-new"
+    assert update.call_args.kwargs["skip_permission_check"] is True
+
+
+def _instance_update_respecting_user_strip(**kwargs):
+    """复现 InstanceManage.instance_update：用户写路径剔除系统联动字段。"""
+    update_attr = dict(kwargs["update_attr"])
+    if not kwargs.get("skip_permission_check"):
+        update_attr = strip_system_link_fields(update_attr)
+    return {"_id": kwargs["inst_id"], "inst_uuid": INST_UUID, **update_attr}
+
+
+def test_claim_host_persists_node_id_when_user_path_strips_system_links(mocker):
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        side_effect=lambda **kwargs: _instance_update_respecting_user_strip(**kwargs),
+    )
+    existing = {"_id": 20, "ip_addr": "1.1.1.2", "cloud": 1}
+    desired = {
+        "inst_name": "h2",
+        "ip_addr": "1.1.1.2",
+        "organization": [1],
+        "cloud": 1,
+        "os_type": "1",
+        "node_id": "n2",
+        "monitor_id": "('1_os_10.11.27.147',)",
+    }
+
+    claimed = CmdbModuleIngestService._claim_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    assert claimed["node_id"] == "n2"
+    assert claimed["monitor_id"] == "('1_os_10.11.27.147',)"
+
+
+def test_update_host_persists_monitor_id_when_user_path_strips_system_links(mocker):
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        side_effect=lambda **kwargs: _instance_update_respecting_user_strip(**kwargs),
+    )
+    existing = {"_id": 10, "node_id": "n1", "ip_addr": "1.1.1.1", "cloud": 1}
+    desired = {
+        "inst_name": "h1",
+        "ip_addr": "1.1.1.1",
+        "organization": [1],
+        "cloud": 1,
+        "os_type": "1",
+        "node_id": "n1",
+        "monitor_id": "('1_os_10.11.27.147',)",
+    }
+
+    updated = CmdbModuleIngestService._update_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    assert updated["monitor_id"] == "('1_os_10.11.27.147',)"
 
 
 def test_ingest_host_upserts_by_node_id(mocker):

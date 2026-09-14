@@ -108,6 +108,7 @@ import {
 import WidgetConfigPreview from './widgetConfig/widgetConfigPreview';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
 import { NetworkStatusTopologyDeviceList } from './widgetConfig/sections/networkStatusTopologyDeviceList';
+import { RelatedTopologyAssetField } from './widgetConfig/sections/relatedTopologyAssetField';
 import {
   canConfigureScreenWidgetFrame,
   getDefaultScreenWidgetAppearance,
@@ -174,6 +175,7 @@ const getChartTypeIcon = (type: string) => {
       return <AppstoreOutlined />;
     case 'topologyMap':
     case 'networkStatusTopology':
+    case 'relatedTopology':
       return <ApartmentOutlined />;
     case 'room3D':
       return <FundOutlined />;
@@ -374,9 +376,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   });
   const isTableLikeChartType =
     chartType === 'table' || chartType === 'eventTable';
-  const isNetworkStatusTopology =
+    const isNetworkStatusTopology =
     chartType === 'networkStatusTopology' ||
     form.getFieldValue('sceneWidgetType') === 'networkStatusTopology';
+  const isRelatedTopology =
+    chartType === 'relatedTopology' ||
+    form.getFieldValue('sceneWidgetType') === 'relatedTopology';
   const isSceneWidget =
     isSceneWidgetType(chartType) ||
     isSceneWidgetType(form.getFieldValue('sceneWidgetType'));
@@ -439,6 +444,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             instUuids: [],
             nodeLimit: 100,
             linkTrafficDisplays: ['inbound', 'outbound'],
+          },
+          relatedTopology: {
+            instUuid: undefined,
+            modelId: undefined,
           },
           params: {},
           dataSourceParams: [],
@@ -519,6 +528,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             : undefined,
         sceneWidgetType: undefined,
         networkStatusTopology: undefined,
+        relatedTopology: undefined,
         params,
         selectedFields: [],
         topNLabelField: undefined,
@@ -741,6 +751,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       chartType: valueConfig?.chartType || '',
       sceneWidgetType: valueConfig?.sceneWidgetType,
       networkStatusTopology: valueConfig?.networkStatusTopology,
+      relatedTopology: valueConfig?.relatedTopology,
       chartThemeMode: showChartThemeMode
         ? valueConfig?.chartThemeMode || 'default'
         : undefined,
@@ -1415,6 +1426,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           message.error(t('dashboard.cardListLeadingFieldRequired'));
           return;
         }
+        if (submitResult.error === 'relatedTopologyModelIdRequired') {
+          message.error(t('dashboard.relatedTopologyModelIdRequired'));
+          return;
+        }
+        if (submitResult.error === 'relatedTopologyInstUuidRequired') {
+          message.error(t('dashboard.relatedTopologyInstUuidRequired'));
+          return;
+        }
       }
 
       if (submitResult.config) {
@@ -1677,6 +1696,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 extra={t('dashboard.networkTopoTrafficThresholdHint')}
               />
             </Form.Item>
+          </section>
+        ) : isRelatedTopology ? (
+          <section>
+            <ConfigSectionTitle>
+              {t('dashboard.dataConfigSection', '数据配置')}
+            </ConfigSectionTitle>
+            <RelatedTopologyAssetField open={open} enabled={isRelatedTopology} />
           </section>
         ) : isSceneWidget ? null : (
           <section>

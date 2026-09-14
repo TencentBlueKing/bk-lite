@@ -17,6 +17,7 @@ from apps.opspilot.tasks.memory import (
     MemoryWriteLlmUnavailable,
     _apply_memory_write_plan,
     _build_memory_write_client,
+    _commit_memory_write_with_retry,
     _create_memory,
     _flush_memory_write_cache_group,
     _get_memory_for_target,
@@ -29,9 +30,11 @@ from apps.opspilot.tasks.memory import (
     cleanup_expired_workflow_attachments,
     cleanup_expired_workflow_attachments_task,
     flush_all_pending_memory_write_cache,
+    flush_idle_skill_conversation_memory,
     flush_memory_write_cache_for_node,
     process_memory_write,
     process_memory_write_cache,
+    write_skill_conversation_memory,
 )
 from apps.opspilot.tasks.wiki import (
     _WIKI_TASK_IDENTITY_FIELDS,
@@ -60,6 +63,7 @@ __all__ = [
     "_WIKI_TASK_IDENTITY_FIELDS",
     "_apply_memory_write_plan",
     "_build_memory_write_client",
+    "_commit_memory_write_with_retry",
     "_create_memory",
     "_fail_wiki_task_build",
     "_flush_memory_write_cache_group",
@@ -86,6 +90,7 @@ __all__ = [
     "cleanup_expired_workflow_attachments",
     "cleanup_expired_workflow_attachments_task",
     "flush_all_pending_memory_write_cache",
+    "flush_idle_skill_conversation_memory",
     "flush_memory_write_cache_for_node",
     "process_dingtalk_message",
     "process_enterprise_wechat_aibot_message",
@@ -108,4 +113,5 @@ __all__ = [
     "wiki_rebuild_kb_task",
     "wiki_refresh_web_materials_task",
     "wiki_retry_markdown_import_task",
+    "write_skill_conversation_memory",
 ]

@@ -16,8 +16,7 @@ class OceanStorCollector(BaseCollector):
         password = self.params["password"]
         host = self.params.get("host") or self.params.get("base_url", "")
         instance_id = self.params.get("instance_id", host)
-
-        logger.info(f"[OceanStor Collector] Host={host}")
+        task_id = self.params.get("collection_task_id") or self.params.get("task_id") or ""
 
         base_url = f"https://{host}" if host and not host.startswith("http") else host
 
@@ -37,10 +36,25 @@ class OceanStorCollector(BaseCollector):
 
         monitor = OceanStorApiMonitor(monitor_input)
 
-        monitor.execute()
+        try:
+            monitor.execute()
+        except Exception as err:
+            logger.exception(
+                "event=oceanstor_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                host,
+                task_id,
+                "execute",
+                type(err).__name__,
+            )
+            raise
 
         if not monitor.data:
-            logger.warning("[OceanStor Collector] No data collected")
+            logger.warning(
+                "event=oceanstor_collect_empty host=%s task_id=%s failed_stage=%s",
+                host,
+                task_id,
+                "execute",
+            )
             return ""
 
         metric_dict = {}
@@ -50,6 +64,12 @@ class OceanStorCollector(BaseCollector):
         metric_list = convert_to_prometheus(metric_dict)
         result = "\n".join(metric_list) + "\n"
 
-        logger.info(f"[OceanStor Collector] Completed: {len(result)} bytes")
+        logger.info(
+            "event=oceanstor_collect_summary host=%s task_id=%s object_types=1 object_type_failed=0 resources=%s bytes=%s",
+            host,
+            task_id,
+            len(metric_dict),
+            len(result),
+        )
 
         return result

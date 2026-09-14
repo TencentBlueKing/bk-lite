@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import React from 'react';
 import { AxiosRequestConfig } from 'axios';
@@ -47,7 +48,7 @@ const isMetricCatalogPage = <T,>(value: unknown): value is MetricCatalogPage<T> 
 const useMonitorApi = () => {
   const { get, patch, post } = useApiClient();
 
-  const getMetricCatalogPage = async <T,>(
+  const getMetricCatalogPage = useCallback(async <T,>(
     url: string,
     params: MetricsParam,
     config?: AxiosRequestConfig
@@ -64,9 +65,9 @@ const useMonitorApi = () => {
       return { count: 0, items: [] };
     }
     return response;
-  };
+  }, [get]);
 
-  const getMonitorMetrics = async (
+  const getMonitorMetrics = useCallback(async (
     params: MetricsParam = {},
     config?: AxiosRequestConfig
   ) => {
@@ -75,9 +76,9 @@ const useMonitorApi = () => {
       params,
       config
     );
-  };
+  }, [getMetricCatalogPage]);
 
-  const getMetricsGroup = async (
+  const getMetricsGroup = useCallback(async (
     params: MetricsParam = {},
     config?: AxiosRequestConfig
   ) => {
@@ -86,28 +87,27 @@ const useMonitorApi = () => {
       params,
       config
     );
-  };
+  }, [getMetricCatalogPage]);
 
-  const getMonitorObject = async (
+  const getMonitorObject = useCallback(async (
     params: {
       name?: string;
       add_instance_count?: boolean;
       add_policy_count?: boolean;
-      include_invisible?: boolean; // 是否包含不可见对象，默认 false
+      include_invisible?: boolean;
     } = {}
   ) => {
     const { include_invisible, ...queryParams } = params;
     const result = await get('/monitor/api/monitor_object/', {
       params: queryParams
     });
-    // 默认过滤不可见对象，以及父对象已隐藏的子对象
     if (!include_invisible && Array.isArray(result)) {
       return filterVisibleMonitorObjects(result);
     }
     return result;
-  };
+  }, [get]);
 
-  const getMonitorAlert = async (
+  const getMonitorAlert = useCallback(async (
     params: {
       status_in?: string[];
       level_in?: string;
@@ -126,9 +126,9 @@ const useMonitorApi = () => {
       params,
       ...config
     });
-  };
+  }, [get]);
 
-  const getInstanceList = async (
+  const getInstanceList = useCallback(async (
     objectId?: React.Key,
     params: InstanceParam = {},
     config?: AxiosRequestConfig
@@ -143,9 +143,19 @@ const useMonitorApi = () => {
       },
       ...config
     });
-  };
+  }, [get]);
 
-  const getEffectivePlugins = async (
+  const lookupInstance = useCallback(async (
+    params: { instance_id: string },
+    config?: AxiosRequestConfig
+  ) => {
+    return await get(`/monitor/api/monitor_instance/lookup/`, {
+      params,
+      ...config
+    });
+  }, [get]);
+
+  const getEffectivePlugins = useCallback(async (
     objectId?: React.Key,
     params: {
       instance_id?: string;
@@ -156,17 +166,13 @@ const useMonitorApi = () => {
       params,
       ...config
     });
-  };
+  }, [get]);
 
-  const getMonitorPlugin = async (
+  const getMonitorPlugin = useCallback(async (
     params: {
       monitor_object_id?: React.Key | null;
-      /** 按监控对象分类 ID 过滤（如 database），与 monitor_object_id 互斥由调用方保证 */
       monitor_object_type?: string | null;
-      // 搜索关键字(后端在 i18n 翻译完成后,对 name / display_name /
-      // display_description / parent_object_display_name 做 icontains 内存匹配)
       keyword?: string;
-      // 传 page_size>0 时后端返回 {count, items};不传或 -1/0 仍返回全量数组
       page?: number;
       page_size?: number;
     } = {},
@@ -176,7 +182,7 @@ const useMonitorApi = () => {
       params,
       ...config
     });
-  };
+  }, [get]);
 
   const patchMonitorAlert = async (
     id: React.Key,
@@ -236,6 +242,7 @@ const useMonitorApi = () => {
     getMonitorObject,
     getMonitorAlert,
     getInstanceList,
+    lookupInstance,
     getEffectivePlugins,
     getMonitorPlugin,
     patchMonitorAlert,

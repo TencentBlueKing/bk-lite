@@ -134,6 +134,10 @@ class FieldGroupService:
                             False,
                         )
 
+                    from apps.cmdb.display_field import ExcludeFieldsCache
+
+                    ExcludeFieldsCache.invalidate_model_attrs(model_id)
+
         return group
 
     @staticmethod
@@ -189,6 +193,10 @@ class FieldGroupService:
                         [],
                         False,
                     )
+
+                from apps.cmdb.display_field import ExcludeFieldsCache
+
+                ExcludeFieldsCache.invalidate_model_attrs(model_id)
 
             # 删除分组
             group.delete()
@@ -449,7 +457,7 @@ class FieldGroupService:
         # 更新模型属性缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
 
-        ExcludeFieldsCache.update_on_model_change(model_id)
+        ExcludeFieldsCache.invalidate_model_attrs(model_id)
 
         # 6. 更新各个分组的attr_orders（添加新属性到末尾）
         for group_name in unique_group_names:
@@ -526,7 +534,7 @@ class FieldGroupService:
         # 更新模型属性缓存
         from apps.cmdb.display_field import ExcludeFieldsCache
 
-        ExcludeFieldsCache.update_on_model_change(model_id)
+        ExcludeFieldsCache.invalidate_model_attrs(model_id)
 
         # 6. 更新分组的attr_orders
         # 从旧分组移除

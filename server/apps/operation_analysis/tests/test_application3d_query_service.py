@@ -83,6 +83,52 @@ def test_wall_empty(monkeypatch):
     assert result["appliedFilters"] == {"system_status": []}
 
 
+def test_wall_narrows_query_to_one_application_id(monkeypatch):
+    application = _system(SYSTEM_A, "crm")
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_applications",
+        classmethod(lambda cls, request: (_ for _ in ()).throw(AssertionError("full wall"))),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(
+            lambda cls, request, application_id: application
+            if application_id == SYSTEM_A
+            else (_ for _ in ()).throw(Application3DNotFound("应用系统不存在"))
+        ),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_build_scope",
+        classmethod(lambda cls, request, applications: _scope(applications)),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_wall_health_by_application",
+        classmethod(
+            lambda cls, scope: {
+                SYSTEM_A: {
+                    "state": "unknown",
+                    "reason": "no_host",
+                    "activeAlarmCount": None,
+                    "severityCounts": None,
+                    "noDataAlarmCount": None,
+                    "highestSeverity": None,
+                    "stale": False,
+                }
+            }
+        ),
+    )
+
+    result = Application3DQueryService.wall(_request(), application_id=SYSTEM_A)
+
+    assert [item["id"] for item in result["items"]] == [SYSTEM_A]
+    assert result["capacity"]["actualCount"] == 1
+
+
 def test_system_status_filter_uses_system_own_status(monkeypatch):
     systems = [
         _system(SYSTEM_A, "online", status=["1"]),

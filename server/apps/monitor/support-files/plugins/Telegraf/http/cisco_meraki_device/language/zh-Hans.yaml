@@ -1,0 +1,37 @@
+Cisco Meraki Device:
+  name: Cisco Meraki 设备
+  desc: 通过 Meraki Dashboard API v1 采集设备清单、可用性与上行链路丢包/时延。
+monitor_object:
+  Meraki Device Inventory: Meraki 设备清单
+  Meraki Device: Meraki 设备
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Device Inventory:
+    Base: 基础
+    Inventory: 清单
+    Availability: 可用性
+  Meraki Device:
+    Availability: 可用性
+    Uplink: 上行链路
+monitor_object_metric:
+  Meraki Device Inventory:
+    meraki_device_connect_status:
+      name: 连接状态
+      desc: 设备采集所用 Dashboard API 是否可用。
+    meraki_device_inventory_count:
+      name: 设备数量
+      desc: 组织设备清单中的设备数。
+    meraki_device_online_count:
+      name: 在线设备数
+      desc: 可用性为 online 的设备数量。
+  Meraki Device:
+    meraki_device_availability_status:
+      name: 可用性状态
+      desc: 设备 online/alerting/offline/dormant 状态；无可用性记录时不导出该指标。
+    meraki_device_uplink_latency_ms:
+      name: 上行时延
+      desc: 设备上行链路时延（毫秒）。
+    meraki_device_uplink_loss_percent:
+      name: 上行丢包率
+      desc: 设备上行链路丢包百分比。

@@ -29,4 +29,13 @@ export const SCENE_WIDGETS: SceneWidgetDefinition[] = [
     defaultWidth: 4,
     defaultHeight: 3,
   },
+  {
+    type: 'relatedTopology',
+    nameKey: 'dashboard.relatedTopology',
+    descriptionKey: 'dashboard.relatedTopologyDesc',
+    category: 'cmdb',
+    categoryNameKey: 'dashboard.sceneCategoryCmdb',
+    defaultWidth: 4,
+    defaultHeight: 3,
+  },
 ];

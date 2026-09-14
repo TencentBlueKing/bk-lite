@@ -8,6 +8,7 @@ from abc import ABCMeta, abstractmethod
 from django.conf import settings
 from jinja2 import DebugUndefined, FileSystemLoader
 
+from apps.cmdb.services.collection_offset_policy import rendered_offset_seconds
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.safe_template import build_sandboxed_env
 
@@ -267,6 +268,10 @@ class BaseNodeParams(metaclass=ABCMeta):
             "config_type": getattr(self, "supported_model_id", self.model_id),
             "drop_trigger_metric": self.drop_trigger_metric,
         }
+        offset = rendered_offset_seconds(self.instance, self.plugin_name, self.resolved_interval)
+        content["collection_offset_enabled"] = offset is not None
+        if offset is not None:
+            content["collection_offset"] = offset
         jinja_context = self.render_template(context=content)
         nodes.append(
             {

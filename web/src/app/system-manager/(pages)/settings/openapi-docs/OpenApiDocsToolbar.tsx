@@ -86,11 +86,9 @@ const OpenApiDocsToolbar: React.FC<OpenApiDocsToolbarProps> = ({
           onChange={onKindFilterChange}
           options={kindOptions}
         />
-        {hasActiveFilters && (
-          <Button type="link" size="small" onClick={onResetFilters}>
-            {t('system.settings.openapiDocs.resetFilter')}
-          </Button>
-        )}
+        <Button disabled={!hasActiveFilters} onClick={onResetFilters}>
+          {t('system.settings.openapiDocs.resetFilter')}
+        </Button>
         <Button
           type="primary"
           icon={<DownloadOutlined />}
