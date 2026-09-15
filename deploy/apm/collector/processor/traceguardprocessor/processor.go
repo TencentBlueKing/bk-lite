@@ -57,7 +57,9 @@ func truncateValue(value pcommon.Value, maxRunes int) {
 	case pcommon.ValueTypeStr:
 		value.SetStr(truncateString(value.Str(), maxRunes))
 	case pcommon.ValueTypeMap:
-		value.Map().Range(func(_ string, child pcommon.Value) bool {
+		nested := value.Map()
+		nested.RemoveIf(func(key string, _ pcommon.Value) bool { return shouldDeleteAttribute(key) })
+		nested.Range(func(_ string, child pcommon.Value) bool {
 			truncateValue(child, maxRunes)
 			return true
 		})
