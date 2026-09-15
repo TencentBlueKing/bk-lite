@@ -206,7 +206,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
 
     def get_compliance_distribution(self, obj):
         """按已绑定主机的合规状态聚合分布（含评估中）。"""
-        bindings = list(self._visible_bindings(obj).select_related("target"))
+        bindings = list(self._visible_bindings(obj).select_related("target__baseline_binding"))
         if not bindings:
             return []
 
@@ -224,10 +224,15 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
             ),
         }
         counts = {key: 0 for key in status_meta}
+        from apps.patch_mgmt.services.governance_convergence import project_target_assessment_statuses
         from apps.patch_mgmt.services.risk_service import compute_host_compliance_status
 
+        projected_by_target = project_target_assessment_statuses(binding.target_id for binding in bindings)
         for binding in bindings:
-            key = compute_host_compliance_status(binding.target)
+            key = compute_host_compliance_status(
+                binding.target,
+                projected=projected_by_target.get(binding.target_id),
+            )
             if key in counts:
                 counts[key] += 1
 
