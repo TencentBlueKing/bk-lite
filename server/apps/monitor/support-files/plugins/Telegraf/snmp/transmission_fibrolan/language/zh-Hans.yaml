@@ -1,6 +1,6 @@
 Transmission Fibrolan SNMP:
   name: Fibrolan（Telegraf）
-  desc: 面向 Fibrolan 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Fibrolan Falcon 传输设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、可选非易失内存使用率、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -24,6 +24,15 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: Fibrolan Falcon 传输设备的 CPU 使用率，来自 FIBROLAN-DEVICE，以 0-100 百分比直接上报。持续偏高可能表示控制平面负载、转发压力或异常流量。
+    memory_usage_percent:
+      name: 内存使用率
+      desc: Fibrolan Falcon 传输设备的 DRAM 使用率，来自 FIBROLAN-DEVICE，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。
+    nv_memory_usage_percent:
+      name: 非易失内存使用率
+      desc: Fibrolan Falcon 传输设备的可选非易失内存使用率，固件返回该列时以 0-100 百分比上报。
     device_cpu_usage:
       name: CPU 使用率
       desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
