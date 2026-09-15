@@ -702,167 +702,37 @@ async def host_hpux_remote_metrics(request):
         request_log_level="debug",
     )
 
-@monitor_router.get("/cisco_meraki_organization/metrics")
-async def cisco_meraki_organization_metrics(request):
+
+@monitor_router.get("/cisco_meraki/metrics")
+async def cisco_meraki_metrics(request):
     def build_params(req):
         base_url = (req.headers.get("base_url") or req.headers.get("host") or "https://api.meraki.com").strip()
         organization_id = (req.headers.get("organization_id") or "").strip()
         return {
-            "monitor_type": "cisco_meraki_organization",
+            "monitor_type": "cisco_meraki",
             "password": req.headers.get("password"),
             "base_url": base_url,
             "organization_id": organization_id,
             "timespan": req.args.get("timespan", 86400),
+            "uplink_timespan": req.headers.get("uplink_timespan"),
             "preflight_kind": "https",
             "preflight_kind_explicit": True,
             "host": base_url,
             "tags": _standard_tags(
                 req,
                 defaults={
-                    "instance_type": "cisco_meraki_organization",
+                    "instance_type": "cisco_meraki",
                     "collect_type": "http",
-                    "config_type": "cisco_meraki_organization",
+                    "config_type": "cisco_meraki",
                 },
             ),
         }
 
     return await _run_monitor_handler(
         request,
-        monitor_type="cisco_meraki_organization",
+        monitor_type="cisco_meraki",
         build_params=build_params,
         accept_labels=lambda params: {"organization_id": params.get("organization_id")},
         error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
-        log_name="MerakiOrganization",
-    )
-
-@monitor_router.get("/cisco_meraki_device/metrics")
-async def cisco_meraki_device_metrics(request):
-    def build_params(req):
-        base_url = (req.headers.get("base_url") or req.headers.get("host") or "https://api.meraki.com").strip()
-        organization_id = (req.headers.get("organization_id") or "").strip()
-        return {
-            "monitor_type": "cisco_meraki_device",
-            "password": req.headers.get("password"),
-            "base_url": base_url,
-            "organization_id": organization_id,
-            "timespan": req.args.get("timespan", 86400),
-            "preflight_kind": "https",
-            "preflight_kind_explicit": True,
-            "host": base_url,
-            "tags": _standard_tags(
-                req,
-                defaults={
-                    "instance_type": "cisco_meraki_device",
-                    "collect_type": "http",
-                    "config_type": "cisco_meraki_device",
-                },
-            ),
-        }
-
-    return await _run_monitor_handler(
-        request,
-        monitor_type="cisco_meraki_device",
-        build_params=build_params,
-        accept_labels=lambda params: {"organization_id": params.get("organization_id")},
-        error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
-        log_name="MerakiDevice",
-    )
-
-@monitor_router.get("/cisco_meraki_wireless_ap/metrics")
-async def cisco_meraki_wireless_ap_metrics(request):
-    def build_params(req):
-        base_url = (req.headers.get("base_url") or req.headers.get("host") or "https://api.meraki.com").strip()
-        organization_id = (req.headers.get("organization_id") or "").strip()
-        return {
-            "monitor_type": "cisco_meraki_wireless_ap",
-            "password": req.headers.get("password"),
-            "base_url": base_url,
-            "organization_id": organization_id,
-            "timespan": req.args.get("timespan", 86400),
-            "preflight_kind": "https",
-            "preflight_kind_explicit": True,
-            "host": base_url,
-            "tags": _standard_tags(
-                req,
-                defaults={
-                    "instance_type": "cisco_meraki_wireless_ap",
-                    "collect_type": "http",
-                    "config_type": "cisco_meraki_wireless_ap",
-                },
-            ),
-        }
-
-    return await _run_monitor_handler(
-        request,
-        monitor_type="cisco_meraki_wireless_ap",
-        build_params=build_params,
-        accept_labels=lambda params: {"organization_id": params.get("organization_id")},
-        error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
-        log_name="MerakiWirelessAp",
-    )
-
-@monitor_router.get("/cisco_meraki_switch/metrics")
-async def cisco_meraki_switch_metrics(request):
-    def build_params(req):
-        base_url = (req.headers.get("base_url") or req.headers.get("host") or "https://api.meraki.com").strip()
-        organization_id = (req.headers.get("organization_id") or "").strip()
-        return {
-            "monitor_type": "cisco_meraki_switch",
-            "password": req.headers.get("password"),
-            "base_url": base_url,
-            "organization_id": organization_id,
-            "timespan": req.args.get("timespan", 86400),
-            "preflight_kind": "https",
-            "preflight_kind_explicit": True,
-            "host": base_url,
-            "tags": _standard_tags(
-                req,
-                defaults={
-                    "instance_type": "cisco_meraki_switch",
-                    "collect_type": "http",
-                    "config_type": "cisco_meraki_switch",
-                },
-            ),
-        }
-
-    return await _run_monitor_handler(
-        request,
-        monitor_type="cisco_meraki_switch",
-        build_params=build_params,
-        accept_labels=lambda params: {"organization_id": params.get("organization_id")},
-        error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
-        log_name="MerakiSwitch",
-    )
-
-@monitor_router.get("/cisco_meraki_appliance/metrics")
-async def cisco_meraki_appliance_metrics(request):
-    def build_params(req):
-        base_url = (req.headers.get("base_url") or req.headers.get("host") or "https://api.meraki.com").strip()
-        organization_id = (req.headers.get("organization_id") or "").strip()
-        return {
-            "monitor_type": "cisco_meraki_appliance",
-            "password": req.headers.get("password"),
-            "base_url": base_url,
-            "organization_id": organization_id,
-            "timespan": req.args.get("timespan", 86400),
-            "preflight_kind": "https",
-            "preflight_kind_explicit": True,
-            "host": base_url,
-            "tags": _standard_tags(
-                req,
-                defaults={
-                    "instance_type": "cisco_meraki_appliance",
-                    "collect_type": "http",
-                    "config_type": "cisco_meraki_appliance",
-                },
-            ),
-        }
-
-    return await _run_monitor_handler(
-        request,
-        monitor_type="cisco_meraki_appliance",
-        build_params=build_params,
-        accept_labels=lambda params: {"organization_id": params.get("organization_id")},
-        error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
-        log_name="MerakiAppliance",
+        log_name="Meraki",
     )

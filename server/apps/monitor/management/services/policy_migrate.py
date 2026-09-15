@@ -26,9 +26,12 @@ def migrate_policy():
         try:
             policy_data = json.loads(Path(file_path).read_text(encoding="utf-8"))
             if policy_data == []:
-                logger.info(f"跳过空策略配置: {file_path}")
+                logger.info("event=skip_empty_policy_file file_path=%s", file_path)
                 continue
-            documents.append(policy_data)
+            if isinstance(policy_data, list):
+                documents.extend(policy_data)
+            else:
+                documents.append(policy_data)
         except Exception as e:
             logger.error(f"读取策略配置失败: {file_path}, 错误: {e}")
             error_count += 1

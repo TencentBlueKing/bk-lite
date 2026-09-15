@@ -1,0 +1,839 @@
+{
+  "plugin": "Cisco Meraki",
+  "plugin_desc": "Collect Cisco Meraki organization, device, wireless AP, switch, and MX metrics from Dashboard API v1 with one organization API key.",
+  "collector": "Telegraf",
+  "collect_type": "http",
+  "status_query": "any({instance_type='cisco_meraki', collect_type='http'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "collector.nodes",
+      "value_type": "node_ref_list",
+      "resolver": "selected_nodes",
+      "options": {
+        "selection_field": "node_ids"
+      }
+    },
+    {
+      "fact": "probe.target",
+      "value_type": "endpoint",
+      "resolver": "input",
+      "options": {
+        "field": "base_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "collector.nodes",
+      "title": "monitor.views.probeNodes",
+      "order": 10
+    },
+    {
+      "fact": "probe.target",
+      "title": "monitor.views.probeTarget",
+      "order": 20
+    }
+  ],
+  "node_selector": {
+    "is_container": true
+  },
+  "is_compound_object": true,
+  "objects": [
+    {
+      "name": "Cisco Meraki",
+      "icon": "mm-router_路由器",
+      "type": "Network Device",
+      "level": "base",
+      "description": "",
+      "default_metric": "any({instance_type='cisco_meraki'}) by (instance_id)",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_org_connect_status",
+        "meraki_org_network_count",
+        "meraki_device_inventory_count",
+        "meraki_wireless_ap_count",
+        "meraki_switch_port_active_count",
+        "meraki_appliance_vpn_network_count"
+      ],
+      "display_fields": [
+        {
+          "name": "Connect Status",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_org_connect_status"
+            }
+          ]
+        },
+        {
+          "name": "Network Count",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_org_network_count"
+            }
+          ]
+        },
+        {
+          "name": "Device Count",
+          "sort_order": 2,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_device_inventory_count"
+            }
+          ]
+        },
+        {
+          "name": "Wireless AP Count",
+          "sort_order": 4,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_wireless_ap_count"
+            }
+          ]
+        },
+        {
+          "name": "Active Port Count",
+          "sort_order": 5,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_switch_port_active_count"
+            }
+          ]
+        },
+        {
+          "name": "Inactive Port Count",
+          "sort_order": 6,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_switch_port_inactive_count"
+            }
+          ]
+        },
+        {
+          "name": "Switch PoE Power Draw",
+          "sort_order": 7,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_switch_power_draw_w"
+            }
+          ]
+        },
+        {
+          "name": "VPN Network Count",
+          "sort_order": 8,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_appliance_vpn_network_count"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Base",
+          "name": "meraki_org_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether the Dashboard API accepted the organization API key and returned the organization resource.",
+          "query": "meraki_org_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Base",
+          "name": "meraki_org_api_enabled",
+          "display_name": "API Enabled",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether the organization has Dashboard API access enabled.",
+          "query": "meraki_org_api_enabled{__$labels__}"
+        },
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_org_network_count",
+          "display_name": "Network Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of networks returned for the organization.",
+          "query": "meraki_org_network_count{__$labels__}"
+        },
+        {
+          "metric_group": "Base",
+          "name": "meraki_device_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for device collection.",
+          "query": "meraki_device_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_device_inventory_count",
+          "display_name": "Device Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of devices returned in the organization inventory.",
+          "query": "meraki_device_inventory_count{__$labels__}"
+        },
+        {
+          "metric_group": "Availability",
+          "name": "meraki_device_online_count",
+          "display_name": "Online Device Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of devices whose availability status is online.",
+          "query": "meraki_device_online_count{__$labels__}"
+        },
+        {
+          "metric_group": "Base",
+          "name": "meraki_wireless_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for wireless AP collection.",
+          "query": "meraki_wireless_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_wireless_ap_count",
+          "display_name": "Wireless AP Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of unique wireless APs in ethernet status or packet-loss data.",
+          "query": "meraki_wireless_ap_count{__$labels__}"
+        },
+        {
+          "metric_group": "Base",
+          "name": "meraki_switch_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for switch collection.",
+          "query": "meraki_switch_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_active_count",
+          "display_name": "Active Port Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Organization-wide count of active switch ports from ports overview.",
+          "query": "meraki_switch_port_active_count{__$labels__}"
+        },
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_inactive_count",
+          "display_name": "Inactive Port Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Organization-wide count of inactive switch ports from ports overview.",
+          "query": "meraki_switch_port_inactive_count{__$labels__}"
+        },
+        {
+          "metric_group": "Power",
+          "name": "meraki_switch_power_draw_w",
+          "display_name": "Switch PoE Power Draw",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "watt",
+          "dimensions": [],
+          "description": "Latest organization-wide switch PoE power draw in watts from power history.",
+          "query": "meraki_switch_power_draw_w{__$labels__}"
+        },
+        {
+          "metric_group": "Base",
+          "name": "meraki_appliance_connect_status",
+          "display_name": "Connect Status",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [],
+          "description": "Whether Dashboard API accepted the organization API key for appliance collection.",
+          "query": "meraki_appliance_connect_status{__$labels__}"
+        },
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_network_count",
+          "display_name": "VPN Network Count",
+          "instance_id_keys": [
+            "instance_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [],
+          "description": "Number of appliance networks that reported VPN status.",
+          "query": "meraki_appliance_vpn_network_count{__$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Network",
+      "icon": "mm-router_路由器",
+      "type": "Network Device",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_network'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_network_present"
+      ],
+      "display_fields": [
+        {
+          "name": "Network Present",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_network_present"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Inventory",
+          "name": "meraki_network_present",
+          "display_name": "Network Present",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "counts",
+          "dimensions": [
+            {
+              "name": "network_name",
+              "description": "Network name"
+            },
+            {
+              "name": "product_types",
+              "description": "Network product types"
+            }
+          ],
+          "description": "Presence gauge for each network in the organization.",
+          "query": "meraki_network_present{resource_type=\"meraki_network\", __$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Device",
+      "icon": "mm-hardwareDevice_硬件设备",
+      "type": "Network Device",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_device'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_device_availability_status",
+        "meraki_device_uplink_latency_ms"
+      ],
+      "display_fields": [
+        {
+          "name": "IP 地址",
+          "type": "field",
+          "role": "resource_ip",
+          "variable_id": "vm_ip",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_device_availability_status",
+              "field": "resource_ip"
+            }
+          ]
+        },
+        {
+          "name": "Availability Status",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_device_availability_status"
+            }
+          ]
+        },
+        {
+          "name": "Uplink Latency",
+          "sort_order": 2,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_device_uplink_latency_ms"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Availability",
+          "name": "meraki_device_availability_status",
+          "display_name": "Availability Status",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"offline\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"online\", \"id\": 1, \"color\": \"#1ac44a\"}, {\"name\": \"alerting\", \"id\": 2, \"color\": \"#faad14\"}, {\"name\": \"dormant\", \"id\": 3, \"color\": \"#d9d9d9\"}]",
+          "dimensions": [
+            {
+              "name": "serial",
+              "description": "Device serial"
+            },
+            {
+              "name": "model",
+              "description": "Device model"
+            },
+            {
+              "name": "product_type",
+              "description": "Product type"
+            }
+          ],
+          "description": "Device availability status from Dashboard: offline, online, alerting, or dormant. Omitted when Dashboard does not return an availability status.",
+          "query": "meraki_device_availability_status{resource_type=\"meraki_device\", __$labels__}"
+        },
+        {
+          "metric_group": "Uplink",
+          "name": "meraki_device_uplink_latency_ms",
+          "display_name": "Uplink Latency",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [
+            {
+              "name": "uplink",
+              "description": "Uplink name"
+            },
+            {
+              "name": "ip",
+              "description": "Uplink probe IP"
+            }
+          ],
+          "description": "Uplink latency in milliseconds reported by Dashboard.",
+          "query": "meraki_device_uplink_latency_ms{resource_type=\"meraki_device\", __$labels__}"
+        },
+        {
+          "metric_group": "Uplink",
+          "name": "meraki_device_uplink_loss_percent",
+          "display_name": "Uplink Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [
+            {
+              "name": "uplink",
+              "description": "Uplink name"
+            },
+            {
+              "name": "ip",
+              "description": "Uplink probe IP"
+            }
+          ],
+          "description": "Uplink packet loss percentage reported by Dashboard.",
+          "query": "meraki_device_uplink_loss_percent{resource_type=\"meraki_device\", __$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Wireless AP",
+      "icon": "mm-router_路由器",
+      "type": "Network Device",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_wireless_ap'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_wireless_ap_upstream_loss_percent",
+        "meraki_wireless_ap_ethernet_link_up"
+      ],
+      "display_fields": [
+        {
+          "name": "Upstream Packet Loss",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_wireless_ap_upstream_loss_percent"
+            }
+          ]
+        },
+        {
+          "name": "Ethernet Link Up",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_wireless_ap_ethernet_link_up"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Packet Loss",
+          "name": "meraki_wireless_ap_upstream_loss_percent",
+          "display_name": "Upstream Packet Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Upstream packet loss percentage for the wireless AP.",
+          "query": "meraki_wireless_ap_upstream_loss_percent{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        },
+        {
+          "metric_group": "Packet Loss",
+          "name": "meraki_wireless_ap_downstream_loss_percent",
+          "display_name": "Downstream Packet Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Downstream packet loss percentage for the wireless AP.",
+          "query": "meraki_wireless_ap_downstream_loss_percent{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        },
+        {
+          "metric_group": "Ethernet",
+          "name": "meraki_wireless_ap_ethernet_speed_mbps",
+          "display_name": "Ethernet Speed",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "Mbit/s",
+          "dimensions": [
+            {
+              "name": "port",
+              "description": "Ethernet port name"
+            }
+          ],
+          "description": "Negotiated ethernet port speed of the wireless AP.",
+          "query": "meraki_wireless_ap_ethernet_speed_mbps{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        },
+        {
+          "metric_group": "Ethernet",
+          "name": "meraki_wireless_ap_ethernet_link_up",
+          "display_name": "Ethernet Link Up",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"异常\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"正常\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "port",
+              "description": "Ethernet port name"
+            }
+          ],
+          "description": "Ethernet link up prefers explicit status/linkStatus/connected fields; otherwise speed>0 or duplex full/half from linkNegotiation.",
+          "query": "meraki_wireless_ap_ethernet_link_up{resource_type=\"meraki_wireless_ap\", __$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Switch",
+      "icon": "mm-switch_交换机",
+      "type": "Network Device",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_switch'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_switch_port_enabled"
+      ],
+      "display_fields": [
+        {
+          "name": "Port Enabled",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_switch_port_enabled"
+            }
+          ]
+        },
+        {
+          "name": "Port PoE Enabled",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_switch_port_poe_enabled"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_enabled",
+          "display_name": "Port Enabled",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"禁用\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"启用\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "port_id",
+              "description": "Switch port ID"
+            }
+          ],
+          "description": "Whether the switch port is administratively enabled.",
+          "query": "meraki_switch_port_enabled{resource_type=\"meraki_switch\", __$labels__}"
+        },
+        {
+          "metric_group": "Ports",
+          "name": "meraki_switch_port_poe_enabled",
+          "display_name": "Port PoE Enabled",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"禁用\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"启用\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "port_id",
+              "description": "Switch port ID"
+            }
+          ],
+          "description": "Whether PoE is enabled on the switch port.",
+          "query": "meraki_switch_port_poe_enabled{resource_type=\"meraki_switch\", __$labels__}"
+        }
+      ]
+    },
+    {
+      "name": "Meraki Appliance",
+      "icon": "mm-firewall_防火墙",
+      "type": "Network Device",
+      "level": "derivative",
+      "description": "",
+      "default_metric": "any({resource_type='meraki_appliance'}) by (instance_id, resource_id)",
+      "instance_id_keys": [
+        "instance_id",
+        "resource_id"
+      ],
+      "supplementary_indicators": [
+        "meraki_appliance_vpn_peer_reachable",
+        "meraki_appliance_vpn_avg_latency_ms",
+        "meraki_appliance_vpn_avg_loss_percent",
+        "meraki_appliance_utilization_percent"
+      ],
+      "display_fields": [
+        {
+          "name": "VPN Peer Reachable",
+          "sort_order": 0,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_appliance_vpn_peer_reachable"
+            }
+          ]
+        },
+        {
+          "name": "VPN Average Latency",
+          "sort_order": 1,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_appliance_vpn_avg_latency_ms"
+            }
+          ]
+        },
+        {
+          "name": "VPN Average Loss",
+          "sort_order": 2,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_appliance_vpn_avg_loss_percent"
+            }
+          ]
+        },
+        {
+          "name": "Appliance Utilization",
+          "sort_order": 3,
+          "metrics": [
+            {
+              "plugin": "Cisco Meraki",
+              "metric": "meraki_appliance_utilization_percent"
+            }
+          ]
+        }
+      ],
+      "metrics": [
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_peer_reachable",
+          "display_name": "VPN Peer Reachable",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Enum",
+          "unit": "[{\"name\": \"unreachable\", \"id\": 0, \"color\": \"#ff4d4f\"}, {\"name\": \"reachable\", \"id\": 1, \"color\": \"#1ac44a\"}]",
+          "dimensions": [
+            {
+              "name": "peer_network_id",
+              "description": "Peer network ID"
+            }
+          ],
+          "description": "Reachability of a Meraki Auto VPN peer.",
+          "query": "meraki_appliance_vpn_peer_reachable{resource_type=\"meraki_appliance\", __$labels__}"
+        },
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_avg_latency_ms",
+          "display_name": "VPN Average Latency",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "ms",
+          "dimensions": [
+            {
+              "name": "peer_network_id",
+              "description": "Peer network ID"
+            },
+            {
+              "name": "sender_uplink",
+              "description": "Sender uplink interface"
+            },
+            {
+              "name": "receiver_uplink",
+              "description": "Receiver uplink interface"
+            }
+          ],
+          "description": "Average Auto VPN latency in milliseconds.",
+          "query": "meraki_appliance_vpn_avg_latency_ms{resource_type=\"meraki_appliance\", __$labels__}"
+        },
+        {
+          "metric_group": "VPN",
+          "name": "meraki_appliance_vpn_avg_loss_percent",
+          "display_name": "VPN Average Loss",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [
+            {
+              "name": "peer_network_id",
+              "description": "Peer network ID"
+            },
+            {
+              "name": "sender_uplink",
+              "description": "Sender uplink interface"
+            },
+            {
+              "name": "receiver_uplink",
+              "description": "Receiver uplink interface"
+            }
+          ],
+          "description": "Average Auto VPN packet loss percentage.",
+          "query": "meraki_appliance_vpn_avg_loss_percent{resource_type=\"meraki_appliance\", __$labels__}"
+        },
+        {
+          "metric_group": "Utilization",
+          "name": "meraki_appliance_utilization_percent",
+          "display_name": "Appliance Utilization",
+          "instance_id_keys": [
+            "instance_id",
+            "resource_id"
+          ],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Average appliance utilization percentage from the top-appliances summary.",
+          "query": "meraki_appliance_utilization_percent{resource_type=\"meraki_appliance\", __$labels__}"
+        }
+      ]
+    }
+  ]
+}
