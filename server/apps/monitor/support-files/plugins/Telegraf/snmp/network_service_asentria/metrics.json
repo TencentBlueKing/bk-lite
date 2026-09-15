@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_asentria",
   "plugin": "NetworkService Asentria SiteBoss SNMP",
-  "plugin_desc": "Asentria SiteBoss remote-site monitoring SNMP collection for devices under Asentria PEN 3052. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. SiteBoss EventSensor points are configurable per installation and need row-level interpretation before temperature, humidity, contact, relay or power-output points can be normalized, so they are not promoted into shared device-health metrics in this pass.",
+  "plugin_desc": "Asentria SiteBoss SNMP collection for remote-site monitors under Asentria PEN 3052. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template probes the SiteBoss 450 product subtree and collects esPoint temperature and humidity. Contact, relay and analog points are not promoted.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_asentria'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,47 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "network_service_asentria_temperature",
+    "network_service_asentria_humidity"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_asentria_temperature",
+      "query": "max(network_service_asentria_espoint_value{instance_type='network_service', esIndexPC='1', __$labels__}) by (instance_id, esPointName)",
+      "display_name": "Asentria Temperature",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "esPointName",
+          "description": "EventSensor point name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "SiteBoss esPoint temperature from product subtree 3052.17 where point class is temperature. The reading uses the device-configured scale."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_asentria_humidity",
+      "query": "max(network_service_asentria_espoint_value{instance_type='network_service', esIndexPC='3', __$labels__}) by (instance_id, esPointName)",
+      "display_name": "Asentria Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "esPointName",
+          "description": "EventSensor point name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "SiteBoss esPoint relative humidity percent from product subtree 3052.17 where point class is humidity."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +71,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average inbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCInOctets counter."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +89,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average outbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCOutOctets counter."
     },
     {
       "metric_group": "Base",
@@ -64,7 +102,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }
