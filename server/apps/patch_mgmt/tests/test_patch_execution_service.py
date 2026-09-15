@@ -940,7 +940,9 @@ def test_wait_for_ansible_command_times_out_queued_task_pure(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_async_dispatch_failure_is_explicitly_persisted(monkeypatch):
+def test_async_dispatch_failure_is_explicitly_persisted(monkeypatch, django_capture_on_commit_callbacks):
+    from django.db import transaction
+
     from apps.patch_mgmt.services import governance_service
     from apps.patch_mgmt import tasks as patch_tasks
 
@@ -953,7 +955,9 @@ def test_async_dispatch_failure_is_explicitly_persisted(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match='异步任务投递失败'):
-        governance_service._trigger_async(task.id)
+        with django_capture_on_commit_callbacks(execute=True):
+            with transaction.atomic():
+                governance_service._trigger_async(task.id)
 
     task.refresh_from_db()
     host.refresh_from_db()
