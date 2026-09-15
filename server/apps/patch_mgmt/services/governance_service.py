@@ -97,8 +97,8 @@ def _resolve_team(request) -> list[int]:
     return []
 
 
-def _trigger_async(task_id: int) -> None:
-    """触发 Celery 异步执行；投递失败必须显式收口，禁止伪成功。"""
+def _dispatch_governance_task(task_id: int) -> None:
+    """事务提交后投递 Celery 任务；broker 失败仍显式标 FAILED。"""
     try:
         from apps.patch_mgmt.tasks import execute_governance_task
 
@@ -122,6 +122,11 @@ def _trigger_async(task_id: int) -> None:
         )
         logger.exception("%s task_id=%s", reason, task_id)
         raise RuntimeError(reason) from exc
+
+
+def _trigger_async(task_id: int) -> None:
+    """触发 Celery 异步执行；必须等事务提交后再入队，避免 worker 读到未提交行。"""
+    transaction.on_commit(lambda: _dispatch_governance_task(task_id))
 
 
 def _lock_and_assert_hosts_available(target_ids: list[int], execution_mode: str) -> None:

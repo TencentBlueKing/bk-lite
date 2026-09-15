@@ -15,7 +15,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -357,8 +357,8 @@ def reconcile_assessment_notification_deliveries() -> None:
             logger.exception("补偿通知任务投递到 broker 失败 delivery=%s", delivery_id)
 
 
-@shared_task(max_retries=0)
-def execute_governance_task(task_id: int) -> None:
+@shared_task(bind=True, max_retries=5)
+def execute_governance_task(self, task_id: int) -> None:
     """启动治理父任务，并将每台主机拆成独立 Celery 子任务。"""
     from apps.patch_mgmt.config import CHAIN_TIMEOUT, get_host_task_limits
     from apps.patch_mgmt.constants import GovernanceTaskStatus
@@ -368,9 +368,17 @@ def execute_governance_task(task_id: int) -> None:
 
     try:
         task = GovernanceTask.objects.get(pk=task_id)
-    except GovernanceTask.DoesNotExist:
-        logger.error("[execute_governance_task] 任务不存在: task_id=%s", task_id)
-        return
+    except GovernanceTask.DoesNotExist as exc:
+        try:
+            logger.debug(
+                "[execute_governance_task] 任务暂不可见，将重试: task_id=%s retries=%s",
+                task_id,
+                self.request.retries,
+            )
+            raise self.retry(exc=exc, countdown=1) from exc
+        except MaxRetriesExceededError:
+            logger.error("[execute_governance_task] 任务不存在: task_id=%s", task_id)
+            return
 
     reconcile_stale_history(limit=1000, target_ids=task.target_list)
     task.refresh_from_db()
