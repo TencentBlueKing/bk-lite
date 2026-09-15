@@ -198,9 +198,15 @@ def reconcile_stale_history(
     current = now or timezone.now()
     bounded_limit = max(1, min(int(limit), 1000))
     expired = (
-        Q(
-            stage="waiting",
-            created_at__lt=current - timedelta(seconds=DISPATCH_TIMEOUT),
+        (
+            Q(
+                stage="waiting",
+                created_at__lt=current - timedelta(seconds=DISPATCH_TIMEOUT),
+            )
+            & ~Q(
+                task__execution_mode="window",
+                task__execution_window_end__gt=current,
+            )
         )
         | Q(
             stage__in=("scanning", "installing", "rebooting"),
@@ -247,8 +253,9 @@ def reconcile_stale_history(
             host = GovernanceTaskHost.objects.select_for_update().select_related("task").get(pk=host_id)
             if host.task.status not in GovernanceTaskStatus.ACTIVE_STATES:
                 continue
+            waiting_deadline = _deadline(host, now=current) if host.stage == "waiting" else None
             still_expired = (
-                (host.stage == "waiting" and host.created_at < current - timedelta(seconds=DISPATCH_TIMEOUT))
+                (host.stage == "waiting" and waiting_deadline is not None and waiting_deadline < current)
                 or (host.stage in {"scanning", "installing", "rebooting"} and host.stage_deadline_at is not None and host.stage_deadline_at < current)
                 or (host.stage == "reconciling" and host.reconcile_deadline_at is not None and host.reconcile_deadline_at < current)
             )
