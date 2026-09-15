@@ -606,7 +606,6 @@ export default function BaselineManagementPage() {
                     loading={saving}
                     onClick={async () => {
                       const values = await form.validateFields();
-                      const payload = { name: values.name, os_type: draftOs === 'win' ? 'windows' : 'linux', description: values.description || '' };
                       const currentPatchIds = requirements.map((r) => r.patch);
                       const originalPatchIds = new Set(originalRequirements.map((r) => r.patch));
                       const toAdd = currentPatchIds.filter((id) => !originalPatchIds.has(id));
@@ -619,16 +618,13 @@ export default function BaselineManagementPage() {
                       ) return;
                       setSaving(true);
                       try {
-                        let baseline = editing;
-                        if (editing) {
-                          await api.updateBaseline(editing.id, payload);
-                        } else {
-                          baseline = await api.createBaseline(payload);
-                          setEditing(baseline);
-                        }
-                        const baselineId = baseline?.id || editing?.id;
-                        if (toAdd.length) await api.addBaselineRequirements(baselineId, { patch_ids: toAdd });
-                        if (toRemoveIds.length) await api.removeBaselineRequirements(baselineId, toRemoveIds);
+                        await api.saveBaseline(editing?.id, {
+                          name: values.name,
+                          ...(editing ? {} : { os_type: draftOs === 'win' ? 'windows' : 'linux' }),
+                          description: values.description || '',
+                          patch_ids: currentPatchIds,
+                          ...(editing ? { expected_updated_at: editing.updated_at } : {}),
+                        });
                         setOriginalRequirements(requirements);
                         message.success(t('patchManager.baseline.saved'));
                         setEditOpen(false);

@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.fields import DateTimeField
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -26,6 +27,7 @@ from apps.patch_mgmt.serializers.baseline import (
     BaselineComplianceDetailsQuerySerializer,
     BaselineComplianceObjectsQuerySerializer,
     BaselineRequirementSerializer,
+    BaselineSaveSerializer,
     HostBaselineBindingSerializer,
     PatchBaselineDetailSerializer,
     PatchBaselineListSerializer,
@@ -82,6 +84,65 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     @HasPermission("patch_baseline-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"], url_path="save")
+    @HasPermission("patch_baseline-Add")
+    def create_save(self, request):
+        """创建基线主体与要求集，同一事务提交。"""
+        serializer = BaselineSaveSerializer(data=request.data, creating=True)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+        subject = PatchBaselineListSerializer(
+            data={
+                "name": payload["name"],
+                "os_type": payload["os_type"],
+                "description": payload.get("description") or "",
+            },
+            context=self.get_serializer_context(),
+        )
+        subject.is_valid(raise_exception=True)
+        with transaction.atomic():
+            self.perform_create(subject)
+            baseline = subject.instance
+            self._replace_requirements(request, baseline, payload["patch_ids"])
+        return Response(self._saved_baseline_payload(baseline), status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["put"], url_path="save")
+    @HasPermission("patch_baseline-Edit")
+    def update_save(self, request, pk=None):
+        """更新基线名称/说明并替换要求集，同一事务提交。"""
+        serializer = BaselineSaveSerializer(data=request.data, creating=False)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+        baseline = self.get_object()
+        self._assert_not_locked(request, baseline)
+        with transaction.atomic():
+            baseline = PatchBaseline.objects.select_for_update().get(pk=baseline.pk)
+            if not self._same_baseline_version(baseline.updated_at, payload["expected_updated_at"]):
+                return Response(
+                    {
+                        "code": "stale_baseline",
+                        "detail": patch_message(
+                            request,
+                            "error.stale_baseline",
+                            "The baseline was updated by another request; reload and try again",
+                        ),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            subject = PatchBaselineListSerializer(
+                baseline,
+                data={"name": payload["name"], "description": payload.get("description") or ""},
+                partial=True,
+                context=self.get_serializer_context(),
+            )
+            subject.is_valid(raise_exception=True)
+            self.perform_update(subject)
+            requirements_changed = self._replace_requirements(request, baseline, payload["patch_ids"])
+            if requirements_changed:
+                self._invalidate_active_assessments(baseline)
+                self._reset_bindings_to_pending(baseline)
+        return Response(self._saved_baseline_payload(baseline))
 
     @HasPermission("patch_baseline-Delete")
     def destroy(self, request, *args, **kwargs):
@@ -392,6 +453,41 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
                     count=active_count,
                 )
             )
+
+    @staticmethod
+    def _same_baseline_version(stored, expected) -> bool:
+        """用接口输出精度比较乐观版本，忽略微秒差。"""
+        field = DateTimeField()
+        return field.to_representation(stored) == field.to_representation(expected)
+
+    def _saved_baseline_payload(self, baseline: PatchBaseline) -> dict:
+        instance = self.get_queryset().get(pk=baseline.pk)
+        return PatchBaselineDetailSerializer(instance, context=self.get_serializer_context()).data
+
+    def _replace_requirements(self, request, baseline: PatchBaseline, patch_ids) -> bool:
+        """按 patch_ids 增删要求，保留仍在清单中的 condition。缺补丁则抛错回滚。"""
+        normalized = list(dict.fromkeys(int(patch_id) for patch_id in patch_ids))
+        missing_patch_ids = sorted(set(normalized) - set(Patch.objects.filter(pk__in=normalized).values_list("pk", flat=True)))
+        if missing_patch_ids:
+            raise DRFValidationError(
+                {
+                    "detail": patch_message(
+                        request,
+                        "error.patch_not_found",
+                        "Some selected patches do not exist: {ids}",
+                        ids=", ".join(str(patch_id) for patch_id in missing_patch_ids),
+                    )
+                }
+            )
+        current_ids = set(baseline.requirements.values_list("patch_id", flat=True))
+        desired_ids = set(normalized)
+        to_remove = current_ids - desired_ids
+        to_add = [patch_id for patch_id in normalized if patch_id not in current_ids]
+        if to_remove:
+            BaselineRequirement.objects.filter(baseline=baseline, patch_id__in=to_remove).delete()
+        for patch_id in to_add:
+            BaselineRequirement.objects.create(baseline=baseline, patch_id=patch_id)
+        return bool(to_remove or to_add)
 
     @staticmethod
     def _reset_bindings_to_pending(baseline: PatchBaseline) -> int:
