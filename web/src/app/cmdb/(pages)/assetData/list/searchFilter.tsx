@@ -8,10 +8,16 @@ import { SearchOutlined, StarFilled, CloseOutlined, DownOutlined } from '@ant-de
 import { UserItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { SearchFilterProps } from '@/app/cmdb/types/assetData';
-import { useAssetDataStore, type SavedFilter } from '@/app/cmdb/store';
+import { useAssetDataStore, type FilterItem, type SavedFilter } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue } from '@/app/cmdb/api/userConfig';
 import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 import { visibleSearchableFilterAttrs } from '../searchFilterAttrs';
+import {
+  applyMultiIpPaste,
+  collectMultiIpSearchNotices,
+  isMultiIpSearchAttr,
+  resolveMultiIpSearch,
+} from './multiIpSearch';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
@@ -60,6 +66,14 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   const { t } = useTranslation();
   const { RangePicker } = DatePicker;
 
+  const notifyMultiIpParse = (
+    resolution: ReturnType<typeof resolveMultiIpSearch>,
+  ) => {
+    collectMultiIpSearchNotices(resolution).forEach((notice) => {
+      message.warning(t(notice.id, undefined, notice.values));
+    });
+  };
+
   // 是否折叠收藏的筛选条件
   const [isCompact, setIsCompact] = useState<boolean>(false);
 
@@ -98,6 +112,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
 
   const onSearchValueChange = (value: any, isExact?: boolean) => {
     setSearchValue(value);
+    if (isMultiIpSearchAttr(searchAttr)) {
+      const resolution = resolveMultiIpSearch(searchAttr, value, isExact);
+      notifyMultiIpParse(resolution);
+      if (resolution.action === 'reject') return;
+      onSearch(resolution.condition as FilterItem, value);
+      return;
+    }
     const selectedAttr = attrList.find((attr) => attr.attr_id === searchAttr);
     let condition: any = {
       field: searchAttr,
@@ -436,13 +457,30 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             }}
           />
         );
-      default:
+      default: {
+        const multiIp = isMultiIpSearchAttr(searchAttr);
         return (
           <Input
             allowClear
-            className="value w-[200px]"
+            className={multiIp ? 'value w-[360px]' : 'value w-[200px]'}
             value={searchValue}
+            placeholder={multiIp ? t('FilterBar.multiIpPlaceholder') : undefined}
             onChange={(e) => setSearchValue(e.target.value)}
+            onPaste={(e) => {
+              if (!multiIp) return;
+              e.preventDefault();
+              const current = String(searchValue ?? '');
+              const start = e.currentTarget.selectionStart ?? current.length;
+              const end = e.currentTarget.selectionEnd ?? current.length;
+              setSearchValue(
+                applyMultiIpPaste(
+                  current,
+                  e.clipboardData.getData('text'),
+                  start,
+                  end,
+                ),
+              );
+            }}
             onClear={() => onSearchValueChange('', isExactSearch)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -451,6 +489,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             }}
           />
         );
+      }
     }
   };
 
