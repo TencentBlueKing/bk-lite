@@ -1036,28 +1036,109 @@ def _record_host_result(
     return bool(updated)
 
 
-def _format_log_entry(command: str, result: Any) -> str:
-    '''把单条命令及其执行结果格式化成文本日志。'''
+_TRUNCATED_MARK = '... [truncated] ...'
+_DEFAULT_LOG_ENTRY_MAX_CHARS = 8 * 1024
+_DEFAULT_LOG_TOTAL_MAX_CHARS = 64 * 1024
+
+
+def _truncate_keep_ends(text: str, max_chars: int) -> str:
+    '''超限时保留首尾并插入 truncated 标记，保证返回长度不超过上限。'''
+    if max_chars <= 0:
+        return ''
+    if len(text) <= max_chars:
+        return text
+    mark = _TRUNCATED_MARK
+    if max_chars <= len(mark):
+        return text[:max_chars]
+    keep = max_chars - len(mark)
+    head = keep // 2
+    tail = keep - head
+    clipped = f'{text[:head]}{mark}{text[-tail:] if tail else ""}'
+    return clipped[:max_chars]
+
+
+def _host_execution_log_limits() -> tuple[int, int]:
+    from apps.patch_mgmt import config as patch_config
+
+    entry_limit = patch_config.HOST_EXECUTION_LOG_ENTRY_MAX_CHARS
+    total_limit = patch_config.HOST_EXECUTION_LOG_TOTAL_MAX_CHARS
+    if entry_limit <= 0:
+        entry_limit = _DEFAULT_LOG_ENTRY_MAX_CHARS
+    if total_limit <= 0:
+        total_limit = _DEFAULT_LOG_TOTAL_MAX_CHARS
+    return entry_limit, total_limit
+
+
+def _format_log_entry(command: str, result: Any) -> tuple[str, bool]:
+    '''把单条命令及其执行结果格式化成文本日志，超限时截断 command/stdout/stderr/error。'''
+    entry_limit, _ = _host_execution_log_limits()
     ts = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
-    lines = [f'[{ts}] $ {command}']
+    truncated = False
+
+    def clip(value: Any, budget: int) -> str:
+        nonlocal truncated
+        text = '' if value is None else str(value)
+        bounded = _truncate_keep_ends(text, budget)
+        if bounded != text:
+            truncated = True
+        return bounded
+
+    command_text = clip(command, entry_limit)
+    lines = [f'[{ts}] $ {command_text}']
+    exit_line = None
     if isinstance(result, dict):
         if result.get('stdout'):
-            lines.append(f'[{ts}] stdout:\n{result["stdout"]}')
+            lines.append(f'[{ts}] stdout:\n{clip(result["stdout"], entry_limit)}')
         if result.get('stderr'):
-            lines.append(f'[{ts}] stderr:\n{result["stderr"]}')
+            lines.append(f'[{ts}] stderr:\n{clip(result["stderr"], entry_limit)}')
         if result.get('error'):
-            lines.append(f'[{ts}] error: {result["error"]}')
-        lines.append(f'[{ts}] exit_code: {result.get("exit_code")}')
+            lines.append(f'[{ts}] error: {clip(result["error"], entry_limit)}')
+        exit_line = f'[{ts}] exit_code: {result.get("exit_code")}'
+        lines.append(exit_line)
     else:
-        lines.append(f'[{ts}] result:\n{str(result)}')
-    return '\n'.join(lines) + '\n'
+        lines.append(f'[{ts}] result:\n{clip(result, entry_limit)}')
+    entry = '\n'.join(lines) + '\n'
+    if len(entry) <= entry_limit:
+        return entry, truncated
+
+    truncated = True
+    if exit_line is None:
+        return _truncate_keep_ends(entry.rstrip('\n'), entry_limit) + '\n', True
+
+    command_line = f'[{ts}] $ {command_text}'
+    body_budget = max(0, entry_limit - len(exit_line) - 2)
+    rebuilt = [command_line]
+    leftover = max(0, body_budget - len(command_line) - 1)
+    if isinstance(result, dict) and result.get('stdout'):
+        prefix = f'[{ts}] stdout:\n'
+        stdout_budget = max(0, leftover - len(prefix) - 1)
+        rebuilt.append(prefix + _truncate_keep_ends(str(result['stdout']), stdout_budget))
+    body = '\n'.join(rebuilt)
+    if len(body) > body_budget:
+        body = _truncate_keep_ends(body, body_budget)
+    return f'{body}\n{exit_line}\n', True
 
 
 def _append_host_log(host: GovernanceTaskHost, command: str, result: Any) -> None:
-    '''追加命令执行日志到 GovernanceTaskHost.log。'''
-    entry = _format_log_entry(command, result)
-    host.log = f'{host.log}\n{entry}'.strip()
+    '''追加命令执行日志到 GovernanceTaskHost.log，遵守单条和总额上限。'''
+    entry_limit, total_limit = _host_execution_log_limits()
+    entry, truncated = _format_log_entry(command, result)
+    combined = f'{host.log or ""}\n{entry}'.strip()
+    if len(combined) > total_limit:
+        combined = _truncate_keep_ends(combined, total_limit)
+        truncated = True
+    host.log = combined
     host.save(update_fields=['log', 'updated_at'])
+    if truncated:
+        logger.warning(
+            'event=patch_host_execution_log_truncated task_id=%s target_id=%s entry_chars=%s total_chars=%s entry_limit=%s total_limit=%s',
+            host.task_id,
+            host.target_id,
+            len(entry),
+            len(combined),
+            entry_limit,
+            total_limit,
+        )
 
 
 def _is_assess_success(result: dict[str, Any]) -> bool:
