@@ -1,5 +1,31 @@
 {
   "object": "Wireless",
   "plugin": "Wireless Cambium SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Cambium无线CPU使用率过高",
+      "alert_name": "无线设备${resource_name} CPU 使用率过高",
+      "description": "监控 Cambium ePMP CPU 使用率，持续高于阈值时触发告警。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }
