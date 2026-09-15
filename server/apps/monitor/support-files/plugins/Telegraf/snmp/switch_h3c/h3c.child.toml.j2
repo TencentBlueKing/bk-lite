@@ -32,9 +32,8 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- H3C/HPE Comware CPU (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage, %, per-entity table, PEN 25506) ----
-    # 待现网核验：列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.6（每实体 CPU%；多数实体返0,载 CPU 实体非0,snmprec hpe5900 ent192=5/a5500 ent65=8）。
-    # device_cpu_usage 在 metrics.json 用 max() by instance_id 取活跃实体,避免零稀释。
+    # ---- CPU：HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage，直接百分比，按实体表 ----
+    # 列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.6。多数实体行回 0，有效值在承载 CPU 的实体上。
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
@@ -42,7 +41,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.6"
         name = "usage"
-    # 可选 1/5 分钟 CPU：hh3cEntityExtCpuUsageIn1Minute ...1.1.1.1.33 / hh3cEntityExtCpuUsageIn5Minutes ...1.34。
+    # 可选 1/5 分钟 CPU：hh3cEntityExtCpuUsageIn1Minute ...1.33 / hh3cEntityExtCpuUsageIn5Minutes ...1.34。
     # 与 instant .6 同表，不改变既有 device_cpu_usage 口径。
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.33"
@@ -50,9 +49,8 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.34"
         name = "usage_5min"
-    # ---- H3C/HPE Comware memory (HH3C-ENTITY-EXT-MIB hh3cEntityExtMemUsage, 直接利用率%, per-entity table) ----
-    # 待现网核验：列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.8（每实体内存%直采;snmprec hpe5900 ent192=32/a5500 ent65=47）。
-    # device_memory_usage 用 max() by instance_id 取活跃实体。
+    # ---- 内存：HH3C-ENTITY-EXT-MIB hh3cEntityExtMemUsage，直接利用率百分比，按实体表 ----
+    # 列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.8。多数实体行回 0，有效值在承载内存的实体上。
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
@@ -60,9 +58,9 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.8"
         name = "usage"
-    # ---- H3C 温度 (HH3C-ENTITY-EXT-MIB hh3cEntityExtTemperature, °C, per-entity) ----
-    # 待现网核验：列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.12。不支持温度的实体回填 65535，
-    # metrics 查询侧 != 65535 过滤哨兵；descr 取 ENTITY-MIB entPhysicalName（同 entPhysicalIndex）。
+    # ---- 温度：HH3C-ENTITY-EXT-MIB hh3cEntityExtTemperature，摄氏度，按实体表 ----
+    # 列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.12。不支持温度的实体回填 65535，查询侧 != 65535。
+    # descr 取 ENTITY-MIB entPhysicalName（与温度同行 entPhysicalIndex）。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
@@ -74,8 +72,8 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.12"
         name = "celsius"
-    # ---- H3C 电压 (HH3C-ENTITY-EXT-MIB hh3cEntityExtVoltage, 毫伏, per-entity, 可选) ----
-    # 待现网核验：列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.14。metrics 查询侧 /1000 → volts，并过滤 65535 不支持哨兵。
+    # ---- 可选电压：HH3C-ENTITY-EXT-MIB hh3cEntityExtVoltage，毫伏，按实体表 ----
+    # 列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.14。查询侧 /1000 为伏特，并过滤 65535 不支持哨兵。
     [[inputs.snmp.table]]
         name = "device_voltage"
         inherit_tags = ["source"]
@@ -87,9 +85,9 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.14"
         name = "volts"
-    # ---- H3C 功耗表 (HH3C-ENTITY-EXT-MIB hh3cEntityExtCurrentPower, W, 可选) ----
-    # 待现网核验：列 OID 1.3.6.1.4.1.25506.2.6.1.3.1.1.3（当前功耗瓦特，不是 PSU 健康枚举）。
-    # PSU 健康走下方 ENTITY class=6 + OperStatus；本表仅作可选功耗读数。
+    # ---- 可选功耗：HH3C-ENTITY-EXT-MIB hh3cEntityExtCurrentPower，瓦特 ----
+    # 列 OID 1.3.6.1.4.1.25506.2.6.1.3.1.1.3。这是功耗读数，不是电源健康枚举。
+    # 电源健康走下方 ENTITY class=6 + hh3cEntityExtOperStatus。
     [[inputs.snmp.table]]
         name = "device_power"
         inherit_tags = ["source"]
@@ -97,10 +95,10 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.3.1.1.3"
         name = "watts"
-    # ---- H3C 风扇：ENTITY-MIB entPhysicalClass fan(7) + hh3cEntityExtOperStatus ----
-    # 待现网核验：OperStatus 1.3.6.1.4.1.25506.2.6.1.1.1.1.3（Hh3cOperState: 1 notSupported / 2 disabled / 3 enabled / 4 dangerous）。
-    # class 取 entPhysicalClass 1.3.6.1.2.1.47.1.1.1.1.5 作 tag；metrics 查询侧 entPhysicalClass='7'。
-    # processors.enum 把 enabled(3)→1(正常)，其余→2(异常)。
+    # ---- 风扇：ENTITY-MIB entPhysicalClass fan(7) + hh3cEntityExtOperStatus ----
+    # OperStatus 列 1.3.6.1.4.1.25506.2.6.1.1.1.1.3：1 notSupported / 2 disabled / 3 enabled / 4 dangerous。
+    # entPhysicalClass 1.3.6.1.2.1.47.1.1.1.1.5 作 tag；查询侧 entPhysicalClass='7'。
+    # processors.enum：enabled(3)→1(正常)，其余→2(异常)。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -116,8 +114,8 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.3"
         name = "state"
-    # ---- H3C 电源：ENTITY-MIB entPhysicalClass powerSupply(6) + 同一 OperStatus 列 ----
-    # metrics 查询侧 entPhysicalClass='6'；枚举归一同风扇。
+    # ---- 电源：ENTITY-MIB entPhysicalClass powerSupply(6) + 同一 OperStatus 列 ----
+    # 查询侧 entPhysicalClass='6'；枚举归一同风扇。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
