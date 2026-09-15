@@ -50,7 +50,9 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
 
     @HasPermission("patch_target-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.get_queryset_by_permission(request, self.get_queryset())
+        queryset = self.filter_queryset(queryset)
+        return self._list(queryset.order_by(self.ORDERING_FIELD))
 
     @HasPermission("patch_target-View")
     def retrieve(self, request, *args, **kwargs):
