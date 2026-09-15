@@ -13,7 +13,36 @@ from apps.apm.renderers import ApmRenderer
 from apps.apm.services import DjangoApmTopologyService
 from apps.apm.services.access import visible_organization_ids, filter_current_organization
 from apps.apm.services.contracts import TopologyTarget
+from apps.apm.services.topology import MAX_TOPOLOGY_TARGETS
 from apps.core.decorators.api_permission import HasPermission
+
+
+def _unique_target_instance_ids(instances, limit: int) -> list[int]:
+    if limit <= 0:
+        return []
+    return list(
+        instances.order_by("service_id", "environment")
+        .distinct("service_id", "environment")
+        .values_list("pk", flat=True)[:limit]
+    )
+
+
+def _topology_target_rows(instances, ids: list[int]) -> list[dict]:
+    if not ids:
+        return []
+    rows_by_id = {
+        row["id"]: row
+        for row in instances.filter(pk__in=ids).values(
+            "id",
+            "service_id",
+            "service__namespace",
+            "service__name",
+            "service__language",
+            "service__application__application_id",
+            "environment",
+        )
+    }
+    return [rows_by_id[pk] for pk in ids if pk in rows_by_id]
 
 
 class TopologyQuerySerializer(serializers.Serializer):
@@ -67,30 +96,40 @@ class ApmTopologyViewSet(viewsets.ViewSet):
             request,
             "organization_links",
         )
-        instances = ApmServiceInstance.objects.select_related("service").filter(
+        instances = ApmServiceInstance.objects.filter(
             service__in=services,
         )
         if environment := data.get("environment"):
             instances = instances.filter(environment=environment)
-        target_rows = list(
-            instances.values(
-                "service_id",
-                "service__namespace",
-                "service__name",
-                "service__language",
-                "service__application__application_id",
-                "environment",
-            )
-            .order_by("service_id", "environment")
-            .distinct()
-        )
         application_id = data.get("application_id")
+        target_limit = MAX_TOPOLOGY_TARGETS + 1
         sample_service_names = None
         if application_id:
-            app_rows = [row for row in target_rows if row["service__application__application_id"] == application_id]
-            other_rows = [row for row in target_rows if row["service__application__application_id"] != application_id]
-            target_rows = app_rows + other_rows
-            sample_service_names = tuple(dict.fromkeys(row["service__name"] for row in app_rows if row["service__name"]))
+            app_ids = _unique_target_instance_ids(
+                instances.filter(service__application__application_id=application_id),
+                target_limit,
+            )
+            if len(app_ids) < MAX_TOPOLOGY_TARGETS:
+                other_ids = _unique_target_instance_ids(
+                    instances.exclude(service__application__application_id=application_id),
+                    target_limit - len(app_ids),
+                )
+                target_ids = app_ids + other_ids
+            else:
+                target_ids = app_ids
+            target_rows = _topology_target_rows(instances, target_ids)
+            sample_service_names = tuple(
+                dict.fromkeys(
+                    row["service__name"]
+                    for row in target_rows[:MAX_TOPOLOGY_TARGETS]
+                    if row["service__name"] and row["service__application__application_id"] == application_id
+                )
+            )
+        else:
+            target_rows = _topology_target_rows(
+                instances,
+                _unique_target_instance_ids(instances, target_limit),
+            )
         targets = [
             TopologyTarget(
                 row["service__namespace"],
