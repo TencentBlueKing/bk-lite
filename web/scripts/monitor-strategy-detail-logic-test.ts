@@ -32,6 +32,11 @@ import {
   resolvePolicyResultUnit,
   resolveThresholdUnitBase,
   shouldDrawPreviewThreshold,
+  formatDryRunHitCountCopy,
+  resolveDryRunReason,
+  formatDryRunNumber,
+  formatDryRunThreshold,
+  DRY_RUN_VERDICT_I18N,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
   resolveMetricExpressionUnits,
@@ -956,5 +961,38 @@ assert.equal(
   shouldDrawPreviewThreshold({ overlay: false, conversionEnabled: true }),
   true
 );
+
+assert.equal(formatDryRunHitCountCopy(1, 1), null);
+assert.equal(formatDryRunHitCountCopy(2, 2), null);
+assert.equal(
+  formatDryRunHitCountCopy(1, 3),
+  '本轮命中 1/3，现网不会建告警'
+);
+assert.equal(
+  resolveDryRunReason({
+    verdict: 'ok',
+    reason: '对照缺失或留存不足',
+    hit_count: 1,
+    trigger_count: 3,
+  }),
+  '对照缺失或留存不足'
+);
+assert.equal(
+  resolveDryRunReason({
+    verdict: 'ok',
+    reason: '',
+    hit_count: 1,
+    trigger_count: 2,
+  }),
+  '本轮命中 1/2，现网不会建告警'
+);
+assert.equal(formatDryRunNumber(null), '—');
+assert.equal(formatDryRunNumber(90), '90');
+assert.equal(formatDryRunThreshold({ method: '>', value: 80, level: 'critical' }), '> 80 critical');
+assert.equal(DRY_RUN_VERDICT_I18N.would_trigger, 'monitor.events.dryRunVerdictWouldTrigger');
+assert.equal(DRY_RUN_VERDICT_I18N.no_data, 'monitor.events.dryRunVerdictNoData');
+assert.equal(DRY_RUN_VERDICT_I18N.missing_baseline, 'monitor.events.dryRunVerdictMissingBaseline');
+assert.equal(DRY_RUN_VERDICT_I18N.insufficient_samples, 'monitor.events.dryRunVerdictInsufficientSamples');
+assert.equal(DRY_RUN_VERDICT_I18N.would_recover, 'monitor.events.dryRunVerdictWouldRecover');
 
 console.log('monitor-strategy-detail logic validation passed');

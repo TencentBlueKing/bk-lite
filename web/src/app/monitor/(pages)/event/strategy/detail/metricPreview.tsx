@@ -53,6 +53,7 @@ interface MetricPreviewProps {
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   anchorRef?: RefObject<HTMLDivElement | null>;
   fixedGroupByList?: string[];
+  onSelectedInstanceChange?: (instanceId: string) => void;
 }
 
 const normalizePreviewWarnings = (warnings: unknown): string[] => {
@@ -100,7 +101,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   expression,
   scrollContainerRef,
   anchorRef,
-  fixedGroupByList = []
+  fixedGroupByList = [],
+  onSelectedInstanceChange
 }) => {
   const { t } = useTranslation();
   const { getInstanceList } = useMonitorApi();
@@ -181,6 +183,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       }
     }
   }, [source?.type, source?.values, allInstances]);
+
+  useEffect(() => {
+    onSelectedInstanceChange?.(selectedInstance || '');
+  }, [selectedInstance, onSelectedInstanceChange]);
 
   // 判断是否可以查询
   const canQuery = useMemo(() => {

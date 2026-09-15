@@ -50,10 +50,13 @@ class AlertDetector:
             self.instances_map,
         )
 
-    def detect_threshold_alerts(self):
+    def detect_threshold_alerts(self, *, log_events=True, vm_data=None):
         trigger_count = getattr(self.policy, "trigger_count", 1) or 1
-        vm_data = self.metric_query_service.query_comparison_metrics(self.policy.period, trigger_count)
-        vm_data = self.metric_query_service.convert_metric_values(vm_data)
+        if vm_data is None:
+            vm_data = self.metric_query_service.query_comparison_metrics(
+                self.policy.period, trigger_count
+            )
+            vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
         group_by_keys = self._get_group_by_keys()
         df = vm_to_dataframe(
@@ -88,7 +91,7 @@ class AlertDetector:
             alert_events = self._filter_events_by_scope(alert_events)
             info_events = self._filter_events_by_scope(info_events)
 
-        if alert_events:
+        if log_events and alert_events:
             self._log_alert_events(alert_events, vm_data)
 
         return alert_events, info_events

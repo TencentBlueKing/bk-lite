@@ -40,6 +40,7 @@ import MetricDefinitionForm from './metricDefinitionForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import MetricPreview from './metricPreview';
+import DryRunResultModal, { DryRunResult } from './dryRunResultModal';
 import VariablesTable from './variablesTable';
 import { isStringArray } from '@/app/monitor/utils/common';
 import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
@@ -103,7 +104,7 @@ const StrategyOperation = () => {
     getMonitorObject,
     getAllUsers
   } = useMonitorApi();
-  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate } = useEventApi();
+  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate, dryRunMonitorPolicy } = useEventApi();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
   const groupedUnitOptions = useMemo(
@@ -139,6 +140,10 @@ const StrategyOperation = () => {
   const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [dryRunVisible, setDryRunVisible] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
+  const [previewInstanceId, setPreviewInstanceId] = useState('');
   const [templateSaving, setTemplateSaving] = useState<boolean>(false);
   const [templateSavedOnce, setTemplateSavedOnce] = useState(false);
   const [templateConfirmVisible, setTemplateConfirmVisible] = useState(false);
@@ -1202,6 +1207,33 @@ const StrategyOperation = () => {
       });
   };
 
+  const runDryRun = () => {
+    form
+      ?.validateFields()
+      .then(async (values) => {
+        const params = buildStrategyParams(values);
+        if (!params) return;
+        const payload: Record<string, unknown> = { ...params };
+        if (detailId) {
+          payload.id = Number(detailId);
+        }
+        if (previewInstanceId) {
+          payload.preview = { instance_id: previewInstanceId };
+        }
+        setDryRunLoading(true);
+        try {
+          const data = await dryRunMonitorPolicy(payload);
+          setDryRunResult((data as DryRunResult) || { items: [] });
+          setDryRunVisible(true);
+        } finally {
+          setDryRunLoading(false);
+        }
+      })
+      .catch(() => {
+        // 与保存相同：表单未通过时不发试跑
+      });
+  };
+
   const saveTemplate = async () => {
     if (templateSubmittingRef.current || templateSaving) return;
     if (isCreateFlow && (templateSavedOnce || templateSavedOnceRef.current)) {
@@ -1512,6 +1544,7 @@ const StrategyOperation = () => {
                 expression={formulaExpression}
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
+                onSelectedInstanceChange={setPreviewInstanceId}
                 fixedGroupByList={
                   getGroupIds(monitorName as string)?.list || defaultGroup
                 }
@@ -1526,6 +1559,9 @@ const StrategyOperation = () => {
             onClick={createStrategy}
           >
             {t('common.confirm')}
+          </Button>
+          <Button loading={dryRunLoading} onClick={runDryRun}>
+            {translateWithFallback('monitor.events.dryRun', '试跑')}
           </Button>
             {isCreateFlow && templateSavedOnce ? (
             <Button onClick={goBack}>{t('common.back')}</Button>
@@ -1599,6 +1635,13 @@ const StrategyOperation = () => {
           </Form.Item>
         </Form>
       </OperateModal>
+      <DryRunResultModal
+        open={dryRunVisible}
+        loading={dryRunLoading}
+        data={dryRunResult}
+        onClose={() => setDryRunVisible(false)}
+        t={t}
+      />
     </Spin>
   );
 };

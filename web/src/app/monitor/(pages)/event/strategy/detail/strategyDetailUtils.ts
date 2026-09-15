@@ -842,3 +842,60 @@ export const resolveFunctionDelayMinutes = (
   }
   return Math.max(1, Math.ceil(maxMinutes));
 };
+
+export const DRY_RUN_VERDICT_I18N: Record<string, string> = {
+  would_trigger: 'monitor.events.dryRunVerdictWouldTrigger',
+  ok: 'monitor.events.dryRunVerdictOk',
+  would_recover: 'monitor.events.dryRunVerdictWouldRecover',
+  no_data: 'monitor.events.dryRunVerdictNoData',
+  missing_baseline: 'monitor.events.dryRunVerdictMissingBaseline',
+  insufficient_samples: 'monitor.events.dryRunVerdictInsufficientSamples',
+  hold: 'monitor.events.dryRunVerdictHold',
+};
+
+export const formatDryRunHitCountCopy = (
+  hitCount: number,
+  triggerCount: number
+): string | null => {
+  if (!triggerCount || triggerCount <= 1) return null;
+  if (hitCount >= triggerCount) return null;
+  return `本轮命中 ${hitCount}/${triggerCount}，现网不会建告警`;
+};
+
+export const resolveDryRunReason = (item: {
+  verdict?: string;
+  reason?: string | null;
+  hit_count?: number | null;
+  trigger_count?: number | null;
+}): string => {
+  const reason = typeof item.reason === 'string' ? item.reason.trim() : '';
+  if (reason) return reason;
+  return (
+    formatDryRunHitCountCopy(item.hit_count ?? 0, item.trigger_count ?? 1) || ''
+  );
+};
+
+export const formatDryRunNumber = (value: unknown): string => {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return String(Number(number.toFixed(4)));
+};
+
+export const formatDryRunThreshold = (
+  threshold:
+    | {
+        method?: string;
+        value?: number | string | null;
+        level?: string;
+      }
+    | null
+    | undefined
+): string => {
+  if (!threshold) return '—';
+  const method = threshold.method || '';
+  const value = formatDryRunNumber(threshold.value);
+  const level = threshold.level ? ` ${threshold.level}` : '';
+  if (!method && value === '—') return '—';
+  return `${method} ${value}${level}`.trim();
+};

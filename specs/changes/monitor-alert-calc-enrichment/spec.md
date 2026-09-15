@@ -320,3 +320,12 @@ VictoriaMetrics 实跑（本机 Docker 底座，不改 D1～D10）：
 - 逐序列类 `rate` / `changes` / `deriv` 的存在性改用 `last_over_time((group(base) by g)[period:step])`，避免单样本窗误报无数据。比较查询仍先逐序列再分组。
 - `offset_7d` / `offset_30d` 与 1h/24h 同形态；`baseline_4w` percent 为四窗均值对照；`timeleft` 水位固定 `last_over_time`、斜率用回看窗 `deriv`，预览只画剩余小时、不叠对照线。
 - `count_if` 只允许 absolute；公式 + 逐序列编译拒绝；仅 `algorithm=rate` 且基础查询已含 `rate`/`irate`/`increase` 时拒重包。
+
+## 切片 3 验收记录
+
+现场确认（不改写 D1～D10 原文）：
+
+- 新增内部端点 `monitor_policy/dry_run`，payload 与保存同源；`preview` 同步补 `strategy_list-Add` 或 `strategy_list-Edit`，越权 `preview.instance_id` fail-closed。
+- 试跑内存构造策略、`last_run_time=now` 不落库；不写 Alert / Event / 快照，不调 EventAlertManager / 通知 / 告警中心。本机 Host `cpu_usage_total` 试跑前后计数均为 27 / 14196 / 24。
+- 判定：`would_trigger`（CPU>1）、`ok`（CPU>80 未命中）、`missing_baseline`（`offset_30d` 对照缺失或留存不足）、`insufficient_samples` / `no_data` 由单测锁定；连续 N 文案「本轮命中 k/N，现网不会建告警」。
+- `hold` 仍留切片 4（依赖扫描滞回）；已保存活动告警本轮不满足阈值时标 `would_recover`，草稿不评恢复。
