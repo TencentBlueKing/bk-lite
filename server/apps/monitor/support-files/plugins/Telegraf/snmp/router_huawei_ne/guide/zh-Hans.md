@@ -52,7 +52,7 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 - `device_cpu_usage`、`device_memory_usage` 有实体维度读数。
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` 在业务口上有速率。
 - 已建立 BGP 时，`device_bgp_peer_state` 应为 established。
-- 已启用 BFD 时，`device_bfd_sess_state` 应为 up。
+- 已启用 BFD 时，`device_bfd_sess_state` 应为 up(3)（HUAWEI-BFD-MIB：adminDown(0)/down(1)/init(2)/up(3)）。
 
 设备身份标签 `hwDeviceEsn`、`hwProductName` 会随 SNMP 测量点上报，便于核对机框。
 

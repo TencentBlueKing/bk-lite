@@ -267,7 +267,8 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.177.2.3.1.0"
         name = "count"
-    # ---- BFD session state / active session count ----
+    # BFD session state (hwBfdSessState). HUAWEI-BFD-MIB enum is
+    # adminDown(0)/down(1)/init(2)/up(3), not IETF BFD-STD-MIB 1-4.
     [[inputs.snmp.table]]
         name = "device_bfd_sess"
         inherit_tags = ["source"]

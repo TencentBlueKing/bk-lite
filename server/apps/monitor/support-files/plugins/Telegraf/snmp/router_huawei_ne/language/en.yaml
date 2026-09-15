@@ -264,7 +264,8 @@ monitor_object_metric:
         change can mean a VPN configuration rollback or a failed commit.
     device_bfd_sess_state:
       name: BFD Session State
-      desc: State of each Huawei NE BFD session (hwBfdSessState). Down or init on a previously
+      desc: State of each Huawei NE BFD session (hwBfdSessState from HUAWEI-BFD-MIB). Values
+        are adminDown(0)/down(1)/init(2)/up(3); up(3) is healthy. Down or init on a previously
         up session is an early sign of a forwarding-path failure, often before the routing
         protocol times out.
     device_bfd_sess_act_number:

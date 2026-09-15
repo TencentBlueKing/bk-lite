@@ -52,7 +52,7 @@ Wait for at least one collection interval, then confirm the instance appears and
 - `device_cpu_usage` and `device_memory_usage` have per-entity readings.
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on in-service ports.
 - When BGP is established, `device_bgp_peer_state` should be established.
-- When BFD is enabled, `device_bfd_sess_state` should be up.
+- When BFD is enabled, `device_bfd_sess_state` should be up(3) (HUAWEI-BFD-MIB: adminDown(0)/down(1)/init(2)/up(3)).
 
 Identity tags `hwDeviceEsn` and `hwProductName` are reported with the SNMP measurement so you can confirm the chassis.
 

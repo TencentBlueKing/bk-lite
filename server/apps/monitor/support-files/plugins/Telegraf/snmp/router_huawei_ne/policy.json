@@ -77,11 +77,11 @@
     {
       "name": "Huawei NE路由器BFD会话异常",
       "alert_name": "路由器${resource_name} BFD 会话状态异常",
-      "description": "监控华为 NetEngine BFD 会话状态。非 up 状态通常早于路由协议超时出现，提示转发路径故障，应立即核对链路与对端。",
+      "description": "监控华为 NetEngine BFD 会话状态（HUAWEI-BFD-MIB hwBfdSessState：adminDown(0)/down(1)/init(2)/up(3)）。up(3) 为健康态；低于 3 的 down/init/adminDown 通常早于路由协议超时出现，提示转发路径故障，应立即核对链路与对端。",
       "metric_name": "device_bfd_sess_state",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 4, "method": "<"}
+        {"level": "critical", "value": 3, "method": "<"}
       ],
       "group_algorithm": "avg"
     },

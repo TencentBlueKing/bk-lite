@@ -995,7 +995,7 @@
       "query": "device_bfd_sess_state{instance_type='router', __$labels__}",
       "display_name": "BFD Session State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"adminDown\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"init\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"up\",\"id\":4,\"color\":\"#1ac44a\"}]",
+      "unit": "[{\"name\":\"adminDown\",\"id\":0,\"color\":\"#d9d9d9\"},{\"name\":\"down\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"init\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"up\",\"id\":3,\"color\":\"#1ac44a\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -1005,7 +1005,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "State of each Huawei NE BFD session (hwBfdSessState). Down or init on a previously up session is an early sign of a forwarding-path failure, often before the routing protocol times out."
+      "description": "State of each Huawei NE BFD session (hwBfdSessState from HUAWEI-BFD-MIB). Values are adminDown(0)/down(1)/init(2)/up(3); up(3) is healthy. Down or init on a previously up session is an early sign of a forwarding-path failure, often before the routing protocol times out."
     },
     {
       "metric_group": "Routing",

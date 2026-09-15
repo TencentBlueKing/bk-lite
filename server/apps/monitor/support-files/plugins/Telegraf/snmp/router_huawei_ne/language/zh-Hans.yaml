@@ -176,7 +176,8 @@ monitor_object_metric:
       desc: 该指标报告已配置 VRF 数量（hwConfiguredVrfs）。数量意外变化可能意味着 VPN 配置回滚或提交失败。
     device_bfd_sess_state:
       name: BFD 会话状态
-      desc: 该指标报告各 BFD 会话状态（hwBfdSessState）。原先 up 的会话变为 down 或 init，通常早于路由协议超时，提示转发路径故障。
+      desc: 该指标报告各 BFD 会话状态（HUAWEI-BFD-MIB hwBfdSessState：adminDown(0)/down(1)/init(2)/up(3)）。up(3)
+        为健康态；原先 up 的会话变为 down 或 init，通常早于路由协议超时，提示转发路径故障。
     device_bfd_sess_act_number:
       name: 活动 BFD 会话数
       desc: 该指标报告活动 BFD 会话数（hwBfdSessActNumber）。突然下降意味着多个会话同时中断，随后可能发生路由收敛。
