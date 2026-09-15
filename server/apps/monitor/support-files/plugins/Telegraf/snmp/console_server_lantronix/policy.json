@@ -1,5 +1,20 @@
 {
   "object": "ConsoleServer",
   "plugin": "ConsoleServer Lantronix SLC SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Lantronix Internal Temperature High",
+      "metric_name": "device_temperature_celsius",
+      "condition": "gt",
+      "threshold": 70,
+      "level": "warning"
+    },
+    {
+      "name": "Lantronix Power Supply Fault",
+      "metric_name": "device_psu_state",
+      "condition": "gt",
+      "threshold": 1,
+      "level": "warning"
+    }
+  ]
 }
