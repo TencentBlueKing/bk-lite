@@ -1,0 +1,141 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_cisco_asa",
+  "plugin": "Firewall Cisco SNMP",
+  "plugin_desc": "Cisco ASA / Secure Firewall SNMP collection (CISCO-PROCESS-MIB, CISCO-MEMORY-POOL-MIB, CISCO-FIREWALL-MIB). Collects 5-minute CPU (cpmCPUTotal5minRev; optional 1-minute Rev), per-pool memory used/free bytes (GLOBAL_SHARED dropped), and current-in-use firewall sessions (cfwConnectionStatValue protoIp/currentInUse). Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported models from CISCO-PRODUCTS-MIB — ASA 5500-X (5506-X/5506W-X/5508-X/5512-X/5515-X/5516-X/5525-X/5545-X/5555-X), ASA Virtual (ciscoVASA), Firepower 2100/3100/4100 and Virtual, Secure Firewall 1200 (1210CE/1210CP/1220CX/1230/1240/1250/1260).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_cisco_asa'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "firewall_active_sessions"
+  ],
+  "display_fields": [],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the Cisco ASA / Secure Firewall control plane as a 5-minute average (CISCO-PROCESS-MIB cpmCPUTotal5minRev). Sustained high CPU usage can indicate inspection overload or attack traffic and may slow management response."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage_1min",
+      "query": "device_cpu_usage_1min{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage (1 min)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional 1-minute CPU utilization of the Cisco firewall (CISCO-PROCESS-MIB cpmCPUTotal1minRev). Use it when a shorter window than the 5-minute revised average is needed."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='firewall', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Memory pool name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Bytes currently in use in each Cisco memory pool (CISCO-MEMORY-POOL-MIB ciscoMemoryPoolUsed). The MEMPOOL_GLOBAL_SHARED pool is dropped because it dominates ASA memory accounting and is not useful for capacity alerts."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='firewall', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Memory pool name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free bytes in each Cisco memory pool (CISCO-MEMORY-POOL-MIB ciscoMemoryPoolFree), excluding MEMPOOL_GLOBAL_SHARED. Together with used bytes this is the branch-2 memory model for utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "device_memory_used{instance_type='firewall', __$labels__} / (device_memory_used{instance_type='firewall', __$labels__} + device_memory_free{instance_type='firewall', __$labels__}) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Memory pool name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-pool memory utilization of the Cisco firewall, computed as used / (used + free) * 100 after dropping MEMPOOL_GLOBAL_SHARED. High utilization on Processor or System pools can degrade session handling."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions",
+      "query": "firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Active Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of connections currently in use on the Cisco firewall (CISCO-FIREWALL-MIB cfwConnectionStatValue). Indexed as Services protoIp(40) + ConnectionStat currentInUse(6). A rapid rise can indicate a connection flood or session-table pressure."
+    }
+  ]
+}

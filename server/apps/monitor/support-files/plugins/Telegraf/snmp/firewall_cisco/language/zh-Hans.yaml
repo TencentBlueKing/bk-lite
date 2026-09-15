@@ -1,0 +1,40 @@
+Firewall Cisco SNMP:
+  name: 思科 ASA / Secure Firewall（Telegraf）
+  desc: 面向 Cisco ASA、ASA Virtual 与 Secure Firewall 的 SNMP 监控模板。采集 5 分钟
+    CPU（可选 1 分钟）、按内存池的已用/空闲字节（排除 MEMPOOL_GLOBAL_SHARED）以及当前占用会话数。接口流量使用内置
+    IF-MIB，本插件不声明 ifHC*。
+monitor_object:
+  Firewall: 防火墙
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 Cisco 防火墙控制平面 5 分钟 CPU 使用率（CISCO-PROCESS-MIB cpmCPUTotal5minRev，0～100），维度
+        index 为 SNMP 表行。持续偏高可能意味着检测负载过重或攻击活动。
+    device_cpu_usage_1min:
+      name: CPU 使用率（1 分钟）
+      desc: 该指标报告 Cisco 防火墙控制平面 1 分钟 CPU 使用率（CISCO-PROCESS-MIB cpmCPUTotal1minRev），为可选短窗口指标。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标报告各 Cisco 内存池当前已使用字节数（ciscoMemoryPoolUsed）。已丢弃 MEMPOOL_GLOBAL_SHARED，避免该池主导整机内存统计。
+    device_memory_free:
+      name: 内存空闲量
+      desc: 该指标报告各 Cisco 内存池当前空闲字节数（ciscoMemoryPoolFree），不含 MEMPOOL_GLOBAL_SHARED。与已用量一起计算使用率。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标按内存池计算使用率，公式为 已用/(已用+空闲)*100，已排除 MEMPOOL_GLOBAL_SHARED。Processor/System
+        池持续偏高可能影响会话处理。
+    firewall_active_sessions:
+      name: 活动会话数
+      desc: 该指标报告 Cisco 防火墙当前占用的连接数（CISCO-FIREWALL-MIB cfwConnectionStatValue，Services
+        protoIp(40) + ConnectionStat currentInUse(6)）。数量快速上升可能意味着连接洪泛或会话表压力。
+monitor_object_metric_group:
+  Firewall:
+    Base: 基础
+    Firewall: 防火墙
+    Memory: 内存
