@@ -182,10 +182,10 @@
         name = "device_power"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.3.2.0"
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.2"
         name = "used"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.3.1.0"
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.1"
         name = "total"
     # ---- Forwarding performance / forwarding CPU ----
     [[inputs.snmp.table]]
@@ -253,19 +253,19 @@
         name = "device_bgp"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.1.0"
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.1"
         name = "peer_session_num"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.2.0"
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.2"
         name = "ibgp_session_num"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.3.0"
+        oid = "1.3.6.1.4.1.2011.5.25.177.1.4.3"
         name = "ebgp_session_num"
     [[inputs.snmp.table]]
         name = "device_vrf"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.177.2.3.1.0"
+        oid = "1.3.6.1.4.1.2011.5.25.177.2.3.1"
         name = "count"
     # BFD session state (hwBfdSessState). HUAWEI-BFD-MIB enum is
     # adminDown(0)/down(1)/init(2)/up(3), not IETF BFD-STD-MIB 1-4.
@@ -280,5 +280,5 @@
         name = "device_bfd"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.38.1.21.0"
+        oid = "1.3.6.1.4.1.2011.5.25.38.1.21"
         name = "sess_act_number"

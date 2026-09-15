@@ -66,22 +66,22 @@
         name = "firewall"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25461.2.1.2.3.1.0"
+        oid = "1.3.6.1.4.1.25461.2.1.2.3.1"
         name = "session_utilization"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25461.2.1.2.3.2.0"
+        oid = "1.3.6.1.4.1.25461.2.1.2.3.2"
         name = "max_sessions"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25461.2.1.2.3.3.0"
+        oid = "1.3.6.1.4.1.25461.2.1.2.3.3"
         name = "active_sessions"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25461.2.1.2.3.4.0"
+        oid = "1.3.6.1.4.1.25461.2.1.2.3.4"
         name = "active_sessions_tcp"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25461.2.1.2.3.5.0"
+        oid = "1.3.6.1.4.1.25461.2.1.2.3.5"
         name = "active_sessions_udp"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25461.2.1.2.3.6.0"
+        oid = "1.3.6.1.4.1.25461.2.1.2.3.6"
         name = "active_sessions_icmp"
 # ---- 内存/温度/风扇/电源：Palo Alto 内存走 HOST-RESOURCES hrStorage（需按 hrStorageDescr 行级匹配 ----
 # ---- netbuffer/内存行）、温度/风扇/电源走 PAN-ENTITY-EXT entity-sensor（需按 entPhySensorType 行级过滤）。----

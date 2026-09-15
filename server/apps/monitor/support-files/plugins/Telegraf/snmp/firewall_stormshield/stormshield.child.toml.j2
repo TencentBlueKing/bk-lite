@@ -64,10 +64,10 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.5.0"
+        oid = "1.3.6.1.4.1.2021.4.5"
         name = "total"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.6.0"
+        oid = "1.3.6.1.4.1.2021.4.6"
         name = "free"
     # ---- Stormshield firewall-specific (ASQ TCP/UDP connections + mature VPN tunnels, scalars) ----
     # 待现网核验：snsASQTCPConnCount 1.3.6.1.4.1.11256.1.12.1.23.0；snsASQUDPConnCount ...1.12.1.33.0；
@@ -76,11 +76,11 @@
         name = "firewall"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.11256.1.12.1.23.0"
+        oid = "1.3.6.1.4.1.11256.1.12.1.23"
         name = "tcp_connections"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.11256.1.12.1.33.0"
+        oid = "1.3.6.1.4.1.11256.1.12.1.33"
         name = "udp_connections"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.11256.1.13.2.2.0"
+        oid = "1.3.6.1.4.1.11256.1.13.2.2"
         name = "vpn_tunnels"
