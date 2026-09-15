@@ -1,0 +1,30 @@
+{
+  "object": "Meraki Device",
+  "plugin": "Cisco Meraki Device",
+  "templates": [
+    {
+      "name": "Meraki设备离线",
+      "alert_name": "Meraki设备${resource_id} 离线",
+      "description": "设备可用性状态为 offline 时告警。",
+      "metric_name": "meraki_device_availability_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "error",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "warning",
+          "value": 0,
+          "method": "="
+        }
+      ]
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import pytest
 
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.services.collect_service import CollectModelService
+from apps.cmdb.tests.conftest import FakeGraphClient
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 pytestmark = pytest.mark.unit
@@ -116,6 +117,10 @@ class FakeAtomic:
 
 
 def patch_transaction_callbacks(mocker):
+    from contextlib import nullcontext
+
+    mocker.patch("apps.cmdb.services.collect_service.CollectionOffsetService.apply")
+    mocker.patch("apps.cmdb.services.collect_service.CollectionOffsetService.serialize", side_effect=lambda *a, **kw: nullcontext())
     callbacks = []
     mocker.patch("apps.cmdb.services.collect_service.transaction.atomic", return_value=FakeAtomic())
     mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit", side_effect=callbacks.append)
@@ -961,7 +966,70 @@ class TestCollectCrudSideEffects:
 
         assert delete_calls == []
 
-    def test_destroy_pc_task_只删任务资源不操作图资产(self, mocker):
+    def _patch_destroy_graph(self, mocker, **returns):
+        fake = FakeGraphClient(**returns)
+        mocker.patch("apps.cmdb.services.collect_service.GraphClient", lambda *a, **k: fake)
+        return fake
+
+    def test_destroy_清空图中匹配的所属配置任务字段且不删实例(self, mocker):
+        patch_transaction_callbacks(mocker)
+        delete_calls = []
+        instance = collect_instance(id=42, delete=lambda: delete_calls.append("deleted"))
+        view = FakeCollectView(instance)
+        request = fake_request({})
+        mocker.patch.object(CollectModelService, "has_permission")
+        mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
+        mocker.patch.object(CollectModelService, "delete_butch_node_params")
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+
+        def query_entity(_label, params):
+            value = params[0]["value"]
+            if value == 42:
+                return [{"_id": 101, "collect_task": 42}], 1
+            if value == "42":
+                return [{"_id": 102, "collect_task": "42"}], 1
+            return [], 0
+
+        fake = self._patch_destroy_graph(mocker, query_entity=query_entity)
+
+        result = CollectModelService.destroy(request, view)
+
+        assert result == 42
+        assert delete_calls == ["deleted"]
+        query_calls = [call for call in fake.calls if call[0] == "query_entity"]
+        assert [call[1][1] for call in query_calls] == [
+            [{"field": "collect_task", "type": "int=", "value": 42}],
+            [{"field": "collect_task", "type": "str=", "value": "42"}],
+        ]
+        update_calls = [call for call in fake.calls if call[0] == "batch_update_node_properties"]
+        assert update_calls == [
+            ("batch_update_node_properties", ("instance", [101, 102], {"collect_task": ""}), {}),
+        ]
+        assert not any(call[0] == "remove_entitys_properties" for call in fake.calls)
+        assert not any(call[0] in {"batch_delete_entity", "detach_delete_entity"} for call in fake.calls)
+
+    def test_destroy_图字段清空失败时保留数据库删除入口可重试(self, mocker):
+        patch_transaction_callbacks(mocker)
+        delete_calls = []
+        instance = collect_instance(delete=lambda: delete_calls.append("deleted"))
+        view = FakeCollectView(instance)
+        request = fake_request({})
+        mocker.patch.object(CollectModelService, "has_permission")
+        mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
+        mocker.patch.object(CollectModelService, "delete_butch_node_params")
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+
+        def raise_graph(*_args, **_kwargs):
+            raise RuntimeError("graph failed")
+
+        self._patch_destroy_graph(mocker, query_entity=raise_graph)
+
+        with pytest.raises(BaseAppException, match="删除采集任务失败"):
+            CollectModelService.destroy(request, view)
+
+        assert delete_calls == []
+
+    def test_destroy_pc_task_清空所属配置任务但不删除图资产(self, mocker):
         patch_transaction_callbacks(mocker)
         delete_calls = []
         instance = collect_instance(
@@ -975,10 +1043,17 @@ class TestCollectCrudSideEffects:
         mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
         mocker.patch.object(CollectModelService, "delete_butch_node_params")
         mocker.patch("apps.cmdb.services.collect_service.create_change_record")
-        graph_client = mocker.patch("apps.cmdb.services.pc_discovery.GraphClient")
+        pc_graph_client = mocker.patch("apps.cmdb.services.pc_discovery.GraphClient")
+        fake = self._patch_destroy_graph(
+            mocker,
+            query_entity=lambda _label, _params: ([{"_id": 7, "collect_task": 1}], 1),
+        )
 
         result = CollectModelService.destroy(request, view)
 
         assert result == instance.id
         assert delete_calls == ["task-deleted"]
-        graph_client.assert_not_called()
+        pc_graph_client.assert_not_called()
+        assert any(call[0] == "batch_update_node_properties" and call[1][2] == {"collect_task": ""} for call in fake.calls)
+        assert not any(call[0] == "remove_entitys_properties" for call in fake.calls)
+        assert not any(call[0] in {"batch_delete_entity", "detach_delete_entity"} for call in fake.calls)

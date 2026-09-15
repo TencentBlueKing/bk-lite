@@ -52,10 +52,10 @@ import {
   TimeLineItem,
 } from '@/app/alarm/types/types';
 import {
-  RelatedTopologyTabContent,
-  relatedTopologyTabItem,
-  useRelatedTopologyTab,
-} from '@/app/alarm/components/related-topology-tab';
+  AlarmObjectSwitcher,
+  PublicWidgetPane,
+  useAlarmPublicWidgets,
+} from '@/app/alarm/components/public-widget-pane';
 const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
   ({ handleAction, readonly = false }, ref) => {
     const STATE_MAP = useStateMap();
@@ -83,35 +83,30 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
     });
     const isBaseInfo = activeTab === 'baseInfo';
     const isEventTab = activeTab === 'event';
-    const {
-      visible: relatedTopologyVisible,
-      centers: relatedTopologyCenters,
-      Widget: RelatedTopologyWidget,
-      loadFailed: relatedTopologyLoadFailed,
-    } =
-      useRelatedTopologyTab(
-        groupVisible ? formData.monitor_objects : undefined
-      );
-    const relatedTab = relatedTopologyTabItem(t, relatedTopologyVisible);
-    const tabList: TabItem[] = [
-      {
-        key: 'baseInfo',
-        label: t('alarms.summary'),
-      },
-      {
-        key: 'event',
-        label: t('alarms.event'),
-      },
-      {
-        key: 'timeline',
-        label: t('alarms.changes'),
-      },
-      {
-        key: 'actionRecords',
-        label: t('settings.actionTab'),
-      },
-      ...(relatedTab ? [relatedTab] : []),
-    ];
+    const publicWidgets = useAlarmPublicWidgets({
+      monitorObjects: groupVisible ? formData.monitor_objects : undefined,
+      includeActionRecords: true,
+      activeTab,
+    });
+    const [objectKey, setObjectKey] = useState('0');
+    const currentObject =
+      publicWidgets.objects.find((item) => item.key === objectKey) ||
+      publicWidgets.objects[0];
+    const tabList: TabItem[] = publicWidgets.tabs;
+    const renderObjectSwitcher = () =>
+      publicWidgets.showObjectSwitcher ? (
+        <AlarmObjectSwitcher
+          objects={publicWidgets.objects}
+          value={currentObject?.key || '0'}
+          onChange={setObjectKey}
+        />
+      ) : null;
+
+    useEffect(() => {
+      if (!publicWidgets.objects.some((item) => item.key === objectKey)) {
+        setObjectKey(publicWidgets.objects[0]?.key || '0');
+      }
+    }, [objectKey, publicWidgets.objects]);
 
     const getEventListData = async (params: any) => {
       const requestId = ++eventRequestIdRef.current;
@@ -368,8 +363,11 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
             <Button onClick={handleCancel}>{t('common.close')}</Button>
           </div>
         }
+        classNames={{
+          body: 'flex min-h-0 flex-col overflow-hidden',
+        }}
       >
-        <div>
+        <div className="shrink-0">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <Tag className="shrink-0" color={levelMap[formData.level] as string}>
@@ -464,16 +462,23 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
             </li>
           </ul>
         </div>
-        <Tabs activeKey={activeTab} items={tabList} onChange={changeTab} />
-        <div className="w-full min-h-[300px]">
+        <Tabs
+          className="shrink-0"
+          activeKey={activeTab}
+          items={tabList}
+          onChange={changeTab}
+        />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {isBaseInfo && (
-            <div className="flex flex-col gap-4">
-              <BaseInfo detail={formData} />
-              <RelatedAlertsPanel alert={formData} onRefresh={handleAction} />
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div className="flex flex-col gap-4">
+                <BaseInfo detail={formData} />
+                <RelatedAlertsPanel alert={formData} onRefresh={handleAction} />
+              </div>
             </div>
           )}
           {isEventTab && (
-            <div className="pt-[10px]">
+            <div className="min-h-0 flex-1 overflow-auto pt-[10px]">
               <EventTable
                 dataSource={eventList}
                 loading={eventLoading}
@@ -491,30 +496,78 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
           )}
 
           {activeTab === 'timeline' && (
-            <Spin spinning={recordLoading}>
-              {timeLineData.length > 1 ? (
-                <div
-                  className="pt-[10px]"
-                  style={{ height: 'calc(100vh - 330px)', overflowY: 'auto' }}
-                  ref={timelineRef}
-                  onScroll={handleScroll}
-                >
-                  <Timeline items={timeLineData} />
-                </div>
-              ) : (
-                <CompactEmptyState description={t('common.noData')} />
-              )}
-            </Spin>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <Spin spinning={recordLoading}>
+                {timeLineData.length > 1 ? (
+                  <div
+                    className="pt-[10px]"
+                    style={{ height: 'calc(100vh - 330px)', overflowY: 'auto' }}
+                    ref={timelineRef}
+                    onScroll={handleScroll}
+                  >
+                    <Timeline items={timeLineData} />
+                  </div>
+                ) : (
+                  <CompactEmptyState description={t('common.noData')} />
+                )}
+              </Spin>
+            </div>
           )}
-          {activeTab === 'relatedTopology' && (
-            <RelatedTopologyTabContent
-              centers={relatedTopologyCenters}
-              Widget={RelatedTopologyWidget}
-              loadFailed={relatedTopologyLoadFailed}
-            />
+          {publicWidgets.monitorView.visible && (
+            <div
+              className={
+                activeTab === 'monitorView'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.monitorView.active}
+                loadWidget={publicWidgets.monitorView.loadWidget}
+                identifier={currentObject?.monitorId || ''}
+                identifierProp="monitorId"
+                toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.relatedTopology.visible && (
+            <div
+              className={
+                activeTab === 'relatedTopology'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.relatedTopology.active}
+                loadWidget={publicWidgets.relatedTopology.loadWidget}
+                identifier={currentObject?.instUuid || ''}
+                identifierProp="instUuid"
+                toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.assetInfo.visible && (
+            <div
+              className={
+                activeTab === 'assetInfo'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.assetInfo.active}
+                loadWidget={publicWidgets.assetInfo.loadWidget}
+                identifier={currentObject?.instUuid || ''}
+                identifierProp="instUuid"
+                toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
           )}
           {activeTab === 'actionRecords' && (
-            <ActionTimeline alertId={formData.alert_id || ''} />
+            <div className="min-h-0 flex-1 overflow-auto">
+              <ActionTimeline alertId={formData.alert_id || ''} />
+            </div>
           )}
         </div>
       </Drawer>

@@ -1,0 +1,30 @@
+{
+  "object": "Meraki Organization",
+  "plugin": "Cisco Meraki Organization",
+  "templates": [
+    {
+      "name": "Meraki组织API不可用",
+      "alert_name": "Meraki组织${instance_id} Dashboard API 不可用",
+      "description": "组织级 Dashboard API 连通性为异常时告警。",
+      "metric_name": "meraki_org_connect_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "error",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "warning",
+          "value": 0,
+          "method": "="
+        }
+      ]
+    }
+  ]
+}

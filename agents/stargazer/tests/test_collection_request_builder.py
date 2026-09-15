@@ -200,6 +200,47 @@ def test_network_config_file_builder_defaults_to_remote():
     assert int(request.params["port"]) == 22
 
 
+def test_network_config_file_builder_defaults_telnet_port():
+    request = build_collection_request(
+        task_id="ncf-telnet-preflight",
+        params={
+            "model_id": "network_config_file",
+            "executor_type": "protocol",
+            "host": "10.10.69.10",
+            "transport_protocol": "telnet",
+        },
+    )
+    assert request.params["preflight_kind"] == "remote"
+    assert int(request.params["port"]) == 23
+
+
+def test_network_config_file_builder_keeps_explicit_telnet_port():
+    request = build_collection_request(
+        task_id="ncf-telnet-custom-port",
+        params={
+            "model_id": "network_config_file",
+            "executor_type": "protocol",
+            "host": "10.10.69.10",
+            "transport_protocol": "telnet",
+            "port": 2323,
+        },
+    )
+    assert int(request.params["port"]) == 2323
+
+
+def test_network_config_file_builder_invalid_protocol_keeps_ssh_port():
+    request = build_collection_request(
+        task_id="ncf-invalid-protocol",
+        params={
+            "model_id": "network_config_file",
+            "executor_type": "protocol",
+            "host": "10.10.69.10",
+            "transport_protocol": "ftp",
+        },
+    )
+    assert int(request.params["port"]) == 22
+
+
 def test_pc_windows_builder_dials_winrm_port():
     request = build_collection_request(
         task_id="pc-win-preflight",

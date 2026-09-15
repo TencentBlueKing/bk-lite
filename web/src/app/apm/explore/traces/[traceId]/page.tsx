@@ -85,7 +85,7 @@ function TraceFlameChart({
   return (
     <div className="w-full overflow-x-auto">
       <div
-        className="relative min-h-[72px] min-w-[640px] w-full"
+        className="relative min-h-[72px] w-full"
         style={{ height: (maxDepth + 1) * FLAME_ROW_HEIGHT }}
       >
         {layout.map(({ span, depth, left, width }) => {
@@ -361,7 +361,7 @@ export default function ApmTraceDetailPage() {
                                 : 'bg-transparent hover:bg-[var(--color-fill-1)]'
                             }`}
                           >
-                            <div className="flex w-64 shrink-0 items-center gap-1.5 truncate text-xs" style={{ paddingLeft: depth * 12 }}>
+                            <div className="flex w-40 shrink-0 items-center gap-1.5 truncate text-xs md:w-64" style={{ paddingLeft: depth * 12 }}>
                               <span
                                 className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
                                 style={{ background: serviceColor(span.service_name, services) }}
@@ -374,7 +374,7 @@ export default function ApmTraceDetailPage() {
                               </span>
                               <span className="shrink-0 text-[var(--color-text-3)]">{span.service_name}</span>
                             </div>
-                            <div className="relative h-5 min-w-[420px] flex-1 rounded bg-[var(--color-fill-1)]">
+                            <div className="relative h-5 min-w-0 flex-1 rounded bg-[var(--color-fill-1)]">
                               <div
                                 className="absolute top-1 h-3 rounded-sm"
                                 style={{

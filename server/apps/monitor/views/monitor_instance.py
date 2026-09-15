@@ -17,7 +17,7 @@ from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.node_mgmt import InstanceConfigService
-from apps.monitor.utils.dimension import normalize_instance_identity
+from apps.monitor.utils.dimension import normalize_instance_identity, parse_instance_id
 from apps.monitor.utils.pagination import parse_page_params
 
 # 已选资产回填等批量精确查询的单次上限，避免超长 URL / 过大 IN 子句。
@@ -73,6 +73,24 @@ def _parse_instance_id_filters(query_params):
         return normalize_instance_identity(raw_instance_id)["storage_instance_key"], None, False
     except ValueError:
         return None, None, True
+
+
+def _candidate_instance_ids(raw_instance_id):
+    """Lookup 候选主键：存储键优先，其次原始输入（兼容未补齐 tuple 的遗留 PK）。"""
+    text = str(raw_instance_id or "").strip()
+    if not text:
+        return []
+    try:
+        storage_key = normalize_instance_identity(text)["storage_instance_key"]
+    except ValueError:
+        return []
+    keys = []
+    seen = set()
+    for key in (storage_key, text):
+        if key and key not in seen:
+            seen.add(key)
+            keys.append(key)
+    return keys
 
 
 def _build_actor_context(request):
@@ -203,6 +221,74 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     def get_query_params_enum(self, request, name):
         data = InstanceSearch.get_query_params_enum(name, request.GET.get("monitor_object_id"))
         return WebUtils.response_success(data)
+
+    @action(methods=["get"], detail=False, url_path="lookup")
+    def lookup_monitor_instance(self, request):
+        """按 instance_id 一次定位所属监控对象，避免公开组件按对象类型逐个试探 list。"""
+        raw_instance_id = (request.GET.get("instance_id") or "").strip()
+        if not raw_instance_id:
+            raise BaseAppException("instance_id is required")
+
+        candidate_ids = _candidate_instance_ids(raw_instance_id)
+        if not candidate_ids:
+            return WebUtils.response_success(None)
+
+        scope = resolve_current_team_data_scope(request)
+        org_matches = list(
+            MonitorInstance.objects.filter(
+                id__in=candidate_ids,
+                is_deleted=False,
+                is_active=True,
+                monitorinstanceorganization__organization__in=list(scope.data_team_ids),
+            )
+            .select_related("monitor_object")
+            .distinct()
+        )
+        by_id = {instance.id: instance for instance in org_matches}
+        instance = next((by_id[key] for key in candidate_ids if key in by_id), None)
+        if instance is None:
+            return WebUtils.response_success(None)
+
+        monitor_object_id = instance.monitor_object_id
+        permission = (
+            {"team": list(scope.data_team_ids), "instance": []}
+            if request.user.is_superuser
+            else get_permission_rules(
+                request.user,
+                scope.current_team,
+                "monitor",
+                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+                include_children=scope.include_children,
+            )
+        )
+        qs = scope_permission_queryset(
+            MonitorInstance,
+            permission,
+            scope,
+            team_key="monitorinstanceorganization__organization__in",
+            id_key="id__in",
+        )
+        if not qs.filter(pk=instance.pk).exists():
+            return WebUtils.response_success(None)
+
+        monitor_object = instance.monitor_object
+        instance_id_keys = list(monitor_object.instance_id_keys) if monitor_object.instance_id_keys else ["instance_id"]
+        return WebUtils.response_success(
+            {
+                "monitor_object": {
+                    "id": monitor_object.id,
+                    "name": monitor_object.name,
+                    "display_name": monitor_object.display_name,
+                    "instance_id_keys": instance_id_keys,
+                },
+                "instance": {
+                    "instance_id": instance.id,
+                    "instance_name": instance.name or instance.id,
+                    "instance_id_values": list(parse_instance_id(instance.id)),
+                    "instance_id_keys": instance_id_keys,
+                },
+            }
+        )
 
     @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/list")
     def monitor_instance_list(self, request, monitor_object_id):

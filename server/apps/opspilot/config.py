@@ -35,6 +35,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.opspilot.tasks.flush_all_pending_memory_write_cache",
         "schedule": crontab(hour=0, minute=0),
     },
+    "flush-idle-skill-conversation-memory": {
+        "task": "apps.opspilot.tasks.flush_idle_skill_conversation_memory",
+        "schedule": crontab(hour=0, minute=0),
+    },
     "wiki-refresh-web-materials": {
         "task": "apps.opspilot.tasks.wiki_refresh_web_materials_task",
         "schedule": crontab(hour=4, minute=0),

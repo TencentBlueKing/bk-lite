@@ -6,6 +6,7 @@ import {ClockCircleOutlined, LoadingOutlined} from '@ant-design/icons';
 import {useTranslation} from '@/utils/i18n';
 import {UserChoiceOption, UserChoiceRequest} from '@/app/opspilot/types/global';
 import {postUserChoice} from './submitUserChoice';
+import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
 
 interface UserChoiceCardProps {
   request: UserChoiceRequest;
@@ -15,6 +16,7 @@ interface UserChoiceCardProps {
 
 const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit }) => {
   const { t } = useTranslation();
+  const imeEnterGuard = useImeEnterGuard();
   const a2uiComponent = request.a2ui?.component || 'user-choice';
   const a2uiVersion = request.a2ui?.version || 'legacy';
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -208,7 +210,14 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         <Input
           value={textInput}
           onChange={e => setTextInput(e.target.value)}
-          onPressEnter={handleTextSubmit}
+          onCompositionStart={imeEnterGuard.onCompositionStart}
+          onCompositionEnd={imeEnterGuard.onCompositionEnd}
+          onPressEnter={(e) => {
+            if (!imeEnterGuard.shouldSubmitOnEnter(e)) {
+              return;
+            }
+            handleTextSubmit();
+          }}
           placeholder={t('chat.choiceTextPlaceholder') || '输入你的回答...'}
           disabled={submitting}
           className="flex-1 rounded-lg"

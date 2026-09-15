@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from 'antd';
 import {
   FullscreenOutlined,
+  ReloadOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons';
@@ -12,8 +13,7 @@ import { getIconUrl } from '@/app/cmdb/utils/modelIcon';
 import { useTranslation } from '@/utils/i18n';
 import {
   alertBadgeFill,
-  alertCardStroke,
-  formatAlertBadgeText,
+  relatedNodeCardAppearance,
 } from './graphModel';
 import type { RelatedTopologyGraphModel } from './types';
 import { canvasBoxChanged, readStableCanvasBox } from './canvasSize';
@@ -22,8 +22,10 @@ import {
   NAME_TOOLTIP_MAX_WIDTH,
   placeTooltipAboveCard,
 } from './tooltipPosition';
+import { isScreenChartThemeMode, type OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import {
-  RELATED_TOPOLOGY_CANVAS_STYLE,
+  relatedTopologyCanvasStyle,
+  relatedTopologyGraphChrome,
   RELATED_TOPOLOGY_VISUAL,
 } from './visual';
 
@@ -163,10 +165,18 @@ const ensureNodeRegistered = () => {
 
 interface RelatedTopologyGraphViewProps {
   model: RelatedTopologyGraphModel;
+  chartThemeMode?: OpsChartThemeMode;
+  onRefresh?: () => void;
 }
 
-const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
+const RelatedTopologyGraphView = ({
+  model,
+  chartThemeMode,
+  onRefresh,
+}: RelatedTopologyGraphViewProps) => {
   const { t } = useTranslation();
+  const usesScreenTheme = isScreenChartThemeMode(chartThemeMode);
+  const chrome = relatedTopologyGraphChrome(chartThemeMode);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Graph | null>(null);
@@ -216,14 +226,14 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
           visible: true,
           type: 'dot',
           args: {
-            color: RELATED_TOPOLOGY_VISUAL.grid.color,
-            thickness: RELATED_TOPOLOGY_VISUAL.grid.thickness,
+            color: chrome.gridColor,
+            thickness: chrome.gridThickness,
           },
         },
         panning: { enabled: true },
         mousewheel: { enabled: true, minScale: MIN_SCALE, maxScale: MAX_SCALE },
         interacting: {
-          nodeMovable: false,
+          nodeMovable: true,
           edgeMovable: false,
           edgeLabelMovable: false,
         },
@@ -258,18 +268,16 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
       };
       graph.on('node:mouseenter', showNameTooltip);
       graph.on('node:mouseleave', () => setNameTooltip(null));
+      graph.on('node:mousedown', () => setNameTooltip(null));
+      graph.on('node:move', refreshNameTooltip);
       graph.on('blank:mouseenter', () => setNameTooltip(null));
       graph.on('scale', refreshNameTooltip);
       graph.on('translate', refreshNameTooltip);
       graph.addNodes(
         model.nodes.map((node) => {
-          const badge = formatAlertBadgeText(node.alertCount);
+          const appearance = relatedNodeCardAppearance(node, chrome);
           const icon = getIconUrl({ model_id: node.modelId, icn: '' });
           const typeLabel = node.modelName || node.modelId || '';
-          const card = node.isCenter
-            ? RELATED_TOPOLOGY_VISUAL.card.activeBody
-            : RELATED_TOPOLOGY_VISUAL.card.defaultBody;
-          const alertStroke = alertCardStroke(node.alertCount, node.maxLevel);
           return {
             id: node.id,
             shape: NODE_SHAPE,
@@ -286,24 +294,24 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
               body: {
                 width: NODE_WIDTH,
                 height: NODE_HEIGHT,
-                ...card,
-                ...alertStroke,
+                ...appearance.body,
               },
               image: {
                 'xlink:href': icon,
                 href: icon,
               },
               tooltip1: { text: node.name },
-              label1: { text: node.name, title: node.name },
+              label1: { text: node.name, title: node.name, fill: chrome.labelFill },
               tooltip2: { text: typeLabel },
-              label2: { text: typeLabel, title: typeLabel },
+              label2: { text: typeLabel, title: typeLabel, fill: chrome.subFill },
               badge: {
-                opacity: badge ? 1 : 0,
+                opacity: appearance.badge ? 1 : 0,
                 fill: alertBadgeFill(node.maxLevel),
+                stroke: String(appearance.body.fill || chrome.cardDefaultBody.fill),
               },
               badgeText: {
-                opacity: badge ? 1 : 0,
-                text: badge || '',
+                opacity: appearance.badge ? 1 : 0,
+                text: appearance.badge || '',
               },
             },
           };
@@ -314,16 +322,15 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          connector: { name: 'rounded', args: { radius: 12 } },
-          router: { name: 'er', args: { direction: 'H', offset: 24 } },
+          connector: { name: 'normal' },
           attrs: {
             line: {
-              stroke: RELATED_TOPOLOGY_VISUAL.edge.stroke,
-              strokeWidth: RELATED_TOPOLOGY_VISUAL.edge.strokeWidth,
+              stroke: chrome.edgeStroke,
+              strokeWidth: chrome.edgeStrokeWidth,
               targetMarker: {
                 name: 'classic',
                 size: 6,
-                fill: RELATED_TOPOLOGY_VISUAL.edge.stroke,
+                fill: chrome.edgeStroke,
                 stroke: 'none',
               },
             },
@@ -334,12 +341,12 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
                 attrs: {
                   text: {
                     text: edge.label,
-                    fill: RELATED_TOPOLOGY_VISUAL.labelFill,
+                    fill: chrome.edgeLabelFill,
                     fontSize: 12,
                     fontWeight: 500,
                   },
                   rect: {
-                    fill: '#fcfeff',
+                    fill: chrome.edgeLabelRectFill,
                     stroke: 'none',
                     rx: 3,
                     ry: 3,
@@ -376,13 +383,13 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
       graphRef.current?.dispose();
       graphRef.current = null;
     };
-  }, [model]);
+  }, [model, chartThemeMode]);
 
   return (
     <div
       ref={shellRef}
       className="relative h-full min-h-[280px] min-w-0 w-full overflow-hidden"
-      style={RELATED_TOPOLOGY_CANVAS_STYLE}
+      style={relatedTopologyCanvasStyle(usesScreenTheme)}
     >
       <div ref={hostRef} className="absolute inset-0 overflow-hidden" />
       {nameTooltip ? (
@@ -426,6 +433,17 @@ const RelatedTopologyGraphView = ({ model }: RelatedTopologyGraphViewProps) => {
               onClick={() => graphRef.current?.zoomToFit(FIT_VIEW_OPTIONS)}
             />
           </Tooltip>
+          {onRefresh ? (
+            <Tooltip title={t('common.refresh')}>
+              <Button
+                size="small"
+                type="text"
+                aria-label={t('common.refresh')}
+                icon={<ReloadOutlined />}
+                onClick={onRefresh}
+              />
+            </Tooltip>
+          ) : null}
         </div>
       </div>
     </div>

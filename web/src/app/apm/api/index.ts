@@ -131,6 +131,11 @@ const useApmApi = () => {
     [put]
   );
 
+  const deleteApplication = useCallback(
+    (applicationId: string) => del(`/apm/applications/${applicationId}/`),
+    [del]
+  );
+
   const getIngestSnippet = useCallback(
     (payload: ApmIngestSnippetInput) => post<ApmIngestSnippet>(
       '/apm/integration-config/',
@@ -379,6 +384,7 @@ const useApmApi = () => {
     getCloudRegions,
     createApplication,
     updateApplication,
+    deleteApplication,
     getIngestSnippet,
     getHealth,
     getDeployments,

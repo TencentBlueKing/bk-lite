@@ -47,6 +47,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
   monitorName,
   plugins,
   form = INIT_VIEW_MODAL_FORM,
+  preferredMetricKey,
 }) => {
   const { isLoading } = useApiClient();
   const { post } = useApiClient();
@@ -645,6 +646,26 @@ const MonitorView: React.FC<ViewModalProps> = ({
       )
     );
   };
+
+  const preferredMetricKeyRef = useRef(preferredMetricKey);
+  preferredMetricKeyRef.current = preferredMetricKey;
+  const appliedPreferredMetricRef = useRef('');
+  useEffect(() => {
+    const key = preferredMetricKeyRef.current?.trim();
+    if (!key || !originMetricData.length) return;
+    if (appliedPreferredMetricRef.current === key) return;
+    const matches: number[] = [];
+    originMetricData.forEach((group) => {
+      (group.child || []).forEach((metric: MetricItem) => {
+        if (metric.name === key || String(metric.id) === key) {
+          matches.push(metric.id);
+        }
+      });
+    });
+    if (!matches.length) return;
+    appliedPreferredMetricRef.current = key;
+    handleMetricIdChange(matches);
+  }, [originMetricData]);
 
   const handleMetricKeywordChange = (value: string) => {
     setMetricKeyword(value);

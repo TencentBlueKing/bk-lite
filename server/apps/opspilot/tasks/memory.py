@@ -10,9 +10,10 @@ from django.utils import timezone
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.memory.identity import resolve_owner_identity
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BotWorkFlow, LLMModel, Memory, MemorySpace, MemoryWriteCache
+from apps.opspilot.models import BotWorkFlow, LLMModel, Memory, MemorySpace, MemoryWriteCache, SkillConversation
 from apps.opspilot.services.memory_card_catalog import (
     append_card,
     coerce_updated_card,
@@ -32,6 +33,17 @@ from apps.opspilot.services.memory_write_buffer_service import (
     normalize_write_batch_size,
     resolve_memory_target,
 )
+from apps.opspilot.services.skill_memory_service import (
+    SKILL_CONVERSATION_SUMMARY_PROMPT,
+    SKILL_CONVERSATION_SUMMARY_SYSTEM,
+    SKILL_MEMORY_TITLE,
+    format_conversation_transcript,
+    is_empty_skill_memory_summary,
+    iter_idle_skill_conversation_ids,
+    load_messages_after_watermark,
+    resolve_skill_conversation_memory_space,
+    resolve_skill_memory_model_id,
+)
 from apps.opspilot.services.workflow_attachment_service import cleanup_expired_workflow_attachments
 from apps.opspilot.tasks._common import MEMORY_WRITE_PROCESSING_TTL_SECONDS
 from apps.opspilot.utils.prompt_safety import build_user_rule_block
@@ -49,6 +61,14 @@ _MEMORY_WRITE_DEFERRED_FLUSH_LOG = (
     "event=memory_write_deferred_llm_unavailable memory_space_id=%s workflow_id=%s node_id=%s " "cache_count=%s failed_stage=%s error_type=%s"
 )
 _MEMORY_WRITE_DEFERRED_WRITE_LOG = "event=memory_write_deferred_llm_unavailable memory_space_id=%s failed_stage=%s error_type=%s"
+_SKILL_MEMORY_WRITE_DEFERRED_LOG = (
+    "event=skill_memory_write_deferred_llm_unavailable conversation_id=%s memory_space_id=%s failed_stage=%s error_type=%s"
+)
+_SKILL_MEMORY_WRITE_FAILED_LOG = "event=skill_memory_write_failed conversation_id=%s memory_space_id=%s failed_stage=%s error_type=%s"
+MEMORY_WRITE_CONFLICT = "conflict"
+MEMORY_WRITE_APPLIED = "applied"
+MEMORY_WRITE_APPENDED = "appended"
+MEMORY_WRITE_MAX_RETRIES = 2
 
 
 def _restore_pending_memory_write_cache(cache_item_ids) -> None:
@@ -131,6 +151,31 @@ def _summarize_memory_batch_content(memory_space, batch_content: str, model_id=N
         raise MemoryWriteLlmUnavailable("memory summarize llm invoke failed", failed_stage="summarize") from exc
 
 
+def _summarize_skill_conversation_content(memory_space, transcript: str, model_id=None) -> str:
+    effective_model_id = model_id if model_id else memory_space.default_model
+    client = _build_memory_write_client(effective_model_id)
+    if not client:
+        return transcript
+
+    summary_prompt = SKILL_CONVERSATION_SUMMARY_PROMPT.format(transcript=transcript)
+    try:
+        response = client.invoke(
+            [
+                SystemMessage(content=SKILL_CONVERSATION_SUMMARY_SYSTEM),
+                HumanMessage(content=summary_prompt),
+            ]
+        )
+        summarized_content = response.content if hasattr(response, "content") else str(response)
+        summarized_content = summarized_content.strip()
+        if is_empty_skill_memory_summary(summarized_content):
+            return ""
+        return summarized_content
+    except MemoryWriteLlmUnavailable:
+        raise
+    except Exception as exc:
+        raise MemoryWriteLlmUnavailable("memory summarize llm invoke failed", failed_stage="summarize") from exc
+
+
 def _resolve_org_display_name(organization_id) -> str:
     """组织记忆的展示名（owner_username）：优先组名，回退“组织-{id}”。
 
@@ -204,12 +249,12 @@ def _flush_memory_write_cache_group(
 
         memory_space = MemorySpace.objects.get(id=memory_space_id)
         summarized_content = _summarize_memory_batch_content(memory_space, batch_content, model_id=model_id)
-        owner_username, owner_domain, organization_id = resolve_memory_target(memory_space, memory_target_id)
+        owner_username, owner_domain, organization_id, owner_user_id = resolve_memory_target(memory_space, memory_target_id)
         # 团队记忆 owner_username 为空时补组名，保证前端“管理组织”列有值（与直接写入路径一致）
         if organization_id is not None and not owner_username:
             owner_username = _resolve_org_display_name(organization_id)
 
-        write_plan = _prepare_memory_write_plan(
+        _commit_memory_write_with_retry(
             memory_space_id=memory_space_id,
             title=title,
             content=summarized_content,
@@ -218,11 +263,9 @@ def _flush_memory_write_cache_group(
             organization_id=organization_id,
             model_id=model_id,
             skip_write_rule=True,
+            owner_user_id=owner_user_id,
         )
-
-        with transaction.atomic():
-            _apply_memory_write_plan(write_plan)
-            MemoryWriteCache.objects.filter(id__in=cache_item_ids).delete()
+        MemoryWriteCache.objects.filter(id__in=cache_item_ids).delete()
         return True
     except MemoryWriteLlmUnavailable as exc:
         _restore_pending_memory_write_cache(cache_item_ids)
@@ -253,6 +296,7 @@ def process_memory_write_cache(
     workflow_id: int = None,
     node_id: str = "",
     write_batch_size: int = None,
+    owner_user_id: str = None,
 ):
     if not content:
         return
@@ -269,6 +313,7 @@ def process_memory_write_cache(
             owner_domain=owner_domain,
             organization_id=organization_id,
             model_id=model_id,
+            owner_user_id=owner_user_id,
         )
         return
 
@@ -276,6 +321,7 @@ def process_memory_write_cache(
         owner_username=owner_username,
         owner_domain=owner_domain,
         organization_id=organization_id,
+        owner_user_id=owner_user_id,
     )
     workflow_id = int(workflow_id)
 
@@ -393,7 +439,14 @@ def flush_all_pending_memory_write_cache():
         )
 
 
-def _get_memory_for_target(memory_space_id: int, owner_username: str, owner_domain: str, organization_id: int = None, for_update: bool = False):
+def _get_memory_for_target(
+    memory_space_id: int,
+    owner_username: str,
+    owner_domain: str,
+    organization_id: int = None,
+    for_update: bool = False,
+    owner_user_id: str = None,
+):
     queryset = Memory.objects
     if for_update:
         queryset = queryset.select_for_update()
@@ -404,6 +457,15 @@ def _get_memory_for_target(memory_space_id: int, owner_username: str, owner_doma
             organization_id=organization_id,
         ).first()
 
+    if owner_user_id:
+        found = queryset.filter(
+            memory_space_id=memory_space_id,
+            owner_user_id=owner_user_id,
+            organization_id__isnull=True,
+        ).first()
+        if found:
+            return found
+
     return queryset.filter(
         memory_space_id=memory_space_id,
         owner_username=owner_username,
@@ -412,7 +474,15 @@ def _get_memory_for_target(memory_space_id: int, owner_username: str, owner_doma
     ).first()
 
 
-def _create_memory(memory_space_id: int, title: str, content: str, owner_username: str, owner_domain: str, organization_id: int = None):
+def _create_memory(
+    memory_space_id: int,
+    title: str,
+    content: str,
+    owner_username: str,
+    owner_domain: str,
+    organization_id: int = None,
+    owner_user_id: str = None,
+):
     return Memory.objects.create(
         memory_space_id=memory_space_id,
         title=title,
@@ -420,6 +490,7 @@ def _create_memory(memory_space_id: int, title: str, content: str, owner_usernam
         owner_username=owner_username,
         owner_domain=owner_domain,
         organization_id=organization_id,
+        owner_user_id=owner_user_id or None,
         created_by=owner_username,
         updated_by=owner_username,
     )
@@ -653,15 +724,23 @@ def _prepare_memory_write_plan(
     organization_id: int = None,
     model_id: int = None,
     skip_write_rule: bool = False,
+    owner_user_id: str = None,
 ):
     memory_space = MemorySpace.objects.get(id=memory_space_id)
     write_rule = memory_space.write_rule
     effective_model_id = model_id if model_id else memory_space.default_model
+    if organization_id is None and not owner_user_id:
+        owner = resolve_owner_identity(username=owner_username, domain=owner_domain, assign_if_missing=True)
+        owner_user_id = owner.user_id
+        if owner.user_id:
+            owner_username = owner.username or owner_username
+            owner_domain = owner.domain
     existing_memory = _get_memory_for_target(
         memory_space_id=memory_space_id,
         owner_username=owner_username,
         owner_domain=owner_domain,
         organization_id=organization_id,
+        owner_user_id=owner_user_id,
     )
 
     processed_content = content
@@ -703,6 +782,7 @@ def _prepare_memory_write_plan(
         "processed_content": processed_content,
         "owner_username": owner_username,
         "owner_domain": owner_domain,
+        "owner_user_id": owner_user_id,
         "organization_id": organization_id,
         "existing_memory_id": existing_memory.id if existing_memory else None,
         "existing_updated_at": existing_memory.updated_at if existing_memory else None,
@@ -710,7 +790,7 @@ def _prepare_memory_write_plan(
     }
 
 
-def _apply_memory_write_plan(plan: dict):
+def _apply_memory_write_plan(plan: dict, *, append_on_conflict: bool = False):
     with transaction.atomic():
         # 目标 Memory 不存在时无行可锁；先锁定始终存在的记忆空间，串行化该空间内的最终落库。
         # LLM 处理仍在事务外完成，仅将重读与写入置于短事务中，避免长时间持锁。
@@ -720,32 +800,74 @@ def _apply_memory_write_plan(plan: dict):
             owner_username=plan["owner_username"],
             owner_domain=plan["owner_domain"],
             organization_id=plan["organization_id"],
+            owner_user_id=plan.get("owner_user_id"),
             for_update=True,
         )
 
         if not existing_memory:
             content = plan["processed_content"] if plan["existing_memory_id"] else plan["content"]
             title = plan["requested_title"] if plan["existing_memory_id"] else plan["title"]
-            return _create_memory(
+            memory = _create_memory(
                 memory_space_id=plan["memory_space_id"],
                 title=title,
                 content=content,
                 owner_username=plan["owner_username"],
                 owner_domain=plan["owner_domain"],
                 organization_id=plan["organization_id"],
+                owner_user_id=plan.get("owner_user_id"),
             )
+            return memory, MEMORY_WRITE_APPLIED
 
         can_apply_planned_merge = (
             plan["used_merge"] and plan["existing_memory_id"] == existing_memory.id and plan["existing_updated_at"] == existing_memory.updated_at
         )
+        owner_user_id = plan.get("owner_user_id")
+        if owner_user_id and existing_memory.owner_user_id != owner_user_id:
+            existing_memory.owner_user_id = owner_user_id
+        if owner_user_id:
+            existing_memory.owner_username = plan["owner_username"]
+            existing_memory.owner_domain = plan["owner_domain"]
         if can_apply_planned_merge:
             existing_memory.title = plan["title"]
             existing_memory.content = plan["content"]
             existing_memory.updated_by = plan["owner_username"]
             existing_memory.save()
-        else:
+            return existing_memory, MEMORY_WRITE_APPLIED
+        if not plan["used_merge"] or append_on_conflict:
             _append_memory(existing_memory, plan["processed_content"], plan["owner_username"])
-        return existing_memory
+            return existing_memory, MEMORY_WRITE_APPENDED
+        return existing_memory, MEMORY_WRITE_CONFLICT
+
+
+def _commit_memory_write_with_retry(
+    memory_space_id: int,
+    title: str,
+    content: str,
+    owner_username: str,
+    owner_domain: str,
+    organization_id: int = None,
+    model_id: int = None,
+    skip_write_rule: bool = False,
+    owner_user_id: str = None,
+):
+    last_plan = None
+    for _ in range(MEMORY_WRITE_MAX_RETRIES + 1):
+        last_plan = _prepare_memory_write_plan(
+            memory_space_id=memory_space_id,
+            title=title,
+            content=content,
+            owner_username=owner_username,
+            owner_domain=owner_domain,
+            organization_id=organization_id,
+            model_id=model_id,
+            skip_write_rule=skip_write_rule,
+            owner_user_id=owner_user_id,
+        )
+        memory, result = _apply_memory_write_plan(last_plan, append_on_conflict=False)
+        if result != MEMORY_WRITE_CONFLICT:
+            return memory, result
+    memory, result = _apply_memory_write_plan(last_plan, append_on_conflict=True)
+    return memory, result
 
 
 def _process_memory_write_impl(
@@ -757,11 +879,12 @@ def _process_memory_write_impl(
     organization_id: int = None,
     model_id: int = None,
     skip_write_rule: bool = False,
+    owner_user_id: str = None,
 ):
     """异步写入记忆条目，每个用户/组织在每个记忆空间只有一条记忆
 
     核心逻辑：
-    - 个人记忆：按 owner_username + owner_domain + memory_space_id 查找唯一记忆
+    - 个人记忆：优先按 owner_user_id（系统用户 UUID）查找，回退 owner_username + owner_domain
     - 组织记忆：按 organization_id + memory_space_id 查找唯一记忆
     - 找到则合并内容，未找到则创建新记忆
 
@@ -770,7 +893,7 @@ def _process_memory_write_impl(
         skip_write_rule: 为 True 时跳过 write_rule 规范化，用于批量归纳后的单次写入
     """
     try:
-        write_plan = _prepare_memory_write_plan(
+        _commit_memory_write_with_retry(
             memory_space_id=memory_space_id,
             title=title,
             content=content,
@@ -779,8 +902,8 @@ def _process_memory_write_impl(
             organization_id=organization_id,
             model_id=model_id,
             skip_write_rule=skip_write_rule,
+            owner_user_id=owner_user_id,
         )
-        _apply_memory_write_plan(write_plan)
         return None
 
     except MemorySpace.DoesNotExist:
@@ -820,6 +943,7 @@ def process_memory_write(
     organization_id: int = None,
     model_id: int = None,
     skip_write_rule: bool = False,
+    owner_user_id: str = None,
 ):
     close_old_connections()
     return _process_memory_write_impl(
@@ -831,6 +955,7 @@ def process_memory_write(
         organization_id=organization_id,
         model_id=model_id,
         skip_write_rule=skip_write_rule,
+        owner_user_id=owner_user_id,
     )
 
 
@@ -839,3 +964,132 @@ def cleanup_expired_workflow_attachments_task():
     deleted_count = cleanup_expired_workflow_attachments(retention_days=3)
     logger.info("清理过期工作流附件完成: deleted_count=%s", deleted_count)
     return deleted_count
+
+
+def _write_skill_memory_from_snapshot(snapshot, memory_space_id, owner_username, owner_domain, model_id, owner_user_id=None):
+    if not snapshot or not memory_space_id:
+        return None
+    memory_space = MemorySpace.objects.filter(id=memory_space_id).first()
+    if memory_space is None:
+        return None
+    transcript = format_conversation_transcript(snapshot)
+    if not transcript:
+        return None
+    summarized = _summarize_skill_conversation_content(memory_space, transcript, model_id=model_id)
+    if not summarized:
+        return None
+    _commit_memory_write_with_retry(
+        memory_space_id=memory_space.id,
+        title=SKILL_MEMORY_TITLE,
+        content=summarized,
+        owner_username=owner_username or "",
+        owner_domain=owner_domain or "",
+        organization_id=None,
+        model_id=model_id,
+        skip_write_rule=False,
+        owner_user_id=owner_user_id,
+    )
+    return None
+
+
+def _write_skill_memory_from_conversation(conversation_id: int):
+    with transaction.atomic():
+        try:
+            # memory_space 可空，不能和 FOR UPDATE 一起 select_related，部分 PG 兼容库会拒绝外连接加锁。
+            conv = SkillConversation.objects.select_for_update().select_related("skill").get(id=conversation_id)
+        except SkillConversation.DoesNotExist:
+            return None
+        skill = conv.skill
+        messages = load_messages_after_watermark(conv)
+        if not messages:
+            return None
+        watermark = conv.memory_written_message_id or 0
+        last_id = messages[-1].id
+        transcript = format_conversation_transcript(messages)
+        owner = resolve_owner_identity(external_user_id=conv.external_user_id, assign_if_missing=True)
+
+    space = resolve_skill_conversation_memory_space(skill)
+    if space is None:
+        return None
+    model_id = resolve_skill_memory_model_id(skill, space)
+    space_id = space.id
+    summarized = _summarize_skill_conversation_content(space, transcript, model_id=model_id)
+    if summarized:
+        _commit_memory_write_with_retry(
+            memory_space_id=space_id,
+            title=SKILL_MEMORY_TITLE,
+            content=summarized,
+            owner_username=owner.username,
+            owner_domain=owner.domain,
+            organization_id=None,
+            model_id=model_id,
+            skip_write_rule=False,
+            owner_user_id=owner.user_id,
+        )
+    with transaction.atomic():
+        try:
+            conv = SkillConversation.objects.select_for_update().get(id=conversation_id)
+        except SkillConversation.DoesNotExist:
+            return None
+        if (conv.memory_written_message_id or 0) != watermark:
+            return None
+        conv.memory_written_message_id = last_id
+        conv.save(update_fields=["memory_written_message_id"])
+    logger.info("event=skill_memory_write_applied conversation_id=%s memory_space_id=%s message_id=%s", conversation_id, space_id, last_id)
+    return None
+
+
+@shared_task(
+    name="apps.opspilot.tasks.write_skill_conversation_memory",
+    queue="opspilot_maintenance",
+    autoretry_for=(MemoryWriteLlmUnavailable,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    max_retries=5,
+)
+def write_skill_conversation_memory(
+    conversation_id: int,
+    from_snapshot: bool = False,
+    snapshot=None,
+    memory_space_id=None,
+    owner_username="",
+    owner_domain="",
+    model_id=None,
+    owner_user_id=None,
+):
+    close_old_connections()
+    space_id = memory_space_id
+    try:
+        if from_snapshot:
+            _write_skill_memory_from_snapshot(snapshot, memory_space_id, owner_username, owner_domain, model_id, owner_user_id=owner_user_id)
+            return None
+        _write_skill_memory_from_conversation(conversation_id)
+        return None
+    except MemoryWriteLlmUnavailable as exc:
+        logger.warning(
+            _SKILL_MEMORY_WRITE_DEFERRED_LOG,
+            conversation_id,
+            space_id,
+            exc.failed_stage,
+            type(exc.__cause__ or exc).__name__,
+        )
+        raise
+    except Exception as exc:
+        logger.exception(
+            _SKILL_MEMORY_WRITE_FAILED_LOG,
+            conversation_id,
+            space_id,
+            "write",
+            type(exc).__name__,
+        )
+        raise
+
+
+@shared_task(name="apps.opspilot.tasks.flush_idle_skill_conversation_memory", queue="opspilot_maintenance")
+def flush_idle_skill_conversation_memory():
+    close_old_connections()
+    conversation_ids = iter_idle_skill_conversation_ids()
+    for conversation_id in conversation_ids:
+        write_skill_conversation_memory.delay(conversation_id)
+    logger.info("event=skill_memory_idle_flush_scheduled count=%s", len(conversation_ids))
+    return len(conversation_ids)

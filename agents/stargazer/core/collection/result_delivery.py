@@ -29,13 +29,13 @@ class PendingPublish:
     result: TargetCollectionResult | None
     receipt: object | None
     started_at: float
-    deadline: float
+    deadline: float | None
     delivery_required: bool = True
     target: str = ""
 
 
 class BoundedResultDeliveryObserver:
-    """发布子系统内以固定 worker/队列观察 PubAck，不把 payload 交回 Run 汇总。"""
+    """有界注册回执，仅把已完成的托管回执交给固定汇总 worker。"""
 
     def __init__(
         self,
@@ -52,6 +52,9 @@ class BoundedResultDeliveryObserver:
         self._worker_count = int(worker_count)
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=queue_capacity)
         self._workers: list[asyncio.Task] = []
+        self._slots = asyncio.Semaphore(queue_capacity)
+        self._registrations: dict[object, tuple[object, Callable] | None] = {}
+        self._closed = False
 
     async def observe(
         self,
@@ -61,7 +64,26 @@ class BoundedResultDeliveryObserver:
         on_terminal: Callable[[int, str, str, str, Exception | None], None],
     ) -> None:
         self._ensure_workers()
-        await self._queue.put((pending, target, on_terminal))
+        await self._slots.acquire()
+        if self._closed:
+            self._slots.release()
+            raise RuntimeError("result delivery observer is closed")
+        token = object()
+        item = (pending, target, on_terminal, token)
+        receipt = pending.receipt
+        if bool(getattr(receipt, "retries_managed", False)) and callable(getattr(receipt, "add_done_callback", None)):
+
+            def ready(_completion):
+                if token in self._registrations:
+                    # 注册和待汇总事件共用额度，回调不创建无限等待任务。
+                    self._queue.put_nowait(item)
+
+            self._registrations[token] = (receipt, ready)
+            receipt.add_done_callback(ready)
+        else:
+            # 外部注入的旧 receipt 没有终态通知协议，保持有限 worker 兼容。
+            self._registrations[token] = None
+            self._queue.put_nowait(item)
 
     async def drain(self) -> None:
         workers = tuple(self._workers)
@@ -74,6 +96,12 @@ class BoundedResultDeliveryObserver:
         self._workers.clear()
 
     async def abort(self) -> None:
+        self._closed = True
+        for registration in self._registrations.values():
+            if registration is not None:
+                receipt, callback = registration
+                receipt.remove_done_callback(callback)
+        self._registrations.clear()
         workers = tuple(self._workers)
         for worker in workers:
             if not worker.done():
@@ -105,7 +133,7 @@ class BoundedResultDeliveryObserver:
             try:
                 if item is None:
                     return
-                pending, target, on_terminal = item
+                pending, target, on_terminal, token = item
                 try:
                     index, status, error_code = await self._delivery.finish(pending)
                 except asyncio.CancelledError:
@@ -115,6 +143,10 @@ class BoundedResultDeliveryObserver:
                 else:
                     on_terminal(index, target, status, error_code, None)
             finally:
+                if item is not None:
+                    self._registrations.pop(item[3], None)
+                    self._slots.release()
+                    item = pending = target = on_terminal = None
                 self._queue.task_done()
 
 
@@ -155,7 +187,9 @@ class ResultDeliveryCoordinator:
             result = replace(result, publish_timestamp_ms=int(time.time() * 1000))
         attempt_started_at = loop.time()
         started_at = attempt_started_at if started_at is None else started_at
-        deadline = started_at + self._settings.publish_total_timeout_seconds if deadline is None else deadline
+        managed_budget = bool(getattr(self._publisher, "manages_delivery_budget", False))
+        if not managed_budget:
+            deadline = started_at + self._settings.publish_total_timeout_seconds if deadline is None else deadline
         if not _requires_delivery(self._request, result):
             if payload_permit is not None:
                 payload_permit.release()
@@ -169,17 +203,26 @@ class ResultDeliveryCoordinator:
                 delivery_required=False,
                 target=result.target,
             )
-        queue_deadline = min(
-            deadline,
-            attempt_started_at + self._settings.publish_queue_timeout_seconds,
+        queue_deadline = (
+            None
+            if managed_budget
+            else min(
+                deadline,
+                attempt_started_at + self._settings.publish_queue_timeout_seconds,
+            )
         )
         try:
             async with asyncio.timeout_at(queue_deadline):
                 enqueue_options = {"deadline": deadline}
+                if managed_budget:
+                    enqueue_options["send_timeout_seconds"] = self._settings.publish_total_timeout_seconds
+                    enqueue_options["max_attempts"] = self._settings.publish_max_attempts
                 if payload_permit is not None:
                     enqueue_options["payload_permit"] = payload_permit
                 receipt = await self._publisher.enqueue(self._request, result, self._lease, **enqueue_options)
         except Exception as error:  # noqa: BLE001 - 统一交给 finish 的有限重试
+            if managed_budget:
+                error.delivery_detected = False
             if payload_permit is not None:
                 payload_permit.release()
             completion = loop.create_future()
@@ -204,7 +247,9 @@ class ResultDeliveryCoordinator:
         )
         return PendingPublish(
             index=index,
-            result=result,
+            # 所有权在 enqueue 返回时转交。Scheduler/Executor 只能拿到采集摘要，
+            # 不能靠 Sink 的局部 replace 掩盖上游 Pending 仍引用完整结果。
+            result=replace(result, value=None) if bool(getattr(receipt, "retries_managed", False)) else result,
             receipt=receipt,
             started_at=started_at,
             deadline=deadline,
@@ -245,7 +290,7 @@ class ResultDeliveryCoordinator:
             except Exception as error:  # noqa: BLE001 - 单目标发布有限重试
                 self._observe_queue_residence(current)
                 error_code = type(error).__name__
-                if isinstance(error, TimeoutError) and asyncio.get_running_loop().time() >= current.deadline:
+                if isinstance(error, TimeoutError) and current.deadline is not None and asyncio.get_running_loop().time() >= current.deadline:
                     self._metrics.increment("publish_timeout_total")
                     cancel_if_unattempted = getattr(
                         current.receipt,
@@ -255,11 +300,20 @@ class ResultDeliveryCoordinator:
                     if callable(cancel_if_unattempted) and cancel_if_unattempted():
                         publish_status = "failed"
                         error_code = "publish_total_timeout_before_delivery"
+                        self._observe_duration(current)
                         break
                 self._observe_duration(current)
                 self._metrics.increment("result_publish_failure_total")
+                if isinstance(error, ValueError) and getattr(error, "failed_stage", None) == "encode":
+                    publish_status = "permanent_failed"
+                    error_code = getattr(error, "error_code", "metrics_encode_failed")
+                    break
                 if bool(getattr(error, "delivery_detected", True)):
                     publish_status = "unknown"
+                    break
+                if bool(getattr(current.receipt, "retries_managed", False)):
+                    # 发布器持有 payload 和重试所有权，Run 只消费终态。
+                    publish_status = "failed"
                     break
             if attempt + 1 < self._settings.publish_max_attempts:
                 self._metrics.increment("result_publish_retry_total")
@@ -288,10 +342,13 @@ class ResultDeliveryCoordinator:
         )
 
     def _observe_duration(self, pending: PendingPublish) -> None:
+        terminal_at = getattr(pending.receipt, "terminal_at", None)
         self._metrics.observe(
             "publish_duration_seconds",
-            asyncio.get_running_loop().time() - pending.started_at,
+            max(0.0, (terminal_at or asyncio.get_running_loop().time()) - pending.started_at),
         )
+        self._metrics.observe("publish_delivery_duration_seconds", float(getattr(pending.receipt, "delivery_duration_seconds", 0.0)))
+        self._metrics.observe("publish_credit_wait_seconds", float(getattr(pending.receipt, "credit_wait_seconds", 0.0)))
 
     def _log_failure(
         self,
@@ -303,7 +360,12 @@ class ResultDeliveryCoordinator:
         if self._failure_log_count >= self._failure_log_limit:
             return
         self._failure_log_count += 1
-        phase = "enqueue" if error_code in {"publish_queue_timeout", "publish_total_timeout_before_delivery"} else "delivery"
+        phase = "enqueue" if error_code == "publish_queue_timeout" else "delivery"
+        if error_code == "publish_total_timeout_before_delivery":
+            phase = "before_delivery"
+        failed_stage = getattr(pending.receipt, "failed_stage", "")
+        if failed_stage in {"encode", "round_metadata", "credit_wait", "publish_call", "puback", "core_flush"}:
+            phase = failed_stage
         logger.warning(
             "event=result_publish_failed %s plugin_ref=%s "
             "model_id=%s target=%s phase=%s reason=%s attempts=%s "

@@ -14,11 +14,11 @@ import {
   ModalRef,
   Pagination,
   TableDataItem,
-  IntegrationItem,
   ObjectItem,
   MetricItem
 } from '@/app/monitor/types';
 import { ViewListProps, ViewPluginOption } from '@/app/monitor/types/view';
+import { formatMonitorViewPluginTabs } from '@/app/monitor/utils/monitorViewPlugins';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -849,23 +849,11 @@ const ViewList: React.FC<ViewListProps> = ({
     getAssetInsts(objectId, 'clear');
   };
 
-  const formatPlugins = (items: IntegrationItem[]): ViewPluginOption[] =>
-    items
-      .sort((a: IntegrationItem, b: IntegrationItem) => {
-        const order = (item: IntegrationItem) =>
-          item.is_pre ? 0 : !item.is_custom ? 1 : 2;
-        return order(a) - order(b);
-      })
-      .map((item: IntegrationItem) => ({
-        label: String(item.display_name || item.name || '--'),
-        value: String(item.id)
-      }));
-
   const openViewModal = async (row: TableDataItem) => {
     const effectivePlugins = await getEffectivePlugins(objectId, {
       instance_id: row.instance_id
     });
-    setPlugins(formatPlugins(effectivePlugins || []));
+    setPlugins(formatMonitorViewPluginTabs(effectivePlugins || []));
     viewRef.current?.showModal({
       title: t('monitor.views.indexView'),
       type: 'add',

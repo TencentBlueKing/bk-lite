@@ -1,0 +1,38 @@
+Cisco Meraki Device:
+  name: Cisco Meraki Device
+  desc: Collect device inventory, availability, and uplink loss/latency from Meraki
+    Dashboard API v1.
+monitor_object:
+  Meraki Device Inventory: Meraki Device Inventory
+  Meraki Device: Meraki Device
+monitor_object_type:
+  Cisco Meraki: Cisco Meraki
+monitor_object_metric_group:
+  Meraki Device Inventory:
+    Base: Base
+    Inventory: Inventory
+    Availability: Availability
+  Meraki Device:
+    Availability: Availability
+    Uplink: Uplink
+monitor_object_metric:
+  Meraki Device Inventory:
+    meraki_device_connect_status:
+      name: Connect Status
+      desc: Whether Dashboard API is available for device collection.
+    meraki_device_inventory_count:
+      name: Device Count
+      desc: Number of devices in the organization inventory.
+    meraki_device_online_count:
+      name: Online Device Count
+      desc: Number of devices with online availability.
+  Meraki Device:
+    meraki_device_availability_status:
+      name: Availability Status
+      desc: Device online/alerting/offline/dormant status. Omitted when availability is missing.
+    meraki_device_uplink_latency_ms:
+      name: Uplink Latency
+      desc: Uplink latency in milliseconds.
+    meraki_device_uplink_loss_percent:
+      name: Uplink Loss
+      desc: Uplink packet loss percentage.

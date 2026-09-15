@@ -18,7 +18,8 @@ export type ScreenWidgetChartType =
   | 'topologyMap'
   | 'room3D'
   | 'networkStatusTopology'
-  | 'application3D';
+  | 'application3D'
+  | 'relatedTopology';
 
 export interface ScreenViewportConfig {
   width: number;

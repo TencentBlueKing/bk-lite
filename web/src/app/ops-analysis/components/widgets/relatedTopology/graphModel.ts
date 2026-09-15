@@ -5,7 +5,11 @@ import type {
   RelatedTopologyResponse,
   RelatedTopologyTreeNode,
 } from './types';
-import { RELATED_TOPOLOGY_VISUAL } from './visual';
+import {
+  RELATED_TOPOLOGY_DEFAULT_CHROME,
+  RELATED_TOPOLOGY_VISUAL,
+  type RelatedTopologyGraphChrome,
+} from './visual';
 
 const HORIZONTAL_GAP = RELATED_TOPOLOGY_VISUAL.columnGap;
 const MIN_VERTICAL_GAP = RELATED_TOPOLOGY_VISUAL.rowGap;
@@ -65,6 +69,64 @@ export function alertCardStroke(
   return {
     stroke: alertBadgeFill(maxLevel),
     strokeWidth: ALERT_CARD_STROKE_WIDTH,
+  };
+}
+
+export type RelatedNodeMonitorState = 'unmapped' | 'quiet' | 'alerting';
+
+
+export function resolveRelatedNodeMonitorState(node: {
+  monitorId?: string | null;
+  alertCount?: number | null;
+}): RelatedNodeMonitorState {
+  const mapped = Boolean(String(node.monitorId || '').trim());
+  if (!mapped || node.alertCount == null) {
+    return 'unmapped';
+  }
+  if (!formatAlertBadgeText(node.alertCount)) {
+    return 'quiet';
+  }
+  return 'alerting';
+}
+
+export function relatedNodeCardAppearance(
+  node: {
+    isCenter: boolean;
+    monitorId?: string | null;
+    alertCount?: number | null;
+    maxLevel?: string | null;
+  },
+  chrome: RelatedTopologyGraphChrome = RELATED_TOPOLOGY_DEFAULT_CHROME,
+): {
+  state: RelatedNodeMonitorState;
+  badge: string | null;
+  body: Record<string, unknown>;
+} {
+  const state = resolveRelatedNodeMonitorState(node);
+  const base = node.isCenter
+    ? chrome.cardActiveBody
+    : chrome.cardDefaultBody;
+
+  if (state === 'unmapped') {
+    return {
+      state,
+      badge: null,
+      body: {
+        ...base,
+        fill: chrome.unmappedFill,
+        stroke: node.isCenter ? base.stroke : chrome.unmappedStroke,
+        strokeDasharray: node.isCenter ? undefined : '4 3',
+      },
+    };
+  }
+
+  return {
+    state,
+    badge: formatAlertBadgeText(node.alertCount),
+    body: {
+      ...base,
+      ...(alertCardStroke(node.alertCount, node.maxLevel) || {}),
+    },
   };
 }
 
@@ -151,7 +213,7 @@ export function buildRelatedTopologyGraph(
     walk(dstRoot, 0, 1, null);
   }
 
-  const positioned = layoutColumns(Array.from(nodes.values()), centerId);
+  const positioned = layoutColumns(Array.from(nodes.values()), centerId, edges);
   return {
     centerId,
     empty: isEmptyRelatedTopology(payload),
@@ -172,8 +234,21 @@ function asTree(
 function layoutColumns(
   nodes: RelatedTopologyGraphNode[],
   centerId: string,
+  edges: RelatedTopologyGraphEdge[],
 ): RelatedTopologyGraphNode[] {
   const columns = new Map<number, RelatedTopologyGraphNode[]>();
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const neighbors = new Map<string, string[]>();
+  const addNeighbor = (from: string, to: string) => {
+    const list = neighbors.get(from) || [];
+    list.push(to);
+    neighbors.set(from, list);
+  };
+  edges.forEach((edge) => {
+    addNeighbor(edge.source, edge.target);
+    addNeighbor(edge.target, edge.source);
+  });
+
   nodes.forEach((node) => {
     const column = node.id === centerId ? 0 : Math.round(node.x / HORIZONTAL_GAP);
     const list = columns.get(column) || [];
@@ -181,20 +256,60 @@ function layoutColumns(
     columns.set(column, list);
   });
 
-  columns.forEach((columnNodes, column) => {
-    const gap = Math.max(MIN_VERTICAL_GAP, NODE_VERTICAL_GAP);
+  const gap = Math.max(MIN_VERTICAL_GAP, NODE_VERTICAL_GAP);
+  const packColumn = (column: number, columnNodes: RelatedTopologyGraphNode[]) => {
+    const preferred = average(
+      columnNodes.map((node) => barycenterY(node, nodeById, neighbors)),
+    );
     const totalHeight = (columnNodes.length - 1) * gap;
-    const startY = -totalHeight / 2;
+    const startY = preferred - totalHeight / 2;
     columnNodes.forEach((node, index) => {
       node.x = column * HORIZONTAL_GAP;
       node.y = startY + index * gap;
     });
-  });
+  };
 
+  const orderedColumns = Array.from(columns.keys()).sort((a, b) => a - b);
+  orderedColumns.forEach((column) => {
+    packColumn(column, columns.get(column) || []);
+  });
+  pinCenter(nodes, centerId);
+
+  orderedColumns.forEach((column) => {
+    const columnNodes = columns.get(column) || [];
+    columnNodes.sort(
+      (left, right) =>
+        barycenterY(left, nodeById, neighbors)
+        - barycenterY(right, nodeById, neighbors),
+    );
+    packColumn(column, columnNodes);
+  });
+  pinCenter(nodes, centerId);
+  return nodes;
+}
+
+function barycenterY(
+  node: RelatedTopologyGraphNode,
+  nodeById: Map<string, RelatedTopologyGraphNode>,
+  neighbors: Map<string, string[]>,
+): number {
+  const linked = (neighbors.get(node.id) || [])
+    .map((id) => nodeById.get(id)?.y)
+    .filter((value): value is number => typeof value === 'number');
+  return linked.length ? average(linked) : node.y;
+}
+
+function average(values: number[]): number {
+  if (!values.length) {
+    return 0;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function pinCenter(nodes: RelatedTopologyGraphNode[], centerId: string) {
   const center = nodes.find((node) => node.id === centerId);
   if (center) {
     center.x = 0;
     center.y = 0;
   }
-  return nodes;
 }

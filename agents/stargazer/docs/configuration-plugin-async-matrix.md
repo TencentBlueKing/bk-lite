@@ -32,7 +32,7 @@
 | `mssql` | 否（线程型 await） | `aioodbc` | 调用方使用 `await`，但 aioodbc 底层通过线程执行 ODBC，按 `sync` 管理 |
 | `mysql` | 是 | `aiomysql.connect()`、异步 cursor | protocol 为异步；同插件 job executor 为远程异步 |
 | `network` | 是 | `pysnmp.hlapi.asyncio.getCmd/bulkCmd/nextCmd` | system GET 与 probe 合并；接口默认 GETBULK，兼容错误有界回退 GETNEXT；`SnmpEngine` 由 `core.infra.snmp_engine_pool` 按凭据作用域进程级共享，空闲或进程退出时才关闭 dispatcher |
-| `network_config_file` | 是 | `scrapli.AsyncScrapli` + `asyncssh` transport | 原 Netmiko 整轮线程包装已移除；保持 host key 严格校验 |
+| `network_config_file` | 是 | `scrapli.AsyncScrapli` + `asyncssh` / `asynctelnet` | SSH 默认；Telnet 走 asynctelnet/23。任务下发目标不再用 known_hosts 拒绝 |
 | `network_topo` | 是 | `pysnmp.hlapi.asyncio.getCmd/nextCmd/bulkCmd` | SNMP 拓扑采集和 fallback 均直接 `await`，与 `network` 共用同一个共享 `SnmpEngine` 池 |
 | `dell_unity` | 是 | `httpx.AsyncClient.get()` | Unity Unisphere REST Basic + `X-EMC-REST-CLIENT` 分页采集均直接 `await` |
 | `netapp_ontap` | 是 | `httpx.AsyncClient.get()` | ONTAP REST Basic 分页采集均直接 `await` |

@@ -1,11 +1,12 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
 export const useModelApi = () => {
   const { get, post, put, del } = useApiClient();
 
   // 获取模型列表（管理模式时传 includeHidden=true 拉全量）
-  const getModelList = (includeHidden?: boolean) =>
-    get(`/cmdb/api/model/${includeHidden ? '?include_hidden=true' : ''}`);
+  const getModelList = useCallback((includeHidden?: boolean) =>
+    get(`/cmdb/api/model/${includeHidden ? '?include_hidden=true' : ''}`), [get]);
 
   // 创建模型
   const createModel = (params: any) =>
@@ -97,7 +98,8 @@ export const useModelApi = () => {
   // 获取模型属性分组列表
   const getModelAttrGroups = async (modelId: string) => get(`/cmdb/api/field_groups/?model_id=${modelId}`);
 
-  const getModelAttrGroupsFullInfo = async (modelId: string) => get(`/cmdb/api/field_groups/full_info/?model_id=${modelId}`);
+  const getModelAttrGroupsFullInfo = useCallback(async (modelId: string) =>
+    get(`/cmdb/api/field_groups/full_info/?model_id=${modelId}`), [get]);
 
   // 创建属性分组
   const createModelAttrGroup = async (params: { model_id: string; group_name: string }) => {

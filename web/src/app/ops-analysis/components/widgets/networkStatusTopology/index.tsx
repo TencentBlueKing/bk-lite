@@ -13,9 +13,12 @@ import type {
 import { useTranslation } from '@/utils/i18n';
 import { applySameOriginNavigation } from '@/console-layout';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
-import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { useOpsAnalysisOptional } from '@/app/ops-analysis/context/common';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
+import {
+  buildNetworkStatusTopologyQuery,
+  useNetworkStatusTopologyApi,
+} from '@/app/ops-analysis/api/networkStatusTopology';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import type {
   NetworkStatusTopologyConfig,
@@ -360,10 +363,12 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   onRawData,
 }) => {
   const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
   const shareMode = useShareMode();
   const shareModeRef = useRef(shareMode);
   shareModeRef.current = shareMode;
-  const { dataSources } = useOpsAnalysis();
+  const dataSources = useOpsAnalysisOptional()?.dataSources ?? [];
   const { getSourceDataByApiId, getDataSourceBriefList } = useDataSourceApi();
   const { scale: viewportScale } = useWidgetViewport();
   const { getNetworkStatusTopology } = useNetworkStatusTopologyApi();
@@ -436,6 +441,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [Array.isArray(topoConfig?.instUuids) ? topoConfig.instUuids.join(',') : ''],
   );
   const nodeLimit = normalizeNetworkStatusTopologyNodeLimit(topoConfig?.nodeLimit);
+  const oneHop = topoConfig?.oneHop === true;
   const hasDeviceSelection = hasNetworkStatusTopologyDeviceSelection(topoConfig);
   /** 画布编辑态且非分享：几何写回草稿，随页面保存落库 */
   const canPersistLayout = canPersistNetworkStatusTopologyLayout({
@@ -608,14 +614,15 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       setOverlayError('');
       setInterfaceError('');
       setData(null);
-      setError(t('dashboard.networkTopoMissingConfig'));
+      setError(tRef.current('dashboard.networkTopoMissingConfig'));
       onReadyRef.current?.(false);
       return;
     }
-    const request = {
-      inst_uuids: selectedInstUuids,
-      node_limit: nodeLimit,
-    };
+    const request = buildNetworkStatusTopologyQuery({
+      instUuids: selectedInstUuids,
+      nodeLimit,
+      oneHop,
+    });
     const physicalKey = `scene:${refreshKey ?? '0'}:${JSON.stringify(request)}`;
     if (!options?.force && fulfilledRequestKeyRef.current === physicalKey) return;
 
@@ -689,7 +696,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         setOverlayError('');
         setInterfaceError('');
         setData(null);
-        setError(getRequestErrorMessage(err, t('dashboard.networkTopoLoadFailed')));
+        setError(getRequestErrorMessage(err, tRef.current('dashboard.networkTopoLoadFailed')));
         onReadyRef.current?.(false);
       }
     } finally {
@@ -703,11 +710,11 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   }, [
     hasDeviceSelection,
     nodeLimit,
+    oneHop,
     refreshKey,
     runtimeOwnerId,
     runtimeScheduler,
     selectedInstUuids,
-    t,
   ]);
 
   const handleExplicitRefresh = useCallback(() => {

@@ -19,20 +19,20 @@
 
 import json
 from typing import Dict, List
-from apps.core.logger import cmdb_logger as logger
-from apps.cmdb.constants.constants import DISPLAY_FIELD_CONFIG
+
+from apps.cmdb.constants.constants import DISPLAY_FIELD_CONFIG, INSTANCE, MODEL
 from apps.cmdb.display_field.constants import (
     DISPLAY_FIELD_TYPES,
     DISPLAY_SUFFIX,
-    FIELD_TYPE_ORGANIZATION,
-    FIELD_TYPE_USER,
-    FIELD_TYPE_ENUM,
-    FIELD_TYPE_TAG,
     DISPLAY_VALUES_SEPARATOR,
+    FIELD_TYPE_ENUM,
+    FIELD_TYPE_ORGANIZATION,
+    FIELD_TYPE_TAG,
+    FIELD_TYPE_USER,
     USER_DISPLAY_FORMAT,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
-from apps.cmdb.constants.constants import MODEL, INSTANCE
+from apps.core.logger import cmdb_logger as logger
 
 
 class DisplayFieldInitializer:
@@ -49,9 +49,7 @@ class DisplayFieldInitializer:
     def __init__(self):
         """初始化映射缓存"""
         self._org_map: Dict[int, str] = {}  # {org_id: org_name}
-        self._user_map: Dict[
-            int, Dict[str, str]
-        ] = {}  # {user_id: {'username': 'admin', 'display_name': '管理员'}}
+        self._user_map: Dict[int, Dict[str, str]] = {}  # {user_id: {'username': 'admin', 'display_name': '管理员'}}
         self._enum_map: Dict[str, str] = {}  # {"model_id.attr_id.enum_id": enum_name}
 
     def initialize_all(self) -> dict:
@@ -97,23 +95,16 @@ class DisplayFieldInitializer:
                     attrs = self._add_display_fields_to_model(model)
 
                     # 3.2 为实例添加 _display 字段值
-                    instance_count = self._add_display_fields_to_instances(
-                        model_id, attrs
-                    )
+                    instance_count = self._add_display_fields_to_instances(model_id, attrs)
 
                     result["models_processed"] += 1
                     result["instances_processed"] += instance_count
 
-                    logger.info(
-                        f"[DisplayFieldInitializer] 模型处理完成: {model_id}, "
-                        f"实例数: {instance_count}"
-                    )
+                    logger.info(f"[DisplayFieldInitializer] 模型处理完成: {model_id}, " f"实例数: {instance_count}")
 
                 except Exception as e:
                     error_msg = f"处理模型 {model_id} 失败: {e}"
-                    logger.error(
-                        f"[DisplayFieldInitializer] {error_msg}", exc_info=True
-                    )
+                    logger.error(f"[DisplayFieldInitializer] {error_msg}", exc_info=True)
                     result["errors"].append(error_msg)
                     result["success"] = False
 
@@ -150,9 +141,7 @@ class DisplayFieldInitializer:
             groups = Group.objects.all()
             self._org_map = {group.id: group.name for group in groups}
         except Exception as e:
-            logger.error(
-                f"[DisplayFieldInitializer] 加载组织映射失败: {e}", exc_info=True
-            )
+            logger.error(f"[DisplayFieldInitializer] 加载组织映射失败: {e}", exc_info=True)
             self._org_map = {}
 
         # 2. 加载用户映射
@@ -168,9 +157,7 @@ class DisplayFieldInitializer:
                 }
 
         except Exception as e:
-            logger.error(
-                f"[DisplayFieldInitializer] 加载用户映射失败: {e}", exc_info=True
-            )
+            logger.error(f"[DisplayFieldInitializer] 加载用户映射失败: {e}", exc_info=True)
             self._user_map = {}
 
         # 3. 加载枚举映射(从所有模型的 attrs 中提取)
@@ -206,19 +193,13 @@ class DisplayFieldInitializer:
                                     enum_count += 1
 
                 except Exception as e:
-                    logger.warning(
-                        f"[DisplayFieldInitializer] 解析模型 {model_id} 枚举映射失败: {e}"
-                    )
+                    logger.warning(f"[DisplayFieldInitializer] 解析模型 {model_id} 枚举映射失败: {e}")
                     continue
 
-            logger.info(
-                f"[DisplayFieldInitializer] 枚举映射加载完成, 数量: {enum_count}"
-            )
+            logger.info(f"[DisplayFieldInitializer] 枚举映射加载完成, 数量: {enum_count}")
 
         except Exception as e:
-            logger.error(
-                f"[DisplayFieldInitializer] 加载枚举映射失败: {e}", exc_info=True
-            )
+            logger.error(f"[DisplayFieldInitializer] 加载枚举映射失败: {e}", exc_info=True)
             self._enum_map = {}
 
     def _get_all_models(self) -> List[dict]:
@@ -261,9 +242,7 @@ class DisplayFieldInitializer:
 
             attrs = ModelManage.parse_attrs(attrs_json)
         except Exception as e:
-            logger.error(
-                f"[DisplayFieldInitializer] 解析模型 {model_id} attrs 失败: {e}"
-            )
+            logger.error(f"[DisplayFieldInitializer] 解析模型 {model_id} attrs 失败: {e}")
             return []
 
         # 检查是否需要添加 _display 字段
@@ -281,9 +260,7 @@ class DisplayFieldInitializer:
             # 检查是否已存在 _display 字段
             display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
             if any(a.get("attr_id") == display_field_id for a in attrs):
-                logger.debug(
-                    f"[DisplayFieldInitializer] 模型 {model_id} 字段 {display_field_id} 已存在，跳过"
-                )
+                logger.debug(f"[DisplayFieldInitializer] 模型 {model_id} 字段 {display_field_id} 已存在，跳过")
                 continue
 
             # 构建 _display 字段定义（使用统一的配置常量）
@@ -300,9 +277,7 @@ class DisplayFieldInitializer:
 
         # 如果没有需要添加的字段，直接返回
         if not display_fields_to_add:
-            logger.debug(
-                f"[DisplayFieldInitializer] 模型 {model_id} 无需添加 _display 字段"
-            )
+            logger.debug(f"[DisplayFieldInitializer] 模型 {model_id} 无需添加 _display 字段")
             return attrs
 
         # 添加 _display 字段到 attrs
@@ -314,9 +289,11 @@ class DisplayFieldInitializer:
             model_internal_id = model.get("_id")
 
             with GraphClient() as ag:
-                ag.set_entity_properties(
-                    MODEL, [model_internal_id], {"attrs": new_attrs_json}, {}, [], False
-                )
+                ag.set_entity_properties(MODEL, [model_internal_id], {"attrs": new_attrs_json}, {}, [], False)
+
+            from apps.cmdb.display_field.cache import ExcludeFieldsCache
+
+            ExcludeFieldsCache.invalidate_model_attrs(model_id)
 
             logger.info(
                 f"[DisplayFieldInitializer] 模型 {model_id} 添加 _display 字段完成, "
@@ -363,9 +340,7 @@ class DisplayFieldInitializer:
                 logger.debug(f"[DisplayFieldInitializer] 模型 {model_id} 没有实例")
                 return 0
 
-            logger.info(
-                f"[DisplayFieldInitializer] 模型 {model_id} 查询到 {len(instances)} 个实例"
-            )
+            logger.info(f"[DisplayFieldInitializer] 模型 {model_id} 查询到 {len(instances)} 个实例")
 
         except Exception as e:
             logger.error(
@@ -380,9 +355,7 @@ class DisplayFieldInitializer:
         for instance in instances:
             try:
                 # 生成 _display 字段
-                display_fields = self._build_display_fields_for_instance(
-                    instance, attrs, model_id
-                )
+                display_fields = self._build_display_fields_for_instance(instance, attrs, model_id)
 
                 # 如果没有需要更新的字段，跳过
                 if not display_fields:
@@ -395,17 +368,12 @@ class DisplayFieldInitializer:
                 instance_internal_id = instance.get("_id")
 
                 with GraphClient() as ag:
-                    new_instance = ag.set_entity_properties(
-                        INSTANCE, [instance_internal_id], instance, {}, [], False
-                    )
+                    new_instance = ag.set_entity_properties(INSTANCE, [instance_internal_id], instance, {}, [], False)
                     logger.debug("修改后实例数据: {}".format(new_instance))
 
                 processed_count += 1
 
-                logger.debug(
-                    f"[DisplayFieldInitializer] 实例 {inst_id} 更新完成, "
-                    f"字段: {list(display_fields.keys())}"
-                )
+                logger.debug(f"[DisplayFieldInitializer] 实例 {inst_id} 更新完成, " f"字段: {list(display_fields.keys())}")
 
             except Exception as e:
                 logger.error(
@@ -414,16 +382,11 @@ class DisplayFieldInitializer:
                 )
                 continue
 
-        logger.info(
-            f"[DisplayFieldInitializer] 模型 {model_id} 实例处理完成, "
-            f"总数: {len(instances)}, 更新数: {processed_count}"
-        )
+        logger.info(f"[DisplayFieldInitializer] 模型 {model_id} 实例处理完成, " f"总数: {len(instances)}, 更新数: {processed_count}")
 
         return processed_count
 
-    def _build_display_fields_for_instance(
-        self, instance: dict, attrs: List[dict], model_id: str
-    ) -> Dict[str, str]:
+    def _build_display_fields_for_instance(self, instance: dict, attrs: List[dict], model_id: str) -> Dict[str, str]:
         """
         为单个实例构建 _display 字段
 
@@ -460,9 +423,7 @@ class DisplayFieldInitializer:
                 elif attr_type == FIELD_TYPE_USER:
                     display_value = self._convert_user(original_value)
                 elif attr_type == FIELD_TYPE_ENUM:
-                    display_value = self._convert_enum(
-                        model_id, attr_id, original_value
-                    )
+                    display_value = self._convert_enum(model_id, attr_id, original_value)
                 elif attr_type == FIELD_TYPE_TAG:
                     display_value = self._convert_tag(original_value)
                 else:
@@ -471,10 +432,7 @@ class DisplayFieldInitializer:
                 display_fields[display_field_name] = display_value
 
             except Exception as e:
-                logger.warning(
-                    f"[DisplayFieldInitializer] 转换字段 {attr_id} 失败: {e}, "
-                    f"使用原始值"
-                )
+                logger.warning(f"[DisplayFieldInitializer] 转换字段 {attr_id} 失败: {e}, " f"使用原始值")
                 display_fields[display_field_name] = str(original_value)
 
         return display_fields
@@ -530,11 +488,7 @@ class DisplayFieldInitializer:
                 # 如果 display_name 存在且不为空，使用 USER_DISPLAY_FORMAT 格式
                 # 否则只使用 username
                 if display_name and display_name.strip():
-                    formatted_users.append(
-                        USER_DISPLAY_FORMAT.format(
-                            display_name=display_name, username=username
-                        )
-                    )
+                    formatted_users.append(USER_DISPLAY_FORMAT.format(display_name=display_name, username=username))
                 else:
                     formatted_users.append(username)
             else:
@@ -587,9 +541,7 @@ class DisplayFieldInitializer:
         if not isinstance(tag_values, list):
             return str(tag_values)
 
-        return DISPLAY_VALUES_SEPARATOR.join(
-            [str(value).strip() for value in tag_values if str(value).strip()]
-        )
+        return DISPLAY_VALUES_SEPARATOR.join([str(value).strip() for value in tag_values if str(value).strip()])
 
 
 # 便捷别名

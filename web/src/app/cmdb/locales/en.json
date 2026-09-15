@@ -185,6 +185,13 @@
         "layoutUnplaceDeviceContent": "This unlinks the device from the current rack and clears the start U. The device instance and U height remain.",
         "networkTopo": "Network Topology",
         "applicationResourceOverview": "Application Topology",
+        "publicMonitorView": "Monitoring View",
+        "publicAlertList": "Alert List",
+        "publicNetworkStatusTopology": "Network Status Topology",
+        "publicApplication3D": "3D Applications",
+        "missingStableId": "This asset has no stable identifier, so the widget cannot load",
+        "publicWidgetNotFound": "The asset does not exist or is no longer valid",
+        "openInCmdb": "Open in CMDB",
         "ipView": "IP View",
         "ipViewEmptyHint": "Please fill in the subnet CIDR and mask first",
         "ipViewCapacity": "Capacity",
@@ -334,16 +341,37 @@
         "isExactSearch": "Accurate search",
         "uploadDescription": "Only files of xls or xlsx type can be uploaded",
         "baseInfo": "Basic Information",
-        "systemLinkage": "System Linkage",
-        "systemLinkageHint": "The IDs below are system-managed. Use Sync to probe an existing monitor by identity and write the association only; nothing is created. IDs remain read-only.",
+        "systemLinkage": "Module Association",
+        "systemLinkageExternalId": "External ID",
+        "systemLinkageHint": "The IDs below are system-managed. Use Establish monitor association to probe an existing monitor by identity and write the association only; nothing is created. IDs remain read-only.",
         "systemLinkageNodeId": "Node ID",
         "systemLinkageMonitorId": "Monitor Instance ID",
         "systemLinkageEmpty": "Not linked",
-        "systemLinkageSync": "Sync",
+        "systemLinkageSync": "Establish monitor association",
         "systemLinkageSyncOk": "Linked to the monitor instance",
         "systemLinkageSyncNotFound": "No matching monitor instance was found. Nothing was created. Push from node management or scan to start monitoring.",
         "systemLinkageSyncConflict": "This identity matches different monitor instances. Nothing was linked.",
-        "systemLinkageSyncFailed": "Unable to sync monitoring. Try again later.",
+        "systemLinkageSyncFailed": "Unable to establish the monitor association. Try again later.",
+        "systemLinkageBatchSync": "Establish monitor association",
+        "systemLinkageBatchConfirm": "Establish monitor associations for {count} selected assets? This only links existing monitor objects and will not create new ones.",
+        "systemLinkageBatchSummary": "{ok} succeeded, {already_linked} already linked, {not_found} not found, {conflict} conflicted, {failed} failed",
+        "systemLinkageManualBind": "Manually link",
+        "systemLinkageUnbind": "Unlink",
+        "systemLinkageUnbindConfirm": "Unlink this asset from the monitor instance? The monitor object will not be deleted.",
+        "systemLinkageUnbindSuccess": "Unlinked from the monitor instance",
+        "systemLinkageUnbindFailed": "Unable to unlink monitoring. Try again later.",
+        "systemLinkageBindTitle": "Select a monitor instance",
+        "systemLinkageBindName": "Name",
+        "systemLinkageBindIp": "IP",
+        "systemLinkageBindObject": "Object type",
+        "systemLinkageBindId": "Monitor ID",
+        "systemLinkageBindSearch": "Search by name or IP",
+        "systemLinkageBindEmpty": "No matching monitor instances",
+        "systemLinkageBindSuccess": "Linked to the monitor instance",
+        "systemLinkageBindFailed": "Unable to link monitoring. Try again later.",
+        "systemLinkageOccupied": "This monitor instance is already occupied by \"{name}\"",
+        "systemLinkageRebind": "Change association",
+        "systemLinkageRebindConfirm": "This asset is already linked to another monitor instance. Confirm to unlink it first, then bind the selected instance.",
         "changeRecords": "Change Records",
         "changeRecord": {
             "allChanges": "All Changes",
@@ -966,7 +994,9 @@
             "collapse": "Collapse credential",
             "showSecret": "Show credential",
             "hideSecret": "Hide credential",
-            "enablePassword": "Enable password"
+            "enablePassword": "Enable password",
+            "transportProtocol": "Connection protocol",
+            "telnetWarning": "Telnet sends credentials in cleartext. Use it only on an isolated management network or when the device exposes only TCP/23."
         },
         "networkConfigFileTask": {
             "supportedVendors": "Currently supported vendors: {vendors}",
@@ -1030,6 +1060,7 @@
             "fieldNames": {
                 "sshAccount": "Account",
                 "sshPassword": "Password",
+                "transportProtocol": "Connection protocol",
                 "sshPort": "Port",
                 "databaseAccount": "Account",
                 "databasePassword": "Password",
@@ -1089,7 +1120,8 @@
             "fields": {
                 "sshAccount": "Optional. Operating-system username on the target host. Leave empty to collect via Agent; when filled, it must be allowed to run read-only collection commands.",
                 "sshPassword": "Optional. Login password for the operating-system account above; may be left blank.",
-                "sshPort": "The SSH service port on the target host. Change it when the service uses a non-standard port.",
+                "transportProtocol": "Choose SSH (default, TCP/22) or Telnet (TCP/23). Telnet sends credentials in cleartext and is insecure; use it only when the device exposes Telnet only.",
+                "sshPort": "CLI service port on the target device. SSH defaults to 22 and Telnet defaults to 23. Change it for a non-standard port.",
                 "databaseAccount": "A database username that can sign in and read configuration or metadata.",
                 "databasePassword": "The password for the database account above.",
                 "databasePort": "The target database service port. Change it when the service uses a non-standard port.",
@@ -1163,7 +1195,8 @@
                 "winsphereApi": "WinSphere HTTPS API",
                 "vsphereApi": "VMware vSphere HTTPS API",
                 "ipmi": "IPMI RMCP/RMCP+",
-                "redfish": "Redfish HTTPS API"
+                "redfish": "Redfish HTTPS API",
+                "sshOrTelnet": "SSH / Telnet"
             },
             "kind": {
                 "hostAccount": "Target host operating-system account",
@@ -1183,7 +1216,7 @@
                 "winsphereAccount": "WinSphere platform account",
                 "vsphereAccount": "vCenter platform account",
                 "bmcAccount": "Physical-server BMC account",
-                "networkDeviceAccount": "Network-device SSH account"
+                "networkDeviceAccount": "Network-device CLI account"
             },
             "instruction": {
                 "ssh": "Credentials are optional; leave them empty to collect via Agent. When filled, use an account that can sign in over SSH (Linux) or WMI (Windows) and run read-only collection commands.",
@@ -1204,7 +1237,7 @@
                 "vsphere": "Enter an account that can access the VMware vCenter SDK/API. Prefer a read-only role with certificate verification enabled.",
                 "ipmi": "Enter the IPMI account for the target server BMC. Prefer the lowest privilege that permits inventory collection.",
                 "redfish": "Enter a read-only Redfish account for the target server BMC. HTTPS is always used and certificate verification is enabled by default. Disable verification only for self-signed certificates on a trusted management network.",
-                "networkConfig": "Enter an SSH account that can run read-only configuration commands on the network device. Provide an enable password only when privileged mode is required.",
+                "networkConfig": "Enter an account that can run read-only configuration commands over SSH or Telnet. Prefer SSH. Telnet sends credentials in cleartext; use it only when the device exposes TCP/23 only. Provide an enable password only when privileged mode is required.",
                 "configFile": "Enter an operating-system account that can sign in over SSH and read the specified configuration file."
             },
             "defaultPort": {

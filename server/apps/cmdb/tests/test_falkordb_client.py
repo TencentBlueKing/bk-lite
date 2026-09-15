@@ -863,11 +863,10 @@ def test_full_text(patch_exclude):
     assert out[0]["inst_name"] == "h1"
 
 
-def test_full_text_no_exclude_cache(monkeypatch):
+def test_full_text_allows_legitimate_empty_exclude_fields(monkeypatch):
     monkeypatch.setattr("apps.cmdb.graph.falkordb.ExcludeFieldsCache.get_exclude_fields", lambda: [])
-    c = _client()
-    with pytest.raises(BaseAppException):
-        c.full_text("h1")
+    c = _client(_entity_result([]))
+    assert c.full_text("h1") == []
 
 
 def test_full_text_stats(patch_exclude):

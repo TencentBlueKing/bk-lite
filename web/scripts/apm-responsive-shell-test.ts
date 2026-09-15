@@ -9,6 +9,9 @@ const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 const topMenu = read('src/app/(core)/components/top-menu/index.tsx');
 const userInfo = read('src/app/(core)/components/top-menu/user-info/index.tsx');
 const subLayoutStyle = read('src/components/sub-layout/index.module.scss');
+const apmRouteShell = read('src/app/apm/components/apm-route-shell.tsx');
+const globalsCss = read('src/styles/globals.css');
+const policyList = read('src/app/apm/events/policies/page.tsx');
 
 assert.match(
   topMenu,
@@ -45,6 +48,27 @@ assert.match(
   subLayoutStyle,
   /\.segmentedNav\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;/s,
   '二级分段导航必须限制在内容宽度内并允许局部滚动',
+);
+
+assert.match(
+  apmRouteShell,
+  /className=\{`w-full min-w-0/,
+  'APM 工作区必须占满可用宽度',
+);
+assert.doesNotMatch(
+  apmRouteShell,
+  /max-w-\[1920px\]/,
+  'APM 工作区不得再用 1920px 上限截断超宽屏',
+);
+assert.match(
+  globalsCss,
+  /--breakpoint-3xl:\s*120rem;/,
+  '超宽屏增密必须使用统一的 3xl 断点',
+);
+assert.doesNotMatch(
+  policyList,
+  /scroll=\{\{\s*x:/,
+  '策略列表不得用 scroll.x 撑出整页横滚',
 );
 
 console.log('APM responsive shell checks passed');

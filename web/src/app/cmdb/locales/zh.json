@@ -240,16 +240,37 @@
         "isExactSearch_abbreviation": "精确",
         "uploadDescription": "仅支持xls或xlsx类型的文件上传。",
         "baseInfo": "基本信息",
-        "systemLinkage": "系统联动",
-        "systemLinkageHint": "以下为系统内置关联 ID。可点同步按身份探测已有监控并只写关联，不会新建；ID 仍只读。",
+        "systemLinkage": "模块关联",
+        "systemLinkageExternalId": "外联 ID",
+        "systemLinkageHint": "以下为系统内置关联 ID。可点建立监控关联，按身份探测已有监控并只写关联，不会新建；ID 仍只读。",
         "systemLinkageNodeId": "节点 ID",
         "systemLinkageMonitorId": "监控实例 ID",
         "systemLinkageEmpty": "未关联",
-        "systemLinkageSync": "同步",
+        "systemLinkageSync": "建立监控关联",
         "systemLinkageSyncOk": "已关联监控实例",
         "systemLinkageSyncNotFound": "监控中没有可认领的对象，不会新建。可从节点管理推送或扫描开通监控。",
         "systemLinkageSyncConflict": "身份对应了不同的监控实例，未关联。",
-        "systemLinkageSyncFailed": "同步监控失败，请稍后重试。",
+        "systemLinkageSyncFailed": "建立监控关联失败，请稍后重试。",
+        "systemLinkageBatchSync": "建立监控关联",
+        "systemLinkageBatchConfirm": "确认将选中的 {count} 个资产建立监控关联？仅关联已有监控对象，不会新建。",
+        "systemLinkageBatchSummary": "成功 {ok}，已关联跳过 {already_linked}，未找到 {not_found}，冲突 {conflict}，失败 {failed}",
+        "systemLinkageManualBind": "手动关联",
+        "systemLinkageUnbind": "解除关联",
+        "systemLinkageUnbindConfirm": "确认解除与监控实例的关联？不会删除监控对象。",
+        "systemLinkageUnbindSuccess": "已解除关联",
+        "systemLinkageUnbindFailed": "解除关联失败，请稍后重试。",
+        "systemLinkageBindTitle": "选择监控实例",
+        "systemLinkageBindName": "实例名",
+        "systemLinkageBindIp": "IP",
+        "systemLinkageBindObject": "对象类型",
+        "systemLinkageBindId": "监控 ID",
+        "systemLinkageBindSearch": "搜索实例名或 IP",
+        "systemLinkageBindEmpty": "没有可关联的监控实例",
+        "systemLinkageBindSuccess": "已关联监控实例",
+        "systemLinkageBindFailed": "关联监控失败，请稍后重试。",
+        "systemLinkageOccupied": "该监控实例已被「{name}」占用",
+        "systemLinkageRebind": "更换关联",
+        "systemLinkageRebindConfirm": "已关联其他监控实例，确认后将先解绑再绑定所选实例。",
         "changeRecords": "变更记录",
         "changeRecord": {
             "allChanges": "全部变更",
@@ -379,6 +400,13 @@
         "fieldUnavailable": "字段不可用",
         "networkTopo": "网络拓扑",
         "applicationResourceOverview": "应用拓扑",
+        "publicMonitorView": "监控视图",
+        "publicAlertList": "告警列表",
+        "publicNetworkStatusTopology": "网络状态拓扑",
+        "publicApplication3D": "3D应用",
+        "missingStableId": "当前资产缺少可联动的稳定标识，无法加载该组件",
+        "publicWidgetNotFound": "资产不存在或已失效",
+        "openInCmdb": "在 CMDB 中打开",
         "ipView": "IP 视图",
         "ipViewEmptyHint": "请先补全子网网段与子网掩码",
         "ipViewCapacity": "总量",
@@ -967,7 +995,9 @@
             "collapse": "收起凭据",
             "showSecret": "显示凭据",
             "hideSecret": "隐藏凭据",
-            "enablePassword": "特权密码"
+            "enablePassword": "特权密码",
+            "transportProtocol": "连接协议",
+            "telnetWarning": "Telnet 明文传输账号口令，仅应在隔离管理网或设备只开放 TCP/23 时使用。"
         },
         "networkConfigFileTask": {
             "supportedVendors": "当前支持厂商：{vendors}",
@@ -1031,6 +1061,7 @@
             "fieldNames": {
                 "sshAccount": "账户",
                 "sshPassword": "密码",
+                "transportProtocol": "连接协议",
                 "sshPort": "端口",
                 "databaseAccount": "账户",
                 "databasePassword": "密码",
@@ -1090,7 +1121,8 @@
             "fields": {
                 "sshAccount": "可选。目标主机的操作系统登录用户名；不填则走 Agent 采集。填写时需具备执行只读采集命令的权限。",
                 "sshPassword": "可选。上述操作系统账户对应的登录密码；可不填。",
-                "sshPort": "目标主机 SSH 服务监听端口；使用非标准端口时请按实际值修改。",
+                "transportProtocol": "选择 SSH（默认，TCP/22）或 Telnet（TCP/23）。Telnet 明文传输账号口令，不安全，仅设备只开放 Telnet 时使用。",
+                "sshPort": "目标设备 CLI 服务监听端口；SSH 默认 22，Telnet 默认 23。使用非标准端口时请按实际值修改。",
                 "databaseAccount": "可登录目标数据库并读取配置或元数据的数据库用户名。",
                 "databasePassword": "上述数据库账户对应的密码。",
                 "databasePort": "目标数据库服务监听端口；使用非标准端口时请按实际值修改。",
@@ -1164,7 +1196,8 @@
                 "winsphereApi": "WinSphere HTTPS API",
                 "vsphereApi": "VMware vSphere HTTPS API",
                 "ipmi": "IPMI RMCP/RMCP+",
-                "redfish": "Redfish HTTPS API"
+                "redfish": "Redfish HTTPS API",
+                "sshOrTelnet": "SSH / Telnet"
             },
             "kind": {
                 "hostAccount": "目标主机操作系统账户",
@@ -1184,7 +1217,7 @@
                 "winsphereAccount": "WinSphere 平台账户",
                 "vsphereAccount": "vCenter 平台账户",
                 "bmcAccount": "物理服务器 BMC 账户",
-                "networkDeviceAccount": "网络设备 SSH 账户"
+                "networkDeviceAccount": "网络设备 CLI 账户"
             },
             "instruction": {
                 "ssh": "凭据可不填；留空时走 Agent 采集。填写时请提供可通过 SSH（Linux）或 WMI（Windows）登录目标主机并执行只读采集命令的账户。",
@@ -1205,7 +1238,7 @@
                 "vsphere": "填写可访问 VMware vCenter SDK/API 的账户；建议使用只读角色并开启证书校验。",
                 "ipmi": "填写目标物理服务器 BMC 的 IPMI 登录账户；建议使用满足资产读取所需的最低权限。",
                 "redfish": "填写目标物理服务器 BMC 的 Redfish 只读账户；固定使用 HTTPS，默认校验服务端证书。仅在受信任管理网络中接入自签名证书时关闭校验。",
-                "networkConfig": "填写可通过 SSH 登录网络设备并执行只读配置查看命令的账户；需要进入特权模式时再填写特权密码。",
+                "networkConfig": "填写可通过 SSH 或 Telnet 登录网络设备并执行只读配置查看命令的账户。优先使用 SSH；Telnet 明文传输账号口令，仅设备只开放 TCP/23 时选用。需要进入特权模式时再填写特权密码。",
                 "configFile": "填写可通过 SSH 登录目标主机并读取指定配置文件的操作系统账户。"
             },
             "defaultPort": {

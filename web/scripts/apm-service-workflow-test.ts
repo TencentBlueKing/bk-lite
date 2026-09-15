@@ -126,6 +126,9 @@ assert.match(topologyInspectPanel, /dbName/, '推断节点服务概况必须单�
 assert.match(applicationObservability, /include_inferred:\s*true/, '应用详情拓扑必须请求本应用的直接推断下游');
 assert.match(applicationObservability, /include_user_request:\s*true/, '应用详情拓扑必须请求用户请求入口');
 assert.doesNotMatch(serviceDetail, /include_inferred:\s*true/, '服务详情不得打开推断查询');
+assert.match(topologyPage, /spacing="fill"/, '服务拓扑必须撑满工作区高度');
+assert.match(topologyPage, /fillHeight/, '服务拓扑画布必须跟随父容器高度');
+assert.doesNotMatch(topologyInspectPanel, /h-\[640px\]|w-\[320px\]/, '服务概况不得写死 640×320');
 assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不得通过固定宽度撑开整页');
 assert.doesNotMatch(topologyPage, /设计预览|Storybook 示例数据/, '已有后端契约时不得继续展示示例拓扑');
 assert.match(applicationObservability, /关键信息/, '应用详情必须使用关键信息而不是应用 KPI');

@@ -229,6 +229,15 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
 
     partial_update = update
 
+    @HasPermission("applications-Operate")
+    def destroy(self, request, *args, **kwargs):
+        application = self.get_object()
+        try:
+            self.service.delete(application.id, actor=request.user.username)
+        except ValueError as exc:
+            raise ValidationError({"detail": str(exc)}) from exc
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
     renderer_classes = (ApmRenderer,)

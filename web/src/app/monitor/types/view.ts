@@ -25,6 +25,8 @@ export interface ViewModalProps {
   form?: ChartProps;
   metrics?: MetricItem[];
   objects?: ObjectItem[];
+  preferredMetricKey?: string;
+  readOnly?: boolean;
 }
 
 export interface ViewListProps {

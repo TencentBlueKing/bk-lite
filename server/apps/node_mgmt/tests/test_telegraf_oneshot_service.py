@@ -758,3 +758,27 @@ def test_linux_watchdog_never_signals_a_reused_process_identity(tmp_path, monkey
     assert not signalled.exists()
     assert not lock_dir.exists()
     assert list(tmp_path.glob("oneshot.*")) == []
+
+
+@pytest.mark.parametrize("offset", [None, "0s", "9000s"], ids=["omitted", "zero", "nonzero"])
+def test_one_shot_accepts_periodic_offset_but_does_not_wait_for_it(mocker, offset):
+    from apps.node_mgmt.services.telegraf_oneshot import TelegrafOneShotService
+
+    node, child = create_cmdb_child_config()
+    offset_line = f'  collection_offset = "{offset}"\n' if offset is not None else ""
+    child.content = child.content.replace('  timeout = "30s"', f'  interval = "15000s"\n{offset_line}  timeout = "30s"')
+    child.save(update_fields=["content"])
+    executor = mocker.patch("apps.node_mgmt.services.telegraf_oneshot.Executor")
+    executor.return_value.execute_local.return_value = {
+        "success": True,
+        "exit_code": 0,
+        "stdout": "prometheus,oneshot_channel_id=cmdb_7,status=accepted,task_id=req-offset collection_request_accepted=1 1770000000000000000\n",
+    }
+    result = TelegrafOneShotService.run_telegraf_child_configs_once("req-offset", ["cmdb_7"], node.id, [1])
+    assert result["status"] == "accepted"
+    env = executor.return_value.execute_local.call_args.kwargs["env"]
+    runtime = toml.loads(base64.b64decode(env[TelegrafOneShotService.CONFIG_ENV_KEY]).decode())
+    source = runtime["inputs"]["http"][0]
+    assert "collection_offset" not in source
+    assert "interval" not in source
+    assert source["timeout"] == "30s"

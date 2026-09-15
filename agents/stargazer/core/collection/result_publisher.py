@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
-from collections.abc import Callable, Mapping
+import traceback
+from collections.abc import AsyncGenerator, Callable, Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -25,6 +27,7 @@ from core.collection.round_metadata import (
     build_round_metadata_envelope,
 )
 from core.collection.runtime import CollectionRequest, RunLease
+from core.infra.publish_budget import PublishBudget
 
 SCAN_CREDENTIAL_RESULT_SUBJECT = "receive_scan_credential_result"
 CREDENTIAL_RESULT_EVENT_VERSION = 2
@@ -40,14 +43,29 @@ CREDENTIAL_FAILURE_ERROR_CODES = frozenset(
 )
 
 
-@dataclass(frozen=True)
+@dataclass
 class _BufferedPublishItem:
     request: CollectionRequest
-    result: TargetCollectionResult
+    result: TargetCollectionResult | None
     lease: RunLease
     completion: asyncio.Future[PublishOutcome | None]
     state: _PublishAttemptState
     payload_permit: PayloadPermit
+    steps: AsyncGenerator[tuple[str | None, BaseException | PublishOutcome | None], None] | None = None
+
+
+def _clear_exception_locals(error: BaseException) -> None:
+    """保留异常身份、链和堆栈位置，但终态不通过 traceback 持有大 payload。"""
+    pending = [error]
+    visited = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        if current.__traceback__ is not None:
+            traceback.clear_frames(current.__traceback__)
+        pending.extend(cause for cause in (current.__cause__, current.__context__) if cause is not None)
 
 
 class PayloadPermit:
@@ -82,9 +100,13 @@ class _PublishAttemptState:
         completion: asyncio.Future[PublishOutcome | None],
         *,
         deadline: float | None = None,
+        send_timeout_seconds: float | None = None,
+        max_attempts: int = 2,
     ) -> None:
         self._completion = completion
         self._deadline = deadline
+        self.send_budget = PublishBudget(send_timeout_seconds) if send_timeout_seconds is not None else None
+        self.max_attempts = max_attempts
         self._processing = False
         self._delivery_started = False
         self._cancelled = False
@@ -93,6 +115,28 @@ class _PublishAttemptState:
         self._queue_wait_seconds = 0.0
         self._queue_depth_at_enqueue = 0
         self._queue_residence_seconds = 0.0
+        self._terminal_at: float | None = None
+        self._first_delivery_at: float | None = None
+        completion.add_done_callback(self._mark_terminal)
+
+    def _mark_terminal(self, _completion) -> None:
+        if self._terminal_at is None:
+            self._terminal_at = time.monotonic()
+        # Run 可能已按总截止结束等待；仍消费后台终态异常，wait() 保留原异常。
+        if not _completion.cancelled():
+            _completion.exception()
+
+    @property
+    def terminal_at(self) -> float | None:
+        return self._terminal_at
+
+    @property
+    def delivery_duration_seconds(self) -> float:
+        if self.send_budget is not None:
+            return self.send_budget.elapsed
+        if self._first_delivery_at is None:
+            return 0.0
+        return max(0.0, (self._terminal_at or time.monotonic()) - self._first_delivery_at)
 
     @property
     def cancelled(self) -> bool:
@@ -116,7 +160,7 @@ class _PublishAttemptState:
 
     @property
     def queue_age_seconds(self) -> float:
-        return max(0.0, time.monotonic() - self._enqueued_at)
+        return max(0.0, (self._terminal_at or time.monotonic()) - self._enqueued_at)
 
     @property
     def queue_residence_seconds(self) -> float:
@@ -139,8 +183,10 @@ class _PublishAttemptState:
         if self._cancelled:
             return False
         self._processing = True
-        self._delivery_started = True
-        self._queue_residence_seconds = self.queue_age_seconds
+        if not self._delivery_started:
+            self._first_delivery_at = time.monotonic()
+            self._queue_residence_seconds = self.queue_age_seconds
+            self._delivery_started = True
         return True
 
     def cancel_if_unattempted(self) -> bool:
@@ -180,6 +226,24 @@ class FuturePublishReceipt:
     def done(self) -> bool:
         return self._completion.done()
 
+    @property
+    def failed_stage(self) -> str:
+        if not self._completion.done() or self._completion.cancelled():
+            return ""
+        error = self._completion.exception()
+        return str(getattr(error, "failed_stage", "") or getattr(error, "timeout_phase", ""))
+
+    @property
+    def credit_wait_seconds(self) -> float:
+        budget = self._state.send_budget
+        return budget.credit_wait_seconds if budget is not None else 0.0
+
+    def add_done_callback(self, callback) -> None:
+        self._completion.add_done_callback(callback)
+
+    def remove_done_callback(self, callback) -> None:
+        self._completion.remove_done_callback(callback)
+
     async def wait(self):
         return await asyncio.shield(self._completion)
 
@@ -205,6 +269,14 @@ class FuturePublishReceipt:
     @property
     def queue_residence_seconds(self) -> float:
         return self._state.queue_residence_seconds
+
+    @property
+    def terminal_at(self) -> float | None:
+        return self._state.terminal_at
+
+    @property
+    def delivery_duration_seconds(self) -> float:
+        return self._state.delivery_duration_seconds
 
 
 class PublishShutdownError(RuntimeError):
@@ -251,6 +323,7 @@ class BufferedResultPublisher:
         if worker_count <= 0:
             raise ValueError("worker_count must be greater than zero")
         self._delegate = delegate
+        self._cooperative = bool(getattr(delegate, "cooperative_publish", False))
         self._queue: asyncio.Queue[_BufferedPublishItem | None] = asyncio.Queue(maxsize=capacity)
         self._payload_slots = asyncio.BoundedSemaphore(capacity)
         self._batch_size = int(batch_size)
@@ -259,6 +332,7 @@ class BufferedResultPublisher:
         self._metrics = metrics
         self._worker_count = int(worker_count)
         self._writers: list[asyncio.Task] = []
+        self._turns: set[asyncio.Task] = set()
         self._writer: asyncio.Task | None = None
         self._closed = False
         self._pending: set[asyncio.Future[PublishOutcome | None]] = set()
@@ -286,6 +360,10 @@ class BufferedResultPublisher:
         manages_retries_for = getattr(self._delegate, "manages_retries_for", None)
         return bool(manages_retries_for(request) if callable(manages_retries_for) else False)
 
+    @property
+    def manages_delivery_budget(self) -> bool:
+        return self._cooperative
+
     async def reserve_payload(self) -> PayloadPermit:
         """在执行可能产生大结果的目标前预留额度，随后把所有权转交给 Publisher。"""
 
@@ -309,6 +387,8 @@ class BufferedResultPublisher:
         *,
         deadline: float | None = None,
         payload_permit: PayloadPermit | None = None,
+        send_timeout_seconds: float | None = None,
+        max_attempts: int = 2,
     ) -> FuturePublishReceipt:
         if self._closed:
             if payload_permit is not None:
@@ -322,7 +402,7 @@ class BufferedResultPublisher:
             raise
         loop = asyncio.get_running_loop()
         completion = loop.create_future()
-        state = _PublishAttemptState(completion, deadline=deadline)
+        state = _PublishAttemptState(completion, deadline=deadline, send_timeout_seconds=send_timeout_seconds, max_attempts=max_attempts)
         self._pending.add(completion)
         completion.add_done_callback(self._pending.discard)
         item = _BufferedPublishItem(request, result, lease, completion, state, permit)
@@ -363,6 +443,9 @@ class BufferedResultPublisher:
             return
         try:
             async with asyncio.timeout(max(0.0, grace_seconds)):
+                if self._cooperative:
+                    # 轮转项仍属同一个未完成结果；排空后才放退出哨兵。
+                    await self._queue.join()
                 for _writer in writers:
                     await self._queue.put(None)
                 await asyncio.gather(*writers)
@@ -373,27 +456,42 @@ class BufferedResultPublisher:
                 if not writer.done():
                     writer.cancel()
             await asyncio.gather(*writers, return_exceptions=True)
+            turns = tuple(self._turns)
+            for turn in turns:
+                turn.cancel()
+            await asyncio.gather(*turns, return_exceptions=True)
             self._fail_pending(PublishShutdownError("result publisher shutdown grace expired"))
-            self._discard_queued_items()
+            await self._discard_queued_items()
             if isinstance(asyncio.current_task(), asyncio.Task) and asyncio.current_task().cancelling():
                 raise
         except Exception as error:  # writer 异常必须结束所有回执
             self._fail_pending(error)
-            self._discard_queued_items()
+            await self._discard_queued_items()
 
     def _fail_pending(self, error: BaseException) -> None:
         for completion in tuple(self._pending):
             if not completion.done():
                 completion.set_exception(error)
 
-    def _discard_queued_items(self) -> None:
+    async def _discard_queued_items(self) -> None:
         while True:
             try:
                 item = self._queue.get_nowait()
             except asyncio.QueueEmpty:
                 return
             if item is not None:
-                self._release_payload(item)
+                await self._close_item(item)
+            if self._cooperative:
+                self._queue.task_done()
+
+    async def _close_item(self, item: _BufferedPublishItem) -> None:
+        try:
+            if item.steps is not None:
+                await item.steps.aclose()
+        finally:
+            item.steps = None
+            item.result = None
+            self._release_payload(item)
 
     def _release_payload(self, item: _BufferedPublishItem) -> None:
         if not item.state.release_payload_once():
@@ -411,11 +509,67 @@ class BufferedResultPublisher:
         while len(self._writers) < self._worker_count:
             worker_index = len(self._writers)
             writer = asyncio.create_task(
-                self._writer_loop(),
+                self._cooperative_writer_loop() if self._cooperative else self._writer_loop(),
                 name=f"collection-result-publisher:{worker_index}",
             )
             self._writers.append(writer)
         self._writer = self._writers[0]
+
+    async def _cooperative_writer_loop(self) -> None:
+        """Writer 调度有界 quantum；等待 ACK 不占用调度 Worker。"""
+        while True:
+            item = await self._queue.get()
+            if item is None:
+                self._queue.task_done()
+                return
+            # 每个 Payload 仅一个活动 quantum；任务数受 capacity 硬限制，
+            # 实际 NATS 消息/字节仍由共享 JetStream 双信贷限制。
+            turn = asyncio.create_task(self._publish_turn(item), name="collection-publish-quantum")
+            self._turns.add(turn)
+            turn.add_done_callback(self._turns.discard)
+            item = None
+
+    async def _publish_turn(self, item: _BufferedPublishItem) -> None:
+        requeued = False
+        current_task = asyncio.current_task()
+        started = time.monotonic()
+        try:
+            if item.state.cancelled:
+                return
+            if current_task is not None:
+                self._active_batch_started_at[current_task] = started
+            if item.steps is None:
+                assert item.result is not None
+                item.steps = self._delegate.publish_steps((item.request, item.result, item.lease, item.state))
+            result_id, outcome = await anext(item.steps)
+            if result_id is None:
+                # 当前 quantum 持有一个额度，回队必有空位。
+                self._queue.put_nowait(item)
+                requeued = True
+            else:
+                await self._close_item(item)
+                if isinstance(outcome, BaseException):
+                    _clear_exception_locals(outcome)
+                _complete_publish_item(item, outcome)
+        except asyncio.CancelledError as error:
+            await self._close_item(item)
+            _clear_exception_locals(error)
+            raise
+        except Exception as error:
+            if isinstance(error, TimeoutError) and not hasattr(error, "delivery_detected"):
+                error.delivery_detected = item.state.delivery_started
+            await self._close_item(item)
+            _clear_exception_locals(error)
+            if not item.completion.done():
+                item.completion.set_exception(error)
+        finally:
+            if not requeued:
+                await self._close_item(item)
+            self._queue.task_done()
+            if current_task is not None:
+                self._active_batch_started_at.pop(current_task, None)
+            if self._metrics is not None:
+                self._metrics.observe("publish_flush_duration_seconds", time.monotonic() - started)
 
     async def _writer_loop(self) -> None:
         while True:
@@ -534,6 +688,7 @@ class BufferedResultPublisher:
 
 
 def _publish_item_result_id(item: _BufferedPublishItem) -> str:
+    assert item.result is not None
     return build_collection_result_id(
         task_id=item.request.task_id,
         plugin_ref=item.request.plugin_ref,
@@ -544,6 +699,8 @@ def _publish_item_result_id(item: _BufferedPublishItem) -> str:
 
 
 def _complete_publish_item(item: _BufferedPublishItem, outcome) -> None:
+    if item.completion.done():
+        return
     if isinstance(outcome, BaseException):
         item.completion.set_exception(outcome)
     elif isinstance(outcome, PublishOutcome):
@@ -564,6 +721,7 @@ class NatsResultPublisher:
         credential_result_publish: Callable | None = None,
         round_metadata_store=None,
         metrics=None,
+        prepare_timeout_seconds: float = 30.0,
     ) -> None:
         self._metrics_publish = metrics_publish
         self._metrics_publish_batch = metrics_publish_batch
@@ -571,11 +729,27 @@ class NatsResultPublisher:
         self._credential_result_publish = credential_result_publish
         self._round_metadata_store = round_metadata_store
         self._metrics = metrics
+        if prepare_timeout_seconds <= 0:
+            raise ValueError("prepare_timeout_seconds must be greater than zero")
+        self._prepare_timeout_seconds = prepare_timeout_seconds
 
     def manages_retries_for(self, request: CollectionRequest) -> bool:
         """默认 metrics JetStream 在 transport 内完成有限重试。"""
 
         return not request.params.get("callback_subject") and self._metrics_publish is None and self._metrics_publish_batch is None
+
+    @property
+    def cooperative_publish(self) -> bool:
+        return self._metrics_publish is None and self._metrics_publish_batch is None
+
+    async def publish_steps(self, item):
+        """发布器内部游标：None ID 表示让出 Writer，非空 ID 表示目标终态。"""
+        events = self.publish_batch_events((item,), cooperative=True)
+        try:
+            async for result_id, outcome in events:
+                yield result_id, outcome
+        finally:
+            await events.aclose()
 
     async def publish_batch(self, items) -> dict[str, BaseException | PublishOutcome | None]:
         """兼容批量调用方；内部按逐目标终态事件收集结果。"""
@@ -584,7 +758,7 @@ class NatsResultPublisher:
             outcomes[result_id] = outcome
         return outcomes
 
-    async def publish_batch_events(self, items):  # noqa: C901
+    async def publish_batch_events(self, items, *, cooperative=False):  # noqa: C901
         """逐目标产出发布终态，避免同批慢结果阻塞已经完成的回执。"""
         metrics_entries = []
         metric_events = []
@@ -615,7 +789,13 @@ class NatsResultPublisher:
                 non_metrics.append((request, result, lease, attempt_state))
                 continue
             try:
-                await self._publish_scan_credential_result_if_needed(request, result, lease, result_id)
+                if str(request.params.get("credential_result_subject") or "").strip() == SCAN_CREDENTIAL_RESULT_SUBJECT:
+                    budget = getattr(attempt_state, "send_budget", None)
+                    if attempt_state is not None:
+                        attempt_state.mark_delivery_started()
+                    with budget.sending() if budget is not None else nullcontext(deadline) as send_deadline:
+                        async with asyncio.timeout_at(send_deadline):
+                            await self._publish_scan_credential_result_if_needed(request, result, lease, result_id)
             except Exception as error:  # noqa: BLE001 - 返回逐目标失败，不抛整批
                 yield result_id, error
                 continue
@@ -625,7 +805,7 @@ class NatsResultPublisher:
             params = self._result_params(request, result, lease, result_id, attempt_state=attempt_state)
             metrics = result.value
             try:
-                await self._persist_round_metadata(request, result)
+                await self._prepare_round_metadata(request, result, attempt_state)
             except (RoundMetadataConflictError, RoundMetadataValidationError) as error:
                 yield (
                     result_id,
@@ -635,7 +815,9 @@ class NatsResultPublisher:
                     ),
                 )
                 continue
-            except Exception as error:  # noqa: BLE001 - Redis 故障按目标进入现有有限重试
+            except Exception as error:  # noqa: BLE001 - 发布器在持有 payload 期间已完成有限重试
+                error.delivery_detected = False
+                error.failed_stage = "round_metadata"
                 yield result_id, error
                 continue
             metrics_entries.append(({}, metrics, params, request.task_id))
@@ -647,8 +829,17 @@ class NatsResultPublisher:
             if using_default_batch:
                 from tasks.utils.nats_helper import iter_metrics_batch_outcomes
 
-                async for result_id, outcome in iter_metrics_batch_outcomes(tuple(metrics_entries), metrics=self._metrics):
-                    yield result_id, outcome
+                if cooperative:
+                    from tasks.utils.nats_helper import iter_metrics_publish_steps
+
+                    events = iter_metrics_publish_steps(metrics_entries[0], metrics=self._metrics)
+                else:
+                    events = iter_metrics_batch_outcomes(tuple(metrics_entries), metrics=self._metrics)
+                try:
+                    async for result_id, outcome in events:
+                        yield result_id, outcome
+                finally:
+                    await events.aclose()
             elif metrics_publish_batch is not None:
                 try:
                     batch_outcomes = await metrics_publish_batch(tuple(metrics_entries))
@@ -690,7 +881,10 @@ class NatsResultPublisher:
                         status=PublishStatus.RETRYABLE_FAILED,
                         error_code="publish_cancelled_before_delivery",
                     )
-                await self.publish(request, result, lease)
+                budget = getattr(attempt_state, "send_budget", None)
+                with budget.sending() if budget is not None else nullcontext(getattr(attempt_state, "deadline", None)) as send_deadline:
+                    async with asyncio.timeout_at(send_deadline):
+                        await self.publish(request, result, lease)
                 return None
 
             non_metric_outcomes = await asyncio.gather(
@@ -752,6 +946,31 @@ class NatsResultPublisher:
             metrics_publish = publish_metrics_to_nats
         metrics = result.value
         await metrics_publish({}, metrics, params, request.task_id)
+
+    async def _prepare_round_metadata(self, request, result, attempt_state) -> None:
+        """幂等元数据写入先于指标发送；准备阶段单独有界，不占 NATS 发送预算。"""
+        deadline = asyncio.get_running_loop().time() + self._prepare_timeout_seconds
+        legacy_deadline = getattr(attempt_state, "deadline", None)
+        if legacy_deadline is not None:
+            deadline = min(deadline, legacy_deadline)
+        started = time.monotonic()
+        try:
+            async with asyncio.timeout_at(deadline):
+                for attempt in range(getattr(attempt_state, "max_attempts", 2)):
+                    try:
+                        await self._persist_round_metadata(request, result)
+                        return
+                    except (RoundMetadataConflictError, RoundMetadataValidationError):
+                        raise
+                    except Exception:
+                        if attempt + 1 >= getattr(attempt_state, "max_attempts", 2):
+                            raise
+                        if self._metrics is not None:
+                            self._metrics.increment("publish_prepare_retry_total")
+                        await asyncio.sleep(0.1 * (attempt + 1))
+        finally:
+            if self._metrics is not None:
+                self._metrics.observe("publish_prepare_duration_seconds", time.monotonic() - started)
 
     async def _persist_round_metadata(self, request, result) -> None:
         payload = result.value

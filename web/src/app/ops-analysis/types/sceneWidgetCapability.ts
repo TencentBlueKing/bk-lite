@@ -27,6 +27,13 @@ export const SCENE_WIDGET_CAPABILITIES: Record<
     shareSupported: true,
     reportSupported: false,
   },
+  relatedTopology: {
+    type: 'relatedTopology',
+    selfFetch: true,
+    surfaces: ['dashboard', 'screen'],
+    shareSupported: false,
+    reportSupported: false,
+  },
 };
 
 export const getSceneWidgetCapability = (

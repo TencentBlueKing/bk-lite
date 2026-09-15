@@ -36,6 +36,7 @@ def task(**overrides):
 
 
 def prepare_create(mocker, events, run):
+    mocker.patch("apps.cmdb.services.collect_service.CollectionOffsetService.apply")
     instance = task()
     serializer = mocker.Mock(instance=instance)
     view = mocker.Mock()

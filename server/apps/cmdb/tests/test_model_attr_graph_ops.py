@@ -132,9 +132,10 @@ def test_update_model_attr_writes_fields(monkeypatch):
     )
     graph = _Graph(attrs=attrs)
     monkeypatch.setattr("apps.cmdb.services.model.create_change_record", lambda **kw: None)
+    invalidated = []
     monkeypatch.setattr(
-        "apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change",
-        lambda model_id: None,
+        "apps.cmdb.display_field.ExcludeFieldsCache.invalidate_model_attrs",
+        lambda model_id: invalidated.append(model_id),
     )
     with patch("apps.cmdb.services.model.GraphClient", return_value=graph):
         out = ModelManage.update_model_attr(
@@ -153,6 +154,7 @@ def test_update_model_attr_writes_fields(monkeypatch):
     assert out["attr_name"] == "CPU核数"
     assert out["attr_group"] == "new"
     assert out["is_required"] is True
+    assert invalidated == ["host"]
 
 
 def test_search_model_filters_hidden_and_permissions(monkeypatch):
@@ -199,9 +201,15 @@ def test_search_model_filters_hidden_and_permissions(monkeypatch):
     assert {m["model_id"] for m in all_models} == {"host", "hidden", "bare"}
 
 
-def test_delete_model_calls_batch_delete():
+def test_delete_model_calls_batch_delete_and_invalidates_cache(monkeypatch):
     graph = _Graph()
     graph.batch_delete_entity = MagicMock()
+    invalidated = []
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change",
+        lambda model_id: invalidated.append(model_id),
+    )
     with patch("apps.cmdb.services.model.GraphClient", return_value=graph):
-        ModelManage.delete_model(99)
+        ModelManage.delete_model(99, "host")
     graph.batch_delete_entity.assert_called_once_with("model", [99])
+    assert invalidated == ["host"]
