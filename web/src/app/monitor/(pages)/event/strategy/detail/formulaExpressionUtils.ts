@@ -538,7 +538,10 @@ export const buildMetricExpressionPreviewPayload = ({
   calculationUnit,
   thresholdUnit,
   compareMode,
-  compareValueKind
+  compareValueKind,
+  countPredicate,
+  forecastTarget,
+  forecastLookback
 }: {
   monitorObjId: string | number | null;
   source: SourceFeild;
@@ -561,6 +564,9 @@ export const buildMetricExpressionPreviewPayload = ({
   thresholdUnit?: string | null;
   compareMode?: string | null;
   compareValueKind?: string | null;
+  countPredicate?: { method?: string; value?: number | null } | null;
+  forecastTarget?: number | null;
+  forecastLookback?: { type: string; value: number } | null;
 }) => {
   if (!monitorObjId || !selectedInstance || !algorithm) {
     return null;
@@ -632,6 +638,19 @@ export const buildMetricExpressionPreviewPayload = ({
     threshold_unit: previewThresholdUnit,
     compare_mode: resolvedCompareMode,
     compare_value_kind: resolvedCompareKind,
+    count_predicate:
+      algorithm === 'count_if_over_time' && countPredicate?.method
+        ? {
+          method: countPredicate.method,
+          value: countPredicate.value
+        }
+        : {},
+    forecast_target:
+      resolvedCompareMode === 'timeleft' ? forecastTarget ?? null : null,
+    forecast_lookback:
+      resolvedCompareMode === 'timeleft'
+        ? forecastLookback || { type: 'hour', value: 1 }
+        : {},
     preview: {
       instance_id: selectedInstance.instance_id,
       instance_id_values: selectedInstance.instance_id_values,

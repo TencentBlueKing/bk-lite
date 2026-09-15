@@ -57,7 +57,11 @@ class PolicyPreviewService:
         start = end - period_to_seconds(period) * points
         compare_mode = self.payload.get("compare_mode") or COMPARE_MODE_ABSOLUTE
         result_unit = resolve_result_unit(self.payload)
-        overlay_enabled = compare_mode not in ("", COMPARE_MODE_ABSOLUTE)
+        overlay_enabled = compare_mode not in (
+            "",
+            COMPARE_MODE_ABSOLUTE,
+            "timeleft",
+        )
 
         if overlay_enabled:
             current_query = compile_window_query(

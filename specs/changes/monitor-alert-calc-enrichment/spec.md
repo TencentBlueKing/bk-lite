@@ -311,3 +311,12 @@ VictoriaMetrics 实跑（本机 Docker 底座，不改 D1～D10）：
 
 - `offset_7d` / `offset_30d` / `baseline_4w` 保存不拦、切片 1 不编译：表单选不到，不为此加拦截。
 - 存在性查询用策略原汇聚、不套 `compare_mode`，不采用 D2 字面的固定 `last_over_time`。切片 2 上速率时再评估。
+
+## 切片 2 验收记录
+
+现场确认（不改写 D1～D10 原文）：
+
+- 窗口聚合类（含 stddev、count_if、分位）存在性仍用策略原汇聚、不套对照。旧 avg 策略无数据字符串与升级前一致。
+- 逐序列类 `rate` / `changes` / `deriv` 的存在性改用 `last_over_time((group(base) by g)[period:step])`，避免单样本窗误报无数据。比较查询仍先逐序列再分组。
+- `offset_7d` / `offset_30d` 与 1h/24h 同形态；`baseline_4w` percent 为四窗均值对照；`timeleft` 水位固定 `last_over_time`、斜率用回看窗 `deriv`，预览只画剩余小时、不叠对照线。
+- `count_if` 只允许 absolute；公式 + 逐序列编译拒绝；仅 `algorithm=rate` 且基础查询已含 `rate`/`irate`/`increase` 时拒重包。

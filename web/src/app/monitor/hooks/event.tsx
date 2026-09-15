@@ -109,6 +109,31 @@ const useMethodList = (): ListItem[] => {
         value: 'p99_over_time',
         title: t('monitor.events.p99OverTimeTitle'),
       },
+      {
+        label: 'STDDEV_OVER_TIME',
+        value: 'stddev_over_time',
+        title: t('monitor.events.stddevOverTimeTitle'),
+      },
+      {
+        label: 'COUNT_IF_OVER_TIME',
+        value: 'count_if_over_time',
+        title: t('monitor.events.countIfOverTimeTitle'),
+      },
+      {
+        label: 'RATE',
+        value: 'rate',
+        title: t('monitor.events.rateTitle'),
+      },
+      {
+        label: 'CHANGES',
+        value: 'changes',
+        title: t('monitor.events.changesTitle'),
+      },
+      {
+        label: 'DERIV',
+        value: 'deriv',
+        title: t('monitor.events.derivTitle'),
+      },
     ],
     [t]
   );

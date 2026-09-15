@@ -365,23 +365,63 @@ export const COMPARE_MODE_ABSOLUTE = 'absolute';
 export const COMPARE_MODE_PREVIOUS_WINDOW = 'previous_window';
 export const COMPARE_MODE_OFFSET_1H = 'offset_1h';
 export const COMPARE_MODE_OFFSET_24H = 'offset_24h';
-export const SLICE1_COMPARE_MODES = [
+export const COMPARE_MODE_OFFSET_7D = 'offset_7d';
+export const COMPARE_MODE_OFFSET_30D = 'offset_30d';
+export const COMPARE_MODE_BASELINE_4W = 'baseline_4w';
+export const COMPARE_MODE_TIMELEFT = 'timeleft';
+export const ENABLED_COMPARE_MODES = [
   COMPARE_MODE_ABSOLUTE,
   COMPARE_MODE_PREVIOUS_WINDOW,
   COMPARE_MODE_OFFSET_1H,
-  COMPARE_MODE_OFFSET_24H
+  COMPARE_MODE_OFFSET_24H,
+  COMPARE_MODE_OFFSET_7D,
+  COMPARE_MODE_OFFSET_30D,
+  COMPARE_MODE_BASELINE_4W,
+  COMPARE_MODE_TIMELEFT
 ] as const;
+export const SLICE1_COMPARE_MODES = ENABLED_COMPARE_MODES;
 
 export const COMPARE_VALUE_KIND_DELTA = 'delta';
 export const COMPARE_VALUE_KIND_PERCENT = 'percent';
 export const COMPARE_VALUE_KIND_RATIO = 'ratio';
+export const COMPARE_VALUE_KIND_HOURS = 'hours';
+export const COUNT_IF_ALGORITHM = 'count_if_over_time';
+export const PER_SERIES_ALGORITHMS = ['rate', 'changes', 'deriv'];
+export const NEW_ALGORITHMS = [
+  'p90_over_time',
+  'p95_over_time',
+  'p99_over_time',
+  'stddev_over_time',
+  'count_if_over_time',
+  'rate',
+  'changes',
+  'deriv'
+];
+export const LEVEL_ALGORITHMS = [
+  'avg',
+  'max',
+  'min',
+  'last',
+  'avg_over_time',
+  'max_over_time',
+  'min_over_time',
+  'last_over_time'
+];
+export const FORECAST_LOOKBACK_OPTIONS = [
+  { type: 'hour', value: 1 },
+  { type: 'hour', value: 4 },
+  { type: 'hour', value: 24 }
+] as const;
+export const DEFAULT_FORECAST_LOOKBACK = { type: 'hour', value: 1 };
 export const OVERLAY_ROLE_CURRENT = 'current';
 export const OVERLAY_ROLE_BASELINE = 'baseline';
 export const OVERLAY_ROLE_LABEL = 'compare_role';
 
 const COMPARE_OFFSET_SECONDS: Record<string, number> = {
   [COMPARE_MODE_OFFSET_1H]: 3600,
-  [COMPARE_MODE_OFFSET_24H]: 86400
+  [COMPARE_MODE_OFFSET_24H]: 86400,
+  [COMPARE_MODE_OFFSET_7D]: 7 * 86400,
+  [COMPARE_MODE_OFFSET_30D]: 30 * 86400
 };
 
 export const COMPARE_VALUE_KINDS_BY_MODE: Record<string, string[]> = {
@@ -397,7 +437,20 @@ export const COMPARE_VALUE_KINDS_BY_MODE: Record<string, string[]> = {
   [COMPARE_MODE_OFFSET_24H]: [
     COMPARE_VALUE_KIND_PERCENT,
     COMPARE_VALUE_KIND_RATIO
-  ]
+  ],
+  [COMPARE_MODE_OFFSET_7D]: [
+    COMPARE_VALUE_KIND_PERCENT,
+    COMPARE_VALUE_KIND_RATIO
+  ],
+  [COMPARE_MODE_OFFSET_30D]: [
+    COMPARE_VALUE_KIND_PERCENT,
+    COMPARE_VALUE_KIND_RATIO
+  ],
+  [COMPARE_MODE_BASELINE_4W]: [
+    COMPARE_VALUE_KIND_DELTA,
+    COMPARE_VALUE_KIND_PERCENT
+  ],
+  [COMPARE_MODE_TIMELEFT]: [COMPARE_VALUE_KIND_HOURS]
 };
 
 export const policyPeriodToSeconds = (
@@ -425,13 +478,36 @@ export const isCompareModeAvailable = (
   return periodSeconds !== offsetSeconds;
 };
 
+export const getEnabledCompareModes = ({
+  periodType,
+  periodValue,
+  algorithm
+}: {
+  periodType?: string | null;
+  periodValue?: number | null;
+  algorithm?: string | null;
+}): string[] => {
+  if (algorithm === COUNT_IF_ALGORITHM) {
+    return [COMPARE_MODE_ABSOLUTE];
+  }
+  return ENABLED_COMPARE_MODES.filter((mode) => {
+    if (
+      mode === COMPARE_MODE_TIMELEFT &&
+      algorithm &&
+      !LEVEL_ALGORITHMS.includes(algorithm)
+    ) {
+      return false;
+    }
+    return isCompareModeAvailable(mode, periodType, periodValue);
+  });
+};
+
 export const getSlice1CompareModes = (
   periodType?: string | null,
-  periodValue?: number | null
+  periodValue?: number | null,
+  algorithm?: string | null
 ): string[] =>
-  SLICE1_COMPARE_MODES.filter((mode) =>
-    isCompareModeAvailable(mode, periodType, periodValue)
-  );
+  getEnabledCompareModes({ periodType, periodValue, algorithm });
 
 export const getCompareValueKinds = (mode: string): string[] =>
   (COMPARE_VALUE_KINDS_BY_MODE[mode] || ['']).filter(Boolean);
@@ -442,39 +518,92 @@ export const defaultCompareValueKind = (mode: string): string =>
 export const resolveCompareFieldsForSave = ({
   isTrap,
   compareMode,
-  compareValueKind
+  compareValueKind,
+  algorithm,
+  countPredicate,
+  forecastTarget,
+  forecastLookback
 }: {
   isTrap: boolean;
   compareMode?: string | null;
   compareValueKind?: string | null;
-}): { compare_mode: string; compare_value_kind: string } => {
+  algorithm?: string | null;
+  countPredicate?: { method?: string; value?: number | null } | null;
+  forecastTarget?: number | null;
+  forecastLookback?: { type: string; value: number } | null;
+}): {
+  compare_mode: string;
+  compare_value_kind: string;
+  count_predicate: Record<string, unknown>;
+  forecast_target: number | null;
+  forecast_lookback: Record<string, unknown>;
+} => {
   if (isTrap) {
-    return { compare_mode: COMPARE_MODE_ABSOLUTE, compare_value_kind: '' };
+    return {
+      compare_mode: COMPARE_MODE_ABSOLUTE,
+      compare_value_kind: '',
+      count_predicate: {},
+      forecast_target: null,
+      forecast_lookback: {}
+    };
   }
   const mode = compareMode || COMPARE_MODE_ABSOLUTE;
   if (mode === COMPARE_MODE_ABSOLUTE) {
-    return { compare_mode: COMPARE_MODE_ABSOLUTE, compare_value_kind: '' };
+    return {
+      compare_mode: COMPARE_MODE_ABSOLUTE,
+      compare_value_kind: '',
+      count_predicate:
+        algorithm === COUNT_IF_ALGORITHM && countPredicate?.method
+          ? {
+            method: countPredicate.method,
+            value: countPredicate.value
+          }
+          : {},
+      forecast_target: null,
+      forecast_lookback: {}
+    };
   }
   const allowed = getCompareValueKinds(mode);
   const kind =
     compareValueKind && allowed.includes(compareValueKind)
       ? compareValueKind
       : defaultCompareValueKind(mode);
-  return { compare_mode: mode, compare_value_kind: kind };
+  return {
+    compare_mode: mode,
+    compare_value_kind: kind,
+    count_predicate: {},
+    forecast_target:
+      mode === COMPARE_MODE_TIMELEFT ? forecastTarget ?? null : null,
+    forecast_lookback:
+      mode === COMPARE_MODE_TIMELEFT
+        ? forecastLookback || DEFAULT_FORECAST_LOOKBACK
+        : {}
+  };
 };
 
 export const resolvePolicyResultUnit = ({
   compareValueKind,
-  calculationUnit
+  calculationUnit,
+  algorithm
 }: {
   compareValueKind?: string | null;
   calculationUnit?: string | null;
+  algorithm?: string | null;
 }): { unit: string | null; conversionEnabled: boolean } => {
   if (compareValueKind === COMPARE_VALUE_KIND_PERCENT) {
     return { unit: 'percent', conversionEnabled: false };
   }
   if (compareValueKind === COMPARE_VALUE_KIND_RATIO) {
     return { unit: null, conversionEnabled: false };
+  }
+  if (compareValueKind === COMPARE_VALUE_KIND_HOURS) {
+    return { unit: 'hour', conversionEnabled: false };
+  }
+  if (algorithm === 'changes' || algorithm === COUNT_IF_ALGORITHM) {
+    return { unit: 'count', conversionEnabled: false };
+  }
+  if (algorithm === 'rate' || algorithm === 'deriv') {
+    return { unit: calculationUnit || null, conversionEnabled: false };
   }
   return {
     unit: calculationUnit || null,

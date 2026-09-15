@@ -658,5 +658,83 @@ assert.equal(offsetPreviewPayload?.compare_mode, 'offset_1h');
 assert.equal(offsetPreviewPayload?.compare_value_kind, 'percent');
 assert.equal(offsetPreviewPayload?.threshold_unit, 'percent');
 assert.equal(offsetPreviewPayload?.algorithm, 'p95_over_time');
+assert.deepEqual(offsetPreviewPayload?.count_predicate, {});
+assert.equal(offsetPreviewPayload?.forecast_target, null);
+assert.deepEqual(offsetPreviewPayload?.forecast_lookback, {});
+
+const countIfPreviewPayload = buildMetricExpressionPreviewPayload({
+  monitorObjId: 'linux',
+  source: {
+    type: 'instance',
+    values: ['host-1']
+  },
+  metrics: [
+    {
+      id: 10,
+      name: 'cpu_usage',
+      display_name: 'CPU 使用率',
+      unit: 'percent',
+      dimensions: [],
+      instance_id_keys: ['instance_id']
+    }
+  ],
+  mode: 'metric',
+  resultName: '',
+  expression: '',
+  rows: singleRows,
+  selectedInstance: previewInstance,
+  period: 5,
+  periodUnit: 'min',
+  algorithm: 'count_if_over_time',
+  groupAlgorithm: 'avg',
+  groupBy: ['instance_id'],
+  countPredicate: { method: '>', value: 80 }
+});
+assert.equal(countIfPreviewPayload?.algorithm, 'count_if_over_time');
+assert.deepEqual(countIfPreviewPayload?.count_predicate, {
+  method: '>',
+  value: 80
+});
+assert.equal(countIfPreviewPayload?.compare_mode, 'absolute');
+
+const timeleftPreviewPayload = buildMetricExpressionPreviewPayload({
+  monitorObjId: 'linux',
+  source: {
+    type: 'instance',
+    values: ['host-1']
+  },
+  metrics: [
+    {
+      id: 10,
+      name: 'disk_used_percent',
+      display_name: '磁盘使用率',
+      unit: 'percent',
+      dimensions: [],
+      instance_id_keys: ['instance_id']
+    }
+  ],
+  mode: 'metric',
+  resultName: '',
+  expression: '',
+  rows: singleRows,
+  selectedInstance: previewInstance,
+  period: 5,
+  periodUnit: 'min',
+  algorithm: 'avg_over_time',
+  groupAlgorithm: 'avg',
+  groupBy: ['instance_id'],
+  compareMode: 'timeleft',
+  compareValueKind: 'hours',
+  forecastTarget: 90,
+  forecastLookback: { type: 'hour', value: 4 }
+});
+assert.equal(timeleftPreviewPayload?.compare_mode, 'timeleft');
+assert.equal(timeleftPreviewPayload?.compare_value_kind, 'hours');
+assert.equal(timeleftPreviewPayload?.forecast_target, 90);
+assert.deepEqual(timeleftPreviewPayload?.forecast_lookback, {
+  type: 'hour',
+  value: 4
+});
+assert.deepEqual(timeleftPreviewPayload?.count_predicate, {});
 
 console.log('monitor-policy-formula-payload-test passed');

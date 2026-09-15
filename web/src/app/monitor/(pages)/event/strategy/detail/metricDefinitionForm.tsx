@@ -20,7 +20,7 @@ import {
   useMethodList,
   useGroupMethodList
 } from '@/app/monitor/hooks/event';
-import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
+import { COMPARISON_METHOD, SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { useConditionList } from '@/app/monitor/hooks';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { debounce } from 'lodash';
@@ -31,6 +31,11 @@ import {
   buildMetricExpressionQueryCondition,
   MetricExpressionMode
 } from './formulaExpressionUtils';
+import {
+  COUNT_IF_ALGORITHM,
+  NEW_ALGORITHMS,
+  PER_SERIES_ALGORITHMS
+} from './strategyDetailUtils';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -61,6 +66,8 @@ interface MetricDefinitionFormProps {
   onPeriodUnitChange: (val: string) => void;
   onAlgorithmChange: (val: string) => void;
   isEnumMetric?: boolean;
+  countPredicate?: { method: string; value: number | null };
+  onCountPredicateChange?: (val: { method: string; value: number | null }) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -88,22 +95,27 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   onPeriodUnitChange,
   onAlgorithmChange,
   isEnumMetric = false,
+  countPredicate,
+  onCountPredicateChange,
   isTrap
 }) => {
   const { t } = useTranslation();
   const METHOD_LIST = useMethodList();
-  const algorithmOptions = useMemo(
-    () =>
-      isEnumMetric
-        ? METHOD_LIST.filter(
-          (item) =>
-            !['p90_over_time', 'p95_over_time', 'p99_over_time'].includes(
-              String(item.value)
-            )
-        )
-        : METHOD_LIST,
-    [METHOD_LIST, isEnumMetric]
-  );
+  const algorithmOptions = useMemo(() => {
+    return METHOD_LIST.filter((item) => {
+      const value = String(item.value);
+      if (isEnumMetric && NEW_ALGORITHMS.includes(value)) {
+        return false;
+      }
+      if (
+        metricExpressionMode === 'formula' &&
+        PER_SERIES_ALGORITHMS.includes(value)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [METHOD_LIST, isEnumMetric, metricExpressionMode]);
   const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
@@ -342,6 +354,56 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
               </Form.Item>
               <div className="text-[var(--color-text-3)] mt-[10px]">
                 {t('monitor.events.convergenceMethodTip')}
+              </div>
+            </Form.Item>
+          )
+        }
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prevValues, currentValues) =>
+          prevValues.algorithm !== currentValues.algorithm ||
+          prevValues.collect_type !== currentValues.collect_type
+        }
+      >
+        {({ getFieldValue }) =>
+          isTrap(getFieldValue) ||
+          getFieldValue('algorithm') !== COUNT_IF_ALGORITHM ? null : (
+            <Form.Item
+              label={
+                <span className="w-[100px]">
+                  {t('monitor.events.countPredicate')}
+                </span>
+              }
+              required
+            >
+              <div className="flex flex-wrap items-center gap-[10px]">
+                <Select
+                  className="w-[120px]"
+                  value={countPredicate?.method || '>'}
+                  onChange={(method) =>
+                    onCountPredicateChange?.({
+                      method,
+                      value: countPredicate?.value ?? null
+                    })
+                  }
+                >
+                  {COMPARISON_METHOD.map((item) => (
+                    <Option value={item.value} key={String(item.value)}>
+                      {item.label}
+                    </Option>
+                  ))}
+                </Select>
+                <InputNumber
+                  className="w-[160px]"
+                  value={countPredicate?.value}
+                  onChange={(value) =>
+                    onCountPredicateChange?.({
+                      method: countPredicate?.method || '>',
+                      value: typeof value === 'number' ? value : null
+                    })
+                  }
+                />
               </div>
             </Form.Item>
           )

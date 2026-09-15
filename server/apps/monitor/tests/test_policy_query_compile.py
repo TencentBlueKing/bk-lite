@@ -168,10 +168,84 @@ def test_old_policy_existence_matches_pre_upgrade_aggregation():
     assert pm.compile_policy_query(policy, "up", "5m", "instance_id") == expected
 
 
-def test_unimplemented_compare_mode_raises():
+def test_offset_7d_compiles_percent():
     policy = _policy(compare_mode="offset_7d", compare_value_kind="percent")
-    with pytest.raises(BaseAppException, match="unsupported compare_mode"):
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == f"({window} - {window} offset 7d) / ({window} offset 7d) * 100"
+
+
+def test_stddev_compiles_stddev_over_time():
+    policy = _policy(algorithm="stddev_over_time")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == "stddev_over_time((avg(cpu) by (instance_id))[5m:10s])"
+
+
+def test_count_if_compiles_predicate_without_bool():
+    policy = _policy(
+        algorithm="count_if_over_time",
+        count_predicate={"method": ">", "value": 80},
+    )
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == (
+        "count_over_time(((avg(cpu) by (instance_id)) > 80)[5m:10s])"
+    )
+    assert "bool" not in compiled
+
+
+def test_per_series_compiles_then_groups():
+    policy = _policy(algorithm="rate", group_algorithm="avg")
+    assert (
         pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+        == "avg(rate(cpu[5m])) by (instance_id)"
+    )
+    policy = _policy(algorithm="changes", group_algorithm="max")
+    assert (
+        pm.compile_policy_query(policy, "up", "5m", "instance_id")
+        == "max(changes(up[5m])) by (instance_id)"
+    )
+    policy = _policy(algorithm="deriv", group_algorithm="avg")
+    assert (
+        pm.compile_policy_query(policy, "disk", "5m", "instance_id")
+        == "avg(deriv(disk[5m])) by (instance_id)"
+    )
+
+
+def test_rate_rejects_base_query_already_containing_rate():
+    policy = _policy(algorithm="rate")
+    with pytest.raises(BaseAppException, match="already contains rate"):
+        pm.compile_policy_query(policy, "rate(if_octets[5m])", "5m", "instance_id")
+
+
+def test_baseline_4w_percent_uses_four_offsets():
+    policy = _policy(compare_mode="baseline_4w", compare_value_kind="percent")
+    q = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    b = f"({q} offset 7d + {q} offset 14d + {q} offset 21d + {q} offset 28d) / 4"
+    assert compiled == f"({q} - ({b})) / ({b}) * 100"
+
+
+def test_timeleft_uses_water_level_and_lookback_deriv():
+    policy = _policy(
+        algorithm="last_over_time",
+        group_algorithm="avg",
+        compare_mode="timeleft",
+        compare_value_kind="hours",
+        forecast_target=90,
+        forecast_lookback={"type": "hour", "value": 1},
+    )
+    compiled = pm.compile_policy_query(policy, "disk", "5m", "instance_id")
+    water = "last_over_time((avg(disk) by (instance_id))[5m:10s])"
+    slope = "deriv((avg(disk) by (instance_id))[1h:2m])"
+    assert compiled == f"clamp_min(90 - {water}, 0) / clamp_min({slope}, 1e-9) / 3600"
+
+
+def test_existence_rate_uses_last_over_time():
+    policy = _policy(algorithm="rate", group_algorithm="avg", compare_mode="offset_1h")
+    compiled = pm.compile_existence_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == "last_over_time((avg(cpu) by (instance_id))[5m:10s])"
+    assert "rate(" not in compiled
+    assert "offset" not in compiled
 
 
 def test_old_policy_without_new_fields_compiles_identically():
@@ -200,6 +274,8 @@ def test_legacy_short_algorithm_ignores_default_group_algorithm():
         ({"compare_value_kind": "percent", "compare_mode": "offset_1h"}, "percent", False),
         ({"compare_value_kind": "ratio", "compare_mode": "offset_24h"}, "", False),
         ({"algorithm": "p95_over_time"}, "kibibytes", True),
+        ({"algorithm": "stddev_over_time"}, "kibibytes", True),
+        ({"algorithm": "count_if_over_time"}, "count", False),
         ({"algorithm": "changes"}, "count", False),
         ({"algorithm": "rate"}, "bytes", False),
         ({"compare_value_kind": "hours", "compare_mode": "timeleft"}, "hour", False),

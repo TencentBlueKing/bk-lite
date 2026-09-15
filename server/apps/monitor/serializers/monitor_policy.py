@@ -6,6 +6,7 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.tasks.utils.policy_methods import (
+    ALLOWED_FORECAST_LOOKBACK,
     COMPARE_MODES,
     COMPARE_OFFSET_SECONDS,
     COMPARE_VALUE_KINDS,
@@ -17,7 +18,8 @@ from apps.monitor.tasks.utils.policy_methods import (
     LOW_SIDE_METHODS,
     NEW_ALGORITHMS,
     PER_SERIES_ALGORITHMS,
-    WINDOW_AGGREGATION_ALGORITHMS,
+    POLICY_ALGORITHMS,
+    PREDICATE_TO_PROMQL,
     base_query_contains_rate_function,
     period_to_seconds,
     resolve_result_unit,
@@ -30,7 +32,7 @@ _VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}
 # source 合法类型 —— 其余类型在扫描器/基线构建时静默返回空目标（策略不生效），instance/organization 之外即误配
 _VALID_SOURCE_TYPES = {"instance", "organization"}
 _VALID_GROUP_AGGREGATION_ALGORITHMS = GROUP_AGGREGATION_ALGORITHMS
-_VALID_AGGREGATION_ALGORITHMS = WINDOW_AGGREGATION_ALGORITHMS
+_VALID_AGGREGATION_ALGORITHMS = POLICY_ALGORITHMS
 # PromQL/MetricsQL label 运算符白名单
 _VALID_LABEL_METHODS = {"=", "!=", "=~", "!~"}
 # label name 合法正则（Prometheus 规范）
@@ -443,12 +445,23 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             errors["algorithm"] = "距容量线剩余时间只允许 avg/max/min/last 类汇聚"
         if compare_mode == "timeleft" and not self._get_value(attrs, "forecast_target", None):
             errors.setdefault("forecast_target", "timeleft 必须填写容量线目标")
+        if compare_mode == "timeleft":
+            lookback = self._get_value(attrs, "forecast_lookback", {}) or {}
+            if not lookback:
+                attrs["forecast_lookback"] = {"type": "hour", "value": 1}
+            else:
+                try:
+                    lookback_key = (lookback.get("type"), int(lookback.get("value")))
+                except (TypeError, ValueError):
+                    lookback_key = None
+                if lookback_key not in ALLOWED_FORECAST_LOOKBACK:
+                    errors["forecast_lookback"] = "回看窗只允许 1h / 4h / 24h"
 
         if algorithm == COUNT_IF_ALGORITHM and compare_mode != "absolute":
             errors["compare_mode"] = "条件计数只允许比较基准为当前值"
         if algorithm in PER_SERIES_ALGORITHMS and query_condition.get("type") == "formula":
             errors["algorithm"] = "公式策略不能使用速率/变化次数/斜率"
-        if algorithm in PER_SERIES_ALGORITHMS:
+        if algorithm == "rate":
             base_query = self._compiled_base_query(attrs)
             if base_query_contains_rate_function(base_query):
                 errors["algorithm"] = "基础查询已包含 rate/irate/increase，不能再选速率类汇聚"
@@ -499,6 +512,15 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             predicate = self._get_value(attrs, "count_predicate", {}) or {}
             if not isinstance(predicate, dict) or "method" not in predicate or "value" not in predicate:
                 errors["count_predicate"] = "条件计数必须填写内阈运算符与值"
+            elif predicate.get("method") not in PREDICATE_TO_PROMQL:
+                errors["count_predicate"] = "条件计数内阈运算符非法"
+            else:
+                raw_value = predicate.get("value")
+                try:
+                    if isinstance(raw_value, bool) or not math.isfinite(float(raw_value)):
+                        raise ValueError
+                except (TypeError, ValueError):
+                    errors["count_predicate"] = "条件计数内阈必须是有限数值"
 
         if errors:
             raise serializers.ValidationError(errors)

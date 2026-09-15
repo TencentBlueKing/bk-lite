@@ -114,6 +114,38 @@ def test_legal_compare_combinations_accepted(metric_ctx, compare_mode, kind):
 
 
 @pytest.mark.django_db
+def test_accepts_stddev_count_if_and_per_series(metric_ctx):
+    serializer = MonitorPolicySerializer(
+        data=_payload(metric_ctx, algorithm="stddev_over_time")
+    )
+    assert serializer.is_valid(), serializer.errors
+
+    serializer = MonitorPolicySerializer(
+        data=_payload(
+            metric_ctx,
+            algorithm="count_if_over_time",
+            count_predicate={"method": ">", "value": 80},
+        )
+    )
+    assert serializer.is_valid(), serializer.errors
+
+    serializer = MonitorPolicySerializer(
+        data=_payload(metric_ctx, algorithm="rate")
+    )
+    assert serializer.is_valid(), serializer.errors
+
+    serializer = MonitorPolicySerializer(
+        data=_payload(metric_ctx, algorithm="changes")
+    )
+    assert serializer.is_valid(), serializer.errors
+
+    serializer = MonitorPolicySerializer(
+        data=_payload(metric_ctx, algorithm="deriv")
+    )
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
 def test_rejects_kind_mismatch(metric_ctx):
     serializer = MonitorPolicySerializer(
         data=_payload(

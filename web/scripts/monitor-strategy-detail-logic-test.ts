@@ -842,10 +842,18 @@ assert.deepEqual(getSlice1CompareModes('min', 5), [
   'previous_window',
   'offset_1h',
   'offset_24h',
+  'offset_7d',
+  'offset_30d',
+  'baseline_4w',
+  'timeleft',
 ]);
 assert.ok(!getSlice1CompareModes('hour', 1).includes('offset_1h'));
 assert.ok(!getSlice1CompareModes('day', 1).includes('offset_24h'));
 assert.ok(getSlice1CompareModes('min', 60).every((mode) => mode !== 'offset_1h'));
+assert.deepEqual(getSlice1CompareModes('min', 5, 'count_if_over_time'), [
+  'absolute',
+]);
+assert.ok(!getSlice1CompareModes('min', 5, 'p95_over_time').includes('timeleft'));
 
 assert.deepEqual(
   resolveCompareFieldsForSave({
@@ -853,7 +861,13 @@ assert.deepEqual(
     compareMode: 'offset_1h',
     compareValueKind: 'percent',
   }),
-  { compare_mode: 'absolute', compare_value_kind: '' }
+  {
+    compare_mode: 'absolute',
+    compare_value_kind: '',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_lookback: {},
+  }
 );
 assert.deepEqual(
   resolveCompareFieldsForSave({
@@ -861,7 +875,29 @@ assert.deepEqual(
     compareMode: 'previous_window',
     compareValueKind: 'percent',
   }),
-  { compare_mode: 'previous_window', compare_value_kind: 'percent' }
+  {
+    compare_mode: 'previous_window',
+    compare_value_kind: 'percent',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_lookback: {},
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'timeleft',
+    compareValueKind: 'hours',
+    forecastTarget: 90,
+    forecastLookback: { type: 'hour', value: 4 },
+  }),
+  {
+    compare_mode: 'timeleft',
+    compare_value_kind: 'hours',
+    count_predicate: {},
+    forecast_target: 90,
+    forecast_lookback: { type: 'hour', value: 4 },
+  }
 );
 
 assert.deepEqual(

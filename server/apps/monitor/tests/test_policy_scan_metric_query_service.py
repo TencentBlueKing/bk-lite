@@ -160,6 +160,24 @@ class TestQueryAggregationMetrics:
         )
         assert "offset" not in args[0]
 
+    def test_existence_rate_uses_last_over_time(self, mocker):
+        svc = MetricQueryService(
+            _policy(
+                algorithm="rate",
+                group_algorithm="avg",
+                group_by=["instance_id"],
+            ),
+            {},
+        )
+        vm = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
+        )
+        vm.return_value.query_range.return_value = {"data": {"result": []}}
+        svc.query_existence_metrics({"type": "min", "value": 5})
+        args = vm.return_value.query_range.call_args.args
+        assert args[0] == "last_over_time((avg(up) by (instance_id))[5m:10s])"
+        assert "rate(" not in args[0]
+
     def test_comparison_query_applies_offset_percent(self, mocker):
         svc = MetricQueryService(
             _policy(

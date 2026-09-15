@@ -7,10 +7,13 @@ import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import {
   COMPARE_MODE_ABSOLUTE,
+  COMPARE_MODE_TIMELEFT,
+  DEFAULT_FORECAST_LOOKBACK,
+  FORECAST_LOOKBACK_OPTIONS,
   defaultCompareValueKind,
   getCompareValueKinds,
+  getEnabledCompareModes,
   getMetricThresholdEnumState,
-  getSlice1CompareModes,
   getThresholdUnitOptions,
   shouldShowThresholdUnitSelector
 } from './strategyDetailUtils';
@@ -44,6 +47,9 @@ interface AlertConditionsFormProps {
   periodUnit: string;
   compareMode: string;
   compareValueKind: string;
+  algorithm?: string | null;
+  forecastTarget?: number | null;
+  forecastLookback?: { type: string; value: number };
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
   onThresholdUnitChange: (val: string) => void;
@@ -55,6 +61,8 @@ interface AlertConditionsFormProps {
   onNoDataAlertNameChange: (val: string) => void;
   onCompareModeChange: (val: string) => void;
   onCompareValueKindChange: (val: string) => void;
+  onForecastTargetChange?: (val: number | null) => void;
+  onForecastLookbackChange?: (val: { type: string; value: number }) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -73,6 +81,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   periodUnit,
   compareMode,
   compareValueKind,
+  algorithm,
+  forecastTarget,
+  forecastLookback,
   onThresholdChange,
   onThresholdUnitChange,
   onNoDataAlertChange,
@@ -80,6 +91,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onNoDataAlertNameChange,
   onCompareModeChange,
   onCompareValueKindChange,
+  onForecastTargetChange,
+  onForecastLookbackChange,
   isTrap
 }) => {
   const { t } = useTranslation();
@@ -100,7 +113,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         unitList,
         metricUnit: thresholdFilterBase,
         isEnumMetric,
-        lockToExactUnit: compareValueKind === 'percent'
+        lockToExactUnit:
+          compareValueKind === 'percent' || compareValueKind === 'hours'
       }),
     [unitList, thresholdFilterBase, isEnumMetric, compareValueKind]
   );
@@ -127,8 +141,13 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   };
 
   const compareModes = useMemo(
-    () => getSlice1CompareModes(periodUnit, period),
-    [period, periodUnit]
+    () =>
+      getEnabledCompareModes({
+        periodType: periodUnit,
+        periodValue: period,
+        algorithm
+      }),
+    [period, periodUnit, algorithm]
   );
   const compareKindOptions = useMemo(
     () => getCompareValueKinds(compareMode),
@@ -138,12 +157,17 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     absolute: t('monitor.events.compareModeAbsolute'),
     previous_window: t('monitor.events.compareModePreviousWindow'),
     offset_1h: t('monitor.events.compareModeOffset1h'),
-    offset_24h: t('monitor.events.compareModeOffset24h')
+    offset_24h: t('monitor.events.compareModeOffset24h'),
+    offset_7d: t('monitor.events.compareModeOffset7d'),
+    offset_30d: t('monitor.events.compareModeOffset30d'),
+    baseline_4w: t('monitor.events.compareModeBaseline4w'),
+    timeleft: t('monitor.events.compareModeTimeleft')
   };
   const compareKindLabels: Record<string, string> = {
     delta: t('monitor.events.compareValueKindDelta'),
     percent: t('monitor.events.compareValueKindPercent'),
-    ratio: t('monitor.events.compareValueKindRatio')
+    ratio: t('monitor.events.compareValueKindRatio'),
+    hours: t('monitor.events.compareValueKindHours')
   };
 
   const handleCompareModeChange = (val: string) => {
@@ -216,6 +240,56 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     )}
                   </div>
                 </Form.Item>
+              )}
+              {compareMode === COMPARE_MODE_TIMELEFT && !isEnumMetric && (
+                <>
+                  <Form.Item
+                    label={
+                      <span className="w-[100px]">
+                        {t('monitor.events.forecastTarget')}
+                      </span>
+                    }
+                    required
+                  >
+                    <InputNumber
+                      className="w-[220px]"
+                      value={forecastTarget}
+                      onChange={(value) =>
+                        onForecastTargetChange?.(
+                          typeof value === 'number' ? value : null
+                        )
+                      }
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    label={
+                      <span className="w-[100px]">
+                        {t('monitor.events.forecastLookback')}
+                      </span>
+                    }
+                  >
+                    <Select
+                      className="w-[220px]"
+                      value={`${forecastLookback?.type || DEFAULT_FORECAST_LOOKBACK.type}:${forecastLookback?.value || DEFAULT_FORECAST_LOOKBACK.value}`}
+                      onChange={(val) => {
+                        const [type, rawValue] = val.split(':');
+                        onForecastLookbackChange?.({
+                          type,
+                          value: Number(rawValue)
+                        });
+                      }}
+                    >
+                      {FORECAST_LOOKBACK_OPTIONS.map((item) => (
+                        <Option
+                          key={`${item.type}:${item.value}`}
+                          value={`${item.type}:${item.value}`}
+                        >
+                          {t(`monitor.events.forecastLookback${item.value === 1 ? '1h' : item.value === 4 ? '4h' : '24h'}`)}
+                        </Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </>
               )}
 
               {/* 告警阈值 */}

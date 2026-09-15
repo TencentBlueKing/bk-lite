@@ -70,6 +70,8 @@ import {
   scaleThresholdValuesForUnitChange,
   scheduleValueToMinutes,
   COMPARE_MODE_ABSOLUTE,
+  COUNT_IF_ALGORITHM,
+  DEFAULT_FORECAST_LOOKBACK,
   defaultCompareValueKind,
   getCompareValueKinds,
   isCompareModeAvailable
@@ -208,6 +210,15 @@ const StrategyOperation = () => {
   const [algorithm, setAlgorithm] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState<string>(COMPARE_MODE_ABSOLUTE);
   const [compareValueKind, setCompareValueKind] = useState<string>('');
+  const [countPredicate, setCountPredicate] = useState<{
+    method: string;
+    value: number | null;
+  }>({ method: '>', value: null });
+  const [forecastTarget, setForecastTarget] = useState<number | null>(null);
+  const [forecastLookback, setForecastLookback] = useState<{
+    type: string;
+    value: number;
+  }>(DEFAULT_FORECAST_LOOKBACK);
   const [formData, setFormData] = useState<StrategyFields>({
     threshold: [],
     source: { type: '', values: [] }
@@ -671,6 +682,24 @@ const StrategyOperation = () => {
     setAlgorithm(data.algorithm || null);
     setCompareMode((data.compare_mode as string) || COMPARE_MODE_ABSOLUTE);
     setCompareValueKind((data.compare_value_kind as string) || '');
+    const savedPredicate = data.count_predicate as
+      | { method?: string; value?: number }
+      | undefined;
+    setCountPredicate({
+      method: savedPredicate?.method || '>',
+      value: savedPredicate?.value ?? null
+    });
+    setForecastTarget(
+      typeof data.forecast_target === 'number' ? data.forecast_target : null
+    );
+    const savedLookback = data.forecast_lookback as
+      | { type?: string; value?: number }
+      | undefined;
+    setForecastLookback(
+      savedLookback?.type && savedLookback?.value
+        ? { type: savedLookback.type, value: savedLookback.value }
+        : DEFAULT_FORECAST_LOOKBACK
+    );
     if (source?.type) {
       setSource(source);
     } else {
@@ -963,6 +992,10 @@ const StrategyOperation = () => {
 
   const handleAlgorithmChange = (val: string) => {
     setAlgorithm(val);
+    if (val === COUNT_IF_ALGORITHM) {
+      setCompareMode(COMPARE_MODE_ABSOLUTE);
+      setCompareValueKind('');
+    }
   };
 
   const handleNodataUnitChange = (val: string) => {
@@ -1090,15 +1123,32 @@ const StrategyOperation = () => {
       const compareFields = resolveCompareFieldsForSave({
         isTrap: isTrapPlugin,
         compareMode,
-        compareValueKind
+        compareValueKind,
+        algorithm: params.algorithm,
+        countPredicate,
+        forecastTarget,
+        forecastLookback
       });
       params.compare_mode = compareFields.compare_mode;
       params.compare_value_kind = compareFields.compare_value_kind;
+      params.count_predicate = compareFields.count_predicate;
+      params.forecast_target = compareFields.forecast_target;
+      params.forecast_lookback = compareFields.forecast_lookback;
       if (!isTrapPlugin && compareFields.compare_value_kind === 'percent') {
         params.threshold_unit = 'percent';
       }
       if (!isTrapPlugin && compareFields.compare_value_kind === 'ratio') {
         params.threshold_unit = '';
+      }
+      if (!isTrapPlugin && compareFields.compare_value_kind === 'hours') {
+        params.threshold_unit = 'hour';
+      }
+      if (
+        !isTrapPlugin &&
+        (params.algorithm === 'changes' ||
+          params.algorithm === COUNT_IF_ALGORITHM)
+      ) {
+        params.threshold_unit = 'count';
       }
       params.monitor_object = monitorObjId;
       params.schedule = {
@@ -1350,6 +1400,8 @@ const StrategyOperation = () => {
                           onPeriodChange={handlePeriodChange}
                           onPeriodUnitChange={handlePeriodUnitChange}
                           onAlgorithmChange={handleAlgorithmChange}
+                          countPredicate={countPredicate}
+                          onCountPredicateChange={setCountPredicate}
                           isEnumMetric={
                             metricExpressionMode !== 'formula' &&
                             isStringArray(
@@ -1386,6 +1438,9 @@ const StrategyOperation = () => {
                           periodUnit={periodUnit}
                           compareMode={compareMode}
                           compareValueKind={compareValueKind}
+                          algorithm={algorithm}
+                          forecastTarget={forecastTarget}
+                          forecastLookback={forecastLookback}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onThresholdUnitChange={handleThresholdUnitChange}
@@ -1401,6 +1456,8 @@ const StrategyOperation = () => {
                           onNoDataAlertNameChange={handleNoDataAlertNameChange}
                           onCompareModeChange={handleCompareModeChange}
                           onCompareValueKindChange={setCompareValueKind}
+                          onForecastTargetChange={setForecastTarget}
+                          onForecastLookbackChange={setForecastLookback}
                           isTrap={isTrap}
                         />
                       ),
@@ -1445,6 +1502,9 @@ const StrategyOperation = () => {
                 thresholdUnit={effectiveThresholdUnit}
                 compareMode={compareMode}
                 compareValueKind={compareValueKind}
+                countPredicate={countPredicate}
+                forecastTarget={forecastTarget}
+                forecastLookback={forecastLookback}
                 metricRows={metricRows}
                 metricExpressionMode={metricExpressionMode}
                 resultName={formulaResultName}

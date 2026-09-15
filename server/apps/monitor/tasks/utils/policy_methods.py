@@ -1,3 +1,4 @@
+import math
 import re
 from dataclasses import dataclass
 
@@ -22,16 +23,23 @@ QUANTILE_ALGORITHMS = {
     "p95_over_time": "0.95",
     "p99_over_time": "0.99",
 }
-# 切片 1 启用的周期聚合；其余窗口/逐序列函数留给后续切片，但 D4 禁则仍引用这些名字。
-WINDOW_AGGREGATION_ALGORITHMS = LEGACY_WINDOW_AGGREGATION_ALGORITHMS | set(
-    QUANTILE_ALGORITHMS
-)
 STDDEV_ALGORITHM = "stddev_over_time"
 COUNT_IF_ALGORITHM = "count_if_over_time"
-FUTURE_WINDOW_ALGORITHMS = {STDDEV_ALGORITHM, COUNT_IF_ALGORITHM}
+WINDOW_AGGREGATION_ALGORITHMS = (
+    LEGACY_WINDOW_AGGREGATION_ALGORITHMS | set(QUANTILE_ALGORITHMS) | {STDDEV_ALGORITHM}
+)
 PER_SERIES_ALGORITHMS = {"rate", "changes", "deriv"}
-NEW_ALGORITHMS = set(QUANTILE_ALGORITHMS) | FUTURE_WINDOW_ALGORITHMS | PER_SERIES_ALGORITHMS
-POLICY_ALGORITHMS = WINDOW_AGGREGATION_ALGORITHMS | FUTURE_WINDOW_ALGORITHMS | PER_SERIES_ALGORITHMS
+NEW_ALGORITHMS = set(QUANTILE_ALGORITHMS) | {STDDEV_ALGORITHM, COUNT_IF_ALGORITHM} | PER_SERIES_ALGORITHMS
+POLICY_ALGORITHMS = WINDOW_AGGREGATION_ALGORITHMS | {COUNT_IF_ALGORITHM} | PER_SERIES_ALGORITHMS
+PREDICATE_TO_PROMQL = {
+    ">": ">",
+    ">=": ">=",
+    "<": "<",
+    "<=": "<=",
+    "=": "==",
+    "!=": "!=",
+}
+ALLOWED_FORECAST_LOOKBACK = {("hour", 1), ("hour", 4), ("hour", 24)}
 LEVEL_ALGORITHMS = {
     "avg",
     "max",
@@ -58,6 +66,7 @@ LEGACY_ALGORITHM_MAPPING = {
     "p90_over_time": ("avg", "p90_over_time"),
     "p95_over_time": ("avg", "p95_over_time"),
     "p99_over_time": ("avg", "p99_over_time"),
+    "stddev_over_time": ("avg", "stddev_over_time"),
 }
 
 COMPARE_MODE_ABSOLUTE = "absolute"
@@ -220,6 +229,117 @@ def _count(metric_query, start, end, step, group_by, group_algorithm=None):
     return metrics
 
 
+def _format_promql_number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as err:
+        raise BaseAppException("invalid numeric value") from err
+    if not math.isfinite(number):
+        raise BaseAppException("invalid numeric value")
+    if number.is_integer():
+        return str(int(number))
+    return repr(number)
+
+
+def _resolve_group_algorithm(policy_like):
+    group_algorithm = _policy_get(policy_like, "group_algorithm")
+    if group_algorithm:
+        if group_algorithm not in GROUP_AGGREGATION_ALGORITHMS:
+            raise BaseAppException(f"invalid group algorithm method: {group_algorithm}")
+        return group_algorithm
+    algorithm = _policy_get(policy_like, "algorithm")
+    if algorithm in LEGACY_ALGORITHM_MAPPING:
+        return LEGACY_ALGORITHM_MAPPING[algorithm][0]
+    return "avg"
+
+
+def _compile_per_series_query(policy_like, base_query, step, group_by):
+    algorithm = _policy_get(policy_like, "algorithm")
+    if algorithm not in PER_SERIES_ALGORITHMS:
+        raise BaseAppException(f"invalid algorithm method: {algorithm}")
+    if not group_by:
+        raise BaseAppException("group_by is required")
+    group_algorithm = _resolve_group_algorithm(policy_like)
+    return f"{group_algorithm}({algorithm}({base_query}[{step}])) by ({group_by})"
+
+
+def _compile_count_if_query(policy_like, base_query, step, group_by, is_formula):
+    predicate = _policy_get(policy_like, "count_predicate") or {}
+    method = predicate.get("method")
+    if method not in PREDICATE_TO_PROMQL:
+        raise BaseAppException("count_predicate.method is required")
+    op = PREDICATE_TO_PROMQL[method]
+    value = _format_promql_number(predicate.get("value"))
+    inner_step = period_step(step)
+    if is_formula:
+        compared = f"(({base_query}) {op} {value})"
+        return f"count_over_time({compared}[{step}:{inner_step}])"
+    if not group_by:
+        raise BaseAppException("group_by is required")
+    group_algorithm = _resolve_group_algorithm(policy_like)
+    compared = f"(({group_algorithm}({base_query}) by ({group_by})) {op} {value})"
+    return f"count_over_time({compared}[{step}:{inner_step}])"
+
+
+def _compile_last_over_time_existence(policy_like, base_query, step, group_by):
+    query_condition = _policy_get(policy_like, "query_condition") or {}
+    if query_condition.get("type") == "formula":
+        return f"last_over_time(({base_query})[{step}:{period_step(step)}])"
+    if not group_by:
+        raise BaseAppException("group_by is required")
+    group_algorithm = _resolve_group_algorithm(policy_like)
+    return (
+        f"last_over_time(({group_algorithm}({base_query}) by ({group_by}))"
+        f"[{step}:{period_step(step)}])"
+    )
+
+
+def _format_forecast_lookback(policy_like):
+    lookback = _policy_get(policy_like, "forecast_lookback") or {}
+    if not lookback:
+        return "1h"
+    lookback_type = lookback.get("type")
+    try:
+        lookback_value = int(lookback.get("value"))
+    except (TypeError, ValueError) as err:
+        raise BaseAppException("unsupported forecast_lookback") from err
+    if (lookback_type, lookback_value) not in ALLOWED_FORECAST_LOOKBACK:
+        raise BaseAppException("unsupported forecast_lookback")
+    return f"{lookback_value}h"
+
+
+def compile_timeleft_query(policy_like, base_query, step, group_by=None):
+    target = _policy_get(policy_like, "forecast_target")
+    if target is None or target == "":
+        raise BaseAppException("forecast_target is required")
+    target_s = _format_promql_number(target)
+    lookback = _format_forecast_lookback(policy_like)
+    lookback_step = period_step(lookback)
+    query_condition = _policy_get(policy_like, "query_condition") or {}
+    if group_by is None:
+        group_by = ",".join(_policy_get(policy_like, "group_by") or [])
+    if query_condition.get("type") == "formula":
+        water = f"last_over_time(({base_query})[{step}:{period_step(step)}])"
+        slope_src = f"({base_query})[{lookback}:{lookback_step}]"
+    else:
+        if not group_by:
+            raise BaseAppException("group_by is required")
+        grouped = f"{_resolve_group_algorithm(policy_like)}({base_query}) by ({group_by})"
+        water = f"last_over_time(({grouped})[{step}:{period_step(step)}])"
+        slope_src = f"({grouped})[{lookback}:{lookback_step}]"
+    return (
+        f"clamp_min({target_s} - {water}, 0) / "
+        f"clamp_min(deriv({slope_src}), 1e-9) / 3600"
+    )
+
+
+def _baseline_4w_expr(query):
+    return (
+        f"({query} offset 7d + {query} offset 14d + "
+        f"{query} offset 21d + {query} offset 28d) / 4"
+    )
+
+
 def _window_range_selector(group_algorithm, metric_query, group_by, step):
     return f"({group_algorithm}({metric_query}) by ({group_by}))[{step}:{period_step(step)}]"
 
@@ -289,7 +409,16 @@ def _compile_window_query(policy_like, base_query, step, group_by):
     query_condition = _policy_get(policy_like, "query_condition") or {}
     algorithm = _policy_get(policy_like, "algorithm")
     group_algorithm = _policy_get(policy_like, "group_algorithm")
-    if query_condition.get("type") == "formula":
+    is_formula = query_condition.get("type") == "formula"
+    if algorithm in PER_SERIES_ALGORITHMS:
+        if is_formula:
+            raise BaseAppException("formula policy cannot use per-series algorithms")
+        if algorithm == "rate" and base_query_contains_rate_function(base_query):
+            raise BaseAppException("base query already contains rate/irate/increase")
+        return _compile_per_series_query(policy_like, base_query, step, group_by)
+    if algorithm == COUNT_IF_ALGORITHM:
+        return _compile_count_if_query(policy_like, base_query, step, group_by, is_formula)
+    if is_formula:
         return build_formula_policy_query(algorithm, base_query, step)
     return build_policy_query(algorithm, base_query, step, group_by, group_algorithm)
 
@@ -308,8 +437,17 @@ def apply_compare_mode(query, policy_like, step):
     kind = (_policy_get(policy_like, "compare_value_kind") or "").strip()
     if mode in ("", COMPARE_MODE_ABSOLUTE):
         return query
-    if mode not in SLICE1_COMPARE_MODES:
-        raise BaseAppException(f"unsupported compare_mode: {mode}")
+    if _policy_get(policy_like, "algorithm") == COUNT_IF_ALGORITHM:
+        raise BaseAppException("count_if_over_time only allows absolute compare_mode")
+    if mode == COMPARE_MODE_BASELINE_4W:
+        baseline = _baseline_4w_expr(query)
+        if kind == "delta":
+            return f"{query} - ({baseline})"
+        if kind == "percent":
+            return f"({query} - ({baseline})) / ({baseline}) * 100"
+        raise BaseAppException(f"unsupported compare_value_kind: {kind}")
+    if mode == COMPARE_MODE_TIMELEFT:
+        raise BaseAppException("timeleft must use compile_timeleft_query")
     offset = _compare_offset(mode, step)
     baseline = f"{query} offset {offset}"
     if kind == "delta":
@@ -329,11 +467,13 @@ def compile_window_query(policy_like, base_query, step, group_by=None):
 
 
 def compile_baseline_query(policy_like, base_query, step, group_by=None):
-    """对照窗：q offset <对照>。absolute 时与当前窗相同。"""
+    """对照窗：offset / 近 4 周均值。absolute 时与当前窗相同。"""
     query = compile_window_query(policy_like, base_query, step, group_by)
     mode = _policy_get(policy_like, "compare_mode") or COMPARE_MODE_ABSOLUTE
-    if mode in ("", COMPARE_MODE_ABSOLUTE):
+    if mode in ("", COMPARE_MODE_ABSOLUTE, COMPARE_MODE_TIMELEFT):
         return query
+    if mode == COMPARE_MODE_BASELINE_4W:
+        return _baseline_4w_expr(query)
     return f"{query} offset {_compare_offset(mode, step)}"
 
 
@@ -341,18 +481,26 @@ def compile_policy_query(policy_like, base_query, step, group_by=None):
     """比较查询：窗口聚合后再套比较基准。Trap 短路，不套对照。"""
     if group_by is None:
         group_by = ",".join(_policy_get(policy_like, "group_by") or [])
-    query = _compile_window_query(policy_like, base_query, step, group_by)
     if _policy_get(policy_like, "collect_type") == "trap":
-        return query
+        return _compile_window_query(policy_like, base_query, step, group_by)
+    mode = _policy_get(policy_like, "compare_mode") or COMPARE_MODE_ABSOLUTE
+    if mode == COMPARE_MODE_TIMELEFT:
+        return compile_timeleft_query(policy_like, base_query, step, group_by)
+    query = _compile_window_query(policy_like, base_query, step, group_by)
     return apply_compare_mode(query, policy_like, step)
 
 
 def compile_existence_query(policy_like, base_query, step, group_by=None):
-    """存在性查询：用策略原汇聚，不套比较基准。
+    """存在性查询：不套比较基准。
 
-    对照缺失时不得走比较查询，否则会被误判成无数据。汇聚方式与升级前
-    无数据路径相同；切片 2 上速率后再评估是否改为 last_over_time。
+    窗口聚合类沿用策略原汇聚；逐序列类（rate/changes/deriv）改用 last_over_time，
+    避免单样本窗被当成无数据。
     """
+    if group_by is None:
+        group_by = ",".join(_policy_get(policy_like, "group_by") or [])
+    algorithm = _policy_get(policy_like, "algorithm")
+    if algorithm in PER_SERIES_ALGORITHMS:
+        return _compile_last_over_time_existence(policy_like, base_query, step, group_by)
     return compile_window_query(policy_like, base_query, step, group_by)
 
 
