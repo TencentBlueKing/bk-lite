@@ -8,7 +8,7 @@
 from collections import defaultdict
 
 from apps.patch_mgmt.constants import GovernanceTaskType
-from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
+from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, Patch
 
 
 STATUS_META = {
@@ -175,38 +175,115 @@ def _group_attempts(
     return grouped
 
 
-def _verification_result(root: GovernanceTask, item: dict) -> dict | None:
-    """读取该次执行内最新的验证结果快照。"""
-    risk_item_id = str(item.get("id") or "")
-    pair = (int(item["host_id"]), int(item.get("patch_id") or 0))
-    matched = None
-    for task in _task_chain(root):
+def _summary_index(root: GovernanceTask) -> dict:
+    """为一条根记录构建状态/重试判定所需的任务链索引。"""
+    cached = getattr(root, "_execution_record_summary_index", None)
+    if cached is not None:
+        return cached
+
+    chain = _task_chain(root)
+    hosts = _chain_hosts(root)
+    snapshot = _risk_snapshot(root)
+    hosts_by_task: dict[int, list[GovernanceTaskHost]] = defaultdict(list)
+    root_host_by_target: dict[int, GovernanceTaskHost] = {}
+    retryable_target_ids: set[int] = set()
+    for host in hosts:
+        hosts_by_task[host.task_id].append(host)
+        if host.task_id == root.id and host.target_id not in root_host_by_target:
+            root_host_by_target[host.target_id] = host
+        if host.can_retry:
+            retryable_target_ids.add(host.target_id)
+
+    attempts_by_target: dict[int, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
+    for task in chain:
+        if task.task_type not in STEP_NAMES:
+            continue
+        for host in hosts_by_task.get(task.id, []):
+            attempts_by_target[host.target_id][task.task_type].append(
+                _attempt(task, host, include_log=False)
+            )
+
+    verification_hits: dict[tuple, tuple[int, dict]] = {}
+    sequence = 0
+    for task in chain:
         if task.task_type != GovernanceTaskType.VERIFY:
             continue
         for result in task.result_snapshot or []:
-            result_pair = (
+            sequence += 1
+            risk_item_id = str(result.get("risk_item_id") or "")
+            pair = (
                 int(result.get("host_id") or 0),
                 int(result.get("patch_id") or 0),
             )
-            if str(result.get("risk_item_id") or "") == risk_item_id or result_pair == pair:
-                matched = result
-    return matched
+            if risk_item_id:
+                verification_hits[("id", risk_item_id)] = (sequence, result)
+            verification_hits[("pair", pair)] = (sequence, result)
+
+    patch_ids = {
+        int(item.get("patch_id") or 0)
+        for item in snapshot
+        if int(item.get("patch_id") or 0)
+    }
+    existing_patch_ids = (
+        set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True))
+        if patch_ids
+        else set()
+    )
+    risk_ids = [str(item.get("id") or "") for item in snapshot]
+    retried_risk_ids = (
+        set(
+            GovernanceTask.objects.filter(
+                parent_task__isnull=True,
+                source_record=root,
+                source_risk_item_id__in=risk_ids,
+            ).values_list("source_risk_item_id", flat=True)
+        )
+        if risk_ids
+        else set()
+    )
+
+    index = {
+        "attempts_by_target": attempts_by_target,
+        "root_host_by_target": root_host_by_target,
+        "verification_hits": verification_hits,
+        "existing_patch_ids": existing_patch_ids,
+        "retried_risk_ids": retried_risk_ids,
+        "retryable_target_ids": retryable_target_ids,
+    }
+    root._execution_record_summary_index = index
+    return index
+
+
+def _indexed_verification(index: dict, item: dict) -> dict | None:
+    hits = index["verification_hits"]
+    candidates = []
+    risk_item_id = str(item.get("id") or "")
+    pair = (int(item["host_id"]), int(item.get("patch_id") or 0))
+    if risk_item_id:
+        hit = hits.get(("id", risk_item_id))
+        if hit is not None:
+            candidates.append(hit)
+    hit = hits.get(("pair", pair))
+    if hit is not None:
+        candidates.append(hit)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda entry: entry[0])[1]
+
+
+def _verification_result(root: GovernanceTask, item: dict) -> dict | None:
+    """读取该次执行内最新的验证结果快照。"""
+    return _indexed_verification(_summary_index(root), item)
 
 
 def _root_host(root: GovernanceTask, target_id: int) -> GovernanceTaskHost | None:
-    return next(
-        (
-            host
-            for host in _chain_hosts(root)
-            if host.task_id == root.id and host.target_id == target_id
-        ),
-        None,
-    )
+    return _summary_index(root)["root_host_by_target"].get(target_id)
 
 
 def _item_status(root: GovernanceTask, item: dict) -> str:
+    index = _summary_index(root)
     target_id = int(item["host_id"])
-    attempts = _group_attempts(root, target_id, include_log=False)
+    attempts = index["attempts_by_target"].get(target_id) or {}
 
     # 后续自动步骤优先于前置步骤展示。
     for task_type in (
@@ -218,7 +295,7 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
         if current and current[-1]["status"] in {"running", "waiting"}:
             return current[-1]["status"]
 
-    root_host = _root_host(root, target_id)
+    root_host = index["root_host_by_target"].get(target_id)
     if root_host:
         root_status = _step_status(root.task_type, _host_stage(root_host))
         if root_status in {"failed", "cancelled", "unknown"}:
@@ -230,7 +307,7 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
     if verify:
         if verify[-1]["status"] in {"failed", "cancelled", "unknown"}:
             return verify[-1]["status"]
-        result = _verification_result(root, item)
+        result = _indexed_verification(index, item)
         if result:
             if result.get("status") == "failed" or result.get("satisfied") is None:
                 return "failed"
@@ -276,26 +353,16 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
 def _item_can_retry(root: GovernanceTask, item: dict, status: str) -> bool:
     if status not in {"failed", "unknown", "unmet"}:
         return False
+    index = _summary_index(root)
     patch_id = int(item.get("patch_id") or 0)
-    if patch_id:
-        from apps.patch_mgmt.models import Patch
-
-        if not Patch.objects.filter(pk=patch_id).exists():
-            return False
+    if patch_id and patch_id not in index["existing_patch_ids"]:
+        return False
     risk_item_id = str(item.get("id") or "")
-    if GovernanceTask.objects.filter(
-        parent_task__isnull=True,
-        source_record=root,
-        source_risk_item_id=risk_item_id,
-    ).exists():
+    if risk_item_id in index["retried_risk_ids"]:
         return False
     if status == "unmet":
         return True
-    target_id = int(item["host_id"])
-    return any(
-        host.target_id == target_id and host.can_retry
-        for host in _chain_hosts(root)
-    )
+    return int(item["host_id"]) in index["retryable_target_ids"]
 
 
 def build_risk_item_summaries(root: GovernanceTask) -> list[dict]:
