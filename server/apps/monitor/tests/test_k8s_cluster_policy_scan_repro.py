@@ -151,7 +151,7 @@ def test_k8s_cluster_threshold_triggers_when_storage_id_matches():
         _mq(_cluster_agg()),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert len(alerts) == 1, f"K8s Cluster 超阈值应产生告警，实际={alerts}"
     assert alerts[0]["monitor_instance_id"] == CLUSTER_STORAGE_ID

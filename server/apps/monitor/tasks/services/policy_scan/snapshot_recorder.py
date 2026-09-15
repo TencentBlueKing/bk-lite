@@ -5,7 +5,12 @@ from datetime import datetime, timezone, timedelta
 from django.db import transaction
 
 from apps.monitor.models import MonitorEventRawData, MonitorAlertMetricSnapshot
-from apps.monitor.tasks.utils.policy_methods import compile_policy_query, period_to_seconds
+from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
+from apps.monitor.tasks.utils.policy_methods import (
+    COMPARE_MODE_ABSOLUTE,
+    compile_policy_query,
+    period_to_seconds,
+)
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.core.logger import celery_logger as logger
 
@@ -19,6 +24,7 @@ class SnapshotRecorder:
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
         self._fallback_raw_data_map = None
+        self._overlay_value_maps = None
 
     def _get_alert_metric_instance_id(self, alert) -> str:
         """获取告警的 metric_instance_id，兼容旧数据"""
@@ -153,6 +159,7 @@ class SnapshotRecorder:
                         "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
                         "snapshot_time": snapshot_time.isoformat(),
                         "raw_data": raw_data,
+                        **self._snapshot_compare_fields(alert, raw_data, event_obj),
                     }
 
                     existing_event_ids = [s.get("event_id") for s in snapshot_obj.snapshots if s.get("type") == "event"]
@@ -169,6 +176,7 @@ class SnapshotRecorder:
                         "type": "info",
                         "snapshot_time": snapshot_time_str,
                         "raw_data": raw_data,
+                        **self._snapshot_compare_fields(alert, raw_data),
                     }
                     snapshot_obj.snapshots.append(info_snapshot)
                     has_new_snapshot = True
@@ -238,8 +246,45 @@ class SnapshotRecorder:
             return None
 
         logger.info(f"Built pre-alert snapshot for policy {self.policy.id}, metric_instance {metric_instance_id}")
-        return {
+        snapshot = {
             "type": "pre_alert",
             "snapshot_time": pre_alert_time.isoformat(),
             "raw_data": raw_data,
+        }
+        snapshot.update(self._compare_fields_for_raw(metric_instance_id, raw_data))
+        return snapshot
+
+    def _overlay_maps(self):
+        if self._overlay_value_maps is None:
+            query = getattr(self.metric_query_service, "query_overlay_last_values", None)
+            self._overlay_value_maps = query() if callable(query) else ({}, {})
+        return self._overlay_value_maps
+
+    def _snapshot_compare_fields(self, alert, raw_data, event_obj=None):
+        metric_id = self._get_alert_metric_instance_id(alert)
+        event_value = getattr(event_obj, "value", None) if event_obj is not None else None
+        return self._compare_fields_for_raw(metric_id, raw_data, event_value)
+
+    def _compare_fields_for_raw(self, metric_instance_id, raw_data, event_value=None):
+        compared = _parse_finite_float(event_value)
+        if compared is None:
+            values = (raw_data or {}).get("values") or []
+            if values and isinstance(values[-1], (list, tuple)) and len(values[-1]) >= 2:
+                compared = _parse_finite_float(values[-1][1])
+        current_map, baseline_map = self._overlay_maps()
+        current = current_map.get(metric_instance_id)
+        baseline = baseline_map.get(metric_instance_id)
+        compare_mode = getattr(self.policy, "compare_mode", None) or COMPARE_MODE_ABSOLUTE
+        if compare_mode in ("", COMPARE_MODE_ABSOLUTE) and compared is not None:
+            current = compared
+            baseline = None
+        result_unit = ""
+        getter = getattr(self.metric_query_service, "get_effective_calculation_unit", None)
+        if callable(getter):
+            result_unit = getter() or ""
+        return {
+            "current_value": current,
+            "baseline_value": baseline,
+            "compared_value": compared,
+            "result_unit": result_unit,
         }

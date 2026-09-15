@@ -98,12 +98,24 @@ class TestRecordSnapshotsForActiveAlerts:
             policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
             alert_type="alert", status="new",
         )
-        rec = SnapshotRecorder(_policy(), {}, [alert], _mq())
-        info_events = [{"metric_instance_id": "('h1',)", "raw_data": {"v": 1}}]
+        rec = SnapshotRecorder(
+            _policy(),
+            {},
+            [alert],
+            _mq(),
+        )
+        info_events = [{
+            "metric_instance_id": "('h1',)",
+            "raw_data": {"values": [[1, "75"]]},
+        }]
         rec.record_snapshots_for_active_alerts(info_events=info_events)
         snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
         assert snap.policy_id == 1
-        assert any(s["type"] == "info" for s in snap.snapshots)
+        info_snap = next(s for s in snap.snapshots if s["type"] == "info")
+        assert info_snap["compared_value"] == 75.0
+        assert info_snap["current_value"] == 75.0
+        assert info_snap["baseline_value"] is None
+        assert "result_unit" in info_snap
 
     def test_no_data_alert_records_no_data_snapshot(self, stub_s3):
         alert = MonitorAlert.objects.create(

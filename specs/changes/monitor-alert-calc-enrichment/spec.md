@@ -329,3 +329,12 @@ VictoriaMetrics 实跑（本机 Docker 底座，不改 D1～D10）：
 - 试跑内存构造策略、`last_run_time=now` 不落库；不写 Alert / Event / 快照，不调 EventAlertManager / 通知 / 告警中心。本机 Host `cpu_usage_total` 试跑前后计数均为 27 / 14196 / 24。
 - 判定：`would_trigger`（CPU>1）、`ok`（CPU>80 未命中）、`missing_baseline`（`offset_30d` 对照缺失或留存不足）、`insufficient_samples` / `no_data` 由单测锁定；连续 N 文案「本轮命中 k/N，现网不会建告警」。
 - `hold` 仍留切片 4（依赖扫描滞回）；已保存活动告警本轮不满足阈值时标 `would_recover`，草稿不评恢复。
+
+## 切片 4 验收记录
+
+现场确认（不改写 D1～D10 原文）：
+
+- `calculate_alerts` 返回三类事件：未配 `recovery_threshold` 时 `hold_events=[]`，与升级前两类判定一致；触发 `>80`、恢复 `<70` 时 70～80 进 `hold_events`，`count_events` 不改 `info_event_count`。
+- 试跑：已保存且活动告警 + 带内 → `hold`；草稿带内不评恢复 → `ok`。本机 Host `cpu_usage_total` 当前值≈39.27，触发 `>49.27`、恢复 `<29.27` 草稿试跑为 `ok`。
+- 无数据检测窗 / 恢复窗表单分开写入；本机 Postgres 用 `values`/`update` 验证策略 1 可分别落 `10m` / `2m` 并已还原。整对象 GET/POST 仍因本机缺 `compare_mode` 等列 500（与切片 3 相同），新字段落库由单测锁定。
+- 快照点在 `raw_data` 之外带 `current_value` / `baseline_value` / `compared_value` / `result_unit`；告警详情图 `chart_unit` 在变换后量纲下用 `result_unit`；模板 `${value}` / `${current_value}` / `${baseline_value}`；portable 旧模板补 D1 缺省，`ALGORITHM_LABELS` 覆盖新算法。

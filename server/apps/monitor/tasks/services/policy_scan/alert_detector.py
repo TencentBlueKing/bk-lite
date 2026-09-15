@@ -79,22 +79,51 @@ class AlertDetector:
         thresholds = self.metric_query_service.convert_thresholds(
             self.policy.threshold
         )
-        alert_events, info_events = calculate_alerts(
+        recovery_threshold = self._converted_recovery_threshold()
+        overlay_current_map, overlay_baseline_map = self._overlay_last_values()
+        source_display_unit = getattr(
+            self.metric_query_service, "get_source_display_unit", None
+        )
+        template_context["overlay_current_map"] = overlay_current_map
+        template_context["overlay_baseline_map"] = overlay_baseline_map
+        template_context["source_display_unit"] = (
+            source_display_unit()
+            if callable(source_display_unit)
+            else template_context["display_unit"]
+        )
+        alert_events, info_events, hold_events = calculate_alerts(
             self.policy.alert_name,
             df,
             thresholds,
             template_context,
             n=trigger_count,
+            recovery_threshold=recovery_threshold,
         )
 
         if self.policy.source:
             alert_events = self._filter_events_by_scope(alert_events)
             info_events = self._filter_events_by_scope(info_events)
+            hold_events = self._filter_events_by_scope(hold_events)
 
         if log_events and alert_events:
             self._log_alert_events(alert_events, vm_data)
 
-        return alert_events, info_events
+        return alert_events, info_events, hold_events
+
+    def _converted_recovery_threshold(self):
+        recovery = getattr(self.policy, "recovery_threshold", None) or {}
+        if not recovery.get("method") or recovery.get("value") is None:
+            return None
+        converted = self.metric_query_service.convert_thresholds([recovery])
+        return converted[0] if converted else recovery
+
+    def _overlay_last_values(self):
+        query_overlay = getattr(
+            self.metric_query_service, "query_overlay_last_values", None
+        )
+        if not callable(query_overlay):
+            return {}, {}
+        return query_overlay()
 
     def _get_metric_display_name(self):
         if self.policy.query_condition.get("type") == "formula":

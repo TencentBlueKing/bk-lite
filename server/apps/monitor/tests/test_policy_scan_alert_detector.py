@@ -79,7 +79,7 @@ class TestDetectThresholdAlerts:
             _policy(), {"('h1',)": "主机1"}, {}, [],
             _mq(agg=agg),
         )
-        alerts, infos = detector.detect_threshold_alerts()
+        alerts, infos, holds = detector.detect_threshold_alerts()
         assert len(alerts) == 1
         assert alerts[0]["level"] == "critical"
         assert alerts[0]["value"] == 95.0
@@ -94,10 +94,26 @@ class TestDetectThresholdAlerts:
             _policy(), {"('h1',)": "主机1"}, {}, [],
             _mq(agg=agg),
         )
-        alerts, infos = detector.detect_threshold_alerts()
+        alerts, infos, holds = detector.detect_threshold_alerts()
         assert alerts == []
+        assert holds == []
         assert len(infos) == 1
         assert infos[0]["level"] == "info"
+
+    def test_hysteresis_band_yields_hold(self):
+        agg = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}, "values": [[100, "75"]]},
+        ]}}
+        detector = AlertDetector(
+            _policy(recovery_threshold={"method": "<", "value": 70}),
+            {"('h1',)": "主机1"}, {}, [],
+            _mq(agg=agg),
+        )
+        alerts, infos, holds = detector.detect_threshold_alerts()
+        assert alerts == []
+        assert infos == []
+        assert len(holds) == 1
+        assert holds[0]["level"] == "hold"
 
     def test_filters_events_outside_scope(self, mocker):
         agg = {"data": {"result": [
@@ -109,7 +125,7 @@ class TestDetectThresholdAlerts:
             _policy(), {"('h1',)": "主机1"}, {}, [],
             _mq(agg=agg),
         )
-        alerts, infos = detector.detect_threshold_alerts()
+        alerts, infos, holds = detector.detect_threshold_alerts()
         ids = {a["metric_instance_id"] for a in alerts}
         assert ids == {"('h1',)"}
 
@@ -138,7 +154,7 @@ class TestDetectThresholdAlerts:
             parent_instances_map={"('cluster-a',)": "生产集群"},
         )
 
-        alerts, _ = detector.detect_threshold_alerts()
+        alerts, _, _ = detector.detect_threshold_alerts()
 
         assert alerts[0]["monitor_instance_id"] == "('cluster-a', 'orders-7f9')"
         assert alerts[0]["content"] == "生产集群/orders-7f9 超阈值"
@@ -256,9 +272,10 @@ class TestDetectNoDataAlerts:
             _policy(), {"('h1',)": "主机1"}, {"('h1',)": "('h1',)"}, [],
             _mq(comparison=comparison, existence=existence),
         )
-        alerts, infos = detector.detect_threshold_alerts()
+        alerts, infos, holds = detector.detect_threshold_alerts()
         assert alerts == []
         assert infos == []
+        assert holds == []
         assert detector.detect_no_data_alerts() == []
 
 
@@ -299,6 +316,16 @@ class TestCountEvents:
         a2.refresh_from_db()
         assert a1.info_event_count == 1   # 命中 info → +1
         assert a2.info_event_count == 0   # 命中 alert → 清零
+
+    def test_hold_does_not_change_info_count(self):
+        a1 = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="alert", status="new", info_event_count=2,
+        )
+        detector = AlertDetector(_policy(), {}, {}, [a1], _mq())
+        detector.count_events([], [])
+        a1.refresh_from_db()
+        assert a1.info_event_count == 2
 
 
 @pytest.mark.django_db

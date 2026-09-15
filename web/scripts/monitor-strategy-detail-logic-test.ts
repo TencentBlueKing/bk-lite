@@ -29,6 +29,8 @@ import {
   shouldShowThresholdUnitSelector,
   getSlice1CompareModes,
   resolveCompareFieldsForSave,
+  resolveRecoveryThresholdForSave,
+  resolveNoDataPeriodsForSave,
   resolvePolicyResultUnit,
   resolveThresholdUnitBase,
   shouldDrawPreviewThreshold,
@@ -994,5 +996,54 @@ assert.equal(DRY_RUN_VERDICT_I18N.no_data, 'monitor.events.dryRunVerdictNoData')
 assert.equal(DRY_RUN_VERDICT_I18N.missing_baseline, 'monitor.events.dryRunVerdictMissingBaseline');
 assert.equal(DRY_RUN_VERDICT_I18N.insufficient_samples, 'monitor.events.dryRunVerdictInsufficientSamples');
 assert.equal(DRY_RUN_VERDICT_I18N.would_recover, 'monitor.events.dryRunVerdictWouldRecover');
+assert.equal(DRY_RUN_VERDICT_I18N.hold, 'monitor.events.dryRunVerdictHold');
+
+assert.deepEqual(
+  resolveRecoveryThresholdForSave({
+    isTrap: false,
+    recoveryThreshold: { method: '<', value: 70 },
+  }),
+  { method: '<', value: 70 }
+);
+assert.deepEqual(
+  resolveRecoveryThresholdForSave({
+    isTrap: false,
+    recoveryThreshold: { method: '<', value: null },
+  }),
+  {}
+);
+assert.deepEqual(
+  resolveRecoveryThresholdForSave({
+    isTrap: true,
+    recoveryThreshold: { method: '<', value: 70 },
+  }),
+  {}
+);
+assert.deepEqual(
+  resolveNoDataPeriodsForSave({
+    enabled: true,
+    detectionValue: 10,
+    detectionUnit: 'min',
+    recoveryValue: 2,
+    recoveryUnit: 'min',
+  }),
+  {
+    no_data_period: { type: 'min', value: 10 },
+    no_data_recovery_period: { type: 'min', value: 2 },
+  }
+);
+assert.deepEqual(
+  resolveNoDataPeriodsForSave({
+    enabled: false,
+    detectionValue: 10,
+    detectionUnit: 'min',
+    recoveryValue: 2,
+    recoveryUnit: 'min',
+  }),
+  {
+    no_data_period: { type: 'min', value: 10 },
+    no_data_recovery_period: { type: 'min', value: 10 },
+  }
+);
 
 console.log('monitor-strategy-detail logic validation passed');

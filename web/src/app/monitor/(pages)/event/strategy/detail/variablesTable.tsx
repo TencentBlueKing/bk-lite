@@ -74,6 +74,16 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         description: t('monitor.events.variableValue')
       },
       {
+        key: 'current_value',
+        variable: '${current_value}',
+        description: t('monitor.events.variableCurrentValue')
+      },
+      {
+        key: 'baseline_value',
+        variable: '${baseline_value}',
+        description: t('monitor.events.variableBaselineValue')
+      },
+      {
         key: 'dimension_value',
         variable: '${dimension_value}',
         description: t('monitor.events.variableDimensionValue')

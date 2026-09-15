@@ -9,8 +9,12 @@ from apps.monitor.expression.conditions import compile_filter_to_query
 from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
 from apps.monitor.tasks.utils.policy_methods import (
+    COMPARE_MODE_ABSOLUTE,
+    COMPARE_MODE_TIMELEFT,
+    compile_baseline_query,
     compile_existence_query,
     compile_policy_query,
+    compile_window_query,
     format_period as format_policy_period,
     period_to_seconds,
     resolve_result_unit,
@@ -65,6 +69,7 @@ class MetricQueryService:
             and self.policy.calculation_unit
             and self.policy.metric_unit != self.policy.calculation_unit
         )
+        self._overlay_last_values = None
 
     def set_monitor_obj_instance_key(self):
         """设置监控对象实例标识键
@@ -302,6 +307,43 @@ class MetricQueryService:
         """
         unit = self.get_effective_calculation_unit()
         return UnitConverter.get_display_unit(unit) if unit else ""
+
+    def get_source_display_unit(self):
+        unit = self.policy.calculation_unit or self.policy.metric_unit or ""
+        return UnitConverter.get_display_unit(unit) if unit else ""
+
+    def query_overlay_last_values(self):
+        if self._overlay_last_values is None:
+            self._overlay_last_values = self._load_overlay_last_values()
+        return self._overlay_last_values
+
+    def _load_overlay_last_values(self):
+        compare_mode = getattr(self.policy, "compare_mode", None) or COMPARE_MODE_ABSOLUTE
+        if compare_mode in ("", COMPARE_MODE_ABSOLUTE):
+            return {}, {}
+        step = self.format_period(self.policy.period, 1)
+        base_query = self.format_pmq()
+        group_by = self._compiled_group_by()
+        current_query = compile_window_query(self.policy, base_query, step, group_by)
+        current_data = self.convert_metric_values(
+            self._query_range(current_query, self.policy.period, 1)
+        )
+        current_map = self._last_numeric_map(current_data)
+        if compare_mode == COMPARE_MODE_TIMELEFT:
+            return current_map, {}
+        baseline_query = compile_baseline_query(self.policy, base_query, step, group_by)
+        baseline_data = self.convert_metric_values(
+            self._query_range(baseline_query, self.policy.period, 1)
+        )
+        return current_map, self._last_numeric_map(baseline_data)
+
+    def _last_numeric_map(self, vm_data):
+        formatted = self.format_aggregation_metrics(vm_data)
+        return {
+            key: item["value"]
+            for key, item in formatted.items()
+            if item.get("value") is not None
+        }
 
     def get_enum_value_map(self) -> dict:
         """获取枚举类型指标的值到名称的映射

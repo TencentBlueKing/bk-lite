@@ -61,6 +61,8 @@ import {
   shouldRequireNoticeUsers,
   collectMetricQueryTexts,
   resolveCompareFieldsForSave,
+  resolveNoDataPeriodsForSave,
+  resolveRecoveryThresholdForSave,
   resolveEffectiveCalculationUnit,
   resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
@@ -245,6 +247,10 @@ const StrategyOperation = () => {
       value: null
     }
   ]);
+  const [recoveryThreshold, setRecoveryThreshold] = useState<{
+    method?: string;
+    value?: number | null;
+  }>({});
   const [calculationUnit, setCalculationUnit] = useState<string | null>(null);
   const [thresholdUnit, setThresholdUnit] = useState<string | null>(null);
   const [pluginList, setPluginList] = useState<SegmentedItem[]>([]);
@@ -688,6 +694,14 @@ const StrategyOperation = () => {
     setAlgorithm(data.algorithm || null);
     setCompareMode((data.compare_mode as string) || COMPARE_MODE_ABSOLUTE);
     setCompareValueKind((data.compare_value_kind as string) || '');
+    const savedRecovery = data.recovery_threshold as
+      | { method?: string; value?: number }
+      | undefined;
+    setRecoveryThreshold(
+      savedRecovery?.method && savedRecovery?.value != null
+        ? { method: savedRecovery.method, value: savedRecovery.value }
+        : {}
+    );
     const savedPredicate = data.count_predicate as
       | { method?: string; value?: number }
       | undefined;
@@ -717,7 +731,7 @@ const StrategyOperation = () => {
     setNoDataAlert(no_data_period?.value || null);
     setNodataUnit(no_data_period?.type || 'min');
     setNoDataRecovery(no_data_recovery_period?.value || null);
-    setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
+    setNoDataRecoveryUnit(no_data_recovery_period?.type || 'min');
     setUnit(schedule?.type || 'min');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
     // 设置无数据告警级别和名称
@@ -1024,6 +1038,10 @@ const StrategyOperation = () => {
 
   const handleNoDataAlertLevelChange = (val: string) => {
     setNoDataAlertLevel(val);
+    if (val !== 'none' && noDataRecovery == null && noDataAlert != null) {
+      setNoDataRecovery(noDataAlert);
+      setNoDataRecoveryUnit(nodataUnit);
+    }
   };
 
   const handleNoDataAlertNameChange = (val: string) => {
@@ -1140,6 +1158,10 @@ const StrategyOperation = () => {
       params.count_predicate = compareFields.count_predicate;
       params.forecast_target = compareFields.forecast_target;
       params.forecast_lookback = compareFields.forecast_lookback;
+      params.recovery_threshold = resolveRecoveryThresholdForSave({
+        isTrap: isTrapPlugin,
+        recoveryThreshold
+      });
       if (!isTrapPlugin && compareFields.compare_value_kind === 'percent') {
         params.threshold_unit = 'percent';
       }
@@ -1172,17 +1194,27 @@ const StrategyOperation = () => {
         : enableAlerts.filter((item) => item !== 'no_data');
 
       if (isNoDataEnabled) {
-        params.no_data_recovery_period = params.no_data_period = {
-          type: nodataUnit,
-          value: noDataAlert
-        };
+        const noDataPeriods = resolveNoDataPeriodsForSave({
+          enabled: true,
+          detectionValue: noDataAlert,
+          detectionUnit: nodataUnit,
+          recoveryValue: noDataRecovery,
+          recoveryUnit: noDataRecoveryUnit
+        });
+        params.no_data_period = noDataPeriods.no_data_period;
+        params.no_data_recovery_period = noDataPeriods.no_data_recovery_period;
         params.no_data_level = noDataAlertLevel;
         params.no_data_alert_name = noDataAlertName;
       } else {
-        const periodValue = noDataAlert
-          ? { type: nodataUnit, value: noDataAlert }
-          : {};
-        params.no_data_period = params.no_data_recovery_period = periodValue;
+        const noDataPeriods = resolveNoDataPeriodsForSave({
+          enabled: false,
+          detectionValue: noDataAlert,
+          detectionUnit: nodataUnit,
+          recoveryValue: noDataRecovery,
+          recoveryUnit: noDataRecoveryUnit
+        });
+        params.no_data_period = noDataPeriods.no_data_period;
+        params.no_data_recovery_period = noDataPeriods.no_data_recovery_period;
       }
       if (params.notice_type_ids?.length) {
         const firstChannel = channelList.find((item) => item.id === params.notice_type_ids![0]);
@@ -1491,6 +1523,8 @@ const StrategyOperation = () => {
                           onCompareValueKindChange={setCompareValueKind}
                           onForecastTargetChange={setForecastTarget}
                           onForecastLookbackChange={setForecastLookback}
+                          recoveryThreshold={recoveryThreshold}
+                          onRecoveryThresholdChange={setRecoveryThreshold}
                           isTrap={isTrap}
                         />
                       ),

@@ -215,7 +215,7 @@ class TestRun:
         mocker.patch.object(
             scan.alert_detector,
             "detect_threshold_alerts",
-            return_value=([], []),
+            return_value=([], [], []),
         )
         mocker.patch.object(scan.alert_detector, "count_events")
         mocker.patch.object(scan.alert_detector, "recover_threshold_alerts", return_value=[])

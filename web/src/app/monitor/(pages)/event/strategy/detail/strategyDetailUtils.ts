@@ -574,10 +574,64 @@ export const resolveCompareFieldsForSave = ({
     count_predicate: {},
     forecast_target:
       mode === COMPARE_MODE_TIMELEFT ? forecastTarget ?? null : null,
-    forecast_lookback:
+      forecast_lookback:
       mode === COMPARE_MODE_TIMELEFT
         ? forecastLookback || DEFAULT_FORECAST_LOOKBACK
         : {}
+  };
+};
+
+export const resolveRecoveryThresholdForSave = ({
+  isTrap,
+  recoveryThreshold
+}: {
+  isTrap: boolean;
+  recoveryThreshold?: { method?: string; value?: number | null } | null;
+}): Record<string, unknown> => {
+  if (isTrap) return {};
+  const method = recoveryThreshold?.method;
+  const value = recoveryThreshold?.value;
+  if (!method || value == null || !Number.isFinite(value)) {
+    return {};
+  }
+  return { method, value };
+};
+
+export const resolveNoDataPeriodsForSave = ({
+  enabled,
+  detectionValue,
+  detectionUnit,
+  recoveryValue,
+  recoveryUnit
+}: {
+  enabled: boolean;
+  detectionValue: number | null;
+  detectionUnit: string;
+  recoveryValue: number | null;
+  recoveryUnit: string;
+}): {
+  no_data_period: Record<string, unknown> | { type: string; value: number };
+  no_data_recovery_period: Record<string, unknown> | { type: string; value: number };
+} => {
+  if (!enabled) {
+    const periodValue = detectionValue
+      ? { type: detectionUnit, value: detectionValue }
+      : {};
+    return {
+      no_data_period: periodValue,
+      no_data_recovery_period: periodValue
+    };
+  }
+  const detection = {
+    type: detectionUnit,
+    value: detectionValue
+  };
+  return {
+    no_data_period: detection,
+    no_data_recovery_period: {
+      type: recoveryUnit || detectionUnit,
+      value: recoveryValue ?? detectionValue
+    }
   };
 };
 

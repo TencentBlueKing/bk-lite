@@ -14,11 +14,7 @@ from apps.monitor.tasks.services.policy_scan.alert_detector import AlertDetector
 from apps.monitor.tasks.services.policy_scan.metric_query import MetricQueryService
 from apps.monitor.tasks.services.policy_scan.scanner import MonitorPolicyScan
 from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
-from apps.monitor.tasks.utils.policy_methods import (
-    COMPARE_MODE_ABSOLUTE,
-    compile_baseline_query,
-    compile_window_query,
-)
+from apps.monitor.tasks.utils.policy_methods import COMPARE_MODE_ABSOLUTE
 from apps.monitor.utils.dimension import parse_instance_id
 
 DRY_RUN_INSTANCE_LIMIT = 200
@@ -204,24 +200,7 @@ class PolicyDryRunService:
         return instances_map, truncated
 
     def _overlay_value_maps(self, policy, metric_query):
-        compare_mode = getattr(policy, "compare_mode", None) or COMPARE_MODE_ABSOLUTE
-        if compare_mode in ("", COMPARE_MODE_ABSOLUTE):
-            return {}, {}
-        step = metric_query.format_period(policy.period, 1)
-        base_query = metric_query.format_pmq()
-        group_by = metric_query._compiled_group_by()
-        current_query = compile_window_query(policy, base_query, step, group_by)
-        current_data = metric_query._query_range(current_query, policy.period, 1)
-        _raise_for_vm_error(current_data)
-        current_data = metric_query.convert_metric_values(current_data)
-        current_map = self._last_value_map(current_data, metric_query)
-        if compare_mode == "timeleft":
-            return current_map, {}
-        baseline_query = compile_baseline_query(policy, base_query, step, group_by)
-        baseline_data = metric_query._query_range(baseline_query, policy.period, 1)
-        _raise_for_vm_error(baseline_data)
-        baseline_data = metric_query.convert_metric_values(baseline_data)
-        return current_map, self._last_value_map(baseline_data, metric_query)
+        return metric_query.query_overlay_last_values()
 
     def _classify(
         self,
@@ -239,7 +218,7 @@ class PolicyDryRunService:
         comparison_series = self._series_map(
             comparison_data, metric_query, instances_map
         )
-        alert_events, info_events = AlertDetector(
+        alert_events, info_events, hold_events = AlertDetector(
             policy,
             instances_map,
             {},
@@ -250,6 +229,7 @@ class PolicyDryRunService:
             event["metric_instance_id"]: event for event in alert_events
         }
         info_by_metric = {event["metric_instance_id"]: event for event in info_events}
+        hold_by_metric = {event["metric_instance_id"]: event for event in hold_events}
         active_by_instance = {}
         if policy_id:
             for alert in MonitorAlert.objects.filter(
@@ -309,6 +289,17 @@ class PolicyDryRunService:
                     converted_thresholds, event.get("level")
                 )
                 row.update(verdict="would_trigger", reason="")
+            elif metric_instance_id in hold_by_metric:
+                event = hold_by_metric[metric_instance_id]
+                row["compared_value"] = self._event_numeric(event, compared_value)
+                recover_alert = active_by_instance.get(monitor_instance_id)
+                if recover_alert:
+                    row.update(verdict="hold", reason="")
+                else:
+                    row.update(
+                        verdict="ok",
+                        reason=self._hit_reason(hit_count, trigger_count, ""),
+                    )
             elif metric_instance_id in info_by_metric:
                 event = info_by_metric[metric_instance_id]
                 row["compared_value"] = self._event_numeric(event, compared_value)
@@ -428,16 +419,6 @@ class PolicyDryRunService:
                 "values": metric_info.get("values") or [],
             }
         return series
-
-    def _last_value_map(self, vm_data, metric_query):
-        values = {}
-        for metric_instance_id, series in self._series_map(
-            vm_data, metric_query, metric_query.instances_map
-        ).items():
-            numbers = self._numeric_tail(series["values"], 1)
-            if numbers:
-                values[metric_instance_id] = numbers[-1]
-        return values
 
     @staticmethod
     def _sort_items(items, instance_order):

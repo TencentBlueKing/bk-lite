@@ -85,7 +85,7 @@ def test_incomplete_groupby_two_containers_same_host_drops_alerts():
         _mq(agg),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     # 用户症状：预览 24%>10% 应告警，但实际 0 条
     assert alerts == [], f"expected no alerts due to ambiguity, got {alerts}"
@@ -104,7 +104,7 @@ def test_incomplete_groupby_single_container_still_matches():
     }
     detector = AlertDetector(_policy(), instances, {}, [], _mq(agg))
 
-    alerts, _ = detector.detect_threshold_alerts()
+    alerts, _, _ = detector.detect_threshold_alerts()
 
     assert len(alerts) == 1
     assert alerts[0]["monitor_instance_id"] == "('host1', 'c1')"
@@ -138,7 +138,7 @@ def test_full_groupby_triggers_even_with_sibling_containers():
         _mq(agg),
     )
 
-    alerts, _ = detector.detect_threshold_alerts()
+    alerts, _, _ = detector.detect_threshold_alerts()
 
     assert len(alerts) == 1
     assert alerts[0]["monitor_instance_id"] == "('host1', 'c1')"

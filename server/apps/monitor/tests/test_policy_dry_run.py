@@ -307,6 +307,55 @@ def test_saved_active_alert_would_recover(metric_ctx, mocker):
     assert alert.info_event_count == 0
 
 
+def test_saved_active_alert_hold_in_hysteresis_band(metric_ctx, mocker):
+    _instance(metric_ctx["obj"], "('h1',)", "主机1")
+    policy = MonitorPolicy.objects.create(
+        monitor_object=metric_ctx["obj"],
+        name="saved-hold",
+        algorithm="avg_over_time",
+        query_condition={"type": "metric", "metric_id": metric_ctx["metric"].id},
+        source={"type": "instance", "values": ["('h1',)"]},
+        group_by=["instance_id"],
+        recovery_condition=1,
+        recovery_threshold={"method": "<", "value": 70},
+        threshold=[{"level": "critical", "method": ">", "value": 80}],
+    )
+    alert = MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id="('h1',)",
+        metric_instance_id="('h1',)",
+        alert_type="alert",
+        status="new",
+        info_event_count=3,
+    )
+    result = _run(
+        _payload(
+            metric_ctx,
+            id=policy.id,
+            recovery_condition=1,
+            recovery_threshold={"method": "<", "value": 70},
+        ),
+        mocker,
+        _vm(_series("h1", 75)),
+        _vm(_series("h1", 75)),
+    )
+    alert.refresh_from_db()
+    assert result["items"][0]["verdict"] == "hold"
+    assert alert.status == "new"
+    assert alert.info_event_count == 3
+
+
+def test_draft_hysteresis_band_is_ok(metric_ctx, mocker):
+    _instance(metric_ctx["obj"], "('h1',)", "主机1")
+    result = _run(
+        _payload(metric_ctx, recovery_threshold={"method": "<", "value": 70}),
+        mocker,
+        _vm(_series("h1", 75)),
+        _vm(_series("h1", 75)),
+    )
+    assert result["items"][0]["verdict"] == "ok"
+
+
 def test_zero_side_effects(metric_ctx, mocker):
     _instance(metric_ctx["obj"], "('h1',)", "主机1")
     policy = MonitorPolicy.objects.create(

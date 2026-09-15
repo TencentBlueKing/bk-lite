@@ -49,6 +49,10 @@ def test_convert_snapshots_copy_converts_values_without_mutating_input():
                 "metric": {"mount": "/data"},
                 "values": [[1, "2048"], [2, None]],
             },
+            "current_value": 2048,
+            "baseline_value": 1024,
+            "compared_value": 2048,
+            "result_unit": "bytes",
         },
         {"event_id": "event-2", "raw_data": None},
         {"event_id": "event-3"},
@@ -58,6 +62,9 @@ def test_convert_snapshots_copy_converts_values_without_mutating_input():
     converted = convert_snapshots_copy(snapshots, "bytes", "kibibytes")
 
     assert converted[0]["raw_data"]["values"] == [[1, "2.0"], [2, None]]
+    assert converted[0]["current_value"] == 2.0
+    assert converted[0]["baseline_value"] == 1.0
+    assert converted[0]["compared_value"] == 2.0
     assert converted[1]["raw_data"] is None
     assert "raw_data" not in converted[2]
     assert snapshots == original

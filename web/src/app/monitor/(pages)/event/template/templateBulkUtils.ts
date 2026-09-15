@@ -158,6 +158,14 @@ const ALGORITHM_LABELS: Record<string, string> = {
   sum_over_time: 'SUM_OVER_TIME',
   count_over_time: 'COUNT_OVER_TIME',
   last_over_time: 'LAST_OVER_TIME',
+  p90_over_time: 'P90_OVER_TIME',
+  p95_over_time: 'P95_OVER_TIME',
+  p99_over_time: 'P99_OVER_TIME',
+  stddev_over_time: 'STDDEV_OVER_TIME',
+  count_if_over_time: 'COUNT_IF_OVER_TIME',
+  rate: 'RATE',
+  changes: 'CHANGES',
+  deriv: 'DERIV',
 };
 
 const GROUP_ALGORITHM_LABELS: Record<string, string> = {

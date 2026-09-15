@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
-import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
+import { SCHEDULE_UNIT_MAP, COMPARISON_METHOD } from '@/app/monitor/constants/event';
 import {
   COMPARE_MODE_ABSOLUTE,
   COMPARE_MODE_TIMELEFT,
@@ -64,6 +64,11 @@ interface AlertConditionsFormProps {
   onCompareValueKindChange: (val: string) => void;
   onForecastTargetChange?: (val: number | null) => void;
   onForecastLookbackChange?: (val: { type: string; value: number }) => void;
+  recoveryThreshold?: { method?: string; value?: number | null };
+  onRecoveryThresholdChange?: (val: {
+    method?: string;
+    value?: number | null;
+  }) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -73,6 +78,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   thresholdUnit,
   noDataAlert,
   nodataUnit,
+  noDataRecovery,
+  noDataRecoveryUnit,
   noDataAlertLevel,
   noDataAlertName,
   functionDelayMinutes,
@@ -85,15 +92,18 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   algorithm,
   forecastTarget,
   forecastLookback,
+  recoveryThreshold,
   onThresholdChange,
   onThresholdUnitChange,
   onNoDataAlertChange,
+  onNoDataRecoveryChange,
   onNoDataAlertLevelChange,
   onNoDataAlertNameChange,
   onCompareModeChange,
   onCompareValueKindChange,
   onForecastTargetChange,
   onForecastLookbackChange,
+  onRecoveryThresholdChange,
   isTrap
 }) => {
   const { t } = useTranslation();
@@ -354,24 +364,60 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   </span>
                 }
               >
-                {t('monitor.events.recoveryCondition')}
-                <Form.Item
-                  name="recovery_condition"
-                  noStyle
-                  rules={[
-                    {
-                      required: false,
-                      message: t('common.required')
+                <div className="flex flex-wrap items-center gap-[10px]">
+                  <span>{t('monitor.events.recoveryCondition')}</span>
+                  <Form.Item
+                    name="recovery_condition"
+                    noStyle
+                    rules={[
+                      {
+                        required: false,
+                        message: t('common.required')
+                      }
+                    ]}
+                  >
+                    <InputNumber
+                      className="w-[100px]"
+                      min={1}
+                      precision={0}
+                    />
+                  </Form.Item>
+                  <span>{t('monitor.events.consecutivePeriods')}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-[10px] mt-[10px]">
+                  <span>{t('monitor.events.recoveryThreshold')}</span>
+                  <Select
+                    className="w-[80px]"
+                    allowClear
+                    placeholder={t('monitor.events.recoveryThresholdPlaceholder')}
+                    value={recoveryThreshold?.method || undefined}
+                    onChange={(method) =>
+                      onRecoveryThresholdChange?.({
+                        method: method || '',
+                        value: recoveryThreshold?.value ?? null
+                      })
                     }
-                  ]}
-                >
+                  >
+                    {COMPARISON_METHOD.map((item) => (
+                      <Option key={item.value} value={item.value}>
+                        {item.label}
+                      </Option>
+                    ))}
+                  </Select>
                   <InputNumber
-                    className="mx-[10px] w-[100px]"
-                    min={1}
-                    precision={0}
+                    className="w-[120px]"
+                    placeholder={t(
+                      'monitor.events.recoveryThresholdPlaceholder'
+                    )}
+                    value={recoveryThreshold?.value ?? null}
+                    onChange={(value) =>
+                      onRecoveryThresholdChange?.({
+                        method: recoveryThreshold?.method || '',
+                        value: typeof value === 'number' ? value : null
+                      })
+                    }
                   />
-                </Form.Item>
-                {t('monitor.events.consecutivePeriods')}
+                </div>
               </Form.Item>
 
               {/* 无数据告警 */}
@@ -390,11 +436,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   ) : undefined
                 }
               >
-                <div className="flex items-center">
+                <div className="flex flex-wrap items-center">
                   <span>{t('monitor.events.noDataAlertCondition')}</span>
                   <InputNumber
-                    className="mx-[10px]"
-                    style={{ width: '80px' }}
+                    className="mx-[10px] w-[80px]"
                     min={SCHEDULE_UNIT_MAP[`${nodataUnit}Min`]}
                     max={SCHEDULE_UNIT_MAP[`${nodataUnit}Max`]}
                     value={noDataAlert}
@@ -406,7 +451,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   </span>
                   <Select
                     value={noDataAlertLevel}
-                    style={{ width: 180 }}
+                    className="w-[180px]"
                     onChange={onNoDataAlertLevelChange}
                   >
                     {NO_DATA_ALERT_OPTIONS.map((item) => (
@@ -415,6 +460,18 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                       </Option>
                     ))}
                   </Select>
+                </div>
+                <div className="flex flex-wrap items-center mt-[10px]">
+                  <span>{t('monitor.events.noDataRecoveryWindow')}</span>
+                  <InputNumber
+                    className="mx-[10px] w-[80px]"
+                    min={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Min`]}
+                    max={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Max`]}
+                    value={noDataRecovery}
+                    precision={0}
+                    onChange={onNoDataRecoveryChange}
+                  />
+                  <span>{t('monitor.events.nodataRecover')}</span>
                 </div>
               </Form.Item>
 

@@ -132,7 +132,7 @@ def test_formula_metric_name_template_uses_result_name():
         _metric_query_service(agg=agg),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert infos == []
     assert alerts[0]["content"].startswith("错误率 主机1 - status:500 500")
@@ -168,7 +168,7 @@ def test_formula_negative_threshold_conversion_prevents_false_alert():
         query_service,
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert alerts == []
     assert infos[0]["value"] == str(-5 * 1024**3)
@@ -285,7 +285,7 @@ def test_metric_detector_uses_policy_group_by_not_metric_instance_id_keys():
         ),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert infos == []
     assert alerts[0]["metric_instance_id"] == str(("h1", "/data"))
@@ -313,7 +313,7 @@ def test_formula_reversed_group_by_threshold_uses_instance_id_for_scope():
         _metric_query_service(instance_id_keys=["status", "instance_id"], agg=agg),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert infos == []
     assert alerts[0]["metric_instance_id"] == str(("500", "h1"))
