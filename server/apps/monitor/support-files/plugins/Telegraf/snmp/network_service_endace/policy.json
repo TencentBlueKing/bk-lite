@@ -1,5 +1,70 @@
 {
   "object": "NetworkService",
   "plugin": "NetworkService Endace SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Endace网络服务CPU使用率过高",
+      "alert_name": "网络服务${resource_name} CPU 使用率过高",
+      "description": "监控 Endace 网络可视化设备的整机 CPU 使用率（cpuUtil1），当持续高于阈值时触发告警，提示抓包与可视化处理负载过高的风险。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Endace网络服务磁盘空闲过低",
+      "alert_name": "网络服务${resource_name} 磁盘空闲百分比过低",
+      "description": "监控 Endace 各挂载点的磁盘空闲百分比（mountBytesPercentFree），当任一挂载点持续低于阈值时触发告警，提示抓包卷或系统卷空间不足。",
+      "metric_name": "disk_free_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 10,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "Endace网络服务RAID状态异常",
+      "alert_name": "网络服务${resource_name} RAID 状态异常",
+      "description": "监控 Endace RAID 控制器状态（raidStatusCode），归一后 1=正常，>1=异常。",
+      "metric_name": "device_raid_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
 }
