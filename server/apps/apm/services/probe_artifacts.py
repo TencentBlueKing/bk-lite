@@ -5,6 +5,7 @@
 依赖公网。
 """
 
+import hashlib
 import os
 import tempfile
 from typing import Iterator
@@ -45,6 +46,7 @@ PROBE_ARTIFACT_LEGACY_OBJECT_KEYS = {
 
 _DOWNLOAD_URL_PATH = "/api/v1/apm/open_api/probe/download"
 _DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+_PROBE_ARTIFACT_SHA256_CACHE: dict[str, str] = {}
 
 
 class ProbeArtifactNotFound(Exception):
@@ -55,6 +57,22 @@ def build_probe_artifact_download_url(base_url: str, artifact_name: str) -> str:
     if artifact_name not in PROBE_ARTIFACT_OBJECT_KEYS:
         raise ProbeArtifactNotFound(artifact_name)
     return f"{base_url.rstrip('/')}{_DOWNLOAD_URL_PATH}/{artifact_name}"
+
+
+def get_probe_artifact_sha256(artifact_name: str) -> str:
+    """按白名单流式计算制品 SHA-256；同一进程内缓存成功结果。"""
+    if artifact_name not in PROBE_ARTIFACT_OBJECT_KEYS:
+        raise ProbeArtifactNotFound(artifact_name)
+    cached = _PROBE_ARTIFACT_SHA256_CACHE.get(artifact_name)
+    if cached is not None:
+        return cached
+    digest = hashlib.sha256()
+    stream, _ = open_probe_artifact_stream(artifact_name)
+    for chunk in stream:
+        digest.update(chunk)
+    hex_digest = digest.hexdigest()
+    _PROBE_ARTIFACT_SHA256_CACHE[artifact_name] = hex_digest
+    return hex_digest
 
 
 def _object_keys_for_artifact(artifact_name: str) -> tuple[str, ...]:
@@ -132,3 +150,4 @@ def upload_probe_artifact(artifact_name: str, file_path: str) -> None:
             await jetstream.close()
 
     async_to_sync(_upload)()
+    _PROBE_ARTIFACT_SHA256_CACHE.pop(artifact_name, None)

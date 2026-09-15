@@ -1,4 +1,6 @@
+import hashlib
 import os
+import re
 import shlex
 import subprocess
 import uuid
@@ -12,6 +14,7 @@ from apps.apm.serializers.control_plane import IngestSnippetSerializer
 from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
+from apps.apm.services.probe_artifacts import JAVA_AGENT_ARTIFACT_NAME, ProbeArtifactNotFound, get_probe_artifact_sha256
 
 _PROBE_DOWNLOAD_URLS = {
     "java": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar",
@@ -20,6 +23,17 @@ _PROBE_DOWNLOAD_URLS = {
     "go": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-go-sdk.zip",
     "dotnet": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-dotnet-auto-linux-glibc-x64.zip",
 }
+_PROBE_BYTES = b"probe-bytes"
+_PROBE_SHA256 = hashlib.sha256(_PROBE_BYTES).hexdigest()
+
+
+@pytest.fixture(autouse=True)
+def _stub_probe_artifact_sha256(monkeypatch):
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        lambda artifact_name: _PROBE_SHA256,
+        raising=False,
+    )
 
 
 def _request(**kwargs) -> IngestSnippetRequest:
@@ -341,6 +355,107 @@ def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_i
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
 
 
+def _install_section(code: str, runtime: str) -> str:
+    marker = "# 1. 安装探针（将以下命令写入应用 Dockerfile）" if runtime == "docker" else "# 1. 安装探针"
+    return code.split(marker, maxsplit=1)[1].split("# 2. 配置上报", maxsplit=1)[0]
+
+
+def _checksum_command(code: str, runtime: str) -> str:
+    match = re.search(
+        r"if command -v sha256sum >/dev/null 2>&1; then.*?shasum -a 256 -c -; fi",
+        _install_section(code, runtime),
+        flags=re.DOTALL,
+    )
+    assert match is not None
+    return match.group(0)
+
+
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_snippet_verifies_server_sha256_after_each_probe_download(language, runtime, tmp_path):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language=language,
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    install = _install_section(snippet.code, runtime)
+    curl_at = install.find("curl --fail")
+    digest_at = install.find(_PROBE_SHA256)
+
+    assert "--insecure" in snippet.code
+    assert len(_PROBE_SHA256) == 64
+    assert curl_at != -1
+    assert digest_at > curl_at
+    assert "sha256sum -c -" in install
+    assert "shasum -a 256 -c -" in install
+
+    artifact = tmp_path / "probe.bin"
+    verify = re.sub(
+        r"printf '%s  %s\\n' " + re.escape(shlex.quote(_PROBE_SHA256)) + r" \S+",
+        f"printf '%s  %s\\n' {shlex.quote(_PROBE_SHA256)} {shlex.quote(str(artifact))}",
+        _checksum_command(snippet.code, runtime),
+    )
+    artifact.write_bytes(b"tampered")
+    failed = subprocess.run(["sh", "-c", verify], text=True, capture_output=True)
+    assert failed.returncode != 0
+
+    artifact.write_bytes(_PROBE_BYTES)
+    passed = subprocess.run(["sh", "-c", verify], text=True, capture_output=True)
+    assert passed.returncode == 0
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+
+
+def test_host_snippet_fails_closed_when_probe_artifact_sha256_is_unavailable(monkeypatch):
+    def missing(artifact_name):
+        raise ProbeArtifactNotFound(artifact_name)
+
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        missing,
+        raising=False,
+    )
+
+    with pytest.raises(ProbeArtifactNotFound):
+        DjangoIntegrationConfigurationService().render_snippet(
+            _request(
+                language="java",
+                runtime="host",
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+            )
+        )
+
+
+def test_host_snippet_fails_closed_instead_of_embedding_an_empty_probe_sha256(monkeypatch):
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        lambda artifact_name: "",
+        raising=False,
+    )
+
+    with pytest.raises((ProbeArtifactNotFound, ValueError)):
+        DjangoIntegrationConfigurationService().render_snippet(
+            _request(
+                language="python",
+                runtime="docker",
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+            )
+        )
+
+
 @pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
 @pytest.mark.parametrize("runtime", ["host", "docker", "kubernetes", "other"])
 def test_snippet_fails_closed_without_a_resolved_system_download_address(language, runtime):
@@ -592,3 +707,68 @@ def test_snippet_separately_quotes_shell_literals_and_encodes_otel_resource_valu
         "deployment.environment": malicious,
         "service.instance.id": expected_instance,
     }
+
+
+def test_probe_artifact_sha256_streams_allowlisted_object_and_caches(monkeypatch):
+    from apps.apm.services import probe_artifacts as probe_artifacts_module
+
+    probe_artifacts_module._PROBE_ARTIFACT_SHA256_CACHE.clear()
+    calls = []
+
+    def fake_stream(artifact_name):
+        calls.append(artifact_name)
+        return iter([b"ab", b"cd"]), artifact_name
+
+    monkeypatch.setattr(probe_artifacts_module, "open_probe_artifact_stream", fake_stream)
+
+    digest = get_probe_artifact_sha256(JAVA_AGENT_ARTIFACT_NAME)
+
+    assert digest == hashlib.sha256(b"abcd").hexdigest()
+    assert get_probe_artifact_sha256(JAVA_AGENT_ARTIFACT_NAME) == digest
+    assert calls == [JAVA_AGENT_ARTIFACT_NAME]
+
+
+def test_probe_artifact_sha256_rejects_names_outside_the_allowlist():
+    with pytest.raises(ProbeArtifactNotFound):
+        get_probe_artifact_sha256("etc-passwd")
+
+
+def test_probe_artifact_sha256_does_not_cache_missing_artifacts(monkeypatch):
+    from apps.apm.services import probe_artifacts as probe_artifacts_module
+
+    probe_artifacts_module._PROBE_ARTIFACT_SHA256_CACHE.clear()
+
+    def missing(artifact_name):
+        raise ProbeArtifactNotFound(artifact_name)
+
+    monkeypatch.setattr(probe_artifacts_module, "open_probe_artifact_stream", missing)
+
+    with pytest.raises(ProbeArtifactNotFound):
+        get_probe_artifact_sha256(JAVA_AGENT_ARTIFACT_NAME)
+
+    assert JAVA_AGENT_ARTIFACT_NAME not in probe_artifacts_module._PROBE_ARTIFACT_SHA256_CACHE
+
+
+def test_upload_probe_artifact_invalidates_sha256_cache(monkeypatch, tmp_path):
+    from apps.apm.services import probe_artifacts as probe_artifacts_module
+    from apps.apm.services.probe_artifacts import upload_probe_artifact
+
+    probe_artifacts_module._PROBE_ARTIFACT_SHA256_CACHE[JAVA_AGENT_ARTIFACT_NAME] = "a" * 64
+
+    class FakeJetStream:
+        async def connect(self):
+            pass
+
+        async def put(self, key, data, description=None):
+            data.read()
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(probe_artifacts_module, "JetStreamService", FakeJetStream)
+    file_path = tmp_path / "opentelemetry-javaagent.jar"
+    file_path.write_bytes(b"jar-bytes")
+
+    upload_probe_artifact(JAVA_AGENT_ARTIFACT_NAME, str(file_path))
+
+    assert JAVA_AGENT_ARTIFACT_NAME not in probe_artifacts_module._PROBE_ARTIFACT_SHA256_CACHE
