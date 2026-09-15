@@ -5,11 +5,16 @@
   - 无 updateinfo / 非 yum 源 → 返回空
   - sync_linux_repo():建 Patch + LinuxPatchDetail、严重级别映射、team 继承、幂等
   - sync view action:返回计数;非 Linux 源 400
+
+sync view 会 import apps.node_mgmt.models.Node；相关 pytest 包装器
+需要据此把 node_mgmt 列入 INSTALL_APPS。node_mgmt.urls 会再拉起 monitor。
 """
 import gzip
 
 import pytest
 
+from apps.monitor.models import MonitorPlugin  # noqa: F401  INSTALL_APPS 需含 monitor（node_mgmt.urls → collector_release）
+from apps.node_mgmt.models import Node  # noqa: F401  列表 URL 加载依赖 node_mgmt
 from apps.patch_mgmt.constants import (
     OSType,
     PackageManagerType,
