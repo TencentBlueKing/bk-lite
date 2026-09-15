@@ -1,7 +1,8 @@
 NetworkService Tripp Lite UPS PDU Environmental SNMP:
   name: Tripp Lite UPS PDU Environmental (Telegraf)
-  desc: SNMP monitoring template for Tripp Lite network service device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Tripp Lite UPS network service device. It reports battery
+    charge percent, output load percent, per-port inbound traffic rate, per-port outbound
+    traffic rate, and system uptime
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -100,6 +101,12 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    network_service_tripplite_battery_capacity:
+      name: Tripp Lite Battery Charge
+      desc: PRODUCTS estimated battery charge remaining as a percent of full charge.
+    network_service_tripplite_output_load:
+      name: Tripp Lite Output Load
+      desc: PRODUCTS output-line load as a percent of UPS capacity.
 monitor_object_metric_group:
   NetworkService:
     Base: Base
