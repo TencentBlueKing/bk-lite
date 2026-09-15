@@ -48,7 +48,7 @@
 |---|---|---|---|
 | 组件化画布 | 仪表盘内容由组件化画布编排，组件支持新增、编辑、复制、删除 | — | GA |
 | 组件类型 | 支持的图表组件类型 | 17 种，以 `components/widgetRegistry.ts` 注册为准（含 Screen-only Scene Widget `application3D`） | GA |
-| 3D 应用场景组件 | application3D 在 Screen / Share 上以 self-fetch 方式展示 Application Wall→Focus→Detail；健康经 `application_run_host`×MonitorAlert 聚合；成员可经父 System.`status` ephemeral 过滤 | 后端 `Application3DQueryService` + scene/share 四类 operation；前端 Three.js Wall；编辑态无场景交互 | WIP |
+| 3D 应用场景组件 | application3D 在 Screen / Share 上以 self-fetch 方式展示 Application Wall→Focus→Detail；健康经 `application_run_host`×MonitorAlert 聚合；成员可经父 System.`status` ephemeral 过滤；Wall 前端按告警排序并每页 24 张分页 | 后端 `Application3DQueryService` + scene/share 四类 operation；前端 Three.js Wall + 分页 HUD；编辑态无场景交互 | WIP |
 
 > 证据来源：`specs/changes/ops-analysis-application3d/spec.md`、`server/apps/operation_analysis/services/application3d/`、`web/src/app/ops-analysis/types/sceneWidgetCapability.ts`、`web/src/app/ops-analysis/components/widgets/application3D/`
 
