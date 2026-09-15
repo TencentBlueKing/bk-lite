@@ -1,6 +1,6 @@
 VoiceGateway Polycom SNMP:
   name: Polycom（Telegraf）
-  desc: 面向 Polycom 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Polycom RealPresence DMA 的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -30,9 +30,26 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: Polycom RealPresence DMA 各服务器 CPU 使用率，直接为 0-100 百分比。看板取最高节点，持续偏高可能表示呼叫控制或会议资源压力。
+    memory_used:
+      name: 内存已用量
+      desc: Polycom RealPresence DMA 服务器当前已用内存（MIB 以 MB 上报，查询侧换算为字节）。与总量一起计算内存使用率。
+    memory_total:
+      name: 内存总量
+      desc: Polycom RealPresence DMA 服务器内存总量（MIB 以 MB 上报，查询侧换算为字节）。与已用量一起计算内存使用率。
+    memory_free:
+      name: 内存空闲量
+      desc: Polycom RealPresence DMA 服务器可选空闲内存（MIB 以 MB 上报，查询侧换算为字节）。部分 DMA 软件版本可能不返回该列。
+    memory_usage_percent:
+      name: 内存使用率
+      desc: Polycom RealPresence DMA 内存使用率，按 已用/总量*100 计算。持续偏高可能表示会话或会议资源压力。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
