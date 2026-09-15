@@ -1,7 +1,8 @@
 Switch AsterFusion SNMP:
   name: AsterFusion (Telegraf)
-  desc: SNMP monitoring template for AsterFusion switch. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for AsterFusion AsterNOS switches. Device health
+    comes from private CPU, memory and temperature scalars; interface traffic uses the
+    built-in IF-MIB floor.
 monitor_object:
   Switch: Switch
 monitor_object_type:
