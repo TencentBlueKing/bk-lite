@@ -1,5 +1,56 @@
 {
   "object": "Transmission",
   "plugin": "Transmission BridgeWave SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "BridgeWave传输设备机组温度过高",
+      "alert_name": "传输设备${resource_name} 机组温度过高",
+      "description": "监控 BridgeWave 毫米波传输设备的机组温度（brwaveRadioUnitTemperature，百分之一摄氏度换算为摄氏度），当持续高于阈值时触发告警，提示机箱温升、环境温度过高或射频硬件热压力。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "BridgeWave传输设备发射机温度过高",
+      "alert_name": "传输设备${resource_name} 发射机温度过高",
+      "description": "监控 BridgeWave 毫米波传输设备的发射机温度（brwaveRadioTxTemperature，百分之一摄氏度换算为摄氏度），当持续高于阈值时触发告警，提示射频硬件热压力或散热异常。",
+      "metric_name": "tx_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }
