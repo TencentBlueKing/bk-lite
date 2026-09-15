@@ -32,21 +32,42 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
-    # ---- Exalt EX-i digital microwave health(CPU/memory/temperature/fan/power) -> N/A ----
-    # Current MIB facts prove Exalt SNMP product identity, but do not confirm stable row-filter-free private health scalars.
-    # To avoid fabricating device-health metrics, this child only collects uptime and IF-MIB ifXTable 64-bit HC counters.
+# @bk_include_ifmib_table
+    # ---- ExaltComProducts (PEN 25651) locCurrentTemp ----
+    # 1.3.6.1.4.1.25651.1.2.4.2.3.1.3 → device_temperature_celsius
+    # Integer32，单位已是摄氏度，查询侧不缩放。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
+        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.3.0"
+        name = "celsius"
+        conversion = "int"
+    # ---- 可选 locTempAlarm 1.3.6.1.4.1.25651.1.2.4.2.3.1.2 → device_temp_alarm ----
+    # AlarmLevelT：almNORMAL(0)/almMINOR(1)/almMAJOR(2)。设备未实现该标量时采集端跳过。
+    [[inputs.snmp.table]]
+        name = "device_temp"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.2.0"
+        name = "alarm"
+        conversion = "int"
+    # ---- locCurrentRSL 1.3.6.1.4.1.25651.1.2.4.3.1.3 → rsl_dbm ----
+    # Integer32，单位已是 dBm，查询侧不缩放。
+    [[inputs.snmp.table]]
+        name = "rsl"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.25651.1.2.4.3.1.3.0"
+        name = "dbm"
+        conversion = "int"
+    # ---- 可选 locLinkState 1.3.6.1.4.1.25651.1.2.4.2.3.1.1 → device_link_state ----
+    # AlarmLevelT：almNORMAL(0) 无误码连接 / almMINOR(1) 误码连接 / almMAJOR(2) 无链路。
+    [[inputs.snmp.table]]
+        name = "device_link"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.1.0"
+        name = "state"
+        conversion = "int"
+# ---- CPU/内存/风扇/电源：ExaltComProducts 已确认内部温度、接收电平与可选温度/链路告警。无私有 CPU%/内存% 对象，不臆造。风扇与电源不是稳定共享健康对象，不采。----
