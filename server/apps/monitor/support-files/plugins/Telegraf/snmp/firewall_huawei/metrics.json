@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei_usg",
   "plugin": "Firewall Huawei SNMP",
-  "plugin_desc": "Huawei Secospace USG firewall SNMP collection (HUAWEI-ENTITY-EXTENT-MIB, enterprise 2011). Collects IF-MIB + 64-bit HC traffic, and per-entity CPU (hwEntityCpuUsage), memory (hwEntityMemUsage), temperature (hwEntityTemperature), and voltage (hwEntityVoltage, mV→V via /1000), each multi-dimensional by descr (entPhysicalName). Fan operational state (hwEntityFanState) and PSU state (hwEntityPwrState) are absent from the USG6390 Info-Finder MIB export; optical Rx/Tx is USG9500-only and intentionally omitted. Supported brands/models — Huawei USG6300/USG6390 and related Secospace USG appliances.",
+  "plugin_desc": "SNMP monitoring for Huawei USG firewalls. It reports per-entity CPU, memory, temperature, and voltage, plus current sessions, new sessions, session-create rate, half-open sessions, TCP/UDP/ICMP session counts, and device forwarding throughput. USG9500 also reports per-SPU CPU usage when those boards are present. Interface metrics use the platform built-in IF-MIB. Supported models include USG6000, USG6000E, USG9500, and HiSecEngine USG.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_huawei_usg'}) by (instance_id)",
   "name": "Firewall",
@@ -19,6 +19,9 @@
     "device_memory_usage",
     "device_temperature_celsius",
     "device_voltage_volts",
+    "firewall_active_sessions",
+    "firewall_session_rate",
+    "firewall_throughput",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -108,6 +111,184 @@
         "instance_id"
       ],
       "description": "Per-entity voltage of the Huawei USG firewall (HUAWEI-ENTITY-EXTENT-MIB hwEntityVoltage). Device reports millivolts; this query divides by 1000 for volts and drops zero readings. Dimension descr is entPhysicalName. Abnormal voltage can indicate power-rail or board issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions",
+      "query": "firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Active Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current concurrent sessions on the Huawei USG firewall (hwSecCurrSessNum). A rapid rise can indicate a connection flood or session-table pressure."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_new_sessions",
+      "query": "firewall_new_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "New Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Newly created sessions on the Huawei USG firewall (hwSecConSessNum). Combined with the concurrent session count it shows whether the device is establishing sessions faster than they age out."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_total_sessions",
+      "query": "firewall_total_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Total Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current total sessions in the Huawei USG session table (hwSecStatMonTotalSess). Use it with session-create rate to judge remaining session headroom."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_session_rate",
+      "query": "firewall_session_rate{instance_type='firewall', __$labels__}",
+      "display_name": "Session Create Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current session-establishment rate on the Huawei USG firewall (hwSecStatMonCurSessSpeed). A sudden spike can indicate a connection flood."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_half_open_sessions",
+      "query": "firewall_half_open_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Half-Open Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current half-open (incomplete handshake) sessions on the Huawei USG firewall (hwSecStatMonHalfConn). A sustained rise often indicates SYN flood or incomplete handshake pressure."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions_tcp",
+      "query": "firewall_active_sessions_tcp{instance_type='firewall', __$labels__}",
+      "display_name": "Active TCP Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current TCP sessions on the Huawei USG firewall (hwSecStatMonTcpSess). Helps show session composition versus UDP and ICMP."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions_udp",
+      "query": "firewall_active_sessions_udp{instance_type='firewall', __$labels__}",
+      "display_name": "Active UDP Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current UDP sessions on the Huawei USG firewall (hwSecStatMonUdpSess). Helps show session composition versus TCP and ICMP."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions_icmp",
+      "query": "firewall_active_sessions_icmp{instance_type='firewall', __$labels__}",
+      "display_name": "Active ICMP Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current ICMP sessions on the Huawei USG firewall (hwSecStatMonIcmpSess). An abnormal rise can indicate scanning or attack traffic."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_device_sessions",
+      "query": "firewall_device_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Device Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device-wide session count on the Huawei USG firewall (hwSecStatDeviceSessCount). Prefer this whole-device reading when both per-monitor and device objects are present."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_device_session_rate",
+      "query": "firewall_device_session_rate{instance_type='firewall', __$labels__}",
+      "display_name": "Device Session Create Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device-wide session-establishment rate on the Huawei USG firewall (hwSecStatDeviceSessSpeed)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_throughput32",
+      "query": "firewall_throughput32{instance_type='firewall', __$labels__}",
+      "display_name": "Device Throughput (32-bit)",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device forwarding throughput from the 32-bit object (hwSecStatDeviceThroughput). Prefer firewall_throughput (64-bit) on high-speed platforms because the 32-bit Gauge can wrap."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_throughput",
+      "query": "firewall_throughput{instance_type='firewall', __$labels__}",
+      "display_name": "Device Throughput",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device forwarding throughput from the 64-bit object (hwSecStatDeviceThroughput64). This is firewall inspection/forwarding throughput, not IF-MIB interface octets."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_spu_usage",
+      "query": "firewall_spu_usage{instance_type='firewall', __$labels__}",
+      "display_name": "SPU CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "slot",
+          "description": "SPU slot"
+        },
+        {
+          "name": "cpu",
+          "description": "SPU CPU"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average CPU usage of each USG9500 SPU (hwSecStatUsage, 0-100). Dimensions are SPU slot and CPU from the performance table, not ENTITY-MIB names. Empty on boxes without SPU boards."
     },
     {
       "metric_group": "Status",
