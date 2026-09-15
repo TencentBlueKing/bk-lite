@@ -1,7 +1,9 @@
 """策略试跑：草稿/已保存、越权过滤、判定、零副作用、连续 N 文案、失败日志。"""
 
 import logging
+import traceback
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from rest_framework.exceptions import ValidationError
@@ -12,6 +14,7 @@ from apps.monitor.models import (
     MonitorAlertMetricSnapshot,
     MonitorEvent,
     MonitorInstance,
+    PolicyOrganization,
 )
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
@@ -27,6 +30,22 @@ from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
 pytestmark = pytest.mark.django_db
 
 _ACTOR = {"username": "tester", "is_superuser": False}
+_TEAM = 7
+
+
+def _visible_actor(team=_TEAM, **overrides):
+    actor = {
+        "username": "tester",
+        "is_superuser": False,
+        "data_scope": SimpleNamespace(data_team_ids=[team]),
+    }
+    actor.update(overrides)
+    return actor
+
+
+def _attach_org(policy, team=_TEAM):
+    PolicyOrganization.objects.create(policy=policy, organization=team)
+    return policy
 
 
 @pytest.fixture
@@ -121,10 +140,10 @@ def _authorize(mocker, allowed_ids=None):
     )
 
 
-def _run(payload, mocker, *vm_responses, allowed_ids=None):
+def _run(payload, mocker, *vm_responses, allowed_ids=None, actor=None):
     _authorize(mocker, allowed_ids)
     _queue_vm(mocker, *vm_responses)
-    return PolicyDryRunService(payload, _ACTOR).run()
+    return PolicyDryRunService(payload, actor or _ACTOR).run()
 
 
 def _verdicts(result):
@@ -287,6 +306,7 @@ def test_saved_active_alert_would_recover(metric_ctx, mocker):
         group_by=["instance_id"],
         recovery_condition=1,
     )
+    _attach_org(policy)
     alert = MonitorAlert.objects.create(
         policy_id=policy.id,
         monitor_instance_id="('h1',)",
@@ -300,6 +320,7 @@ def test_saved_active_alert_would_recover(metric_ctx, mocker):
         mocker,
         _vm(_series("h1", 10)),
         _vm(_series("h1", 10)),
+        actor=_visible_actor(),
     )
     alert.refresh_from_db()
     assert result["items"][0]["verdict"] == "would_recover"
@@ -320,6 +341,7 @@ def test_saved_active_alert_hold_in_hysteresis_band(metric_ctx, mocker):
         recovery_threshold={"method": "<", "value": 70},
         threshold=[{"level": "critical", "method": ">", "value": 80}],
     )
+    _attach_org(policy)
     alert = MonitorAlert.objects.create(
         policy_id=policy.id,
         monitor_instance_id="('h1',)",
@@ -338,11 +360,42 @@ def test_saved_active_alert_hold_in_hysteresis_band(metric_ctx, mocker):
         mocker,
         _vm(_series("h1", 75)),
         _vm(_series("h1", 75)),
+        actor=_visible_actor(),
     )
     alert.refresh_from_db()
     assert result["items"][0]["verdict"] == "hold"
     assert alert.status == "new"
     assert alert.info_event_count == 3
+
+
+def test_foreign_saved_id_does_not_evaluate_recovery(metric_ctx, mocker):
+    _instance(metric_ctx["obj"], "('h1',)", "主机1")
+    policy = MonitorPolicy.objects.create(
+        monitor_object=metric_ctx["obj"],
+        name="foreign-policy",
+        algorithm="avg_over_time",
+        query_condition={"type": "metric", "metric_id": metric_ctx["metric"].id},
+        source={"type": "instance", "values": ["('h1',)"]},
+        group_by=["instance_id"],
+        recovery_condition=1,
+    )
+    _attach_org(policy, team=99)
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id="('h1',)",
+        metric_instance_id="('h1',)",
+        alert_type="alert",
+        status="new",
+        info_event_count=0,
+    )
+    result = _run(
+        _payload(metric_ctx, id=policy.id, recovery_condition=1),
+        mocker,
+        _vm(_series("h1", 10)),
+        _vm(_series("h1", 10)),
+        actor=_visible_actor(team=_TEAM),
+    )
+    assert result["items"][0]["verdict"] == "ok"
 
 
 def test_draft_hysteresis_band_is_ok(metric_ctx, mocker):
@@ -459,11 +512,14 @@ def test_failure_logs_single_warning_without_query_or_payload(metric_ctx, mocker
     sentinel = 'avg_over_time(cpu{job="secret"}[5m]) payload-BODY'
     mocker.patch(
         "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI.query_range",
-        side_effect=RuntimeError(sentinel),
+        side_effect=RuntimeError("query failed"),
     )
     caplog.set_level(logging.DEBUG, logger="monitor")
     with pytest.raises(BaseAppException, match="试跑失败"):
-        PolicyDryRunService(_payload(metric_ctx), _ACTOR).run()
+        PolicyDryRunService(
+            _payload(metric_ctx, name=sentinel),
+            _ACTOR,
+        ).run()
     records = [
         record for record in caplog.records if record.msg == DRY_RUN_FAIL_TEMPLATE
     ]
@@ -471,14 +527,17 @@ def test_failure_logs_single_warning_without_query_or_payload(metric_ctx, mocker
     record = records[0]
     assert record.levelno == logging.WARNING
     assert record.args == ("", "query_existence", "RuntimeError")
+    assert record.exc_info is not None
     formatted = record.getMessage()
     assert formatted == (
         "event=monitor_policy_dry_run_failed policy_id= "
         "failed_stage=query_existence error_type=RuntimeError"
     )
+    tb_text = "".join(traceback.format_exception(*record.exc_info))
     assert sentinel not in record.msg
     assert sentinel not in str(record.args)
     assert sentinel not in formatted
+    assert sentinel not in tb_text
     assert all(sentinel not in (record.getMessage() or "") for record in caplog.records)
 
 

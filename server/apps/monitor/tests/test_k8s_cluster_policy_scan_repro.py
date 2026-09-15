@@ -70,7 +70,6 @@ def _mq(agg, instance_id_keys=None):
             instance_id_keys=instance_id_keys or ["instance_id"],
             dimensions=[],
         ),
-        query_aggregation_metrics=lambda period, points=1: agg,
         query_comparison_metrics=lambda period, points=1: agg,
         query_existence_metrics=lambda period, points=1: agg,
         convert_metric_values=lambda data: data,
@@ -78,6 +77,8 @@ def _mq(agg, instance_id_keys=None):
         get_display_unit=lambda: "%",
         get_enum_value_map=lambda: {},
         convert_thresholds=lambda thresholds: thresholds,
+        query_overlay_last_values=lambda: ({}, {}),
+        get_source_display_unit=lambda: "%",
     )
 
 

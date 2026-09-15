@@ -230,7 +230,7 @@ class MonitorPolicyScan:
 
         alert_events, info_events, hold_events, no_data_events, recovered_events = self._collect_events()
 
-        self._sync_baselines(alert_events, info_events)
+        self._execute_step("Sync baselines", self._sync_baselines)
 
         events = alert_events + no_data_events
         result = self._create_events_alerts_and_notify(events)
@@ -244,28 +244,25 @@ class MonitorPolicyScan:
             new_alerts,
         )
 
-    def _sync_baselines(self, alert_events, info_events):
-        """同步基准表（只增不删）"""
-        if not self.policy.source or not self.instances_map:
+    def _sync_baselines(self):
+        """用本轮存在性查询增量同步基准表（只增不删）。"""
+        if not self.policy.source or not self.instances_map or not self.policy.period:
             return
 
-        all_events = alert_events + info_events
-        if not all_events:
-            return
-
+        existence = self.metric_query_service.query_existence_metrics(self.policy.period)
+        formatted = self.metric_query_service.format_aggregation_metrics(existence)
         metric_instances = {}
-        for event in all_events:
-            metric_instance_id = event.get("metric_instance_id", "")
-            monitor_instance_id = event.get("monitor_instance_id", "")
-
-            if not metric_instance_id or not monitor_instance_id:
+        for metric_instance_id in formatted:
+            if metric_instance_id in self.baselines_map:
                 continue
-
+            monitor_instance_id = (
+                self.metric_query_service.get_monitor_instance_id_from_metric_instance_id(
+                    metric_instance_id
+                )
+            )
             if monitor_instance_id not in self.instances_map:
                 continue
-
-            if metric_instance_id not in self.baselines_map:
-                metric_instances[metric_instance_id] = monitor_instance_id
+            metric_instances[metric_instance_id] = monitor_instance_id
 
         if metric_instances:
             PolicyBaselineService(self.policy).sync(metric_instances)

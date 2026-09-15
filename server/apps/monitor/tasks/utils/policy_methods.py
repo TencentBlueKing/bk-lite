@@ -122,20 +122,17 @@ COMPARE_MODE_OFFSET_30D = "offset_30d"
 COMPARE_MODE_BASELINE_4W = "baseline_4w"
 COMPARE_MODE_TIMELEFT = "timeleft"
 
-SLICE1_COMPARE_MODES = {
+COMPARE_MODES = {
     COMPARE_MODE_ABSOLUTE,
     COMPARE_MODE_PREVIOUS_WINDOW,
     COMPARE_MODE_OFFSET_1H,
     COMPARE_MODE_OFFSET_24H,
-}
-COMPARE_MODES = SLICE1_COMPARE_MODES | {
     COMPARE_MODE_OFFSET_7D,
     COMPARE_MODE_OFFSET_30D,
     COMPARE_MODE_BASELINE_4W,
     COMPARE_MODE_TIMELEFT,
 }
-SLICE1_COMPARE_VALUE_KINDS = {"", "delta", "percent", "ratio"}
-COMPARE_VALUE_KINDS = SLICE1_COMPARE_VALUE_KINDS | {"hours"}
+COMPARE_VALUE_KINDS = {"", "delta", "percent", "ratio", "hours"}
 COMPARE_VALUE_KINDS_BY_MODE = {
     COMPARE_MODE_ABSOLUTE: {""},
     COMPARE_MODE_PREVIOUS_WINDOW: {"delta", "percent"},
@@ -316,13 +313,13 @@ def _compile_count_if_query(policy_like, base_query, step, group_by, is_formula)
     value = _format_promql_number(predicate.get("value"))
     inner_step = period_step(step)
     if is_formula:
-        compared = f"(({base_query}) {op} {value})"
-        return f"count_over_time({compared}[{step}:{inner_step}])"
+        compared = f"(({base_query}) {op} bool {value})"
+        return f"sum_over_time({compared}[{step}:{inner_step}])"
     if not group_by:
         raise BaseAppException("group_by is required")
     group_algorithm = _resolve_group_algorithm(policy_like)
-    compared = f"(({group_algorithm}({base_query}) by ({group_by})) {op} {value})"
-    return f"count_over_time({compared}[{step}:{inner_step}])"
+    compared = f"(({group_algorithm}({base_query}) by ({group_by})) {op} bool {value})"
+    return f"sum_over_time({compared}[{step}:{inner_step}])"
 
 
 def _compile_last_over_time_existence(policy_like, base_query, step, group_by):
@@ -539,13 +536,13 @@ def compile_policy_query(policy_like, base_query, step, group_by=None):
 def compile_existence_query(policy_like, base_query, step, group_by=None):
     """存在性查询：不套比较基准。
 
-    窗口聚合类沿用策略原汇聚；逐序列类（rate/changes/deriv）改用 last_over_time，
-    避免单样本窗被当成无数据。
+    窗口聚合类沿用策略原汇聚；逐序列类与 count_if 改用 last_over_time，
+    避免单样本窗或零匹配窗被当成无数据。
     """
     if group_by is None:
         group_by = ",".join(_policy_get(policy_like, "group_by") or [])
     algorithm = _policy_get(policy_like, "algorithm")
-    if algorithm in PER_SERIES_ALGORITHMS:
+    if algorithm in PER_SERIES_ALGORITHMS or algorithm == COUNT_IF_ALGORITHM:
         return _compile_last_over_time_existence(policy_like, base_query, step, group_by)
     return compile_window_query(policy_like, base_query, step, group_by)
 

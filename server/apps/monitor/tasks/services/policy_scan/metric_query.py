@@ -174,10 +174,6 @@ class MetricQueryService:
         )
         return self._query_range(query, period, points)
 
-    def query_aggregation_metrics(self, period, points=1):
-        """兼容旧调用方：比较查询。"""
-        return self.query_comparison_metrics(period, points)
-
     def query_raw_metrics(self, period, points=1):
         """查询原始指标数据(不进行聚合)
 

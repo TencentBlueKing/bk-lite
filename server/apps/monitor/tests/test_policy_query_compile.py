@@ -175,22 +175,88 @@ def test_offset_7d_compiles_percent():
     assert compiled == f"({window} - {window} offset 7d) / ({window} offset 7d) * 100"
 
 
+def test_offset_7d_compiles_ratio():
+    policy = _policy(compare_mode="offset_7d", compare_value_kind="ratio")
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == f"{window} / ({window} offset 7d)"
+
+
+def test_offset_30d_compiles_percent():
+    policy = _policy(compare_mode="offset_30d", compare_value_kind="percent")
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == f"({window} - {window} offset 30d) / ({window} offset 30d) * 100"
+
+
+def test_baseline_4w_compiles_delta():
+    policy = _policy(compare_mode="baseline_4w", compare_value_kind="delta")
+    q = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    b = f"({q} offset 7d + {q} offset 14d + {q} offset 21d + {q} offset 28d) / 4"
+    assert compiled == f"{q} - ({b})"
+
+
+@pytest.mark.parametrize(
+    "algorithm,window",
+    [
+        ("stddev_over_time", "stddev_over_time((avg(cpu) by (instance_id))[5m:10s])"),
+        ("rate", "avg(rate(cpu[5m])) by (instance_id)"),
+        ("changes", "avg(changes(cpu[5m])) by (instance_id)"),
+        ("deriv", "avg(deriv(cpu[5m])) by (instance_id)"),
+    ],
+)
+def test_new_algorithms_wrap_offset_1h_percent(algorithm, window):
+    policy = _policy(
+        algorithm=algorithm,
+        compare_mode="offset_1h",
+        compare_value_kind="percent",
+    )
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == f"({window} - {window} offset 1h) / ({window} offset 1h) * 100"
+
+
 def test_stddev_compiles_stddev_over_time():
     policy = _policy(algorithm="stddev_over_time")
     compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
     assert compiled == "stddev_over_time((avg(cpu) by (instance_id))[5m:10s])"
 
 
-def test_count_if_compiles_predicate_without_bool():
+def test_count_if_compiles_bool_predicate_and_sum_over_time():
     policy = _policy(
         algorithm="count_if_over_time",
         count_predicate={"method": ">", "value": 80},
     )
     compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
     assert compiled == (
-        "count_over_time(((avg(cpu) by (instance_id)) > 80)[5m:10s])"
+        "sum_over_time(((avg(cpu) by (instance_id)) > bool 80)[5m:10s])"
     )
-    assert "bool" not in compiled
+
+
+def test_count_if_formula_compiles_bool_predicate_and_sum_over_time():
+    policy = _policy(
+        algorithm="count_if_over_time",
+        query_condition={"type": "formula"},
+        count_predicate={"method": ">=", "value": 50},
+    )
+    compiled = pm.compile_policy_query(policy, "sum(a) / sum(b)", "5m")
+    assert compiled == (
+        "sum_over_time(((sum(a) / sum(b)) >= bool 50)[5m:10s])"
+    )
+
+
+def test_count_if_existence_uses_last_over_time():
+    policy = _policy(
+        algorithm="count_if_over_time",
+        count_predicate={"method": ">", "value": 80},
+        compare_mode="offset_1h",
+        compare_value_kind="percent",
+    )
+    compiled = pm.compile_existence_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == "last_over_time((avg(cpu) by (instance_id))[5m:10s])"
+    assert "sum_over_time" not in compiled
+    assert "count_over_time" not in compiled
+    assert "offset" not in compiled
 
 
 def test_per_series_compiles_then_groups():

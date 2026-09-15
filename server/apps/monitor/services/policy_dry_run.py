@@ -25,7 +25,7 @@ HIT_COUNT_REASON = "本轮命中 {hit}/{total}，现网不会建告警"
 MISSING_BASELINE_REASON = "对照缺失或留存不足"
 NO_DATA_REASON = "无数据"
 INSUFFICIENT_SAMPLES_REASON = "样本不足"
-TRUNCATED_WARNING = "实例超过 200，已截断"
+TRUNCATED_WARNING = f"实例超过 {DRY_RUN_INSTANCE_LIMIT}，已截断"
 
 _SKIP_POLICY_FIELDS = frozenset({"id", "last_run_time"})
 
@@ -90,6 +90,7 @@ class PolicyDryRunService:
                 policy_id or "",
                 failed_stage,
                 type(exc).__name__,
+                exc_info=True,
             )
             raise BaseAppException("试跑失败") from exc
 
@@ -129,15 +130,29 @@ class PolicyDryRunService:
             if name in serializer.validated_data:
                 setattr(policy, name, serializer.validated_data[name])
         policy.last_run_time = last_run_time
-        saved_id = ""
-        if raw_policy_id not in (None, ""):
-            try:
-                saved_id = int(raw_policy_id)
-            except (TypeError, ValueError):
-                saved_id = ""
-            if saved_id and not MonitorPolicy.objects.filter(pk=saved_id).exists():
-                saved_id = ""
+        saved_id = self._visible_saved_policy_id(raw_policy_id)
         return saved_id, preview, policy
+
+    def _visible_saved_policy_id(self, raw_policy_id):
+        if raw_policy_id in (None, ""):
+            return ""
+        try:
+            saved_id = int(raw_policy_id)
+        except (TypeError, ValueError):
+            return ""
+        qs = MonitorPolicy.objects.filter(pk=saved_id)
+        if not qs.exists():
+            return ""
+        actor = self.actor_context or {}
+        if actor.get("is_superuser"):
+            return saved_id
+        data_scope = actor.get("data_scope")
+        team_ids = list(getattr(data_scope, "data_team_ids", None) or [])
+        if not team_ids:
+            return ""
+        if qs.filter(policyorganization__organization__in=team_ids).exists():
+            return saved_id
+        return ""
 
     @classmethod
     def _authorized_id_set(cls, actor_context, object_id, candidate_ids):

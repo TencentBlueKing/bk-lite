@@ -38,9 +38,6 @@ def _metric_query_service(**overrides):
     base = {
         "metric": None,
         "instance_id_keys": ["instance_id", "status"],
-        "query_aggregation_metrics": lambda period, points=1: overrides.get(
-            "agg", {"data": {"result": []}}
-        ),
         "query_comparison_metrics": lambda period, points=1: overrides.get(
             "agg", {"data": {"result": []}}
         ),
@@ -52,6 +49,8 @@ def _metric_query_service(**overrides):
         "format_aggregation_metrics": lambda data: overrides.get("formatted", {}),
         "get_display_unit": lambda: "",
         "get_enum_value_map": lambda: {},
+        "query_overlay_last_values": lambda: ({}, {}),
+        "get_source_display_unit": lambda: "",
     }
     base.update(overrides)
     return SimpleNamespace(**base)

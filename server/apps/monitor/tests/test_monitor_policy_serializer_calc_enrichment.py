@@ -183,9 +183,26 @@ def test_accepts_timeleft_with_last_over_time(metric_ctx):
             compare_value_kind="hours",
             forecast_target=90,
             forecast_lookback={"type": "hour", "value": 1},
+            threshold=[{"level": "warning", "method": "<", "value": 2}],
         )
     )
     assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_rejects_timeleft_with_high_side_threshold(metric_ctx):
+    serializer = MonitorPolicySerializer(
+        data=_payload(
+            metric_ctx,
+            algorithm="last_over_time",
+            compare_mode="timeleft",
+            compare_value_kind="hours",
+            forecast_target=90,
+            threshold=[{"level": "warning", "method": ">", "value": 2}],
+        )
+    )
+    assert not serializer.is_valid()
+    assert "threshold" in serializer.errors
 
 
 @pytest.mark.django_db

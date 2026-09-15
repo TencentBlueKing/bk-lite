@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from apps.monitor.tasks.utils.policy_methods import LEGACY_ALGORITHM_MAPPING
+from apps.monitor.tasks.utils.policy_methods import (
+    LEGACY_ALGORITHM_MAPPING,
+    POLICY_ALGORITHMS,
+)
 from apps.monitor.utils.unit_converter import UnitConverter
 
 LEGACY_METRIC_UNIT_MAPPING = {
@@ -13,10 +16,12 @@ LEGACY_METRIC_UNIT_MAPPING = {
 
 def normalize_template_algorithms(template: dict[str, Any]) -> tuple[str, str]:
     group_algorithm = template.get("group_algorithm")
-    algorithm = template.get("algorithm") or "avg_over_time"
+    algorithm = str(template.get("algorithm") or "avg_over_time").lower()
     if group_algorithm:
-        return str(group_algorithm).lower(), str(algorithm).lower()
-    return LEGACY_ALGORITHM_MAPPING.get(str(algorithm).lower(), ("avg", "avg_over_time"))
+        return str(group_algorithm).lower(), algorithm
+    if algorithm in POLICY_ALGORITHMS and algorithm not in LEGACY_ALGORITHM_MAPPING:
+        return "avg", algorithm
+    return LEGACY_ALGORITHM_MAPPING.get(algorithm, ("avg", "avg_over_time"))
 
 
 def normalize_default_calculation_unit(metric_unit: str) -> str:
@@ -147,6 +152,12 @@ def build_bulk_policy_payloads(
             "notice_users": config.get("notice_users") or [],
             "enable": bool(config.get("enable", True)),
             "enable_alerts": enable_alerts,
+            "compare_mode": template.get("compare_mode") or "absolute",
+            "compare_value_kind": template.get("compare_value_kind") or "",
+            "count_predicate": template.get("count_predicate") or {},
+            "forecast_target": template.get("forecast_target"),
+            "forecast_lookback": template.get("forecast_lookback") or {},
+            "recovery_threshold": template.get("recovery_threshold") or {},
         }
         if config.get("notice_type"):
             payload["notice_type"] = config["notice_type"]

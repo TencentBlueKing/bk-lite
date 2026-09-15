@@ -458,6 +458,14 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                     lookback_key = None
                 if lookback_key not in ALLOWED_FORECAST_LOOKBACK:
                     errors["forecast_lookback"] = "回看窗只允许 1h / 4h / 24h"
+            thresholds = self._get_value(attrs, "threshold", []) or []
+            trigger_methods = {
+                item.get("method")
+                for item in thresholds
+                if isinstance(item, dict) and item.get("method")
+            }
+            if trigger_methods - LOW_SIDE_METHODS:
+                errors["threshold"] = "距容量线剩余时间只允许 < / <= 阈值"
 
         if algorithm == COUNT_IF_ALGORITHM and compare_mode != "absolute":
             errors["compare_mode"] = "条件计数只允许比较基准为当前值"

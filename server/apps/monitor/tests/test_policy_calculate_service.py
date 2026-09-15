@@ -265,3 +265,49 @@ def test_calculate_alerts_renders_overlay_template_variables():
     assert "50.00%" in alerts[0]["content"]
     assert "120.00MB" in alerts[0]["content"]
     assert "80.00MB" in alerts[0]["content"]
+
+
+def test_timeleft_huge_finite_hours_from_near_zero_slope_does_not_trigger():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "10000000"]]},
+        ]
+    )
+    thresholds = [{"method": "<", "value": 2, "level": "warning"}]
+    alerts, infos, holds = calculate_alerts(
+        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}
+    )
+    assert alerts == []
+    assert holds == []
+    assert len(infos) == 1
+
+
+def test_timeleft_zero_hours_when_target_below_water_triggers():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "0"]]},
+        ]
+    )
+    thresholds = [{"method": "<", "value": 2, "level": "warning"}]
+    alerts, infos, holds = calculate_alerts(
+        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}
+    )
+    assert infos == []
+    assert holds == []
+    assert len(alerts) == 1
+    assert alerts[0]["value"] in (0, 0.0, "0")
+
+
+def test_calculate_alerts_trigger_count_with_offset_style_points():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "10"], [2, "60"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 50, "level": "warning"}]
+    alerts, infos, holds = calculate_alerts(
+        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2
+    )
+    assert alerts == []
+    assert holds == []
+    assert len(infos) == 1
