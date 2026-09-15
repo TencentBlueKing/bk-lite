@@ -1,6 +1,6 @@
 Transmission Infinera SNMP:
   name: Infinera（Telegraf）
-  desc: 面向 Infinera 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Infinera 传输设备的 SNMP 监控模板,可采集 单板负载均值、内存使用率、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -39,11 +39,33 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
+    load_1m:
+      name: 1 分钟负载均值
+      desc: Infinera 各单板近 1 分钟 Unix 风格负载均值，不是 0-100 CPU 使用率。看板取各单板最大值。
+    load_5m:
+      name: 5 分钟负载均值
+      desc: Infinera 各单板近 5 分钟 Unix 风格负载均值，不是 0-100 CPU 使用率。看板取各单板最大值。
+    load_15m:
+      name: 15 分钟负载均值
+      desc: Infinera 各单板近 15 分钟 Unix 风格负载均值，不是 0-100 CPU 使用率。看板取各单板最大值。
+    memory_usage_percent:
+      name: 内存使用率
+      desc: Infinera 各单板内存使用率，以 0-100 百分比直接上报。看板取各单板最大值。持续偏高可能表示控制面资源压力或设备服务不稳定。
+    memory_total:
+      name: 内存总量
+      desc: LUM-SYSINFO 可选的单板内存总量。部分软件版本可能不返回该列，取值为 MIB 计数器原值。
+    memory_free:
+      name: 内存空闲
+      desc: LUM-SYSINFO 可选的单板空闲内存。部分软件版本可能不返回该列，取值为 MIB 计数器原值。
+    memory_available:
+      name: 内存可用
+      desc: LUM-SYSINFO 可选的单板可用内存。部分软件版本可能不返回该列，取值为 MIB 计数器原值。
 monitor_object_metric_group:
   Transmission:
     Base: 基础
     Traffic: 流量
     CPU: CPU
     Memory: 内存
+    Load: 负载
     Temperature: 温度
     Hardware Status: 硬件状态
