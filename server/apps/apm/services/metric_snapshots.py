@@ -5,6 +5,8 @@ from django.db import transaction
 from apps.apm.models import ApmAlert, ApmAlertMetricSnapshot, ApmEvent, ApmPolicy
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
 
+MAX_ALERT_METRIC_SNAPSHOTS = 1440
+
 
 def _metric_unit(metric_type: str) -> str:
     return {
@@ -64,15 +66,22 @@ class ApmAlertMetricSnapshotStore:
                     "data_state": str(result.data_state),
                 }
             )
+            if len(snapshot.snapshots) > MAX_ALERT_METRIC_SNAPSHOTS:
+                snapshot.snapshots = snapshot.snapshots[-MAX_ALERT_METRIC_SNAPSHOTS:]
             snapshot.save(update_fields=("snapshots", "updated_at"))
             return snapshot
 
     @staticmethod
     def serialize(snapshot: ApmAlertMetricSnapshot) -> dict:
+        items = list(snapshot.snapshots or [])
+        truncated = len(items) >= MAX_ALERT_METRIC_SNAPSHOTS
+        if len(items) > MAX_ALERT_METRIC_SNAPSHOTS:
+            items = items[-MAX_ALERT_METRIC_SNAPSHOTS:]
         return {
             "unit": snapshot.unit,
             "aggregation": snapshot.aggregation,
             "evaluation_interval": snapshot.evaluation_interval,
             "metric_window": snapshot.metric_window,
-            "snapshots": list(snapshot.snapshots or []),
+            "snapshots": items,
+            "truncated": truncated,
         }
