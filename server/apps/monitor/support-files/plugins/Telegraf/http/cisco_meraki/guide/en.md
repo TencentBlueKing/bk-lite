@@ -2,6 +2,18 @@
 
 This plugin uses Telegraf `inputs.prometheus` to scrape Stargazer metrics collected from Meraki Dashboard API v1. One access form stores a single organization API key and regional endpoint. Stargazer then scrapes organization, device, wireless AP, switch, and MX (appliance) metric families sequentially from `/cisco_meraki/metrics`. Organization-level failure exports every family `connect_status=0`. Device, wireless, switch, or MX family failure only zeros that family's connect-status gauge.
 
+## Existing instances must be reconfigured (breaking change)
+
+The previous five independent plugins (Cisco Meraki Organization / Device / Wireless AP / Switch / Appliance) are retired. They are now one **Cisco Meraki** capability under Network Device. `plugin_init` removes the old plugins and inventory objects. **Existing instances from those five plugins are not migrated automatically.**
+
+After upgrade:
+
+1. Disable and delete the old five independent access instances if they still appear in the console.
+2. Reconfigure under **Network Device → Cisco Meraki** with the same organization API key and regional endpoint.
+3. Save, wait for at least one collection interval, then confirm all five metric families in the Network / Device / Wireless AP / Switch / Appliance sub-views.
+
+Prometheus metric names remain `meraki_*`. The scrape path is now `/cisco_meraki/metrics`. Do not keep configuring the retired five plugins.
+
 ## Prerequisites
 
 - An organization API key used only for monitoring. The collector sends it as `X-Cisco-Meraki-API-Key`.

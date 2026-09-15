@@ -2,6 +2,18 @@
 
 本插件通过 Telegraf `inputs.prometheus` 从 Stargazer 拉取 Meraki Dashboard API v1 指标。一次接入使用同一套组织 API 密钥与区域端点，在单个 `/cisco_meraki/metrics` 入口顺序采集组织、设备、无线 AP、交换机与 MX（安全设备）指标族。组织级失败会导出全部 `connect_status=0`；设备/无线/交换机/MX 分族失败只将该族 `connect_status` 置 0。
 
+## 已有实例须重新配置（破坏性变更）
+
+原先五个并列插件（Cisco Meraki Organization / Device / Wireless AP / Switch / Appliance）已下线，合并为网络设备下的单一 **Cisco Meraki** 能力。`plugin_init` 会清理旧插件与清单对象，**已接入的五个独立实例不会自动迁移**。
+
+升级后请：
+
+1. 停用并删除旧的五个并列接入实例（若控制台仍能看到残留项）。
+2. 在 **网络设备 → Cisco Meraki** 下用同一套组织 API 密钥与区域端点重新接入。
+3. 保存后等待至少一个采集周期，在 Network / Device / Wireless AP / Switch / Appliance 子视图核对五族指标。
+
+Prometheus 指标名仍为 `meraki_*`；采集入口改为 `/cisco_meraki/metrics`。不要继续配置已下线的五个独立插件。
+
 ## 前置条件
 
 - 已准备只读或监控用途的**组织 API 密钥**。密钥通过 `X-Cisco-Meraki-API-Key` 传递。

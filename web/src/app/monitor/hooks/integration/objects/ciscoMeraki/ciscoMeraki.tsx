@@ -41,6 +41,26 @@ export const useCiscoMerakiConfig = () => {
           height: '200px',
           width: '24%'
         }
+      },
+      {
+        indexId: 'meraki_switch_port_active_count',
+        displayType: 'single',
+        sortIndex: 4,
+        displayDimension: [],
+        style: {
+          height: '200px',
+          width: '24%'
+        }
+      },
+      {
+        indexId: 'meraki_appliance_vpn_network_count',
+        displayType: 'single',
+        sortIndex: 5,
+        displayDimension: [],
+        style: {
+          height: '200px',
+          width: '24%'
+        }
       }
     ],
     groupIds: {},
