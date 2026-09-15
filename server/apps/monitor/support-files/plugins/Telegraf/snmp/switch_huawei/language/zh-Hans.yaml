@@ -1,6 +1,6 @@
 Switch Huawei SNMP:
   name: 华为（Telegraf）
-  desc: 面向 Huawei 交换机的 SNMP 监控模板，采集私有 ENTITY 健康（CPU、内存、温度、风扇正常/异常、电源供电/未供电/休眠/未知、光模块 DDM：收/发光功率由 µW 换算为 dBm、温度 °C、电压由 mV 换算为 V、偏置电流 µA）以及堆叠/CSS 成员与端口健康。支持机型包括 S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700 以及 CloudEngine CE 系列（如 CE6881/CE5881）。
+  desc: 面向华为园区、框式与 CloudEngine 交换机的 SNMP 监控。采集实体 CPU、内存、温度与风扇健康，电源在位与供电状态，光模块 DDM（收/发光功率、温度、电压、偏置电流），堆叠/CSS 成员与端口健康；启用 M-LAG 时采集成员心跳与 M-LAG 口状态。支持 S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S12700H/S16700 以及 CloudEngine CE 系列（如 CE6881/CE5881）。S12700H 与 S16700 为 V600 代框式机型，仍使用本插件与交换机对象。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -114,6 +114,12 @@ monitor_object_metric:
     device_css_port_state:
       name: CSS 端口状态
       desc: 该指标表示 CSS 端口运行状态（hwCssPortOperStatus）。线侧为 down(0)/up(1)，与堆叠口 up(1)/down(2) 不同。down 表示集群端口无法承载 CSS 控制或转发。
+    device_mlag_port_state:
+      name: M-LAG 口状态
+      desc: 该指标表示各 M-LAG 成员口运行状态（hwPortState）。线侧为 down(0)/up(1)。down 表示该成员口无法在双归捆绑中转发；未启用 M-LAG 时无序列。
+    device_mlag_member_heartbeat:
+      name: M-LAG 成员心跳
+      desc: 该指标表示本端 M-LAG 成员心跳（hwLocalHeartBeatState）。线侧为 ok(1)/lost(2)。lost 表示双活控制通道中断。一致性检查为 trap，不轮询。
     device_fan_speed:
       name: 风扇转速
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。

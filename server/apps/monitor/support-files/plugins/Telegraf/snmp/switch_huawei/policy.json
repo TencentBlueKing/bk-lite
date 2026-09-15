@@ -136,6 +136,36 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei交换机M-LAG口异常",
+      "alert_name": "交换机${resource_name} M-LAG 口 ${metric_descr} 状态异常",
+      "description": "监控华为交换机 M-LAG 成员口运行状态（hwPortState）。线侧为 down(0)/up(1)。down 表示该 M-LAG 成员口无法在双归捆绑中转发。",
+      "metric_name": "device_mlag_port_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei交换机M-LAG心跳丢失",
+      "alert_name": "交换机${resource_name} M-LAG 成员 ${metric_descr} 心跳丢失",
+      "description": "监控华为交换机 M-LAG 本端心跳（hwLocalHeartBeatState）。线侧为 ok(1)/lost(2)。lost 表示双活控制通道中断。一致性检查为 trap，不在本策略中轮询。",
+      "metric_name": "device_mlag_member_heartbeat",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

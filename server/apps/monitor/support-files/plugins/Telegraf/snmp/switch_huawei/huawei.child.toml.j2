@@ -198,3 +198,29 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.183.3.4.1.7"
         name = "state"
+    # ---- M-LAG (HUAWEI-M-LAG-MIB, hwETrunkMIB 178.8) ----
+    # 一致性检查（hwMLagConsistency*）是 trap / accessible-for-notify，不可轮询。
+    # 可轮询：hwmlagInfoTable 成员口状态；hwmlagDfsInfoTable 本端心跳。
+    # 未启用 M-LAG 时表为空，不阻断其余指标。
+    # 成员口：hwMlagPortName ...178.8.1.5.1.4 / hwPortState ...5.1.5 = down(0)/up(1)
+    [[inputs.snmp.table]]
+        name = "device_mlag_port"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.178.8.1.5.1.4"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.178.8.1.5.1.5"
+        name = "state"
+    # 成员心跳：hwLocalNodeId ...178.8.1.4.1.2 / hwLocalHeartBeatState ...4.1.1 = ok(1)/lost(2)
+    [[inputs.snmp.table]]
+        name = "device_mlag_member"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.178.8.1.4.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.178.8.1.4.1.1"
+        name = "heartbeat"
