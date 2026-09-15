@@ -255,7 +255,8 @@ const StrategyOperation = () => {
   });
   const thresholdBaseUnit = resolveThresholdUnitBase({
     compareValueKind,
-    calculationUnit: effectiveCalculationUnit
+    calculationUnit: effectiveCalculationUnit,
+    algorithm
   });
   const effectiveThresholdUnit = resolveThresholdUnit({
     thresholdUnit,

@@ -917,6 +917,22 @@ assert.equal(
   null
 );
 assert.equal(
+  resolveThresholdUnitBase({
+    compareValueKind: '',
+    calculationUnit: 'percent',
+    algorithm: 'count_if_over_time',
+  }),
+  'count'
+);
+assert.equal(
+  resolveThresholdUnitBase({
+    compareValueKind: 'hours',
+    calculationUnit: 'percent',
+    algorithm: 'last_over_time',
+  }),
+  'hour'
+);
+assert.equal(
   shouldShowThresholdUnitSelector({
     isFormulaMode: false,
     isEnumMetric: false,

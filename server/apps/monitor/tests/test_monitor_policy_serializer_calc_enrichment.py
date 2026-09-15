@@ -189,6 +189,23 @@ def test_accepts_timeleft_with_last_over_time(metric_ctx):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("lookback", ["1h", [1], 4])
+def test_rejects_timeleft_with_non_dict_lookback(metric_ctx, lookback):
+    serializer = MonitorPolicySerializer(
+        data=_payload(
+            metric_ctx,
+            algorithm="last_over_time",
+            compare_mode="timeleft",
+            compare_value_kind="hours",
+            forecast_target=90,
+            forecast_lookback=lookback,
+        )
+    )
+    assert not serializer.is_valid()
+    assert "forecast_lookback" in serializer.errors
+
+
+@pytest.mark.django_db
 def test_rejects_count_if_with_compare_window(metric_ctx):
     serializer = MonitorPolicySerializer(
         data=_payload(

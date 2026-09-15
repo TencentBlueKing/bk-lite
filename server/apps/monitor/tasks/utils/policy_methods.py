@@ -298,6 +298,8 @@ def _format_forecast_lookback(policy_like):
     lookback = _policy_get(policy_like, "forecast_lookback") or {}
     if not lookback:
         return "1h"
+    if not isinstance(lookback, dict):
+        raise BaseAppException("unsupported forecast_lookback")
     lookback_type = lookback.get("type")
     try:
         lookback_value = int(lookback.get("value"))

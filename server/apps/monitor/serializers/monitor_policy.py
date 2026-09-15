@@ -446,9 +446,11 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         if compare_mode == "timeleft" and not self._get_value(attrs, "forecast_target", None):
             errors.setdefault("forecast_target", "timeleft 必须填写容量线目标")
         if compare_mode == "timeleft":
-            lookback = self._get_value(attrs, "forecast_lookback", {}) or {}
-            if not lookback:
+            lookback = self._get_value(attrs, "forecast_lookback", None)
+            if lookback in (None, {}):
                 attrs["forecast_lookback"] = {"type": "hour", "value": 1}
+            elif not isinstance(lookback, dict):
+                errors["forecast_lookback"] = "回看窗格式非法"
             else:
                 try:
                     lookback_key = (lookback.get("type"), int(lookback.get("value")))

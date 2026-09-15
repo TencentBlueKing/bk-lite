@@ -266,3 +266,29 @@ class TestPreviewEndToEnd:
         assert roles == {"current", "baseline"}
         window = "avg_over_time((avg(up) by (instance_id))[5m:10s])"
         assert out["query"] == f"({window} - {window} offset 1h) / ({window} offset 1h) * 100"
+        assert out["warnings"] == []
+
+    def test_preview_overlay_warns_when_baseline_missing(self, mocker):
+        current = {
+            "status": "success",
+            "data": {"result": [{"metric": {"instance_id": "h1"}, "values": [[1, "120"]]}]},
+        }
+        baseline = {"status": "success", "data": {"result": []}}
+        api = mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value
+        api.query_range.side_effect = [current, baseline]
+        svc = PolicyPreviewService({
+            "query_condition": {"type": "pmq", "query": "up"},
+            "period": {"type": "min", "value": 5},
+            "algorithm": "avg_over_time",
+            "group_algorithm": "avg",
+            "group_by": ["instance_id"],
+            "compare_mode": "offset_30d",
+            "compare_value_kind": "percent",
+        })
+        out = svc.preview()
+        assert out["overlay"] is True
+        assert out["data"]["data"]["result"][0]["metric"]["compare_role"] == "current"
+        assert "对照缺失或留存不足" in "".join(out["warnings"])
+        assert all(item["metric"].get("compare_role") != "baseline" for item in out["data"]["data"]["result"])

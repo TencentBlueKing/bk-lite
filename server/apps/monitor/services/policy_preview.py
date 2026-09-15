@@ -87,6 +87,8 @@ class PolicyPreviewService:
                 baseline_data, source_unit or chart_unit, chart_unit
             )
             data = self._merge_overlay_series(current_data, baseline_data)
+            if self._has_series(current_data) and not self._has_series(baseline_data):
+                self.warnings.append("对照缺失或留存不足，未画出对照曲线")
         else:
             data = VictoriaMetricsAPI().query_range(query, start, end, step)
             self._raise_for_vm_error(data)
@@ -122,6 +124,10 @@ class PolicyPreviewService:
             metric[OVERLAY_ROLE_LABEL] = role
             result["metric"] = metric
         return tagged
+
+    @staticmethod
+    def _has_series(data):
+        return bool((data or {}).get("data", {}).get("result"))
 
     def _merge_overlay_series(self, current_data, baseline_data):
         current = self._tag_overlay_role(current_data, OVERLAY_ROLE_CURRENT)

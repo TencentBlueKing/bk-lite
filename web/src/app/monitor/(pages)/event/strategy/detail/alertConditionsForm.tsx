@@ -8,6 +8,7 @@ import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import {
   COMPARE_MODE_ABSOLUTE,
   COMPARE_MODE_TIMELEFT,
+  COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
   FORECAST_LOOKBACK_OPTIONS,
   defaultCompareValueKind,
@@ -114,9 +115,12 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         metricUnit: thresholdFilterBase,
         isEnumMetric,
         lockToExactUnit:
-          compareValueKind === 'percent' || compareValueKind === 'hours'
+          compareValueKind === 'percent' ||
+          compareValueKind === 'hours' ||
+          algorithm === 'changes' ||
+          algorithm === COUNT_IF_ALGORITHM
       }),
-    [unitList, thresholdFilterBase, isEnumMetric, compareValueKind]
+    [unitList, thresholdFilterBase, isEnumMetric, compareValueKind, algorithm]
   );
 
   const showUnitSelector = shouldShowThresholdUnitSelector({

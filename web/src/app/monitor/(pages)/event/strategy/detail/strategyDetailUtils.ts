@@ -613,12 +613,18 @@ export const resolvePolicyResultUnit = ({
 
 export const resolveThresholdUnitBase = ({
   compareValueKind,
-  calculationUnit
+  calculationUnit,
+  algorithm
 }: {
   compareValueKind?: string | null;
   calculationUnit?: string | null;
+  algorithm?: string | null;
 }): string | null => {
-  const result = resolvePolicyResultUnit({ compareValueKind, calculationUnit });
+  const result = resolvePolicyResultUnit({
+    compareValueKind,
+    calculationUnit,
+    algorithm
+  });
   return result.conversionEnabled ? calculationUnit || null : result.unit;
 };
 

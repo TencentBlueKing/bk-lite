@@ -240,6 +240,18 @@ def test_timeleft_uses_water_level_and_lookback_deriv():
     assert compiled == f"clamp_min(90 - {water}, 0) / clamp_min({slope}, 1e-9) / 3600"
 
 
+def test_timeleft_rejects_non_dict_lookback():
+    policy = _policy(
+        algorithm="last_over_time",
+        compare_mode="timeleft",
+        compare_value_kind="hours",
+        forecast_target=90,
+        forecast_lookback="1h",
+    )
+    with pytest.raises(BaseAppException, match="unsupported forecast_lookback"):
+        pm.compile_policy_query(policy, "disk", "5m", "instance_id")
+
+
 def test_existence_rate_uses_last_over_time():
     policy = _policy(algorithm="rate", group_algorithm="avg", compare_mode="offset_1h")
     compiled = pm.compile_existence_query(policy, "cpu", "5m", "instance_id")
