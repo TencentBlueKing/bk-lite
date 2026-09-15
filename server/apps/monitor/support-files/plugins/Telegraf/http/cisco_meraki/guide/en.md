@@ -1,34 +1,75 @@
 # Cisco Meraki Guide
 
-This plugin uses Telegraf `inputs.prometheus` to scrape Stargazer metrics collected from Meraki Dashboard API v1. One access form stores a single organization API key and regional endpoint. Stargazer then scrapes organization, device, wireless AP, switch, and MX (appliance) metric families sequentially from `/cisco_meraki/metrics`. Organization-level failure exports every family `connect_status=0`. Device, wireless, switch, or MX family failure only zeros that family's connect-status gauge.
+Cisco Meraki is a single Network Device capability. Create one instance under **Network Device → Cisco Meraki** with a shared organization API key and regional endpoint. That one access collects organization, network, device, wireless AP, switch, and MX (appliance) metrics for the organization. Telegraf `inputs.prometheus` scrapes Dashboard API v1 data from `/cisco_meraki/metrics`. Metric names use the `meraki_*` prefix.
 
-## Existing instances must be reconfigured (breaking change)
+If the organization-level request fails, every face exports `connect_status=0`. If only the device, wireless AP, switch, or MX family fails, only that family's connect-status gauge is set to `0`.
 
-The previous five independent plugins (Cisco Meraki Organization / Device / Wireless AP / Switch / Appliance) are retired. They are now one **Cisco Meraki** capability under Network Device. `plugin_init` removes the old plugins and inventory objects. **Existing instances from those five plugins are not migrated automatically.**
+## What it monitors
 
-After upgrade:
+One access covers these faces:
 
-1. Disable and delete the old five independent access instances if they still appear in the console.
-2. Reconfigure under **Network Device → Cisco Meraki** with the same organization API key and regional endpoint.
-3. Save, wait for at least one collection interval, then confirm all five metric families in the Network / Device / Wireless AP / Switch / Appliance sub-views.
-
-Prometheus metric names remain `meraki_*`. The scrape path is now `/cisco_meraki/metrics`. Do not keep configuring the retired five plugins.
+- **Organization**: Dashboard connectivity and network count
+- **Network**: networks in the organization
+- **Device**: inventory, availability, uplink latency and loss
+- **Wireless AP**: AP count, upstream/downstream loss, Ethernet link
+- **Switch**: active/inactive ports and PoE power draw
+- **MX (appliance)**: VPN network count, peer reachability, latency, and utilization
 
 ## Prerequisites
 
-- An organization API key used only for monitoring. The collector sends it as `X-Cisco-Meraki-API-Key`.
-- The selected node can reach the regional Dashboard API host: `api.meraki.com / api.meraki.in / api.meraki.ca / api.meraki.cn / api.gov-meraki.com`.
-- You know the organization ID, and the key can read that organization.
-- Use an interval of at least 120 seconds when practical. One scrape issues multiple Dashboard requests. The collector backs off on HTTP 429 using `Retry-After`. The organization budget is 10 requests per second.
+- A Meraki Dashboard **organization API key** used for monitoring (read-only is enough). The collector sends it as `X-Cisco-Meraki-API-Key`. Do not put the key in the URL.
+- The key can read the target organization. Find the organization ID in Dashboard organization settings.
+- The selected container collector node can reach the regional Dashboard API host: `api.meraki.com` / `api.meraki.in` / `api.meraki.ca` / `api.meraki.cn` / `api.gov-meraki.com`. Use the host that matches the organization region.
+- Use an interval of at least 120 seconds when practical. One scrape issues multiple Dashboard requests. Shorter intervals are more likely to hit the 10 requests/second/organization budget. The collector backs off on HTTP 429 using `Retry-After`.
 
-## Setup
+## Integration steps
 
-1. Select the regional endpoint. Use the host that matches the Dashboard organization region.
-2. Enter the organization ID and organization API key. Do not put the key in the URL.
-3. Select a container collector node that can reach Stargazer and Dashboard API.
-4. Save and wait for at least one collection interval. After ingest, use the Cisco Meraki object tabs for Network / Device / Wireless AP / Switch / Appliance sub-views.
+1. Open monitor integration, go to **Network Device → Cisco Meraki**, and create an instance.
+2. Select the **regional endpoint** that matches the Dashboard organization region.
+3. Enter the **organization ID**, the shared **organization API key**, and an instance name. Select a container collector node that can reach Dashboard API.
+4. Save and start collection. Wait at least one interval (default 120 seconds).
 
-## APIs used by this plugin
+## Form fields
+
+| Field | Required | Default | Description |
+| --- | --- | --- | --- |
+| Regional Endpoint | Yes | `https://api.meraki.com` | Dashboard API regional root. The collector requests `/api/v1`. |
+| Organization ID | Yes | none | Meraki organization ID. |
+| Organization API Key | Yes | none | Organization key, injected into the request header via an environment variable. |
+| Interval | Yes | `120` s | Collection interval. Shorter values are more likely to hit API rate limits. |
+| Node | Yes | none | Container collector node. |
+| Instance Name | Yes | none | Display name in the platform. |
+| Group | No | none | Optional instance group. |
+
+## After connect
+
+After one collection interval, on the Cisco Meraki object page confirm:
+
+- `meraki_org_connect_status` is `1`, meaning the organization-level Dashboard API call succeeded.
+- Main dashboard cards have data: connect status, network count, device count, wireless AP count, switch active port count, and MX VPN network count.
+- Network / Device / Wireless AP / Switch / Appliance sub-views show the matching metric groups.
+
+## Troubleshooting
+
+### Auth or permission failure (HTTP 401 / 403)
+
+Check that the organization API key is complete, belongs to this organization, and can read it. Do not put the key in the URL or ordinary headers.
+
+### Organization not found or wrong region (HTTP 404)
+
+Confirm the organization ID and that the regional endpoint matches the Dashboard region for that organization.
+
+### Rate limited (HTTP 429)
+
+Increase the interval (120 seconds or more is recommended). The collector backs off using `Retry-After`. Persistent 429s usually mean other high-rate API clients share the same organization budget.
+
+### `connect_status` is 0 or dashboard cards are empty
+
+Check `meraki_org_connect_status` first. If it is `0`, the organization-level request failed and none of the faces will be healthy. If the organization gauge is `1` but one family is `0`, check Dashboard permissions and reachability for that face (for example the organization has no switches or MX appliances).
+
+## APIs used by this capability
+
+The collector node must reach these Dashboard API v1 paths. Pagination follows the `Link: rel=next` response header.
 
 - `GET /organizations/{id}`
 - `GET /organizations/{id}/networks`
@@ -43,9 +84,3 @@ Prometheus metric names remain `meraki_*`. The scrape path is now `/cisco_meraki
 - `GET /organizations/{id}/appliance/vpn/statuses`
 - `GET /organizations/{id}/appliance/vpn/stats` (optional)
 - `GET /organizations/{id}/summary/top/appliances/byUtilization` (optional)
-
-Pagination follows the `Link: rel=next` response header.
-
-## Verification
-
-After one collection interval, confirm the instance appears and `meraki_org_connect_status` plus the per-family connect-status gauges continue to report.
