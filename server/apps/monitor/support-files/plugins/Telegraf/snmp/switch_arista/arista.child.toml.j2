@@ -48,7 +48,7 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
     # ---- Arista EOS CPU (HOST-RESOURCES hrProcessorLoad, 每核 0-100%, 共享盘 avg by instance 取整机均值) ----
-    # 待现网核验：1.3.6.1.2.1.25.3.3.1.2（Arista EOS 经标准 HOST-RESOURCES 暴露每核 CPU，无 Arista 私有健康 MIB；LibreNMS arista_eos.snmprec 实测 15-17%）。
+    # 待现网核验：1.3.6.1.2.1.25.3.3.1.2
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
@@ -56,4 +56,110 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.3.3.1.2"
         name = "usage"
-# ---- 内存/温度/风扇/电源：Arista 仅经标准 hrStorage(多行 RAM/Flash 混表,RAM 行索引不固定)与 ENTITY-SENSOR(温/压/风扇同表按类型列区分)暴露,inputs.snmp 无法按行/类型过滤 → N/A。CPU 经 HOST-RESOURCES 是 Arista 实际健康接口,比通用插件(仅接口)多出 CPU。----
+    # ---- 内存 (HOST-RESOURCES hrStorageUsed/Size，按 hrStorageDescr 只保留 RAM 行，allocation units → 字节) ----
+    # 待现网核验：hrStorageDescr 1.3.6.1.2.1.25.2.3.1.3；allocation units ...1.4；Size ...1.5；Used ...1.6。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.3"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.4"
+        name = "allocation_units"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.5"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.6"
+        name = "used"
+    # ---- 温度 (ENTITY-SENSOR entPhySensorValue，按 type=celsius(8) 过滤，再按 scale/precision 换算为 ℃) ----
+    # 待现网核验：type ...99.1.1.1.1；scale ...1.2；precision ...1.3；value ...1.4。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.99.1.1.1.1"
+        name = "sensor_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.99.1.1.1.2"
+        name = "scale"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.99.1.1.1.3"
+        name = "precision"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.99.1.1.1.4"
+        name = "celsius"
+# ---- 风扇/电源：ENTITY-STATE 需与 entPhysicalClass 行级关联，无干净专用状态表 → N/A。----
+
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    [processors.starlark.tagpass]
+        brand = ["arista"]
+    source = '''
+def apply(metric):
+    descr = metric.tags.get("descr") or ""
+    name = descr.strip().lower()
+    if name != "ram" and name != "physical memory" and name != "real memory":
+        return None
+    units = metric.fields.get("allocation_units")
+    if units == None or units == 0:
+        units = 1
+    used = metric.fields.get("used")
+    total = metric.fields.get("total")
+    if used != None:
+        metric.fields["used"] = used * units
+    if total != None:
+        metric.fields["total"] = total * units
+    if "allocation_units" in metric.fields:
+        metric.fields.pop("allocation_units")
+    if "descr" in metric.tags:
+        metric.tags.pop("descr")
+    return metric
+'''
+
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    [processors.starlark.tagpass]
+        brand = ["arista"]
+    source = '''
+def pow10(exp):
+    result = 1.0
+    n = exp
+    negative = False
+    if n < 0:
+        negative = True
+        n = 0 - n
+    i = 0
+    while i < n:
+        result = result * 10.0
+        i = i + 1
+    if negative:
+        return 1.0 / result
+    return result
+
+def apply(metric):
+    if metric.tags.get("sensor_type") != "8":
+        return None
+    value = metric.fields.get("celsius")
+    if value == None:
+        return None
+    scale = metric.fields.get("scale")
+    precision = metric.fields.get("precision")
+    if scale == None:
+        scale = 9
+    if precision == None:
+        precision = 0
+    exp = (int(scale) - 9) * 3 - int(precision)
+    metric.fields["celsius"] = float(value) * pow10(exp)
+    if "scale" in metric.fields:
+        metric.fields.pop("scale")
+    if "precision" in metric.fields:
+        metric.fields.pop("precision")
+    if "sensor_type" in metric.tags:
+        metric.tags.pop("sensor_type")
+    return metric
+'''
