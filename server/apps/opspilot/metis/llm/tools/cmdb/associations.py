@@ -53,7 +53,7 @@ def cmdb_create_instance_association(
     if any(not data.get(key) for key in required):
         return wrap_error("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
     return call_cmdb_params(
-        "create_instance_association",
+        "create_instance_association_for_llm",
         config,
         src_inst_uuid=data["src_inst_uuid"],
         dst_inst_uuid=data["dst_inst_uuid"],
@@ -71,7 +71,7 @@ def cmdb_delete_instance_association(
     if not src_inst_uuid or not dst_inst_uuid or not model_asst_id:
         return wrap_error("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
     return call_cmdb_params(
-        "delete_instance_association",
+        "delete_instance_association_for_llm",
         config,
         src_inst_uuid=src_inst_uuid,
         dst_inst_uuid=dst_inst_uuid,

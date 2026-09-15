@@ -15,9 +15,16 @@ _CMDB_TOOL_CASES = [
     ("cmdb_list_model_attrs", {"model_id": "host"}, "search_model_attrs_for_llm", False, {"model_id": "host"}),
     ("cmdb_get_instance", {"inst_uuid": "u1"}, "get_instance_by_uuid", False, {"inst_uuid": "u1"}),
     (
+        "cmdb_create_instance",
+        {"model_id": "host", "instance_info": {"inst_name": "box1"}},
+        "create_instance_for_llm",
+        False,
+        {"model_id": "host", "instance_info": {"inst_name": "box1"}},
+    ),
+    (
         "cmdb_update_instance",
         {"inst_uuid": "u1", "update_data": {"inst_name": "n2"}},
-        "update_instance",
+        "update_instance_for_llm",
         False,
         {"inst_uuid": "u1", "update_attr": {"inst_name": "n2"}},
     ),
@@ -28,8 +35,8 @@ _CMDB_TOOL_CASES = [
         False,
         {"inst_uuids": ["u1"], "update_attr": {"k": "v"}},
     ),
-    ("cmdb_delete_instance", {"inst_uuid": "u1"}, "delete_instance", False, {"inst_uuid": "u1"}),
-    ("cmdb_batch_delete_instances", {"inst_uuids": ["u1"]}, "delete_instance", False, {"inst_uuids": ["u1"]}),
+    ("cmdb_delete_instance", {"inst_uuid": "u1"}, "delete_instance_for_llm", False, {"inst_uuid": "u1"}),
+    ("cmdb_batch_delete_instances", {"inst_uuids": ["u1"]}, "delete_instance_for_llm", False, {"inst_uuids": ["u1"]}),
     ("cmdb_topo_search", {"inst_uuid": "u1", "depth": 2}, "topo_search_lite_by_uuid", True, {"inst_uuid": "u1", "depth": 2}),
     (
         "cmdb_topo_expand",
@@ -56,14 +63,14 @@ _CMDB_TOOL_CASES = [
     (
         "cmdb_create_instance_association",
         {"data": {"src_inst_uuid": "s1", "dst_inst_uuid": "d1", "model_asst_id": "host_run_app"}},
-        "create_instance_association",
+        "create_instance_association_for_llm",
         False,
         {"src_inst_uuid": "s1", "dst_inst_uuid": "d1", "model_asst_id": "host_run_app"},
     ),
     (
         "cmdb_delete_instance_association",
         {"src_inst_uuid": "s1", "dst_inst_uuid": "d1", "model_asst_id": "host_run_app"},
-        "delete_instance_association",
+        "delete_instance_association_for_llm",
         False,
         {"src_inst_uuid": "s1", "dst_inst_uuid": "d1", "model_asst_id": "host_run_app"},
     ),
@@ -132,13 +139,13 @@ def test_cmdb_tools_require_caller_identity():
 
 def test_cmdb_create_instance_passes_user_info():
     with patch("apps.opspilot.metis.llm.tools.cmdb.utils.CMDB") as rpc_cls:
-        rpc_cls.return_value.create_instance.return_value = {"inst_uuid": "u1"}
+        rpc_cls.return_value.create_instance_for_llm.return_value = {"inst_uuid": "u1"}
         out = inst.cmdb_create_instance.invoke(
             {"model_id": "host", "instance_info": {"inst_name": "box1"}},
             config=cfg(),
         )
     assert out["success"] is True
-    params = rpc_cls.return_value.create_instance.call_args.kwargs["params"]
+    params = rpc_cls.return_value.create_instance_for_llm.call_args.kwargs["params"]
     assert params["instance_info"] == {"inst_name": "box1"}
     assert params["user_info"]["user"] == "alice"
     assert params["operator"] == "alice"
