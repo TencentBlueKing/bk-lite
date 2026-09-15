@@ -96,9 +96,9 @@ recovery_threshold  {} | {"method": "<", "value": 70}    空 = 沿用「不再�
 
 ### D2. 查询编译：拆「存在性」与「比较」两条
 
-现网 `MetricQueryService.query_aggregation_metrics` 同时喂阈值判定、无数据检测、无数据恢复和 `PolicyBaselineService` 基线同步。对照窗缺失时 VictoriaMetrics 不返回该序列，若把变换编进这条查询，会误报无数据、建不出基线。因此拆为两条：
+现网扫描曾用同一条聚合查询同时喂阈值判定、无数据检测、无数据恢复和基线同步。对照窗缺失时 VictoriaMetrics 不返回该序列，若把变换编进这条查询，会误报无数据、建不出基线。因此拆为两条：
 
-- **存在性查询** `query_existence_metrics(period)`：固定 `last_over_time((group_algorithm(base) by (g))[period:step])`，不带 `algorithm` 变换和 `compare_mode`。供无数据检测、无数据恢复、基线同步、试跑的 `no_data` 判定使用。
+- **存在性查询** `query_existence_metrics(period)`：窗口聚合类沿用策略原汇聚（与比较查询去掉 `compare_mode` 后同形），不带 `compare_mode`；逐序列类（rate/changes/deriv）与 `count_if_over_time` 改用 `last_over_time((group_algorithm(base) by (g))[period:step])`，避免单样本窗或零匹配窗被当成无数据。供无数据检测、无数据恢复、基线同步、试跑的 `no_data` 判定使用。
 - **比较查询** `query_comparison_metrics(period, points)`：带全部变换。供阈值判定、预览、试跑、快照记录（含告警前快照）使用。
 
 编译入口统一为 `compile_policy_query(policy_like) -> str`，`PolicyPreviewService`、`AlertDetector`、`SnapshotRecorder`、试跑服务只调它，不再各自拼字符串。`SnapshotRecorder` 告警前快照不再直接查 `METHOD[algorithm]`。
@@ -110,7 +110,8 @@ recovery_threshold  {} | {"method": "<", "value": 70}    空 = 沿用「不再�
 avg_over_time((avg(m) by (g))[5m:10s])
 quantile_over_time(0.95, ((avg(m) by (g))[5m:10s]))
 stddev_over_time((avg(m) by (g))[5m:10s])
-count_over_time(((avg(m) by (g)) > 80)[5m:10s])            # count_if_over_time，谓词不加 bool
+sum_over_time(((avg(m) by (g)) > bool 80)[5m:10s])          # count_if_over_time，bool 谓词让零匹配返回 0 而不是丢序列
+last_over_time((avg(m) by (g))[5m:10s])                      # count_if 存在性；rate/changes/deriv 存在性同形
 
 # 逐序列类：先逐序列算，再分组
 avg(rate(m[5m])) by (g)
@@ -125,7 +126,7 @@ q / (q offset 24h)                                          # offset_24h · rati
 clamp_min(forecast_target - w, 0) / clamp_min(deriv((avg(m) by (g))[1h:step]), 1e-9) / 3600   # timeleft · hours
 ```
 
-`timeleft` 的 `w` 为 `last_over_time` 水位，不套 `algorithm`；斜率背离容量线或 ≈ 0 时结果为 `+Inf` 或 0 → 由判定层的非有限值过滤和 `< 阈值` 语义自然不触发。
+`timeleft` 只对「上升水位逼近上限」（例如磁盘用量逼近容量），不对「下降水位逼近下限」（例如可用空间距 0）。`w` 为 `last_over_time` 水位，不套 `algorithm`。`clamp_min(deriv, 1e-9)` 在斜率 ≈ 0 或为负时给出约 1e7 小时的有限值，判定层按 `<` / `<=` 阈值自然不触发；`forecast_target < 当前水位` 时分子被夹成 0 → 剩余 0 小时 → 立即触发，这是误用下降水位场景的预期，serializer 因此只允许 `<` / `<=` 阈值。
 
 公式策略：先 `build_formula_query`，再套窗口聚合类与比较基准；逐序列类对公式禁用。Trap 策略编译短路，行为不变。
 
@@ -141,7 +142,7 @@ clamp_min(forecast_target - w, 0) / clamp_min(deriv((avg(m) by (g))[1h:step]), 1
 | `percent` | `percent`，停用换算 |
 | `ratio` | 无量纲，停用换算 |
 | `hours` | `hour`，停用换算 |
-| `rate` / `deriv` | 指标量纲 / 秒；前端阈值单位选项按「速率体系」过滤，后端停用体系换算 |
+| `rate` / `deriv` | 有对应速率单位的量纲映射到速率目录（bytes→byteps、bits→bitps、counts→cps）；已是 per-second 的单位保持原样。无速率目录的量纲（percent、ms、celsius 等）显示为原单位并标注 `/s`，不新增 `percent/s` 等目录单位。后端停用体系换算 |
 | `changes` / `count_if_over_time` | `count`，停用换算 |
 
 `convert_metric_values`、`convert_thresholds`、`get_display_unit`、前端阈值单位选项、阈值单位选择器可见性、预览图单位都改用该解析。Enum 指标禁用全部新 `algorithm` 与非 `absolute` 的比较基准。
@@ -152,6 +153,7 @@ clamp_min(forecast_target - w, 0) / clamp_min(deriv((avg(m) by (g))[1h:step]), 1
 |---|---|
 | `timeleft` + `algorithm` 非 avg/max/min/last 类 | 预测只对水位 |
 | `timeleft` + 任何对照窗 / 基线 | 变换套变换 |
+| `timeleft` + 阈值运算符不是 `<` / `<=` | 剩余小时只会「小于」告警；且只适用于上升水位逼近上限 |
 | `count_if_over_time` + 非 `absolute` | 先算次数再比对照，语义缠绕 |
 | `rate` + 编译后基础查询已含 `rate` / `irate` / `increase` | 大量 SNMP 指标查询已是 `rate(...)[5m]` |
 | 逐序列类 + 公式 | 比值的 rate / changes 无意义 |
@@ -159,6 +161,8 @@ clamp_min(forecast_target - w, 0) / clamp_min(deriv((avg(m) by (g))[1h:step]), 1
 | 汇聚周期等于对照 offset（如 5m 策略选环比 5m） | 与变化量撞车；表单不出现该项 |
 | 非法分位、`compare_value_kind` 与 `compare_mode` 不匹配 | `previous_window`/`baseline_4w` 只允许 delta/percent；`offset_*` 只允许 percent/ratio；`timeleft` 只允许 hours |
 | `recovery_threshold` 方向与触发阈相同侧 | 触发 `>80` 时恢复必须是 `<` 或 `<=` |
+| 多级触发方向不一致时配置 `recovery_threshold` | 无法判断恢复对侧 |
+| 变换后 `threshold_unit` 与 `result_unit` 不一致 | 阈值必须按结果单位填写 |
 | 无数据检测窗 < 恢复窗 | 语义倒置 |
 | Trap 策略携带任何新字段 | 忽略并清空 |
 
@@ -192,7 +196,7 @@ clamp_min(forecast_target - w, 0) / clamp_min(deriv((avg(m) by (g))[1h:step]), 1
 - 已保存策略且存在活动告警时，按 D5 结果标 `would_recover` / `hold`；草稿不评恢复。
 - 实例上限 200，超出截断并说明；预览当前选中实例必须包含。
 - 返回逐实例：`verdict ∈ {would_trigger, ok, hold, would_recover, no_data, missing_baseline, insufficient_samples}`、`current_value`、`baseline_value`、`compared_value`、`result_unit`、`matched_threshold`、`reason`；`trigger_count > 1` 时附「本轮命中 k/N，现网不会建告警」，不得显示成会建单。
-- 试跑不经过现网把整段 VM 返回打 INFO 的日志分支；失败只记一条 WARNING，带策略 ID（草稿为空）、`failed_stage`、`error_type`，不记查询正文和响应体。
+- 试跑不经过现网把整段 VM 返回打 INFO 的日志分支；失败只记一条 WARNING（`exc_info=True`，由这条日志持有 traceback），带策略 ID（草稿为空）、`failed_stage`、`error_type`，不记查询正文和响应体。对外仍抛不带 traceback 的 `BaseAppException`。
 
 ### D8. 快照、通知与告警详情
 
@@ -267,7 +271,7 @@ clamp_min(forecast_target - w, 0) / clamp_min(deriv((avg(m) by (g))[1h:step]), 1
 - 本窗 120、上一窗 80：Δ = 40，% = 50；上一窗缺失则不建告警、不恢复、不误报无数据，试跑写「对照缺失」而不是「下降 100%」。
 - 触发 >80、恢复 <70：越过 80 触发；70～80 保持活跃且 `info_event_count` 不增；低于 70 连续 N 次才恢复。
 - 已是 `rate(...)` 的 SNMP 指标不能再选速率，保存被拒。
-- `timeleft` 在斜率为负或 ≈ 0 时不触发。
+- `timeleft` 在斜率为负或 ≈ 0 时给出极大有限小时数，配 `<` / `<=` 阈值不触发；`forecast_target` 低于当前水位时剩余 0 小时并立即触发（误用下降水位）。
 - 无数据检测 10m、恢复 2m 分别落库并按各自窗口扫描。
 - 试跑后 `MonitorAlert` / `MonitorEvent` / 快照 / 通知 / 告警中心均无新记录；越权实例不可选、接口也出不了数。
 - 表单无 PromQL 框、无「环比 5m」、无「昨天」、无第二套 P95；文案为「N 前同窗」。
