@@ -124,6 +124,7 @@ class BaseCollect(object):
             filter_collect_task=self.filter_collect_task,
             data_cleanup_strategy=self.task.data_cleanup_strategy,
             plugin_kwargs=self.plugin_kwargs,
+            reconcile_task_assets=True,
         )
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)
@@ -152,7 +153,7 @@ class BaseCollect(object):
                         _data = {"_status": status}
                         if status == "failed":
                             update_data = i.get("instance_info")
-                            update_data["_error"] = i.get("error", "")
+                            update_data["_error"] = str(i.get("error", ""))
                         else:
                             update_data = i.get("inst_info")
                         if not update_data:
