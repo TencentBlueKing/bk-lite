@@ -20,6 +20,7 @@ from apps.cmdb.collection.interface_nic_link import (
     nic_index_from_instances,
 )
 from apps.cmdb.collection.plugins import get_collection_plugin
+from apps.cmdb.collection.topology_interface_inventory import load_task_interfaces_safe, merge_inventory_port_index, port_index_needs_inventory
 from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.cmdb.models import CollectModels, OidMapping
 from apps.core.logger import cmdb_logger as logger
@@ -239,6 +240,7 @@ class CollectNetworkMetrics(CollectBase):
 
         if self.is_topo:
             relationships = self.collect_topology_relationships(topology_facts, topo_data)
+            self._topology_relationships = relationships
             self.add_interface_assos(relationships)
             # 把接口的关联补充接口的关联关系中
 
@@ -248,6 +250,13 @@ class CollectNetworkMetrics(CollectBase):
         del topology_facts
         aggregate = build_pipeline_aggregate(topo_data)
         parsed = parse_aggregate_result(aggregate, previous_links=self.get_previous_topology_links())
+        ports = (parsed.get("normalized") or {}).get("ports") or []
+        if port_index_needs_inventory(self.interface_index_map, ports):
+            merge_inventory_port_index(
+                self.interface_index_map,
+                ports,
+                load_task_interfaces_safe(self.task_id),
+            )
 
         contract = self.collect_inst.topology_contract
         # 契约 min_confidence 为 0~1 浮点，流水线 confidence 为 0~100 整数

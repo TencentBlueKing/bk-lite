@@ -59,13 +59,13 @@ BUILTIN_TYPES = {
         "name": "SNMP",
         "categories": ["network"],
         "fields": [
-            {"id": "version", "name": "SNMP 版本", "kind": "enum", "values": ["v2c", "v3"], "required": True},
+            {"id": "version", "name": "SNMP 版本", "kind": "enum", "values": ["v2", "v2c", "v3"], "required": True},
             {
                 "id": "community",
                 "name": "Community 团体名",
                 "kind": "secret",
                 "required": True,
-                "visible_when": {"version": "v2c"},
+                "visible_when": {"version": {"op": "ne", "value": "v3"}},
             },
             {
                 "id": "security_level",

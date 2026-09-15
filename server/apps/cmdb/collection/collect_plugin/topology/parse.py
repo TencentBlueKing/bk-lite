@@ -319,9 +319,10 @@ def build_interface_name_candidates(value: str) -> set[str]:
 
     candidates = {normalized}
     replacements = (
-        ("gigabitethernet", "gi"),
         ("tengigabitethernet", "te"),
         ("ten-gigabitethernet", "te"),
+        ("gigabitethernet", "gi"),
+        ("gigabitethernet", "ge"),
         ("ethernet", "eth"),
         ("port-channel", "po"),
     )
@@ -330,6 +331,15 @@ def build_interface_name_candidates(value: str) -> set[str]:
             candidates.add(short + normalized[len(full) :])
         if normalized.startswith(short):
             candidates.add(full + normalized[len(short) :])
+
+    # CDP/华为超短写：g2/1/1 ↔ Gi2/1/1 ↔ GigabitEthernet2/1/1。
+    # 只在 g 后紧跟数字时展开，避免把 gi/ge/gige 误切成 g。
+    if len(normalized) >= 2 and normalized[0] == "g" and normalized[1].isdigit():
+        rest = normalized[1:]
+        candidates.update({"gi" + rest, "ge" + rest, "gigabitethernet" + rest})
+    for prefix in ("gigabitethernet", "gi", "ge"):
+        if normalized.startswith(prefix) and len(normalized) > len(prefix) and normalized[len(prefix)].isdigit():
+            candidates.add("g" + normalized[len(prefix) :])
     return candidates
 
 

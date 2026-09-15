@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
+from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS
 from apps.cmdb.collection.metrics_cannula import MetricsCannula
 from apps.cmdb.collection.query_vm import Collection
 from apps.cmdb.collection.round_sync import (
@@ -15,6 +16,7 @@ from apps.cmdb.collection.round_sync import (
     completed_round_lookback_seconds,
     query_latest_completed_round,
 )
+from apps.cmdb.collection.topology_interface_inventory import apply_topology_relationships_safe
 from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.cmdb.models.collect_model import COLLECTION_ROLE_TOPOLOGY, CollectModels, normalize_topology_contract
 from apps.core.logger import cmdb_logger as logger
@@ -124,11 +126,22 @@ def _mark_topology_synced(task: CollectModels, round_ts: int) -> None:
 
 
 class TopologyReplayCollector(CollectNetworkMetrics):
-    """强制拓扑重放插件。"""
+    """强制拓扑重放插件：只消费拓扑证据，connect 写到已入库接口上。"""
 
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
         kwargs["force_topology_replay"] = True
         super().__init__(inst_name, inst_id, task_id, *args, **kwargs)
+
+    @property
+    def _metrics(self):
+        return [NETWORK_INTERFACES_RELATIONS]
+
+    def format_metrics(self):
+        super().format_metrics()
+        apply_topology_relationships_safe(
+            getattr(self, "_topology_relationships", None) or [],
+            task_id=self.task_id,
+        )
 
 
 def replay_topology_for_task(

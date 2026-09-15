@@ -8,6 +8,7 @@ import { useCommon } from '@/app/alarm/context/common';
 import { type RuleScope, type RuleCondition, ruleFields, ruleField, operatorTranslation, invalidRuleCondition, isMultiOperator, normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
 import { MatchRuleValue } from './matchRuleValue';
 import MatchRuleHelp from './matchRuleHelp';
+import SourceNameSelect from './sourceNameSelect';
 
 interface PolicyItem { key: string | undefined; operator: string | undefined; value: MatchRuleValue }
 export interface MatchRuleProps {
@@ -75,6 +76,9 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange, scope: supplied
                     placeholder={t('common.selectTip')} status={invalid && !missing ? 'error' : undefined}
                     options={levelOptions.map(level => ({ value: String(level.level_id), label: level.level_display_name }))}
                     onChange={updateValue} />
+                  : field?.key === 'source_name' || field?.key === 'source_names' ? <SourceNameSelect
+                    disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
+                    status={invalid && !missing ? 'error' : undefined} onChange={updateValue} />
                   : multi ? <Select className="w-full" mode="tags" open={false} suffixIcon={null} options={[]} aria-label={t('alarmCommon.multiValueInput')}
                     disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
                     maxCount={50} maxLength={256} placeholder={t('alarmCommon.multiValuePlaceholder')}
