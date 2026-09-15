@@ -1,0 +1,124 @@
+Cisco Meraki:
+  name: Cisco Meraki
+  desc: 通过 Meraki Dashboard API v1，用一组组织 API 密钥采集组织、设备、无线 AP、交换机与 MX 指标。
+monitor_object:
+  Cisco Meraki: Cisco Meraki
+  Meraki Network: Meraki 网络
+  Meraki Device: Meraki 设备
+  Meraki Wireless AP: Meraki 无线 AP
+  Meraki Switch: Meraki 交换机
+  Meraki Appliance: Meraki 安全设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric_group:
+  Cisco Meraki:
+    Base: 基础
+    Inventory: 清单
+    Availability: 可用性
+    Ports: 端口
+    Power: 功耗
+    VPN: VPN
+  Meraki Network:
+    Inventory: 清单
+  Meraki Device:
+    Availability: 可用性
+    Uplink: 上行链路
+  Meraki Wireless AP:
+    Packet Loss: 丢包
+    Ethernet: 以太网
+  Meraki Switch:
+    Ports: 端口
+  Meraki Appliance:
+    VPN: VPN
+    Utilization: 利用率
+monitor_object_metric:
+  Cisco Meraki:
+    meraki_org_connect_status:
+      name: 连接状态
+      desc: Dashboard API 是否成功返回该组织。
+    meraki_org_api_enabled:
+      name: API 已启用
+      desc: 组织是否启用 Dashboard API。
+    meraki_org_network_count:
+      name: 网络数量
+      desc: 组织下返回的网络数量。
+    meraki_device_connect_status:
+      name: 设备采集连接状态
+      desc: 设备采集所用 Dashboard API 是否可用。
+    meraki_device_inventory_count:
+      name: 设备数量
+      desc: 组织设备清单中的设备数。
+    meraki_device_online_count:
+      name: 在线设备数
+      desc: 可用性为 online 的设备数量。
+    meraki_wireless_connect_status:
+      name: 无线采集连接状态
+      desc: 无线 AP 采集所用 Dashboard API 是否可用。
+    meraki_wireless_ap_count:
+      name: 无线 AP 数量
+      desc: 以太网状态与丢包数据中去重后的无线 AP 数量。
+    meraki_switch_connect_status:
+      name: 交换机采集连接状态
+      desc: 交换机采集所用 Dashboard API 是否可用。
+    meraki_switch_port_active_count:
+      name: 活动端口数
+      desc: 组织内活动交换机端口数量。
+    meraki_switch_port_inactive_count:
+      name: 非活动端口数
+      desc: 组织内非活动交换机端口数量。
+    meraki_switch_power_draw_w:
+      name: 交换机 PoE 功耗
+      desc: 功耗历史中最近一个采样的 PoE 功率（瓦）。
+    meraki_appliance_connect_status:
+      name: 安全设备采集连接状态
+      desc: 安全设备采集所用 Dashboard API 是否可用。
+    meraki_appliance_vpn_network_count:
+      name: VPN 网络数
+      desc: 返回 VPN 状态的网络数量。
+  Meraki Network:
+    meraki_network_present:
+      name: 网络存在
+      desc: 组织中每个网络的存在性指标。
+  Meraki Device:
+    meraki_device_availability_status:
+      name: 可用性状态
+      desc: 设备 online/alerting/offline/dormant 状态；无可用性记录时不导出该指标。
+    meraki_device_uplink_latency_ms:
+      name: 上行时延
+      desc: 设备上行链路时延（毫秒）。
+    meraki_device_uplink_loss_percent:
+      name: 上行丢包率
+      desc: 设备上行链路丢包百分比。
+  Meraki Wireless AP:
+    meraki_wireless_ap_upstream_loss_percent:
+      name: 上行丢包率
+      desc: 无线 AP 上行丢包百分比。
+    meraki_wireless_ap_downstream_loss_percent:
+      name: 下行丢包率
+      desc: 无线 AP 下行丢包百分比。
+    meraki_wireless_ap_ethernet_speed_mbps:
+      name: 以太网速率
+      desc: 无线 AP 以太网协商速率。
+    meraki_wireless_ap_ethernet_link_up:
+      name: 以太网链路
+      desc: 以太网口是否链路 up。优先使用 status/linkStatus/connected；否则根据 linkNegotiation 的 speed>0 或 duplex 为 full/half。
+  Meraki Switch:
+    meraki_switch_port_enabled:
+      name: 端口已启用
+      desc: 交换机端口是否管理启用。
+    meraki_switch_port_poe_enabled:
+      name: 端口 PoE 已启用
+      desc: 交换机端口是否启用 PoE。
+  Meraki Appliance:
+    meraki_appliance_vpn_peer_reachable:
+      name: VPN 对端可达
+      desc: Auto VPN 对端是否可达。
+    meraki_appliance_vpn_avg_latency_ms:
+      name: VPN 平均时延
+      desc: Auto VPN 平均时延（毫秒）。
+    meraki_appliance_vpn_avg_loss_percent:
+      name: VPN 平均丢包率
+      desc: Auto VPN 平均丢包百分比。
+    meraki_appliance_utilization_percent:
+      name: 设备利用率
+      desc: 安全设备平均利用率。

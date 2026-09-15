@@ -1,0 +1,125 @@
+Cisco Meraki:
+  name: Cisco Meraki
+  desc: Collect organization, device, wireless AP, switch, and MX metrics from Meraki
+    Dashboard API v1 with one organization API key.
+monitor_object:
+  Cisco Meraki: Cisco Meraki
+  Meraki Network: Meraki Network
+  Meraki Device: Meraki Device
+  Meraki Wireless AP: Meraki Wireless AP
+  Meraki Switch: Meraki Switch
+  Meraki Appliance: Meraki Appliance
+monitor_object_type:
+  Network Device: Network Device
+monitor_object_metric_group:
+  Cisco Meraki:
+    Base: Base
+    Inventory: Inventory
+    Availability: Availability
+    Ports: Ports
+    Power: Power
+    VPN: VPN
+  Meraki Network:
+    Inventory: Inventory
+  Meraki Device:
+    Availability: Availability
+    Uplink: Uplink
+  Meraki Wireless AP:
+    Packet Loss: Packet Loss
+    Ethernet: Ethernet
+  Meraki Switch:
+    Ports: Ports
+  Meraki Appliance:
+    VPN: VPN
+    Utilization: Utilization
+monitor_object_metric:
+  Cisco Meraki:
+    meraki_org_connect_status:
+      name: Connect Status
+      desc: Whether Dashboard API returned the organization.
+    meraki_org_api_enabled:
+      name: API Enabled
+      desc: Whether the organization has Dashboard API enabled.
+    meraki_org_network_count:
+      name: Network Count
+      desc: Number of networks in the organization.
+    meraki_device_connect_status:
+      name: Device Collect Connect Status
+      desc: Whether Dashboard API is available for device collection.
+    meraki_device_inventory_count:
+      name: Device Count
+      desc: Number of devices in the organization inventory.
+    meraki_device_online_count:
+      name: Online Device Count
+      desc: Number of devices with online availability.
+    meraki_wireless_connect_status:
+      name: Wireless Collect Connect Status
+      desc: Whether Dashboard API is available for wireless AP collection.
+    meraki_wireless_ap_count:
+      name: Wireless AP Count
+      desc: Unique wireless AP count from ethernet statuses union packet-loss data.
+    meraki_switch_connect_status:
+      name: Switch Collect Connect Status
+      desc: Whether Dashboard API is available for switch collection.
+    meraki_switch_port_active_count:
+      name: Active Port Count
+      desc: Organization-wide active switch port count.
+    meraki_switch_port_inactive_count:
+      name: Inactive Port Count
+      desc: Organization-wide inactive switch port count.
+    meraki_switch_power_draw_w:
+      name: Switch PoE Power Draw
+      desc: Latest switch PoE power draw in watts.
+    meraki_appliance_connect_status:
+      name: Appliance Collect Connect Status
+      desc: Whether Dashboard API is available for appliance collection.
+    meraki_appliance_vpn_network_count:
+      name: VPN Network Count
+      desc: Number of networks that reported VPN status.
+  Meraki Network:
+    meraki_network_present:
+      name: Network Present
+      desc: Presence gauge for each network.
+  Meraki Device:
+    meraki_device_availability_status:
+      name: Availability Status
+      desc: Device online/alerting/offline/dormant status. Omitted when availability is missing.
+    meraki_device_uplink_latency_ms:
+      name: Uplink Latency
+      desc: Uplink latency in milliseconds.
+    meraki_device_uplink_loss_percent:
+      name: Uplink Loss
+      desc: Uplink packet loss percentage.
+  Meraki Wireless AP:
+    meraki_wireless_ap_upstream_loss_percent:
+      name: Upstream Packet Loss
+      desc: Upstream packet loss percentage.
+    meraki_wireless_ap_downstream_loss_percent:
+      name: Downstream Packet Loss
+      desc: Downstream packet loss percentage.
+    meraki_wireless_ap_ethernet_speed_mbps:
+      name: Ethernet Speed
+      desc: Negotiated ethernet port speed.
+    meraki_wireless_ap_ethernet_link_up:
+      name: Ethernet Link Up
+      desc: Ethernet link up prefers status/linkStatus/connected; otherwise speed>0 or duplex full/half.
+  Meraki Switch:
+    meraki_switch_port_enabled:
+      name: Port Enabled
+      desc: Whether the switch port is administratively enabled.
+    meraki_switch_port_poe_enabled:
+      name: Port PoE Enabled
+      desc: Whether PoE is enabled on the switch port.
+  Meraki Appliance:
+    meraki_appliance_vpn_peer_reachable:
+      name: VPN Peer Reachable
+      desc: Whether an Auto VPN peer is reachable.
+    meraki_appliance_vpn_avg_latency_ms:
+      name: VPN Average Latency
+      desc: Average Auto VPN latency in milliseconds.
+    meraki_appliance_vpn_avg_loss_percent:
+      name: VPN Average Loss
+      desc: Average Auto VPN packet loss percentage.
+    meraki_appliance_utilization_percent:
+      name: Appliance Utilization
+      desc: Average appliance utilization percentage.

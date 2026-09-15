@@ -1,9 +1,9 @@
-export const useMerakiDeviceInventoryConfig = () => {
+export const useCiscoMerakiConfig = () => {
   return {
-    instance_type: 'cisco_meraki_device',
+    instance_type: 'cisco_meraki',
     dashboardDisplay: [
       {
-        indexId: 'meraki_device_connect_status',
+        indexId: 'meraki_org_connect_status',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
@@ -13,7 +13,7 @@ export const useMerakiDeviceInventoryConfig = () => {
         }
       },
       {
-        indexId: 'meraki_device_inventory_count',
+        indexId: 'meraki_org_network_count',
         displayType: 'single',
         sortIndex: 1,
         displayDimension: [],
@@ -23,9 +23,19 @@ export const useMerakiDeviceInventoryConfig = () => {
         }
       },
       {
-        indexId: 'meraki_device_online_count',
+        indexId: 'meraki_device_inventory_count',
         displayType: 'single',
         sortIndex: 2,
+        displayDimension: [],
+        style: {
+          height: '200px',
+          width: '24%'
+        }
+      },
+      {
+        indexId: 'meraki_wireless_ap_count',
+        displayType: 'single',
+        sortIndex: 3,
         displayDimension: [],
         style: {
           height: '200px',
@@ -35,7 +45,7 @@ export const useMerakiDeviceInventoryConfig = () => {
     ],
     groupIds: {},
     collectTypes: {
-      'Cisco Meraki Device': 'http'
+      'Cisco Meraki': 'http'
     }
   };
 };
