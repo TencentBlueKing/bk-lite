@@ -264,9 +264,12 @@ const StrategyOperation = () => {
     unit: calculationUnit,
     unitList
   });
+  const selectedMetricUnit =
+    metrics.find((item) => item.name === metric)?.unit || null;
   const thresholdBaseUnit = resolveThresholdUnitBase({
     compareValueKind,
     calculationUnit: effectiveCalculationUnit,
+    metricUnit: selectedMetricUnit,
     algorithm
   });
   const effectiveThresholdUnit = resolveThresholdUnit({

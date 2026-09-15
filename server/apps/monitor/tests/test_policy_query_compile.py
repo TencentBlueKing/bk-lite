@@ -278,6 +278,16 @@ def test_legacy_short_algorithm_ignores_default_group_algorithm():
     assert compiled == "avg_over_time((avg(up) by (instance_id))[5m:10s])"
 
 
+def test_map_quantity_to_rate_unit():
+    assert pm.map_quantity_to_rate_unit("bytes") == "byteps"
+    assert pm.map_quantity_to_rate_unit("kibibytes") == "kibyteps"
+    assert pm.map_quantity_to_rate_unit("bits") == "bitps"
+    assert pm.map_quantity_to_rate_unit("counts") == "cps"
+    assert pm.map_quantity_to_rate_unit("byteps") == "byteps"
+    assert pm.map_quantity_to_rate_unit("percent") == "percent"
+    assert pm.map_quantity_to_rate_unit("") == ""
+
+
 @pytest.mark.parametrize(
     "kwargs,unit,conversion",
     [
@@ -289,7 +299,11 @@ def test_legacy_short_algorithm_ignores_default_group_algorithm():
         ({"algorithm": "stddev_over_time"}, "kibibytes", True),
         ({"algorithm": "count_if_over_time"}, "count", False),
         ({"algorithm": "changes"}, "count", False),
-        ({"algorithm": "rate"}, "bytes", False),
+        ({"algorithm": "rate"}, "byteps", False),
+        ({"algorithm": "deriv"}, "byteps", False),
+        ({"algorithm": "rate", "metric_unit": "percent"}, "percent", False),
+        ({"algorithm": "rate", "metric_unit": "byteps"}, "byteps", False),
+        ({"algorithm": "rate", "metric_unit": "counts"}, "cps", False),
         ({"compare_value_kind": "hours", "compare_mode": "timeleft"}, "hour", False),
     ],
 )

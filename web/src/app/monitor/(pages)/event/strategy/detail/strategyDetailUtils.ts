@@ -387,6 +387,57 @@ export const COMPARE_VALUE_KIND_RATIO = 'ratio';
 export const COMPARE_VALUE_KIND_HOURS = 'hours';
 export const COUNT_IF_ALGORITHM = 'count_if_over_time';
 export const PER_SERIES_ALGORITHMS = ['rate', 'changes', 'deriv'];
+const DATA_BYTE_UNITS = [
+  'bytes',
+  'kibibytes',
+  'mebibytes',
+  'gibibytes',
+  'tebibytes',
+  'pebibytes'
+] as const;
+const DATA_BYTE_RATE_UNITS = [
+  'byteps',
+  'kibyteps',
+  'mibyteps',
+  'gibyteps',
+  'tibyteps',
+  'pibyteps'
+] as const;
+const DATA_BIT_UNITS = [
+  'bits',
+  'kilobits',
+  'megabits',
+  'gigabits',
+  'terabits',
+  'petabits'
+] as const;
+const DATA_BIT_RATE_UNITS = [
+  'bitps',
+  'kbitps',
+  'mbitps',
+  'gbitps',
+  'tbitps',
+  'pbitps'
+] as const;
+const QUANTITY_TO_RATE_UNIT: Record<string, string> = {
+  ...Object.fromEntries(
+    DATA_BYTE_UNITS.map((unit, index) => [unit, DATA_BYTE_RATE_UNITS[index]])
+  ),
+  ...Object.fromEntries(
+    DATA_BIT_UNITS.map((unit, index) => [unit, DATA_BIT_RATE_UNITS[index]])
+  ),
+  counts: 'cps',
+  count: 'cps'
+};
+const ALREADY_PER_SECOND_UNITS = new Set<string>([
+  ...DATA_BYTE_RATE_UNITS,
+  ...DATA_BIT_RATE_UNITS,
+  'cps',
+  'msps',
+  'hertz',
+  'kilohertz',
+  'megahertz'
+]);
 export const NEW_ALGORITHMS = [
   'p90_over_time',
   'p95_over_time',
@@ -635,13 +686,27 @@ export const resolveNoDataPeriodsForSave = ({
   };
 };
 
+export const mapQuantityToRateUnit = (
+  unit?: string | null
+): string | null => {
+  const raw = (unit || '').trim();
+  if (!raw) return raw || null;
+  const normalized = raw.toLowerCase();
+  if (ALREADY_PER_SECOND_UNITS.has(normalized)) {
+    return normalized;
+  }
+  return QUANTITY_TO_RATE_UNIT[normalized] || raw;
+};
+
 export const resolvePolicyResultUnit = ({
   compareValueKind,
   calculationUnit,
+  metricUnit,
   algorithm
 }: {
   compareValueKind?: string | null;
   calculationUnit?: string | null;
+  metricUnit?: string | null;
   algorithm?: string | null;
 }): { unit: string | null; conversionEnabled: boolean } => {
   if (compareValueKind === COMPARE_VALUE_KIND_PERCENT) {
@@ -657,7 +722,10 @@ export const resolvePolicyResultUnit = ({
     return { unit: 'count', conversionEnabled: false };
   }
   if (algorithm === 'rate' || algorithm === 'deriv') {
-    return { unit: calculationUnit || null, conversionEnabled: false };
+    return {
+      unit: mapQuantityToRateUnit(metricUnit || calculationUnit),
+      conversionEnabled: false
+    };
   }
   return {
     unit: calculationUnit || null,
@@ -668,15 +736,18 @@ export const resolvePolicyResultUnit = ({
 export const resolveThresholdUnitBase = ({
   compareValueKind,
   calculationUnit,
+  metricUnit,
   algorithm
 }: {
   compareValueKind?: string | null;
   calculationUnit?: string | null;
+  metricUnit?: string | null;
   algorithm?: string | null;
 }): string | null => {
   const result = resolvePolicyResultUnit({
     compareValueKind,
     calculationUnit,
+    metricUnit,
     algorithm
   });
   return result.conversionEnabled ? calculationUnit || null : result.unit;

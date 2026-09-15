@@ -128,7 +128,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           compareValueKind === 'percent' ||
           compareValueKind === 'hours' ||
           algorithm === 'changes' ||
-          algorithm === COUNT_IF_ALGORITHM
+          algorithm === COUNT_IF_ALGORITHM ||
+          algorithm === 'rate' ||
+          algorithm === 'deriv'
       }),
     [unitList, thresholdFilterBase, isEnumMetric, compareValueKind, algorithm]
   );

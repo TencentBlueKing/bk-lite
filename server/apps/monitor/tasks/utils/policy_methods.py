@@ -9,6 +9,50 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 PERIOD_PATTERN = re.compile(r"^(\d+)([mhd])$")
 RATE_FUNCTION_RE = re.compile(r"\b(?:rate|irate|increase)\s*\(", re.IGNORECASE)
 
+_DATA_BYTE_UNITS = (
+    "bytes",
+    "kibibytes",
+    "mebibytes",
+    "gibibytes",
+    "tebibytes",
+    "pebibytes",
+)
+_DATA_BYTE_RATE_UNITS = (
+    "byteps",
+    "kibyteps",
+    "mibyteps",
+    "gibyteps",
+    "tibyteps",
+    "pibyteps",
+)
+_DATA_BIT_UNITS = (
+    "bits",
+    "kilobits",
+    "megabits",
+    "gigabits",
+    "terabits",
+    "petabits",
+)
+_DATA_BIT_RATE_UNITS = (
+    "bitps",
+    "kbitps",
+    "mbitps",
+    "gbitps",
+    "tbitps",
+    "pbitps",
+)
+QUANTITY_TO_RATE_UNIT = {
+    **dict(zip(_DATA_BYTE_UNITS, _DATA_BYTE_RATE_UNITS)),
+    **dict(zip(_DATA_BIT_UNITS, _DATA_BIT_RATE_UNITS)),
+    "counts": "cps",
+    "count": "cps",
+}
+ALREADY_PER_SECOND_UNITS = (
+    set(_DATA_BYTE_RATE_UNITS)
+    | set(_DATA_BIT_RATE_UNITS)
+    | {"cps", "msps", "hertz", "kilohertz", "megahertz"}
+)
+
 GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
 LEGACY_WINDOW_AGGREGATION_ALGORITHMS = {
     "max_over_time",
@@ -506,6 +550,17 @@ def compile_existence_query(policy_like, base_query, step, group_by=None):
     return compile_window_query(policy_like, base_query, step, group_by)
 
 
+def map_quantity_to_rate_unit(unit) -> str:
+    """把存量指标量纲映射为「量纲 / 秒」；已是速率单位或无对应目录时原样返回。"""
+    raw = (unit or "").strip()
+    if not raw:
+        return raw
+    normalized = raw.lower()
+    if normalized in ALREADY_PER_SECOND_UNITS:
+        return normalized
+    return QUANTITY_TO_RATE_UNIT.get(normalized, raw)
+
+
 def resolve_result_unit(policy_like) -> ResultUnit:
     kind = (_policy_get(policy_like, "compare_value_kind") or "").strip()
     algorithm = (_policy_get(policy_like, "algorithm") or "").strip()
@@ -521,7 +576,7 @@ def resolve_result_unit(policy_like) -> ResultUnit:
     if algorithm in {"changes", COUNT_IF_ALGORITHM}:
         return ResultUnit("count", False)
     if algorithm in {"rate", "deriv"}:
-        return ResultUnit(metric_unit, False)
+        return ResultUnit(map_quantity_to_rate_unit(metric_unit or calculation_unit), False)
     return ResultUnit(calculation_unit, True)
 
 

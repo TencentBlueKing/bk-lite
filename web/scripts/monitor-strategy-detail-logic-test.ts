@@ -15,6 +15,7 @@ import {
   isVacantThresholdUnit,
   pruneNoticeUsers,
   collectMetricQueryTexts,
+  mapQuantityToRateUnit,
   resolveFunctionDelayMinutes,
   scheduleValueToMinutes,
   resolveFormulaResultUnit,
@@ -842,6 +843,37 @@ assert.deepEqual(
     metrics: [{ id: 1, name: 'cpu', query: 'rate(cpu[5m])' }] as any,
   }),
   ['rate(cpu[5m])']
+);
+
+assert.equal(mapQuantityToRateUnit('bytes'), 'byteps');
+assert.equal(mapQuantityToRateUnit('kibibytes'), 'kibyteps');
+assert.equal(mapQuantityToRateUnit('bits'), 'bitps');
+assert.equal(mapQuantityToRateUnit('counts'), 'cps');
+assert.equal(mapQuantityToRateUnit('byteps'), 'byteps');
+assert.equal(mapQuantityToRateUnit('percent'), 'percent');
+assert.deepEqual(
+  resolvePolicyResultUnit({
+    calculationUnit: 'kibibytes',
+    metricUnit: 'bytes',
+    algorithm: 'rate',
+  }),
+  { unit: 'byteps', conversionEnabled: false }
+);
+assert.equal(
+  resolveThresholdUnitBase({
+    calculationUnit: 'percent',
+    metricUnit: 'bytes',
+    algorithm: 'deriv',
+  }),
+  'byteps'
+);
+assert.equal(
+  resolveThresholdUnitBase({
+    calculationUnit: 'percent',
+    metricUnit: 'percent',
+    algorithm: 'rate',
+  }),
+  'percent'
 );
 
 assert.deepEqual(getSlice1CompareModes('min', 5), [
