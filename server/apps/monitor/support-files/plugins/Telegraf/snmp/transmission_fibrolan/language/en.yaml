@@ -1,6 +1,7 @@
 Transmission Fibrolan SNMP:
   name: Fibrolan (Telegraf)
-  desc: SNMP monitoring template for Fibrolan transmission device. It reports per-port
+  desc: SNMP monitoring template for Fibrolan Falcon transmission device. It reports
+    CPU utilization, memory utilization, optional NV memory utilization, per-port
     inbound traffic rate, per-port outbound traffic rate, and system uptime
 monitor_object:
   Transmission: Transmission
@@ -38,6 +39,20 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
+    cpu_usage_percent:
+      name: CPU Usage
+      desc: CPU utilization of the Fibrolan Falcon transmission device reported
+        directly as a 0-100 percentage from FIBROLAN-DEVICE. Sustained high CPU usage
+        can indicate control-plane load, forwarding pressure or abnormal traffic.
+    memory_usage_percent:
+      name: Memory Usage
+      desc: DRAM utilization of the Fibrolan Falcon transmission device reported directly
+        as a 0-100 percentage from FIBROLAN-DEVICE. Sustained high memory usage may
+        indicate control-plane resource pressure or unstable device services.
+    nv_memory_usage_percent:
+      name: NV Memory Usage
+      desc: Optional non-volatile memory utilization of the Fibrolan Falcon transmission
+        device, reported as a 0-100 percentage when the firmware exposes this column.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU utilization of the transmission device reported directly as a 0-100
