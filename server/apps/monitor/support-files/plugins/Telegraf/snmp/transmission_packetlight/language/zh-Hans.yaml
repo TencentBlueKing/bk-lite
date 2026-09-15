@@ -1,6 +1,6 @@
 Transmission PacketLight SNMP:
   name: PacketLight（Telegraf）
-  desc: 面向 PacketLight 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4515）。
+  desc: 面向 PacketLight 传输设备的 SNMP 监控模板,可采集 系统温度、可选运行状态、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4515）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -32,7 +32,10 @@ monitor_object_metric:
       desc: 传输设备的整体内存使用率，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。
     device_temperature_celsius:
       name: 温度
-      desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+      desc: PacketLight 系统温度，来自 slmSysTemperature，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    device_oper_status:
+      name: 运行状态
+      desc: 可选的 PacketLight 系统运行状态，来自 slmSysOperStatus，取值为 up、down 或 testing。部分版本未实现该标量，缺失时采集端跳过。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。
@@ -46,4 +49,5 @@ monitor_object_metric_group:
     CPU: CPU
     Memory: 内存
     Temperature: 温度
+    Status: 状态
     Hardware Status: 硬件状态
