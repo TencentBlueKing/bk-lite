@@ -32,7 +32,7 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB ifTable, 用于自动展开 ifDescr/ifOperStatus 等接口属性列) ----
+
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.2.2"
         name = "interface"
@@ -56,8 +56,14 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- 无线健康 (信号强度/SNR/客户端数等) → N/A ----
-    # Cambium 私有 MIB 的无线健康指标为 per-row 索引表（按射频单元/SSID/客户端逐行），
-    # 取值需对索引行做行级过滤 (skip_values)，而 telegraf inputs.snmp 不支持行级过滤，
-    # 故本基线插件仅采集 IF-MIB 接口流量 (ifHCInOctets/ifHCOutOctets) 与运行时长 (uptime)，
-    # 无线信号/SNR/客户端数等健康指标为 N/A，不伪造。
+
+    # ePMP sysCPUUsage (0.1 percent units, 0..1000) plus optional AP station count.
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17713.21.2.1.64.0"
+        name = "usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17713.21.1.2.10.0"
+        name = "wireless_cambium_sta_count"
