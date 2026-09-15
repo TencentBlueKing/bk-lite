@@ -24,6 +24,29 @@
         collect_type = "snmp_huawei_ar"
         config_type = "huawei_ar"
         brand = "huawei_ar"
+    # ---- sysObjectID model dictionary (huaweiProducts.ar = 1.3.6.1.4.1.2011.2.224) ----
+    # Identity only; this template does not collect extra private metrics.
+    # Interface traffic uses built-in IF-MIB; do not expand IF here.
+    # 340 AR8140-12G10XG
+    # 341 AR8140-T-12G10XG
+    # 349 AR720
+    # 350 AR730
+    # 363 AR6710-L50T2X4
+    # 364 AR6710-L50T2X4-T
+    # 365 AR6710-L26T2X4
+    # 366 AR6710-L26T2X4-T
+    # 368 AR5710-H8T2TS1
+    # 369 AR5710-H8T2TS1-T
+    # 370 AR6710-L8T3TS1X2
+    # 371 AR6710-L8T3TS1X2-T
+    # 378 AR8700-8
+    # 379 AR6510-L11T1X2
+    # 380 AR6510-L5T4S4
+    # 381 AR5510-H8P2TW1
+    # 382 AR5510-H10T1
+    # 383 AR5510-L5T-LTE4EA
+    # 384 AR5510-L5T
+    # 385 AR6500-10
     # ---- System ----
     [[inputs.snmp.field]]
         oid = "1.3.6.1.2.1.1.3.0"
