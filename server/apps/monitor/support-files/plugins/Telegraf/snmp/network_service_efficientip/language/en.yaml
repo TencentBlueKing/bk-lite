@@ -1,7 +1,8 @@
 NetworkService EfficientIP SNMP:
   name: EfficientIP (Telegraf)
   desc: SNMP monitoring template for EfficientIP network service device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+    CPU load, used memory, DNS and DHCP service health, per-port inbound traffic rate,
+    and other key metrics (IANA PEN 2440).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -43,21 +44,43 @@ monitor_object_metric:
       desc: Overall CPU utilization of the network-service appliance, reported directly
         as a percentage. Sustained high CPU means the node is near its processing
         capacity for traffic forwarding and filtering.
+    cpu_load:
+      name: CPU Load
+      desc: Per-core CPU load average of the EfficientIP appliance. The device reports
+        load multiplied by 100; the collected series is divided by 100 so the value
+        is the load average. Sustained values above 1 mean the node is overloaded
+        relative to its CPU cores.
     device_memory_usage:
       name: Memory Usage
       desc: System memory utilization of the network-service appliance, reported directly
         as a percentage. Sustained high memory may indicate map/flow-table pressure
         on the device.
+    memory_used:
+      name: Memory Used
+      desc: Percentage of used physical memory on the EfficientIP appliance. Sustained
+        high values may indicate memory pressure on DDI services.
     device_temperature_celsius:
       name: Temperature
       desc: Temperature reading of the network-service appliance in degrees Celsius.
         High values may indicate cooling or ambient-temperature risk.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of power supply 1, normalized to 1=healthy and 2=fault.
     network_service_dns_service_state:
       name: DNS Service Status
       desc: Operational state of the DNS service, normalized to 1=healthy and 2=fault.
+    network_service_dns_cpu:
+      name: DNS Service CPU
+      desc: CPU utilization of the DNS service, reported directly as a percentage.
     network_service_dhcp_service_state:
       name: DHCP Service Status
       desc: Operational state of the DHCP service, normalized to 1=healthy and 2=fault.
+    network_service_dhcp_cpu:
+      name: DHCP Service CPU
+      desc: CPU utilization of the DHCP service, reported directly as a percentage.
+    network_service_database_cpu:
+      name: Database Service CPU
+      desc: CPU utilization of the database service, reported directly as a percentage.
     network_service_ntp_service_state:
       name: NTP Service Status
       desc: Operational state of the NTP service, normalized to 1=healthy and 2=fault.

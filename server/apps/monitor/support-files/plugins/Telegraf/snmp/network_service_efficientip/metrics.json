@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_efficientip",
   "plugin": "NetworkService EfficientIP SNMP",
-  "plugin_desc": "EfficientIP SOLIDserver DDI SNMP baseline child template for network-service devices under EfficientIP PEN 2440. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm DDI appliance SNMP capability and hardware or service OID subtrees, but do not prove stable shared CPU, memory, temperature, fan, PSU or DNS-DHCP service-health scalar semantics, so private hardware and service subtrees are not promoted into shared device-health metrics.",
+  "plugin_desc": "EfficientIP SOLIDserver DDI SNMP collection for appliances under EfficientIP PEN 2440. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects private scalar health — CPU load average (eipHwCpuLoadInt), used physical memory (eipHwMemUsed), CPU temperature and PSU-1 status — plus DNS/DHCP/database service CPU and DNS/DHCP operational state, normalized to 1=healthy / 2=fault. Fan, remaining service counters and IF-MIB 32-bit / error / operStatus expansions are not collected.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_efficientip'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,130 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "cpu_load",
+    "memory_used",
+    "device_temperature_celsius",
+    "network_service_dns_service_state"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "cpu_load",
+      "query": "avg(cpu_load{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "CPU Load",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-core CPU load average of the EfficientIP appliance from eipHwCpuLoadInt (PEN 2440.1.14.8.1). The device reports the floating-point load multiplied by 100; the query divides by 100 to restore the load-average value."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "memory_used",
+      "query": "avg(memory_used{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Percentage of used physical memory on the EfficientIP appliance from eipHwMemUsed (PEN 2440.1.14.9.1), reported directly as a percentage."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU temperature of the EfficientIP appliance from eipHwTempCpu (PEN 2440.1.14.3.1), reported directly in degrees Celsius."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PSU-1 operational state from eipHwPsu1Status (PEN 2440.1.14.5.2). Value 1 (AC connected) is healthy; disabled, present-unplugged, not-present and unknown values are treated as fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_dns_service_state",
+      "query": "max(network_service_dns_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "DNS Service Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DNS service state from eipSvcDnsStatus (PEN 2440.1.16.8.1). Value 1 (running) is healthy; disabled, misconfigured, failed and unknown values are treated as fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_dns_cpu",
+      "query": "avg(network_service_dns_cpu{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "DNS Service CPU",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DNS service CPU utilization of the EfficientIP appliance from eipSvcDnsCpu (PEN 2440.1.16.8.2), reported directly as a percentage."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_dhcp_service_state",
+      "query": "max(network_service_dhcp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "DHCP Service Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DHCP service state from eipSvcDhcpStatus (PEN 2440.1.16.6.1). Value 1 (running) is healthy; disabled, misconfigured, failed and unknown values are treated as fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_dhcp_cpu",
+      "query": "avg(network_service_dhcp_cpu{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "DHCP Service CPU",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DHCP service CPU utilization of the EfficientIP appliance from eipSvcDhcpCpu (PEN 2440.1.16.6.2), reported directly as a percentage."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_database_cpu",
+      "query": "avg(network_service_database_cpu{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Database Service CPU",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Database service CPU utilization of the EfficientIP appliance from eipSvcDatabaseCpu (PEN 2440.1.16.5.2), reported directly as a percentage."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
