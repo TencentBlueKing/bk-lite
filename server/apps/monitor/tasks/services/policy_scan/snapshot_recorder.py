@@ -256,8 +256,7 @@ class SnapshotRecorder:
 
     def _overlay_maps(self):
         if self._overlay_value_maps is None:
-            query = getattr(self.metric_query_service, "query_overlay_last_values", None)
-            self._overlay_value_maps = query() if callable(query) else ({}, {})
+            self._overlay_value_maps = self.metric_query_service.query_overlay_last_values()
         return self._overlay_value_maps
 
     def _snapshot_compare_fields(self, alert, raw_data, event_obj=None):
@@ -278,10 +277,7 @@ class SnapshotRecorder:
         if compare_mode in ("", COMPARE_MODE_ABSOLUTE) and compared is not None:
             current = compared
             baseline = None
-        result_unit = ""
-        getter = getattr(self.metric_query_service, "get_effective_calculation_unit", None)
-        if callable(getter):
-            result_unit = getter() or ""
+        result_unit = self.metric_query_service.get_effective_calculation_unit() or ""
         return {
             "current_value": current,
             "baseline_value": baseline,

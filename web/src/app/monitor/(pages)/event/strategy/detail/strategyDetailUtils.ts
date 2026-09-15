@@ -369,6 +369,20 @@ export const COMPARE_MODE_OFFSET_7D = 'offset_7d';
 export const COMPARE_MODE_OFFSET_30D = 'offset_30d';
 export const COMPARE_MODE_BASELINE_4W = 'baseline_4w';
 export const COMPARE_MODE_TIMELEFT = 'timeleft';
+export const LOW_SIDE_THRESHOLD_METHODS = new Set(['<', '<=']);
+
+export const timeleftRequiresLowSideThresholds = (
+  compareMode: string | null | undefined,
+  thresholds: Array<{ method?: string | null }> | null | undefined
+): boolean => {
+  if (compareMode !== COMPARE_MODE_TIMELEFT) {
+    return true;
+  }
+  return (thresholds || []).every(
+    (item) => !item.method || LOW_SIDE_THRESHOLD_METHODS.has(item.method)
+  );
+};
+
 export const ENABLED_COMPARE_MODES = [
   COMPARE_MODE_ABSOLUTE,
   COMPARE_MODE_PREVIOUS_WINDOW,
@@ -379,7 +393,6 @@ export const ENABLED_COMPARE_MODES = [
   COMPARE_MODE_BASELINE_4W,
   COMPARE_MODE_TIMELEFT
 ] as const;
-export const SLICE1_COMPARE_MODES = ENABLED_COMPARE_MODES;
 
 export const COMPARE_VALUE_KIND_DELTA = 'delta';
 export const COMPARE_VALUE_KIND_PERCENT = 'percent';
@@ -554,13 +567,6 @@ export const getEnabledCompareModes = ({
   });
 };
 
-export const getSlice1CompareModes = (
-  periodType?: string | null,
-  periodValue?: number | null,
-  algorithm?: string | null
-): string[] =>
-  getEnabledCompareModes({ periodType, periodValue, algorithm });
-
 export const getCompareValueKinds = (mode: string): string[] =>
   (COMPARE_VALUE_KINDS_BY_MODE[mode] || ['']).filter(Boolean);
 
@@ -626,7 +632,7 @@ export const resolveCompareFieldsForSave = ({
     count_predicate: {},
     forecast_target:
       mode === COMPARE_MODE_TIMELEFT ? forecastTarget ?? null : null,
-      forecast_lookback:
+    forecast_lookback:
       mode === COMPARE_MODE_TIMELEFT
         ? forecastLookback || DEFAULT_FORECAST_LOOKBACK
         : {}
@@ -754,12 +760,7 @@ export const resolveThresholdUnitBase = ({
   return result.conversionEnabled ? calculationUnit || null : result.unit;
 };
 
-export const shouldDrawPreviewThreshold = ({
-  overlay
-}: {
-  overlay?: boolean;
-  conversionEnabled?: boolean;
-}): boolean => !overlay;
+export const shouldDrawPreviewThreshold = (): boolean => true;
 
 export const buildMetricSelectOption = (
   metric: MetricItem,
@@ -948,6 +949,11 @@ export const baseQueryContainsRateFunction = (
 export const queriesContainRateFunction = (queries: string[]): boolean =>
   queries.some((query) => baseQueryContainsRateFunction(query));
 
+export const rateAlgorithmConflictsWithQuery = (
+  algorithm: string | null | undefined,
+  queries: string[]
+): boolean => algorithm === 'rate' && queriesContainRateFunction(queries);
+
 export const resolveFunctionDelayMinutes = (
   queries: string[],
   windowMinutes = 0
@@ -1002,10 +1008,7 @@ export const resolveDryRunReason = (item: {
   trigger_count?: number | null;
 }): string => {
   const reason = typeof item.reason === 'string' ? item.reason.trim() : '';
-  if (reason) return reason;
-  return (
-    formatDryRunHitCountCopy(item.hit_count ?? 0, item.trigger_count ?? 1) || ''
-  );
+  return reason;
 };
 
 export const formatDryRunNumber = (value: unknown): string => {

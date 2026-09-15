@@ -16,6 +16,7 @@ import {
   pruneNoticeUsers,
   collectMetricQueryTexts,
   queriesContainRateFunction,
+  rateAlgorithmConflictsWithQuery,
   mapQuantityToRateUnit,
   resolveFunctionDelayMinutes,
   scheduleValueToMinutes,
@@ -29,7 +30,7 @@ import {
   restoreCalculationUnitState,
   shouldRequireNoticeUsers,
   shouldShowThresholdUnitSelector,
-  getSlice1CompareModes,
+  getEnabledCompareModes,
   resolveCompareFieldsForSave,
   resolveRecoveryThresholdForSave,
   resolveNoDataPeriodsForSave,
@@ -41,6 +42,7 @@ import {
   formatDryRunNumber,
   formatDryRunThreshold,
   DRY_RUN_VERDICT_I18N,
+  timeleftRequiresLowSideThresholds,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
   resolveMetricExpressionUnits,
@@ -849,9 +851,14 @@ assert.deepEqual(
 assert.equal(queriesContainRateFunction(['cpu_usage_total']), false);
 assert.equal(queriesContainRateFunction(['rate(if_octets[5m])']), true);
 assert.equal(queriesContainRateFunction(['irate(if_octets[1m])']), true);
+assert.equal(queriesContainRateFunction(['increase(if_octets[5m])', 'cpu']), true);
 assert.equal(
-  queriesContainRateFunction(['increase(if_octets[5m])', 'cpu']),
+  rateAlgorithmConflictsWithQuery('rate', ['rate(if_octets[5m])']),
   true
+);
+assert.equal(
+  rateAlgorithmConflictsWithQuery('avg_over_time', ['rate(if_octets[5m])']),
+  false
 );
 assert.equal(mapQuantityToRateUnit('bytes'), 'byteps');
 assert.equal(mapQuantityToRateUnit('kibibytes'), 'kibyteps');
@@ -884,7 +891,7 @@ assert.equal(
   'percent'
 );
 
-assert.deepEqual(getSlice1CompareModes('min', 5), [
+assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5 }), [
   'absolute',
   'previous_window',
   'offset_1h',
@@ -894,13 +901,25 @@ assert.deepEqual(getSlice1CompareModes('min', 5), [
   'baseline_4w',
   'timeleft',
 ]);
-assert.ok(!getSlice1CompareModes('hour', 1).includes('offset_1h'));
-assert.ok(!getSlice1CompareModes('day', 1).includes('offset_24h'));
-assert.ok(getSlice1CompareModes('min', 60).every((mode) => mode !== 'offset_1h'));
-assert.deepEqual(getSlice1CompareModes('min', 5, 'count_if_over_time'), [
+assert.ok(!getEnabledCompareModes({ periodType: 'hour', periodValue: 1 }).includes('offset_1h'));
+assert.ok(!getEnabledCompareModes({ periodType: 'day', periodValue: 1 }).includes('offset_24h'));
+assert.ok(getEnabledCompareModes({ periodType: 'min', periodValue: 60 }).every((mode) => mode !== 'offset_1h'));
+assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5, algorithm: 'count_if_over_time' }), [
   'absolute',
 ]);
-assert.ok(!getSlice1CompareModes('min', 5, 'p95_over_time').includes('timeleft'));
+assert.ok(!getEnabledCompareModes({ periodType: 'min', periodValue: 5, algorithm: 'p95_over_time' }).includes('timeleft'));
+assert.ok(
+  timeleftRequiresLowSideThresholds('absolute', [{ method: '>' }])
+);
+assert.ok(
+  timeleftRequiresLowSideThresholds('timeleft', [{ method: '<' }])
+);
+assert.ok(
+  timeleftRequiresLowSideThresholds('timeleft', [{ method: '<=' }])
+);
+assert.ok(
+  !timeleftRequiresLowSideThresholds('timeleft', [{ method: '>' }])
+);
 
 assert.deepEqual(
   resolveCompareFieldsForSave({
@@ -991,18 +1010,7 @@ assert.equal(
   }),
   false
 );
-assert.equal(
-  shouldDrawPreviewThreshold({ overlay: true, conversionEnabled: false }),
-  false
-);
-assert.equal(
-  shouldDrawPreviewThreshold({ overlay: true, conversionEnabled: true }),
-  false
-);
-assert.equal(
-  shouldDrawPreviewThreshold({ overlay: false, conversionEnabled: true }),
-  true
-);
+assert.equal(shouldDrawPreviewThreshold(), true);
 
 assert.equal(formatDryRunHitCountCopy(1, 1), null);
 assert.equal(formatDryRunHitCountCopy(2, 2), null);
@@ -1026,7 +1034,7 @@ assert.equal(
     hit_count: 1,
     trigger_count: 2,
   }),
-  '本轮命中 1/2，现网不会建告警'
+  ''
 );
 assert.equal(formatDryRunNumber(null), '—');
 assert.equal(formatDryRunNumber(90), '90');

@@ -115,7 +115,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const [previewError, setPreviewError] = useState<string>('');
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [previewThreshold, setPreviewThreshold] = useState<ThresholdField[]>([]);
-  const [previewOverlay, setPreviewOverlay] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<InstanceItem[]>([]);
   const [allInstances, setAllInstances] = useState<TableDataItem[]>([]);
@@ -300,7 +299,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
-      setPreviewOverlay(false);
       return;
     }
     let payload = null;
@@ -311,7 +309,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
-      setPreviewOverlay(false);
       setPreviewError(
         error instanceof Error
           ? error.message
@@ -325,7 +322,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
-      setPreviewOverlay(false);
       return;
     }
     // 取消之前的请求
@@ -359,7 +355,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         )
       );
       const overlay = Boolean(responseData?.overlay);
-      setPreviewOverlay(overlay);
       const overlayRoleLabel = t('monitor.events.compareBaseline');
       const overlayRoleValues: Record<string, string> = {
         current: t('monitor.events.compareRoleCurrent'),
@@ -420,7 +415,6 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         setPreviewWarnings([]);
         setPreviewThreshold([]);
         setPreviewChartUnit(null);
-        setPreviewOverlay(false);
         setPreviewError(
           error?.response?.data?.message ||
             error?.message ||
@@ -484,9 +478,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
 
   // 过滤掉空值的阈值
   const validThreshold = (
-    shouldDrawPreviewThreshold({ overlay: previewOverlay })
-      ? previewThreshold
-      : []
+    shouldDrawPreviewThreshold() ? previewThreshold : []
   ).filter((item) => item.value !== null && item.value !== undefined);
   const effectiveChartUnit = resolvePreviewChartUnit(
     previewChartUnit,

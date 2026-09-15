@@ -307,12 +307,6 @@ const StrategyOperation = () => {
   );
 
   useEffect(() => {
-    if (algorithm !== 'rate' || !disableRateAlgorithm) return;
-    setAlgorithm('avg_over_time');
-    form.setFieldValue('algorithm', 'avg_over_time');
-  }, [algorithm, disableRateAlgorithm, form]);
-
-  useEffect(() => {
     if (!unitList.length) return;
     setThresholdUnit((current) =>
       getThresholdUnitOnCalculationUnitChange({

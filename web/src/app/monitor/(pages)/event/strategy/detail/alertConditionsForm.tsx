@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Form, Select, InputNumber, Input } from 'antd';
+import { Form, Select, InputNumber, Input, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
@@ -16,7 +17,8 @@ import {
   getEnabledCompareModes,
   getMetricThresholdEnumState,
   getThresholdUnitOptions,
-  shouldShowThresholdUnitSelector
+  shouldShowThresholdUnitSelector,
+  timeleftRequiresLowSideThresholds
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
 
@@ -153,6 +155,14 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     ) {
       return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
+    if (
+      compareMode === COMPARE_MODE_TIMELEFT &&
+      !timeleftRequiresLowSideThresholds(compareMode, threshold)
+    ) {
+      return Promise.reject(
+        new Error(t('monitor.events.timeleftThresholdValidate'))
+      );
+    }
     return Promise.resolve();
   };
 
@@ -261,8 +271,11 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 <>
                   <Form.Item
                     label={
-                      <span className="w-[100px]">
+                      <span className="w-[100px] inline-flex items-center gap-1">
                         {t('monitor.events.forecastTarget')}
+                        <Tooltip title={t('monitor.events.forecastTargetTitle')}>
+                          <QuestionCircleOutlined className="text-[var(--color-text-3)]" />
+                        </Tooltip>
                       </span>
                     }
                     required

@@ -146,11 +146,7 @@ class PolicyPreviewService:
     def _overlay_chart_unit(self, query_type):
         result_unit = resolve_result_unit(self.payload)
         if not result_unit.conversion_enabled:
-            return (
-                self.payload.get("calculation_unit")
-                or self._chart_source_unit(query_type)
-                or ""
-            )
+            return result_unit.unit or ""
         return self._chart_unit()
 
     @staticmethod

@@ -267,6 +267,7 @@ class TestPreviewEndToEnd:
         window = "avg_over_time((avg(up) by (instance_id))[5m:10s])"
         assert out["query"] == f"({window} - {window} offset 1h) / ({window} offset 1h) * 100"
         assert out["warnings"] == []
+        assert out["result_unit"] == "percent"
 
     def test_preview_overlay_warns_when_baseline_missing(self, mocker):
         current = {

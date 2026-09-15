@@ -328,6 +328,16 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   {
                     required: true,
                     message: t('common.required')
+                  },
+                  {
+                    validator: async (_, value) => {
+                      if (disableRateAlgorithm && value === 'rate') {
+                        return Promise.reject(
+                          new Error(t('monitor.events.rateAlreadyInQuery'))
+                        );
+                      }
+                      return Promise.resolve();
+                    }
                   }
                 ]}
               >

@@ -45,6 +45,8 @@ def _mq(**kwargs):
         format_pmq=lambda: kwargs.get("pmq", "up"),
         format_period=lambda period: kwargs.get("step", "5m"),
         get_result_group_by=lambda: kwargs.get("group_by", ["instance_id"]),
+        query_overlay_last_values=lambda: kwargs.get("overlay", ({}, {})),
+        get_effective_calculation_unit=lambda: kwargs.get("result_unit", ""),
     )
 
 

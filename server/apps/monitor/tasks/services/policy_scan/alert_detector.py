@@ -80,16 +80,13 @@ class AlertDetector:
             self.policy.threshold
         )
         recovery_threshold = self._converted_recovery_threshold()
-        overlay_current_map, overlay_baseline_map = self._overlay_last_values()
-        source_display_unit = getattr(
-            self.metric_query_service, "get_source_display_unit", None
+        overlay_current_map, overlay_baseline_map = (
+            self.metric_query_service.query_overlay_last_values()
         )
         template_context["overlay_current_map"] = overlay_current_map
         template_context["overlay_baseline_map"] = overlay_baseline_map
         template_context["source_display_unit"] = (
-            source_display_unit()
-            if callable(source_display_unit)
-            else template_context["display_unit"]
+            self.metric_query_service.get_source_display_unit()
         )
         alert_events, info_events, hold_events = calculate_alerts(
             self.policy.alert_name,
@@ -116,14 +113,6 @@ class AlertDetector:
             return None
         converted = self.metric_query_service.convert_thresholds([recovery])
         return converted[0] if converted else recovery
-
-    def _overlay_last_values(self):
-        query_overlay = getattr(
-            self.metric_query_service, "query_overlay_last_values", None
-        )
-        if not callable(query_overlay):
-            return {}, {}
-        return query_overlay()
 
     def _get_metric_display_name(self):
         if self.policy.query_condition.get("type") == "formula":
