@@ -1,7 +1,8 @@
 Switch Waystream SNMP:
   name: Waystream (Telegraf)
-  desc: SNMP monitoring template for Waystream switch. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 9303).
+  desc: SNMP monitoring template for Waystream switch. It reports CPU utilization,
+    memory utilization, optional chassis temperature, and system uptime
+    (IANA PEN 9303).
 monitor_object:
   Switch: Switch
 monitor_object_type:
