@@ -246,7 +246,12 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         from apps.patch_mgmt.models import LinuxPatchDetail, WindowsPatchDetail
 
         archs = set()
-        for req in obj.requirements.select_related("patch"):
+        prefetched = getattr(obj, "_prefetched_objects_cache", None)
+        if prefetched is not None and "requirements" in prefetched:
+            requirements = obj.requirements.all()
+        else:
+            requirements = obj.requirements.select_related("patch__windows_detail", "patch__linux_detail")
+        for req in requirements:
             patch = req.patch
             if patch.os_type == "windows":
                 try:
