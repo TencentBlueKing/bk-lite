@@ -1,7 +1,7 @@
 Firewall Fortinet SNMP:
   name: Fortinet (Telegraf)
   desc: SNMP monitoring template for Fortinet firewall. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics
+    CPU utilization, memory utilization, session setup rate, and other key metrics
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -136,6 +136,11 @@ monitor_object_metric:
         by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly
         rising session count can indicate a connection flood or session-table exhaustion
         risk.
+    firewall_session_rate:
+      name: Session Setup Rate
+      desc: This metric reports the FortiGate firewall average session setup rate
+        over the past minute in sessions per second (FORTINET-FORTIGATE-MIB fgSysSesRate1).
+        A sudden spike can indicate a connection flood.
     firewall_vpn_tunnels:
       name: Active IPsec VPN Tunnels
       desc: This metric reports the number of currently active IPsec VPN tunnels on
