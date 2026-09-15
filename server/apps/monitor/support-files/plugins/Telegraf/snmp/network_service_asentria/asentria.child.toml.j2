@@ -33,6 +33,24 @@
         name = "source"
         is_tag = true
 
+    # SiteBoss 450 product subtree probe (PEN 3052.17) plus esPoint temperature/humidity.
+    # esIndexPC 1=temperature, 3=humidity. Temperature uses the device-configured scale.
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.3052.17.1.1.1"
+        name = "network_service_asentria_espoint"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3052.17.1.1.1.1.2"
+        name = "esIndexPC"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3052.17.1.1.1.1.4"
+        name = "esPointName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3052.17.1.1.1.1.6"
+        name = "value"
+
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
