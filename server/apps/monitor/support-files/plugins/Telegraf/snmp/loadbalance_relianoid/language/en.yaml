@@ -1,7 +1,8 @@
 Loadbalance RELIANOID SNMP:
   name: RELIANOID (Telegraf)
-  desc: SNMP monitoring template for RELIANOID load balancer. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for RELIANOID load balancer. It reports CPU utilization,
+    memory utilization, optional load averages, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:
@@ -22,26 +23,39 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_free:
       name: Memory Free
-      desc: Number of free physical memory bytes currently available on the device.
-        A persistently low value indicates memory pressure.
+      desc: Free real memory of the RELIANOID load balancer (UCD-SNMP memAvailReal,
+        reported in kB and converted to bytes). A persistently low value indicates
+        memory pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the overall CPU utilization of the F5 BIG-IP load
-        balancer (F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s, 5-second sample).
-        Sustained high usage indicates heavy traffic-processing or SSL-offload load.
+      desc: Overall CPU utilization of the RELIANOID load balancer from UCD-SNMP
+        ssCpuIdle (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when
+        idle is absent. Sustained high usage indicates heavy traffic-processing load.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the F5 BIG-IP
-        (F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal) in bytes.
+      desc: Total real memory of the RELIANOID load balancer (UCD-SNMP memTotalReal,
+        reported in kB and converted to bytes).
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of memory currently used by the F5 BIG-IP
-        (F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed) in bytes.
+      desc: Used real memory of the RELIANOID load balancer, derived as memTotalReal
+        minus memAvailReal and converted from kB to bytes.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the overall memory utilization of the F5 BIG-IP, computed
-        as used/total (100*used/total). Sustained high usage may be caused by oversized
-        connection tables or memory leaks.
+      desc: Real memory utilization of the RELIANOID load balancer, derived as
+        (memTotalReal - memAvailReal) / memTotalReal * 100. Sustained high usage may
+        degrade connection-handling performance.
+    device_load1:
+      name: Load Average (1m)
+      desc: Optional 1-minute load average of the RELIANOID load balancer (UCD-SNMP
+        laLoad.1).
+    device_load5:
+      name: Load Average (5m)
+      desc: Optional 5-minute load average of the RELIANOID load balancer (UCD-SNMP
+        laLoad.2).
+    device_load15:
+      name: Load Average (15m)
+      desc: Optional 15-minute load average of the RELIANOID load balancer (UCD-SNMP
+        laLoad.3).
     lb_current_connections:
       name: Current Connections
       desc: This metric reports the number of active client connections currently
