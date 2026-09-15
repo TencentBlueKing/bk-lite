@@ -88,6 +88,12 @@ class Collector(TimeInfo, MaintainerInfo):
     tags = JSONField(default=list, verbose_name="标签")
     package_name = models.CharField(max_length=100, blank=True, default="", verbose_name="包名称")
     is_pre = models.BooleanField(default=True, verbose_name="是否预定义")
+    imported_package_version = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="已导入探针包版本",
+    )
 
     class Meta:
         verbose_name = "采集器信息"
