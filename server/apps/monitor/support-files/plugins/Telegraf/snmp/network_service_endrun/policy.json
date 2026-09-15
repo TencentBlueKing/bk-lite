@@ -1,5 +1,20 @@
 {
   "object": "NetworkService",
   "plugin": "NetworkService EndRun SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "EndRun NTP层级异常",
+      "alert_name": "网络服务${resource_name} EndRun NTP 层级异常",
+      "description": "监控 EndRun NTP stratum，非层级 1 时触发告警。",
+      "metric_name": "network_service_endrun_ntp_stratum",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
 }
