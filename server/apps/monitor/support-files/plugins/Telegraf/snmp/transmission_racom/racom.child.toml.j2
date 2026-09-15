@@ -32,21 +32,58 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
-    # ---- RACOM RAy microwave backhaul health(CPU/memory/temperature/fan/power) -> N/A ----
-    # Current MIB facts prove RACOM enterprise identity and RAy MIB availability, but do not confirm stable row-filter-free private device-health scalars.
-    # To avoid fabricating device-health metrics, this child only collects uptime and IF-MIB ifXTable 64-bit HC counters.
+# @bk_include_ifmib_table
+    # ---- RACOM RAy3 (RacomRay3, PEN 33555) 站内健康标量 ----
+    # useCpu 1.3.6.1.4.1.33555.4.1.5.1.0 → cpu_usage_percent（Integer32 0-100%，不换算）
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
+        oid = "1.3.6.1.4.1.33555.4.1.5.1.0"
+        name = "usage_percent"
+        conversion = "int"
+    # useMemory 1.3.6.1.4.1.33555.4.1.5.2.0 → memory_usage_percent（Integer32 0-100%，不换算）
+    [[inputs.snmp.table]]
+        name = "memory"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.33555.4.1.5.2.0"
+        name = "usage_percent"
+        conversion = "int"
+    # temperatureModem 1.3.6.1.4.1.33555.4.1.4.1.0 → modem_temperature_celsius
+    # 百分之一摄氏度，查询侧 /100。勿按十分之一处理。
+    [[inputs.snmp.table]]
+        name = "modem_temperature"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.33555.4.1.4.1.0"
+        name = "celsius"
+        conversion = "int"
+    # 可选 temperatureRadio 1.3.6.1.4.1.33555.4.1.4.2.0 → radio_temperature_celsius
+    # 百分之一摄氏度，查询侧 /100。部分固件缺省时该表为空。
+    [[inputs.snmp.table]]
+        name = "radio_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.33555.4.1.4.2.0"
+        name = "celsius"
+        conversion = "int"
+    # 可选 voltageUnit 1.3.6.1.4.1.33555.4.1.4.3.0 → device_voltage_volts
+    # 十分之一伏特，查询侧 /10。
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.33555.4.1.4.3.0"
+        name = "volts"
+        conversion = "int"
+    # 可选 rss 1.3.6.1.4.1.33555.4.3.2.1.0 → rss_dbm
+    # 十分之一 dBm（例如 -39 表示 -3.9 dBm），查询侧 /10。勿按百分之一处理。
+    [[inputs.snmp.table]]
+        name = "rss"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.33555.4.3.2.1.0"
+        name = "dbm"
+        conversion = "int"
+# ---- 风扇/电源状态：RacomRay3 无稳定风扇或电源枚举对象 → N/A 不采。----
