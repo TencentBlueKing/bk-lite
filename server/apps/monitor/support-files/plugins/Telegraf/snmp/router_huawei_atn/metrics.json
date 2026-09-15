@@ -114,7 +114,7 @@
       "query": "device_fan_state{instance_type='router', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -124,7 +124,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Huawei cooling fan (hwEntityFanState). Dimension index is the fan table row index (hwEntityFanIndex is not a description). A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+      "description": "This metric reports the operational state of each Huawei cooling fan (hwEntityFanState). Huawei reports a binary state where 1 means normal and 2 means abnormal; any value other than normal indicates a cooling fault that can quickly lead to overheating and should be investigated immediately. Dimension index is the fan table row index (hwEntityFanIndex is not a description)."
     },
     {
       "metric_group": "Hardware Status",
@@ -258,7 +258,7 @@
       "query": "device_psu_state{instance_type='router', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"supply\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"notSupply\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"sleep\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"unknown\",\"id\":4,\"color\":\"#d9d9d9\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -268,7 +268,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each Huawei ATN power supply (hwEntityPwrState). A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly."
+      "description": "Operational state of each Huawei ATN power supply (hwEntityPwrState). On-wire INTEGER is supply(1)/notSupply(2)/sleep(3)/unknown(4), not a binary normal/abnormal. sleep(3) is a valid redundant-PSU energy-saving state, not a fault. Dimension index is the PSU table row index."
     },
     {
       "metric_group": "Hardware Status",

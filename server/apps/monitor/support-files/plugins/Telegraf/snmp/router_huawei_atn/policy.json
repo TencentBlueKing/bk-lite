@@ -44,7 +44,7 @@
     {
       "name": "Huawei ATN路由器风扇异常",
       "alert_name": "路由器${resource_name} 风扇状态异常",
-      "description": "监控华为 ATN 设备各散热风扇的运行状态。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+      "description": "监控华为 ATN 设备各散热风扇的运行状态。线侧为二元枚举（1=正常，2=异常），任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
@@ -55,11 +55,11 @@
     {
       "name": "Huawei ATN路由器电源异常",
       "alert_name": "路由器${resource_name} 电源状态异常",
-      "description": "监控华为 ATN 设备电源模块运行状态。非正常状态表示电源冗余缺失或硬件故障，需尽快修复以恢复冗余。",
+      "description": "监控华为 ATN 设备电源模块运行状态（hwEntityPwrState）。线侧为 supply(1)/notSupply(2)/sleep(3)/unknown(4)。仅对 notSupply(2) 告警；sleep(3) 是冗余电源休眠，不是故障。不要用 >1。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 1, "method": ">"}
+        {"level": "critical", "value": 2, "method": "=="}
       ],
       "group_algorithm": "avg"
     }

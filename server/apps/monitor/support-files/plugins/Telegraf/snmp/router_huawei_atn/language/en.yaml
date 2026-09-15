@@ -40,8 +40,9 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: This metric reports the operational state of each Huawei cooling fan (hwEntityFanState).
-        Dimension index is the fan table row index. A non-normal state indicates a cooling
-        fault that can quickly lead to overheating and should be investigated immediately.
+        Huawei reports a binary state (1=normal, 2=abnormal). Dimension index is the fan
+        table row index. A non-normal state indicates a cooling fault that can quickly lead
+        to overheating and should be investigated immediately.
     device_optical_rx_power:
       name: SFP RX Power
       desc: Per-module SFP/optical receive power in dBm (hwEntityOpticalRxPower). The device
@@ -81,10 +82,10 @@ monitor_object_metric:
         failure.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each Huawei ATN power supply (hwEntityPwrState). A non-normal
-        state signals a power redundancy or hardware fault; on devices with redundant PSUs
-        a single failure may not cause an outage but removes redundancy and must be remediated
-        promptly.
+      desc: Operational state of each Huawei ATN power supply (hwEntityPwrState). On-wire
+        values are supply(1), notSupply(2), sleep(3), and unknown(4), not a binary normal/abnormal.
+        sleep is a valid redundant-PSU energy-saving state, not a fault. Do not treat >1 as
+        a fault.
     device_psu_present:
       name: Power Supply Present
       desc: Presence of each Huawei ATN power supply (hwEntityPwrPresent). Absent means the

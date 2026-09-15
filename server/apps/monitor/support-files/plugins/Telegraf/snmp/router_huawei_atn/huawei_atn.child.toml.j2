@@ -116,6 +116,7 @@
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.24"
         name = "board_power"
     # Fans (hwEntityFanState / Speed / Present).
+    # hwEntityFanState ...10.1.7 线侧 INTEGER 仅 normal(1)/abnormal(2)，不是 Cisco 六段枚举。
     # hwEntityFanIndex is a table index, not a description; use index_as_tag like PSU.
     [[inputs.snmp.table]]
         name = "device_fan"
@@ -131,6 +132,8 @@
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.6"
         name = "present"
     # ---- PSU (hwEntityPwrState / Present) ----
+    # hwEntityPwrState ...18.1.6 线侧 INTEGER：supply(1)/notSupply(2)/sleep(3)/unknown(4)。
+    # sleep(3) 是冗余电源休眠，不是故障；策略不得把 >1 当成异常。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]

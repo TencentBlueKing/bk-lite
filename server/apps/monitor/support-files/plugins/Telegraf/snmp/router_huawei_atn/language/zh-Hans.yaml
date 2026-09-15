@@ -26,7 +26,7 @@ monitor_object_metric:
       desc: 该指标按实体报告华为 ATN 设备输入电压（hwEntityVoltage，原始毫伏，查询侧除以 1000 显示为伏特）。电压偏离额定范围可能意味着供电不稳，存在硬件风险。
     device_fan_state:
       name: 风扇状态
-      desc: 该指标表示设备各散热风扇的运行状态（hwEntityFanState），维度 index 为风扇表行索引。非正常状态表示散热故障，可能迅速导致过热，应立即排查。
+      desc: 该指标表示设备各散热风扇的运行状态（hwEntityFanState），维度 index 为风扇表行索引。线侧为二元枚举（1=正常，2=异常）。非正常状态表示散热故障，可能迅速导致过热，应立即排查。
     device_optical_rx_power:
       name: 光模块接收功率
       desc: 该指标按光模块报告接收光功率（dBm；设备原始为 µW，查询侧 10*log10(µW/1000) 换算，<=0 丢弃），维度 descr 为 entPhysicalName。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常。
@@ -50,7 +50,7 @@ monitor_object_metric:
       desc: 该指标按内存设备条目报告空闲量（hwMemoryDevFree64，字节）。空闲量持续偏低说明该内存池存在压力。
     device_psu_state:
       name: 电源状态
-      desc: 该指标表示各电源模块运行状态（hwEntityPwrState）。非正常状态表示电源冗余缺失或硬件故障，需尽快修复。
+      desc: 该指标表示各电源模块运行状态（hwEntityPwrState）。线侧为 supply(1)/notSupply(2)/sleep(3)/unknown(4)，不是二元正常/异常。sleep(3) 是冗余电源休眠，不是故障；不要把 >1 当成异常。
     device_psu_present:
       name: 电源在位
       desc: 该指标表示各电源模块是否在位（hwEntityPwrPresent）。不在位表示槽位空置或模块被拔出，冗余能力下降。
