@@ -284,18 +284,18 @@ const Information: React.FC<InformationProps> = ({
               (chartOverlay.currentValue != null ||
                 chartOverlay.baselineValue != null ||
                 chartOverlay.comparedValue != null) && (
-                <div className="text-[12px] text-[var(--color-text-3)] mt-[4px]">
-                  {t('monitor.events.dryRunCurrentValue')}
-                  {': '}
-                  {chartOverlay.currentValue ?? '—'}
-                  {chartOverlay.baselineValue != null
-                    ? ` · ${t('monitor.events.dryRunBaselineValue')}: ${chartOverlay.baselineValue}`
-                    : ''}
-                  {chartOverlay.comparedValue != null
-                    ? ` · ${t('monitor.events.dryRunComparedValue')}: ${chartOverlay.comparedValue}`
-                    : ''}
-                </div>
-              )}
+              <div className="text-[12px] text-[var(--color-text-3)] mt-[4px]">
+                {t('monitor.events.dryRunCurrentValue')}
+                {': '}
+                {chartOverlay.currentValue ?? '—'}
+                {chartOverlay.baselineValue != null
+                  ? ` · ${t('monitor.events.dryRunBaselineValue')}: ${chartOverlay.baselineValue}`
+                  : ''}
+                {chartOverlay.comparedValue != null
+                  ? ` · ${t('monitor.events.dryRunComparedValue')}: ${chartOverlay.comparedValue}`
+                  : ''}
+              </div>
+            )}
             <div className="h-[250px]">
               <LineChart
                 allowSelect={false}
