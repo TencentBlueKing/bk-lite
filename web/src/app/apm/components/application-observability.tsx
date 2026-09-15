@@ -196,6 +196,7 @@ export default function ApplicationObservability({
     if (!application) return;
     const { startedAt, endedAt } = timeWindowRange(timeWindow);
     setTopologyState((current) => (current === 'ready' ? current : 'loading'));
+    let active = true;
     getTopology({
       started_at: startedAt.toISOString(),
       ended_at: endedAt.toISOString(),
@@ -204,16 +205,21 @@ export default function ApplicationObservability({
       application_id: application.application_id,
     })
       .then((topology) => {
+        if (!active) return;
         const focused = focusApplicationTopology(topology, application.application_id).graph;
         setGraph(focused);
         setTopologyError(undefined);
         setTopologyState(focused.nodes.length ? 'ready' : 'empty');
       })
       .catch((error) => {
+        if (!active) return;
         setGraph({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
         setTopologyError(error);
         setTopologyState(catalogErrorKind(error));
       });
+    return () => {
+      active = false;
+    };
   }, [application, getTopology, timeWindow, topologyRefreshKey]);
 
   const rows = useMemo(() => expandServiceRows(services), [services]);

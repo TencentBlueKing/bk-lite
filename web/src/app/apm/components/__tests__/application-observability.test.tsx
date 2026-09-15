@@ -298,6 +298,93 @@ describe('APM 应用观测详情', () => {
     expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
   });
 
+  it('切换时间窗后丢弃过时拓扑成功响应', async () => {
+    const user = userEvent.setup();
+    let resolveOneHour: (value: unknown) => void = () => undefined;
+    let resolveFourHour: (value: unknown) => void = () => undefined;
+    api.getTopology.mockImplementation((payload: { started_at: string; ended_at: string }) => {
+      const spanMs = new Date(payload.ended_at).getTime() - new Date(payload.started_at).getTime();
+      return new Promise((resolve) => {
+        if (spanMs > 3 * 60 * 60 * 1000) resolveFourHour = resolve;
+        else resolveOneHour = resolve;
+      });
+    });
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+    expect(await screen.findByText('电商应用')).not.toBeNull();
+    await waitFor(() => expect(api.getTopology).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('radio', { name: '4h' }).closest('label')!);
+    await waitFor(() => expect(api.getTopology).toHaveBeenCalledTimes(2));
+
+    resolveFourHour({
+      nodes: [
+        { id: 'shop-4h', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 4, error_spans: 0 },
+      ],
+      edges: [],
+      sampled_traces: 4,
+      truncated: false,
+      data_state: 'available',
+    });
+    const topology = await screen.findByTestId('application-topology');
+    await waitFor(() => expect(topology.getAttribute('data-nodes')).toBe('shop-4h'));
+
+    resolveOneHour({
+      nodes: [
+        { id: 'shop-1h', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 1, error_spans: 0 },
+      ],
+      edges: [],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('application-topology').getAttribute('data-nodes')).toBe('shop-4h');
+  });
+
+  it('切换时间窗后丢弃过时拓扑失败响应', async () => {
+    const user = userEvent.setup();
+    let rejectOneHour: (reason?: unknown) => void = () => undefined;
+    let resolveFourHour: (value: unknown) => void = () => undefined;
+    api.getTopology.mockImplementation((payload: { started_at: string; ended_at: string }) => {
+      const spanMs = new Date(payload.ended_at).getTime() - new Date(payload.started_at).getTime();
+      if (spanMs > 3 * 60 * 60 * 1000) {
+        return new Promise((resolve) => {
+          resolveFourHour = resolve;
+        });
+      }
+      return new Promise((_, reject) => {
+        rejectOneHour = reject;
+      });
+    });
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+    expect(await screen.findByText('电商应用')).not.toBeNull();
+    await waitFor(() => expect(api.getTopology).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('radio', { name: '4h' }).closest('label')!);
+    await waitFor(() => expect(api.getTopology).toHaveBeenCalledTimes(2));
+
+    resolveFourHour({
+      nodes: [
+        { id: 'shop-4h', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 4, error_spans: 0 },
+      ],
+      edges: [],
+      sampled_traces: 4,
+      truncated: false,
+      data_state: 'available',
+    });
+    await waitFor(() => expect(screen.getByTestId('application-topology').getAttribute('data-nodes')).toBe('shop-4h'));
+
+    rejectOneHour(new HandledRequestError('VictoriaTraces 查询不可用', {
+      status: 503,
+      code: 'telemetry_unavailable',
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('application-topology').getAttribute('data-nodes')).toBe('shop-4h');
+    expect(screen.queryByText('遥测存储暂不可用')).toBeNull();
+  });
+
   it('遥测 503 展示不可用而不是暂无调用关系', async () => {
     api.getTopology.mockRejectedValue(new HandledRequestError('VictoriaTraces 查询不可用', {
       status: 503,
