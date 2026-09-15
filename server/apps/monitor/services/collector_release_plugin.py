@@ -148,12 +148,6 @@ class CollectorReleasePluginService:
 
     @staticmethod
     def restore_builtin(plugin_name: str) -> dict:
-        plugin = MonitorPlugin.objects.filter(name=plugin_name).first()
-        if plugin:
-            plugin.pack_version = ""
-            plugin.pack_content_sha256 = ""
-            plugin.save(update_fields=["pack_version", "pack_content_sha256"])
-
         path_list = find_files_by_pattern(PluginConstants.DIRECTORY, filename_pattern="metrics.json")
         path_list.extend(find_files_by_pattern(PluginConstants.ENTERPRISE_DIRECTORY, filename_pattern="metrics.json"))
         matched = []
@@ -166,6 +160,12 @@ class CollectorReleasePluginService:
                 matched.append(file_path)
         if not matched:
             raise BaseAppException(f"未找到内置插件 {plugin_name}")
+
+        plugin = MonitorPlugin.objects.filter(name=plugin_name).first()
+        if plugin:
+            plugin.pack_version = ""
+            plugin.pack_content_sha256 = ""
+            plugin.save(update_fields=["pack_version", "pack_content_sha256"])
 
         _import_plugins_from_files(matched)
         plugins_dict = _load_plugins_to_memory()

@@ -393,7 +393,10 @@ class CollectorReleaseService:
             )
         except Exception as exc:
             logger.exception("collector release plugin import failed")
-            raise ValidationAppException("监控插件写入失败，二进制未生效。", data={"code": PLUGIN_IMPORT_FAILED}) from exc
+            raise ValidationAppException(
+                "监控插件写入失败，已成功的架构二进制保持导入状态。",
+                data={"code": PLUGIN_IMPORT_FAILED},
+            ) from exc
 
     @staticmethod
     def _upload_one_artifact(parsed: ParsedPack, artifact, data: dict, executable_name: str) -> None:
@@ -416,7 +419,7 @@ class CollectorReleaseService:
         不再把所有架构的库表写入和上传塞进同一个大事务（F2）：
           1）JetStream 单次 put 超时 120s，四个架构顺序上传最坏能拖到 8 分钟；
              之前的写法会让 Collector/PackageVersion 的行锁、DB 连接占用整个
-             上传窗口，且可能拖过 IMPORT_LOCKED 的 300s TTL，让并发导入绕开锁；
+             上传窗口。导入锁本身按架构续期，不再指望 300s TTL 罩住整段上传；
           2）多架构之间本来就没有真正的跨对象事务——覆盖写一旦发生就不可逆
              （H1 已经证明"先写库表、失败再整体回滚"在覆盖场景下并不可靠）。
              现在按架构逐个提交：只要上传没成功，就完全不碰这个架构的
@@ -479,9 +482,8 @@ class CollectorReleaseService:
         if not staged:
             raise ValidationAppException("预览已过期，请重新选择文件预览。", data={"code": PREVIEW_EXPIRED})
 
-        lock_key = f"{C.LOCK_CACHE_PREFIX}{staged['collector']}"
-        if not cache.add(lock_key, token, C.LOCK_TTL_SECONDS):
-            raise ValidationAppException("同一采集器正在导入，请稍后重试。", data={"code": IMPORT_LOCKED})
+        collector_name = staged["collector"]
+        CollectorReleaseService._acquire_import_lock(collector_name, token)
 
         cleanup_staging = False
         try:
@@ -516,14 +518,10 @@ class CollectorReleaseService:
                 }
 
             keep_local_slots = meta.get("keep_local_slots") or set()
-            # 插件导入独立成一个短事务：纯 DB 写入、没有网络 I/O，失败时不会碰到任何
-            # 一个架构的 Collector/PackageVersion 行（F2）。
-            with transaction.atomic():
-                CollectorReleaseService._import_plugin_payload(parsed, meta)
-
             artifact_results = []
             failed_artifacts = []
             for artifact in parsed.artifacts:
+                CollectorReleaseService._renew_import_lock(parsed.collector, token)
                 try:
                     artifact_results.append(CollectorReleaseService._commit_one_artifact(parsed, artifact, keep_local_slots))
                 except Exception as exc:
@@ -549,8 +547,14 @@ class CollectorReleaseService:
                         ).to_dict()
                         for item in failed_artifacts
                     ],
-                    "message": "部分架构写入失败，已成功的架构保持导入状态；重新导入同一个包会自动跳过已成功的架构，只需重试失败的部分。",
+                    "message": "部分架构写入失败，已成功的架构保持导入状态；监控插件尚未写入。重新导入同一个包会自动跳过已成功的架构。",
                 }
+
+            # 插件短事务放在全部目标架构成功之后：避免 pack_version 先钉死、
+            # 二进制却只导入了一部分，内置迁移被跳过却没法用新包。
+            CollectorReleaseService._renew_import_lock(parsed.collector, token)
+            with transaction.atomic():
+                CollectorReleaseService._import_plugin_payload(parsed, meta)
 
             cache.delete(f"{C.STAGING_CACHE_PREFIX}{token}")
             plugin_name = ""
@@ -569,25 +573,52 @@ class CollectorReleaseService:
                 "message": "导入成功。已接入实例不会自动重下发，须到接入页再保存；节点二进制须再安装或升级。",
             }
         finally:
-            cache.delete(lock_key)
+            CollectorReleaseService._release_import_lock(collector_name, token)
             if cleanup_staging:
                 path = staged.get("path")
                 if path:
                     shutil.rmtree(os.path.dirname(path), ignore_errors=True)
 
     @staticmethod
+    def _import_lock_key(collector_name: str) -> str:
+        return f"{C.LOCK_CACHE_PREFIX}{collector_name}"
+
+    @staticmethod
+    def _acquire_import_lock(collector_name: str, owner: str) -> None:
+        if not cache.add(CollectorReleaseService._import_lock_key(collector_name), owner, C.LOCK_TTL_SECONDS):
+            raise ValidationAppException("同一采集器正在导入或恢复内置，请稍后重试。", data={"code": IMPORT_LOCKED})
+
+    @staticmethod
+    def _renew_import_lock(collector_name: str, owner: str) -> None:
+        key = CollectorReleaseService._import_lock_key(collector_name)
+        if cache.get(key) != owner:
+            raise ValidationAppException("同一采集器正在导入或恢复内置，请稍后重试。", data={"code": IMPORT_LOCKED})
+        cache.set(key, owner, C.LOCK_TTL_SECONDS)
+
+    @staticmethod
+    def _release_import_lock(collector_name: str, owner: str) -> None:
+        key = CollectorReleaseService._import_lock_key(collector_name)
+        if cache.get(key) == owner:
+            cache.delete(key)
+
+    @staticmethod
     def restore_builtin(collector_name: str) -> dict:
         from apps.node_mgmt.services.collector_release.allowlist import load_builtin_collectors
 
-        plugin_result = CollectorReleasePluginService.restore_builtin(collector_name)
-        builtins = {(item.get("node_operating_system"), item.get("cpu_architecture")): item for item in load_builtin_collectors(collector_name)}
-        for collector in Collector.objects.filter(name=collector_name):
-            builtin = builtins.get((collector.node_operating_system, collector.cpu_architecture))
-            if builtin and builtin.get("execute_parameters") is not None:
-                collector.execute_parameters = builtin["execute_parameters"]
-            collector.imported_package_version = ""
-            collector.save(update_fields=["execute_parameters", "imported_package_version"])
-        return {"collector": collector_name, "plugin": plugin_result}
+        owner = f"restore:{uuid.uuid4().hex}"
+        CollectorReleaseService._acquire_import_lock(collector_name, owner)
+        try:
+            plugin_result = CollectorReleasePluginService.restore_builtin(collector_name)
+            builtins = {(item.get("node_operating_system"), item.get("cpu_architecture")): item for item in load_builtin_collectors(collector_name)}
+            for collector in Collector.objects.filter(name=collector_name):
+                builtin = builtins.get((collector.node_operating_system, collector.cpu_architecture))
+                if builtin and builtin.get("execute_parameters") is not None:
+                    collector.execute_parameters = builtin["execute_parameters"]
+                collector.imported_package_version = ""
+                collector.save(update_fields=["execute_parameters", "imported_package_version"])
+            return {"collector": collector_name, "plugin": plugin_result}
+        finally:
+            CollectorReleaseService._release_import_lock(collector_name, owner)
 
     @staticmethod
     def refresh_collector_upgrade_hints(collector_name: str) -> None:
