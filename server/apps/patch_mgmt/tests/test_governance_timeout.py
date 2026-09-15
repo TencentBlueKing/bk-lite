@@ -6,6 +6,7 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
+from apps.node_mgmt.models import CloudRegion  # noqa: F401  # INSTALL_APPS 需含 node_mgmt
 from apps.patch_mgmt import config as patch_config
 from apps.patch_mgmt import tasks as patch_tasks
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType, OSType
@@ -21,6 +22,7 @@ from apps.patch_mgmt.models import (
 )
 from apps.patch_mgmt.serializers.governance import GovernanceTaskDetailSerializer
 from apps.patch_mgmt.services import patch_execution_service as execution_service
+from apps.patch_mgmt.services.governance_convergence import reconcile_stale_history
 
 
 def test_stage_timeout_defaults():
@@ -291,6 +293,175 @@ def test_parent_task_does_not_dispatch_expired_waiting_host(monkeypatch):
     assert host.stage == "failed"
     assert host.error_code == "historical_dispatch_timeout"
     assert dispatched == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("task_type", [GovernanceTaskType.ASSESS, GovernanceTaskType.INSTALL])
+def test_parent_task_dispatches_waiting_host_inside_open_window(monkeypatch, task_type):
+    now = timezone.now()
+    target = PatchTarget.objects.create(
+        name="window-host",
+        ip="10.0.1.21",
+        os_type=OSType.WINDOWS,
+    )
+    task = GovernanceTask.objects.create(
+        name="window-parent",
+        task_type=task_type,
+        status=GovernanceTaskStatus.PENDING,
+        execution_mode="window",
+        execution_window_start=now - timedelta(minutes=10),
+        execution_window_end=now + timedelta(hours=2),
+        target_list=[target.id],
+    )
+    host = GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=target.id,
+        target_name=target.name,
+        target_ip=target.ip,
+        stage="waiting",
+    )
+    GovernanceTaskHost.objects.filter(pk=host.pk).update(
+        created_at=now - timedelta(seconds=patch_config.DISPATCH_TIMEOUT + 1),
+    )
+    dispatched = []
+    monkeypatch.setattr(
+        patch_tasks.execute_governance_host,
+        "apply_async",
+        lambda **kwargs: dispatched.append(kwargs),
+    )
+
+    patch_tasks.execute_governance_task(task.id)
+
+    task.refresh_from_db()
+    host.refresh_from_db()
+    assert task.status == GovernanceTaskStatus.RUNNING
+    assert host.stage == "waiting"
+    assert host.error_code != "historical_dispatch_timeout"
+    assert [call["args"] for call in dispatched] == [[task.id, target.id]]
+
+
+@pytest.mark.django_db
+def test_now_parent_reconcile_does_not_fail_open_window_waiting(monkeypatch):
+    now = timezone.now()
+    target = PatchTarget.objects.create(name="shared-host", ip="10.0.1.22", os_type=OSType.LINUX)
+    window_task = GovernanceTask.objects.create(
+        name="open-window",
+        task_type=GovernanceTaskType.INSTALL,
+        status=GovernanceTaskStatus.PENDING,
+        execution_mode="window",
+        execution_window_start=now - timedelta(minutes=10),
+        execution_window_end=now + timedelta(hours=1),
+        target_list=[target.id],
+    )
+    window_host = GovernanceTaskHost.objects.create(
+        task=window_task,
+        target_id=target.id,
+        target_name=target.name,
+        target_ip=target.ip,
+        stage="waiting",
+    )
+    GovernanceTaskHost.objects.filter(pk=window_host.pk).update(
+        created_at=now - timedelta(seconds=patch_config.DISPATCH_TIMEOUT + 1),
+    )
+    now_task = GovernanceTask.objects.create(
+        name="immediate-parent",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.PENDING,
+        execution_mode="now",
+        target_list=[target.id],
+    )
+    GovernanceTaskHost.objects.create(
+        task=now_task,
+        target_id=target.id,
+        target_name=target.name,
+        target_ip=target.ip,
+        stage="waiting",
+    )
+    monkeypatch.setattr(patch_tasks.execute_governance_host, "apply_async", lambda **kwargs: None)
+
+    patch_tasks.execute_governance_task(now_task.id)
+
+    window_host.refresh_from_db()
+    assert window_host.stage == "waiting"
+    assert window_host.error_code != "historical_dispatch_timeout"
+
+
+@pytest.mark.django_db
+def test_history_command_does_not_fail_open_window_waiting():
+    now = timezone.now()
+    task = GovernanceTask.objects.create(
+        name="command-window",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.RUNNING,
+        execution_mode="window",
+        execution_window_start=now - timedelta(minutes=30),
+        execution_window_end=now + timedelta(minutes=30),
+        target_list=[106],
+    )
+    host = GovernanceTaskHost.objects.create(task=task, target_id=106, stage="waiting")
+    GovernanceTaskHost.objects.filter(pk=host.pk).update(
+        created_at=now - timedelta(seconds=patch_config.DISPATCH_TIMEOUT + 1),
+    )
+
+    output = StringIO()
+    call_command("reconcile_patch_governance_history", stdout=output)
+
+    host.refresh_from_db()
+    assert host.stage == "waiting"
+    assert host.error_code == ""
+    assert '"changed": 0' in output.getvalue()
+
+
+@pytest.mark.django_db
+def test_history_reconcile_fails_waiting_after_window_ends():
+    now = timezone.now()
+    task = GovernanceTask.objects.create(
+        name="ended-window",
+        task_type=GovernanceTaskType.INSTALL,
+        status=GovernanceTaskStatus.PENDING,
+        execution_mode="window",
+        execution_window_start=now - timedelta(hours=2),
+        execution_window_end=now - timedelta(minutes=1),
+        target_list=[107],
+    )
+    host = GovernanceTaskHost.objects.create(task=task, target_id=107, stage="waiting")
+    GovernanceTaskHost.objects.filter(pk=host.pk).update(
+        created_at=now - timedelta(seconds=patch_config.DISPATCH_TIMEOUT + 1),
+    )
+
+    result = reconcile_stale_history(now=now)
+
+    host.refresh_from_db()
+    task.refresh_from_db()
+    assert result["changed"] == 1
+    assert host.stage == "failed"
+    assert host.error_code == "historical_dispatch_timeout"
+    assert task.status == GovernanceTaskStatus.FAILED
+
+
+@pytest.mark.django_db
+def test_history_reconcile_still_fails_expired_now_waiting():
+    now = timezone.now()
+    task = GovernanceTask.objects.create(
+        name="expired-now",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.PENDING,
+        execution_mode="now",
+        target_list=[108],
+    )
+    host = GovernanceTaskHost.objects.create(task=task, target_id=108, stage="waiting")
+    GovernanceTaskHost.objects.filter(pk=host.pk).update(
+        created_at=now - timedelta(seconds=patch_config.DISPATCH_TIMEOUT + 1),
+    )
+
+    result = reconcile_stale_history(now=now)
+
+    host.refresh_from_db()
+    task.refresh_from_db()
+    assert result["changed"] == 1
+    assert host.stage == "failed"
+    assert host.error_code == "historical_dispatch_timeout"
+    assert task.status == GovernanceTaskStatus.FAILED
 
 
 @pytest.mark.django_db
