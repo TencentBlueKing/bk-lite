@@ -9,6 +9,8 @@ from apps.monitor.services.host_dashboard import (
     build_host_instance_rows,
     build_host_resource_snapshot,
     fold_host_range_series,
+    resolve_instance_storage_ids,
+    select_instances_by_ids,
     validate_range_metric_type,
 )
 from apps.monitor.services.host_resource_top import HostCandidate
@@ -21,6 +23,40 @@ def test_range_metric_type_rejects_unknown():
     validate_range_metric_type("cpu")
     with pytest.raises(ValueError):
         validate_range_metric_type("health")
+
+
+def test_select_instances_by_ids_accepts_tuple_storage_key_and_logical_id():
+    local = SimpleNamespace(id="('MTVmOTFiYTM5ODZk',)", name="local", ip="10.10.41.149")
+    web = SimpleNamespace(id="web-1", name="web-1", ip=None)
+    authorized = {local.id: local, web.id: web}
+
+    assert select_instances_by_ids(authorized, ["MTVmOTFiYTM5ODZk"]) == [local]
+    assert select_instances_by_ids(authorized, ["('MTVmOTFiYTM5ODZk',)"]) == [local]
+    assert select_instances_by_ids(authorized, ["web-1", "MTVmOTFiYTM5ODZk"]) == [web, local]
+    assert select_instances_by_ids(authorized, ["missing"]) == []
+    storage_ids, unresolved = resolve_instance_storage_ids(authorized, ["MTVmOTFiYTM5ODZk", "ghost"])
+    assert storage_ids == [local.id]
+    assert unresolved == ["ghost"]
+
+
+def test_select_instances_by_ids_accepts_name_and_ip():
+    mysql = SimpleNamespace(
+        id="('1_10.10.41.149_3306',)",
+        name="10.10.41.149-mysql-3306",
+        ip="10.10.41.149",
+        summary_facts={"asset.ip": "10.10.41.149"},
+    )
+    host = SimpleNamespace(
+        id="('MTVmOTFiYTM5ODZk',)",
+        name="local",
+        ip="10.10.41.149",
+        summary_facts={"asset.ip": "10.10.41.149"},
+    )
+    authorized = {mysql.id: mysql, host.id: host}
+
+    assert select_instances_by_ids(authorized, ["10.10.41.149-mysql-3306"]) == [mysql]
+    assert select_instances_by_ids(authorized, ["LOCAL"]) == [host]
+    assert {item.id for item in select_instances_by_ids(authorized, ["10.10.41.149"])} == {mysql.id, host.id}
 
 
 def test_host_instance_rows_use_display_name_and_sort():

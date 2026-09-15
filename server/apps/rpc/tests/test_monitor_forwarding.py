@@ -264,3 +264,9 @@ def test_get_zombie_host_report(ana_rpc):
         (),
         {"inst_uuids": ["u1"], "time": 10080},
     )
+
+
+def test_monitor_operation_ana_local_client_appclient_path(monkeypatch):
+    monkeypatch.setenv("IS_LOCAL_RPC", "1")
+    rpc = MonitorOperationAnaRpc()
+    assert rpc.client.path == "apps.monitor.nats.monitor"

@@ -20,6 +20,7 @@ from apps.monitor.services.host_resource_top import (
     host_display_name,
     normalize_metric_candidates,
 )
+from apps.monitor.utils.alert_name_variables import resolve_resource_ip
 from apps.monitor.utils.dimension import parse_instance_id
 
 HOST_OBJECT_NAME = "Host"
@@ -236,6 +237,90 @@ def build_host_meta(instances: Iterable[Any]) -> dict[str, dict[str, Any]]:
         host_meta[key] = meta
         host_meta[instance_id] = meta
     return host_meta
+
+
+def _alias_token(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _instance_identity(instance: Any, fallback: str = "") -> str:
+    return str(getattr(instance, "id", "") or fallback)
+
+
+def _add_instance_alias(aliases: dict[str, list[Any]], token: str, instance: Any) -> None:
+    if not token:
+        return
+    bucket = aliases.setdefault(token, [])
+    ident = _instance_identity(instance)
+    if ident and any(_instance_identity(item) == ident for item in bucket):
+        return
+    bucket.append(instance)
+
+
+def _alias_tokens_for_instance(storage_id: str, instance: Any) -> list[str]:
+    tokens: list[str] = []
+    seen: set[str] = set()
+
+    def collect(value: Any) -> None:
+        token = _alias_token(value)
+        if not token or token in seen:
+            return
+        seen.add(token)
+        tokens.append(token)
+        lowered = token.lower()
+        if lowered not in seen:
+            seen.add(lowered)
+            tokens.append(lowered)
+
+    collect(storage_id)
+    parsed = parse_instance_id(storage_id)
+    if parsed:
+        collect(parsed[0])
+    collect(getattr(instance, "id", ""))
+    parsed_pk = parse_instance_id(getattr(instance, "id", ""))
+    if parsed_pk:
+        collect(parsed_pk[0])
+    collect(getattr(instance, "name", ""))
+    collect(getattr(instance, "ip", ""))
+    collect(resolve_resource_ip(getattr(instance, "summary_facts", None), getattr(instance, "ip", None)))
+    return tokens
+
+
+def _instance_id_aliases(authorized_instances: dict[str, Any]) -> dict[str, list[Any]]:
+    aliases: dict[str, list[Any]] = {}
+    for storage_id, instance in (authorized_instances or {}).items():
+        for token in _alias_tokens_for_instance(str(storage_id), instance):
+            _add_instance_alias(aliases, token, instance)
+    return aliases
+
+
+def resolve_instance_storage_ids(
+    authorized_instances: dict[str, Any],
+    instance_ids: Iterable[Any],
+) -> tuple[list[str], list[str]]:
+    """Map requested IDs/names/IPs to storage keys; leftover tokens are unauthorized/unknown."""
+    aliases = _instance_id_aliases(authorized_instances)
+    storage_ids: list[str] = []
+    unresolved: list[str] = []
+    seen: set[str] = set()
+    for item in instance_ids or []:
+        key = _alias_token(item)
+        matches = aliases.get(key) or aliases.get(key.lower())
+        if not matches:
+            unresolved.append(str(item))
+            continue
+        for instance in matches:
+            ident = _instance_identity(instance, fallback=key)
+            if ident not in seen:
+                seen.add(ident)
+                storage_ids.append(ident)
+    return storage_ids, unresolved
+
+
+def select_instances_by_ids(authorized_instances: dict[str, Any], instance_ids: Iterable[Any]) -> list[Any]:
+    """Resolve storage keys like ('abc',) and the logical first component abc."""
+    storage_ids, _unresolved = resolve_instance_storage_ids(authorized_instances, instance_ids)
+    return [authorized_instances[storage_id] for storage_id in storage_ids if storage_id in authorized_instances]
 
 
 def empty_host_snapshot(*, host_count: int = 0) -> dict[str, Any]:

@@ -125,14 +125,24 @@ def test_format_int_eq_params():
     assert 5 in c.get_params().values()
 
 
-def test_format_list_in_params():
+def test_format_list_in_params(monkeypatch):
+    monkeypatch.setenv("FALKORDB_HOST", "localhost")
     c = ft.ParameterCollector()
     out = ft.format_list_in_params({"field": "tags", "value": [1, 2]}, c)
     assert "n.tags" in out
     assert "CASE typeof(n.tags) WHEN 'List' THEN n.tags ELSE [n.tags] END" in out
 
 
-def test_format_list_any_params_accepts_string_or_list_field():
+def test_format_list_in_params_neo4j(monkeypatch):
+    monkeypatch.setenv("FALKORDB_HOST", "")
+    c = ft.ParameterCollector()
+    out = ft.format_list_in_params({"field": "tags", "value": [1, 2]}, c)
+    assert "typeof" not in out
+    assert "CASE WHEN n.tags IS NULL THEN [] ELSE n.tags END" in out
+
+
+def test_format_list_any_params_accepts_string_or_list_field(monkeypatch):
+    monkeypatch.setenv("FALKORDB_HOST", "localhost")
     c = ft.ParameterCollector()
     out = ft.format_list_any_params({"field": "tag", "value": ["env:test"]}, c)
     assert out.startswith("ANY(")

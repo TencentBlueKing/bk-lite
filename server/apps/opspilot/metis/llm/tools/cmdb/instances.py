@@ -3,316 +3,127 @@ from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.cmdb.services.instance import InstanceManage
-from apps.core.logger import cmdb_logger as logger
-from apps.opspilot.metis.llm.tools.cmdb.utils import (
-    _get_user_from_config,
-    _get_user_group_ids,
-    _resolve_allow_write,
-    _resolve_team_context,
-    build_permission_map,
-    build_user_groups,
-    ensure_instance_permission,
-    ensure_write_allowed,
-    normalize_query_list,
-    wrap_error,
-    wrap_success,
-)
-from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.opspilot.metis.llm.tools.cmdb.utils import call_cmdb_kwargs, call_cmdb_params, normalize_query_list, wrap_error
 
 
-def _serialize_instance(instance: dict) -> dict:
-    aliases = {"_creator": "creator", "_created_at": "created_at", "_updated_at": "updated_at"}
-    return {aliases.get(key, key): value for key, value in (instance or {}).items() if key not in {"_id", "_labels", "permission"}}
-
-
-@tool(description="Search instances for a model.")
+@tool(description="按模型分页查询 CMDB 实例。query_list 为字段过滤条件。")
 def cmdb_search_instances(
     model_id: str,
     query_list: Optional[List[Dict[str, Any]]] = None,
     page: int = 1,
     page_size: int = 10,
     order: str = "",
-    case_sensitive: bool = True,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not model_id:
-            raise ValueError("model_id is required")
-        user = _get_user_from_config(config)
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        query_list = normalize_query_list(query_list)
-        permissions_map = build_permission_map(
-            user,
-            current_team=resolved_team,
-            include_children=resolved_children,
-            permission_type="instances",
-            model_id=model_id,
-        )
-        inst_list, count = InstanceManage.instance_list(
-            model_id=model_id,
-            params=query_list,
-            page=int(page),
-            page_size=int(page_size),
-            order=order,
-            permission_map=permissions_map,
-            creator=user.username,
-            case_sensitive=case_sensitive,
-        )
-        return wrap_success({"insts": [_serialize_instance(item) for item in inst_list], "count": count})
-    except Exception as e:
-        logger.exception("cmdb_search_instances failed: %s", e)
-        return wrap_error(str(e))
+    if not model_id:
+        return wrap_error("model_id is required")
+    return call_cmdb_params(
+        "list_instances_for_llm",
+        config,
+        model_id=model_id,
+        params=normalize_query_list(query_list),
+        page=int(page),
+        page_size=int(page_size),
+        order=order or "",
+        format=True,
+    )
 
 
-@tool(description="Get a CMDB instance by UUID.")
+@tool(description="按 UUID 获取一条 CMDB 实例。")
 def cmdb_get_instance(
     inst_uuid: str,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        user = _get_user_from_config(config)
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
-        if not instance:
-            raise ValueError("instance not found")
-        permissions_map = build_permission_map(
-            user,
-            current_team=resolved_team,
-            include_children=resolved_children,
-            permission_type="instances",
-            model_id=instance.get("model_id", ""),
-        )
-        ensure_instance_permission(user, instance, permissions_map, operator="View")
-        return wrap_success(_serialize_instance(instance))
-    except Exception as e:
-        logger.exception("cmdb_get_instance failed: %s", e)
-        return wrap_error(str(e))
+    if not inst_uuid:
+        return wrap_error("inst_uuid is required")
+    return call_cmdb_params("get_instance_by_uuid", config, inst_uuid=inst_uuid)
 
 
-@tool(description="Create a CMDB instance.")
+@tool(description="创建 CMDB 实例。instance_info 为属性键值，权限由服务端校验。")
 def cmdb_create_instance(
     model_id: str,
     instance_info: Dict[str, Any],
-    allow_write: Optional[bool] = None,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not model_id:
-            raise ValueError("model_id is required")
-        if not isinstance(instance_info, dict):
-            raise ValueError("instance_info must be a dict")
-        user = _get_user_from_config(config)
-        ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        user_group_ids = _get_user_group_ids(user)
-        if getattr(user, "is_superuser", False):
-            allowed_org_ids = GroupUtils.get_group_with_descendants(resolved_team) if resolved_children else [resolved_team]
-        elif resolved_children:
-            allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
-                user_group_ids,
-                resolved_team,
-                include_children=True,
-            )
-        else:
-            allowed_org_ids = [resolved_team] if resolved_team in user_group_ids else []
-        result = InstanceManage.instance_create(
-            model_id,
-            instance_info,
-            user.username,
-            allowed_org_ids=allowed_org_ids,
-        )
-        return wrap_success(_serialize_instance(result))
-    except Exception as e:
-        logger.exception("cmdb_create_instance failed: %s", e)
-        return wrap_error(str(e))
+    if not model_id:
+        return wrap_error("model_id is required")
+    if not isinstance(instance_info, dict):
+        return wrap_error("instance_info must be a dict")
+    return call_cmdb_params("create_instance_for_llm", config, model_id=model_id, instance_info=instance_info)
 
 
-@tool(description="Update a CMDB instance by UUID.")
+@tool(description="按 UUID 更新 CMDB 实例属性。")
 def cmdb_update_instance(
     inst_uuid: str,
     update_data: Dict[str, Any],
-    allow_write: Optional[bool] = None,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not isinstance(update_data, dict):
-            raise ValueError("update_data must be a dict")
-        user = _get_user_from_config(config)
-        ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        user_groups = build_user_groups(user, resolved_team, resolved_children)
-        result = InstanceManage.instance_update_by_uuid(
-            user_groups,
-            user.roles,
-            inst_uuid,
-            update_data,
-            user.username,
-        )
-        return wrap_success(_serialize_instance(result))
-    except Exception as e:
-        logger.exception("cmdb_update_instance failed: %s", e)
-        return wrap_error(str(e))
+    if not inst_uuid:
+        return wrap_error("inst_uuid is required")
+    if not isinstance(update_data, dict):
+        return wrap_error("update_data must be a dict")
+    return call_cmdb_params("update_instance_for_llm", config, inst_uuid=inst_uuid, update_attr=update_data)
 
 
-@tool(description="Batch update CMDB instances.")
+@tool(description="批量按 UUID 更新 CMDB 实例同一组属性。")
 def cmdb_batch_update_instances(
     inst_uuids: List[str],
     update_data: Dict[str, Any],
-    allow_write: Optional[bool] = None,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not inst_uuids:
-            raise ValueError("inst_uuids is required")
-        if not isinstance(update_data, dict):
-            raise ValueError("update_data must be a dict")
-        user = _get_user_from_config(config)
-        ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        user_groups = build_user_groups(user, resolved_team, resolved_children)
-        result = InstanceManage.batch_instance_update_by_uuids(
-            user_groups,
-            user.roles,
-            inst_uuids,
-            update_data,
-            user.username,
-        )
-        return wrap_success([_serialize_instance(item) for item in result])
-    except Exception as e:
-        logger.exception("cmdb_batch_update_instances failed: %s", e)
-        return wrap_error(str(e))
+    if not inst_uuids:
+        return wrap_error("inst_uuids is required")
+    if not isinstance(update_data, dict):
+        return wrap_error("update_data must be a dict")
+    return call_cmdb_params("batch_update_instances", config, inst_uuids=inst_uuids, update_attr=update_data)
 
 
-@tool(description="Delete a CMDB instance by UUID.")
+@tool(description="按 UUID 删除一条 CMDB 实例。")
 def cmdb_delete_instance(
     inst_uuid: str,
-    allow_write: Optional[bool] = None,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        user = _get_user_from_config(config)
-        ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        user_groups = build_user_groups(user, resolved_team, resolved_children)
-        InstanceManage.instance_batch_delete_by_uuids(
-            user_groups,
-            user.roles,
-            [inst_uuid],
-            user.username,
-        )
-        return wrap_success({"inst_uuid": inst_uuid, "deleted": True})
-    except Exception as e:
-        logger.exception("cmdb_delete_instance failed: %s", e)
-        return wrap_error(str(e))
+    if not inst_uuid:
+        return wrap_error("inst_uuid is required")
+    return call_cmdb_params("delete_instance_for_llm", config, inst_uuid=inst_uuid)
 
 
-@tool(description="Batch delete CMDB instances.")
+@tool(description="按 UUID 列表批量删除 CMDB 实例。")
 def cmdb_batch_delete_instances(
     inst_uuids: List[str],
-    allow_write: Optional[bool] = None,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not inst_uuids:
-            raise ValueError("inst_uuids is required")
-        user = _get_user_from_config(config)
-        ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        user_groups = build_user_groups(user, resolved_team, resolved_children)
-        InstanceManage.instance_batch_delete_by_uuids(
-            user_groups,
-            user.roles,
-            inst_uuids,
-            user.username,
-        )
-        return wrap_success({"inst_uuids": inst_uuids, "deleted": True})
-    except Exception as e:
-        logger.exception("cmdb_batch_delete_instances failed: %s", e)
-        return wrap_error(str(e))
+    if not inst_uuids:
+        return wrap_error("inst_uuids is required")
+    return call_cmdb_params("delete_instance_for_llm", config, inst_uuids=inst_uuids)
 
 
-@tool(description="Query CMDB topology starting from an instance.")
+@tool(description="从实例 UUID 查询轻量关联拓扑。")
 def cmdb_topo_search(
     inst_uuid: str,
     depth: int = 3,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        user = _get_user_from_config(config)
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
-        if not instance:
-            raise ValueError("instance not found")
-        permissions_map = build_permission_map(
-            user,
-            current_team=resolved_team,
-            include_children=resolved_children,
-            permission_type="instances",
-            model_id=instance.get("model_id", ""),
-        )
-        ensure_instance_permission(user, instance, permissions_map, operator="View")
-        result = InstanceManage.topo_search_lite_by_uuid(
-            inst_uuid,
-            depth=int(depth),
-            permission_map=permissions_map,
-            user=user,
-        )
-        return wrap_success(result)
-    except Exception as e:
-        logger.exception("cmdb_topo_search failed: %s", e)
-        return wrap_error(str(e))
+    if not inst_uuid:
+        return wrap_error("inst_uuid is required")
+    return call_cmdb_kwargs("topo_search_lite_by_uuid", config, inst_uuid=inst_uuid, depth=int(depth))
 
 
-@tool(description="Expand CMDB topology for an instance.")
+@tool(description="从实例 UUID 展开拓扑，排除 parent_uuids。")
 def cmdb_topo_expand(
     inst_uuid: str,
     parent_uuids: List[str],
     depth: int = 2,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not isinstance(parent_uuids, list):
-            raise ValueError("parent_uuids must be a list")
-        user = _get_user_from_config(config)
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
-        if not instance:
-            raise ValueError("instance not found")
-        permissions_map = build_permission_map(
-            user,
-            current_team=resolved_team,
-            include_children=resolved_children,
-            permission_type="instances",
-            model_id=instance.get("model_id", ""),
-        )
-        ensure_instance_permission(user, instance, permissions_map, operator="View")
-        result = InstanceManage.topo_search_expand_by_uuid(
-            inst_uuid,
-            parent_uuids,
-            depth=int(depth),
-            permission_map=permissions_map,
-            user=user,
-        )
-        return wrap_success(result)
-    except Exception as e:
-        logger.exception("cmdb_topo_expand failed: %s", e)
-        return wrap_error(str(e))
+    if not inst_uuid:
+        return wrap_error("inst_uuid is required")
+    if not isinstance(parent_uuids, list):
+        return wrap_error("parent_uuids must be a list")
+    return call_cmdb_kwargs(
+        "topo_search_expand_by_uuid",
+        config,
+        inst_uuid=inst_uuid,
+        parent_uuids=parent_uuids,
+        depth=int(depth),
+    )

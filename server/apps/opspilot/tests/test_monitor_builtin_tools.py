@@ -15,6 +15,9 @@ def test_monitor_language_keys_exist_in_en_and_zh():
     zh_loader = LanguageLoader(app="opspilot", default_lang="zh-Hans")
 
     assert en_loader.get("tools.monitor.name")
+    assert zh_loader.get("tools.cmdb.description")
+    assert zh_loader.get("tools.alerts.tools.alerts_list_alerts.description")
+    assert zh_loader.get("tools.log.tools.log_search_structured.description")
     assert en_loader.get("tools.monitor.description")
     assert zh_loader.get("tools.monitor.name")
     assert zh_loader.get("tools.monitor.description")
@@ -27,6 +30,7 @@ def test_monitor_language_keys_exist_in_en_and_zh():
         "monitor_query_metric_data",
         "monitor_list_active_alerts",
         "monitor_query_alert_segments",
+        "monitor_get_host_resource_snapshot",
     ]
     for name in sub_tools:
         assert en_loader.get(f"tools.monitor.tools.{name}.description"), name
@@ -47,6 +51,9 @@ def test_builtin_tool_display_name_keys_exist_in_en_and_zh():
 
     tool_names = [
         "monitor",
+        "cmdb",
+        "alerts",
+        "log",
         "attachment_file",
         "current_time",
         "duckduckgo",
@@ -74,6 +81,9 @@ def test_builtin_tool_display_name_keys_exist_in_en_and_zh():
     # 内置工具的展示名不应等于 ID 式的 name（至少中文要有可读名称）
     assert zh_loader.get("tools.current_time.name") != "current_time"
     assert zh_loader.get("tools.monitor.name") != "monitor"
+    assert zh_loader.get("tools.cmdb.name") != "cmdb"
+    assert zh_loader.get("tools.alerts.name") != "alerts"
+    assert zh_loader.get("tools.log.name") != "log"
 
 
 def test_build_builtin_monitor_tool_display_name_uses_translation(mocker):
@@ -317,6 +327,7 @@ def _chat_llm_model(mocker):
     llm_model.model_name = "gpt-4o"
     llm_model.protocol_type = "openai"
     llm_model.vendor_id = None
+    llm_model.context_window_tokens = 128000
     return llm_model
 
 
@@ -547,11 +558,7 @@ def test_chat_service_caller_identity_only_comes_from_server_snapshot(mocker, se
 
 
 def test_chat_service_passes_attachment_id_to_extra_config(mocker):
-    llm_model = mocker.Mock()
-    llm_model.openai_api_base = "https://example.com/v1"
-    llm_model.openai_api_key = "key"
-    llm_model.model_name = "gpt-4o"
-    llm_model.protocol_type = "openai"
+    llm_model = _chat_llm_model(mocker)
 
     mocker.patch("apps.opspilot.services.history_service.history_service.process_user_message_and_images", return_value=("hello", []))
     mocker.patch("apps.opspilot.services.history_service.history_service.process_chat_history", return_value=[])

@@ -508,10 +508,13 @@ class Neo4jClient:
         check_attr_map: dict,
         exist_items: list,
         check: bool = True,
+        attrs: list = None,
     ):
         """
         设置实体属性
         """
+        from apps.cmdb.constants.constants import INSTANCE
+
         if check:
             # 校验唯一属性
             self.check_unique_attr(
@@ -534,6 +537,14 @@ class Neo4jClient:
 
             # 取出可编辑属性
             properties = self.get_editable_attr(properties, check_attr_map.get("editable", {}))
+
+        if label == INSTANCE and attrs:
+            from apps.cmdb.validators import FieldValidator
+
+            validation_errors = FieldValidator.validate_instance_data(properties, attrs)
+            if validation_errors:
+                error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
+                raise BaseAppException(f"字段校验失败: {error_msg}")
 
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return self.entity_to_list(nodes)

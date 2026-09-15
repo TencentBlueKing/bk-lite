@@ -13,14 +13,20 @@ from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_ca
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE, INTERNAL_SAMPLING_TEMPERATURE_KEY, resolve_gateway_temperature
 from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
+    BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
-    BUILTIN_MONITOR_TOOL_ID,
+    BUILTIN_CMDB_TOOL_NAME,
+    BUILTIN_LOG_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
     BUILTIN_ORACLE_TOOL_NAME,
     BUILTIN_REDIS_TOOL_NAME,
+    IDENTITY_ONLY_BUILTIN_TOOLS,
+    build_builtin_alerts_runtime_tool,
     build_builtin_attachment_file_runtime_tool,
+    build_builtin_cmdb_runtime_tool,
+    build_builtin_log_runtime_tool,
     build_builtin_monitor_runtime_tool,
     build_builtin_mssql_runtime_tool,
     build_builtin_mysql_runtime_tool,
@@ -391,6 +397,9 @@ class ChatService:
         builtin_tool_names = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: None,
             BUILTIN_MONITOR_TOOL_NAME: None,
+            BUILTIN_CMDB_TOOL_NAME: None,
+            BUILTIN_ALERTS_TOOL_NAME: None,
+            BUILTIN_LOG_TOOL_NAME: None,
             BUILTIN_REDIS_TOOL_NAME: None,
             BUILTIN_MYSQL_TOOL_NAME: None,
             BUILTIN_ORACLE_TOOL_NAME: None,
@@ -399,6 +408,9 @@ class ChatService:
         builtin_builders = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
             BUILTIN_MONITOR_TOOL_NAME: build_builtin_monitor_runtime_tool,
+            BUILTIN_CMDB_TOOL_NAME: build_builtin_cmdb_runtime_tool,
+            BUILTIN_ALERTS_TOOL_NAME: build_builtin_alerts_runtime_tool,
+            BUILTIN_LOG_TOOL_NAME: build_builtin_log_runtime_tool,
             BUILTIN_REDIS_TOOL_NAME: build_builtin_redis_runtime_tool,
             BUILTIN_MYSQL_TOOL_NAME: build_builtin_mysql_runtime_tool,
             BUILTIN_ORACLE_TOOL_NAME: build_builtin_oracle_runtime_tool,
@@ -413,11 +425,14 @@ class ChatService:
 
         def _resolved_tool_name(tool):
             tool_id = tool.get("id")
-            if tool_id == BUILTIN_MONITOR_TOOL_ID:
-                return BUILTIN_MONITOR_TOOL_NAME
+            if tool_id in IDENTITY_ONLY_BUILTIN_TOOLS:
+                return IDENTITY_ONLY_BUILTIN_TOOLS[tool_id]
             if isinstance(tool_id, int) and tool_id > 0:
                 skill_tool = skill_tools_by_id.get(tool_id)
                 return skill_tool.name if skill_tool else tool.get("name")
+            raw_name = tool.get("rawName") or tool.get("name")
+            if raw_name in IDENTITY_ONLY_BUILTIN_TOOLS.values():
+                return raw_name
             return tool.get("name")
 
         def _runtime_tool_kwargs(tool):
@@ -425,9 +440,8 @@ class ChatService:
 
         for tool in selected_tools:
             resolved_name = _resolved_tool_name(tool)
-            if resolved_name == BUILTIN_MONITOR_TOOL_NAME:
-                # Monitor 只使用服务端受理时的 caller_identity，旧配置中的所有
-                # kwargs（尤其密码）在任何解密、prompt 或 extra_config 合并前清空。
+            if resolved_name in IDENTITY_ONLY_BUILTIN_TOOLS.values():
+                # 身份只来自 caller_identity，旧配置中的 kwargs 在解密前清空。
                 tool["kwargs"] = []
             else:
                 for item in tool.get("kwargs", []):
@@ -447,15 +461,14 @@ class ChatService:
             loaded_tool_names.add(skill_tool.name)
             is_builtin = skill_tool.is_build_in or skill_tool.name in builtin_tool_names
             tool_kwargs_for_builtin = tool_map.get(skill_tool.id, {})
-            if skill_tool.name == BUILTIN_MONITOR_TOOL_NAME:
-                # DB 中可能仍保存旧版凭据或 extra_param_prompt；Monitor 运行时
-                # descriptor 必须完全由安全 builder 重建。
-                tool_params = build_builtin_monitor_runtime_tool(tool_kwargs_for_builtin)
+            if skill_tool.name in IDENTITY_ONLY_BUILTIN_TOOLS.values():
+                builder = builtin_builders.get(skill_tool.name)
+                tool_params = builder(tool_kwargs_for_builtin) if builder else skill_tool.params.copy()
             else:
                 tool_params = skill_tool.params.copy()
                 tool_params.pop("kwargs", None)
 
-            if is_builtin and skill_tool.name != BUILTIN_MONITOR_TOOL_NAME:
+            if is_builtin and skill_tool.name not in IDENTITY_ONLY_BUILTIN_TOOLS.values():
                 tool_params["url"] = f"langchain:{skill_tool.name}"
                 builder = builtin_builders.get(skill_tool.name)
                 if builder:
