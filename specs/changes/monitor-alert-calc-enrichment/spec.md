@@ -335,6 +335,6 @@ VictoriaMetrics 实跑（本机 Docker 底座，不改 D1～D10）：
 现场确认（不改写 D1～D10 原文）：
 
 - `calculate_alerts` 返回三类事件：未配 `recovery_threshold` 时 `hold_events=[]`，与升级前两类判定一致；触发 `>80`、恢复 `<70` 时 70～80 进 `hold_events`，`count_events` 不改 `info_event_count`。
-- 试跑：已保存且活动告警 + 带内 → `hold`；草稿带内不评恢复 → `ok`。本机 Host `cpu_usage_total` 当前值≈39.27，触发 `>49.27`、恢复 `<29.27` 草稿试跑为 `ok`。
-- 无数据检测窗 / 恢复窗表单分开写入；本机 Postgres 用 `values`/`update` 验证策略 1 可分别落 `10m` / `2m` 并已还原。整对象 GET/POST 仍因本机缺 `compare_mode` 等列 500（与切片 3 相同），新字段落库由单测锁定。
+- 试跑：已保存且活动告警 + 带内 → `hold`；草稿带内不评恢复 → `ok`。本机 Host `cpu_usage_total` 当前值≈21.14，触发 `>30`、恢复 `<10`、已保存活动告警试跑为 `hold`，`info_event_count` 仍为 3、告警状态仍为 `new`。
+- 本机补跑 `migrate monitor 0069` 后策略 GET/POST 恢复。临时策略 POST 落库 `recovery_threshold={<, 70}`、无数据检测 `10m` / 恢复 `2m`，GET 核对后已删除。
 - 快照点在 `raw_data` 之外带 `current_value` / `baseline_value` / `compared_value` / `result_unit`；告警详情图 `chart_unit` 在变换后量纲下用 `result_unit`；模板 `${value}` / `${current_value}` / `${baseline_value}`；portable 旧模板补 D1 缺省，`ALGORITHM_LABELS` 覆盖新算法。
