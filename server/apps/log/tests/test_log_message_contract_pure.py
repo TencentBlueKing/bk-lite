@@ -26,7 +26,9 @@ LEGACY_MESSAGE_FIELDS = {"_msg", "log_message", "raw_message", "trap_message"}
 def test_all_builtin_collect_types_declare_one_canonical_message_field():
     collect_type_files = sorted(PLUGIN_ROOT.glob("*/*/collect_type.json"))
 
-    assert len(collect_type_files) == 18
+    assert len(collect_type_files) == 19
+    names = {json.loads(path.read_text())["name"] for path in collect_type_files}
+    assert "kafka_subscribe" in names
     for path in collect_type_files:
         attrs = json.loads(path.read_text())["attrs"]
         assert attrs.count("message") == 1, path
@@ -37,7 +39,7 @@ def test_all_builtin_collect_types_declare_one_canonical_message_field():
 def test_all_builtin_collect_types_declare_server_and_upstream_timestamp_fields():
     collect_type_files = sorted(PLUGIN_ROOT.glob("*/*/collect_type.json"))
 
-    assert len(collect_type_files) == 18
+    assert len(collect_type_files) == 19
     for path in collect_type_files:
         attrs = json.loads(path.read_text())["attrs"]
         assert attrs.count("timestamp") == 1, path

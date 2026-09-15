@@ -34,8 +34,8 @@ const Grouping = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const commonContext = useCommon();
   const userList: UserItem[] = commonContext?.userList || [];
-  const authList = useRef(commonContext?.authOrganizations || []);
-  const organizationList: Organization[] = authList.current;
+  const organizationList: Organization[] =
+    commonContext?.authOrganizations || [];
   const instanceRef = useRef<ModalRef>(null);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
