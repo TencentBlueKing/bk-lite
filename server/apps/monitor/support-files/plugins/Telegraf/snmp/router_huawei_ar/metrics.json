@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei_ar",
   "plugin": "Router Huawei AR SNMP",
-  "plugin_desc": "Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP). In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HUAWEI-ENTITY-EXTENT-MIB private OIDs for device health (CPU and memory utilization, both reported as percentages). Sourced from the official HUAWEI-ENTITY-EXTENT-MIB. Supported brands/models — Huawei AR-series enterprise routers (AR1200/AR2200/AR3200, etc.).",
+  "plugin_desc": "Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP). Device identity is recognized from sysObjectID under 1.3.6.1.4.1.2011.2.224 (hwAR), including AR8140-12G10XG, AR8140-T-12G10XG, AR720, AR730, AR6710-L50T2X4, AR6710-L26T2X4, AR6710-L8T3TS1X2, AR5710-H8T2TS1, AR8700-8, AR6510, AR5510 and AR6500-10. Interface traffic uses the built-in IF-MIB (including 64-bit HC counters) and is not expanded in this template. Device health continues to use HUAWEI-ENTITY-EXTENT-MIB CPU and memory utilization, both reported as percentages.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_huawei_ar'}) by (instance_id)",
   "name": "Router",
