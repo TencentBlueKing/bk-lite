@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType, RequirementAssessmentStatus
+from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType, OSType, RequirementAssessmentStatus
 from apps.patch_mgmt.models import BaselineRequirement, GovernanceTask, HostBaselineBinding, PatchBaseline
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.services.patch_origin import source_details_for_patch, source_type_for_patch
@@ -330,6 +330,21 @@ class HostBaselineBindingSerializer(PatchPermissionSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_by", "created_at"]
+
+
+class BaselineSaveSerializer(serializers.Serializer):
+    """基线主体与要求集的复合保存参数。"""
+
+    name = serializers.CharField(max_length=128)
+    os_type = serializers.ChoiceField(choices=OSType.CHOICES, required=False)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    patch_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), allow_empty=False)
+    expected_updated_at = serializers.DateTimeField(required=False)
+
+    def __init__(self, *args, creating=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["os_type"].required = creating
+        self.fields["expected_updated_at"].required = not creating
 
 
 class BaselineComplianceObjectsQuerySerializer(serializers.Serializer):
