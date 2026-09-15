@@ -23,6 +23,7 @@ from apps.apm.services.contracts import (
 from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore
 from apps.apm.services.snapshots import ApmEventSnapshotStore
 
+MAX_POLICY_TARGETS = 100
 SEVERITY_LEVEL = {
     ApmPolicy.Severity.CRITICAL: "0",
     ApmPolicy.Severity.ERROR: "1",
@@ -166,7 +167,7 @@ class DjangoApmPolicyService:
                 versions = [""]
         else:
             versions = [""]
-        return [(endpoint, version) for endpoint in endpoints for version in versions]
+        return [(endpoint, version) for endpoint in endpoints for version in versions][:MAX_POLICY_TARGETS]
 
     @staticmethod
     def _target_key(endpoint: str, version: str) -> str:
