@@ -23,7 +23,12 @@ BUILTIN_TYPES = {
                 "required": True,
                 "visible_when": {"auth_method": "key"},
             },
-            {"id": "port", "name": "端口", "kind": "number"},
+            {
+                "id": "passphrase",
+                "name": "私钥口令",
+                "kind": "secret",
+                "visible_when": {"auth_method": "key"},
+            },
         ],
     },
     "winrm": {
@@ -36,6 +41,14 @@ BUILTIN_TYPES = {
     },
     "ipmi": {
         "name": "IPMI",
+        "categories": ["host"],
+        "fields": [
+            {"id": "username", "name": "用户名", "kind": "string", "required": True},
+            {"id": "password", "name": "密码", "kind": "secret", "required": True},
+        ],
+    },
+    "redfish": {
+        "name": "Redfish",
         "categories": ["host"],
         "fields": [
             {"id": "username", "name": "用户名", "kind": "string", "required": True},
@@ -59,12 +72,14 @@ BUILTIN_TYPES = {
                 "name": "安全级别",
                 "kind": "enum",
                 "values": ["noAuthNoPriv", "authNoPriv", "authPriv"],
+                "required": True,
                 "visible_when": {"version": "v3"},
             },
             {
                 "id": "username",
                 "name": "用户名 (Security Name)",
                 "kind": "string",
+                "required": True,
                 "visible_when": {"version": "v3"},
             },
             {
@@ -72,26 +87,36 @@ BUILTIN_TYPES = {
                 "name": "认证算法",
                 "kind": "enum",
                 "values": ["MD5", "SHA"],
-                "visible_when": {"security_level": {"op": "ne", "value": "noAuthNoPriv"}},
+                "required": True,
+                "visible_when": {
+                    "version": "v3",
+                    "security_level": {"op": "ne", "value": "noAuthNoPriv"},
+                },
             },
             {
                 "id": "auth_password",
                 "name": "认证密码",
                 "kind": "secret",
-                "visible_when": {"security_level": {"op": "ne", "value": "noAuthNoPriv"}},
+                "required": True,
+                "visible_when": {
+                    "version": "v3",
+                    "security_level": {"op": "ne", "value": "noAuthNoPriv"},
+                },
             },
             {
                 "id": "priv_protocol",
                 "name": "加密算法",
                 "kind": "enum",
                 "values": ["DES", "AES"],
-                "visible_when": {"security_level": "authPriv"},
+                "required": True,
+                "visible_when": {"version": "v3", "security_level": "authPriv"},
             },
             {
                 "id": "priv_password",
                 "name": "加密密码",
                 "kind": "secret",
-                "visible_when": {"security_level": "authPriv"},
+                "required": True,
+                "visible_when": {"version": "v3", "security_level": "authPriv"},
             },
         ],
     },
@@ -112,19 +137,33 @@ BUILTIN_TYPES = {
             {"id": "extra", "name": "附加标识（如 Project ID）", "kind": "string"},
         ],
     },
+    "openstack": {
+        "name": "OpenStack 账户",
+        "categories": ["cloud"],
+        "fields": [
+            {"id": "username", "name": "用户名", "kind": "string", "required": True},
+            {"id": "password", "name": "密码", "kind": "secret", "required": True},
+            {
+                "id": "user_domain_name",
+                "name": "用户域名称",
+                "kind": "string",
+                "required": True,
+                "default": "Default",
+            },
+        ],
+    },
     "platform_api": {
         "name": "HTTPS 平台账户",
         "categories": ["cloud", "storage"],
         "fields": [
             {"id": "username", "name": "用户名", "kind": "string", "required": True},
             {"id": "password", "name": "密码", "kind": "secret", "required": True},
-            {"id": "port", "name": "端口", "kind": "number", "required": True},
+            {"id": "port", "name": "端口", "kind": "number"},
             {
                 "id": "verify_tls",
                 "name": "校验 TLS 证书",
                 "kind": "enum",
                 "values": ["true", "false"],
-                "required": True,
             },
         ],
     },
@@ -170,5 +209,5 @@ BUILTIN_TYPE_SEEDS = BUILTIN_TYPES
 
 
 def builtin_type_payloads():
-    """Return deep-copied seed payloads for safe use by ORM callers."""
+    """Return deep-copied seed payloads for built-in types."""
     return {key: deepcopy(value) for key, value in BUILTIN_TYPES.items()}

@@ -1,16 +1,18 @@
+import logging
 from types import SimpleNamespace
 
 import pytest
 
 from apps.system_mgmt.models import Group
 from apps.system_mgmt.models.credential import Credential, CredentialType
-from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES
+from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES, builtin_type_payloads
 from apps.system_mgmt.services.credential_service import (
     CredentialServiceError,
     create_credential,
     create_type,
     delete_credential,
     delete_type,
+    get_credential,
     list_credentials,
     list_types,
     page_credentials,
@@ -67,14 +69,16 @@ def test_seed_builtin_types_is_idempotent_and_authoritative():
     assert seeded.fields == BUILTIN_TYPES["sql"]["fields"]
     assert seeded.name == "用户名密码"
     assert seeded.categories == ["database", "middleware"]
-    assert CredentialType.objects.filter(is_builtin=True).count() == len(BUILTIN_TYPES)
+    assert CredentialType.objects.filter(is_builtin=True).count() == len(builtin_type_payloads())
     assert set(BUILTIN_TYPES) == {
         "ssh",
         "winrm",
         "ipmi",
+        "redfish",
         "snmp",
         "sql",
         "cloud",
+        "openstack",
         "platform_api",
         "network_cli",
         "token",
@@ -89,7 +93,15 @@ def test_seed_builtin_types_is_idempotent_and_authoritative():
     ssh_fields = {field["id"]: field for field in CredentialType.objects.get(key="ssh").fields}
     assert ssh_fields["username"]["name"] == "用户名"
     assert ssh_fields["auth_method"]["name"] == "认证方式"
-    assert ssh_fields["port"]["name"] == "端口"
+    assert "port" not in ssh_fields
+    assert ssh_fields["passphrase"]["name"] == "私钥口令"
+    assert CredentialType.objects.get(key="openstack").name == "OpenStack 账户"
+    redfish_fields = {field["id"]: field for field in CredentialType.objects.get(key="redfish").fields}
+    assert CredentialType.objects.get(key="redfish").categories == ["host"]
+    assert set(redfish_fields) == {"username", "password"}
+    platform_fields = {field["id"]: field for field in CredentialType.objects.get(key="platform_api").fields}
+    assert platform_fields["port"].get("required") is not True
+    assert platform_fields["verify_tls"].get("required") is not True
 
 
 def test_list_types_orders_builtin_first_then_by_creation():
@@ -417,3 +429,256 @@ def test_page_credentials_skips_ref_inquiry(monkeypatch):
     assert count == 1
     assert "refs" not in items[0]
     assert calls == []
+
+
+FALLBACK_TEMPLATE = (
+    "event=credential_builtin_key_fallback preferred_key=%s seed_key=%s failed_stage=%s error_type=%s"
+)
+SKIP_TEMPLATE = (
+    "event=credential_builtin_key_skipped preferred_key=%s fallback_key=%s failed_stage=%s error_type=%s"
+)
+
+
+def _records_for(caplog, template):
+    return [record for record in caplog.records if record.msg == template]
+
+
+def _assert_seed_warning(record, *, args, message, sentinel):
+    assert record.levelno == logging.WARNING
+    assert record.args == args
+    assert record.getMessage() == message
+    formatted = logging.Formatter().format(record)
+    assert sentinel not in formatted
+    assert sentinel not in record.getMessage()
+
+
+def test_seed_openstack_uses_fallback_key_when_custom_type_owns_openstack(caplog):
+    sentinel = "openstack-password-must-not-appear-in-logs"
+    CredentialType.objects.create(
+        key="openstack",
+        name=sentinel,
+        categories=["cloud"],
+        fields=[{"id": "password", "kind": "secret", "name": sentinel}],
+    )
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
+        seeded = seed_builtin_types()
+    custom = CredentialType.objects.get(key="openstack")
+    assert custom.is_builtin is False
+    assert custom.name == sentinel
+    builtin = CredentialType.objects.get(key="openstack_account")
+    assert builtin.is_builtin is True
+    assert builtin.name == "OpenStack 账户"
+    assert any(row.key == "openstack_account" for row in seeded)
+    records = _records_for(caplog, FALLBACK_TEMPLATE)
+    assert len(records) == 1
+    _assert_seed_warning(
+        records[0],
+        args=("openstack", "openstack_account", "seed_key", "preferred_key_occupied"),
+        message=(
+            "event=credential_builtin_key_fallback preferred_key=openstack seed_key=openstack_account "
+            "failed_stage=seed_key error_type=preferred_key_occupied"
+        ),
+        sentinel=sentinel,
+    )
+    assert sentinel not in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
+        seed_builtin_types()
+    assert _records_for(caplog, FALLBACK_TEMPLATE) == []
+    assert CredentialType.objects.get(key="openstack_account").is_builtin is True
+
+
+def test_update_ssh_drops_removed_port_and_keeps_passphrase_unless_key_rotates():
+    """Builtin SSH no longer defines port; leftover stored port is dropped on save.
+
+    Connection port belongs to the collection task. Call sites that still read
+    credential.fields['port'] must switch to their own task field.
+    Blank passphrase keeps the stored value; a new private_key without passphrase
+    drops the old passphrase.
+    """
+    seed_builtin_types()
+    owner = group("ssh-port-owner")
+    created = create_credential(
+        {
+            "name": "Jump",
+            "type": "ssh",
+            "group_id": owner.id,
+            "fields": {
+                "auth_method": "key",
+                "username": "ops",
+                "private_key": "PEM",
+                "passphrase": "old-pp",
+            },
+        },
+        actor(owner.id, owner.id),
+    )
+    row = Credential.objects.get(credential_id=created.credential_id)
+    row.fields["port"] = 22
+    row.save(update_fields=["fields"])
+    original_key = row.fields["private_key"]
+    original_pp = row.fields["passphrase"]
+
+    public = get_credential(created.credential_id, owner.id, actor=actor(owner.id, owner.id))
+    assert "port" not in public["fields"]
+    assert "private_key" not in public["fields"]
+    assert "passphrase" not in public["fields"]
+    assert public["fields"]["username"] == "ops"
+
+    with pytest.raises(CredentialServiceError) as rejected:
+        update_credential(
+            created.credential_id,
+            {"fields": {"auth_method": "key", "username": "ops", "private_key": "", "port": 22}},
+            actor(owner.id, owner.id),
+        )
+    assert rejected.value.code == "invalid"
+    still_stored = Credential.objects.get(credential_id=created.credential_id)
+    assert still_stored.fields["port"] == 22
+
+    kept = update_credential(
+        created.credential_id,
+        {"fields": {"auth_method": "key", "username": "ops", "private_key": "", "passphrase": ""}},
+        actor(owner.id, owner.id),
+    )
+    kept_row = Credential.objects.get(credential_id=kept.credential_id)
+    assert "port" not in kept_row.fields
+    assert kept_row.fields["private_key"] == original_key
+    assert kept_row.fields["passphrase"] == original_pp
+
+    rotated = update_credential(
+        created.credential_id,
+        {"fields": {"auth_method": "key", "username": "ops", "private_key": "NEW-PEM"}},
+        actor(owner.id, owner.id),
+    )
+    rotated_row = Credential.objects.get(credential_id=rotated.credential_id)
+    assert "passphrase" not in rotated_row.fields
+    assert rotated_row.fields["private_key"] != original_key
+
+
+def test_create_openstack_fills_default_user_domain_name():
+    seed_builtin_types()
+    owner = group("os-owner")
+    created = create_credential(
+        {
+            "name": "OS",
+            "type": "openstack",
+            "group_id": owner.id,
+            "fields": {"username": "demo", "password": "secret"},
+        },
+        actor(owner.id, owner.id),
+    )
+    row = Credential.objects.get(credential_id=created.credential_id)
+    assert row.fields["user_domain_name"] == "Default"
+
+
+def test_seed_redfish_uses_fallback_key_when_custom_type_owns_redfish(caplog):
+    sentinel = "redfish-password-must-not-appear-in-logs"
+    CredentialType.objects.create(key="redfish", name=sentinel, categories=["host"], fields=[])
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
+        seed_builtin_types()
+    custom = CredentialType.objects.get(key="redfish")
+    assert custom.is_builtin is False
+    assert custom.name == sentinel
+    builtin = CredentialType.objects.get(key="redfish_bmc")
+    assert builtin.is_builtin is True
+    assert builtin.name == "Redfish"
+    records = _records_for(caplog, FALLBACK_TEMPLATE)
+    assert len(records) == 1
+    _assert_seed_warning(
+        records[0],
+        args=("redfish", "redfish_bmc", "seed_key", "preferred_key_occupied"),
+        message=(
+            "event=credential_builtin_key_fallback preferred_key=redfish seed_key=redfish_bmc "
+            "failed_stage=seed_key error_type=preferred_key_occupied"
+        ),
+        sentinel=sentinel,
+    )
+    assert sentinel not in caplog.text
+
+
+def test_seed_skips_when_preferred_and_fallback_keys_are_custom(caplog):
+    sentinel = "dual-key-password-must-not-appear-in-logs"
+    CredentialType.objects.create(key="openstack", name=sentinel, categories=["cloud"], fields=[])
+    CredentialType.objects.create(key="openstack_account", name="Custom Account", categories=["cloud"], fields=[])
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
+        seeded = seed_builtin_types()
+    assert CredentialType.objects.get(key="openstack").is_builtin is False
+    assert CredentialType.objects.get(key="openstack").name == sentinel
+    account = CredentialType.objects.get(key="openstack_account")
+    assert account.is_builtin is False
+    assert account.name == "Custom Account"
+    assert all(row.key != "openstack_account" for row in seeded)
+    assert CredentialType.objects.filter(key="ssh", is_builtin=True).exists()
+    records = _records_for(caplog, SKIP_TEMPLATE)
+    assert len(records) == 1
+    _assert_seed_warning(
+        records[0],
+        args=("openstack", "openstack_account", "seed_key", "fallback_key_occupied"),
+        message=(
+            "event=credential_builtin_key_skipped preferred_key=openstack fallback_key=openstack_account "
+            "failed_stage=seed_key error_type=fallback_key_occupied"
+        ),
+        sentinel=sentinel,
+    )
+    assert sentinel not in caplog.text
+
+
+def test_seed_does_not_promote_custom_type_when_resolved_seed_key_is_occupied(monkeypatch, caplog):
+    sentinel = "occupied-seed-key-password-must-not-appear-in-logs"
+    CredentialType.objects.create(key="openstack_account", name=sentinel, categories=["cloud"], fields=[])
+
+    def fake_seed_key(preferred_key):
+        if preferred_key == "openstack":
+            return "openstack_account"
+        return preferred_key
+
+    monkeypatch.setattr(
+        "apps.system_mgmt.services.credential_service._builtin_seed_key",
+        fake_seed_key,
+    )
+    with caplog.at_level(logging.WARNING, logger="system-manager"):
+        seeded = seed_builtin_types()
+    account = CredentialType.objects.get(key="openstack_account")
+    assert account.is_builtin is False
+    assert account.name == sentinel
+    assert all(row.key != "openstack_account" for row in seeded)
+    records = _records_for(caplog, SKIP_TEMPLATE)
+    assert len(records) == 1
+    _assert_seed_warning(
+        records[0],
+        args=("openstack", "openstack_account", "seed_key", "seed_key_occupied"),
+        message=(
+            "event=credential_builtin_key_skipped preferred_key=openstack fallback_key=openstack_account "
+            "failed_stage=seed_key error_type=seed_key_occupied"
+        ),
+        sentinel=sentinel,
+    )
+    assert sentinel not in caplog.text
+
+
+def test_platform_api_create_omits_port_and_update_keeps_stored_connection_fields():
+    seed_builtin_types()
+    owner = group("platform-owner")
+    created = create_credential(
+        {
+            "name": "OceanStor",
+            "type": "platform_api",
+            "group_id": owner.id,
+            "fields": {"username": "admin", "password": "secret"},
+        },
+        actor(owner.id, owner.id),
+    )
+    row = Credential.objects.get(credential_id=created.credential_id)
+    assert "port" not in row.fields
+    assert "verify_tls" not in row.fields
+    row.fields["port"] = 8088
+    row.fields["verify_tls"] = "true"
+    row.save(update_fields=["fields"])
+    updated = update_credential(
+        created.credential_id,
+        {"fields": {"username": "admin", "password": ""}},
+        actor(owner.id, owner.id),
+    )
+    kept = Credential.objects.get(credential_id=updated.credential_id)
+    assert kept.fields["port"] == 8088
+    assert kept.fields["verify_tls"] == "true"
