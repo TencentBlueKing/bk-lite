@@ -1,6 +1,6 @@
 Switch Sixnet SNMP:
   name: Sixnet（Telegraf）
-  desc: 面向 Sixnet 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  desc: 面向 Sixnet SLX 工业以太网交换机的 SNMP 监控模板，可采集运行时长、接口流量、P1/P2 电源输入状态与 OK 告警继电器状态（企业号 PEN 20540）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -92,6 +92,15 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
+    psu1_status:
+      name: P1 电源状态
+      desc: 该指标报告 Sixnet 交换机 P1 电源输入状态。原始码为关闭(0)、开启(1)、未知(2)。取值不是 1 表示主路电源失电或状态无法判定。
+    psu2_status:
+      name: P2 电源状态
+      desc: 该指标报告 Sixnet 交换机 P2 电源输入状态。原始码为关闭(0)、开启(1)、未知(2)。取值不是 1 表示备路电源失电或状态无法判定。
+    ok_relay_status:
+      name: OK 继电器状态
+      desc: 该指标报告 Sixnet 交换机 OK 告警继电器状态。原始码为关闭(0)、开启(1)、未知(2)。开启表示继电器处于正常侧；关闭或未知表示告警条件或状态无法判定。
     device_fan_speed:
       name: 风扇转速
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
