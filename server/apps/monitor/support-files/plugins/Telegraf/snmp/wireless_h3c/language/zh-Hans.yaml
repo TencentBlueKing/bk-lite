@@ -1,0 +1,45 @@
+Wireless H3C SNMP:
+  name: H3C（Telegraf）
+  desc: 面向 H3C 无线控制器的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、AP 数量和终端数量等主要指标（企业号 PEN 25506）。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示无线控制器自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 H3C 无线控制器控制平面的 CPU 使用率（HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage），按物理实体以 0-100
+        百分比上报。多数实体返回 0，承载 CPU 的板卡才有真实值。持续偏高可能表示 AP 或终端管理负载过重。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 H3C 无线控制器的内存使用率（HH3C-ENTITY-EXT-MIB hh3cEntityExtMemUsage，直接百分比），按物理实体上报。内存压力过高可能影响
+        AP 上线和终端漫游。
+    wlan_ap_connect_count:
+      name: 已连接 AP 数
+      desc: 当前已连接到该 H3C 无线控制器的 AP 数量（HH3C-DOT11-ACMT-MIB hh3cDot11APConnectCount）。数值突然下降表示
+        AP 已从控制器离线。
+    wlan_station_connect_count:
+      name: 已连接终端数
+      desc: 当前经该 H3C 无线控制器接入的终端数量（HH3C-DOT11-ACMT-MIB hh3cDot11StationConnectCount）。突然下降可能表示射频、认证或控制器故障。
+    wlan_max_ap_num_permitted:
+      name: 允许接入的最大 AP 数
+      desc: 该 H3C 无线控制器允许接入的最大 AP 数量（HH3C-DOT11-ACMT-MIB hh3cDot11MaxAPNumPermitted）。该标量在部分软件版本上可能不存在。已连接
+        AP 数接近该值时，表示控制器接近许可或容量上限。
+    wlan_master_ap_count:
+      name: 主 AP 数
+      desc: 该 H3C 无线控制器上报的主 AP 数量（HH3C-DOT11-ACMT-MIB hh3cDot11MasterAPCount）。可与已连接 AP
+        数对照，了解 Fit AP 角色分布。
+    wlan_total_ap_connected:
+      name: AP 连接总数
+      desc: 该 H3C 无线控制器上报的 AP 连接总数（HH3C-DOT11-ACMT-MIB hh3cDot11TotalAPconnected）。可与当前已连接
+        AP 数对照，发现库存或上线状态偏差。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    Wireless: 无线
