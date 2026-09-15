@@ -1,9 +1,10 @@
 Switch Huawei SNMP:
   name: Huawei (Telegraf)
   desc: SNMP monitoring template for Huawei switch. It reports CPU utilization, memory
-    utilization, temperature, fan status, PSU state, SFP optical DDM (Rx/Tx power,
-    temperature, voltage, bias), stack/CSS member-port-link health, per-port inbound
-    traffic rate, and other key metrics. Supported models include S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700
+    utilization, temperature, fan status (normal/abnormal), PSU state (supply/notSupply/sleep/unknown),
+    SFP optical DDM (Rx/Tx power in dBm from µW, temperature in °C, voltage in V from
+    mV, bias in µA), stack/CSS member and port health, per-port inbound traffic rate,
+    and other key metrics. Supported models include S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700
     and CloudEngine CE series SKUs such as CE6881/CE5881.
 monitor_object:
   Switch: Switch
@@ -17,28 +18,29 @@ monitor_object_metric:
         may indicate unstable power and hardware risk.
     device_optical_rx_power:
       name: SFP RX Power
-      desc: Per-module optical receive power in dBm (device reports µW; query converts
-        with 10*log10(µW/1000), drops <=0). Dimension descr is entPhysicalName. Abnormally
+      desc: Per-module optical receive power in dBm (campus switches report µW; query converts
+        with 10*log10(µW/1000), drops <=0 and the 2147483647 invalid sentinel). Dimension descr is entPhysicalName. Abnormally
         low Rx power may indicate link attenuation, dirty fiber, or a faulty peer transmitter.
     device_optical_tx_power:
       name: SFP TX Power
-      desc: Per-module optical transmit power in dBm (device reports µW; query converts
-        with 10*log10(µW/1000), drops <=0). Dimension descr is entPhysicalName. Abnormally
+      desc: Per-module optical transmit power in dBm (campus switches report µW; query converts
+        with 10*log10(µW/1000), drops <=0 and the 2147483647 invalid sentinel). Dimension descr is entPhysicalName. Abnormally
         low Tx power usually indicates an aging or failing local optical module rather
         than fiber attenuation alone.
     device_optical_temperature:
       name: Optical Module Temperature
       desc: Temperature of each optical module (hwEntityOpticalTemperature), in degrees
-        Celsius. High module temperature accelerates laser aging and can precede optical
+        Celsius. The 2147483647 invalid sentinel is dropped. High module temperature accelerates laser aging and can precede optical
         power failure.
     device_optical_bias:
       name: Optical Module Bias
-      desc: Laser bias current of each optical module (hwEntityOpticalBiasCurrent).
+      desc: Laser bias current of each optical module (hwEntityOpticalBiasCurrent),
+        in microamperes (µA). The 2147483647 invalid sentinel is dropped.
         Drift away from the normal range is an early sign of a failing transmitter.
     device_optical_voltage:
       name: Optical Module Voltage
       desc: Supply voltage of each optical module (hwEntityOpticalVoltage). The device
-        reports millivolts; the query divides by 1000 to display volts. Out-of-range
+        reports millivolts; the query divides by 1000 to display volts and drops 2147483647. Out-of-range
         voltage can cause unstable optics.
     snmp_uptime:
       name: System Uptime
@@ -168,47 +170,37 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
+        Huawei reports a binary state (1=normal, 2=abnormal). A non-normal state
+        indicates a cooling fault that can quickly lead to overheating and should be investigated
         immediately.
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device (hwEntityPwrState). A non-normal state signals a power redundancy
-        or hardware fault; on devices with redundant PSUs a single failure may not
-        cause an outage but removes redundancy and must be remediated promptly.
+      desc: Operational state of each installed power supply (hwEntityPwrState).
+        On-wire values are supply(1), notSupply(2), sleep(3), and unknown(4).
+        sleep is a valid redundant-PSU energy-saving state, not a fault. Empty slots
+        are excluded by pairing with present(1).
     device_psu_present:
       name: Power Supply Present
-      desc: Presence of each power supply (hwEntityPwrPresent). Absent means the slot
-        is empty or the module was pulled; combined with PSU state this confirms lost
-        redundancy.
+      desc: Presence of each power supply (hwEntityPwrPresent). On-wire values are
+        present(1) and absent(2). Absent means the slot is empty or the module was pulled.
     device_stack_member_role:
       name: Stack Member Role
-      desc: Role of each iStack or CloudEngine stack member (hwMemberRole). Master,
-        standby, or slave membership is the control-plane topology; unexpected role
+      desc: Role of each iStack or CloudEngine stack member (hwMemberStackRole).
+        On-wire values are master(1), standby(2), and slave(3). Unexpected role
         changes indicate a master switchover or a member joining or leaving.
     device_stack_port_state:
       name: Stack Port Status
       desc: Operational state of each iStack or CloudEngine stack port (hwStackPortStatus).
-        Down means the physical stack port cannot carry stack control or forwarding.
-    device_stack_link_state:
-      name: Stack Link Status
-      desc: Operational state of each iStack or CloudEngine stack link (hwStackLinkStatus).
-        A down link between members removes a stacking path and can leave remaining
-        members with a single point of failure.
+        On-wire values are up(1) and down(2). Down means the physical stack port cannot carry stack control or forwarding.
     device_css_member_role:
       name: CSS Member Role
-      desc: Role of each CSS or early campus-stack member (hwMemberStackRole). Chassis
-        CSS on S12700/S9700-class devices reports membership here; unexpected role
-        changes indicate a CSS master switchover.
+      desc: Role of each CSS member (hwCssMemberRole). On-wire values are
+        master(1), standby(2), slave(3), single(4), and unknown(10).
+        Unexpected role changes indicate a CSS master switchover.
     device_css_port_state:
       name: CSS Port Status
-      desc: Operational state of each CSS or early-stack port (hwStackPortStatus).
-        Down means the CSS fabric port cannot carry cluster control or forwarding.
-    device_css_link_state:
-      name: CSS Link Status
-      desc: Operational state of each CSS or early-stack link (hwCssLink / hwStackLink).
-        A down CSS link between chassis splits or degrades the cluster fabric.
+      desc: Operational state of each CSS port (hwCssPortOperStatus). On-wire values
+        are down(0) and up(1), not the stack-port up(1)/down(2) encoding. Down means the CSS fabric port cannot carry cluster control or forwarding.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

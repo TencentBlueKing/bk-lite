@@ -10,14 +10,14 @@ One plugin covers the following Huawei switch families. Standalone boxes, iStack
 - Chassis campus / CSS: S9700, S12700, S12700E, S16700
 - CloudEngine CE series, including SKUs such as CE6881 and CE5881
 
-A device that does not enable stack or CSS simply returns empty stack/CSS tables. Missing private tables do not block CPU, memory, fan, PSU, optical, or interface metrics.
+A device that does not enable stack or CSS simply returns empty stack/CSS tables. Missing private tables do not block CPU, memory, fan, PSU, optical, or interface metrics. Stack and CSS link-up/down objects are traps, not pollable tables; use stack/CSS port status for link health.
 
 ## Prerequisites
 
 - The selected node can reach the device SNMP port (default `161/UDP`).
 - SNMPv2c or SNMPv3 is enabled with read-only access.
 - SNMPv3 with auth and privacy is recommended. For v2c, enter the community only in the dedicated form field.
-- The read-only view should authorize standard IF-MIB plus `1.3.6.1.4.1.2011.5.25.31` (entity health, PSU, optical DDM) and `1.3.6.1.4.1.2011.5.25.183` (stack/CSS).
+- The read-only view should authorize standard IF-MIB plus `1.3.6.1.4.1.2011.5.25.31` (entity health, PSU, optical DDM) and `1.3.6.1.4.1.2011.5.25.183` (HUAWEI-STACK-MIB stack object `183.1` and CSS object `183.3`).
 
 ## Setup steps
 
@@ -60,10 +60,10 @@ Wait for at least one collection interval, then confirm the instance appears and
 
 - `snmp_uptime` keeps increasing.
 - `device_cpu_usage` and `device_memory_usage` have per-entity readings.
-- `device_psu_state` reports each power supply (`hwEntityPwrState`).
-- Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` plus temperature, voltage, and bias when modules are present.
-- When iStack or CE stacking is enabled, `device_stack_member_role`, `device_stack_port_state`, and `device_stack_link_state` are populated.
-- When CSS is enabled (S12700/S9700-class), `device_css_member_role`, `device_css_port_state`, and `device_css_link_state` are populated.
+- `device_psu_state` reports each installed power supply (`hwEntityPwrState`: supply/notSupply/sleep/unknown). Empty slots show on `device_psu_present`.
+- Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` (µW converted to dBm) plus temperature (°C), voltage (mV→V), and bias (µA) when modules are present. Invalid sentinel `2147483647` is dropped.
+- When iStack or CE stacking is enabled, `device_stack_member_role` (`hwMemberStackRole`) and `device_stack_port_state` (`hwStackPortStatus` up=1/down=2) are populated.
+- When CSS is enabled (S12700/S9700-class), `device_css_member_role` (`hwCssMemberRole`) and `device_css_port_state` (`hwCssPortOperStatus` down=0/up=1) are populated.
 
 ## Troubleshooting
 
@@ -77,7 +77,7 @@ Confirm the view includes `hwEntityPwrState` / `hwEntityPwrPresent` and `hwOptic
 
 ### No stack or CSS metrics
 
-Stack/CSS is disabled, the device is standalone, or the view does not authorize `1.3.6.1.4.1.2011.5.25.183`. This does not mean whole-device collection failed.
+Stack/CSS is disabled, the device is standalone, or the view does not authorize `1.3.6.1.4.1.2011.5.25.183`. iStack/CE uses `183.1.20` / `183.1.21`; CSS uses `183.3.2` / `183.3.4`. Objects under `183.1.4`/`183.1.5`/`183.1.6`/`183.1.22` are scalars or traps, not member/port/link tables. This does not mean whole-device collection failed.
 
 ### High-speed traffic is zero or wrong
 

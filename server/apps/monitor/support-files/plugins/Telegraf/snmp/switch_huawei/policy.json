@@ -80,7 +80,7 @@
     {
       "name": "Huawei交换机风扇异常",
       "alert_name": "交换机${resource_name} 风扇 ${metric_descr} 状态异常",
-      "description": "监控华为设备各散热风扇的运行状态。华为以二元状态上报（1=正常，2=异常），任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+      "description": "监控华为设备各散热风扇的运行状态。线侧为二元枚举（1=正常，2=异常），任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
@@ -95,14 +95,14 @@
     {
       "name": "Huawei交换机电源异常",
       "alert_name": "交换机${resource_name} 电源 ${metric_descr} 状态异常",
-      "description": "监控华为交换机各电源模块运行状态（hwEntityPwrState）。非正常状态表示电源冗余缺失或硬件故障，即使有冗余也应尽快修复以恢复冗余能力。",
+      "description": "监控华为交换机已在位电源模块运行状态（hwEntityPwrState）。线侧为 supply(1)/notSupply(2)/sleep(3)/unknown(4)。仅对 notSupply(2) 告警；sleep(3) 是冗余电源休眠，不是故障。空槽位用 device_psu_present 判断，不要用 >1。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "=="
         }
       ],
       "group_algorithm": "avg"
@@ -110,23 +110,8 @@
     {
       "name": "Huawei交换机堆叠口异常",
       "alert_name": "交换机${resource_name} 堆叠口 ${metric_descr} 状态异常",
-      "description": "监控华为交换机 iStack/CE 堆叠口运行状态（hwStackPortStatus）。down 表示堆叠物理口无法承载堆叠控制或转发，可能导致堆叠分裂。",
+      "description": "监控华为交换机 iStack/CE 堆叠口运行状态（hwStackPortStatus）。线侧 up(1)/down(2)，down 表示堆叠物理口无法承载堆叠控制或转发，可能导致堆叠分裂。",
       "metric_name": "device_stack_port_state",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 1,
-          "method": ">"
-        }
-      ],
-      "group_algorithm": "avg"
-    },
-    {
-      "name": "Huawei交换机堆叠链路异常",
-      "alert_name": "交换机${resource_name} 堆叠链路 ${metric_descr} 状态异常",
-      "description": "监控华为交换机 iStack/CE 堆叠链路运行状态（hwStackLinkStatus）。链路 down 会去掉成员之间的堆叠路径，剩余成员可能只剩单点连接。",
-      "metric_name": "device_stack_link_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
@@ -140,29 +125,14 @@
     {
       "name": "Huawei交换机CSS端口异常",
       "alert_name": "交换机${resource_name} CSS 端口 ${metric_descr} 状态异常",
-      "description": "监控华为框式 CSS / 早期堆叠口运行状态。down 表示集群端口无法承载 CSS 控制或转发。",
+      "description": "监控华为框式 CSS 端口运行状态（hwCssPortOperStatus）。线侧为 down(0)/up(1)，与堆叠口 up(1)/down(2) 不同。down 必须按等于 0 告警；用 >1 永远不会触发。",
       "metric_name": "device_css_port_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
-        }
-      ],
-      "group_algorithm": "avg"
-    },
-    {
-      "name": "Huawei交换机CSS链路异常",
-      "alert_name": "交换机${resource_name} CSS 链路 ${metric_descr} 状态异常",
-      "description": "监控华为框式 CSS / 早期堆叠链路运行状态。链路 down 会使框间集群结构降级或分裂。",
-      "metric_name": "device_css_link_state",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 0,
+          "method": "=="
         }
       ],
       "group_algorithm": "avg"

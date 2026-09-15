@@ -89,9 +89,8 @@
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
         name = "celsius"
     # ---- Huawei Fans (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanState) ----
-    # 待现网核验：风扇状态 hwEntityFanState 1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7；
-    # 华为原生编码 1=normal,2=abnormal（已与统一约定 1=normal 对齐，无需重映射，偏离 1 即异常）；
-    # descr 取风扇槽位 1.3.6.1.4.1.2011.5.25.31.1.1.10.1.1
+    # hwEntityFanState ...10.1.7 线侧 INTEGER 仅 normal(1)/abnormal(2)，不是 Cisco 六段枚举。
+    # descr 取风扇槽位 hwEntityFanSlot ...10.1.1。偏离 1 即异常。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -103,8 +102,10 @@
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
     # ---- Huawei PSU (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrState / hwEntityPwrPresent) ----
-    # 与同族 NE 模板一致：hwEntityPwrState ...18.1.6 / hwEntityPwrPresent ...18.1.5。
-    # descr 取电源槽位 hwEntityPwrIndex ...18.1.1（与风扇槽位 descr 同形）。
+    # hwEntityPwrState ...18.1.6 线侧 INTEGER：supply(1)/notSupply(2)/sleep(3)/unknown(4)。
+    # sleep(3) 是冗余电源休眠，不是故障；策略不得把 >1 当成异常。
+    # hwEntityPwrPresent ...18.1.5：present(1)/absent(2)（与风扇在位同向，不是 0/1）。
+    # descr 取电源槽位 hwEntityPwrSlot ...18.1.1。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -120,10 +121,10 @@
         name = "present"
     # ---- Huawei SFP optical DDM (HUAWEI-ENTITY-EXTENT-MIB hwOpticalModuleInfoTable) ----
     # RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9。
-    # TEMP=hwEntityOpticalTemperature ...3.1.5 / VOLT=hwEntityOpticalVoltage ...3.1.6 /
-    # BIAS=hwEntityOpticalBiasCurrent ...3.1.7（与同族 NE 光模块列一致）。
-    # 实际单位 µW（MIB 曾误标 dBm）；无模块/无效常为 <=0；descr=entPhysicalName。
-    # 电压原始为 mV，metrics 查询侧 /1000 → V。不做 starlark 换算。
+    # TEMP=hwEntityOpticalTemperature ...3.1.5（°C）/ VOLT=hwEntityOpticalVoltage ...3.1.6（mV）/
+    # BIAS=hwEntityOpticalBiasCurrent ...3.1.7（µA）。descr=entPhysicalName。
+    # 园区交换机线侧光功率是 µW（MIB 文本常误标 dBm×100）；查询侧 10*log10(µW/1000)→dBm。
+    # 无效哨兵 2147483647；无模块/无效功率常为 <=0。电压查询侧 /1000 → V。不做 starlark 换算。
     [[inputs.snmp.table]]
         name = "device_optical"
         inherit_tags = ["source"]
@@ -146,9 +147,12 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.6"
         name = "voltage"
-    # ---- Stack / CSS member, port, link (HUAWEI-STACK-MIB / HUAWEI-CSS-MIB, hwDatacomm 183) ----
-    # 校园 iStack 与 CE 走 hwStack*；框式 CSS（S12700/S9700 等）走 hwCss*。未启用堆叠/CSS 的设备表为空，不影响其余指标。
-    # 现网 CE/VRP8：hwMemberId ...183.1.20.1.1 / hwMemberRole ...183.1.20.1.4
+    # ---- Stack / CSS (HUAWEI-STACK-MIB, hwDatacomm 183) ----
+    # iStack/CE 走 hwStackObject(183.1)；框式 CSS 走 hwCssObject(183.3)。未启用时表为空。
+    # 183.1.4/5/6 是标量（系统 MAC / 是否堆叠 / 保留 VLAN），不是成员/端口/链路表。
+    # 183.1.22 是 trap 节点，没有可轮询的 hwStackLinkStatus。堆叠链路健康看堆叠口状态。
+    # 成员角色：hwMemberStackRole ...183.1.20.1.3 = master(1)/standby(2)/slave(3)。
+    # ...20.1.4 是 hwMemberStackMacAddress，不能当角色采。
     [[inputs.snmp.table]]
         name = "device_stack_member"
         inherit_tags = ["source"]
@@ -157,20 +161,21 @@
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.20.1.4"
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.20.1.3"
         name = "role"
-    # 校园早期 iStack / CSS 成员表：hwMemberStackId ...183.1.4.1.1 / hwMemberStackRole ...183.1.4.1.3
+    # CSS 成员：hwCssMemberFrameId ...183.3.2.1.1 / hwCssMemberRole ...183.3.2.1.8
+    # 角色 INTEGER：master(1)/standby(2)/slave(3)/single(4)/unknown(10)
     [[inputs.snmp.table]]
         name = "device_css_member"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.4.1.1"
+        oid = "1.3.6.1.4.1.2011.5.25.183.3.2.1.1"
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.4.1.3"
+        oid = "1.3.6.1.4.1.2011.5.25.183.3.2.1.8"
         name = "role"
-    # Stack port：hwStackPortName ...183.1.21.1.3 / hwStackPortStatus ...183.1.21.1.5（1=up,2=down）
+    # 堆叠口：hwStackPortName ...183.1.21.1.3 / hwStackPortStatus ...183.1.21.1.5 = up(1)/down(2)
     [[inputs.snmp.table]]
         name = "device_stack_port"
         inherit_tags = ["source"]
@@ -181,36 +186,15 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.183.1.21.1.5"
         name = "state"
-    # CSS / 早期堆叠口：hwStackPortStatus ...183.1.5.1.3
+    # CSS 口：hwCssPortName ...183.3.4.1.5 / hwCssPortOperStatus ...183.3.4.1.7 = down(0)/up(1)
+    # 与堆叠口 up(1)/down(2) 不同；策略不得用 >1，down 必须按 ==0。
     [[inputs.snmp.table]]
         name = "device_css_port"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.5.1.1"
+        oid = "1.3.6.1.4.1.2011.5.25.183.3.4.1.5"
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.5.1.3"
-        name = "state"
-    # Stack link：hwStackLinkIndex ...183.1.22.1.1 / hwStackLinkStatus ...183.1.22.1.6
-    [[inputs.snmp.table]]
-        name = "device_stack_link"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.22.1.1"
-        name = "descr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.22.1.6"
-        name = "state"
-    # CSS / 早期堆叠链路：hwCssLink / hwStackLink ...183.1.6.1.1 / 状态 ...183.1.6.1.4
-    [[inputs.snmp.table]]
-        name = "device_css_link"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.6.1.1"
-        name = "descr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.183.1.6.1.4"
+        oid = "1.3.6.1.4.1.2011.5.25.183.3.4.1.7"
         name = "state"
