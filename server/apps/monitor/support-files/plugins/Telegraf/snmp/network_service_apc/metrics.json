@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_apc",
   "plugin": "NetworkService APC UPS PDU Environmental SNMP",
-  "plugin_desc": "APC UPS, PDU and environmental monitor SNMP baseline child template for network-service devices under APC PEN 318. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm UPS outlet group, diagnostic temperature, diagnostic humidity and battery voltage tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics across APC device families, so private health and UPS/PDU/environmental business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "APC PowerNet UPS SNMP collection for appliances under APC PEN 318. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds PowerNet battery charge percent and output load percent. Shared CPU, memory, fan and power-health scalars are not claimed across APC device families.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_apc'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,37 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "network_service_apc_battery_capacity",
+    "network_service_apc_output_load"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_battery_capacity",
+      "query": "avg(network_service_apc_battery_capacity{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "APC Battery Charge",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Remaining PowerNet UPS battery capacity as a percent of full charge."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_output_load",
+      "query": "avg(network_service_apc_output_load{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "APC Output Load",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current PowerNet UPS output load as a percent of rated capacity."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +61,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average inbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCInOctets counter."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +79,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average outbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCOutOctets counter."
     },
     {
       "metric_group": "Base",
@@ -64,7 +92,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }
