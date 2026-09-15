@@ -1,0 +1,49 @@
+Wireless Ruckus SNMP:
+  name: Ruckus (Telegraf)
+  desc: SNMP monitoring template for Ruckus ZoneDirector wireless controllers. It
+    reports system uptime, CPU utilization, memory utilization, associated AP count,
+    registered AP count, client station count, and licensed AP count (IANA PEN 25053).
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the wireless controller since the last
+        restart, derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the Ruckus wireless controller reported directly as a
+        0-100 percentage. Sustained high CPU usage can indicate heavy client-association
+        load or control-plane pressure affecting roaming and management responsiveness.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the Ruckus wireless controller reported directly as a
+        0-100 percentage. High memory pressure can cause the controller to drop client
+        associations or restart services, so investigate client counts or abnormal load
+        promptly.
+    wireless_ap_count:
+      name: Associated AP Count
+      desc: Number of access points associated with the ZoneDirector controller. A sudden
+        drop can indicate AP connectivity loss or a controller failover.
+    wireless_registered_ap_count:
+      name: Registered AP Count
+      desc: Number of access points currently registered with the ZoneDirector controller.
+        Compare with associated and licensed AP counts to spot registration gaps.
+    wireless_client_count:
+      name: Client Station Count
+      desc: Number of wireless client stations currently associated through the ZoneDirector
+        controller. Rapid growth can correlate with CPU and memory pressure on the
+        controller.
+    wireless_licensed_ap_count:
+      name: Licensed AP Count
+      desc: Number of access points licensed on the ZoneDirector controller. When
+        associated APs approach this limit, additional licenses may be required.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    Wireless: Wireless

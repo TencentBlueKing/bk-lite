@@ -68,7 +68,8 @@ export const useWirelessConfig = () => {
       'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
       'Wireless Xirrus SNMP': 'snmp_xirrus',
       'Wireless Huawei AC SNMP': 'snmp_huawei_ac',
-      'Wireless H3C SNMP': 'snmp_h3c'
+      'Wireless H3C SNMP': 'snmp_h3c',
+      'Wireless Ruckus SNMP': 'snmp_ruckus_wireless'
     }
   };
 };
