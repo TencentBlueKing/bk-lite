@@ -7,9 +7,10 @@ from django.utils import timezone
 
 from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
 from apps.apm.adapters.span_aliases import format_peer_endpoint, infer_downstream
-from apps.apm.models import ApmService
+from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.services import DjangoApmTopologyService, DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologyTarget, TraceDetail
+from apps.apm.services.topology import MAX_TOPOLOGY_TARGETS
 from apps.apm.tests.helpers import create_application
 
 
@@ -880,6 +881,128 @@ def test_topology_api_application_id_samples_only_that_application(apm_api_clien
 
     assert response.status_code == 200
     assert captured["names"] == ("checkout",)
+
+
+def _ordered_application_service_names(application_id: str) -> tuple[str, ...]:
+    ids = list(
+        ApmServiceInstance.objects.filter(service__application__application_id=application_id)
+        .order_by("service_id", "environment")
+        .distinct("service_id", "environment")
+        .values_list("pk", flat=True)
+    )
+    names_by_id = dict(ApmServiceInstance.objects.filter(pk__in=ids).values_list("pk", "service__name"))
+    return tuple(names_by_id[pk] for pk in ids if pk in names_by_id)
+
+
+def _discover_named_services(application_id: str, names: tuple[str, ...], now, *, environment: str = "prod"):
+    catalog = DjangoTelemetryCatalogService()
+    for name in names:
+        catalog.discover(CatalogDiscovery(application_id, name, f"{name}-1", environment, seen_at=now))
+    return catalog
+
+
+def _capturing_topology_service():
+    captured: dict[str, object] = {}
+
+    class _Store(InMemoryTraceStore):
+        def sample_traces(self, query):
+            captured["query_names"] = query.service_names
+            return super().sample_traces(query)
+
+    class _Service(DjangoApmTopologyService):
+        def build(self, targets, *args, **kwargs):
+            captured["targets"] = tuple(targets)
+            captured["sample_service_names"] = kwargs.get("sample_service_names")
+            return super().build(targets, *args, **kwargs)
+
+    return _Service(_Store()), captured
+
+
+@pytest.mark.django_db
+def test_topology_api_caps_org_targets_before_sampling(apm_api_client, mocker):
+    now = timezone.now()
+    create_application("shop", (10,))
+    names = tuple(f"shop-svc-{index:02d}" for index in range(MAX_TOPOLOGY_TARGETS + 1))
+    _discover_named_services("shop", names, now)
+    service, captured = _capturing_topology_service()
+    mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
+
+    response = apm_api_client.get("/api/v1/apm/topology/", {"environment": "prod"})
+
+    assert response.status_code == 200
+    assert len(captured["targets"]) <= MAX_TOPOLOGY_TARGETS + 1
+    assert len(captured["query_names"]) <= MAX_TOPOLOGY_TARGETS
+    assert response.data["truncated"] is True
+
+
+@pytest.mark.django_db
+def test_topology_api_application_id_samples_only_selected_app_targets(apm_api_client, mocker):
+    now = timezone.now()
+    create_application("shop", (10,))
+    create_application("billing", (10,))
+    shop_names = tuple(f"shop-svc-{index:02d}" for index in range(MAX_TOPOLOGY_TARGETS + 1))
+    billing_names = ("billing-invoice", "billing-ledger")
+    _discover_named_services("shop", shop_names, now)
+    _discover_named_services("billing", billing_names, now)
+    service, captured = _capturing_topology_service()
+    mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
+
+    response = apm_api_client.get("/api/v1/apm/topology/", {"environment": "prod", "application_id": "shop"})
+
+    selected = captured["targets"][:MAX_TOPOLOGY_TARGETS]
+    sample_names = captured["sample_service_names"]
+    ordered_shop_names = _ordered_application_service_names("shop")
+    truncated_shop_name = ordered_shop_names[MAX_TOPOLOGY_TARGETS]
+    assert response.status_code == 200
+    assert len(ordered_shop_names) == MAX_TOPOLOGY_TARGETS + 1
+    assert all(target.service_namespace == "shop" for target in selected)
+    assert tuple(target.service_name for target in selected) == ordered_shop_names[:MAX_TOPOLOGY_TARGETS]
+    assert sample_names == ordered_shop_names[:MAX_TOPOLOGY_TARGETS]
+    assert truncated_shop_name not in sample_names
+    assert truncated_shop_name not in captured["query_names"]
+    assert not any(name.startswith("billing-") for name in sample_names)
+    assert response.data["truncated"] is True
+
+
+@pytest.mark.django_db
+def test_topology_api_counts_same_service_environments_as_separate_targets(apm_api_client, mocker):
+    now = timezone.now()
+    create_application("shop", (10,))
+    catalog = DjangoTelemetryCatalogService()
+    catalog.discover(CatalogDiscovery("shop", "gateway", "gateway-prod", "prod", seen_at=now))
+    catalog.discover(CatalogDiscovery("shop", "gateway", "gateway-staging", "staging", seen_at=now))
+    service, captured = _capturing_topology_service()
+    mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
+
+    response = apm_api_client.get("/api/v1/apm/topology/")
+
+    assert response.status_code == 200
+    assert {(target.service_name, target.environment) for target in captured["targets"]} == {
+        ("gateway", "prod"),
+        ("gateway", "staging"),
+    }
+
+
+def test_topology_build_intersects_sample_service_names_with_selected_targets():
+    now = timezone.now()
+    captured: dict[str, tuple[str, ...]] = {}
+
+    class _Store(InMemoryTraceStore):
+        def sample_traces(self, query):
+            captured["names"] = query.service_names
+            return super().sample_traces(query)
+
+    overflow_names = tuple(f"svc-{index:02d}" for index in range(MAX_TOPOLOGY_TARGETS + 1))
+    targets = [TopologyTarget("shop", name, "prod") for name in overflow_names]
+    DjangoApmTopologyService(_Store()).build(
+        targets,
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        sample_service_names=overflow_names,
+    )
+
+    assert captured["names"] == overflow_names[:MAX_TOPOLOGY_TARGETS]
+    assert overflow_names[-1] not in captured["names"]
 
 
 def test_sample_traces_span_fetch_failure_is_unavailable_not_empty(caplog):
