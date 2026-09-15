@@ -157,7 +157,7 @@ def test_validate_instance_fields_update_allows_blank_secret_and_does_not_overwr
     fields = [
         {"id": "auth_method", "kind": "enum", "values": ["password", "key"]},
         {"id": "password", "kind": "secret", "required": True, "visible_when": {"auth_method": "password"}},
-        {"id": "private_key", "kind": "secret", "required": True, "visible_when": {"auth_method": "key"}}
+        {"id": "private_key", "kind": "secret", "required": True, "visible_when": {"auth_method": "key"}},
     ]
 
     assert validate_instance_fields(
@@ -187,6 +187,7 @@ def test_validate_instance_fields_rejects_unknown_or_invalid_values(values):
     ]
     with pytest.raises(SchemaError):
         validate_instance_fields(type_fields=fields, values=values, require_secrets=False)
+
 
 def test_validate_instance_fields_rejects_blank_required_non_secret():
     with pytest.raises(SchemaError):
@@ -303,6 +304,18 @@ def test_snmp_v3_conditional_required_and_v2c_ignores_leftover_level():
     from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES
 
     snmp = BUILTIN_TYPES["snmp"]["fields"]
+    version_field = next(field for field in snmp if field["id"] == "version")
+    community_field = next(field for field in snmp if field["id"] == "community")
+    assert version_field["values"] == ["v2", "v2c", "v3"]
+    assert community_field["visible_when"] == {"version": {"op": "ne", "value": "v3"}}
+
+    v2 = validate_instance_fields(
+        type_fields=snmp,
+        values={"version": "v2", "community": "public", "security_level": "authPriv"},
+        require_secrets=True,
+    )
+    assert v2 == {"version": "v2", "community": "public"}
+
     v2c = validate_instance_fields(
         type_fields=snmp,
         values={"version": "v2c", "community": "public", "security_level": "authPriv"},
@@ -350,5 +363,3 @@ def test_snmp_v3_conditional_required_and_v2c_ignores_leftover_level():
         require_secrets=True,
     )
     assert auth_priv["priv_protocol"] == "AES"
-
-
