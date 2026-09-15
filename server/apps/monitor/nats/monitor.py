@@ -58,6 +58,8 @@ from apps.monitor.services.host_dashboard import (
     HostResourceSnapshotService,
     build_host_instance_rows,
     empty_host_snapshot,
+    resolve_instance_storage_ids,
+    select_instances_by_ids,
     validate_range_metric_type,
 )
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
@@ -102,6 +104,7 @@ from apps.monitor.services.zombie_host_report import (
     validate_inst_uuids,
     wrap_max_over_time,
 )
+from apps.monitor.utils.alert_name_variables import resolve_resource_ip
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
@@ -835,9 +838,12 @@ def monitor_object_instances(monitor_obj_id: str, *args, **kwargs):
     # 构建返回数据
     filtered_instances = []
     for instance in instances:
+        logical_id = str(parse_instance_id(instance.id)[0])
         instance_data = {
             "id": instance.id,
+            "instance_id": logical_id,
             "name": instance.name,
+            "ip": resolve_resource_ip(instance.summary_facts, instance.ip) or None,
             "monitor_object_id": instance.monitor_object.id,
             "monitor_object_name": instance.monitor_object.name,
             "interval": instance.interval,
@@ -925,24 +931,12 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
         return {"result": False, "data": [], "message": str(exc)}
 
     authorized_qs = _get_authorized_instance_queryset(permission)
-
-    authorized_instances = list(
-        authorized_qs.filter(
-            id__in=instance_ids,
-            monitor_object=monitor_obj,
-            is_deleted=False,
-        ).values_list("id", flat=True)
-    )
-    if set(authorized_instances) != set(instance_ids):
+    authorized_map = {str(instance.id): instance for instance in authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False)}
+    instance_ids, unresolved = resolve_instance_storage_ids(authorized_map, instance_ids)
+    if unresolved or not instance_ids:
         return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
-    instance_ids = authorized_instances
 
-    authorized_instance_ids = set(
-        authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False).values_list(
-            "id",
-            flat=True,
-        )
-    )
+    authorized_instance_ids = set(authorized_map)
 
     try:
         merged_result = None
@@ -1031,16 +1025,12 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         return {"result": False, "data": [], "message": "监控对象不存在"}
 
     authorized_qs = _get_authorized_instance_queryset(permission)
-    instance = (
-        authorized_qs.filter(
-            id=instance_id,
-            monitor_object=monitor_obj,
-            is_deleted=False,
-            is_active=True,
-        )
-        .select_related("monitor_object")
-        .first()
-    )
+    authorized_map = {
+        str(item.id): item
+        for item in authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False, is_active=True).select_related("monitor_object")
+    }
+    selected = select_instances_by_ids(authorized_map, [instance_id])
+    instance = selected[0] if selected else None
     if not instance:
         return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
 
@@ -1064,7 +1054,7 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
             if metric.query:
                 query_by_metric_id[metric.id] = _build_metric_label_query(
                     metric.query,
-                    instance_ids=[instance_id],
+                    instance_ids=[instance.id],
                 )
         vm_api = VictoriaMetricsAPI()
 
@@ -1184,8 +1174,8 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
         permission,
         scope_ids,
     ).filter(monitor_object_id=monitor_obj_id, is_deleted=False, is_active=True)
-    authorized_instance_ids = set(authorized_qs.values_list("id", flat=True))
-    if not authorized_instance_ids:
+    authorized_map = {str(instance.id): instance for instance in authorized_qs}
+    if not authorized_map:
         return {
             "result": True,
             "data": _paginate_items([], page, page_size),
@@ -1193,10 +1183,12 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
         }
 
     if instance_ids:
-        filtered_instance_ids = [instance for instance in instance_ids if instance in authorized_instance_ids]
-        if not filtered_instance_ids:
+        storage_ids, _unresolved = resolve_instance_storage_ids(authorized_map, instance_ids)
+        if not storage_ids:
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
-        authorized_instance_ids = set(filtered_instance_ids)
+        authorized_instance_ids = set(storage_ids)
+    else:
+        authorized_instance_ids = set(authorized_map)
 
     accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
     if policy_error:
@@ -1302,13 +1294,12 @@ def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids)
 
 
 def _filter_requested_alert_instances(authorized_instances, instance_ids):
-    authorized_instance_ids = set(authorized_instances.keys())
     requested_instance_ids = list(dict.fromkeys(instance_ids))
     if requested_instance_ids:
-        filtered_instance_ids = [instance for instance in requested_instance_ids if instance in authorized_instance_ids]
-        if not filtered_instance_ids:
+        storage_ids, _unresolved = resolve_instance_storage_ids(authorized_instances, requested_instance_ids)
+        if not storage_ids:
             return None, None, {"result": False, "data": [], "message": "没有权限访问指定的实例"}
-        return set(filtered_instance_ids), filtered_instance_ids, None
+        return set(storage_ids), storage_ids, None
     if not authorized_instances:
         return (
             None,
@@ -1319,7 +1310,7 @@ def _filter_requested_alert_instances(authorized_instances, instance_ids):
                 "message": "",
             },
         )
-    return authorized_instance_ids, [], None
+    return set(authorized_instances.keys()), [], None
 
 
 def _build_latest_active_alert_items(queryset, authorized_instances, limit):
@@ -1520,7 +1511,7 @@ def get_host_resource_top(metric_type: str, *args, **kwargs):
             requested_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
         except ValueError as exc:
             return {"result": False, "data": [], "message": str(exc)}
-        selected_instances = [authorized_instances[item] for item in requested_ids if item in authorized_instances]
+        selected_instances = select_instances_by_ids(authorized_instances, requested_ids)
     else:
         selected_instances = list(authorized_instances.values())
     if not selected_instances:
@@ -1582,7 +1573,7 @@ def get_host_metric_range(*args, **kwargs):
     authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
     if error:
         return error
-    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    selected_instances = select_instances_by_ids(authorized_instances, instance_ids)
     if not selected_instances:
         return {"result": True, "data": {}, "message": ""}
 
@@ -1618,7 +1609,7 @@ def get_host_resource_snapshot(*args, **kwargs):
     authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
     if error:
         return error
-    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    selected_instances = select_instances_by_ids(authorized_instances, instance_ids)
     if not selected_instances:
         return {"result": True, "data": empty_host_snapshot(), "message": ""}
 
@@ -2156,7 +2147,7 @@ def query_metric_series(*args, **kwargs):
     authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
     if error:
         return error
-    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    selected_instances = select_instances_by_ids(authorized_instances, instance_ids)
     if not selected_instances:
         return {"result": True, "data": empty, "message": ""}
 

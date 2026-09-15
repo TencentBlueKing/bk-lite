@@ -227,7 +227,7 @@ tools:
       monitor_query_metric_data:
         description: "[Host CPU] Step 4: query metric time series; needs object, metric, optional time range (default last 1h), optional instance_ids."
       monitor_list_active_alerts:
-        description: "[Host alerts] List current active alerts; filter by object/instance/level."
+        description: "[Host alerts] List current active alerts; filter by object/instance/level. instance_ids accepts instance_id, name, or IP."
       monitor_query_alert_segments:
         description: "[Host alert history] Query alert segments in a time window."
       monitor_get_host_resource_snapshot:

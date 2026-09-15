@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, to_monitor_epoch_ms, wrap_error
 
 
-@tool(description=("【主机告警】查询BK-Lite当前活跃告警。" "可按monitor_obj_id/instance_ids/级别过滤；排查主机告警用此工具。"))
+@tool(description=("【主机告警】查询BK-Lite当前活跃告警。" "可按monitor_obj_id/instance_ids/级别过滤；instance_ids可用列表返回的instance_id，也可用实例名或IP。"))
 def monitor_list_active_alerts(
     config: RunnableConfig = None,
     monitor_obj_id: Optional[str] = None,

@@ -53,8 +53,9 @@ class ToolPlanningError(RuntimeError):
 # 弱模型常忽略模糊描述；目录含 monitor_* 时用系统侧导读强制对齐主机指标场景。
 _MONITOR_CATALOG_HINT = (
     "能力导读：目录含 monitor_* 时，可查 BK-Lite 已纳管主机/实例的 CPU使用率、内存、磁盘与告警。"
-    "用户问「主机名xxx的CPU」必须规划 monitor_* 步骤，典型顺序："
+    "用户问「主机名或IP xxx的CPU」必须规划 monitor_* 步骤，典型顺序："
     "monitor_list_objects→monitor_list_object_instances→monitor_list_object_metrics→monitor_query_metric_data；"
+    "instance_ids 优先用列表返回的 instance_id，实例名或 IP 也可传入后续工具；"
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
 )
 

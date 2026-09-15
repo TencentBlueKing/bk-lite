@@ -221,7 +221,7 @@ tools:
       monitor_query_metric_data:
         description: 【主机CPU】第4步，查询指标时序；需对象、metric、可选时间窗（默认近1小时），可选 instance_ids。
       monitor_list_active_alerts:
-        description: 【主机告警】查询当前活跃告警，可按对象/实例/级别过滤。
+        description: 【主机告警】查询当前活跃告警，可按对象/实例/级别过滤；实例可用 instance_id、实例名或 IP。
       monitor_query_alert_segments:
         description: 【主机告警历史】按时间窗查询告警片段。
       monitor_get_host_resource_snapshot:

@@ -17,6 +17,7 @@ def _runtime_config(identity=CALLER_IDENTITY, **legacy_configurable):
 
 def _monitor_tools():
     from apps.opspilot.metis.llm.tools.monitor import (
+        monitor_get_host_resource_snapshot,
         monitor_list_active_alerts,
         monitor_list_instance_metrics,
         monitor_list_object_instances,
@@ -24,7 +25,6 @@ def _monitor_tools():
         monitor_list_objects,
         monitor_query_alert_segments,
         monitor_query_metric_data,
-        monitor_get_host_resource_snapshot,
     )
 
     return [
@@ -62,6 +62,7 @@ def test_monitor_tool_descriptions_guide_host_metric_queries():
     instances = tools["monitor_list_object_instances"].description
     assert "第2步" in instances
     assert "主机名" in instances or "名称" in instances or "boxxxxx" in instances
+    assert "IP" in instances
 
 
 def test_monitor_constructor_has_no_identity_params():
@@ -404,15 +405,26 @@ def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
     )
 
 
+def _instance_rpc_rows():
+    return [
+        {"id": "h1", "name": "web-01", "ip": "10.0.0.1", "instance_id": "h1", "interval": 60},
+        {
+            "id": "('MTVmOTFiYTM5ODZk',)",
+            "name": "local",
+            "ip": "10.10.41.149",
+            "instance_id": "MTVmOTFiYTM5ODZk",
+            "permission": ["View"],
+        },
+        {"id": "h3", "name": "db-01", "ip": "10.0.0.2"},
+    ]
+
+
 def test_monitor_list_object_instances_filters_keyword_locally(mocker):
     from apps.opspilot.metis.llm.tools.monitor import utils
     from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
 
     rpc = mocker.Mock()
-    rpc.monitor_object_instances.return_value = {
-        "result": True,
-        "data": [{"id": "h1", "name": "web-01"}, {"id": "h2", "name": "db-01"}],
-    }
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
     mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
 
     result = monitor_list_object_instances.invoke(
@@ -420,7 +432,7 @@ def test_monitor_list_object_instances_filters_keyword_locally(mocker):
         config=_runtime_config(),
     )
 
-    assert result == {"success": True, "data": [{"id": "h1", "name": "web-01"}]}
+    assert result == {"success": True, "data": [{"id": "h1", "name": "web-01", "ip": "10.0.0.1", "instance_id": "h1"}]}
     rpc.monitor_object_instances.assert_called_once_with(
         user_info={
             "user": "alice",
@@ -430,6 +442,82 @@ def test_monitor_list_object_instances_filters_keyword_locally(mocker):
         },
         monitor_obj_id="host",
     )
+
+
+def test_monitor_list_object_instances_matches_ip_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "10.10.41.149"},
+        config=_runtime_config(),
+    )
+
+    assert result == {
+        "success": True,
+        "data": [
+            {
+                "id": "MTVmOTFiYTM5ODZk",
+                "name": "local",
+                "ip": "10.10.41.149",
+                "instance_id": "MTVmOTFiYTM5ODZk",
+            }
+        ],
+    }
+
+
+def test_monitor_list_object_instances_matches_asset_ip_fact(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {
+        "result": True,
+        "data": [
+            {"id": "h2", "name": "local", "ip": None, "summary_facts": {"asset.ip": "10.10.41.149"}},
+            {"id": "h3", "name": "db-01", "ip": "10.0.0.2"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "10.10.41.149"},
+        config=_runtime_config(),
+    )
+
+    assert result == {"success": True, "data": [{"id": "h2", "name": "local", "ip": None}]}
+
+
+def test_monitor_list_object_instances_keeps_ip_without_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host"},
+        config=_runtime_config(),
+    )
+
+    assert result == {
+        "success": True,
+        "data": [
+            {"id": "h1", "name": "web-01", "ip": "10.0.0.1", "instance_id": "h1"},
+            {
+                "id": "MTVmOTFiYTM5ODZk",
+                "name": "local",
+                "ip": "10.10.41.149",
+                "instance_id": "MTVmOTFiYTM5ODZk",
+            },
+            {"id": "h3", "name": "db-01", "ip": "10.0.0.2"},
+        ],
+    }
 
 
 def test_monitor_call_rpc_preserves_monitor_error_response(mocker):
