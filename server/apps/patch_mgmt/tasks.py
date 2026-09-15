@@ -27,25 +27,45 @@ ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 
 
 @shared_task(max_retries=0)
-def check_patch_source_connectivity(source_id: int) -> None:
+def check_patch_source_connectivity(source_id: int, revision: int | None = None) -> None:
     """补丁源连通性探测 Celery 入口。
 
     执行真实 HTTP 探测（connectivity_prober.probe_source）：
       - 有 URL：探测可达性 → record_connectivity_result 写回 CONNECTED/FAILED。
       - 无 URL：无法探测 → 重置为 UNKNOWN。
+      - 无 revision 且当前配置版本 > 0：fail-closed，不覆盖更新后的 UNKNOWN。
 
     Args:
         source_id: PatchSource.pk
+        revision: 排队时的配置版本；旧任务可省略。
     """
     from apps.patch_mgmt.models import PatchSource
     from apps.patch_mgmt.services.connectivity_prober import probe_source
     from apps.patch_mgmt.services.source_sync_service import SourceSyncService
 
-    logger.info("[check_patch_source_connectivity] 开始: source_id=%s", source_id)
+    logger.info("[check_patch_source_connectivity] 开始: source_id=%s revision=%s", source_id, revision)
     try:
         source = PatchSource.objects.get(pk=source_id)
     except PatchSource.DoesNotExist:
         logger.error("[check_patch_source_connectivity] 补丁源不存在: source_id=%s", source_id)
+        return
+
+    if revision is None:
+        if source.connectivity_revision > 0:
+            logger.info(
+                "[check_patch_source_connectivity] 跳过无版本的旧探测: source_id=%s current_revision=%s",
+                source_id,
+                source.connectivity_revision,
+            )
+            return
+        revision = source.connectivity_revision
+    elif revision != source.connectivity_revision:
+        logger.info(
+            "[check_patch_source_connectivity] 跳过过期探测: source_id=%s task_revision=%s current_revision=%s",
+            source_id,
+            revision,
+            source.connectivity_revision,
+        )
         return
 
     result = probe_source(source)
@@ -59,7 +79,7 @@ def check_patch_source_connectivity(source_id: int) -> None:
         )
         return
 
-    SourceSyncService.record_connectivity_result(source, reachable=result.reachable)
+    SourceSyncService.record_connectivity_result(source, reachable=result.reachable, revision=revision)
     logger.info(
         "[check_patch_source_connectivity] 探测完成: source_id=%s name=%s %s",
         source_id,
