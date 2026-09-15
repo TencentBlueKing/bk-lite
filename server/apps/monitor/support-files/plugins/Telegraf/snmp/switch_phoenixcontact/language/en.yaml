@@ -1,7 +1,9 @@
 Switch Phoenix Contact SNMP:
   name: Phoenix Contact (Telegraf)
-  desc: SNMP monitoring template for Phoenix Contact switch. It reports system uptime,
-    interface speed, inbound error packets, and other key metrics (IANA PEN 4346).
+  desc: SNMP monitoring template for Phoenix Contact FL SWITCH industrial Ethernet
+    switches. It reports system uptime, interface traffic via the shared IF-MIB floor,
+    redundant power status, chassis temperature, firmware operational status, and
+    alarm-contact status (IANA PEN 4346).
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -160,6 +162,21 @@ monitor_object_metric:
         the device. A non-normal state signals a power redundancy or hardware fault;
         on devices with redundant PSUs a single failure may not cause an outage but
         removes redundancy and must be remediated promptly.
+    power_status:
+      name: Power Status
+      desc: Redundant power-supply status of the Phoenix Contact FL SWITCH. Native
+        codes are unknown (1), supply 1 OK (3), supply 2 OK (4), and both supplies
+        OK (5). A value other than 5 means a lost input or unknown power state.
+    firmware_oper_status:
+      name: Firmware Operational Status
+      desc: Firmware operational state of the Phoenix Contact FL SWITCH. Native
+        codes are other (1), ok (2), and notOk (3). A value other than 2 indicates
+        the firmware is not in normal running mode.
+    alarm_contact_status:
+      name: Alarm Contact Status
+      desc: Alarm-contact status of the Phoenix Contact FL SWITCH. Native codes are
+        open (1, alarm asserted) and closed (2, no alarm). An open contact means
+        a configured alarm condition is active.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
