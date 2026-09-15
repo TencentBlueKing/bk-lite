@@ -477,7 +477,7 @@ def _create_evaluation_task(
     default_name_prefix: str,
 ) -> GovernanceTask:
     """评估/验证任务创建公共逻辑。"""
-    target_ids = [int(t) for t in target_ids if t]
+    target_ids = list(dict.fromkeys(int(t) for t in target_ids if t))
     if not target_ids:
         raise PatchBusinessError("target_ids_required", "target_ids is required")
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))
