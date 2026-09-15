@@ -202,7 +202,7 @@ export const useInstanceApi = () => {
     ip_allocated_status: string;
     ip_status?: string;
     ip_type?: string;
-    ip_user?: string[];
+    ip_user?: number[];
     mac?: string;
     description?: string;
   }) => post('/cmdb/api/instance/ipam_ip/', params);

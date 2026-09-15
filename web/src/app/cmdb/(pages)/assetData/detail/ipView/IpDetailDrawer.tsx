@@ -34,6 +34,7 @@ import {
   isEditableIpAttr,
   isPersistedIp,
   listDrawerIpAttrs,
+  normalizeUserIds,
   type IpamEditPayload,
   type IpamModelAttr,
 } from './ipamEdit';
@@ -50,7 +51,7 @@ interface IpDetailDrawerProps {
   onSave: (payload: IpamEditPayload) => Promise<void> | void;
 }
 
-type DraftValue = string | string[];
+type DraftValue = string | string[] | number[];
 
 const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
   ip,
@@ -157,11 +158,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
       [IPAM_ALLOC_ATTR_ID]: currentAlloc || (persisted ? '' : defaultAllocStatus(allocOptions)),
       [IPAM_STATUS_ATTR_ID]: firstEnum(record[IPAM_STATUS_ATTR_ID]) || '',
       [IPAM_TYPE_ATTR_ID]: firstEnum(record[IPAM_TYPE_ATTR_ID]) || '',
-      [IPAM_USER_ATTR_ID]: Array.isArray(record[IPAM_USER_ATTR_ID])
-        ? (record[IPAM_USER_ATTR_ID] as unknown[]).map(String)
-        : record[IPAM_USER_ATTR_ID]
-          ? [String(record[IPAM_USER_ATTR_ID])]
-          : [],
+      [IPAM_USER_ATTR_ID]: normalizeUserIds(record[IPAM_USER_ATTR_ID]),
       [IPAM_MAC_ATTR_ID]: record[IPAM_MAC_ATTR_ID] == null ? '' : String(record[IPAM_MAC_ATTR_ID]),
       [IPAM_DESC_ATTR_ID]: record[IPAM_DESC_ATTR_ID] == null ? '' : String(record[IPAM_DESC_ATTR_ID]),
     });
@@ -248,13 +245,13 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
       return (
         <Select
           mode="multiple"
-          value={(draft[attr.attr_id] as string[]) || []}
+          value={(draft[attr.attr_id] as number[]) || []}
           disabled={disabled}
           showSearch
           optionFilterProp="label"
           placeholder={t('common.selectTip', isZh ? '请选择' : 'Select')}
           options={userList.map((user) => ({
-            value: String(user.id),
+            value: Number(user.id),
             label: `${user.display_name || user.username}(${user.username})`,
           }))}
           onChange={(value) => patchDraft(attr.attr_id, value)}
@@ -307,7 +304,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
         allocatedStatus,
         ipStatus: String(draft[IPAM_STATUS_ATTR_ID] || ''),
         ipType: String(draft[IPAM_TYPE_ATTR_ID] || ''),
-        ipUser: Array.isArray(draft[IPAM_USER_ATTR_ID]) ? (draft[IPAM_USER_ATTR_ID] as string[]) : [],
+        ipUser: draft[IPAM_USER_ATTR_ID],
         mac: String(draft[IPAM_MAC_ATTR_ID] || ''),
         description: String(draft[IPAM_DESC_ATTR_ID] || ''),
       })

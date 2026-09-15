@@ -212,3 +212,32 @@ def test_ipam_ip_rejects_address_outside_subnet():
             )
         )
     assert resp.status_code == 400
+
+
+def test_ipam_ip_lookup_uses_subnet_instance(monkeypatch):
+    """手工登记用整份子网实例查已有 IP，不能只传 _id。"""
+    user = _user(["asset_info-Add"])
+    created = {"inst_uuid": "new-ip", "ip_addr": "10.11.27.10", "model_id": "ip"}
+
+    def fake_execute(**kwargs):
+        return {"action": "create", "ip": created}
+
+    monkeypatch.setattr("apps.cmdb.services.ipam_edit.execute_manual_ip_action", fake_execute)
+    with _grant_subnet_view(), patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_uuid", return_value=SUBNET), patch(
+        "apps.cmdb.services.ipam_view._query_subnet_ips_by_association", return_value=[]
+    ), patch("apps.cmdb.services.ipam_view._query_subnet_ips_by_field", return_value=[]), patch.object(
+        InstanceViewSet, "_get_allowed_org_ids", return_value=[1]
+    ):
+        resp = _call(
+            _request(
+                user,
+                {
+                    "subnet_inst_uuid": "subnet-uuid",
+                    "ip_addr": "10.11.27.10",
+                    "ip_allocated_status": "allocated",
+                },
+            )
+        )
+    assert resp.status_code == 200
+    body = json.loads(resp.content)
+    assert body["data"]["action"] == "create"
