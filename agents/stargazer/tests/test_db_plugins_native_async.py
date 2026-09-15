@@ -4,15 +4,13 @@
 from __future__ import annotations
 
 import asyncio
-import time
 
 import pytest
-
 from core.collection.contracts import AccessProbeStatus
-from plugins.inputs.mysql.mysql_info import MysqlInfo
-from plugins.inputs.postgresql.postgresql_info import PostgresqlInfo
-from plugins.inputs.oracle.oracle_info import OracleInfo
 from plugins.inputs.mssql.mssql_info import MSSQLInfo
+from plugins.inputs.mysql.mysql_info import MysqlInfo
+from plugins.inputs.oracle.oracle_info import OracleInfo
+from plugins.inputs.postgresql.postgresql_info import PostgresqlInfo
 
 
 async def _heartbeat_during(awaitable, minimum_ticks: int = 5):
@@ -83,12 +81,8 @@ async def test_mysql_probe_native_async_does_not_stall(monkeypatch):
         await asyncio.sleep(0.05)
         return _AsyncMysqlConn(rows)
 
-    monkeypatch.setattr(
-        "plugins.inputs.mysql.mysql_info.aiomysql.connect", connect
-    )
-    plugin = MysqlInfo(
-        {"host": "10.0.0.8", "port": 3306, "user": "collector", "password": "secret"}
-    )
+    monkeypatch.setattr("plugins.inputs.mysql.mysql_info.aiomysql.connect", connect)
+    plugin = MysqlInfo({"host": "10.0.0.8", "port": 3306, "user": "collector", "password": "secret"})
     result = await _heartbeat_during(plugin.probe())
     assert result.status == AccessProbeStatus.READY
     assert result.evidence == {"server_version": "8.0.36"}
@@ -101,12 +95,8 @@ async def test_mysql_probe_auth_failure(monkeypatch):
     async def rejected(**_kwargs):
         raise OperationalError(1045, "Access denied for password secret-do-not-return")
 
-    monkeypatch.setattr(
-        "plugins.inputs.mysql.mysql_info.aiomysql.connect", rejected
-    )
-    result = await MysqlInfo(
-        {"host": "10.0.0.8", "user": "collector", "password": "secret-do-not-return"}
-    ).probe()
+    monkeypatch.setattr("plugins.inputs.mysql.mysql_info.aiomysql.connect", rejected)
+    result = await MysqlInfo({"host": "10.0.0.8", "user": "collector", "password": "secret-do-not-return"}).probe()
     assert result.status == AccessProbeStatus.AUTH_FAILED
     assert result.error_code == "authentication_failed"
     assert "secret-do-not-return" not in result.detail
@@ -117,9 +107,7 @@ async def test_mysql_list_all_resources_native_async(monkeypatch):
     rows = {
         'SELECT table_schema AS "name", '
         'SUM(data_length + index_length) AS "size" '
-        'FROM information_schema.TABLES GROUP BY table_schema': [
-            {"name": "app", "size": 10}
-        ],
+        "FROM information_schema.TABLES GROUP BY table_schema": [{"name": "app", "size": 10}],
         "SHOW GLOBAL VARIABLES": [
             {"Variable_name": "version", "Value": "8.0.36"},
             {"Variable_name": "log_bin", "Value": "ON"},
@@ -147,12 +135,8 @@ async def test_mysql_list_all_resources_native_async(monkeypatch):
     async def connect(**_kwargs):
         return _AsyncMysqlConn(rows)
 
-    monkeypatch.setattr(
-        "plugins.inputs.mysql.mysql_info.aiomysql.connect", connect
-    )
-    result = await MysqlInfo(
-        {"host": "10.0.0.8", "port": 3306, "user": "u", "password": "p"}
-    ).list_all_resources()
+    monkeypatch.setattr("plugins.inputs.mysql.mysql_info.aiomysql.connect", connect)
+    result = await MysqlInfo({"host": "10.0.0.8", "port": 3306, "user": "u", "password": "p"}).list_all_resources()
     assert result["success"] is True
     row = result["result"]["mysql"][0]
     assert row["version"] == "8.0.36"
@@ -202,11 +186,7 @@ async def test_postgresql_probe_native_async_does_not_stall(monkeypatch):
         "plugins.inputs.postgresql.postgresql_info.psycopg.AsyncConnection.connect",
         connect,
     )
-    result = await _heartbeat_during(
-        PostgresqlInfo(
-            {"host": "10.0.0.9", "user": "collector", "password": "secret"}
-        ).probe()
-    )
+    result = await _heartbeat_during(PostgresqlInfo({"host": "10.0.0.9", "user": "collector", "password": "secret"}).probe())
     assert result.status == AccessProbeStatus.READY
     assert result.evidence == {"server_version": "16.2"}
 
@@ -229,9 +209,7 @@ async def test_postgresql_list_all_resources_native_async(monkeypatch):
         "plugins.inputs.postgresql.postgresql_info.psycopg.AsyncConnection.connect",
         connect,
     )
-    result = await PostgresqlInfo(
-        {"host": "10.0.0.9", "port": 5432, "user": "u", "password": "p"}
-    ).list_all_resources()
+    result = await PostgresqlInfo({"host": "10.0.0.9", "port": 5432, "user": "u", "password": "p"}).list_all_resources()
     assert result["success"] is True
     row = result["result"]["postgresql"][0]
     assert row["version"] == "16.2"
@@ -247,16 +225,29 @@ class _OracleCursor:
         self.rows = rows
         self.description = []
         self._row = None
+        self._rows = []
 
     async def execute(self, query):
         await asyncio.sleep(0.02)
-        self._row = self.rows.get(query)
-        self.description = [(k,) for k in (self._row or {}).keys()]
+        if query not in self.rows:
+            raise RuntimeError("ORA-00942")
+        raw = self.rows[query]
+        if isinstance(raw, list):
+            self._rows = raw
+            self._row = raw[0] if raw else None
+        else:
+            self._row = raw
+            self._rows = [raw] if raw else []
+        keys = (self._row or {}).keys()
+        self.description = [(k,) for k in keys]
 
     async def fetchone(self):
         if not self._row:
             return None
         return tuple(self._row.values())
+
+    async def fetchall(self):
+        return [tuple(item.values()) for item in self._rows]
 
     async def __aenter__(self):
         return self
@@ -282,21 +273,31 @@ class _OracleConn:
 @pytest.mark.asyncio
 async def test_oracle_list_all_resources_native_async(monkeypatch):
     rows = {
+        OracleInfo.SQL_QUERIES["con_name"]: {"CON_NAME": "ORCL"},
+        OracleInfo.SQL_QUERIES["database"]: {
+            "NAME": "ORCL",
+            "DB_UNIQUE_NAME": "orcl_unique",
+            "DATABASE_ROLE": "PRIMARY",
+            "LOG_MODE": "ARCHIVELOG",
+            "OPEN_MODE": "READ WRITE",
+        },
+        OracleInfo.SQL_QUERIES["cdb_flag"]: {"CDB": "NO"},
         OracleInfo.SQL_QUERIES["version"]: {"BANNER": "Oracle Database 19c"},
-        OracleInfo.SQL_QUERIES["max_mem"]: {"TOTAL_MEMORY": 1024},
+        OracleInfo.SQL_QUERIES["sga_max_size"]: {"VALUE": "1024"},
         OracleInfo.SQL_QUERIES["max_conn"]: {"VALUE": 300},
-        OracleInfo.SQL_QUERIES["db_name"]: {"NAME": "ORCL"},
-        OracleInfo.SQL_QUERIES["database_role"]: {"DATABASE_ROLE": "PRIMARY"},
-        OracleInfo.SQL_QUERIES["sid"]: {"SID": "orcl"},
+        OracleInfo.SQL_QUERIES["instance"]: {
+            "SID": "orcl",
+            "HOST_NAME": "db-1",
+            "STATUS": "OPEN",
+            "VERSION": "19.0.0.0.0",
+        },
     }
 
     async def connect_async(**_kwargs):
         await asyncio.sleep(0.05)
         return _OracleConn(rows)
 
-    monkeypatch.setattr(
-        "plugins.inputs.oracle.oracle_info.oracledb.connect_async", connect_async
-    )
+    monkeypatch.setattr("plugins.inputs.oracle.oracle_info.oracledb.connect_async", connect_async)
     result = await _heartbeat_during(
         OracleInfo(
             {
@@ -304,7 +305,7 @@ async def test_oracle_list_all_resources_native_async(monkeypatch):
                 "port": 1521,
                 "user": "system",
                 "password": "secret",
-                "service_name": "orclpdb",
+                "service_name": "orcl",
             }
         ).list_all_resources()
     )
@@ -313,6 +314,10 @@ async def test_oracle_list_all_resources_native_async(monkeypatch):
     assert row["version"] == "Oracle Database 19c"
     assert row["db_name"] == "ORCL"
     assert row["sid"] == "orcl"
+    assert row["inst_name"] == "orcl_unique"
+    assert row["collect_scope"] == "non_cdb"
+    assert result["result"]["oracle_instance"][0]["inst_name"] == "orcl_unique-orcl"
+    assert result["result"]["oracle_pdb"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -364,9 +369,7 @@ async def test_mssql_list_all_resources_native_async(monkeypatch):
         await asyncio.sleep(0.05)
         return _MssqlConn(rows)
 
-    monkeypatch.setattr(
-        "plugins.inputs.mssql.mssql_info.aioodbc.connect", connect
-    )
+    monkeypatch.setattr("plugins.inputs.mssql.mssql_info.aioodbc.connect", connect)
     result = await _heartbeat_during(
         MSSQLInfo(
             {
@@ -389,10 +392,11 @@ async def test_mssql_list_all_resources_native_async(monkeypatch):
 async def test_db_plugins_do_not_use_to_thread_wrappers():
     """原生异步改造后，公开入口不应再依赖 to_thread 包装。"""
     import inspect
-    from plugins.inputs.mysql import mysql_info as mysql_mod
-    from plugins.inputs.postgresql import postgresql_info as pg_mod
-    from plugins.inputs.oracle import oracle_info as oracle_mod
+
     from plugins.inputs.mssql import mssql_info as mssql_mod
+    from plugins.inputs.mysql import mysql_info as mysql_mod
+    from plugins.inputs.oracle import oracle_info as oracle_mod
+    from plugins.inputs.postgresql import postgresql_info as pg_mod
 
     for mod in (mysql_mod, pg_mod, oracle_mod, mssql_mod):
         source = inspect.getsource(mod)
