@@ -51,7 +51,7 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.20992.2.1.1.0"
+        oid = "1.3.6.1.4.1.20992.2.1.1"
         name = "usage"
     # ---- Cradlepoint memory (PEN 20992, memory utilization, 直接%, scalar) ----
     # 待现网核验：1.3.6.1.4.1.20992.2.1.2.0（内存使用率%）。device_memory_usage 直采。
@@ -59,7 +59,7 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.20992.2.1.2.0"
+        oid = "1.3.6.1.4.1.20992.2.1.2"
         name = "usage"
     # ---- Cradlepoint temperature (PEN 20992, internal temperature, °C 直采, scalar) ----
     # 待现网核验：1.3.6.1.4.1.20992.2.1.3.0（机内温度 ℃，scalar）。
@@ -67,6 +67,6 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.20992.2.1.3.0"
+        oid = "1.3.6.1.4.1.20992.2.1.3"
         name = "celsius"
 # ---- 风扇/电源：Cradlepoint 4G/5G 紧凑型蜂窝路由器无独立风扇/电源传感器表，MIB 未以无需行级过滤的标量暴露 → 风扇/电源 N/A。CPU/内存/温度三标量干净可采。----

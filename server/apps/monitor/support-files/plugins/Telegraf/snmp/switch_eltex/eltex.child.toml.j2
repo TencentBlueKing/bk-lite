@@ -55,7 +55,7 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.89.1.9.0"
+        oid = "1.3.6.1.4.1.89.1.9"
         name = "usage"
     # ---- Eltex MES system memory (ELTEX private 35265.41, total + free, bytes, scalar) ----
     # 待现网核验：total 1.3.6.1.4.1.35265.41.1.2.1.1.3.0 / free ...1.1.7.0（snmprec total512MB/free102MB）。
@@ -64,10 +64,10 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.3.0"
+        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.3"
         name = "total"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.7.0"
+        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.7"
         name = "free"
     # ---- Eltex MES chassis temperature (RADLAN-Physicaldescription rlPhdUnitEnvParamTempSensorValue, °C, per-unit table) ----
     # 待现网核验：列 OID 1.3.6.1.4.1.89.53.15.1.10（snmprec .1=41°C，直采摄氏度无除数）。专用温度列，非 entPhySensor 混表 → 可直采。

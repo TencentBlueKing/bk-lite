@@ -56,10 +56,10 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4413.1.1.1.1.4.2.0"
+        oid = "1.3.6.1.4.1.4413.1.1.1.1.4.2"
         name = "total"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4413.1.1.1.1.4.1.0"
+        oid = "1.3.6.1.4.1.4413.1.1.1.1.4.1"
         name = "free"
     # ---- Ubiquiti EdgeSwitch temperature (EdgeSwitch-BOXSERVICES-PRIVATE-MIB boxServicesTempSensorTemperature, °C, per-sensor table) ----
     # 待现网核验：列 OID 1.3.6.1.4.1.4413.1.1.43.1.8.1.5（°C，snmprec 多传感器 38-54°C，专用温度列）。device_temperature_celsius max()。

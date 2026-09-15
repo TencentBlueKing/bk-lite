@@ -51,35 +51,35 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12532.10.0"
+        oid = "1.3.6.1.4.1.12532.10"
         name = "usage"
     # ---- 内存使用率 iveMemoryUtil 1.3.6.1.4.1.12532.11（Gauge32 0..100，直接%，无 used/free 字节） ----
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12532.11.0"
+        oid = "1.3.6.1.4.1.12532.11"
         name = "usage"
     # ---- Swap 使用率 iveSwapUtil 1.3.6.1.4.1.12532.24（Gauge32 0..100，直接%） ----
     [[inputs.snmp.table]]
         name = "device_swap"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12532.24.0"
+        oid = "1.3.6.1.4.1.12532.24"
         name = "usage"
     # ---- 磁盘使用率 diskFullPercent 1.3.6.1.4.1.12532.25（Gauge32 0..100，直接%） ----
     [[inputs.snmp.table]]
         name = "device_disk"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12532.25.0"
+        oid = "1.3.6.1.4.1.12532.25"
         name = "usage"
     # ---- 机箱温度 iveTemperature 1.3.6.1.4.1.12532.42（Gauge32，°C 直采无缩放；仅 MAG 刀片返回真值，其他平台返回 0） ----
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12532.42.0"
+        oid = "1.3.6.1.4.1.12532.42"
         name = "celsius"
     # ---- 已登录 Web 用户数 signedInWebUsers 1.3.6.1.4.1.12532.2（Gauge32，会话计数） ----
     # 表名 device_web + 字段 users → telegraf 拼接 device_web_users，与 metrics.json 声明一致。
@@ -87,6 +87,6 @@
         name = "device_web"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12532.2.0"
+        oid = "1.3.6.1.4.1.12532.2"
         name = "users"
 # ---- 风扇/电源：PULSESECURE-PSG-MIB 无风扇/电源状态对象 → N/A。温度仅 MAG 平台有效(非 MAG 返回 0)，max() 自然取真值。----
