@@ -1,6 +1,6 @@
 Firewall Huawei SNMP:
   name: 华为 USG（Telegraf）
-  desc: 面向华为 Secospace USG 防火墙的 SNMP 监控模板，可采集 CPU、内存、温度、实体电压及接口流量等指标（基于 HUAWEI-ENTITY-EXTENT-MIB）。USG6390 MIB 无风扇运行状态/电源状态 OID，故不建模；光衰仅 USG9500 支持，本模板不做。
+  desc: 面向华为 USG 防火墙的 SNMP 监控。采集实体 CPU、内存、温度与电压，以及当前会话、新建会话、建连速率、半连接、TCP/UDP/ICMP 会话数和整机转发吞吐。USG9500 在插有 SPU 时额外报告各 SPU CPU 使用率。接口指标使用平台内置 IF-MIB。支持 USG6000、USG6000E、USG9500 与 HiSecEngine USG。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -22,6 +22,45 @@ monitor_object_metric:
     device_voltage_volts:
       name: 实体电压
       desc: 该指标按实体报告华为 USG 防火墙电压（hwEntityVoltage；设备原始为 mV，查询侧 /1000 为伏特），维度 descr 为 entPhysicalName。电压异常可能意味着供电轨或单板供电问题。
+    firewall_active_sessions:
+      name: 当前并发会话数
+      desc: 该指标报告华为 USG 防火墙当前并发会话数（hwSecCurrSessNum）。会话数快速上升可能意味着连接洪泛或会话表压力。
+    firewall_new_sessions:
+      name: 新建会话数
+      desc: 该指标报告华为 USG 防火墙新建会话数（hwSecConSessNum）。结合并发会话数可判断建连是否快于老化。
+    firewall_total_sessions:
+      name: 总会话数
+      desc: 该指标报告华为 USG 防火墙当前会话表中的总会话数（hwSecStatMonTotalSess）。可结合建连速率评估会话余量。
+    firewall_session_rate:
+      name: 会话建立速率
+      desc: 该指标报告华为 USG 防火墙当前会话建立速率（hwSecStatMonCurSessSpeed）。突然升高可能意味着连接洪泛。
+    firewall_half_open_sessions:
+      name: 半连接数
+      desc: 该指标报告华为 USG 防火墙当前半连接（未完成握手）会话数（hwSecStatMonHalfConn）。持续升高通常意味着 SYN 泛洪或不完整握手压力。
+    firewall_active_sessions_tcp:
+      name: TCP 活动会话数
+      desc: 该指标报告华为 USG 防火墙当前 TCP 会话数（hwSecStatMonTcpSess），用于观察与 UDP/ICMP 的会话构成。
+    firewall_active_sessions_udp:
+      name: UDP 活动会话数
+      desc: 该指标报告华为 USG 防火墙当前 UDP 会话数（hwSecStatMonUdpSess），用于观察与 TCP/ICMP 的会话构成。
+    firewall_active_sessions_icmp:
+      name: ICMP 活动会话数
+      desc: 该指标报告华为 USG 防火墙当前 ICMP 会话数（hwSecStatMonIcmpSess）。异常升高可能意味着扫描或攻击流量。
+    firewall_device_sessions:
+      name: 整机会话数
+      desc: 该指标报告华为 USG 防火墙整机会话数（hwSecStatDeviceSessCount）。
+    firewall_device_session_rate:
+      name: 整机会话建立速率
+      desc: 该指标报告华为 USG 防火墙整机会话建立速率（hwSecStatDeviceSessSpeed）。
+    firewall_throughput32:
+      name: 整机吞吐（32 位）
+      desc: 该指标报告华为 USG 防火墙 32 位转发吞吐（hwSecStatDeviceThroughput）。高速设备请优先看 64 位吞吐。
+    firewall_throughput:
+      name: 整机吞吐
+      desc: 该指标报告华为 USG 防火墙 64 位转发吞吐（hwSecStatDeviceThroughput64）。这是防火墙检测/转发吞吐，不是 IF-MIB 接口字节。
+    firewall_spu_usage:
+      name: SPU CPU 使用率
+      desc: 该指标按槽位与 CPU 报告 USG9500 各 SPU 平均 CPU 使用率（hwSecStatUsage，0～100）。无 SPU 的盒式设备无此序列。
     interface_ifAdminStatus:
       name: 接口管理状态
       desc: 此指标表示网络接口的管理状态。
