@@ -7,7 +7,7 @@ This plugin uses Telegraf `inputs.snmp` on the selected node to collect Huawei N
 - The selected node can reach the device SNMP port (default `161/UDP`).
 - SNMPv2c or SNMPv3 is enabled with read-only access.
 - SNMPv3 with auth and privacy is recommended. For v2c, enter the community only in the dedicated form field.
-- The device must expose standard IF-MIB plus the Huawei private objects declared by this template. Some models or restricted views omit individual tables; missing objects do not block the rest of the metrics.
+- The device must expose standard IF-MIB plus the Huawei private objects declared by this template. Interface counters use the built-in IF-MIB table; this plugin does not expand IF-MIB. Some models or restricted views omit individual tables; missing objects do not block the rest of the metrics.
 
 ## Setup steps
 
@@ -27,7 +27,42 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.3.0
 snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 ```
 
-`sysUpTime` (`1.3.6.1.2.1.1.3.0`) should return TimeTicks. On NetEngine, `sysObjectID` (`1.3.6.1.2.1.1.2.0`) usually belongs to the `1.3.6.1.4.1.2011.2.62` or `1.3.6.1.4.1.2011.2.297` family.
+`sysUpTime` (`1.3.6.1.2.1.1.3.0`) should return TimeTicks. `sysObjectID` (`1.3.6.1.2.1.1.2.0`) identifies the chassis with this dictionary. Interface counters use the built-in IF-MIB table; this plugin does not expand IF-MIB.
+
+| sysObjectID | Display name |
+| --- | --- |
+| `1.3.6.1.4.1.2011.2.62`, `1.3.6.1.4.1.2011.2.297` | NetEngine NE40E family |
+| `1.3.6.1.4.1.2011.2.315` | NetEngine 9000 family |
+| `1.3.6.1.4.1.2011.2.315.2` | `ne9000SysOid` |
+| `1.3.6.1.4.1.2011.2.315.2.1` | NetEngine 9000-20 |
+| `1.3.6.1.4.1.2011.2.315.2.2` | NetEngine 9000-8 |
+| `1.3.6.1.4.1.2011.2.315.2.3` | NetEngine 9000-8 Admin |
+| `1.3.6.1.4.1.2011.2.315.2.4` | NetEngine 9000-8 LS |
+| `1.3.6.1.4.1.2011.2.315.2.5` | NetEngine 9000-20 Admin |
+| `1.3.6.1.4.1.2011.2.315.2.6` | NetEngine 9000-20 LS |
+| `1.3.6.1.4.1.2011.2.360` | NetEngine 8000 family |
+| `1.3.6.1.4.1.2011.2.360.1` | `NetEngine8000SysOid` |
+| `1.3.6.1.4.1.2011.2.360.1.1` | NetEngine 8000 X4 |
+| `1.3.6.1.4.1.2011.2.360.1.3` | NetEngine 8000 X8 |
+| `1.3.6.1.4.1.2011.2.360.1.27` | NetEngine 8000 X16 |
+| `1.3.6.1.4.1.2011.2.360.1.5` | NetEngine 8000 F1A |
+| `1.3.6.1.4.1.2011.2.360.1.39` | NetEngine 8000 F2A-8K36H |
+| `1.3.6.1.4.1.2011.2.360.1.23` | NetEngine 8000 F8 |
+| `1.3.6.1.4.1.2011.2.360.1.7` | NetEngine 8000 M14 |
+| `1.3.6.1.4.1.2011.2.360.1.9` | NetEngine 8000 M8 |
+| `1.3.6.1.4.1.2011.2.360.1.13` | NetEngine 8000 M6 |
+| `1.3.6.1.4.1.2011.2.360.1.55` | NetEngine 8000 M4 |
+| `1.3.6.1.4.1.2011.2.360.1.11` | NetEngine 8000 M1A |
+| `1.3.6.1.4.1.2011.2.360.1.25` | NetEngine 8000 M1B |
+| `1.3.6.1.4.1.2011.2.360.1.29` | NetEngine 8000 M1C |
+| `1.3.6.1.4.1.2011.2.360.1.21` | NetEngine 8000 M1D |
+| `1.3.6.1.4.1.2011.2.360.1.35` | NetEngine 8000E X4 |
+| `1.3.6.1.4.1.2011.2.360.1.31` | NetEngine 8000E X8 |
+| `1.3.6.1.4.1.2011.2.360.1.43` | NetEngine 8000E X16 |
+| `1.3.6.1.4.1.2011.2.360.1.49` | NetEngine 8000E F8 |
+| `1.3.6.1.4.1.2011.2.360.1.47` | NetEngine 8000E M14 |
+| `1.3.6.1.4.1.2011.2.360.1.45` | NetEngine 8000E M8 |
+| `1.3.6.1.4.1.2011.2.360.1.57` | NetEngine 8000E M4 |
 
 ## Form fields
 
@@ -68,4 +103,4 @@ The feature is disabled, no sessions exist, or the view does not authorize `1.3.
 
 ### High-speed traffic is zero or wrong
 
-Confirm collection uses 64-bit `ifHCInOctets` / `ifHCOutOctets`. This template collects those counters through the shared IF-MIB table.
+Confirm collection uses 64-bit `ifHCInOctets` / `ifHCOutOctets`. This template collects those counters through the built-in IF-MIB table and does not expand IF-MIB.
