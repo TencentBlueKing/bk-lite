@@ -66,6 +66,7 @@ WINDOWS_MSI_CONTAINER_MAX_EXPANSION_LIMIT_BYTES = 1024 * 1024 * 1024
 WINDOWS_MSI_CONTAINER_MAX_EXPANSION_RATIO = 8
 # Linux 常见的单参数上限为 128 KiB；保留一半余量给执行器和系统环境差异。
 LINUX_ASSESS_COMMAND_MAX_BYTES = 64 * 1024
+DRY_RUN_TIMEOUT_SECONDS = 30
 
 
 def _decrypt_password(password: Optional[str]) -> Optional[str]:
@@ -903,60 +904,117 @@ def _parse_dry_run_output(stdout: str) -> dict:
     }
 
 
+def _requirement_pkg_names(requirement) -> list[str]:
+    pkg_names: list[str] = []
+    try:
+        for pkg_name in requirement.patch.linux_detail.package_names():
+            if _PKG_NAME_RE.match(pkg_name) and pkg_name not in pkg_names:
+                pkg_names.append(pkg_name)
+    except Exception:  # noqa: BLE001
+        return []
+    return pkg_names
+
+
+def _impact_item_pkg_name(item: str) -> str:
+    return str(item).split(' ', 1)[0]
+
+
+def _project_install_impact(impact: dict, pkg_names: list[str]) -> dict:
+    pkg_set = set(pkg_names)
+    projected = {
+        'upgrade': [item for item in impact.get('upgrade', []) if _impact_item_pkg_name(item) in pkg_set],
+        'install': [item for item in impact.get('install', []) if _impact_item_pkg_name(item) in pkg_set],
+        'remove': [item for item in impact.get('remove', []) if _impact_item_pkg_name(item) in pkg_set],
+        'summary': impact.get('summary', ''),
+        'raw_output': impact.get('raw_output', ''),
+    }
+    if 'error' in impact:
+        projected['error'] = impact['error']
+    return projected
+
+
 def _collect_install_impact(
     target: PatchTarget,
     missing_requirements: list,
     execution_id: str,
     package_manager: str,
+    remaining_timeout: int | None = None,
 ) -> dict[int, dict]:
-    '''对缺失的补丁跑 dry-run，收集安装影响信息。
+    '''对缺失的补丁跑一次合并 dry-run，再按包名投影安装影响。
 
     Returns: {requirement_id: install_impact_dict}
     '''
     if target.os_type == OSType.WINDOWS:
         return {}
 
+    timeout = DRY_RUN_TIMEOUT_SECONDS
+    if remaining_timeout is not None:
+        timeout = min(DRY_RUN_TIMEOUT_SECONDS, remaining_timeout)
+
     impacts: dict[int, dict] = {}
+    req_pkg_names: dict[int, list[str]] = {}
+    batched_pkg_names: list[str] = []
+    batched_reqs = []
+    generate_error = {
+        'raw_output': '',
+        'summary': '',
+        'error': '无法生成原生包管理器预演命令',
+    }
+
     for req in missing_requirements:
-        pkg_names = []
-        try:
-            for pkg_name in req.patch.linux_detail.package_names():
-                if _PKG_NAME_RE.match(pkg_name) and pkg_name not in pkg_names:
-                    pkg_names.append(pkg_name)
-        except Exception:
-            pkg_names = []
-        command = _dry_run_command(package_manager, pkg_names)
-        if not command:
-            impacts[req.id] = {
-                'raw_output': '',
-                'summary': '',
-                'error': '无法生成原生包管理器预演命令',
-            }
+        pkg_names = _requirement_pkg_names(req)
+        req_pkg_names[req.id] = pkg_names
+        if not pkg_names:
+            impacts[req.id] = dict(generate_error)
             continue
-        try:
-            result = _execute_command(target, command, timeout=30, execution_id=execution_id)
-            stdout = str(result.get('stdout') or '')
-            stderr = str(result.get('stderr') or '')
-            impact = _parse_dry_run_output('\n'.join(value for value in (stdout, stderr) if value))
-            exit_code = result.get('exit_code')
-            if result.get('error') or (
-                exit_code is not None and int(exit_code) != 0 and not impact.get('summary')
-            ):
-                impact['error'] = _result_reason(result)[:200]
-        except Exception as exc:  # noqa: BLE001
-            error_text = str(exc)
-            dry_run_output = error_text.partition('| Output:')[2].lstrip() or error_text
-            impact = _parse_dry_run_output(dry_run_output)
-            expected_rpm_abort = (
-                package_manager in {'dnf', 'yum'}
-                and 'Dependencies resolved.' in dry_run_output
-                and re.search(r'(?m)^Operation aborted\.$', dry_run_output) is not None
-                and bool(impact.get('summary'))
+        batched_reqs.append(req)
+        for pkg_name in pkg_names:
+            if pkg_name not in batched_pkg_names:
+                batched_pkg_names.append(pkg_name)
+
+    if not batched_reqs:
+        return impacts
+
+    command = _dry_run_command(package_manager, batched_pkg_names)
+    if not command:
+        for req in batched_reqs:
+            impacts[req.id] = dict(generate_error)
+        return impacts
+
+    try:
+        result = _execute_command(target, command, timeout=timeout, execution_id=execution_id)
+        stdout = str(result.get('stdout') or '')
+        stderr = str(result.get('stderr') or '')
+        impact = _parse_dry_run_output('\n'.join(value for value in (stdout, stderr) if value))
+        exit_code = result.get('exit_code')
+        if result.get('error') or (
+            exit_code is not None and int(exit_code) != 0 and not impact.get('summary')
+        ):
+            impact['error'] = _result_reason(result)[:200]
+    except Exception as exc:  # noqa: BLE001
+        error_text = str(exc)
+        dry_run_output = error_text.partition('| Output:')[2].lstrip() or error_text
+        impact = _parse_dry_run_output(dry_run_output)
+        expected_rpm_abort = (
+            package_manager in {'dnf', 'yum'}
+            and 'Dependencies resolved.' in dry_run_output
+            and re.search(r'(?m)^Operation aborted\.$', dry_run_output) is not None
+            and bool(impact.get('summary'))
+        )
+        if not expected_rpm_abort:
+            logger.warning(
+                'dry-run 失败 target=%s requirement_count=%s: %s',
+                target.id,
+                len(batched_reqs),
+                exc,
             )
-            if not expected_rpm_abort:
-                logger.warning('dry-run 失败 target=%s requirement=%s: %s', target.id, req.id, exc)
-                impact = {'raw_output': '', 'summary': '', 'error': error_text[:200]}
-        impacts[req.id] = impact
+            error_impact = {'raw_output': '', 'summary': '', 'error': error_text[:200]}
+            for req in batched_reqs:
+                impacts[req.id] = dict(error_impact)
+            return impacts
+
+    for req in batched_reqs:
+        impacts[req.id] = _project_install_impact(impact, req_pkg_names[req.id])
     return impacts
 
 
