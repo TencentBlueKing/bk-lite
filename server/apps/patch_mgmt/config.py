@@ -91,6 +91,14 @@ ASSESSMENT_NOTIFICATION_RECONCILE_INTERVAL = _int_env(
     "PATCH_ASSESSMENT_NOTIFICATION_RECONCILE_INTERVAL", 60
 )
 
+# 主机执行日志预算：单条输出 / 累计 log 字符上限，可用环境变量放宽。
+HOST_EXECUTION_LOG_ENTRY_MAX_CHARS = _int_env(
+    "PATCH_HOST_EXECUTION_LOG_ENTRY_MAX_CHARS", 8 * 1024
+)
+HOST_EXECUTION_LOG_TOTAL_MAX_CHARS = _int_env(
+    "PATCH_HOST_EXECUTION_LOG_TOTAL_MAX_CHARS", 64 * 1024
+)
+
 CELERY_BEAT_SCHEDULE: dict = {
     "patch_mgmt_watch_governance_timeouts": {
         "task": "apps.patch_mgmt.tasks.watch_governance_timeouts",
