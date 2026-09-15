@@ -1,8 +1,8 @@
 Switch Transition Networks SNMP:
   name: Transition Networks (Telegraf)
   desc: SNMP monitoring template for Transition Networks switch. It reports system
-    uptime, interface speed, inbound error packets, and other key metrics (IANA PEN
-    868).
+    uptime, interface traffic via the shared IF-MIB floor, CPU temperature, and
+    optional board temperature (IANA PEN 868).
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -145,10 +145,17 @@ monitor_object_metric:
         total) and, together with free memory, reflects overall memory pressure.
     device_temperature_celsius:
       name: Temperature
-      desc: This metric reports the temperature reading of each hardware sensor on
-        the device, in degrees Celsius. Abnormally high temperatures may indicate
-        fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal
-        protection or hardware damage if left unaddressed.
+      desc: Optional board temperature of the Transition Networks switch, in degrees
+        Celsius (tnDevSysHwInforBoardtmp). Some models omit this object. Abnormally
+        high temperatures may indicate fan failure, blocked airflow, or excessive
+        ambient heat, and can trigger thermal protection or hardware damage if left
+        unaddressed.
+    cpu_temperature_celsius:
+      name: CPU Temperature
+      desc: CPU temperature of the Transition Networks switch, in degrees Celsius
+        (tnDevSysHwInforCPUtmp, table). Aggregated as the maximum across hardware-info
+        rows. Abnormally high values may indicate blocked airflow, failing cooling,
+        or excessive ambient heat.
     device_fan_state:
       name: Fan Status
       desc: This metric reports the operational state of each cooling fan on the device.
