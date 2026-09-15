@@ -130,7 +130,7 @@ def test_trap_short_circuits_compare_mode():
     assert "offset" not in compiled
 
 
-def test_existence_query_ignores_algorithm_and_compare_mode():
+def test_existence_query_uses_algorithm_but_ignores_compare_mode():
     policy = _policy(
         algorithm="p95_over_time",
         group_algorithm="max",
@@ -138,15 +138,34 @@ def test_existence_query_ignores_algorithm_and_compare_mode():
         compare_value_kind="percent",
     )
     compiled = pm.compile_existence_query(policy, "cpu", "5m", "instance_id")
-    assert compiled == "last_over_time((max(cpu) by (instance_id))[5m:10s])"
-    assert "quantile" not in compiled
+    assert compiled == (
+        "quantile_over_time(0.95, ((max(cpu) by (instance_id))[5m:10s]))"
+    )
+    assert compiled == pm.compile_window_query(policy, "cpu", "5m", "instance_id")
     assert "offset" not in compiled
 
 
-def test_existence_formula_uses_last_over_time():
-    policy = _policy(query_condition={"type": "formula"})
+def test_existence_formula_uses_policy_algorithm():
+    policy = _policy(query_condition={"type": "formula"}, algorithm="avg_over_time")
     compiled = pm.compile_existence_query(policy, "sum(a) / sum(b)", "5m")
-    assert compiled == "last_over_time((sum(a) / sum(b))[5m:10s])"
+    assert compiled == pm.build_formula_policy_query(
+        "avg_over_time", "sum(a) / sum(b)", "5m"
+    )
+    assert compiled == "avg_over_time((sum(a) / sum(b))[5m:10s])"
+
+
+def test_old_policy_existence_matches_pre_upgrade_aggregation():
+    policy = SimpleNamespace(
+        algorithm="avg",
+        group_algorithm=None,
+        group_by=["instance_id"],
+        query_condition={"type": "pmq", "query": "up"},
+        collect_type="",
+    )
+    expected = pm.build_policy_query("avg", "up", "5m", "instance_id")
+    assert expected == "avg_over_time((avg(up) by (instance_id))[5m:10s])"
+    assert pm.compile_existence_query(policy, "up", "5m", "instance_id") == expected
+    assert pm.compile_policy_query(policy, "up", "5m", "instance_id") == expected
 
 
 def test_unimplemented_compare_mode_raises():

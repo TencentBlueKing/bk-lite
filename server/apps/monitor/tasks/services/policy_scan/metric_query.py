@@ -159,7 +159,7 @@ class MetricQueryService:
         return self._query_range(query, period, points)
 
     def query_existence_metrics(self, period, points=1):
-        """不带变换的存在性查询，供无数据检测/恢复与基线同步。"""
+        """不带比较基准的存在性查询，供无数据检测/恢复与基线同步。"""
         step = self.format_period(period, points)
         query = compile_existence_query(
             self.policy,

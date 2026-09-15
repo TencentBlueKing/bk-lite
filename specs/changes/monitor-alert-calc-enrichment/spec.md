@@ -306,3 +306,8 @@ VictoriaMetrics 实跑（本机 Docker 底座，不改 D1～D10）：
 | `rate((avg(cpu_usage_user) by (instance_id))[5m])` | success，1 条，value≈0.030 |
 | `rate((avg(cpu_usage_user) by (instance_id))[5m:10s])` | success，1 条，value≈0.110 |
 | `quantile_over_time(0.95, ((avg(cpu_usage_user) by (instance_id))[5m:10s]))` | success，1 条，value≈41.79 |
+
+现场确认（不改写 D1～D10 原文）：
+
+- `offset_7d` / `offset_30d` / `baseline_4w` 保存不拦、切片 1 不编译：表单选不到，不为此加拦截。
+- 存在性查询用策略原汇聚、不套 `compare_mode`，不采用 D2 字面的固定 `last_over_time`。切片 2 上速率时再评估。

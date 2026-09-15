@@ -348,26 +348,12 @@ def compile_policy_query(policy_like, base_query, step, group_by=None):
 
 
 def compile_existence_query(policy_like, base_query, step, group_by=None):
-    """存在性查询：固定 last_over_time，不带 algorithm 变换和 compare_mode。"""
-    query_condition = _policy_get(policy_like, "query_condition") or {}
-    if query_condition.get("type") == "formula":
-        return f"last_over_time(({base_query})[{step}:{period_step(step)}])"
-    if group_by is None:
-        group_by = ",".join(_policy_get(policy_like, "group_by") or [])
-    if not group_by:
-        raise BaseAppException("group_by is required")
-    group_algorithm = _policy_get(policy_like, "group_algorithm")
-    if group_algorithm:
-        if group_algorithm not in GROUP_AGGREGATION_ALGORITHMS:
-            raise BaseAppException(f"invalid group algorithm method: {group_algorithm}")
-    else:
-        group_algorithm, _ = normalize_policy_algorithms(
-            _policy_get(policy_like, "algorithm")
-        )
-    return (
-        f"last_over_time(({group_algorithm}({base_query}) by ({group_by}))"
-        f"[{step}:{period_step(step)}])"
-    )
+    """存在性查询：用策略原汇聚，不套比较基准。
+
+    对照缺失时不得走比较查询，否则会被误判成无数据。汇聚方式与升级前
+    无数据路径相同；切片 2 上速率后再评估是否改为 last_over_time。
+    """
+    return compile_window_query(policy_like, base_query, step, group_by)
 
 
 def resolve_result_unit(policy_like) -> ResultUnit:

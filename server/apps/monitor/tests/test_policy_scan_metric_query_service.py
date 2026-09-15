@@ -155,7 +155,10 @@ class TestQueryAggregationMetrics:
         vm.return_value.query_range.return_value = {"data": {"result": []}}
         svc.query_existence_metrics({"type": "min", "value": 5})
         args = vm.return_value.query_range.call_args.args
-        assert args[0] == "last_over_time((avg(up) by (instance_id))[5m:10s])"
+        assert args[0] == (
+            "quantile_over_time(0.95, ((avg(up) by (instance_id))[5m:10s]))"
+        )
+        assert "offset" not in args[0]
 
     def test_comparison_query_applies_offset_percent(self, mocker):
         svc = MetricQueryService(
