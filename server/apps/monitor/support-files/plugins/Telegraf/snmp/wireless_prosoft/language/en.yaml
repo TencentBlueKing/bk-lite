@@ -1,7 +1,8 @@
 Wireless ProSoft Technology SNMP:
   name: ProSoft Technology (Telegraf)
-  desc: SNMP monitoring template for ProSoft wireless device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for ProSoft RadioLinx/RLX2 wireless device. It reports
+    per-port inbound traffic rate, per-port outbound traffic rate, system uptime,
+    radio status, link quality percent, and signal strength in dBm (IANA PEN 2382)
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
@@ -55,6 +56,21 @@ monitor_object_metric:
         with no scaling. Only models equipped with a temperature sensor report a real
         value; fanless access points return 0. High temperatures can indicate cooling
         failure or poor airflow and risk thermal shutdown.
+    radio_status:
+      name: Radio Status
+      desc: RadioLinx/RLX2 radio status integer from the RadioLinx enterprise tree.
+        This is the device-reported radio state scalar. CPU and memory percentages
+        are not synthesized from it.
+    link_quality_percent:
+      name: Link Quality
+      desc: RadioLinx/RLX2 wireless link quality reported directly as a 0-100 percentage.
+        Sustained low quality indicates RF interference, antenna issues, or a degrading
+        industrial wireless hop.
+    signal_strength_dbm:
+      name: Signal Strength
+      desc: RadioLinx/RLX2 received signal strength in dBm, read directly with no
+        scaling. More negative values mean a weaker radio hop and rising risk of packet
+        loss or roam failure.
 monitor_object_metric_group:
   Wireless:
     Base: Base
