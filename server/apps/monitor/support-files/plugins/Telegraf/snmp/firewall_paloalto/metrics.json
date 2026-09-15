@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_paloalto",
   "plugin": "Firewall Palo Alto SNMP",
-  "plugin_desc": "Palo Alto Networks-specific SNMP collection template for PAN-OS firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load and PAN-COMMON-MIB private OIDs for firewall-specific session health (session-table utilization, active sessions total/TCP/UDP/ICMP and maximum supported sessions). Sourced from the official PAN-COMMON-MIB and verified against LibreNMS PAN-OS support. Supported brands/models — Palo Alto Networks PA-series firewalls (PAN-OS).",
+  "plugin_desc": "Palo Alto Networks-specific SNMP collection template for PAN-OS firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load, PAN-COMMON-MIB panhrStorageTable RAM used/total (used×allocationUnits / size×allocationUnits, RAM rows only), and private OIDs for firewall-specific session health (session-table utilization, active sessions total/TCP/UDP/ICMP and maximum supported sessions). Sourced from the official PAN-COMMON-MIB and verified against LibreNMS PAN-OS support. Supported brands/models — Palo Alto Networks PA-series firewalls (PAN-OS).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_paloalto'}) by (instance_id)",
   "name": "Firewall",
@@ -16,6 +16,7 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
+    "device_memory_usage",
     "firewall_session_utilization",
     "firewall_active_sessions",
     "device_total_incoming_traffic",
@@ -52,6 +53,45 @@
         "instance_id"
       ],
       "description": "This metric reports the average CPU utilization of the Palo Alto firewall across all processor cores (HOST-RESOURCES hrProcessorLoad). Sustained high CPU usage may indicate heavy traffic inspection load, threat-prevention overhead or an attack."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_total",
+      "query": "sum(device_memory_total{instance_type='firewall', __$labels__} * device_memory_allocation_units{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total RAM of the Palo Alto firewall in bytes (PAN-COMMON-MIB panhrStorageSize × panhrStorageAllocationUnits, RAM rows only)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_used",
+      "query": "sum(device_memory_used{instance_type='firewall', __$labels__} * device_memory_allocation_units{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the used RAM of the Palo Alto firewall in bytes (PAN-COMMON-MIB panhrStorageUsed × panhrStorageAllocationUnits, RAM rows only)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "100 * sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports RAM utilization of the Palo Alto firewall, derived as used/total from panhrStorageTable RAM rows. High memory pressure can degrade session handling."
     },
     {
       "metric_group": "Firewall",
