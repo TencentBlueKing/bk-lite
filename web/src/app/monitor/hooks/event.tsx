@@ -94,6 +94,21 @@ const useMethodList = (): ListItem[] => {
         value: 'last_over_time',
         title: t('monitor.events.lastOverTimeTitle'),
       },
+      {
+        label: 'P90_OVER_TIME',
+        value: 'p90_over_time',
+        title: t('monitor.events.p90OverTimeTitle'),
+      },
+      {
+        label: 'P95_OVER_TIME',
+        value: 'p95_over_time',
+        title: t('monitor.events.p95OverTimeTitle'),
+      },
+      {
+        label: 'P99_OVER_TIME',
+        value: 'p99_over_time',
+        title: t('monitor.events.p99OverTimeTitle'),
+      },
     ],
     [t]
   );

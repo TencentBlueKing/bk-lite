@@ -54,6 +54,8 @@ def _mq(agg):
             dimensions=[],
         ),
         query_aggregation_metrics=lambda period, points=1: agg,
+        query_comparison_metrics=lambda period, points=1: agg,
+        query_existence_metrics=lambda period, points=1: agg,
         convert_metric_values=lambda data: data,
         format_aggregation_metrics=lambda data: {},
         get_display_unit=lambda: "%",

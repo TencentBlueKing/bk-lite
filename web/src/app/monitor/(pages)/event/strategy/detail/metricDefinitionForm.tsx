@@ -60,6 +60,7 @@ interface MetricDefinitionFormProps {
   onPeriodChange: (val: number | null) => void;
   onPeriodUnitChange: (val: string) => void;
   onAlgorithmChange: (val: string) => void;
+  isEnumMetric?: boolean;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -86,10 +87,23 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   onPeriodChange,
   onPeriodUnitChange,
   onAlgorithmChange,
+  isEnumMetric = false,
   isTrap
 }) => {
   const { t } = useTranslation();
   const METHOD_LIST = useMethodList();
+  const algorithmOptions = useMemo(
+    () =>
+      isEnumMetric
+        ? METHOD_LIST.filter(
+          (item) =>
+            !['p90_over_time', 'p95_over_time', 'p99_over_time'].includes(
+              String(item.value)
+            )
+        )
+        : METHOD_LIST,
+    [METHOD_LIST, isEnumMetric]
+  );
   const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
@@ -101,7 +115,6 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   }, [monitorName, getGroupIds]);
 
   // 防抖处理汇聚周期值变化
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedPeriodChange = useCallback(
     debounce((val: number | null) => {
       onPeriodChange(val);
@@ -309,7 +322,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   showSearch
                   onChange={onAlgorithmChange}
                 >
-                  {METHOD_LIST.map((item) => (
+                  {algorithmOptions.map((item) => (
                     <Option value={item.value} key={item.value}>
                       <Tooltip
                         overlayInnerStyle={{

@@ -59,14 +59,20 @@ import {
   pruneNoticeUsers,
   shouldRequireNoticeUsers,
   collectMetricQueryTexts,
+  resolveCompareFieldsForSave,
   resolveEffectiveCalculationUnit,
   resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
+  resolveThresholdUnitBase,
   resolveUnitOnMetricSelect,
   restoreCalculationUnitState,
   scaleThresholdValuesForUnitChange,
-  scheduleValueToMinutes
+  scheduleValueToMinutes,
+  COMPARE_MODE_ABSOLUTE,
+  defaultCompareValueKind,
+  getCompareValueKinds,
+  isCompareModeAvailable
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -200,6 +206,8 @@ const StrategyOperation = () => {
   const [groupAlgorithm, setGroupAlgorithm] = useState<string | null>('avg');
   const [period, setPeriod] = useState<number | null>(null);
   const [algorithm, setAlgorithm] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState<string>(COMPARE_MODE_ABSOLUTE);
+  const [compareValueKind, setCompareValueKind] = useState<string>('');
   const [formData, setFormData] = useState<StrategyFields>({
     threshold: [],
     source: { type: '', values: [] }
@@ -234,9 +242,13 @@ const StrategyOperation = () => {
     unit: calculationUnit,
     unitList
   });
+  const thresholdBaseUnit = resolveThresholdUnitBase({
+    compareValueKind,
+    calculationUnit: effectiveCalculationUnit
+  });
   const effectiveThresholdUnit = resolveThresholdUnit({
     thresholdUnit,
-    calculationUnit: effectiveCalculationUnit,
+    calculationUnit: thresholdBaseUnit,
     unitList
   });
   const functionDelayMinutes = useMemo(
@@ -265,11 +277,11 @@ const StrategyOperation = () => {
     setThresholdUnit((current) =>
       getThresholdUnitOnCalculationUnitChange({
         thresholdUnit: current,
-        calculationUnit: effectiveCalculationUnit,
+        calculationUnit: thresholdBaseUnit,
         unitList
       })
     );
-  }, [effectiveCalculationUnit, unitList]);
+  }, [thresholdBaseUnit, unitList]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -444,7 +456,9 @@ const StrategyOperation = () => {
         recovery_condition: 5,
         collect_type: pluginList[0]?.value,
         group_algorithm: 'avg',
-        algorithm: 'avg_over_time'
+        algorithm: 'avg_over_time',
+        compare_mode: COMPARE_MODE_ABSOLUTE,
+        compare_value_kind: ''
       };
       let _metricId = searchParams.get('metricId') || null;
       if (type === 'builtIn') {
@@ -460,6 +474,8 @@ const StrategyOperation = () => {
       // 设置汇聚方式默认值
       setGroupAlgorithm(initForm.group_algorithm || 'avg');
       setAlgorithm(initForm.algorithm || 'avg_over_time');
+      setCompareMode(COMPARE_MODE_ABSOLUTE);
+      setCompareValueKind('');
       // 设置无数据告警默认值为5分钟
       setNoDataAlert(5);
       form.setFieldsValue({
@@ -653,6 +669,8 @@ const StrategyOperation = () => {
     setPeriodUnit(period?.type || 'min');
     setGroupAlgorithm(data.group_algorithm || 'avg');
     setAlgorithm(data.algorithm || null);
+    setCompareMode((data.compare_mode as string) || COMPARE_MODE_ABSOLUTE);
+    setCompareValueKind((data.compare_value_kind as string) || '');
     if (source?.type) {
       setSource(source);
     } else {
@@ -921,6 +939,28 @@ const StrategyOperation = () => {
     setPeriod(val);
   };
 
+  useEffect(() => {
+    if (!isCompareModeAvailable(compareMode, periodUnit, period)) {
+      setCompareMode(COMPARE_MODE_ABSOLUTE);
+      setCompareValueKind('');
+    }
+  }, [compareMode, period, periodUnit]);
+
+  const handleCompareModeChange = (val: string) => {
+    setCompareMode(val);
+    if (val === COMPARE_MODE_ABSOLUTE) {
+      setCompareValueKind('');
+      return;
+    }
+    setCompareValueKind((current) => {
+      const allowed = getCompareValueKinds(val);
+      if (current && allowed.includes(current)) {
+        return current;
+      }
+      return defaultCompareValueKind(val);
+    });
+  };
+
   const handleAlgorithmChange = (val: string) => {
     setAlgorithm(val);
   };
@@ -1047,6 +1087,19 @@ const StrategyOperation = () => {
       params.metric_unit = policyUnits.metricUnit;
       params.calculation_unit = policyUnits.calculationUnit;
       params.threshold_unit = policyUnits.thresholdUnit;
+      const compareFields = resolveCompareFieldsForSave({
+        isTrap: isTrapPlugin,
+        compareMode,
+        compareValueKind
+      });
+      params.compare_mode = compareFields.compare_mode;
+      params.compare_value_kind = compareFields.compare_value_kind;
+      if (!isTrapPlugin && compareFields.compare_value_kind === 'percent') {
+        params.threshold_unit = 'percent';
+      }
+      if (!isTrapPlugin && compareFields.compare_value_kind === 'ratio') {
+        params.threshold_unit = '';
+      }
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
@@ -1297,6 +1350,13 @@ const StrategyOperation = () => {
                           onPeriodChange={handlePeriodChange}
                           onPeriodUnitChange={handlePeriodUnitChange}
                           onAlgorithmChange={handleAlgorithmChange}
+                          isEnumMetric={
+                            metricExpressionMode !== 'formula' &&
+                            isStringArray(
+                              metrics.find((item) => item.name === metric)
+                                ?.unit || ''
+                            )
+                          }
                           isTrap={isTrap}
                         />
                       ),
@@ -1308,7 +1368,7 @@ const StrategyOperation = () => {
                         <AlertConditionsForm
                           enableAlerts={enableAlerts}
                           threshold={threshold}
-                          calculationUnit={effectiveCalculationUnit}
+                          calculationUnit={thresholdBaseUnit}
                           thresholdUnit={effectiveThresholdUnit}
                           noDataAlert={noDataAlert}
                           nodataUnit={nodataUnit}
@@ -1322,6 +1382,10 @@ const StrategyOperation = () => {
                               ?.unit || null
                           }
                           isFormulaMode={metricExpressionMode === 'formula'}
+                          period={period}
+                          periodUnit={periodUnit}
+                          compareMode={compareMode}
+                          compareValueKind={compareValueKind}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onThresholdUnitChange={handleThresholdUnitChange}
@@ -1335,6 +1399,8 @@ const StrategyOperation = () => {
                             handleNoDataAlertLevelChange
                           }
                           onNoDataAlertNameChange={handleNoDataAlertNameChange}
+                          onCompareModeChange={handleCompareModeChange}
+                          onCompareValueKindChange={setCompareValueKind}
                           isTrap={isTrap}
                         />
                       ),
@@ -1375,8 +1441,10 @@ const StrategyOperation = () => {
                 periodUnit={periodUnit}
                 algorithm={algorithm}
                 threshold={threshold}
-                calculationUnit={effectiveCalculationUnit}
+                calculationUnit={thresholdBaseUnit}
                 thresholdUnit={effectiveThresholdUnit}
+                compareMode={compareMode}
+                compareValueKind={compareValueKind}
                 metricRows={metricRows}
                 metricExpressionMode={metricExpressionMode}
                 resultName={formulaResultName}

@@ -71,6 +71,8 @@ def _mq(agg, instance_id_keys=None):
             dimensions=[],
         ),
         query_aggregation_metrics=lambda period, points=1: agg,
+        query_comparison_metrics=lambda period, points=1: agg,
+        query_existence_metrics=lambda period, points=1: agg,
         convert_metric_values=lambda data: data,
         format_aggregation_metrics=lambda data: {},
         get_display_unit=lambda: "%",
@@ -89,10 +91,10 @@ def _cluster_agg(include_instance_id=True, value="80"):
 
 
 def _patch_scan(mocker, agg):
-    mocker.patch.dict(
-        metric_query_module.METHOD,
-        {"avg": lambda *args, **kwargs: agg},
-    )
+    mocker.patch.object(
+        metric_query_module,
+        "VictoriaMetricsAPI",
+    ).return_value.query_range.return_value = agg
     mocker.patch(
         "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
         return_value="2026/08/19/mock.json.gz",

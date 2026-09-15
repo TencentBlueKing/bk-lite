@@ -1,9 +1,27 @@
 import math
 import re
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.tasks.utils.policy_methods import (
+    COMPARE_MODES,
+    COMPARE_OFFSET_SECONDS,
+    COMPARE_VALUE_KINDS,
+    COMPARE_VALUE_KINDS_BY_MODE,
+    COUNT_IF_ALGORITHM,
+    GROUP_AGGREGATION_ALGORITHMS,
+    HIGH_SIDE_METHODS,
+    LEVEL_ALGORITHMS,
+    LOW_SIDE_METHODS,
+    NEW_ALGORITHMS,
+    PER_SERIES_ALGORITHMS,
+    WINDOW_AGGREGATION_ALGORITHMS,
+    base_query_contains_rate_function,
+    period_to_seconds,
+    resolve_result_unit,
+)
 from apps.monitor.utils.unit_converter import UnitConverter
 from rest_framework import serializers
 
@@ -11,17 +29,8 @@ from rest_framework import serializers
 _VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}
 # source 合法类型 —— 其余类型在扫描器/基线构建时静默返回空目标（策略不生效），instance/organization 之外即误配
 _VALID_SOURCE_TYPES = {"instance", "organization"}
-# 分组聚合算法合法集合 —— 先按维度聚合多个原始序列。
-_VALID_GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
-# 周期聚合算法合法集合 —— 再对汇聚周期内的子查询结果做 over_time 计算。
-_VALID_AGGREGATION_ALGORITHMS = {
-    "max_over_time",
-    "min_over_time",
-    "avg_over_time",
-    "sum_over_time",
-    "count_over_time",
-    "last_over_time",
-}
+_VALID_GROUP_AGGREGATION_ALGORITHMS = GROUP_AGGREGATION_ALGORITHMS
+_VALID_AGGREGATION_ALGORITHMS = WINDOW_AGGREGATION_ALGORITHMS
 # PromQL/MetricsQL label 运算符白名单
 _VALID_LABEL_METHODS = {"=", "!=", "=~", "!~"}
 # label name 合法正则（Prometheus 规范）
@@ -121,12 +130,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         attrs = self._validate_policy_handlers(attrs)
+        attrs = self._validate_calc_enrichment(attrs)
         relevant_fields = {
             "threshold",
             "metric_unit",
             "calculation_unit",
             "threshold_unit",
             "query_condition",
+            "algorithm",
+            "compare_mode",
+            "compare_value_kind",
         }
         if self.instance is not None and not relevant_fields.intersection(attrs):
             return attrs
@@ -136,7 +149,28 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             return attrs
 
         query_condition = self._get_value(attrs, "query_condition", {}) or {}
+        result_unit = resolve_result_unit(self._result_unit_policy_like(attrs))
         calculation_unit, threshold_unit = self.get_effective_units(attrs)
+        if not result_unit.conversion_enabled:
+            if result_unit.unit in {"hour", "count", ""}:
+                return attrs
+            if result_unit.unit and not UnitConverter.is_known_unit(result_unit.unit):
+                raise serializers.ValidationError({"calculation_unit": "结果单位无效"})
+            effective_threshold = threshold_unit or result_unit.unit
+            if (
+                result_unit.unit
+                and effective_threshold
+                and effective_threshold != result_unit.unit
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "threshold_unit": (
+                            f"阈值单位必须与结果单位 {result_unit.unit} 一致"
+                        )
+                    }
+                )
+            return attrs
+
         if not calculation_unit and not threshold_unit:
             # Trap、枚举指标与历史 PMQ 策略没有数值单位，保持现有契约。
             if query_condition.get("type") in {"pmq", "metric"}:
@@ -291,6 +325,184 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 value.append(key)
 
         return value
+
+    def validate_compare_mode(self, value):
+        if not value:
+            return "absolute"
+        if value not in COMPARE_MODES:
+            raise serializers.ValidationError(
+                f"compare_mode 非法，须为 {sorted(COMPARE_MODES)} 之一"
+            )
+        return value
+
+    def validate_compare_value_kind(self, value):
+        if not value:
+            return ""
+        if value not in COMPARE_VALUE_KINDS:
+            raise serializers.ValidationError(
+                f"compare_value_kind 非法，须为 {sorted(COMPARE_VALUE_KINDS)} 之一"
+            )
+        return value
+
+    def validate_recovery_threshold(self, value):
+        if not value:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("recovery_threshold 必须是对象")
+        valid_methods = set(AlertConstants.THRESHOLD_METHODS)
+        if value.get("method") not in valid_methods:
+            raise serializers.ValidationError(
+                f"recovery_threshold.method 非法，须为 {sorted(valid_methods)} 之一"
+            )
+        if "value" not in value:
+            raise serializers.ValidationError("recovery_threshold 缺少 value")
+        raw_value = value.get("value")
+        if isinstance(raw_value, bool):
+            raise serializers.ValidationError("recovery_threshold.value 必须是有限数值")
+        try:
+            number = float(raw_value)
+        except (TypeError, ValueError) as err:
+            raise serializers.ValidationError(
+                "recovery_threshold.value 必须是有限数值"
+            ) from err
+        if not math.isfinite(number):
+            raise serializers.ValidationError("recovery_threshold.value 必须是有限数值")
+        return value
+
+    def _result_unit_policy_like(self, attrs):
+        return {
+            "algorithm": self._get_value(attrs, "algorithm", ""),
+            "compare_mode": self._get_value(attrs, "compare_mode", "absolute")
+            or "absolute",
+            "compare_value_kind": self._get_value(attrs, "compare_value_kind", "") or "",
+            "metric_unit": self._get_value(attrs, "metric_unit", "") or "",
+            "calculation_unit": self._get_value(attrs, "calculation_unit", "") or "",
+        }
+
+    def _compiled_base_query(self, attrs):
+        query_condition = self._get_value(attrs, "query_condition", {}) or {}
+        query_type = query_condition.get("type")
+        if query_type == "pmq":
+            return query_condition.get("query") or ""
+        if query_type == "formula":
+            from apps.core.exceptions.base_app_exception import BaseAppException
+            from apps.monitor.expression.query import build_formula_query
+
+            try:
+                return build_formula_query(query_condition).query
+            except BaseAppException:
+                return ""
+        metric_id = query_condition.get("metric_id")
+        if not metric_id:
+            return ""
+        from apps.monitor.expression.conditions import compile_filter_to_query
+        from apps.monitor.models.monitor_metrics import Metric
+
+        metric = Metric.objects.filter(id=metric_id).first()
+        if not metric:
+            return ""
+        return compile_filter_to_query(metric.query or "", query_condition.get("filter") or [])
+
+    def _is_enum_metric(self, attrs):
+        query_condition = self._get_value(attrs, "query_condition", {}) or {}
+        if query_condition.get("type") != "metric":
+            return False
+        from apps.monitor.models.monitor_metrics import Metric
+
+        metric = Metric.objects.filter(id=query_condition.get("metric_id")).first()
+        return metric is not None and metric.data_type == "Enum"
+
+    def _clear_trap_enrichment(self, attrs):
+        attrs["compare_mode"] = "absolute"
+        attrs["compare_value_kind"] = ""
+        attrs["count_predicate"] = {}
+        attrs["forecast_target"] = None
+        attrs["forecast_lookback"] = {}
+        attrs["recovery_threshold"] = {}
+        return attrs
+
+    def _validate_calc_enrichment(self, attrs):
+        collect_type = self._get_value(attrs, "collect_type", "") or ""
+        if collect_type == "trap":
+            return self._clear_trap_enrichment(attrs)
+
+        algorithm = self._get_value(attrs, "algorithm", "") or ""
+        compare_mode = self._get_value(attrs, "compare_mode", "absolute") or "absolute"
+        compare_kind = self._get_value(attrs, "compare_value_kind", "") or ""
+        query_condition = self._get_value(attrs, "query_condition", {}) or {}
+        errors = {}
+
+        allowed_kinds = COMPARE_VALUE_KINDS_BY_MODE.get(compare_mode)
+        if allowed_kinds is not None and compare_kind not in allowed_kinds:
+            errors["compare_value_kind"] = (
+                f"compare_mode={compare_mode} 只允许 compare_value_kind 为 "
+                f"{sorted(allowed_kinds)}"
+            )
+
+        if compare_mode == "timeleft" and algorithm not in LEVEL_ALGORITHMS:
+            errors["algorithm"] = "距容量线剩余时间只允许 avg/max/min/last 类汇聚"
+        if compare_mode == "timeleft" and not self._get_value(attrs, "forecast_target", None):
+            errors.setdefault("forecast_target", "timeleft 必须填写容量线目标")
+
+        if algorithm == COUNT_IF_ALGORITHM and compare_mode != "absolute":
+            errors["compare_mode"] = "条件计数只允许比较基准为当前值"
+        if algorithm in PER_SERIES_ALGORITHMS and query_condition.get("type") == "formula":
+            errors["algorithm"] = "公式策略不能使用速率/变化次数/斜率"
+        if algorithm in PER_SERIES_ALGORITHMS:
+            base_query = self._compiled_base_query(attrs)
+            if base_query_contains_rate_function(base_query):
+                errors["algorithm"] = "基础查询已包含 rate/irate/increase，不能再选速率类汇聚"
+
+        if self._is_enum_metric(attrs):
+            if algorithm in NEW_ALGORITHMS:
+                errors["algorithm"] = "枚举指标不能使用新的汇聚算法"
+            if compare_mode != "absolute":
+                errors["compare_mode"] = "枚举指标只允许比较基准为当前值"
+
+        period = self._get_value(attrs, "period", {}) or {}
+        offset_seconds = COMPARE_OFFSET_SECONDS.get(compare_mode)
+        if offset_seconds:
+            try:
+                if period_to_seconds(period) == offset_seconds:
+                    errors["compare_mode"] = "汇聚周期不能等于对照 offset"
+            except BaseAppException:
+                logger.debug("skip compare offset equality check")
+
+        recovery = self._get_value(attrs, "recovery_threshold", {}) or {}
+        thresholds = self._get_value(attrs, "threshold", []) or []
+        if recovery:
+            trigger_methods = {
+                item.get("method")
+                for item in thresholds
+                if isinstance(item, dict) and item.get("method")
+            }
+            recovery_method = recovery.get("method")
+            if trigger_methods & HIGH_SIDE_METHODS and trigger_methods & LOW_SIDE_METHODS:
+                errors["recovery_threshold"] = "多级触发方向不一致时不能配置恢复阈值"
+            elif trigger_methods <= HIGH_SIDE_METHODS and trigger_methods:
+                if recovery_method not in LOW_SIDE_METHODS:
+                    errors["recovery_threshold"] = "恢复阈值必须在触发阈的对侧"
+            elif trigger_methods <= LOW_SIDE_METHODS and trigger_methods:
+                if recovery_method not in HIGH_SIDE_METHODS:
+                    errors["recovery_threshold"] = "恢复阈值必须在触发阈的对侧"
+
+        no_data_period = self._get_value(attrs, "no_data_period", {}) or {}
+        no_data_recovery = self._get_value(attrs, "no_data_recovery_period", {}) or {}
+        if no_data_period and no_data_recovery:
+            try:
+                if period_to_seconds(no_data_period) < period_to_seconds(no_data_recovery):
+                    errors["no_data_period"] = "无数据检测窗不能小于恢复窗"
+            except BaseAppException:
+                logger.debug("skip no-data window comparison")
+
+        if algorithm == COUNT_IF_ALGORITHM:
+            predicate = self._get_value(attrs, "count_predicate", {}) or {}
+            if not isinstance(predicate, dict) or "method" not in predicate or "value" not in predicate:
+                errors["count_predicate"] = "条件计数必须填写内阈运算符与值"
+
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
     def _get_monitor_object(self):
         """从请求数据或已有实例中获取关联的监控对象。"""

@@ -36,11 +36,33 @@ def _policy(**kwargs):
 
 
 def _mq(metric=None, **kwargs):
+    default_agg = {"data": {"result": []}}
+    comparison = kwargs.get("comparison", kwargs.get("agg", default_agg))
+    existence = kwargs.get("existence", comparison)
+    formatted_override = kwargs["formatted"] if "formatted" in kwargs else None
+
+    def format_aggregation_metrics(data):
+        if formatted_override is not None:
+            return formatted_override
+        result = {}
+        for item in (data or {}).get("data", {}).get("result", []):
+            instance_id = str(((item.get("metric") or {}).get("instance_id"),))
+            values = item.get("values") or []
+            if not values:
+                continue
+            result[instance_id] = {
+                "value": float(values[-1][1]),
+                "raw_data": item,
+            }
+        return result
+
     m = SimpleNamespace(
         metric=metric,
-        query_aggregation_metrics=lambda period, points=1: kwargs.get("agg", {"data": {"result": []}}),
+        query_aggregation_metrics=lambda period, points=1: comparison,
+        query_comparison_metrics=lambda period, points=1: comparison,
+        query_existence_metrics=lambda period, points=1: existence,
         convert_metric_values=lambda data: data,
-        format_aggregation_metrics=lambda data: kwargs.get("formatted", {}),
+        format_aggregation_metrics=format_aggregation_metrics,
         get_display_unit=lambda: kwargs.get("display_unit", ""),
         get_enum_value_map=lambda: kwargs.get("enum_map", {}),
         convert_thresholds=lambda thresholds: thresholds,
@@ -224,6 +246,20 @@ class TestDetectNoDataAlerts:
 
         assert events[0]["monitor_instance_id"] == child_id
         assert events[0]["content"] == "生产集群/orders-7f9 无数据"
+
+    def test_missing_comparison_does_not_report_no_data(self):
+        existence = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
+        ]}}
+        comparison = {"data": {"result": []}}
+        detector = AlertDetector(
+            _policy(), {"('h1',)": "主机1"}, {"('h1',)": "('h1',)"}, [],
+            _mq(comparison=comparison, existence=existence),
+        )
+        alerts, infos = detector.detect_threshold_alerts()
+        assert alerts == []
+        assert infos == []
+        assert detector.detect_no_data_alerts() == []
 
 
 class TestBuildDimensionNameMap:

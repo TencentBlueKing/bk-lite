@@ -27,6 +27,11 @@ import {
   restoreCalculationUnitState,
   shouldRequireNoticeUsers,
   shouldShowThresholdUnitSelector,
+  getSlice1CompareModes,
+  resolveCompareFieldsForSave,
+  resolvePolicyResultUnit,
+  resolveThresholdUnitBase,
+  shouldDrawPreviewThreshold,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
   resolveMetricExpressionUnits,
@@ -830,6 +835,74 @@ assert.deepEqual(
     metrics: [{ id: 1, name: 'cpu', query: 'rate(cpu[5m])' }] as any,
   }),
   ['rate(cpu[5m])']
+);
+
+assert.deepEqual(getSlice1CompareModes('min', 5), [
+  'absolute',
+  'previous_window',
+  'offset_1h',
+  'offset_24h',
+]);
+assert.ok(!getSlice1CompareModes('hour', 1).includes('offset_1h'));
+assert.ok(!getSlice1CompareModes('day', 1).includes('offset_24h'));
+assert.ok(getSlice1CompareModes('min', 60).every((mode) => mode !== 'offset_1h'));
+
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: true,
+    compareMode: 'offset_1h',
+    compareValueKind: 'percent',
+  }),
+  { compare_mode: 'absolute', compare_value_kind: '' }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'previous_window',
+    compareValueKind: 'percent',
+  }),
+  { compare_mode: 'previous_window', compare_value_kind: 'percent' }
+);
+
+assert.deepEqual(
+  resolvePolicyResultUnit({ compareValueKind: 'percent', calculationUnit: 'bytes' }),
+  { unit: 'percent', conversionEnabled: false }
+);
+assert.deepEqual(
+  resolvePolicyResultUnit({ compareValueKind: 'ratio', calculationUnit: 'bytes' }),
+  { unit: null, conversionEnabled: false }
+);
+assert.equal(
+  resolveThresholdUnitBase({ compareValueKind: 'percent', calculationUnit: 'bytes' }),
+  'percent'
+);
+assert.equal(
+  resolveThresholdUnitBase({ compareValueKind: 'ratio', calculationUnit: 'bytes' }),
+  null
+);
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: false,
+    calculationUnit: resolveThresholdUnitBase({
+      compareValueKind: 'ratio',
+      calculationUnit: 'bytes',
+    }),
+    unitList: [],
+  }),
+  false
+);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, conversionEnabled: false }),
+  false
+);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, conversionEnabled: true }),
+  false
+);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: false, conversionEnabled: true }),
+  true
 );
 
 console.log('monitor-strategy-detail logic validation passed');

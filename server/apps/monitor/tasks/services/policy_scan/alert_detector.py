@@ -52,7 +52,7 @@ class AlertDetector:
 
     def detect_threshold_alerts(self):
         trigger_count = getattr(self.policy, "trigger_count", 1) or 1
-        vm_data = self.metric_query_service.query_aggregation_metrics(self.policy.period, trigger_count)
+        vm_data = self.metric_query_service.query_comparison_metrics(self.policy.period, trigger_count)
         vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
         group_by_keys = self._get_group_by_keys()
@@ -106,7 +106,7 @@ class AlertDetector:
         if not self.policy.no_data_period or not self.policy.source:
             return []
 
-        aggregation_metrics = self.metric_query_service.query_aggregation_metrics(self.policy.no_data_period)
+        aggregation_metrics = self.metric_query_service.query_existence_metrics(self.policy.no_data_period)
         aggregation_result = self.metric_query_service.format_aggregation_metrics(aggregation_metrics)
 
         events = self._build_no_data_events(aggregation_result)
@@ -434,7 +434,7 @@ class AlertDetector:
             logger.debug(f"Policy {self.policy.id}: no_data_recovery_period not configured, skip recovery")
             return []
 
-        aggregation_metrics = self.metric_query_service.query_aggregation_metrics(self.policy.no_data_recovery_period)
+        aggregation_metrics = self.metric_query_service.query_existence_metrics(self.policy.no_data_recovery_period)
         logger.debug(f"Policy {self.policy.id}: no_data recovery query returned {len(aggregation_metrics.get('data', {}).get('result', []))} results")
 
         aggregation_result = self.metric_query_service.format_aggregation_metrics(aggregation_metrics)

@@ -1,12 +1,15 @@
 import re
+from dataclasses import dataclass
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 PERIOD_PATTERN = re.compile(r"^(\d+)([mhd])$")
+RATE_FUNCTION_RE = re.compile(r"\b(?:rate|irate|increase)\s*\(", re.IGNORECASE)
+
 GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
-WINDOW_AGGREGATION_ALGORITHMS = {
+LEGACY_WINDOW_AGGREGATION_ALGORITHMS = {
     "max_over_time",
     "min_over_time",
     "avg_over_time",
@@ -14,6 +17,32 @@ WINDOW_AGGREGATION_ALGORITHMS = {
     "count_over_time",
     "last_over_time",
 }
+QUANTILE_ALGORITHMS = {
+    "p90_over_time": "0.90",
+    "p95_over_time": "0.95",
+    "p99_over_time": "0.99",
+}
+# 切片 1 启用的周期聚合；其余窗口/逐序列函数留给后续切片，但 D4 禁则仍引用这些名字。
+WINDOW_AGGREGATION_ALGORITHMS = LEGACY_WINDOW_AGGREGATION_ALGORITHMS | set(
+    QUANTILE_ALGORITHMS
+)
+STDDEV_ALGORITHM = "stddev_over_time"
+COUNT_IF_ALGORITHM = "count_if_over_time"
+FUTURE_WINDOW_ALGORITHMS = {STDDEV_ALGORITHM, COUNT_IF_ALGORITHM}
+PER_SERIES_ALGORITHMS = {"rate", "changes", "deriv"}
+NEW_ALGORITHMS = set(QUANTILE_ALGORITHMS) | FUTURE_WINDOW_ALGORITHMS | PER_SERIES_ALGORITHMS
+POLICY_ALGORITHMS = WINDOW_AGGREGATION_ALGORITHMS | FUTURE_WINDOW_ALGORITHMS | PER_SERIES_ALGORITHMS
+LEVEL_ALGORITHMS = {
+    "avg",
+    "max",
+    "min",
+    "last",
+    "avg_over_time",
+    "max_over_time",
+    "min_over_time",
+    "last_over_time",
+}
+
 LEGACY_ALGORITHM_MAPPING = {
     "avg": ("avg", "avg_over_time"),
     "avg_over_time": ("avg", "avg_over_time"),
@@ -26,7 +55,73 @@ LEGACY_ALGORITHM_MAPPING = {
     "count": ("count", "last_over_time"),
     "count_over_time": ("count", "count_over_time"),
     "last_over_time": ("avg", "last_over_time"),
+    "p90_over_time": ("avg", "p90_over_time"),
+    "p95_over_time": ("avg", "p95_over_time"),
+    "p99_over_time": ("avg", "p99_over_time"),
 }
+
+COMPARE_MODE_ABSOLUTE = "absolute"
+COMPARE_MODE_PREVIOUS_WINDOW = "previous_window"
+COMPARE_MODE_OFFSET_1H = "offset_1h"
+COMPARE_MODE_OFFSET_24H = "offset_24h"
+COMPARE_MODE_OFFSET_7D = "offset_7d"
+COMPARE_MODE_OFFSET_30D = "offset_30d"
+COMPARE_MODE_BASELINE_4W = "baseline_4w"
+COMPARE_MODE_TIMELEFT = "timeleft"
+
+SLICE1_COMPARE_MODES = {
+    COMPARE_MODE_ABSOLUTE,
+    COMPARE_MODE_PREVIOUS_WINDOW,
+    COMPARE_MODE_OFFSET_1H,
+    COMPARE_MODE_OFFSET_24H,
+}
+COMPARE_MODES = SLICE1_COMPARE_MODES | {
+    COMPARE_MODE_OFFSET_7D,
+    COMPARE_MODE_OFFSET_30D,
+    COMPARE_MODE_BASELINE_4W,
+    COMPARE_MODE_TIMELEFT,
+}
+SLICE1_COMPARE_VALUE_KINDS = {"", "delta", "percent", "ratio"}
+COMPARE_VALUE_KINDS = SLICE1_COMPARE_VALUE_KINDS | {"hours"}
+COMPARE_VALUE_KINDS_BY_MODE = {
+    COMPARE_MODE_ABSOLUTE: {""},
+    COMPARE_MODE_PREVIOUS_WINDOW: {"delta", "percent"},
+    COMPARE_MODE_OFFSET_1H: {"percent", "ratio"},
+    COMPARE_MODE_OFFSET_24H: {"percent", "ratio"},
+    COMPARE_MODE_OFFSET_7D: {"percent", "ratio"},
+    COMPARE_MODE_OFFSET_30D: {"percent", "ratio"},
+    COMPARE_MODE_BASELINE_4W: {"delta", "percent"},
+    COMPARE_MODE_TIMELEFT: {"hours"},
+}
+COMPARE_OFFSET_BY_MODE = {
+    COMPARE_MODE_OFFSET_1H: "1h",
+    COMPARE_MODE_OFFSET_24H: "24h",
+    COMPARE_MODE_OFFSET_7D: "7d",
+    COMPARE_MODE_OFFSET_30D: "30d",
+}
+COMPARE_OFFSET_SECONDS = {
+    COMPARE_MODE_OFFSET_1H: 3600,
+    COMPARE_MODE_OFFSET_24H: 86400,
+    COMPARE_MODE_OFFSET_7D: 7 * 86400,
+    COMPARE_MODE_OFFSET_30D: 30 * 86400,
+}
+HIGH_SIDE_METHODS = {">", ">="}
+LOW_SIDE_METHODS = {"<", "<="}
+OVERLAY_ROLE_LABEL = "compare_role"
+OVERLAY_ROLE_CURRENT = "current"
+OVERLAY_ROLE_BASELINE = "baseline"
+
+
+@dataclass(frozen=True)
+class ResultUnit:
+    unit: str
+    conversion_enabled: bool
+
+
+def _policy_get(policy_like, name, default=None):
+    if isinstance(policy_like, dict):
+        return policy_like.get(name, default)
+    return getattr(policy_like, name, default)
 
 
 def period_to_seconds(period):
@@ -41,6 +136,24 @@ def period_to_seconds(period):
         return period["value"] * 86400
     else:
         raise BaseAppException(f"invalid period type: {period['type']}")
+
+
+def format_period(period, points=1):
+    """把策略周期对象格式化为 MetricsQL 步长，如 5m / 1h / 1d。"""
+    if not period:
+        raise BaseAppException("policy period is empty")
+
+    period_type = period["type"]
+    period_value = int(period["value"])
+    period_unit_map = {
+        "min": "m",
+        "hour": "h",
+        "day": "d",
+    }
+    if period_type not in period_unit_map:
+        raise BaseAppException(f"invalid period type: {period_type}")
+    del points
+    return f"{period_value}{period_unit_map[period_type]}"
 
 
 def period_step(period):
@@ -61,6 +174,10 @@ def period_step(period):
 
 
 def normalize_policy_algorithms(algorithm, group_algorithm=None):
+    # 短名 avg/max/min/sum/count 仍走历史映射；模型默认 group_algorithm=avg
+    # 不得把它们误判成「已是 over_time + 显式分组」。
+    if algorithm in LEGACY_ALGORITHM_MAPPING and algorithm not in WINDOW_AGGREGATION_ALGORITHMS:
+        return LEGACY_ALGORITHM_MAPPING[algorithm]
     if group_algorithm:
         if group_algorithm not in GROUP_AGGREGATION_ALGORITHMS:
             raise BaseAppException(f"invalid group algorithm method: {group_algorithm}")
@@ -103,22 +220,28 @@ def _count(metric_query, start, end, step, group_by, group_algorithm=None):
     return metrics
 
 
-# def last_over_time(metric_query, start, end, step, group_by):
-#     query = f"any(last_over_time({metric_query})) by ({group_by})"
-#     metrics = VictoriaMetricsAPI().query_range(query, start, end, step)
-#     return metrics
+def _window_range_selector(group_algorithm, metric_query, group_by, step):
+    return f"({group_algorithm}({metric_query}) by ({group_by}))[{step}:{period_step(step)}]"
 
 
 def build_policy_query(algorithm, metric_query, step, group_by, group_algorithm=None):
     group_algorithm, algorithm = normalize_policy_algorithms(algorithm, group_algorithm)
     if not group_by:
         raise BaseAppException("group_by is required")
-    return f"{algorithm}(({group_algorithm}({metric_query}) by ({group_by}))[{step}:{period_step(step)}])"
+    range_selector = _window_range_selector(group_algorithm, metric_query, group_by, step)
+    phi = QUANTILE_ALGORITHMS.get(algorithm)
+    if phi is not None:
+        return f"quantile_over_time({phi}, ({range_selector}))"
+    return f"{algorithm}({range_selector})"
 
 
 def build_formula_policy_query(algorithm, metric_query, step):
     _, algorithm = normalize_policy_algorithms(algorithm)
-    return f"{algorithm}(({metric_query})[{step}:{period_step(step)}])"
+    inner = f"({metric_query})[{step}:{period_step(step)}]"
+    phi = QUANTILE_ALGORITHMS.get(algorithm)
+    if phi is not None:
+        return f"quantile_over_time({phi}, ({inner}))"
+    return f"{algorithm}({inner})"
 
 
 def query_formula_policy_metrics(algorithm, metric_query, start, end, step):
@@ -160,6 +283,114 @@ def count_over_time(metric_query, start, end, step, group_by, group_algorithm=No
     query = build_policy_query("count_over_time", metric_query, step, group_by, group_algorithm)
     metrics = VictoriaMetricsAPI().query_range(query, start, end, step)
     return metrics
+
+
+def _compile_window_query(policy_like, base_query, step, group_by):
+    query_condition = _policy_get(policy_like, "query_condition") or {}
+    algorithm = _policy_get(policy_like, "algorithm")
+    group_algorithm = _policy_get(policy_like, "group_algorithm")
+    if query_condition.get("type") == "formula":
+        return build_formula_policy_query(algorithm, base_query, step)
+    return build_policy_query(algorithm, base_query, step, group_by, group_algorithm)
+
+
+def _compare_offset(mode, step):
+    if mode == COMPARE_MODE_PREVIOUS_WINDOW:
+        return step
+    offset = COMPARE_OFFSET_BY_MODE.get(mode)
+    if not offset:
+        raise BaseAppException(f"unsupported compare_mode: {mode}")
+    return offset
+
+
+def apply_compare_mode(query, policy_like, step):
+    mode = _policy_get(policy_like, "compare_mode") or COMPARE_MODE_ABSOLUTE
+    kind = (_policy_get(policy_like, "compare_value_kind") or "").strip()
+    if mode in ("", COMPARE_MODE_ABSOLUTE):
+        return query
+    if mode not in SLICE1_COMPARE_MODES:
+        raise BaseAppException(f"unsupported compare_mode: {mode}")
+    offset = _compare_offset(mode, step)
+    baseline = f"{query} offset {offset}"
+    if kind == "delta":
+        return f"{query} - {baseline}"
+    if kind == "percent":
+        return f"({query} - {baseline}) / ({baseline}) * 100"
+    if kind == "ratio":
+        return f"{query} / ({baseline})"
+    raise BaseAppException(f"unsupported compare_value_kind: {kind}")
+
+
+def compile_window_query(policy_like, base_query, step, group_by=None):
+    """当前窗聚合结果 q，不带比较基准。"""
+    if group_by is None:
+        group_by = ",".join(_policy_get(policy_like, "group_by") or [])
+    return _compile_window_query(policy_like, base_query, step, group_by)
+
+
+def compile_baseline_query(policy_like, base_query, step, group_by=None):
+    """对照窗：q offset <对照>。absolute 时与当前窗相同。"""
+    query = compile_window_query(policy_like, base_query, step, group_by)
+    mode = _policy_get(policy_like, "compare_mode") or COMPARE_MODE_ABSOLUTE
+    if mode in ("", COMPARE_MODE_ABSOLUTE):
+        return query
+    return f"{query} offset {_compare_offset(mode, step)}"
+
+
+def compile_policy_query(policy_like, base_query, step, group_by=None):
+    """比较查询：窗口聚合后再套比较基准。Trap 短路，不套对照。"""
+    if group_by is None:
+        group_by = ",".join(_policy_get(policy_like, "group_by") or [])
+    query = _compile_window_query(policy_like, base_query, step, group_by)
+    if _policy_get(policy_like, "collect_type") == "trap":
+        return query
+    return apply_compare_mode(query, policy_like, step)
+
+
+def compile_existence_query(policy_like, base_query, step, group_by=None):
+    """存在性查询：固定 last_over_time，不带 algorithm 变换和 compare_mode。"""
+    query_condition = _policy_get(policy_like, "query_condition") or {}
+    if query_condition.get("type") == "formula":
+        return f"last_over_time(({base_query})[{step}:{period_step(step)}])"
+    if group_by is None:
+        group_by = ",".join(_policy_get(policy_like, "group_by") or [])
+    if not group_by:
+        raise BaseAppException("group_by is required")
+    group_algorithm = _policy_get(policy_like, "group_algorithm")
+    if group_algorithm:
+        if group_algorithm not in GROUP_AGGREGATION_ALGORITHMS:
+            raise BaseAppException(f"invalid group algorithm method: {group_algorithm}")
+    else:
+        group_algorithm, _ = normalize_policy_algorithms(
+            _policy_get(policy_like, "algorithm")
+        )
+    return (
+        f"last_over_time(({group_algorithm}({base_query}) by ({group_by}))"
+        f"[{step}:{period_step(step)}])"
+    )
+
+
+def resolve_result_unit(policy_like) -> ResultUnit:
+    kind = (_policy_get(policy_like, "compare_value_kind") or "").strip()
+    algorithm = (_policy_get(policy_like, "algorithm") or "").strip()
+    metric_unit = _policy_get(policy_like, "metric_unit") or ""
+    calculation_unit = _policy_get(policy_like, "calculation_unit") or metric_unit or ""
+
+    if kind == "percent":
+        return ResultUnit("percent", False)
+    if kind == "ratio":
+        return ResultUnit("", False)
+    if kind == "hours":
+        return ResultUnit("hour", False)
+    if algorithm in {"changes", COUNT_IF_ALGORITHM}:
+        return ResultUnit("count", False)
+    if algorithm in {"rate", "deriv"}:
+        return ResultUnit(metric_unit, False)
+    return ResultUnit(calculation_unit, True)
+
+
+def base_query_contains_rate_function(base_query):
+    return bool(RATE_FUNCTION_RE.search(base_query or ""))
 
 
 METHOD = {

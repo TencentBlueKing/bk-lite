@@ -5,7 +5,8 @@ from datetime import datetime, timezone, timedelta
 from django.db import transaction
 
 from apps.monitor.models import MonitorEventRawData, MonitorAlertMetricSnapshot
-from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds
+from apps.monitor.tasks.utils.policy_methods import compile_policy_query, period_to_seconds
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.core.logger import celery_logger as logger
 
 
@@ -210,22 +211,13 @@ class SnapshotRecorder:
         start_timestamp = end_timestamp - period_seconds
         query = self.metric_query_service.format_pmq()
         step = self.metric_query_service.format_period(self.policy.period)
-        group_by_keys = self.policy.group_by or []
+        group_by_keys = self.metric_query_service.get_result_group_by()
         group_by = ",".join(group_by_keys)
 
-        method = METHOD.get(self.policy.algorithm)
-        if not method:
-            logger.warning(f"Invalid algorithm {self.policy.algorithm} for policy {self.policy.id}")
-            return None
-
         try:
-            pre_alert_metrics = method(
-                query,
-                start_timestamp,
-                end_timestamp,
-                step,
-                group_by,
-                getattr(self.policy, "group_algorithm", None),
+            compiled = compile_policy_query(self.policy, query, step, group_by)
+            pre_alert_metrics = VictoriaMetricsAPI().query_range(
+                compiled, start_timestamp, end_timestamp, step
             )
         except Exception as e:
             logger.error(f"Failed to query pre-alert metrics for policy {self.policy.id}: {e}")

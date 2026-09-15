@@ -44,6 +44,7 @@ def _mq(**kwargs):
         query_raw_metrics=lambda period: kwargs.get("raw", {"data": {"result": []}}),
         format_pmq=lambda: kwargs.get("pmq", "up"),
         format_period=lambda period: kwargs.get("step", "5m"),
+        get_result_group_by=lambda: kwargs.get("group_by", ["instance_id"]),
     )
 
 
@@ -216,11 +217,9 @@ class TestBuildPreAlertSnapshot:
             {"metric": {"instance_id": "h1"}, "values": [[0, "9"]]},
         ]}}
         rec = SnapshotRecorder(_policy(), {}, [], _mq())
-        mocker.patch.dict(
-            "apps.monitor.tasks.services.policy_scan.snapshot_recorder.METHOD",
-            {"max": mocker.Mock(return_value=pre_metrics)},
-            clear=False,
-        )
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.snapshot_recorder.VictoriaMetricsAPI"
+        ).return_value.query_range.return_value = pre_metrics
         snap = rec._build_pre_alert_snapshot("('h1',)", now)
         assert snap["type"] == "pre_alert"
         assert snap["raw_data"]["metric"]["instance_id"] == "h1"
@@ -231,9 +230,7 @@ class TestBuildPreAlertSnapshot:
             {"metric": {"instance_id": "other"}, "values": [[0, "9"]]},
         ]}}
         rec = SnapshotRecorder(_policy(), {}, [], _mq())
-        mocker.patch.dict(
-            "apps.monitor.tasks.services.policy_scan.snapshot_recorder.METHOD",
-            {"max": mocker.Mock(return_value=pre_metrics)},
-            clear=False,
-        )
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.snapshot_recorder.VictoriaMetricsAPI"
+        ).return_value.query_range.return_value = pre_metrics
         assert rec._build_pre_alert_snapshot("('h1',)", now) is None

@@ -236,10 +236,12 @@ export const getThresholdUnitOptions = ({
   unitList,
   metricUnit,
   isEnumMetric,
+  lockToExactUnit = false,
 }: {
   unitList: UnitListItem[];
   metricUnit: string | null;
   isEnumMetric: boolean;
+  lockToExactUnit?: boolean;
 }): UnitListItem[] => {
   if (isEnumMetric || !metricUnit || isVacantThresholdUnit(metricUnit)) {
     return [];
@@ -249,7 +251,7 @@ export const getThresholdUnitOptions = ({
   const baseUnit = validUnits.find((item) => item.unit_id === metricUnit);
   if (!baseUnit) return [];
 
-  if (baseUnit.system === null) {
+  if (lockToExactUnit || baseUnit.system === null) {
     return validUnits.filter((item) => item.unit_id === baseUnit.unit_id);
   }
 
@@ -358,6 +360,145 @@ export const resolvePreviewChartUnit = (
   thresholdUnit: string | null | undefined,
   calculationUnit: string | null | undefined
 ): string | null => responseUnit || thresholdUnit || calculationUnit || null;
+
+export const COMPARE_MODE_ABSOLUTE = 'absolute';
+export const COMPARE_MODE_PREVIOUS_WINDOW = 'previous_window';
+export const COMPARE_MODE_OFFSET_1H = 'offset_1h';
+export const COMPARE_MODE_OFFSET_24H = 'offset_24h';
+export const SLICE1_COMPARE_MODES = [
+  COMPARE_MODE_ABSOLUTE,
+  COMPARE_MODE_PREVIOUS_WINDOW,
+  COMPARE_MODE_OFFSET_1H,
+  COMPARE_MODE_OFFSET_24H
+] as const;
+
+export const COMPARE_VALUE_KIND_DELTA = 'delta';
+export const COMPARE_VALUE_KIND_PERCENT = 'percent';
+export const COMPARE_VALUE_KIND_RATIO = 'ratio';
+export const OVERLAY_ROLE_CURRENT = 'current';
+export const OVERLAY_ROLE_BASELINE = 'baseline';
+export const OVERLAY_ROLE_LABEL = 'compare_role';
+
+const COMPARE_OFFSET_SECONDS: Record<string, number> = {
+  [COMPARE_MODE_OFFSET_1H]: 3600,
+  [COMPARE_MODE_OFFSET_24H]: 86400
+};
+
+export const COMPARE_VALUE_KINDS_BY_MODE: Record<string, string[]> = {
+  [COMPARE_MODE_ABSOLUTE]: [''],
+  [COMPARE_MODE_PREVIOUS_WINDOW]: [
+    COMPARE_VALUE_KIND_DELTA,
+    COMPARE_VALUE_KIND_PERCENT
+  ],
+  [COMPARE_MODE_OFFSET_1H]: [
+    COMPARE_VALUE_KIND_PERCENT,
+    COMPARE_VALUE_KIND_RATIO
+  ],
+  [COMPARE_MODE_OFFSET_24H]: [
+    COMPARE_VALUE_KIND_PERCENT,
+    COMPARE_VALUE_KIND_RATIO
+  ]
+};
+
+export const policyPeriodToSeconds = (
+  type?: string | null,
+  value?: number | null
+): number | null => {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  if (type === 'min') return value * 60;
+  if (type === 'hour') return value * 3600;
+  if (type === 'day') return value * 86400;
+  return null;
+};
+
+export const isCompareModeAvailable = (
+  mode: string,
+  periodType?: string | null,
+  periodValue?: number | null
+): boolean => {
+  const offsetSeconds = COMPARE_OFFSET_SECONDS[mode];
+  if (!offsetSeconds) return true;
+  const periodSeconds = policyPeriodToSeconds(periodType, periodValue);
+  if (periodSeconds == null) return true;
+  return periodSeconds !== offsetSeconds;
+};
+
+export const getSlice1CompareModes = (
+  periodType?: string | null,
+  periodValue?: number | null
+): string[] =>
+  SLICE1_COMPARE_MODES.filter((mode) =>
+    isCompareModeAvailable(mode, periodType, periodValue)
+  );
+
+export const getCompareValueKinds = (mode: string): string[] =>
+  (COMPARE_VALUE_KINDS_BY_MODE[mode] || ['']).filter(Boolean);
+
+export const defaultCompareValueKind = (mode: string): string =>
+  getCompareValueKinds(mode)[0] || '';
+
+export const resolveCompareFieldsForSave = ({
+  isTrap,
+  compareMode,
+  compareValueKind
+}: {
+  isTrap: boolean;
+  compareMode?: string | null;
+  compareValueKind?: string | null;
+}): { compare_mode: string; compare_value_kind: string } => {
+  if (isTrap) {
+    return { compare_mode: COMPARE_MODE_ABSOLUTE, compare_value_kind: '' };
+  }
+  const mode = compareMode || COMPARE_MODE_ABSOLUTE;
+  if (mode === COMPARE_MODE_ABSOLUTE) {
+    return { compare_mode: COMPARE_MODE_ABSOLUTE, compare_value_kind: '' };
+  }
+  const allowed = getCompareValueKinds(mode);
+  const kind =
+    compareValueKind && allowed.includes(compareValueKind)
+      ? compareValueKind
+      : defaultCompareValueKind(mode);
+  return { compare_mode: mode, compare_value_kind: kind };
+};
+
+export const resolvePolicyResultUnit = ({
+  compareValueKind,
+  calculationUnit
+}: {
+  compareValueKind?: string | null;
+  calculationUnit?: string | null;
+}): { unit: string | null; conversionEnabled: boolean } => {
+  if (compareValueKind === COMPARE_VALUE_KIND_PERCENT) {
+    return { unit: 'percent', conversionEnabled: false };
+  }
+  if (compareValueKind === COMPARE_VALUE_KIND_RATIO) {
+    return { unit: null, conversionEnabled: false };
+  }
+  return {
+    unit: calculationUnit || null,
+    conversionEnabled: true
+  };
+};
+
+export const resolveThresholdUnitBase = ({
+  compareValueKind,
+  calculationUnit
+}: {
+  compareValueKind?: string | null;
+  calculationUnit?: string | null;
+}): string | null => {
+  const result = resolvePolicyResultUnit({ compareValueKind, calculationUnit });
+  return result.conversionEnabled ? calculationUnit || null : result.unit;
+};
+
+export const shouldDrawPreviewThreshold = ({
+  overlay
+}: {
+  overlay?: boolean;
+  conversionEnabled?: boolean;
+}): boolean => !overlay;
 
 export const buildMetricSelectOption = (
   metric: MetricItem,

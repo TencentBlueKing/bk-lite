@@ -117,3 +117,8 @@ def test_method_registry_maps_all_algorithms():
         "max_over_time", "min_over_time", "avg_over_time", "sum_over_time",
         "count_over_time", "last_over_time",
     }
+
+
+def test_normalize_legacy_short_name_with_default_group_algorithm():
+    assert pm.normalize_policy_algorithms("avg", "avg") == ("avg", "avg_over_time")
+    assert pm.normalize_policy_algorithms("max_over_time", "sum") == ("sum", "max_over_time")

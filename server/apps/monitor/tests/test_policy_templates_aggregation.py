@@ -2,17 +2,14 @@ import json
 from pathlib import Path
 
 from apps.monitor.services.policy_bulk import normalize_template_algorithms
+from apps.monitor.tasks.utils.policy_methods import (
+    GROUP_AGGREGATION_ALGORITHMS,
+    WINDOW_AGGREGATION_ALGORITHMS,
+)
 
 
-VALID_GROUP_ALGORITHMS = {"avg", "max", "min", "sum", "count"}
-VALID_WINDOW_ALGORITHMS = {
-    "avg_over_time",
-    "max_over_time",
-    "min_over_time",
-    "sum_over_time",
-    "count_over_time",
-    "last_over_time",
-}
+VALID_GROUP_ALGORITHMS = GROUP_AGGREGATION_ALGORITHMS
+VALID_WINDOW_ALGORITHMS = WINDOW_AGGREGATION_ALGORITHMS
 
 
 def _iter_policy_items(value, path):

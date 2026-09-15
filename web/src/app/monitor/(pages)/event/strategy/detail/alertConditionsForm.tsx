@@ -6,7 +6,11 @@ import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import {
+  COMPARE_MODE_ABSOLUTE,
+  defaultCompareValueKind,
+  getCompareValueKinds,
   getMetricThresholdEnumState,
+  getSlice1CompareModes,
   getThresholdUnitOptions,
   shouldShowThresholdUnitSelector
 } from './strategyDetailUtils';
@@ -36,6 +40,10 @@ interface AlertConditionsFormProps {
   functionDelayMinutes: number | null;
   metricUnit: string | null;
   isFormulaMode: boolean;
+  period: number | null;
+  periodUnit: string;
+  compareMode: string;
+  compareValueKind: string;
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
   onThresholdUnitChange: (val: string) => void;
@@ -45,6 +53,8 @@ interface AlertConditionsFormProps {
   onNoDataRecoveryChange: (e: number | null) => void;
   onNoDataAlertLevelChange: (val: string) => void;
   onNoDataAlertNameChange: (val: string) => void;
+  onCompareModeChange: (val: string) => void;
+  onCompareValueKindChange: (val: string) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -59,11 +69,17 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   functionDelayMinutes,
   metricUnit,
   isFormulaMode,
+  period,
+  periodUnit,
+  compareMode,
+  compareValueKind,
   onThresholdChange,
   onThresholdUnitChange,
   onNoDataAlertChange,
   onNoDataAlertLevelChange,
   onNoDataAlertNameChange,
+  onCompareModeChange,
+  onCompareValueKindChange,
   isTrap
 }) => {
   const { t } = useTranslation();
@@ -83,9 +99,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       getThresholdUnitOptions({
         unitList,
         metricUnit: thresholdFilterBase,
-        isEnumMetric
+        isEnumMetric,
+        lockToExactUnit: compareValueKind === 'percent'
       }),
-    [unitList, thresholdFilterBase, isEnumMetric]
+    [unitList, thresholdFilterBase, isEnumMetric, compareValueKind]
   );
 
   const showUnitSelector = shouldShowThresholdUnitSelector({
@@ -107,6 +124,38 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
     return Promise.resolve();
+  };
+
+  const compareModes = useMemo(
+    () => getSlice1CompareModes(periodUnit, period),
+    [period, periodUnit]
+  );
+  const compareKindOptions = useMemo(
+    () => getCompareValueKinds(compareMode),
+    [compareMode]
+  );
+  const compareModeLabels: Record<string, string> = {
+    absolute: t('monitor.events.compareModeAbsolute'),
+    previous_window: t('monitor.events.compareModePreviousWindow'),
+    offset_1h: t('monitor.events.compareModeOffset1h'),
+    offset_24h: t('monitor.events.compareModeOffset24h')
+  };
+  const compareKindLabels: Record<string, string> = {
+    delta: t('monitor.events.compareValueKindDelta'),
+    percent: t('monitor.events.compareValueKindPercent'),
+    ratio: t('monitor.events.compareValueKindRatio')
+  };
+
+  const handleCompareModeChange = (val: string) => {
+    onCompareModeChange(val);
+    if (val === COMPARE_MODE_ABSOLUTE) {
+      onCompareValueKindChange('');
+      return;
+    }
+    const kinds = getCompareValueKinds(val);
+    if (!kinds.includes(compareValueKind)) {
+      onCompareValueKindChange(defaultCompareValueKind(val));
+    }
   };
 
   // 是否显示无数据告警名称（选择了非"不触发"的选项时显示）
@@ -131,6 +180,44 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         {({ getFieldValue }) =>
           isTrap(getFieldValue) ? null : (
             <>
+              {!isEnumMetric && (
+                <Form.Item
+                  label={
+                    <span className="w-[100px]">
+                      {t('monitor.events.compareBaseline')}
+                    </span>
+                  }
+                >
+                  <div className="flex flex-wrap items-center gap-[10px]">
+                    <Select
+                      className="w-[220px]"
+                      value={compareMode}
+                      onChange={handleCompareModeChange}
+                    >
+                      {compareModes.map((mode) => (
+                        <Option key={mode} value={mode}>
+                          {compareModeLabels[mode] || mode}
+                        </Option>
+                      ))}
+                    </Select>
+                    {compareKindOptions.length > 0 && (
+                      <Select
+                        className="w-[120px]"
+                        value={compareValueKind}
+                        onChange={onCompareValueKindChange}
+                        aria-label={t('monitor.events.compareValueKind')}
+                      >
+                        {compareKindOptions.map((kind) => (
+                          <Option key={kind} value={kind}>
+                            {compareKindLabels[kind] || kind}
+                          </Option>
+                        ))}
+                      </Select>
+                    )}
+                  </div>
+                </Form.Item>
+              )}
+
               {/* 告警阈值 */}
               <Form.Item<StrategyFields>
                 name="threshold"

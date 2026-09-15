@@ -261,7 +261,12 @@ class TestPodAlertEndToEnd:
         def mock_victoriametrics(*args, **kwargs):
             return {"data": {"result": phase["result"]}}
 
-        mocker.patch.dict(metric_query_module.METHOD, {"max": mock_victoriametrics})
+        mocker.patch.object(
+            metric_query_module,
+            "VictoriaMetricsAPI",
+        ).return_value.query_range.side_effect = lambda *args, **kwargs: {
+            "data": {"result": phase["result"]}
+        }
         mocker.patch(
             "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
             return_value="2026/01/01/mock.json.gz",
@@ -414,7 +419,12 @@ class TestThresholdLifecycleEvents:
         def mock_victoriametrics(*args, **kwargs):
             return {"data": {"result": phase["result"]}}
 
-        mocker.patch.dict(metric_query_module.METHOD, {"max": mock_victoriametrics})
+        mocker.patch.object(
+            metric_query_module,
+            "VictoriaMetricsAPI",
+        ).return_value.query_range.side_effect = lambda *args, **kwargs: {
+            "data": {"result": phase["result"]}
+        }
         snapshot_store = {}
 
         def upload_snapshot(self, instance, json_data, *args, **kwargs):

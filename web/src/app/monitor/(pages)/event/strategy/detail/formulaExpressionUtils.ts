@@ -536,7 +536,9 @@ export const buildMetricExpressionPreviewPayload = ({
   groupBy,
   threshold = [],
   calculationUnit,
-  thresholdUnit
+  thresholdUnit,
+  compareMode,
+  compareValueKind
 }: {
   monitorObjId: string | number | null;
   source: SourceFeild;
@@ -557,6 +559,8 @@ export const buildMetricExpressionPreviewPayload = ({
   threshold?: ThresholdField[];
   calculationUnit?: string | null;
   thresholdUnit?: string | null;
+  compareMode?: string | null;
+  compareValueKind?: string | null;
 }) => {
   if (!monitorObjId || !selectedInstance || !algorithm) {
     return null;
@@ -599,6 +603,15 @@ export const buildMetricExpressionPreviewPayload = ({
     calculationUnit,
     thresholdUnit
   });
+  const resolvedCompareMode = compareMode || 'absolute';
+  const resolvedCompareKind =
+    resolvedCompareMode === 'absolute' ? '' : compareValueKind || '';
+  const previewThresholdUnit =
+    resolvedCompareKind === 'percent'
+      ? 'percent'
+      : resolvedCompareKind === 'ratio'
+        ? ''
+        : units.thresholdUnit;
 
   return {
     monitor_object: monitorObjId,
@@ -616,7 +629,9 @@ export const buildMetricExpressionPreviewPayload = ({
     ),
     metric_unit: units.metricUnit,
     calculation_unit: units.calculationUnit,
-    threshold_unit: units.thresholdUnit,
+    threshold_unit: previewThresholdUnit,
+    compare_mode: resolvedCompareMode,
+    compare_value_kind: resolvedCompareKind,
     preview: {
       instance_id: selectedInstance.instance_id,
       instance_id_values: selectedInstance.instance_id_values,

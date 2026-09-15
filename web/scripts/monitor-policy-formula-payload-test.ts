@@ -194,6 +194,8 @@ assert.equal(formulaPreviewPayload?.group_algorithm, 'sum');
 assert.deepEqual(formulaPreviewPayload?.group_by, ['instance_id', 'status']);
 assert.equal(formulaPreviewPayload?.metric_unit, '');
 assert.equal(formulaPreviewPayload?.calculation_unit, 'percent');
+assert.equal(formulaPreviewPayload?.compare_mode, 'absolute');
+assert.equal(formulaPreviewPayload?.compare_value_kind, '');
 assert.deepEqual(formulaPreviewPayload?.preview, {
   instance_id: 'host-1',
   instance_id_values: ['host.1', 'tenant(a)'],
@@ -256,6 +258,8 @@ assert.deepEqual(metricPreviewPayload?.query_condition, singlePayload);
 assert.equal(metricPreviewPayload?.group_algorithm, 'avg');
 assert.deepEqual(metricPreviewPayload?.group_by, ['instance_id']);
 assert.equal(metricPreviewPayload?.metric_unit, 'percent');
+assert.equal(metricPreviewPayload?.compare_mode, 'absolute');
+assert.equal(metricPreviewPayload?.compare_value_kind, '');
 
 assert.throws(
   () =>
@@ -618,5 +622,41 @@ assert.deepEqual(
   ]
 );
 assert.deepEqual(buildMetricDimensionVariables(null), []);
+
+const offsetPreviewPayload = buildMetricExpressionPreviewPayload({
+  monitorObjId: 'linux',
+  source: {
+    type: 'instance',
+    values: ['host-1']
+  },
+  metrics: [
+    {
+      id: 10,
+      name: 'cpu_usage',
+      display_name: 'CPU 使用率',
+      unit: 'percent',
+      dimensions: [],
+      instance_id_keys: ['instance_id']
+    }
+  ],
+  mode: 'metric',
+  resultName: '',
+  expression: '',
+  rows: singleRows,
+  selectedInstance: previewInstance,
+  period: 5,
+  periodUnit: 'min',
+  algorithm: 'p95_over_time',
+  groupAlgorithm: 'avg',
+  groupBy: ['instance_id'],
+  calculationUnit: 'percent',
+  thresholdUnit: 'percent',
+  compareMode: 'offset_1h',
+  compareValueKind: 'percent'
+});
+assert.equal(offsetPreviewPayload?.compare_mode, 'offset_1h');
+assert.equal(offsetPreviewPayload?.compare_value_kind, 'percent');
+assert.equal(offsetPreviewPayload?.threshold_unit, 'percent');
+assert.equal(offsetPreviewPayload?.algorithm, 'p95_over_time');
 
 console.log('monitor-policy-formula-payload-test passed');

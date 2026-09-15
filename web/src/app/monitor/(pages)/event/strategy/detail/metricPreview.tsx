@@ -23,7 +23,7 @@ import {
   buildMetricExpressionPreviewPayload,
   MetricExpressionMode
 } from './formulaExpressionUtils';
-import { resolvePreviewChartUnit } from './strategyDetailUtils';
+import { resolvePreviewChartUnit, OVERLAY_ROLE_LABEL, shouldDrawPreviewThreshold } from './strategyDetailUtils';
 
 const { Option } = Select;
 
@@ -41,6 +41,8 @@ interface MetricPreviewProps {
   threshold: ThresholdField[];
   calculationUnit?: string | null;
   thresholdUnit?: string | null;
+  compareMode?: string | null;
+  compareValueKind?: string | null;
   metricRows: MetricExpressionRow[];
   metricExpressionMode: MetricExpressionMode;
   resultName: string;
@@ -84,6 +86,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   threshold,
   calculationUnit,
   thresholdUnit,
+  compareMode,
+  compareValueKind,
   metricRows,
   metricExpressionMode,
   resultName,
@@ -103,6 +107,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const [previewError, setPreviewError] = useState<string>('');
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [previewThreshold, setPreviewThreshold] = useState<ThresholdField[]>([]);
+  const [previewOverlay, setPreviewOverlay] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<InstanceItem[]>([]);
   const [allInstances, setAllInstances] = useState<TableDataItem[]>([]);
@@ -235,7 +240,9 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       groupBy,
       threshold,
       calculationUnit,
-      thresholdUnit
+      thresholdUnit,
+      compareMode,
+      compareValueKind
     });
   };
 
@@ -278,6 +285,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
+      setPreviewOverlay(false);
       return;
     }
     let payload = null;
@@ -288,6 +296,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
+      setPreviewOverlay(false);
       setPreviewError(
         error instanceof Error
           ? error.message
@@ -301,6 +310,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
+      setPreviewOverlay(false);
       return;
     }
     // 取消之前的请求
@@ -333,6 +343,23 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           calculationUnit
         )
       );
+      const overlay = Boolean(responseData?.overlay);
+      setPreviewOverlay(overlay);
+      const overlayRoleLabel = t('monitor.events.compareBaseline');
+      const overlayRoleValues: Record<string, string> = {
+        current: t('monitor.events.compareRoleCurrent'),
+        baseline: t('monitor.events.compareRoleBaseline')
+      };
+      const overlayData = overlay
+        ? data.map((item: { metric?: Record<string, string> }) => {
+          const metric = { ...(item.metric || {}) };
+          const role = metric[OVERLAY_ROLE_LABEL];
+          if (role && overlayRoleValues[role]) {
+            metric[OVERLAY_ROLE_LABEL] = overlayRoleValues[role];
+          }
+          return { ...item, metric };
+        })
+        : data;
       // 渲染图表数据
       const selectedInst = instances.find(
         (item) => item.instance_id === selectedInstance
@@ -353,7 +380,12 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
             instance_name: selectedInst.instance_name,
             instance_id: selectedInst.instance_id,
             instance_id_keys: currentMetric?.instance_id_keys || [],
-            dimensions: currentMetric?.dimensions || [],
+            dimensions: overlay
+              ? [
+                ...(currentMetric?.dimensions || []),
+                { name: OVERLAY_ROLE_LABEL, description: overlayRoleLabel }
+              ]
+              : currentMetric?.dimensions || [],
             title:
               metricExpressionMode === 'formula'
                 ? resultName || currentMetric?.display_name || '--'
@@ -362,7 +394,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
           }
         ];
       }
-      const _chartData = renderChart(data, list);
+      const _chartData = renderChart(overlayData, list);
       setChartData(_chartData);
     } catch (error: any) {
       if (
@@ -373,6 +405,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         setPreviewWarnings([]);
         setPreviewThreshold([]);
         setPreviewChartUnit(null);
+        setPreviewOverlay(false);
         setPreviewError(
           error?.response?.data?.message ||
             error?.message ||
@@ -406,6 +439,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     threshold,
     calculationUnit,
     thresholdUnit,
+    compareMode,
+    compareValueKind,
     metricRows,
     metricExpressionMode,
     resultName,
@@ -433,9 +468,11 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   }
 
   // 过滤掉空值的阈值
-  const validThreshold = previewThreshold.filter(
-    (item) => item.value !== null && item.value !== undefined
-  );
+  const validThreshold = (
+    shouldDrawPreviewThreshold({ overlay: previewOverlay })
+      ? previewThreshold
+      : []
+  ).filter((item) => item.value !== null && item.value !== undefined);
   const effectiveChartUnit = resolvePreviewChartUnit(
     previewChartUnit,
     thresholdUnit,

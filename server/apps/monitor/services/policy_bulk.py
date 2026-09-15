@@ -3,21 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from apps.monitor.tasks.utils.policy_methods import LEGACY_ALGORITHM_MAPPING
 from apps.monitor.utils.unit_converter import UnitConverter
-
-LEGACY_ALGORITHM_MAPPING = {
-    "avg": ("avg", "avg_over_time"),
-    "avg_over_time": ("avg", "avg_over_time"),
-    "max": ("max", "max_over_time"),
-    "max_over_time": ("max", "max_over_time"),
-    "min": ("min", "min_over_time"),
-    "min_over_time": ("min", "min_over_time"),
-    "sum": ("sum", "sum_over_time"),
-    "sum_over_time": ("sum", "sum_over_time"),
-    "count": ("count", "last_over_time"),
-    "count_over_time": ("count", "count_over_time"),
-    "last_over_time": ("avg", "last_over_time"),
-}
 
 LEGACY_METRIC_UNIT_MAPPING = {
     "%": "percent",
