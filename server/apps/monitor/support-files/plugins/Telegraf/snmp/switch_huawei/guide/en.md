@@ -1,6 +1,6 @@
 # Huawei Switch SNMP Guide
 
-This plugin uses Telegraf `inputs.snmp` on the selected node to collect Huawei campus, chassis, and CloudEngine switch health. Collection stays on the existing Switch / Network Device path (`snmp_huawei`). Interface counters remain the current IF-MIB 64-bit HC pair; this template does not add further IF-MIB objects.
+This plugin uses Telegraf `inputs.snmp` on the selected node to collect Huawei campus, chassis, and CloudEngine switch health from private ENTITY and STACK/CSS objects. Collection stays on the existing Switch / Network Device path (`snmp_huawei`).
 
 ## Supported models
 
@@ -10,7 +10,7 @@ One plugin covers the following Huawei switch families. Standalone boxes, iStack
 - Chassis campus / CSS: S9700, S12700, S12700E, S16700
 - CloudEngine CE series, including SKUs such as CE6881 and CE5881
 
-A device that does not enable stack or CSS simply returns empty stack/CSS tables. Missing private tables do not block CPU, memory, fan, PSU, optical, or interface metrics. Stack and CSS link-up/down objects are traps, not pollable tables; use stack/CSS port status for link health.
+A device that does not enable stack or CSS simply returns empty stack/CSS tables. Missing private tables do not block CPU, memory, fan, PSU, or optical metrics. Stack and CSS link-up/down objects are traps, not pollable tables; use stack/CSS port status for link health.
 
 ## Prerequisites
 

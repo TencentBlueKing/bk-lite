@@ -1,11 +1,11 @@
 Switch Huawei SNMP:
   name: Huawei (Telegraf)
-  desc: SNMP monitoring template for Huawei switch. It reports CPU utilization, memory
-    utilization, temperature, fan status (normal/abnormal), PSU state (supply/notSupply/sleep/unknown),
-    SFP optical DDM (Rx/Tx power in dBm from µW, temperature in °C, voltage in V from
-    mV, bias in µA), stack/CSS member and port health, per-port inbound traffic rate,
-    and other key metrics. Supported models include S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700
-    and CloudEngine CE series SKUs such as CE6881/CE5881.
+  desc: SNMP monitoring template for Huawei switch. It reports private ENTITY health
+    (CPU, memory, temperature, fan status normal/abnormal, PSU supply/notSupply/sleep/unknown,
+    SFP optical DDM with Rx/Tx power in dBm from µW, temperature in °C, voltage in V from
+    mV, bias in µA) and STACK/CSS member and port health. Supported models include
+    S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700 and CloudEngine CE series
+    SKUs such as CE6881/CE5881.
 monitor_object:
   Switch: Switch
 monitor_object_type:

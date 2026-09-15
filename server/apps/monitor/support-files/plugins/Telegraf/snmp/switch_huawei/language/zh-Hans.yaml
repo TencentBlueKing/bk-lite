@@ -1,6 +1,6 @@
 Switch Huawei SNMP:
   name: 华为（Telegraf）
-  desc: 面向 Huawei 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、温度、风扇（正常/异常）、电源状态（供电/未供电/休眠/未知）、光模块 DDM（收/发光功率由 µW 换算为 dBm、温度 °C、电压由 mV 换算为 V、偏置电流 µA）、堆叠/CSS 成员与端口健康及每端口入向流量速率等主要指标。支持机型包括 S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700 以及 CloudEngine CE 系列（如 CE6881/CE5881）。
+  desc: 面向 Huawei 交换机的 SNMP 监控模板，采集私有 ENTITY 健康（CPU、内存、温度、风扇正常/异常、电源供电/未供电/休眠/未知、光模块 DDM：收/发光功率由 µW 换算为 dBm、温度 °C、电压由 mV 换算为 V、偏置电流 µA）以及堆叠/CSS 成员与端口健康。支持机型包括 S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700 以及 CloudEngine CE 系列（如 CE6881/CE5881）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

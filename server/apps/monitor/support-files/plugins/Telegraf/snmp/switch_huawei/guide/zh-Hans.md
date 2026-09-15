@@ -1,6 +1,6 @@
 # 华为交换机 SNMP 接入指南
 
-本插件使用 Telegraf `inputs.snmp`，从选定节点采集华为园区、框式及 CloudEngine 交换机的设备健康指标。采集仍走现有交换机 / 网络设备路径（`snmp_huawei`）。接口计数保持当前 IF-MIB 64 位 HC 入/出对，本模板不再新增 IF-MIB 对象。
+本插件使用 Telegraf `inputs.snmp`，从选定节点采集华为园区、框式及 CloudEngine 交换机的私有 ENTITY 与 STACK/CSS 健康指标。采集仍走现有交换机 / 网络设备路径（`snmp_huawei`）。
 
 ## 支持机型
 
@@ -10,7 +10,7 @@
 - 框式园区 / CSS：S9700、S12700、S12700E、S16700
 - CloudEngine CE 系列，含 CE6881、CE5881 等 SKU
 
-未启用堆叠或 CSS 的设备对应表为空，不会阻断 CPU、内存、风扇、电源、光模块或接口指标。堆叠/CSS 的 link-up/down 是 trap，不是可轮询状态表；链路健康看堆叠口 / CSS 口状态。
+未启用堆叠或 CSS 的设备对应表为空，不会阻断 CPU、内存、风扇、电源或光模块指标。堆叠/CSS 的 link-up/down 是 trap，不是可轮询状态表；链路健康看堆叠口 / CSS 口状态。
 
 ## 前置要求
 
