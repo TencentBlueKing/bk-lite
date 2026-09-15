@@ -32,24 +32,100 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    # ---- sysObjectID：型号分支选择，禁止混用 FGS2924R / ES2226 私有树 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- FGS2924R 型号分支（sysObjectID 1.3.6.1.4.1.5205.2.34）----
+    # fgs2924rCpuLoad DisplayString（含 %）解析为 cpu_usage_percent。
+    # fgs2924rRamSize 1.3.6.1.4.1.5205.2.34.1.1.1.9 仅为容量，不作为使用率，不采。
     [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
+        name = "cpu_fgs2924r"
+        inherit_tags = ["source", "sysObjectID"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
+        oid = "1.3.6.1.4.1.5205.2.34.1.1.1.13.0"
+        name = "usage_percent"
+    # ---- ES2226 型号分支（sysObjectID 1.3.6.1.4.1.5205.2.31）----
+    # es2226CPULoad DisplayString（含 %）解析为 cpu_usage_percent。
+    # es2226RamSize 1.3.6.1.4.1.5205.2.31.1.1.1.9 仅为容量，不作为使用率，不采。
+    [[inputs.snmp.table]]
+        name = "cpu_es2226"
+        inherit_tags = ["source", "sysObjectID"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-# ---- CPU/内存/温度/风扇/电源：RubyTech 网管交换机已确认企业号为 5205 且有公开 switch 产品子树；当前状态未取得厂商 MIB 包或设备 walk，未确认无需行级过滤的稳定私有健康标量 OID。为避免臆造，本基线模板不采集 PEN 5205 私有树，仅采集标准 MIB-II 运行时长与 IF-MIB（含 64 位 HC）接口指标。----
+        oid = "1.3.6.1.4.1.5205.2.31.1.1.1.11.0"
+        name = "usage_percent"
+# ---- 温度/风扇/电源：无已确认的整机健康标量 → N/A 不采。----
+
+[[processors.starlark]]
+    namepass = ["cpu_fgs2924r", "cpu_es2226"]
+    [processors.starlark.tagpass]
+        brand = ["rubytech"]
+    source = '''
+def parse_percent(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int":
+        return float(raw)
+    if t == "float":
+        return raw
+    text = str(raw)
+    digits = ""
+    started = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if c >= "0" and c <= "9":
+            digits += c
+            started = True
+        elif c == "." and started:
+            if "." not in digits:
+                digits += c
+        elif started:
+            break
+        i += 1
+    if digits == "" or digits == ".":
+        return None
+    return float(digits)
+
+def oid_arc_matches(s, prefix):
+    n = len(s)
+    p = len(prefix)
+    i = 0
+    while i + p <= n:
+        if s[i:i+p] == prefix:
+            if i + p == n or s[i+p] == ".":
+                return True
+        i += 1
+    return False
+
+def oid_matches(soid, prefix):
+    s = str(soid)
+    if len(s) > 0 and s[0] == ".":
+        s = s[1:]
+    tail = prefix
+    root = "1.3.6.1.4.1."
+    if prefix[:len(root)] == root:
+        tail = prefix[len(root):]
+    return oid_arc_matches(s, prefix) or oid_arc_matches(s, tail)
+
+def apply(metric):
+    soid = metric.tags.get("sysObjectID", "")
+    name = metric.name
+    if name == "cpu_fgs2924r":
+        if not oid_matches(soid, "1.3.6.1.4.1.5205.2.34"):
+            return None
+    elif name == "cpu_es2226":
+        if not oid_matches(soid, "1.3.6.1.4.1.5205.2.31"):
+            return None
+    else:
+        return None
+    value = parse_percent(metric.fields.get("usage_percent"))
+    if value == None:
+        return None
+    metric.name = "cpu"
+    metric.fields["usage_percent"] = value
+    return metric
+'''
