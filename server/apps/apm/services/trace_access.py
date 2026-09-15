@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TypeVar
 
 from apps.apm.models import ApmService, ApmServiceInstance
@@ -112,7 +112,7 @@ class TraceAccessResolver:
             )
         )
 
-    def can_view_detail(self, detail: TraceDetail, organization_ids: Sequence[int]) -> bool:
+    def filter_detail(self, detail: TraceDetail, organization_ids: Sequence[int]) -> TraceDetail | None:
         identities = tuple(
             _TraceIdentity(
                 span.service_namespace,
@@ -128,7 +128,39 @@ class TraceAccessResolver:
             ),
         )
         allowed_instances, allowed_services = self._allowed_identities(identities, organization_ids)
-        return any(self._is_allowed(item, allowed_instances, allowed_services) for item in identities)
+        if not detail.spans:
+            if self._is_allowed(identities[0], allowed_instances, allowed_services):
+                return detail
+            return None
+        visible = tuple(
+            span
+            for span in detail.spans
+            if self._is_allowed(
+                _TraceIdentity(
+                    span.service_namespace,
+                    span.service_name,
+                    span.instance_id,
+                ),
+                allowed_instances,
+                allowed_services,
+            )
+        )
+        if not visible:
+            return None
+        visible_ids = {span.span_id for span in visible}
+        root = next((span for span in visible if span.parent_span_id not in visible_ids), visible[0])
+        return replace(
+            detail,
+            spans=visible,
+            service_namespace=root.service_namespace,
+            service_name=root.service_name,
+            environment=root.environment,
+            instance_id=root.instance_id,
+            truncated=detail.truncated or len(visible) < len(detail.spans),
+        )
+
+    def can_view_detail(self, detail: TraceDetail, organization_ids: Sequence[int]) -> bool:
+        return self.filter_detail(detail, organization_ids) is not None
 
     @staticmethod
     def _allowed_identities(
