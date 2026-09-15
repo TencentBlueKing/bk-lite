@@ -49,7 +49,7 @@ def cmdb_create_instance(
         return wrap_error("model_id is required")
     if not isinstance(instance_info, dict):
         return wrap_error("instance_info must be a dict")
-    return call_cmdb_params("create_instance", config, model_id=model_id, instance_info=instance_info)
+    return call_cmdb_params("create_instance_for_llm", config, model_id=model_id, instance_info=instance_info)
 
 
 @tool(description="按 UUID 更新 CMDB 实例属性。")
@@ -62,7 +62,7 @@ def cmdb_update_instance(
         return wrap_error("inst_uuid is required")
     if not isinstance(update_data, dict):
         return wrap_error("update_data must be a dict")
-    return call_cmdb_params("update_instance", config, inst_uuid=inst_uuid, update_attr=update_data)
+    return call_cmdb_params("update_instance_for_llm", config, inst_uuid=inst_uuid, update_attr=update_data)
 
 
 @tool(description="批量按 UUID 更新 CMDB 实例同一组属性。")
@@ -85,7 +85,7 @@ def cmdb_delete_instance(
 ) -> Dict[str, Any]:
     if not inst_uuid:
         return wrap_error("inst_uuid is required")
-    return call_cmdb_params("delete_instance", config, inst_uuid=inst_uuid)
+    return call_cmdb_params("delete_instance_for_llm", config, inst_uuid=inst_uuid)
 
 
 @tool(description="按 UUID 列表批量删除 CMDB 实例。")
@@ -95,7 +95,7 @@ def cmdb_batch_delete_instances(
 ) -> Dict[str, Any]:
     if not inst_uuids:
         return wrap_error("inst_uuids is required")
-    return call_cmdb_params("delete_instance", config, inst_uuids=inst_uuids)
+    return call_cmdb_params("delete_instance_for_llm", config, inst_uuids=inst_uuids)
 
 
 @tool(description="从实例 UUID 查询轻量关联拓扑。")

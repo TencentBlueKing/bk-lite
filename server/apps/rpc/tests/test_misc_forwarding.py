@@ -118,9 +118,29 @@ def test_cmdb_create_instance_association(cmdb):
     )
 
 
+def test_cmdb_create_instance_association_for_llm(cmdb):
+    cmdb.create_instance_association_for_llm(src_inst_uuid="s1", dst_inst_uuid="d1", model_asst_id="a1")
+    assert _last(cmdb.client) == (
+        "run",
+        "create_instance_association_for_llm",
+        (),
+        {"params": {"src_inst_uuid": "s1", "dst_inst_uuid": "d1", "model_asst_id": "a1"}},
+    )
+
+
 def test_cmdb_delete_instance_association(cmdb):
     cmdb.delete_instance_association(asso_id=9)
     assert _last(cmdb.client) == ("run", "delete_instance_association", (), {"params": {"asso_id": 9}})
+
+
+def test_cmdb_delete_instance_association_for_llm(cmdb):
+    cmdb.delete_instance_association_for_llm(src_inst_uuid="s1", dst_inst_uuid="d1", model_asst_id="a1")
+    assert _last(cmdb.client) == (
+        "run",
+        "delete_instance_association_for_llm",
+        (),
+        {"params": {"src_inst_uuid": "s1", "dst_inst_uuid": "d1", "model_asst_id": "a1"}},
+    )
 
 
 def test_cmdb_create_instance(cmdb):
@@ -131,6 +151,31 @@ def test_cmdb_create_instance(cmdb):
         (),
         {"params": {"model_id": "host", "instance_info": {"inst_name": "box"}}},
     )
+
+
+def test_cmdb_create_instance_for_llm(cmdb):
+    cmdb.create_instance_for_llm(model_id="host", instance_info={"inst_name": "box"})
+    assert _last(cmdb.client) == (
+        "run",
+        "create_instance_for_llm",
+        (),
+        {"params": {"model_id": "host", "instance_info": {"inst_name": "box"}}},
+    )
+
+
+def test_cmdb_update_instance_for_llm(cmdb):
+    cmdb.update_instance_for_llm(inst_uuid="u1", update_attr={"k": "v"})
+    assert _last(cmdb.client) == (
+        "run",
+        "update_instance_for_llm",
+        (),
+        {"params": {"inst_uuid": "u1", "update_attr": {"k": "v"}}},
+    )
+
+
+def test_cmdb_delete_instance_for_llm(cmdb):
+    cmdb.delete_instance_for_llm(inst_uuid="u1")
+    assert _last(cmdb.client) == ("run", "delete_instance_for_llm", (), {"params": {"inst_uuid": "u1"}})
 
 
 def test_cmdb_sync_display_fields(cmdb):

@@ -2518,15 +2518,64 @@ def _llm_has_instance_permission(instance, permission_map, user, operator):
     )
 
 
-def _llm_has_model_view(model_info, permission_map):
+def _llm_has_model_permission(model_info, permission_map, operator):
     return CmdbRulesFormatUtil.has_object_permission(
         obj_type=PERMISSION_MODEL,
-        operator=VIEW,
+        operator=operator,
         model_id=model_info.get("model_id", ""),
         permission_instances_map=permission_map,
         instance=model_info,
         default_group_id=get_default_group_id()[0],
     )
+
+
+def _llm_require_instances_operate(params, instances, *, missing_error="instance not found"):
+    if not instances:
+        raise ValueError(missing_error)
+    for instance in instances:
+        model_id = str(instance.get("model_id") or "")
+        if not model_id:
+            raise ValueError(missing_error)
+        _user_info, permission_map, user = _llm_require_permission_context(params, model_id=model_id)
+        if not _llm_has_instance_permission(instance, permission_map, user, OPERATE):
+            raise ValueError("insufficient instance permission")
+
+
+def _llm_require_create_operate(params, model_id, instance_info):
+    """创建走模型 OPERATE 或目标组织下实例 OPERATE（Add 的 CMDB 规则对应）。"""
+    params = params or {}
+    user_info = params.get("user_info") or {}
+    if not user_info.get("user") or user_info.get("team") is None:
+        raise ValueError("insufficient CMDB permission")
+
+    user = _normalize_permission_user(user_info.get("user"), domain=user_info.get("domain"))
+    instance_permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+    model_permission_map = _build_nats_permission_map(user_info, model_id=model_id, permission_type=PERMISSION_MODEL)
+    if instance_permission_map is None and model_permission_map is None:
+        raise ValueError("insufficient CMDB permission")
+
+    model_info = ModelManage.search_model_info(model_id)
+    if not model_info or not BusinessModelVisibility.is_visible(model_info):
+        raise ValueError("model not found")
+
+    if model_permission_map and _llm_has_model_permission(model_info, model_permission_map, OPERATE):
+        return
+
+    target_orgs = instance_info.get("organization")
+    if not target_orgs:
+        target_orgs = _resolve_allowed_org_ids(params)
+    candidate = {
+        "model_id": model_id,
+        "organization": target_orgs,
+        "inst_name": instance_info.get("inst_name"),
+    }
+    if instance_permission_map and _llm_has_instance_permission(candidate, instance_permission_map, user, OPERATE):
+        return
+    raise ValueError("insufficient instance permission")
+
+
+def _llm_has_model_view(model_info, permission_map):
+    return _llm_has_model_permission(model_info, permission_map, VIEW)
 
 
 @nats_client.register
@@ -2670,10 +2719,7 @@ def batch_update_instances(params):
     instances = InstanceManage.query_entity_by_uuids(inst_uuids)
     if len(instances) != len(inst_uuids):
         raise ValueError("instance not found")
-    for instance in instances:
-        _user_info, permission_map, user = _llm_require_permission_context(params, model_id=str(instance.get("model_id") or ""))
-        if not _llm_has_instance_permission(instance, permission_map, user, OPERATE):
-            raise ValueError("insufficient instance permission")
+    _llm_require_instances_operate(params, instances)
     InstanceManage.batch_instance_update_by_uuids(
         _build_scope_user_groups(allowed_org_ids),
         [],
@@ -2683,6 +2729,91 @@ def batch_update_instances(params):
         allowed_org_ids=allowed_org_ids,
     )
     return {"result": True, "updated": inst_uuids}
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def create_instance_for_llm(params):
+    """LLM 创建实例：在通用 org 范围之上强制模型/实例 OPERATE。"""
+    params = params or {}
+    _require_uuid_protocol(params)
+    model_id = params.get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+    instance_info = params.get("instance_info") or {}
+    if not instance_info:
+        raise ValueError("instance_info is required")
+    _llm_require_create_operate(params, model_id, instance_info)
+    return create_instance(params)
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def update_instance_for_llm(params):
+    """LLM 更新实例：要求目标实例 OPERATE。"""
+    params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_id", "_id", "inst_ids")
+    inst_uuid = params.get("inst_uuid")
+    update_attr = params.get("update_attr") or {}
+    if not inst_uuid:
+        raise ValueError("inst_uuid is required")
+    if not update_attr:
+        raise ValueError("update_attr is required")
+    instance = InstanceManage.query_entity_by_uuid(inst_uuid)
+    if not instance:
+        raise ValueError("instance not found")
+    _llm_require_instances_operate(params, [instance])
+    return update_instance(params)
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def delete_instance_for_llm(params):
+    """LLM 删除实例：逐条要求 OPERATE，缺权限或缺失实例均不落写。"""
+    params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_ids", "inst_id", "_id")
+    inst_uuids = _normalize_to_list(params.get("inst_uuids"))
+    if not inst_uuids and params.get("inst_uuid"):
+        inst_uuids = [params["inst_uuid"]]
+    if not inst_uuids:
+        raise ValueError("inst_uuids or inst_uuid is required")
+    instances = InstanceManage.query_entity_by_uuids(inst_uuids)
+    if len(instances) != len(inst_uuids):
+        raise ValueError("instance not found")
+    _llm_require_instances_operate(params, instances)
+    return delete_instance(params)
+
+
+def _llm_require_association_endpoints_operate(params):
+    params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "src_inst_id", "dst_inst_id", "asso_id", "_id", "inst_asst_id")
+    src_inst_uuid = params.get("src_inst_uuid")
+    dst_inst_uuid = params.get("dst_inst_uuid")
+    model_asst_id = params.get("model_asst_id")
+    if not src_inst_uuid or not dst_inst_uuid or not model_asst_id:
+        raise ValueError("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+    endpoints = InstanceManage.query_entity_by_uuids([src_inst_uuid, dst_inst_uuid])
+    if len(endpoints) != 2:
+        raise ValueError("association endpoint not found")
+    _llm_require_instances_operate(params, endpoints, missing_error="association endpoint not found")
+    return params
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def create_instance_association_for_llm(params):
+    """LLM 创建关联：源/目标实例均需 OPERATE。"""
+    return create_instance_association(_llm_require_association_endpoints_operate(params))
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def delete_instance_association_for_llm(params):
+    """LLM 删除关联：源/目标实例均需 OPERATE。"""
+    return delete_instance_association(_llm_require_association_endpoints_operate(params))
 
 
 @nats_client.register
