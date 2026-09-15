@@ -1,6 +1,6 @@
 Switch Omnitron SNMP:
   name: Omnitron（Telegraf）
-  desc: 面向 Omnitron 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 7342）。
+  desc: 面向 Omnitron 交换机的 SNMP 监控模板,可采集每模块 CPU 使用率、每模块内存已用量、可选 Flash 已用量和运行时长（企业号 PEN 7342）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -77,6 +77,9 @@ monitor_object_metric:
     device_memory_used:
       name: 内存已用量
       desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。
+    device_flash_used:
+      name: Flash 已用量
+      desc: 该指标表示各模块当前已使用的 Flash 字节数。设备以 kbytes 上报（1 表示 1000 字节），查询侧换算为字节。部分模块不提供该可选列。
     device_memory_free:
       name: 内存空闲量
       desc: 该指标表示设备各内存池当前空闲可用的字节数。它与已用量一起决定整体内存使用率；空闲量持续偏低说明该内存池存在内存压力。
