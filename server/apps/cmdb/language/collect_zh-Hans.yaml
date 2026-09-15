@@ -23,7 +23,7 @@ COLLECT_PLUGIN:
     desc: 通过SNMP协议发现网络设备和网络拓扑及其基本信息
   network_config_file:
     name: 网络设备配置文件
-    desc: 通过 Netmiko 采集网络设备配置命令输出并归档为配置文件版本
+    desc: 通过 Scrapli（SSH 或 Telnet）采集网络设备配置命令输出并归档为配置文件版本
   ip_discovery:
     name: IP 发现
     desc: 选择子网后由接入点执行 IP 探活，回写 IPAM 台账与利用率

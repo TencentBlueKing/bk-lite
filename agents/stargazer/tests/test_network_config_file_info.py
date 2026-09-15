@@ -2,7 +2,12 @@ import asyncio
 import base64
 
 import pytest
-from plugins.inputs.network_config_file.network_config_file_info import NetworkConfigFileInfo, decode_http_header_commands, validate_safe_command
+from plugins.inputs.network_config_file.network_config_file_info import (
+    NetworkConfigFileInfo,
+    decode_http_header_commands,
+    resolve_cli_transport,
+    validate_safe_command,
+)
 
 INSTANCE_UUID = "123e4567-e89b-42d3-a456-426614174000"
 
@@ -188,8 +193,61 @@ def test_connect_params_skip_host_key_check_for_task_selected_targets():
 
     assert connect_params["platform"] == "cisco_iosxe"
     assert connect_params["transport"] == "asyncssh"
+    assert connect_params["port"] == 22
     assert connect_params["auth_strict_key"] is False
     assert "ssh_known_hosts_file" not in connect_params
+
+
+@pytest.mark.parametrize(
+    ("extra", "transport", "port", "cli_protocol"),
+    [
+        ({}, "asyncssh", 22, "ssh"),
+        ({"transport_protocol": "ssh"}, "asyncssh", 22, "ssh"),
+        ({"transport_protocol": "telnet"}, "asynctelnet", 23, "telnet"),
+        ({"transport_protocol": "TELNET"}, "asynctelnet", 23, "telnet"),
+        ({"transport_protocol": "asynctelnet"}, "asynctelnet", 23, "telnet"),
+        ({"protocol": "telnet"}, "asynctelnet", 23, "telnet"),
+        ({"transport_protocol": "telnet", "port": 2323}, "asynctelnet", 2323, "telnet"),
+        ({"transport_protocol": "invalid"}, "asyncssh", 22, "ssh"),
+        ({"transport_protocol": ""}, "asyncssh", 22, "ssh"),
+        ({"protocol": "2"}, "asyncssh", 22, "ssh"),
+        ({"protocol": "https"}, "asyncssh", 22, "ssh"),
+        ({"device_type": "huawei", "transport_protocol": "telnet"}, "asynctelnet", 23, "telnet"),
+    ],
+)
+def test_connect_params_resolve_transport_protocol(extra, transport, port, cli_protocol):
+    plugin = NetworkConfigFileInfo(_base_params(**extra))
+
+    connect_params = plugin._connect_params()
+    resolved = resolve_cli_transport(plugin.params)
+
+    assert resolved[0] == cli_protocol
+    assert connect_params["transport"] == transport
+    assert connect_params["port"] == port
+    if extra.get("device_type") == "huawei":
+        assert connect_params["platform"] == "huawei_vrp"
+    else:
+        assert connect_params["platform"] == "cisco_iosxe"
+
+
+def test_close_failure_scrapli_not_opened_does_not_override_success(monkeypatch):
+    class ScrapliConnectionNotOpened(Exception):
+        pass
+
+    class CloseFailingConnect(FakeNetConnect):
+        async def close(self):
+            raise ScrapliConnectionNotOpened("attempted to close unopened connection")
+
+    fake = CloseFailingConnect()
+    monkeypatch.setattr(
+        "plugins.inputs.network_config_file.network_config_file_info.AsyncScrapli",
+        lambda **kwargs: fake,
+    )
+    plugin = NetworkConfigFileInfo(_base_params(transport_protocol="telnet"))
+
+    result = asyncio.run(plugin.list_all_resources())
+
+    assert result["success"] is True
 
 
 @pytest.mark.parametrize(

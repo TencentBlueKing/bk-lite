@@ -29,16 +29,17 @@
 """
 
 import json
+
 from django.core.management.base import BaseCommand
 
+from apps.cmdb.constants.constants import MODEL
 from apps.cmdb.constants.field_constraints import (
-    DEFAULT_USER_PROMPT,
-    DEFAULT_STRING_CONSTRAINT,
     DEFAULT_NUMBER_CONSTRAINT,
+    DEFAULT_STRING_CONSTRAINT,
     DEFAULT_TIME_CONSTRAINT,
+    DEFAULT_USER_PROMPT,
     USER_PROMPT,
 )
-from apps.cmdb.constants.constants import MODEL
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.model import ModelManage
 from apps.core.logger import cmdb_logger as logger
@@ -49,9 +50,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         """添加命令行参数"""
-        parser.add_argument(
-            "--dry-run", action="store_true", help="仅预览变更,不实际修改数据"
-        )
+        parser.add_argument("--dry-run", action="store_true", help="仅预览变更,不实际修改数据")
         parser.add_argument("--model-id", type=str, help="仅迁移指定模型ID的字段")
 
     def handle(self, *args, **options):
@@ -61,9 +60,7 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(self.style.WARNING("=" * 60))
-            self.stdout.write(
-                self.style.WARNING("  DRY RUN 模式 - 仅预览变更,不会实际修改数据")
-            )
+            self.stdout.write(self.style.WARNING("  DRY RUN 模式 - 仅预览变更,不会实际修改数据"))
             self.stdout.write(self.style.WARNING("=" * 60))
             self.stdout.write("")
 
@@ -84,9 +81,7 @@ class Command(BaseCommand):
                 # 查询所有模型
                 params = []
                 if target_model_id:
-                    params.append(
-                        {"field": "model_id", "type": "str=", "value": target_model_id}
-                    )
+                    params.append({"field": "model_id", "type": "str=", "value": target_model_id})
 
                 models, _ = ag.query_entity(MODEL, params)
                 count = len(models)
@@ -94,9 +89,7 @@ class Command(BaseCommand):
 
                 if count == 0:
                     if target_model_id:
-                        self.stdout.write(
-                            self.style.ERROR(f"未找到模型: {target_model_id}")
-                        )
+                        self.stdout.write(self.style.ERROR(f"未找到模型: {target_model_id}"))
                     else:
                         self.stdout.write(self.style.WARNING("未找到任何模型"))
                     return
@@ -117,9 +110,7 @@ class Command(BaseCommand):
                         if updated:
                             stats["updated_models"] += 1
                             stats["updated_fields"] += field_count
-                            self.stdout.write(
-                                self.style.SUCCESS(f"  ✓ 更新了 {field_count} 个字段")
-                            )
+                            self.stdout.write(self.style.SUCCESS(f"  ✓ 更新了 {field_count} 个字段"))
                         else:
                             self.stdout.write(self.style.WARNING("  - 无需更新"))
 
@@ -148,18 +139,14 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write("")
-            self.stdout.write(
-                self.style.WARNING("提示: 这是 DRY RUN 模式,未实际修改数据")
-            )
+            self.stdout.write(self.style.WARNING("提示: 这是 DRY RUN 模式,未实际修改数据"))
             self.stdout.write(self.style.WARNING("执行实际迁移请移除 --dry-run 参数"))
         elif stats["errors"] == 0:
             self.stdout.write("")
             self.stdout.write(self.style.SUCCESS("✓ 迁移成功完成!"))
         else:
             self.stdout.write("")
-            self.stdout.write(
-                self.style.WARNING(f"⚠ 迁移完成,但有 {stats['errors']} 个错误")
-            )
+            self.stdout.write(self.style.WARNING(f"⚠ 迁移完成,但有 {stats['errors']} 个错误"))
 
     def _migrate_model(self, ag, model: dict, dry_run: bool = False):
         """
@@ -213,17 +200,12 @@ class Command(BaseCommand):
                     attr["option"].update(DEFAULT_STRING_CONSTRAINT.copy())
                     updated = True
                     updated_count += 1
-                    self.stdout.write(
-                        f"    + {attr_id}: 添加字符串约束(默认:无限制+单行)"
-                    )
+                    self.stdout.write(f"    + {attr_id}: 添加字符串约束(默认:无限制+单行)")
 
             # 3. 数字类型添加默认约束
             elif attr_type in ["int", "float"]:
                 attr["option"].pop("number_constraint", None)  # 清理旧字段
-                if (
-                    "min_value" not in attr["option"]
-                    and "max_value" not in attr["option"]
-                ):
+                if "min_value" not in attr["option"] and "max_value" not in attr["option"]:
                     attr["option"].update(DEFAULT_NUMBER_CONSTRAINT.copy())
                     updated = True
                     updated_count += 1
@@ -236,22 +218,18 @@ class Command(BaseCommand):
                     attr["option"].update(DEFAULT_TIME_CONSTRAINT.copy())
                     updated = True
                     updated_count += 1
-                    self.stdout.write(
-                        f"    + {attr_id}: 添加时间约束(默认:日期时间+东八区)"
-                    )
+                    self.stdout.write(f"    + {attr_id}: 添加时间约束(默认:日期时间+东八区)")
 
         # 如果有更新且不是 dry_run,则保存到数据库
         if updated and not dry_run:
             try:
                 new_attrs_json = json.dumps(attrs, ensure_ascii=False)
-                ag.set_entity_properties(
-                    MODEL, [model["_id"]], {"attrs": new_attrs_json}, {}, [], False
-                )
+                ag.set_entity_properties(MODEL, [model["_id"]], {"attrs": new_attrs_json}, {}, [], False)
 
                 # 刷新模型属性缓存
                 from apps.cmdb.display_field import ExcludeFieldsCache
 
-                ExcludeFieldsCache.update_on_model_change(model["model_id"])
+                ExcludeFieldsCache.invalidate_model_attrs(model["model_id"])
             except Exception as e:
                 raise Exception(f"更新模型失败: {e}")
 

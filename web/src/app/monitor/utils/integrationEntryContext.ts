@@ -6,6 +6,7 @@ export interface IntegrationEntryPlugin {
   display_name?: unknown;
   display_description?: unknown;
   template_type?: unknown;
+  pack_version?: unknown;
   parent_monitor_object?: unknown;
   parent_monitor_object_name?: unknown;
   parent_monitor_object_icon?: unknown;
@@ -26,6 +27,7 @@ export interface IntegrationEntryContext {
   pluginDisplayName: string;
   pluginDescription: string;
   templateType: string;
+  packVersion: string;
 }
 
 export type IntegrationEntryContextResult =
@@ -77,7 +79,8 @@ export const resolveIntegrationEntryContext = (
       pluginName,
       pluginDisplayName: toNonEmptyString(plugin.display_name),
       pluginDescription: toNonEmptyString(plugin.display_description),
-      templateType: toNonEmptyString(plugin.template_type)
+      templateType: toNonEmptyString(plugin.template_type),
+      packVersion: toNonEmptyString(plugin.pack_version)
     }
   };
 };
@@ -94,7 +97,8 @@ export const buildIntegrationConfigureUrl = (
     plugin_id: context.pluginId,
     template_type: context.templateType,
     plugin_display_name: context.pluginDisplayName,
-    plugin_description: context.pluginDescription || '--'
+    plugin_description: context.pluginDescription || '--',
+    pack_version: context.packVersion
   });
   return `/monitor/integration/list/detail/configure?${params.toString()}`;
 };

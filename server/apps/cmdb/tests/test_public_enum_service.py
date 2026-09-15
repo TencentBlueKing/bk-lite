@@ -27,8 +27,12 @@ def patch_parse(monkeypatch):
 
 def _make(library_id="lib_1", team=None, options=None):
     return PublicEnumLibrary.objects.create(
-        library_id=library_id, name="状态库", team=team or [1],
-        options=options or [{"id": "1", "name": "运行"}], created_by="admin", updated_by="admin",
+        library_id=library_id,
+        name="状态库",
+        team=team or [1],
+        options=options or [{"id": "1", "name": "运行"}],
+        created_by="admin",
+        updated_by="admin",
     )
 
 
@@ -176,9 +180,7 @@ def test_update_library_options_does_not_enqueue_after_outer_rollback(
     called = {}
     monkeypatch.setattr(
         f"{MODULE}.enqueue_library_snapshot_refresh",
-        lambda library_id, trigger, operator: called.setdefault(
-            "hit", True
-        ),
+        lambda library_id, trigger, operator: called.setdefault("hit", True),
     )
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -230,12 +232,14 @@ def test_get_library_or_raise():
 def test_find_library_references(patch_parse, fake_graph):
     models = [
         {
-            "model_id": "host", "model_name": "主机",
-            "attrs": json.dumps([
-                {"attr_id": "status", "attr_name": "状态", "attr_type": "enum",
-                 "enum_rule_type": "public_library", "public_library_id": "lib_1"},
-                {"attr_id": "name", "attr_type": "str"},
-            ]),
+            "model_id": "host",
+            "model_name": "主机",
+            "attrs": json.dumps(
+                [
+                    {"attr_id": "status", "attr_name": "状态", "attr_type": "enum", "enum_rule_type": "public_library", "public_library_id": "lib_1"},
+                    {"attr_id": "name", "attr_type": "str"},
+                ]
+            ),
         }
     ]
     fake_graph(MODULE, query_entity=(models, 1))
@@ -333,15 +337,23 @@ def test_sync_library_snapshots_not_found(fake_graph):
 
 
 @pytest.mark.django_db
-def test_sync_library_snapshots_ok(patch_parse, fake_graph):
+def test_sync_library_snapshots_ok(patch_parse, fake_graph, monkeypatch):
+    invalidated = []
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.ExcludeFieldsCache.invalidate_model_attrs",
+        lambda model_id: invalidated.append(model_id),
+    )
     _make(options=[{"id": "2", "name": "停止"}])
     models = [
         {
-            "model_id": "host", "_id": 1, "model_name": "主机",
-            "attrs": json.dumps([
-                {"attr_id": "status", "attr_type": "enum",
-                 "enum_rule_type": "public_library", "public_library_id": "lib_1", "option": []},
-            ]),
+            "model_id": "host",
+            "_id": 1,
+            "model_name": "主机",
+            "attrs": json.dumps(
+                [
+                    {"attr_id": "status", "attr_type": "enum", "enum_rule_type": "public_library", "public_library_id": "lib_1", "option": []},
+                ]
+            ),
         }
     ]
     fg = fake_graph(MODULE, query_entity=(models, 1))
@@ -349,6 +361,7 @@ def test_sync_library_snapshots_ok(patch_parse, fake_graph):
     assert result["result"] is True
     assert result["affected_attrs"] == 1
     assert any(c[0] == "set_entity_properties" for c in fg.calls)
+    assert invalidated == ["host"]
 
 
 @pytest.mark.django_db
@@ -379,6 +392,11 @@ def test_sync_library_snapshots_reports_partial_graph_failure(patch_parse, fake_
         return {}
 
     log_exception = mocker.patch.object(svc.logger, "exception")
+    invalidated = []
+    mocker.patch(
+        "apps.cmdb.display_field.ExcludeFieldsCache.invalidate_model_attrs",
+        side_effect=lambda model_id: invalidated.append(model_id),
+    )
     fake_graph(
         MODULE,
         query_entity=(models, 2),
@@ -398,6 +416,7 @@ def test_sync_library_snapshots_reports_partial_graph_failure(patch_parse, fake_
         }
     ]
     log_exception.assert_called_once()
+    assert invalidated == ["host"]
 
 
 @pytest.mark.django_db
@@ -444,10 +463,7 @@ def test_sync_library_snapshots_repeated_run_is_idempotent_and_converges(patch_p
     assert second_result["result"] is True
     assert len(writes[1]) == 2
     assert writes[1][0] == writes[1][1]
-    assert all(
-        json.loads(model_writes[-1])[0]["option"] == options
-        for model_writes in writes.values()
-    )
+    assert all(json.loads(model_writes[-1])[0]["option"] == options for model_writes in writes.values())
 
 
 def test_snapshot_retry_settings_invalid_values_do_not_break_task_import(monkeypatch):
@@ -563,13 +579,9 @@ def test_snapshot_task_preserves_success_result(mocker):
         "failed_items": [],
     }
     mocker.patch(f"{MODULE}.sync_library_snapshots", return_value=expected)
-    retry = mocker.patch.object(
-        celery_tasks.sync_public_enum_library_snapshots_task, "retry"
-    )
+    retry = mocker.patch.object(celery_tasks.sync_public_enum_library_snapshots_task, "retry")
 
-    result = celery_tasks.sync_public_enum_library_snapshots_task.run(
-        "lib_1", "update", "admin"
-    )
+    result = celery_tasks.sync_public_enum_library_snapshots_task.run("lib_1", "update", "admin")
 
     assert result == expected
     retry.assert_not_called()

@@ -2,6 +2,25 @@ from apps.cmdb.node_configs.base import BaseNodeParams
 from apps.cmdb.node_configs.config_artifact import ConfigArtifactNodeParamsMixin
 from apps.cmdb.services.network_config_file_policy import encode_http_header_commands, normalize_network_config_instance
 
+TELNET_ALIASES = {"telnet", "asynctelnet"}
+SSH_DEFAULT_PORT = 22
+TELNET_DEFAULT_PORT = 23
+
+
+def resolve_transport_protocol(credential=None):
+    source = credential if isinstance(credential, dict) else {}
+    for key in ("transport_protocol", "protocol"):
+        raw = str(source.get(key) or "").strip().lower()
+        if raw in TELNET_ALIASES:
+            return "telnet"
+        if raw in {"ssh", "asyncssh"}:
+            return "ssh"
+    return "ssh"
+
+
+def default_port_for_transport(transport_protocol):
+    return TELNET_DEFAULT_PORT if transport_protocol == "telnet" else SSH_DEFAULT_PORT
+
 
 class NetworkConfigFileNodeParams(ConfigArtifactNodeParamsMixin, BaseNodeParams):
     supported_model_id = "network_config_file"
@@ -32,10 +51,12 @@ class NetworkConfigFileNodeParams(ConfigArtifactNodeParamsMixin, BaseNodeParams)
         target_instance = self._target_instance()
         credential = self.credential or {}
         need_enable = self._needs_enable()
+        transport_protocol = resolve_transport_protocol(credential)
         data = {
             "username": credential.get("username", credential.get("user", "")),
             "password": "${" + self._secret_env_name("password") + "}",
-            "port": credential.get("port") or target_instance.get("port") or 22,
+            "transport_protocol": transport_protocol,
+            "port": credential.get("port") or target_instance.get("port") or default_port_for_transport(transport_protocol),
             "config_name": params.get("config_name", ""),
             "commands": encode_http_header_commands(params.get("commands", "")),
             "need_enable": need_enable,

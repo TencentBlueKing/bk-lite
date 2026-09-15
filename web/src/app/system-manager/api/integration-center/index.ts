@@ -64,7 +64,9 @@ export const useIntegrationCenterApi = () => {
   }
 
   async function deleteInstance(id: number): Promise<void> {
-    return await del(`/system_mgmt/integration_instance/${id}/`);
+    return await del(`/system_mgmt/integration_instance/${id}/`, {
+      suppressErrorNotification: true,
+    });
   }
 
   async function testConnection(id: number, capability_key?: string): Promise<TestConnectionResult> {

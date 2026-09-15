@@ -1,6 +1,6 @@
 # 系统管理 Teams 集成产品决策记忆
 
-- 最近更新：2026-09-09
+- 最近更新：2026-09-14
 - 当前规格：`specs/changes/teams-im-notification-provider/spec.md`
 
 ## 产品定位
@@ -24,6 +24,7 @@
 - 外部稳定身份与接收标识使用 Graph 用户 `id`；邮箱可用于匹配，不作为主键。
 - 仅声明 `im_notification` capability（形态对齐微信「只做 login_auth」的单能力 pack），不预留未实现的登录/同步/建群开关。
 - Entra 应用（租户 ID、客户端 ID、客户端密钥）放在基础连接；委托工作账号 UPN 与密码放在 IM 应用通知连接配置。应用令牌仍用于拉用户和建 chat，委托账号只用于发消息。
+- 通知渠道同步拉人对齐飞书 `page_size`：第一页自报 `$top=999` 且 `$filter=userType eq 'Member'`，跟 `@odata.nextLink`，100 页帽，超限失败不截断。不靠 Graph `@odata.count` 驱动分页。两到三万工作账号约 21–31 页。
 
 ## 明确后置
 
@@ -48,3 +49,4 @@
 - 2026-09-02：对照 WeOps 后确认 ROPC 比 Bot 更适合内网出站；Bot 需入站入口。
 - 2026-09-08：用户确认要做 Teams provider，首期只做通知渠道，且对象为企业版 Teams。
 - 2026-09-09：用户确认只把委托 UPN/密码挪到 IM 应用通知 Tab，Entra 三项留在基础连接。
+- 2026-09-14：用户确认当前租户约两到三万工作账号；拉人按 `$top=999` + Member 过滤，不靠 Graph 总数。

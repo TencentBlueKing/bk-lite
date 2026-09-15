@@ -30,6 +30,8 @@ import {
 } from '@/app/system-manager/utils/openapiDocs';
 import { useTranslation } from '@/utils/i18n';
 
+const DETAIL_SNIPPET_CLASS = '!rounded-lg !px-3.5 !py-2.5 [&_pre]:!leading-5';
+
 interface OpenApiDocsDetailProps {
   selectedRow?: OpenAPIDocRow;
   activeTab: string;
@@ -161,7 +163,7 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
         </div>
       ) : (
         <div className="flex h-full flex-col overflow-hidden">
-          <div className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4">
+          <div className="shrink-0 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <Tag className="m-0 font-mono text-xs">
                 {selectedRow.service}
@@ -176,7 +178,7 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
               />
             </div>
 
-            <div className="mt-2.5">
+            <div className="mt-2">
               {selectedRow.kind === 'external' ? (
                 <div className="flex items-center gap-2 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] px-3 py-1.5">
                   <span className="min-w-0 flex-1 break-all font-mono text-xs font-semibold text-[var(--color-primary)]">
@@ -201,14 +203,14 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
             </div>
 
             {selectedRow.summary ? (
-              <p className="mt-2 text-xs leading-relaxed text-[var(--color-text-2)]">
+              <p className="mb-0 mt-1.5 text-xs leading-relaxed text-[var(--color-text-2)]">
                 {selectedRow.summary}
               </p>
             ) : null}
           </div>
 
-          <div className="flex-1 overflow-auto p-4">
-            {selectedRow.kind === 'external' ? (
+          {selectedRow.kind === 'external' ? (
+            <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
               <div className="space-y-4">
                 <p className="text-xs leading-relaxed text-[var(--color-text-2)]">
                   {t('system.settings.openapiDocs.externalDocHint')}
@@ -217,14 +219,22 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                   <div className="mb-1 text-xs font-medium text-[var(--color-text-2)]">
                     {t('system.settings.openapiDocs.entryPrefix')}
                   </div>
-                  <CodeSnippet value={selectedRow.path} copyable />
+                  <CodeSnippet
+                    value={selectedRow.path}
+                    copyable
+                    className={DETAIL_SNIPPET_CLASS}
+                  />
                 </div>
                 <div>
                   <div className="mb-1 text-xs font-medium text-[var(--color-text-2)]">
                     {t('system.settings.openapiDocs.docUrl')}
                   </div>
                   {selectedRow.docUrl ? (
-                    <CodeSnippet value={selectedRow.docUrl} copyable />
+                    <CodeSnippet
+                      value={selectedRow.docUrl}
+                      copyable
+                      className={DETAIL_SNIPPET_CLASS}
+                    />
                   ) : (
                     <CompactEmptyState
                       description={t('system.settings.openapiDocs.noDocUrl')}
@@ -232,10 +242,12 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                   )}
                 </div>
               </div>
-            ) : (
+            </div>
+          ) : (
               <Tabs
                 activeKey={activeTab}
                 onChange={onTabChange}
+                className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 [&>.ant-tabs-nav]:mb-0 [&>.ant-tabs-nav]:pt-1 [&>.ant-tabs-content-holder]:min-h-0 [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:overflow-auto [&_.ant-tabs-content]:h-full"
                 items={[
                   {
                     key: 'params',
@@ -279,12 +291,13 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                       </span>
                     ),
                     children: (
-                      <div className="space-y-4 pt-2">
+                      <div className="space-y-3 pt-2 pb-3">
                         <div>
                           <div className="mb-1 text-xs font-medium text-[var(--color-text-2)]">cURL</div>
                           <CodeSnippet
                             value={curlCommand}
                             copyable
+                            className={DETAIL_SNIPPET_CLASS}
                           />
                         </div>
 
@@ -296,6 +309,7 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                             <CodeSnippet
                               value={JSON.stringify(samplePayload, null, 2)}
                               copyable
+                              className={DETAIL_SNIPPET_CLASS}
                             />
                           </div>
                         ) : null}
@@ -362,8 +376,7 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                   },
                 ]}
               />
-            )}
-          </div>
+          )}
         </div>
       )}
     </aside>

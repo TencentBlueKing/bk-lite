@@ -1,0 +1,146 @@
+[
+  {
+    "object": "Cisco Meraki",
+    "plugin": "Cisco Meraki",
+    "templates": [
+      {
+        "name": "Meraki组织API不可用",
+        "alert_name": "Meraki组织${instance_id} Dashboard API 不可用",
+        "description": "组织级 Dashboard API 连通性为异常时告警。",
+        "metric_name": "meraki_org_connect_status",
+        "algorithm": "last_over_time",
+        "threshold": [
+          {
+            "level": "critical",
+            "value": 0,
+            "method": "="
+          },
+          {
+            "level": "error",
+            "value": 0,
+            "method": "="
+          },
+          {
+            "level": "warning",
+            "value": 0,
+            "method": "="
+          }
+        ]
+      },
+      {
+        "name": "Meraki交换机非活动端口过多",
+        "alert_name": "Meraki组织${instance_id} 非活动端口数过多",
+        "description": "交换机非活动端口数量超过阈值时告警。",
+        "metric_name": "meraki_switch_port_inactive_count",
+        "algorithm": "last_over_time",
+        "threshold": [
+          {
+            "level": "critical",
+            "value": 20,
+            "method": ">"
+          },
+          {
+            "level": "error",
+            "value": 10,
+            "method": ">"
+          },
+          {
+            "level": "warning",
+            "value": 5,
+            "method": ">"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "object": "Meraki Device",
+    "plugin": "Cisco Meraki",
+    "templates": [
+      {
+        "name": "Meraki设备离线",
+        "alert_name": "Meraki设备${resource_id} 离线",
+        "description": "设备可用性状态为 offline 时告警。",
+        "metric_name": "meraki_device_availability_status",
+        "algorithm": "last_over_time",
+        "threshold": [
+          {
+            "level": "critical",
+            "value": 0,
+            "method": "="
+          },
+          {
+            "level": "error",
+            "value": 0,
+            "method": "="
+          },
+          {
+            "level": "warning",
+            "value": 0,
+            "method": "="
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "object": "Meraki Wireless AP",
+    "plugin": "Cisco Meraki",
+    "templates": [
+      {
+        "name": "Meraki无线AP上行丢包过高",
+        "alert_name": "Meraki无线AP${resource_id} 上行丢包率过高",
+        "description": "无线 AP 上行丢包率超过阈值时告警。",
+        "metric_name": "meraki_wireless_ap_upstream_loss_percent",
+        "algorithm": "last_over_time",
+        "threshold": [
+          {
+            "level": "critical",
+            "value": 5,
+            "method": ">"
+          },
+          {
+            "level": "error",
+            "value": 2,
+            "method": ">"
+          },
+          {
+            "level": "warning",
+            "value": 1,
+            "method": ">"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "object": "Meraki Appliance",
+    "plugin": "Cisco Meraki",
+    "templates": [
+      {
+        "name": "Meraki安全设备利用率过高",
+        "alert_name": "Meraki安全设备${resource_id} 利用率过高",
+        "description": "MX 设备利用率超过阈值时告警。",
+        "metric_name": "meraki_appliance_utilization_percent",
+        "algorithm": "last_over_time",
+        "threshold": [
+          {
+            "level": "critical",
+            "value": 90,
+            "method": ">"
+          },
+          {
+            "level": "error",
+            "value": 80,
+            "method": ">"
+          },
+          {
+            "level": "warning",
+            "value": 70,
+            "method": ">"
+          }
+        ]
+      }
+    ]
+  }
+]

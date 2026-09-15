@@ -173,6 +173,16 @@ def _credentials(source: dict[str, Any]) -> tuple[Mapping[str, Any], ...]:
     return tuple(credentials)
 
 
+def _is_network_telnet(params: Mapping[str, Any]) -> bool:
+    for key in ("transport_protocol", "protocol"):
+        raw = str(params.get(key) or "").strip().lower()
+        if raw in {"telnet", "asynctelnet"}:
+            return True
+        if raw in {"ssh", "asyncssh"}:
+            return False
+    return False
+
+
 def _apply_preflight_defaults(params: dict[str, Any], plugin_name: str, family: str) -> None:
     if params.get("preflight_kind"):
         return
@@ -196,7 +206,10 @@ def _apply_preflight_defaults(params: dict[str, Any], plugin_name: str, family: 
         return
     if plugin_name in {"host", "network_config_file"}:
         params["preflight_kind"] = "remote"
-        params.setdefault("port", 22)
+        if plugin_name == "network_config_file" and _is_network_telnet(params):
+            params.setdefault("port", 23)
+        else:
+            params.setdefault("port", 22)
         return
     if family == "configuration" and str(params.get("executor_type") or "").lower() == "job" and not params.get("target_is_logical"):
         params["preflight_kind"] = "remote"

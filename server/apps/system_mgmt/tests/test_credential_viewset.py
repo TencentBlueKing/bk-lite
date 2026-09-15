@@ -4,6 +4,7 @@ import pytest
 
 from apps.system_mgmt.models import Group
 from apps.system_mgmt.models.credential import Credential, CredentialType
+from apps.system_mgmt.services.credential_service import create_credential
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -211,14 +212,36 @@ def test_patch_blank_secret_does_not_echo_and_type_list_is_public(api_client, au
 
 
 @pytest.mark.django_db
-def test_selectable_and_groups_require_view(api_client, authenticated_user, sql_type):
+def test_selectable_does_not_require_view_but_ledger_and_groups_do(api_client, authenticated_user, sql_type):
     owner = _group("http-no-view")
     _actor(authenticated_user, owner, is_superuser=False, permissions=[])
     _cookie(api_client, owner)
-    assert api_client.get(f"{V}/credential/selectable/").status_code == 403
+    created = create_credential(
+        {
+            "name": "Selectable DB",
+            "type": sql_type.key,
+            "group_id": owner.id,
+            "fields": {"username": "u", "password": SECRET},
+        },
+        actor={
+            "current_team": owner.id,
+            "group_list": [owner.id],
+            "is_superuser": True,
+            "username": authenticated_user.username,
+            "domain": authenticated_user.domain,
+        },
+    )
+    selectable = api_client.get(f"{V}/credential/selectable/")
+    assert selectable.status_code == 200
+    items = _payload(selectable)
+    assert items[0]["credential_id"] == created.credential_id
+    assert items[0]["name"] == "Selectable DB"
+    assert "password" not in (items[0].get("fields") or {})
+    assert SECRET not in str(selectable.data)
+    assert api_client.get(f"{V}/credential_type/selectable/").status_code == 200
+    assert api_client.get(f"{V}/credential/").status_code == 403
     assert api_client.get(f"{V}/credential/assignable_groups/").status_code == 403
     assert api_client.get(f"{V}/credential/usable_groups/").status_code == 403
-    assert api_client.get(f"{V}/credential_type/selectable/").status_code == 403
 
 
 @pytest.mark.django_db

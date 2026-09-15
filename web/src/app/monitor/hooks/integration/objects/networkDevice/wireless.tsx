@@ -66,7 +66,8 @@ export const useWirelessConfig = () => {
       'Wireless Airspan SNMP': 'snmp_airspan',
       'Wireless ACKSYS SNMP': 'snmp_acksys',
       'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
-      'Wireless Xirrus SNMP': 'snmp_xirrus'
+      'Wireless Xirrus SNMP': 'snmp_xirrus',
+      'Wireless Huawei AC SNMP': 'snmp_huawei_ac'
     }
   };
 };

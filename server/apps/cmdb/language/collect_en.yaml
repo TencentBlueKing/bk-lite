@@ -24,8 +24,8 @@ COLLECT_PLUGIN:
     desc: Discover network devices and topology via SNMP
   network_config_file:
     name: Network Device Config File
-    desc: Collect network device command output via Netmiko and archive it as configuration
-      file versions
+    desc: Collect network device command output via Scrapli over SSH or Telnet and
+      archive it as configuration file versions
   ip_discovery:
     name: IP Discovery
     desc: After a subnet is selected, the access point probes IPs and writes back

@@ -45,13 +45,13 @@ import {
 import MonitorBindModal from './MonitorBindModal';
 import { HandledRequestError } from '@/utils/request';
 
-const { Panel } = Collapse;
 const InfoList: React.FC<AssetDataFieldProps> = ({
   propertyList,
   userList,
   instDetail,
   onsuccessEdit,
   onSubscribe,
+  readOnly = false,
 }) => {
   const [form] = Form.useForm();
   const [fieldList, setFieldList] = useState<DescriptionsProps['items']>([]);
@@ -70,8 +70,10 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const { updateInstance, getInstanceProxys, pushToMonitor, unbindMonitor } = useInstanceApi();
 
   const searchParams = useSearchParams();
-  const modelId: string = searchParams.get('model_id') || '';
-  const instUuid: string = searchParams.get('inst_uuid') || '';
+  const modelId: string =
+    searchParams.get('model_id') || String(instDetail.model_id || '');
+  const instUuid: string =
+    searchParams.get('inst_uuid') || String(instDetail.inst_uuid || '');
 
   const cloudOptions = (useAssetDataStore.getState().cloud_list || []).map((item: any) => ({
     proxy_id: String(item.proxy_id),
@@ -144,7 +146,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       }
     }
     setAttrList(list);
-    onsuccessEdit();
+    onsuccessEdit?.();
     useAssetDataStore.getState().setNeedRefresh(true);
   };
 
@@ -244,7 +246,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
       setAttrList(list);
       setIsBatchEdit(false);
-      onsuccessEdit();
+      onsuccessEdit?.();
       useAssetDataStore.getState().setNeedRefresh(true);
     } finally {
       setIsBatchSaving(false);
@@ -383,7 +385,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                   </>
                 ) : (
                   <>
-                    {item.editable && (
+                    {item.editable && !readOnly && (
                       <PermissionWrapper
                         requiredPermissions={['Edit']}
                         instPermissions={instDetail.permission}
@@ -626,7 +628,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
   return (
     <div>
-      {hasEditableField && (
+      {hasEditableField && !readOnly && (
         <div className="flex items-center justify-end mb-2">
           {isBatchEdit ? (
             <>
@@ -700,22 +702,18 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           expandIcon={({ isActive }) => (
             <CaretRightOutlined rotate={isActive ? 90 : 0} />
           )}
-        >
-          {displayGroups.map((group: any) => {
-            return (
-              <Panel
-                key={String(group.id)}
-                header={group.display_name || group.group_name}
-              >
-                <Descriptions
-                  bordered
-                  items={group.attrs || []}
-                  column={2}
-                />
-              </Panel>
-            )
-          })}
-        </Collapse>
+          items={displayGroups.map((group: any) => ({
+            key: String(group.id),
+            label: group.display_name || group.group_name,
+            children: (
+              <Descriptions
+                bordered
+                items={group.attrs || []}
+                column={2}
+              />
+            ),
+          }))}
+        />
       )}
       {showSystemLinkage && (
         <div className="mt-4 rounded border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-3">
@@ -723,7 +721,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
             <div className="text-sm font-medium text-[var(--color-text-1)]">
               {t('Model.systemLinkage')}
             </div>
-            {canOperateMonitor && (
+            {canOperateMonitor && !readOnly && (
               <PermissionWrapper
                 requiredPermissions={['Edit']}
                 instPermissions={instDetail.permission}

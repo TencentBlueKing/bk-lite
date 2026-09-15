@@ -75,11 +75,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
     @staticmethod
     def get_parent_monitor_object_instance(obj):
         cached = getattr(obj, "entry_context_objects", None)
-        related_objects = (
-            cached
-            if cached is not None
-            else obj.monitor_object.select_related("parent", "type", "parent__type").all()
-        )
+        related_objects = cached if cached is not None else obj.monitor_object.select_related("parent", "type", "parent__type").all()
         roots = {}
         for monitor_object in related_objects:
             root = monitor_object if monitor_object.parent_id is None else monitor_object.parent
@@ -150,6 +146,7 @@ class MonitorPluginListSerializer(serializers.ModelSerializer):
             "collect_type",
             "collector",
             "is_pre",
+            "pack_version",
             "parent_monitor_object",
         )
 

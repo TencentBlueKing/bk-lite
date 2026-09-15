@@ -2,9 +2,9 @@
 # @File: base_utils.py
 # @Time: 2025/3/10 18:29
 # @Author: windyzhao
-import time
 import datetime
 import ipaddress
+import time
 
 import pytz
 
@@ -30,7 +30,7 @@ def convert_to_prometheus_format(data):
     def escape_value(value):
         """转义Prometheus标签值中的特殊字符，同时将非字符串转换为字符串"""
         if isinstance(value, str):
-            return value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+            return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
         return str(value)
 
     # 用于存放所有指标，结构为{metric_name: [line, line, ...]}
@@ -40,17 +40,13 @@ def convert_to_prometheus_format(data):
     for model_id, items in data.items():
         for item in items:
             # 构造标签字典：过滤掉列表和字典类型，并且值不为None
-            labels = {
-                k: escape_value(v)
-                for k, v in item.items()
-                if v and not isinstance(v, (list, dict))
-            }
-            labels['model_id'] = model_id
+            labels = {k: escape_value(v) for k, v in item.items() if v is not None and v != "" and not isinstance(v, (list, dict))}
+            labels["model_id"] = model_id
             # 按键排序生成标签字符串
             label_str = ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
             # 生成info指标，值固定为1，包含所有维度
             info_metric = f"{model_id}_info"
-            info_line = f'{info_metric}{{{label_str}}} 1 {timestamp}'
+            info_line = f"{info_metric}{{{label_str}}} 1 {timestamp}"
             metrics.setdefault(info_metric, []).append(info_line)
 
     # 生成输出文本：每个指标输出一次 HELP 和 TYPE 信息，然后输出所有指标行
@@ -104,7 +100,7 @@ def expand_ip_range(ip_range: str) -> list:
     将类似 '192.168.0.1-192.168.0.10' 的网段拆分成单个 IP 地址列表
     """
     try:
-        start_str, end_str = ip_range.split('-')
+        start_str, end_str = ip_range.split("-")
         start_ip = ipaddress.IPv4Address(start_str.strip())
         end_ip = ipaddress.IPv4Address(end_str.strip())
     except Exception as e:

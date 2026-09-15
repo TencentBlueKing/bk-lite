@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   alertBadgeFill,
   alertCardStroke,
@@ -6,9 +9,14 @@ import {
   buildRelatedTopologyGraph,
   formatAlertBadgeText,
   isEmptyRelatedTopology,
+  relatedNodeCardAppearance,
   resolveAssociationLabel,
+  resolveRelatedNodeMonitorState,
 } from '../graphModel';
-import { RELATED_TOPOLOGY_VISUAL } from '../visual';
+import {
+  RELATED_TOPOLOGY_SCREEN_DARK_CHROME,
+  RELATED_TOPOLOGY_VISUAL,
+} from '../visual';
 import { cssVariableMap, legacyVariableMap } from '@/theme/css-adapter';
 import type { RelatedTopologyResponse } from '../types';
 
@@ -227,6 +235,7 @@ describe('buildRelatedTopologyGraph', () => {
     expect(graph.nodes[0].monitorId).toBe('mon-center');
     expect(graph.nodes[0].alertCount).toBe(0);
     expect(formatAlertBadgeText(graph.nodes[0].alertCount)).toBeNull();
+    expect(resolveRelatedNodeMonitorState(graph.nodes[0])).toBe('quiet');
   });
 
   it('keeps column and row gaps larger than the card so nodes cannot overlap', () => {
@@ -246,5 +255,112 @@ describe('buildRelatedTopologyGraph', () => {
     expect(RELATED_TOPOLOGY_VISUAL.grid.color).toContain('116, 145, 181');
     expect(RELATED_TOPOLOGY_VISUAL.card.defaultBody.filter).toContain('drop-shadow');
     expect(RELATED_TOPOLOGY_VISUAL.card.activeBody.stroke).toBe('#0070fa');
+  });
+});
+
+describe('relatedNodeCardAppearance', () => {
+  it('does not present an unmapped node as a quiet monitored node', () => {
+    const unmapped = relatedNodeCardAppearance({
+      isCenter: false,
+      monitorId: '',
+      alertCount: null,
+      maxLevel: null,
+    });
+    const quiet = relatedNodeCardAppearance({
+      isCenter: false,
+      monitorId: 'mon-1',
+      alertCount: 0,
+      maxLevel: null,
+    });
+
+    expect(unmapped.state).toBe('unmapped');
+    expect(quiet.state).toBe('quiet');
+    expect(unmapped.body.fill).toBe('var(--color-fill-2)');
+    expect(unmapped.body.stroke).toBe('var(--color-border-3)');
+    expect(unmapped.body.strokeDasharray).toBe('4 3');
+    expect(quiet.body.fill).toBe(RELATED_TOPOLOGY_VISUAL.card.defaultBody.fill);
+    expect(quiet.body.stroke).toBe(RELATED_TOPOLOGY_VISUAL.card.defaultBody.stroke);
+    expect(quiet.body.strokeDasharray).toBeUndefined();
+    expect(unmapped.body.fill).not.toBe(quiet.body.fill);
+    expect(String(unmapped.body.fill)).not.toMatch(/success|green/i);
+    expect(String(unmapped.body.stroke)).not.toMatch(/success|green/i);
+    expect(unmapped.badge).toBeNull();
+    expect(quiet.badge).toBeNull();
+    expect(isRegisteredThemeVar(String(unmapped.body.fill))).toBe(true);
+    expect(isRegisteredThemeVar(String(unmapped.body.stroke))).toBe(true);
+  });
+
+  it('keeps alerting badge and stroke for mapped noisy nodes', () => {
+    const alerting = relatedNodeCardAppearance({
+      isCenter: false,
+      monitorId: 'mon-2',
+      alertCount: 3,
+      maxLevel: 'error',
+    });
+    expect(alerting.state).toBe('alerting');
+    expect(alerting.badge).toBe('3');
+    expect(alerting.body.stroke).toBe('var(--color-fail)');
+    expect(alerting.body.strokeWidth).toBe(ALERT_CARD_STROKE_WIDTH);
+  });
+
+  it('is consumed by the graph view so unmapped cards leave the default white shell', () => {
+    const graphViewSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../graphView.tsx'),
+      'utf8',
+    );
+    expect(graphViewSource).toContain('relatedNodeCardAppearance');
+    expect(graphViewSource).toContain('...appearance.body');
+    expect(graphViewSource).toContain('relatedNodeCardAppearance(node, chrome)');
+    expect(graphViewSource).toContain('chrome.edgeLabelFill');
+    expect(graphViewSource).toContain('chrome.edgeLabelRectFill');
+    expect(graphViewSource).toContain('relatedTopologyGraphChrome');
+  });
+
+  it('paints screen-dark cards and labels off the dashboard white shell', () => {
+    const unmapped = relatedNodeCardAppearance(
+      {
+        isCenter: false,
+        monitorId: '',
+        alertCount: null,
+        maxLevel: null,
+      },
+      RELATED_TOPOLOGY_SCREEN_DARK_CHROME,
+    );
+    const quiet = relatedNodeCardAppearance(
+      {
+        isCenter: false,
+        monitorId: 'mon-1',
+        alertCount: 0,
+        maxLevel: null,
+      },
+      RELATED_TOPOLOGY_SCREEN_DARK_CHROME,
+    );
+    const center = relatedNodeCardAppearance(
+      {
+        isCenter: true,
+        monitorId: 'mon-1',
+        alertCount: 0,
+        maxLevel: null,
+      },
+      RELATED_TOPOLOGY_SCREEN_DARK_CHROME,
+    );
+
+    expect(quiet.body.fill).toBe(
+      RELATED_TOPOLOGY_SCREEN_DARK_CHROME.cardDefaultBody.fill,
+    );
+    expect(quiet.body.stroke).toBe(
+      RELATED_TOPOLOGY_SCREEN_DARK_CHROME.cardDefaultBody.stroke,
+    );
+    expect(unmapped.body.fill).toBe(
+      RELATED_TOPOLOGY_SCREEN_DARK_CHROME.unmappedFill,
+    );
+    expect(unmapped.body.strokeDasharray).toBe('4 3');
+    expect(center.body.stroke).toBe(
+      RELATED_TOPOLOGY_SCREEN_DARK_CHROME.cardActiveBody.stroke,
+    );
+    expect(String(quiet.body.fill)).not.toBe('#ffffff');
+    expect(String(quiet.body.fill)).not.toBe(
+      RELATED_TOPOLOGY_VISUAL.card.defaultBody.fill,
+    );
   });
 });

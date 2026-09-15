@@ -117,10 +117,10 @@
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
-| 无密文列表 | 其它模块按组织范围拉取可选用凭据 | NATS `list_credentials`；需 `credential-View`；`type` 必须同时带 `category`；不含密文、不含引用计数 | GA |
+| 无密文列表 | 其它模块按组织范围拉取可选用凭据 | NATS `list_credentials` 与 HTTP `credential/selectable/`、`credential_type/selectable/`；不需 `credential-View`，也不新增「使用」权限；`type` 必须同时带 `category`；不含密文、不含引用计数 | GA |
 | 快捷创建 | 其它模块服务端代建实例 | NATS `create_credential`；需 `credential-Add`；返回 `credential_id` 与非密字段 | GA |
-| 明文解析 | 执行侧按 ID 取字段明文 | NATS `resolve_credential`；仅服务端；需 `credential-View`；停用或越权失败；明文不进页面 | GA |
-| 页面选用组件 | 业务原表单嵌入 `CredentialPicker` 引用仓库凭据 | `web/src/components/credential-picker`；`Form.Item` 只存 `credential_id`；组件自行请求可选列表；锁 `category` + `type`；不要用 `CredentialPickerChrome` | GA |
+| 明文解析 | 执行侧按 ID 取字段明文 | NATS `resolve_credential`；仅服务端；不需 `credential-View`，也不新增「使用」权限；调用方先做业务鉴权；仓库只做已登录、当前组织在授权内、消费范围、未停用、服务端解密；停用或越权失败；页面与 picker 不调用；明文不进页面 | GA |
+| 页面选用组件 | 业务原表单嵌入 `CredentialPicker` 引用仓库凭据 | `web/src/components/credential-picker`；`Form.Item` 只存 `credential_id`；组件自行请求可选列表，不占凭据菜单 View；`系统管理 ↗` 仍看 View、快捷新建仍看 Add；锁 `category` + `type`；不要用 `CredentialPickerChrome` | GA |
 | 引用计数询问 | 仓库列表/删除/改组织向消费方问一批 ID 的引用条数 | 契约由系统管理规定：入参 `credential_ids`，出参 `data.counts`；方法 `cmdb_count_credential_refs` / `monitor_count_credential_refs`；系统管理 `RpcClient` 直接请求这两个 NATS 方法名，不经 CMDB/监控/`system_mgmt` RPC 门面；本期只问这两家；失败列表「—」，删除/改组织当仍有引用 | 待对接 |
 
 系统管理不改消费方任务表或执行 resolve。产品口径见 `docs/design/product-decisions/system-mgmt-credential-vault.md`，实现边界见 [[legacy-ard-modules-system-mgmt#4.2 凭据仓库跨模块契约【已实现 / 引用计数待对接】]]。

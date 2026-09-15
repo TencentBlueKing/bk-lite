@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -10,7 +11,6 @@ from apps.node_mgmt.filters.collector import CollectorFilter
 from apps.node_mgmt.models.sidecar import Collector
 from apps.node_mgmt.serializers.collector import CollectorSerializer
 from apps.node_mgmt.utils.architecture import display_cpu_architecture
-from django.core.cache import cache
 
 
 class CollectorViewSet(ModelViewSet):
@@ -26,6 +26,9 @@ class CollectorViewSet(ModelViewSet):
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
             self._decorate_result(result, lan)
+        from apps.node_mgmt.services.collector_release.service import CollectorReleaseService
+
+        results = CollectorReleaseService.annotate_collectors(results)
 
         page = self.paginate_queryset(results)
         if page is not None:
@@ -37,6 +40,9 @@ class CollectorViewSet(ModelViewSet):
         response = super().retrieve(request, *args, **kwargs)
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         self._decorate_result(response.data, lan)
+        from apps.node_mgmt.services.collector_release.service import CollectorReleaseService
+
+        CollectorReleaseService.annotate_collectors([response.data])
         return response
 
     @staticmethod

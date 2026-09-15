@@ -32,41 +32,29 @@
     exclude_fields = ExcludeFieldsCache.get_exclude_fields()
 """
 
+# Cache (字段缓存管理器)
+from .cache import ExcludeFieldsCache
+
 # Constants (常量定义)
 from .constants import (
     DISPLAY_FIELD_TYPES,
     DISPLAY_SUFFIX,
-    FIELD_TYPE_ORGANIZATION,
-    FIELD_TYPE_USER,
-    FIELD_TYPE_ENUM,
-    FIELD_TYPE_TAG,
     DISPLAY_VALUES_SEPARATOR,
+    FIELD_TYPE_ENUM,
+    FIELD_TYPE_ORGANIZATION,
+    FIELD_TYPE_TAG,
+    FIELD_TYPE_USER,
     USER_DISPLAY_FORMAT,
 )
 
 # Handler (显示字段处理器)
-from .handler import (
-    DisplayFieldConverter,
-    DisplayFieldHandler,
-)
+from .handler import DisplayFieldConverter, DisplayFieldHandler
 
 # Initializer (显示字段初始化器)
-from .initializer import (
-    DisplayFieldInitializer,
-    display_field_initializer,
-)
+from .initializer import DisplayFieldInitializer, display_field_initializer
 
 # Sync (显示字段同步器)
-from .sync import (
-    DisplayFieldSynchronizer,
-    sync_display_fields_for_system_mgmt,
-)
-
-# Cache (字段缓存管理器)
-from .cache import (
-    ExcludeFieldsCache,
-    init_all_caches_on_startup,
-)
+from .sync import DisplayFieldSynchronizer, sync_display_fields_for_system_mgmt
 
 __all__ = [
     # Constants
@@ -89,5 +77,4 @@ __all__ = [
     "sync_display_fields_for_system_mgmt",
     # Cache
     "ExcludeFieldsCache",
-    "init_all_caches_on_startup",
 ]

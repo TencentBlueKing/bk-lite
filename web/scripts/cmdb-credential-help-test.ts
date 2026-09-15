@@ -123,6 +123,20 @@ assert.equal(
   'network_config_file',
 );
 assert.equal(
+  getCredentialDescriptor({ model_id: 'network_config_file' })?.protocolKey,
+  'sshOrTelnet',
+);
+assert.equal(
+  getCredentialDescriptor({ model_id: 'network_config_file' })?.defaultPortLabel,
+  'SSH 22 / Telnet 23',
+);
+const networkConfigHelp = resolveCredentialHelp({ model_id: 'network_config_file' }, t);
+assert.match(networkConfigHelp.instruction, /Telnet/);
+assert.match(
+  String(networkConfigHelp.fields?.find((field) => field.name === '连接协议')?.description),
+  /明文/,
+);
+assert.equal(
   getCredentialDescriptor({ model_id: 'config_file' })?.formKind,
   'ssh',
 );

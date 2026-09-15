@@ -23,6 +23,7 @@ class PackageVersionSerializer(serializers.ModelSerializer):
             "version",
             "name",
             "description",
+            "sha256",
         ]
 
     @staticmethod

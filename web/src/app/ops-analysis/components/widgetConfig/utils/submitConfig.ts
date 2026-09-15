@@ -16,6 +16,7 @@ import {
 } from '@/app/ops-analysis/utils/thresholdUtils';
 import type {
   NetworkStatusTopologyConfig,
+  RelatedTopologyConfig,
   SceneWidgetType,
 } from '@/app/ops-analysis/types/sceneWidget';
 import {
@@ -31,6 +32,7 @@ export interface WidgetConfigFormValues {
   chartType: string;
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
+  relatedTopology?: RelatedTopologyConfig;
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
@@ -89,7 +91,9 @@ export type WidgetSubmitError =
   | 'atLeastOneVisibleColumn'
   | 'multipleComponentSwitchParams'
   | 'cardListTitleRequired'
-  | 'cardListLeadingFieldRequired';
+  | 'cardListLeadingFieldRequired'
+  | 'relatedTopologyInstUuidRequired'
+  | 'relatedTopologyModelIdRequired';
 
 export interface BuildWidgetSubmitConfigInput {
   values: WidgetConfigFormValues;
@@ -110,6 +114,17 @@ export interface BuildWidgetSubmitConfigResult {
   config?: WidgetConfig;
   error?: WidgetSubmitError;
 }
+
+export const persistRelatedTopologyConfig = (
+  config?: RelatedTopologyConfig,
+): RelatedTopologyConfig => {
+  const modelId = config?.modelId?.trim() || '';
+  const instUuid = config?.instUuid?.trim() || '';
+  return {
+    ...(modelId ? { modelId } : {}),
+    ...(instUuid ? { instUuid } : {}),
+  };
+};
 
 const buildWidgetConfigBase = (
   values: WidgetConfigFormValues,
@@ -133,6 +148,16 @@ const buildSceneWidgetConfig = (
       chartType: 'application3D',
       sceneWidgetType: 'application3D',
       appearance: values.appearance || { frame: 'bare' },
+    };
+  }
+  if (values.sceneWidgetType === 'relatedTopology') {
+    return {
+      name: values.name,
+      description: values.description,
+      chartType: 'relatedTopology',
+      sceneWidgetType: 'relatedTopology',
+      relatedTopology: persistRelatedTopologyConfig(values.relatedTopology),
+      appearance: values.appearance,
     };
   }
   const topologyConfig = values.networkStatusTopology;
@@ -469,6 +494,16 @@ export const buildWidgetSubmitConfig = ({
   forPreview = false,
 }: BuildWidgetSubmitConfigInput): BuildWidgetSubmitConfigResult => {
   if (values.sceneWidgetType) {
+    if (values.sceneWidgetType === 'relatedTopology' && !forPreview) {
+      const modelId = values.relatedTopology?.modelId?.trim() || '';
+      const instUuid = values.relatedTopology?.instUuid?.trim() || '';
+      if (!modelId) {
+        return { error: 'relatedTopologyModelIdRequired' };
+      }
+      if (!instUuid) {
+        return { error: 'relatedTopologyInstUuidRequired' };
+      }
+    }
     return { config: buildSceneWidgetConfig(values) };
   }
 
