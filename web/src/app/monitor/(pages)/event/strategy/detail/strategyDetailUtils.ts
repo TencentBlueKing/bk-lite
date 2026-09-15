@@ -387,6 +387,7 @@ export const COMPARE_VALUE_KIND_RATIO = 'ratio';
 export const COMPARE_VALUE_KIND_HOURS = 'hours';
 export const COUNT_IF_ALGORITHM = 'count_if_over_time';
 export const PER_SERIES_ALGORITHMS = ['rate', 'changes', 'deriv'];
+export const RATE_FUNCTION_RE = /\b(?:rate|irate|increase)\s*\(/i;
 const DATA_BYTE_UNITS = [
   'bytes',
   'kibibytes',
@@ -939,6 +940,13 @@ export const collectMetricQueryTexts = ({
   }
   return queries;
 };
+
+export const baseQueryContainsRateFunction = (
+  query?: string | null
+): boolean => RATE_FUNCTION_RE.test(query || '');
+
+export const queriesContainRateFunction = (queries: string[]): boolean =>
+  queries.some((query) => baseQueryContainsRateFunction(query));
 
 export const resolveFunctionDelayMinutes = (
   queries: string[],

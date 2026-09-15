@@ -66,6 +66,7 @@ interface MetricDefinitionFormProps {
   onPeriodUnitChange: (val: string) => void;
   onAlgorithmChange: (val: string) => void;
   isEnumMetric?: boolean;
+  disableRateAlgorithm?: boolean;
   countPredicate?: { method: string; value: number | null };
   onCountPredicateChange?: (val: { method: string; value: number | null }) => void;
   isTrap: (getFieldValue: any) => boolean;
@@ -95,6 +96,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   onPeriodUnitChange,
   onAlgorithmChange,
   isEnumMetric = false,
+  disableRateAlgorithm = false,
   countPredicate,
   onCountPredicateChange,
   isTrap
@@ -113,9 +115,12 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
       ) {
         return false;
       }
+      if (disableRateAlgorithm && value === 'rate') {
+        return false;
+      }
       return true;
     });
-  }, [METHOD_LIST, isEnumMetric, metricExpressionMode]);
+  }, [METHOD_LIST, isEnumMetric, metricExpressionMode, disableRateAlgorithm]);
   const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();

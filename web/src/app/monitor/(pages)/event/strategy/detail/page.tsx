@@ -60,6 +60,7 @@ import {
   pruneNoticeUsers,
   shouldRequireNoticeUsers,
   collectMetricQueryTexts,
+  queriesContainRateFunction,
   resolveCompareFieldsForSave,
   resolveNoDataPeriodsForSave,
   resolveRecoveryThresholdForSave,
@@ -277,26 +278,39 @@ const StrategyOperation = () => {
     calculationUnit: thresholdBaseUnit,
     unitList
   });
-  const functionDelayMinutes = useMemo(
+  const functionDelayQueries = useMemo(
     () =>
-      resolveFunctionDelayMinutes(
-        collectMetricQueryTexts({
-          rows: metricRows,
-          metrics,
-          formulaExpression:
-            metricExpressionMode === 'formula' ? formulaExpression : undefined
-        }),
-        scheduleValueToMinutes(period, periodUnit)
-      ),
+      collectMetricQueryTexts({
+        rows: metricRows,
+        metrics,
+        formulaExpression:
+          metricExpressionMode === 'formula' ? formulaExpression : undefined
+      }),
     [
       formulaExpression,
       metricExpressionMode,
       metricRows,
-      metrics,
-      period,
-      periodUnit
+      metrics
     ]
   );
+  const functionDelayMinutes = useMemo(
+    () =>
+      resolveFunctionDelayMinutes(
+        functionDelayQueries,
+        scheduleValueToMinutes(period, periodUnit)
+      ),
+    [functionDelayQueries, period, periodUnit]
+  );
+  const disableRateAlgorithm = useMemo(
+    () => queriesContainRateFunction(functionDelayQueries),
+    [functionDelayQueries]
+  );
+
+  useEffect(() => {
+    if (algorithm !== 'rate' || !disableRateAlgorithm) return;
+    setAlgorithm('avg_over_time');
+    form.setFieldValue('algorithm', 'avg_over_time');
+  }, [algorithm, disableRateAlgorithm, form]);
 
   useEffect(() => {
     if (!unitList.length) return;
@@ -1470,6 +1484,7 @@ const StrategyOperation = () => {
                           onAlgorithmChange={handleAlgorithmChange}
                           countPredicate={countPredicate}
                           onCountPredicateChange={setCountPredicate}
+                          disableRateAlgorithm={disableRateAlgorithm}
                           isEnumMetric={
                             metricExpressionMode !== 'formula' &&
                             isStringArray(

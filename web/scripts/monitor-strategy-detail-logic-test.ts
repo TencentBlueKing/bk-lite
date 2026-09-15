@@ -15,6 +15,7 @@ import {
   isVacantThresholdUnit,
   pruneNoticeUsers,
   collectMetricQueryTexts,
+  queriesContainRateFunction,
   mapQuantityToRateUnit,
   resolveFunctionDelayMinutes,
   scheduleValueToMinutes,
@@ -845,6 +846,13 @@ assert.deepEqual(
   ['rate(cpu[5m])']
 );
 
+assert.equal(queriesContainRateFunction(['cpu_usage_total']), false);
+assert.equal(queriesContainRateFunction(['rate(if_octets[5m])']), true);
+assert.equal(queriesContainRateFunction(['irate(if_octets[1m])']), true);
+assert.equal(
+  queriesContainRateFunction(['increase(if_octets[5m])', 'cpu']),
+  true
+);
 assert.equal(mapQuantityToRateUnit('bytes'), 'byteps');
 assert.equal(mapQuantityToRateUnit('kibibytes'), 'kibyteps');
 assert.equal(mapQuantityToRateUnit('bits'), 'bitps');
