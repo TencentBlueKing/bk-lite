@@ -17,6 +17,7 @@ from apps.apm.services.probe_artifacts import (
     PYTHON_WHEELS_ARTIFACT_NAME,
     ProbeArtifactNotFound,
     build_probe_artifact_download_url,
+    get_probe_artifact_sha256,
 )
 
 
@@ -289,6 +290,26 @@ def _curl_download(url: str, output: str) -> str:
     )
 
 
+def _probe_sha256_check(path: str, digest: str) -> str:
+    if len(digest) != 64 or any(character not in "0123456789abcdefABCDEF" for character in digest):
+        raise ProbeArtifactNotFound(path)
+    quoted_digest = shlex.quote(digest.lower())
+    quoted_path = shlex.quote(path)
+    return (
+        "if command -v sha256sum >/dev/null 2>&1; then "
+        f"printf '%s  %s\\n' {quoted_digest} {quoted_path} | sha256sum -c -; "
+        f"else printf '%s  %s\\n' {quoted_digest} {quoted_path} | shasum -a 256 -c -; fi"
+    )
+
+
+def _require_probe_sha256(language: str) -> str:
+    artifact_name = LANGUAGE_PROBE_ARTIFACTS[language]
+    digest = get_probe_artifact_sha256(artifact_name)
+    if len(digest) != 64 or any(character not in "0123456789abcdefABCDEF" for character in digest):
+        raise ProbeArtifactNotFound(artifact_name)
+    return digest.lower()
+
+
 def _python_offline_install(wheels_dir: str) -> tuple[str, str, str]:
     return (
         f'python -m pip install --no-index --find-links {wheels_dir} "opentelemetry-distro[otlp]"',
@@ -297,12 +318,13 @@ def _python_offline_install(wheels_dir: str) -> tuple[str, str, str]:
     )
 
 
-def _host_install_commands(language: str, probe_download_url: str) -> str:
+def _host_install_commands(language: str, probe_download_url: str, probe_sha256: str) -> str:
     if language == "python":
         pip_install, bootstrap_requirements, bootstrap_install = _python_offline_install("otel-python-wheels")
         return "\n".join(
             (
                 _curl_download(probe_download_url, PYTHON_WHEELS_ARTIFACT_NAME),
+                _probe_sha256_check(PYTHON_WHEELS_ARTIFACT_NAME, probe_sha256),
                 "mkdir -p otel-python-wheels",
                 f"tar -xf {PYTHON_WHEELS_ARTIFACT_NAME} -C otel-python-wheels",
                 pip_install,
@@ -314,15 +336,22 @@ def _host_install_commands(language: str, probe_download_url: str) -> str:
         return "\n".join(
             (
                 _curl_download(probe_download_url, NODEJS_AUTO_ARTIFACT_NAME),
+                _probe_sha256_check(NODEJS_AUTO_ARTIFACT_NAME, probe_sha256),
                 f"npm install --offline --save ./{NODEJS_AUTO_ARTIFACT_NAME}",
             )
         )
     if language == "java":
-        return _curl_download(probe_download_url, JAVA_AGENT_ARTIFACT_NAME)
+        return "\n".join(
+            (
+                _curl_download(probe_download_url, JAVA_AGENT_ARTIFACT_NAME),
+                _probe_sha256_check(JAVA_AGENT_ARTIFACT_NAME, probe_sha256),
+            )
+        )
     if language == "go":
         return "\n".join(
             (
                 _curl_download(probe_download_url, GO_SDK_ARTIFACT_NAME),
+                _probe_sha256_check(GO_SDK_ARTIFACT_NAME, probe_sha256),
                 "mkdir -p .otel-go-sdk",
                 f"unzip -o -q {GO_SDK_ARTIFACT_NAME} -d .otel-go-sdk",
                 'export GOPROXY="file://$(pwd)/.otel-go-sdk"',
@@ -334,6 +363,7 @@ def _host_install_commands(language: str, probe_download_url: str) -> str:
         return "\n".join(
             (
                 _curl_download(probe_download_url, DOTNET_AUTO_ARTIFACT_NAME),
+                _probe_sha256_check(DOTNET_AUTO_ARTIFACT_NAME, probe_sha256),
                 'mkdir -p "$HOME/.otel-dotnet-auto"',
                 f'unzip -o -q {DOTNET_AUTO_ARTIFACT_NAME} -d "$HOME/.otel-dotnet-auto"',
                 *_dotnet_host_clr_exports(),
@@ -342,49 +372,59 @@ def _host_install_commands(language: str, probe_download_url: str) -> str:
     return "# Install the selected OpenTelemetry SDK."
 
 
-def _docker_install_commands(language: str, probe_download_url: str) -> str:
+def _docker_install_commands(language: str, probe_download_url: str, probe_sha256: str) -> str:
     quoted_url = shlex.quote(probe_download_url)
     if language == "python":
+        output = f"/tmp/{PYTHON_WHEELS_ARTIFACT_NAME}"
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{PYTHON_WHEELS_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output {output}",
+                _probe_sha256_check(output, probe_sha256),
                 "mkdir -p /opt/otel-python-wheels",
-                f"tar -xf /tmp/{PYTHON_WHEELS_ARTIFACT_NAME} -C /opt/otel-python-wheels",
+                f"tar -xf {output} -C /opt/otel-python-wheels",
                 'python -m pip install --no-index --find-links /opt/otel-python-wheels "opentelemetry-distro[otlp]"',
                 "opentelemetry-bootstrap -a requirements > /tmp/otel-bootstrap-requirements.txt",
                 "python -m pip install --no-index --find-links /opt/otel-python-wheels -r /tmp/otel-bootstrap-requirements.txt",
             )
         )
     if language == "nodejs":
+        output = f"/tmp/{NODEJS_AUTO_ARTIFACT_NAME}"
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{NODEJS_AUTO_ARTIFACT_NAME}",
-                f"npm install --offline --save /tmp/{NODEJS_AUTO_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output {output}",
+                _probe_sha256_check(output, probe_sha256),
+                f"npm install --offline --save {output}",
             )
         )
     if language == "java":
-        return " \\\n  ".join(
+        output = f"/opt/{JAVA_AGENT_ARTIFACT_NAME}"
+        curl = " \\\n  ".join(
             (
                 "RUN curl --fail --silent --show-error --location --insecure",
                 quoted_url,
-                f"--output /opt/{JAVA_AGENT_ARTIFACT_NAME}",
+                f"--output {output}",
             )
         )
+        return f"{curl} && {_probe_sha256_check(output, probe_sha256)}"
     if language == "go":
+        output = f"/tmp/{GO_SDK_ARTIFACT_NAME}"
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{GO_SDK_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output {output}",
+                _probe_sha256_check(output, probe_sha256),
                 "mkdir -p /opt/otel-go-sdk",
-                f"unzip -o -q /tmp/{GO_SDK_ARTIFACT_NAME} -d /opt/otel-go-sdk",
+                f"unzip -o -q {output} -d /opt/otel-go-sdk",
                 "GOPROXY=file:///opt/otel-go-sdk GOSUMDB=off go mod download go.opentelemetry.io/otel go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
             )
         )
     if language == "dotnet":
+        output = f"/tmp/{DOTNET_AUTO_ARTIFACT_NAME}"
         return " && ".join(
             (
-                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output /tmp/{DOTNET_AUTO_ARTIFACT_NAME}",
+                f"RUN curl --fail --silent --show-error --location --insecure {quoted_url} --output {output}",
+                _probe_sha256_check(output, probe_sha256),
                 f"mkdir -p {_DOTNET_CONTAINER_HOME}",
-                f"unzip -o -q /tmp/{DOTNET_AUTO_ARTIFACT_NAME} -d {_DOTNET_CONTAINER_HOME}",
+                f"unzip -o -q {output} -d {_DOTNET_CONTAINER_HOME}",
             )
         )
     return "# Install the selected OpenTelemetry SDK in the image."
@@ -562,25 +602,14 @@ class DjangoIntegrationConfigurationService:
         }
         if request.language == "dotnet":
             environment.update(_dotnet_traces_only_environment())
-        install_commands = {
-            language: _host_install_commands(language, request.probe_download_url)
-            for language in LANGUAGE_PROBE_ARTIFACTS
-        }
-        start_commands = {
-            "python": "opentelemetry-instrument python app.py",
-            "nodejs": "node --require @opentelemetry/auto-instrumentations-node/register app.js",
-            "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
-            "go": _GO_SDK_GUIDE,
-            "dotnet": "dotnet App.dll",
-        }
 
         if request.runtime == "kubernetes":
             code = _kubernetes_snippet(request.language, environment, request.probe_download_url)
         elif request.runtime == "docker":
-            image_install_commands = {
-                language: _docker_install_commands(language, request.probe_download_url)
-                for language in LANGUAGE_PROBE_ARTIFACTS
-            }
+            probe_sha256 = _require_probe_sha256(request.language)
+            image_install_commands = _docker_install_commands(
+                request.language, request.probe_download_url, probe_sha256
+            )
             docker_start_commands = {
                 "python": "opentelemetry-instrument python app.py",
                 "nodejs": "node app.js",
@@ -610,7 +639,7 @@ class DjangoIntegrationConfigurationService:
             code = "\n".join(
                 (
                     "# 1. 安装探针（将以下命令写入应用 Dockerfile）",
-                    image_install_commands.get(request.language, "# Install the selected OpenTelemetry SDK in the image."),
+                    image_install_commands,
                     "",
                     "# 2. 配置上报（端点与资源属性通过容器环境注入）",
                     f"# {runtime_profile.guidance}",
@@ -623,6 +652,15 @@ class DjangoIntegrationConfigurationService:
                 )
             )
         else:
+            probe_sha256 = _require_probe_sha256(request.language)
+            install_commands = _host_install_commands(request.language, request.probe_download_url, probe_sha256)
+            start_commands = {
+                "python": "opentelemetry-instrument python app.py",
+                "nodejs": "node --require @opentelemetry/auto-instrumentations-node/register app.js",
+                "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
+                "go": _GO_SDK_GUIDE,
+                "dotnet": "dotnet App.dll",
+            }
             export_lines = [f"# {runtime_profile.guidance}", *runtime_profile.identity_setup]
             for key, value in environment.items():
                 if key == "OTEL_RESOURCE_ATTRIBUTES":
@@ -632,7 +670,7 @@ class DjangoIntegrationConfigurationService:
             code = "\n".join(
                 (
                     "# 1. 安装探针",
-                    install_commands.get(request.language, "# Install the selected OpenTelemetry SDK."),
+                    install_commands,
                     "",
                     "# 2. 配置上报（端点与资源属性使用标准 OTEL_* 环境变量）",
                     *export_lines,
