@@ -154,3 +154,23 @@ def test_type_scoped_rules_match_collect_type_not_instance_id():
     assert 'instance_id == "nginx-1"' in content
     assert "instance_id == \"None\"" not in content
     assert ".instance_id == \"base\"" not in content
+
+
+@pytest.mark.unit
+def test_filebeat_at_fields_compile_to_quoted_vrl_paths():
+    rule = SimpleNamespace(
+        id=1,
+        collect_instance_id="filebeat-1",
+        extractor_type="copy",
+        source_field="@metadata.beat",
+        target_field="beat_name",
+        condition={},
+        config={},
+        delete_source=False,
+        sort_order=0,
+    )
+
+    content = compile_system_vector_config([rule])
+
+    assert 'exists(."@metadata".beat)' in content
+    assert '.beat_name = ."@metadata".beat' in content

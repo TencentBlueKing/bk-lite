@@ -23,7 +23,7 @@ PROTECTED_FIELDS = {
 }
 EXTRACTOR_TYPES = {"copy", "split", "kv", "regex", "regex_replace", "json"}
 CONDITION_OPERATORS = {"==", "!=", "contains", "!contains", "startswith", "endswith", "exists", "!exists"}
-_SIMPLE_SEGMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+_SIMPLE_SEGMENT = re.compile(r"^[@A-Za-z_][@A-Za-z0-9_-]*$")
 _MISSING = object()
 _REGEX_EXTRACTOR_TYPES = {"regex", "regex_replace"}
 

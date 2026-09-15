@@ -62,6 +62,7 @@ import { CollectTypeItem } from '@/app/log/types/integration';
 import {
   buildInstanceExtractorPath,
   buildTypeExtractorPath,
+  extractorPathFromSearchField,
   resolveExtractorCreateTarget,
   restoreExtractorEventShape,
   storeExtractorCreateHandoff
@@ -495,7 +496,7 @@ const SearchView: React.FC = () => {
       popup.close();
       message.error(t(key));
     };
-    const source_field = sourceField.trim() || 'message';
+    const source_field = extractorPathFromSearchField(sourceField);
     const event = restoreExtractorEventShape({ ...record });
     if (target.kind === 'type') {
       if (!hasConfigurePermission(['Add'])) {
