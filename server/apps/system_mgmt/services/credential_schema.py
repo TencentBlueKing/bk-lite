@@ -69,6 +69,10 @@ def secret_field_ids(fields: list) -> list[str]:
     return [field["id"] for field in _schema_fields(fields) if field["kind"] == "secret"]
 
 
+def type_field_ids(fields) -> set[str]:
+    return {field["id"] for field in fields or [] if isinstance(field, Mapping) and "id" in field}
+
+
 def _condition_matches(condition: object, actual: object) -> bool:
     if not isinstance(actual, str):
         return False
@@ -121,20 +125,26 @@ def validate_instance_fields(*, type_fields, values, require_secrets: bool) -> d
             f"unknown field ids: {', '.join(sorted(map(str, unknown_ids)))}"
         )
 
-    visible_ids = visible_field_ids(schema_fields, values)
+    working = dict(values)
+    for field in schema_fields:
+        default = field.get("default")
+        if field["id"] not in working and default not in (None, ""):
+            working[field["id"]] = default
+
+    visible_ids = visible_field_ids(schema_fields, working)
     persisted: dict = {}
     for field in schema_fields:
         field_id = field["id"]
         if field_id not in visible_ids:
             continue
-        if field_id not in values:
+        if field_id not in working:
             if field.get("required") and field["kind"] != "secret":
                 raise SchemaError(f"field {field_id} is required")
             if require_secrets and field["kind"] == "secret" and field.get("required"):
                 raise SchemaError(f"secret field {field_id} is required")
             continue
 
-        value = values[field_id]
+        value = working[field_id]
         _validate_value(field, value)
         if field.get("required") and value == "" and (
             require_secrets or field["kind"] != "secret"
@@ -142,8 +152,6 @@ def validate_instance_fields(*, type_fields, values, require_secrets: bool) -> d
             raise SchemaError(f"field {field_id} is required")
         if require_secrets and field["kind"] == "secret" and field.get("required") and value == "":
             raise SchemaError(f"secret field {field_id} is required")
-        if field["kind"] == "secret" and value == "" and not field.get("required"):
-            continue
         persisted[field_id] = value
 
     return persisted

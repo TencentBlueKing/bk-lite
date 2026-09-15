@@ -9,12 +9,13 @@ from uuid import uuid4
 from django.db import transaction
 from django.db.models import Count, Q
 
+from apps.core.logger import system_mgmt_logger as logger
 from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.system_mgmt.models.credential import Credential, CredentialType
 from apps.system_mgmt.models.user import Group
 from apps.system_mgmt.services.credential_builtin import builtin_type_payloads
 from apps.system_mgmt.services.credential_crypto import decrypt_instance_fields, encrypt_instance_fields, public_instance_fields
-from apps.system_mgmt.services.credential_schema import SchemaError, secret_field_ids, validate_instance_fields, validate_type_fields
+from apps.system_mgmt.services.credential_schema import SchemaError, secret_field_ids, type_field_ids, validate_instance_fields, validate_type_fields
 from apps.system_mgmt.services.credential_scope import is_current_team_authorized, manageable_owner_group_ids, usable_owner_group_ids
 
 
@@ -145,14 +146,76 @@ def _owner_ids_for_scope(owner_scope, current_team, group_list, is_superuser):
     raise CredentialServiceError("invalid")
 
 
+BUILTIN_KEY_FALLBACKS = {
+    "openstack": "openstack_account",
+    "redfish": "redfish_bmc",
+}
+
+_PRIVATE_KEY = "private_key"
+_PASSPHRASE = "passphrase"
+
+
+def _types_locked_by_key(*keys: str) -> dict[str, CredentialType]:
+    wanted = sorted({key for key in keys if key})
+    if not wanted:
+        return {}
+    return {
+        row.key: row
+        for row in CredentialType.objects.select_for_update().filter(key__in=wanted)
+    }
+
+
+def _builtin_seed_key(preferred_key: str) -> str | None:
+    fallback_key = BUILTIN_KEY_FALLBACKS.get(preferred_key)
+    if fallback_key is None:
+        return preferred_key
+    locked = _types_locked_by_key(preferred_key, fallback_key)
+    existing = locked.get(preferred_key)
+    if existing is None or existing.is_builtin:
+        return preferred_key
+    fallback = locked.get(fallback_key)
+    if fallback is not None and not fallback.is_builtin:
+        logger.warning(
+            "event=credential_builtin_key_skipped preferred_key=%s fallback_key=%s failed_stage=%s error_type=%s",
+            preferred_key,
+            fallback_key,
+            "seed_key",
+            "fallback_key_occupied",
+        )
+        return None
+    if fallback is None:
+        logger.warning(
+            "event=credential_builtin_key_fallback preferred_key=%s seed_key=%s failed_stage=%s error_type=%s",
+            preferred_key,
+            fallback_key,
+            "seed_key",
+            "preferred_key_occupied",
+        )
+    return fallback_key
+
+
+def _drop_passphrase_after_key_rotation(type_fields, incoming, values):
+    secret_ids = set(secret_field_ids(type_fields))
+    if _PRIVATE_KEY not in secret_ids or _PASSPHRASE not in secret_ids:
+        return values
+    if incoming.get(_PRIVATE_KEY) not in (None, "") and incoming.get(_PASSPHRASE) in (None, ""):
+        rotated = deepcopy(values)
+        rotated.pop(_PASSPHRASE, None)
+        return rotated
+    return values
+
+
 def seed_builtin_types():
     """Insert or refresh exactly the code-owned built-in types."""
     seeded = []
     with transaction.atomic():
         for key, definition in builtin_type_payloads().items():
+            seed_key = _builtin_seed_key(key)
+            if seed_key is None:
+                continue
             validate_type_fields(definition["fields"])
-            credential_type, _ = CredentialType.objects.select_for_update().get_or_create(
-                key=key,
+            credential_type, created = CredentialType.objects.select_for_update().get_or_create(
+                key=seed_key,
                 defaults={
                     "name": definition["name"],
                     "is_builtin": True,
@@ -161,6 +224,15 @@ def seed_builtin_types():
                     **maintainer_kwargs(),
                 },
             )
+            if not created and not credential_type.is_builtin:
+                logger.warning(
+                    "event=credential_builtin_key_skipped preferred_key=%s fallback_key=%s failed_stage=%s error_type=%s",
+                    key,
+                    seed_key,
+                    "seed_key",
+                    "seed_key_occupied",
+                )
+                continue
             update_fields = []
             if credential_type.name != definition["name"]:
                 credential_type.name = definition["name"]
@@ -292,6 +364,7 @@ def create_credential(payload=None, actor=None, **values):
         except SchemaError as exc:
             raise CredentialServiceError("invalid", str(exc)) from exc
         encrypted = encrypt_instance_fields(credential_type.fields, persisted)
+        encrypted = _drop_passphrase_after_key_rotation(credential_type.fields, persisted, encrypted)
         credential = Credential.objects.create(
             credential_id=build_credential_id(credential_type.key),
             name=name,
@@ -345,11 +418,21 @@ def update_credential(credential_id, payload=None, actor=None, **values):
             group_list=data.get("group_list"),
             is_superuser=data.get("is_superuser"),
         )
-        old_fields = deepcopy(credential.fields or {})
+        schema_ids = type_field_ids(credential.type.fields)
+        # Keys dropped from the type schema (e.g. SSH port) are discarded on save.
+        # Call sites must store connection params on the task, not the credential.
+        old_fields = {
+            key: value
+            for key, value in deepcopy(credential.fields or {}).items()
+            if key in schema_ids
+        }
         incoming = data.get("fields")
         merged = deepcopy(old_fields)
         if incoming is not None:
             if not isinstance(incoming, Mapping):
+                raise CredentialServiceError("invalid")
+            extra = set(incoming) - schema_ids
+            if extra:
                 raise CredentialServiceError("invalid")
             merged.update(deepcopy(dict(incoming)))
         try:
@@ -360,7 +443,11 @@ def update_credential(credential_id, payload=None, actor=None, **values):
         for field in credential.type.fields:
             if field.get("kind") == "secret" and field["id"] not in incoming_values:
                 persisted.pop(field["id"], None)
-        credential.fields = encrypt_instance_fields(credential.type.fields, persisted, old_fields)
+        credential.fields = _drop_passphrase_after_key_rotation(
+            credential.type.fields,
+            persisted,
+            encrypt_instance_fields(credential.type.fields, persisted, old_fields),
+        )
         if "name" in data:
             if not isinstance(data["name"], str) or not data["name"]:
                 raise CredentialServiceError("invalid")

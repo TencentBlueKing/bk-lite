@@ -17,20 +17,22 @@ export function CredentialFieldsBlock({
   form,
   readOnly,
   secretPlaceholder,
+  requireSecrets = true,
 }: {
   fields: CredentialFieldSchema[];
   form: FormInstance;
   readOnly?: boolean;
   secretPlaceholder?: string;
+  requireSecrets?: boolean;
 }) {
   Form.useWatch('fields', form);
-  return <>{renderCredentialFields(fields, form, { readOnly, secretPlaceholder })}</>;
+  return <>{renderCredentialFields(fields, form, { readOnly, secretPlaceholder, requireSecrets })}</>;
 }
 
 export function renderCredentialFields(
   fields: CredentialFieldSchema[],
   form: FormInstance,
-  options?: { readOnly?: boolean; secretPlaceholder?: string },
+  options?: { readOnly?: boolean; secretPlaceholder?: string; requireSecrets?: boolean },
 ) {
   const values = (form.getFieldsValue(true) as Record<string, unknown>) || {};
   const nested = (values.fields as Record<string, unknown> | undefined) || {};
@@ -42,6 +44,7 @@ export function renderCredentialFields(
         field={field}
         readOnly={options?.readOnly}
         secretPlaceholder={options?.secretPlaceholder}
+        requireSecrets={options?.requireSecrets}
       />
     ));
 }
@@ -50,17 +53,19 @@ interface CredentialDynamicFieldProps {
   field: CredentialFieldSchema;
   readOnly?: boolean;
   secretPlaceholder?: string;
+  requireSecrets?: boolean;
 }
 
 const CredentialDynamicField: React.FC<CredentialDynamicFieldProps> = ({
   field,
   readOnly,
   secretPlaceholder,
+  requireSecrets = true,
 }) => {
   const { t } = useTranslation();
   const label = fieldLabel(field);
   const required = Boolean(field.required) && (field.kind !== 'secret' || field.widget === 'textarea');
-  const secretRequired = Boolean(field.required) && field.kind === 'secret' && field.widget !== 'textarea' && !readOnly;
+  const secretRequired = Boolean(field.required) && field.kind === 'secret' && field.widget !== 'textarea' && !readOnly && requireSecrets;
 
   if (field.kind === 'secret' && field.widget !== 'textarea') {
     return (
