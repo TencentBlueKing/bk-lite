@@ -12,7 +12,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useCommon } from '@/app/cmdb/context/common';
 import { getOrganizationDisplayText } from '@/app/cmdb/components/cmdb-shared';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
-import { KIND_COLOR, ipToCellKind, type CellKind, type IpInstance } from './ipamCells';
+import { ALLOC_COLOR, LIVE_COLOR, classifyAlloc, classifyLive, type AllocKind, type IpInstance } from './ipamCells';
 import {
   IPAM_ALLOC_ATTR_ID,
   IPAM_ASSET_PERMISSION_PATH,
@@ -164,15 +164,11 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
     });
   }, [open, ip, persisted, attrs, detail]);
 
-  const kindLabel = useMemo<Record<CellKind, string>>(
+  const allocLabel = useMemo<Record<AllocKind, string>>(
     () => ({
       free: t('Model.ipViewFree'),
-      allocated_online: t('Model.ipViewAllocatedOnline'),
-      allocated_offline: t('Model.ipViewAllocatedOffline'),
-      conflict: t('Model.ipViewConflict'),
+      allocated: t('Model.ipViewAllocated'),
       reserved: t('Model.ipViewReserved'),
-      gateway: t('Model.ipViewGateway'),
-      unknown: t('Model.ipViewUnknown'),
     }),
     [t]
   );
@@ -184,8 +180,9 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
 
   if (!ip) return null;
 
-  const kind = ipToCellKind(ip);
-  const color = KIND_COLOR[persisted ? kind : 'free'];
+  const alloc = persisted ? classifyAlloc(ip) : 'free';
+  const live = persisted ? classifyLive(ip) : 'none';
+  const color = ALLOC_COLOR[alloc];
   const savePermission =
     action === 'delete' ? ['Delete'] : persisted ? ['Edit'] : ['Add'];
 
@@ -349,10 +346,16 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
         ) : null
       }
     >
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-2">
         <Tag color={color} className="text-white">
-          {persisted ? kindLabel[kind] : t('Model.ipViewFree')}
+          {allocLabel[alloc]}
         </Tag>
+        {live !== 'none' ? (
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: LIVE_COLOR[live], boxShadow: '0 0 0 1px var(--color-bg-1)' }}
+          />
+        ) : null}
       </div>
       {attrLoading && attrs.length === 0 ? (
         <div className="py-6 text-center">
