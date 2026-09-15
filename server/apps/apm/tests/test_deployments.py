@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryMetricStore
@@ -232,3 +234,102 @@ def test_backfill_writes_missing_events_and_moves_deployed_at_earlier():
     assert existing.deployed_at == observed_at - timedelta(days=1)
     assert existing.status == ApmDeploymentEvent.Status.IN_PROGRESS
     assert versions[0] == ("1.0.0", ApmDeploymentEvent.Status.SUCCESS)
+
+
+_BACKFILL_WRITE_BATCH = 500
+
+
+def _inferred_releases(count: int, observed_at: datetime, *, namespace="shop", name="checkout"):
+    base = observed_at - timedelta(days=1)
+    return [
+        InferredDeploymentRelease(
+            namespace,
+            name,
+            "production",
+            f"1.0.{index}",
+            base + timedelta(seconds=index),
+            observed_at,
+        )
+        for index in range(count)
+    ]
+
+
+def _backfill_table_query_count(captured: CaptureQueriesContext) -> int:
+    return sum(
+        1
+        for query in captured.captured_queries
+        if "apmservice" in query["sql"].lower() or "apmdeploymentevent" in query["sql"].lower()
+    )
+
+
+def _backfill_with_table_queries(releases, observed_at):
+    store = InMemoryMetricStore(deployment_releases=releases)
+    with CaptureQueriesContext(connection) as captured:
+        result = backfill_inferred_deployment_events(store, observed_at=observed_at)
+    return result, _backfill_table_query_count(captured)
+
+
+def test_backfill_empty_releases_writes_nothing():
+    service = _service()
+    observed_at = timezone.now()
+
+    result, table_queries = _backfill_with_table_queries([], observed_at)
+
+    assert result.created == 0
+    assert result.updated == 0
+    assert table_queries == 0
+    assert ApmDeploymentEvent.objects.filter(service=service).count() == 0
+
+
+def test_backfill_table_queries_scale_by_batch_not_release_count():
+    service = _service()
+    observed_at = timezone.now()
+
+    two_result, two_queries = _backfill_with_table_queries(_inferred_releases(2, observed_at), observed_at)
+    assert two_result.created == 2
+    ApmDeploymentEvent.objects.filter(service=service).delete()
+
+    many_result, many_queries = _backfill_with_table_queries(_inferred_releases(10_000, observed_at), observed_at)
+
+    assert many_result.created == 10_000
+    assert ApmDeploymentEvent.objects.filter(service=service).count() == 10_000
+    assert many_queries <= two_queries + (10_000 // _BACKFILL_WRITE_BATCH) * 6 + 16
+
+
+def test_backfill_dedupes_normalized_duplicate_keys_to_earliest_seen():
+    service = _service()
+    observed_at = timezone.now()
+    later = observed_at - timedelta(hours=1)
+    earlier = observed_at - timedelta(hours=2)
+    store = InMemoryMetricStore(
+        deployment_releases=[
+            InferredDeploymentRelease("shop", "checkout", "production", "1.0.0", later, later),
+            InferredDeploymentRelease(" shop ", "checkout", "production", " 1.0.0 ", earlier, earlier),
+        ]
+    )
+
+    result = backfill_inferred_deployment_events(store, observed_at=observed_at)
+    events = list(ApmDeploymentEvent.objects.filter(service=service))
+
+    assert result.created == 1
+    assert len(events) == 1
+    assert events[0].version == "1.0.0"
+    assert events[0].deployed_at == earlier
+    assert events[0].status == ApmDeploymentEvent.Status.SUCCESS
+
+
+def test_backfill_skips_unknown_identity_and_empty_name_or_version():
+    service = _service()
+    observed_at = timezone.now()
+    store = InMemoryMetricStore(
+        deployment_releases=[
+            InferredDeploymentRelease("other", "unknown", "production", "1.0.0", observed_at, observed_at),
+            InferredDeploymentRelease("shop", "", "production", "1.0.0", observed_at, observed_at),
+            InferredDeploymentRelease("shop", "checkout", "production", "", observed_at, observed_at),
+        ]
+    )
+
+    result = backfill_inferred_deployment_events(store, observed_at=observed_at)
+
+    assert result.created == 0
+    assert ApmDeploymentEvent.objects.filter(service=service).count() == 0
