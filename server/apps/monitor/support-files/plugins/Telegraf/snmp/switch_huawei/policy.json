@@ -91,6 +91,81 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源 ${metric_descr} 状态异常",
+      "description": "监控华为交换机各电源模块运行状态（hwEntityPwrState）。非正常状态表示电源冗余缺失或硬件故障，即使有冗余也应尽快修复以恢复冗余能力。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei交换机堆叠口异常",
+      "alert_name": "交换机${resource_name} 堆叠口 ${metric_descr} 状态异常",
+      "description": "监控华为交换机 iStack/CE 堆叠口运行状态（hwStackPortStatus）。down 表示堆叠物理口无法承载堆叠控制或转发，可能导致堆叠分裂。",
+      "metric_name": "device_stack_port_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei交换机堆叠链路异常",
+      "alert_name": "交换机${resource_name} 堆叠链路 ${metric_descr} 状态异常",
+      "description": "监控华为交换机 iStack/CE 堆叠链路运行状态（hwStackLinkStatus）。链路 down 会去掉成员之间的堆叠路径，剩余成员可能只剩单点连接。",
+      "metric_name": "device_stack_link_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei交换机CSS端口异常",
+      "alert_name": "交换机${resource_name} CSS 端口 ${metric_descr} 状态异常",
+      "description": "监控华为框式 CSS / 早期堆叠口运行状态。down 表示集群端口无法承载 CSS 控制或转发。",
+      "metric_name": "device_css_port_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei交换机CSS链路异常",
+      "alert_name": "交换机${resource_name} CSS 链路 ${metric_descr} 状态异常",
+      "description": "监控华为框式 CSS / 早期堆叠链路运行状态。链路 down 会使框间集群结构降级或分裂。",
+      "metric_name": "device_css_link_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

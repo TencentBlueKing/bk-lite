@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei",
   "plugin": "Switch Huawei SNMP",
-  "plugin_desc": "Huawei-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB) for device health: per-entity CPU/memory (descr=entPhysicalName), temperature sensors, fan status, and per-module SFP optical DDM (Rx/Tx power). Optical power is stored as raw µW; metrics keep module-level series (dimensions=descr) and convert to dBm in the query via 10*log10(µW/1000). Huawei reports memory as a utilization percentage directly and does not expose a power-supply state OID in this template. Supported brands/models — Huawei S-series campus switches (S5700/S6700/S7700/S9300, etc.) and CloudEngine CE series.",
+  "plugin_desc": "Huawei-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB) for device health: per-entity CPU/memory (descr=entPhysicalName), temperature sensors, fan status, PSU state/presence (hwEntityPwrState / hwEntityPwrPresent), and per-module SFP optical DDM (Rx/Tx power plus temperature, voltage, and laser bias). Optical power is stored as raw µW; metrics keep module-level series (dimensions=descr) and convert to dBm in the query via 10*log10(µW/1000). Optical voltage is millivolts and converted to volts in the query. Stack/CSS member, port, and link health come from HUAWEI-STACK-MIB / HUAWEI-CSS-MIB (hwStack* and hwCss*). Huawei reports memory as a utilization percentage directly. Supported brands/models include Huawei S-series campus and chassis switches (S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S16700) and CloudEngine CE series SKUs such as CE6881/CE5881.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_huawei'}) by (instance_id)",
   "name": "Switch",
@@ -18,7 +18,8 @@
     "device_cpu_usage",
     "device_memory_usage",
     "device_optical_rx_power",
-    "device_optical_tx_power"
+    "device_optical_tx_power",
+    "device_psu_state"
   ],
   "metrics": [
     {
@@ -95,6 +96,42 @@
     },
     {
       "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Power supply description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each Huawei switch power supply (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrState). A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly. Dimension descr is hwEntityPwrIndex."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_present",
+      "query": "device_psu_present{instance_type='switch', __$labels__}",
+      "display_name": "Power Supply Present",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Power supply description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Presence of each Huawei switch power supply (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrPresent). Absent means the slot is empty or the module was pulled; combined with PSU state this confirms lost redundancy. Dimension descr is hwEntityPwrIndex."
+    },
+    {
+      "metric_group": "Hardware Status",
       "name": "device_optical_rx_power",
       "query": "10 * log10(device_optical_rx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_rx_power{instance_type='switch', __$labels__} > 0)",
       "display_name": "SFP RX Power",
@@ -128,6 +165,168 @@
         "instance_id"
       ],
       "description": "Per-module SFP/optical transmit power in dBm (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalTxPower). The device reports µW; Telegraf stores raw µW and this query converts with 10*log10(µW/1000), dropping <=0 (invalid/no-module). Dimension descr is entPhysicalName. An abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_temperature",
+      "query": "device_optical_temperature{instance_type='switch', __$labels__}",
+      "display_name": "Optical Module Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each Huawei switch optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalTemperature), in degrees Celsius. Dimension descr is entPhysicalName. High module temperature accelerates laser aging and can precede optical power failure."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_bias",
+      "query": "device_optical_bias{instance_type='switch', __$labels__}",
+      "display_name": "Optical Module Bias",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Laser bias current of each Huawei switch optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalBiasCurrent). Dimension descr is entPhysicalName. Drift away from the normal range is an early sign of a failing transmitter."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_voltage",
+      "query": "device_optical_voltage{instance_type='switch', __$labels__} / 1000",
+      "display_name": "Optical Module Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Supply voltage of each Huawei switch optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalVoltage). The device reports millivolts; the query divides by 1000 to display volts. Dimension descr is entPhysicalName. Out-of-range voltage can cause unstable optics."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_stack_member_role",
+      "query": "device_stack_member_role{instance_type='switch', __$labels__}",
+      "display_name": "Stack Member Role",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"master\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"standby\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"slave\",\"id\":3,\"color\":\"#d9d9d9\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Stack member id"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Role of each Huawei iStack / CE stack member (HUAWEI-STACK-MIB hwMemberRole). Master, standby, or slave membership is the control-plane topology of the stack; unexpected role changes indicate a master switchover or a member joining/leaving."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_stack_port_state",
+      "query": "device_stack_port_state{instance_type='switch', __$labels__}",
+      "display_name": "Stack Port Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Stack port description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each Huawei iStack / CE stack port (HUAWEI-STACK-MIB hwStackPortStatus). Down means the physical stack port cannot carry stack control or forwarding, which can split the stack or force a suboptimal topology."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_stack_link_state",
+      "query": "device_stack_link_state{instance_type='switch', __$labels__}",
+      "display_name": "Stack Link Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Stack link description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each Huawei iStack / CE stack link (HUAWEI-STACK-MIB hwStackLinkStatus). A down link between members removes a stacking path and can leave the remaining members with a single point of failure."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_css_member_role",
+      "query": "device_css_member_role{instance_type='switch', __$labels__}",
+      "display_name": "CSS Member Role",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"master\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"standby\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"slave\",\"id\":3,\"color\":\"#d9d9d9\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "CSS member id"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Role of each Huawei CSS / campus-stack member (HUAWEI-CSS-MIB / HUAWEI-STACK-MIB hwMemberStackRole). Chassis CSS on S12700/S9700-class devices and early campus iStack report membership here; unexpected role changes indicate a CSS master switchover."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_css_port_state",
+      "query": "device_css_port_state{instance_type='switch', __$labels__}",
+      "display_name": "CSS Port Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "CSS port description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each Huawei CSS / early-stack port (HUAWEI-CSS-MIB / HUAWEI-STACK-MIB hwStackPortStatus). Down means the CSS fabric port cannot carry cluster control or forwarding."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_css_link_state",
+      "query": "device_css_link_state{instance_type='switch', __$labels__}",
+      "display_name": "CSS Link Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "CSS link description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each Huawei CSS / early-stack link (HUAWEI-CSS-MIB / HUAWEI-STACK-MIB hwCssLink / hwStackLink). A down CSS link between chassis splits or degrades the cluster fabric."
     },
     {
       "metric_group": "Traffic",

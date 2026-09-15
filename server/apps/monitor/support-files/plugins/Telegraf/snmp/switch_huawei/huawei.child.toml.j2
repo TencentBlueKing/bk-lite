@@ -102,12 +102,28 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
-    # 注：华为该模板未提供电源(PSU)状态 OID，按"Zabbix 无则不做"原则省略 device_psu_state。
+    # ---- Huawei PSU (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrState / hwEntityPwrPresent) ----
+    # 与同族 NE 模板一致：hwEntityPwrState ...18.1.6 / hwEntityPwrPresent ...18.1.5。
+    # descr 取电源槽位 hwEntityPwrIndex ...18.1.1（与风扇槽位 descr 同形）。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.6"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.5"
+        name = "present"
     # ---- Huawei SFP optical DDM (HUAWEI-ENTITY-EXTENT-MIB hwOpticalModuleInfoTable) ----
     # RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9。
+    # TEMP=hwEntityOpticalTemperature ...3.1.5 / VOLT=hwEntityOpticalVoltage ...3.1.6 /
+    # BIAS=hwEntityOpticalBiasCurrent ...3.1.7（与同族 NE 光模块列一致）。
     # 实际单位 µW（MIB 曾误标 dBm）；无模块/无效常为 <=0；descr=entPhysicalName。
-    # 不做 starlark 换算（避免 processor 与 IF-MIB 注入顺序冲突 / starlark 版本差异）；
-    # metrics 查询侧 10*log10(µW/1000) → dBm。
+    # 电压原始为 mV，metrics 查询侧 /1000 → V。不做 starlark 换算。
     [[inputs.snmp.table]]
         name = "device_optical"
         inherit_tags = ["source"]
@@ -121,3 +137,80 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9"
         name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.5"
+        name = "temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.7"
+        name = "bias"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.6"
+        name = "voltage"
+    # ---- Stack / CSS member, port, link (HUAWEI-STACK-MIB / HUAWEI-CSS-MIB, hwDatacomm 183) ----
+    # 校园 iStack 与 CE 走 hwStack*；框式 CSS（S12700/S9700 等）走 hwCss*。未启用堆叠/CSS 的设备表为空，不影响其余指标。
+    # 现网 CE/VRP8：hwMemberId ...183.1.20.1.1 / hwMemberRole ...183.1.20.1.4
+    [[inputs.snmp.table]]
+        name = "device_stack_member"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.20.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.20.1.4"
+        name = "role"
+    # 校园早期 iStack / CSS 成员表：hwMemberStackId ...183.1.4.1.1 / hwMemberStackRole ...183.1.4.1.3
+    [[inputs.snmp.table]]
+        name = "device_css_member"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.4.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.4.1.3"
+        name = "role"
+    # Stack port：hwStackPortName ...183.1.21.1.3 / hwStackPortStatus ...183.1.21.1.5（1=up,2=down）
+    [[inputs.snmp.table]]
+        name = "device_stack_port"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.21.1.3"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.21.1.5"
+        name = "state"
+    # CSS / 早期堆叠口：hwStackPortStatus ...183.1.5.1.3
+    [[inputs.snmp.table]]
+        name = "device_css_port"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.5.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.5.1.3"
+        name = "state"
+    # Stack link：hwStackLinkIndex ...183.1.22.1.1 / hwStackLinkStatus ...183.1.22.1.6
+    [[inputs.snmp.table]]
+        name = "device_stack_link"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.22.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.22.1.6"
+        name = "state"
+    # CSS / 早期堆叠链路：hwCssLink / hwStackLink ...183.1.6.1.1 / 状态 ...183.1.6.1.4
+    [[inputs.snmp.table]]
+        name = "device_css_link"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.6.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.183.1.6.1.4"
+        name = "state"
