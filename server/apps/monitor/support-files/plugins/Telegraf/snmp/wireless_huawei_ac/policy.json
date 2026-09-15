@@ -1,0 +1,131 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Huawei AC SNMP",
+  "templates": [
+    {
+      "name": "Huawei WLAN AC CPU使用率过高",
+      "alert_name": "无线控制器${resource_name} CPU 使用率过高",
+      "description": "监控华为 WLAN AC 实体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在 AP 或终端管理负载过重，避免影响接入、漫游与管理响应。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei WLAN AC内存使用率过高",
+      "alert_name": "无线控制器${resource_name} 内存使用率过高",
+      "description": "监控华为 WLAN AC 实体内存使用率，当超过阈值时触发告警。内存压力过高可能影响 AP 上线和终端漫游，需及时排查容量或异常负载。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei WLAN AC温度过高",
+      "alert_name": "无线控制器${resource_name} 传感器 ${metric_descr} 温度过高",
+      "description": "监控华为 WLAN AC 各硬件温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei WLAN AC正常AP比例过低",
+      "alert_name": "无线控制器${resource_name} AP 正常比例过低",
+      "description": "监控华为 WLAN AC 业务正常 AP 占比。比例持续偏低表示大量 AP 已加入但未提供服务，或接入点故障增多，应核对 AP 运行状态与射频。",
+      "metric_name": "wlan_ap_normal_ratio",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 90,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei WLAN AC射频利用率过高",
+      "alert_name": "无线控制器${resource_name} 射频利用率过高",
+      "description": "监控华为 WLAN AC 所管射频的信道利用率。持续偏高且终端数量并不大时，通常表示干扰或邻区负载，可能导致吞吐下降与漫游变差。",
+      "metric_name": "wlan_radio_util",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -112,6 +112,20 @@ def test_network_config_file_yaml_policy_keeps_task_port(reader):
     assert int(enriched.params["port"]) == 2222
 
 
+def test_network_config_file_yaml_policy_keeps_telnet_default_port(reader):
+    request = build_collection_request(
+        task_id="yaml-ncf-telnet",
+        params={
+            "model_id": "network_config_file",
+            "executor_type": "protocol",
+            "host": "10.10.69.10",
+            "transport_protocol": "telnet",
+        },
+    )
+    enriched = apply_yaml_target_policy(request, reader=reader)
+    assert int(enriched.params["port"]) == 23
+
+
 @pytest.mark.parametrize(
     ("os_type", "winrm_scheme", "kind", "port"),
     (
