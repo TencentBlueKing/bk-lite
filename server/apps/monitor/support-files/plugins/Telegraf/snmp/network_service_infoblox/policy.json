@@ -1,5 +1,56 @@
 {
   "object": "NetworkService",
   "plugin": "NetworkService Infoblox SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Infoblox网络服务CPU使用率过高",
+      "alert_name": "网络服务${resource_name} CPU 使用率过高",
+      "description": "监控 Infoblox 平台 CPU 使用率，持续高于阈值时触发告警。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Infoblox网络服务内存使用率过高",
+      "alert_name": "网络服务${resource_name} 内存使用率过高",
+      "description": "监控 Infoblox 平台内存使用率，超过阈值时触发告警。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }
