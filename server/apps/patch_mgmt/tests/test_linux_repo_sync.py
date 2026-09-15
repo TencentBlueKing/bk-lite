@@ -78,11 +78,20 @@ def _make_get(mocker, repomd=REPOMD, updateinfo=UPDATEINFO):
         resp = mocker.Mock()
         resp.raise_for_status = mocker.Mock()
         if url.endswith("repomd.xml"):
-            resp.content = repomd.encode()
+            payload = repomd.encode()
         elif "updateinfo" in url:
-            resp.content = gzip.compress(updateinfo.encode())
+            payload = gzip.compress(updateinfo.encode())
         else:
-            resp.content = b""
+            payload = b""
+        resp.content = payload
+
+        def iter_content(chunk_size=1):
+            size = chunk_size if chunk_size and chunk_size > 0 else 1
+            for index in range(0, len(payload), size):
+                yield payload[index : index + size]
+
+        resp.iter_content = iter_content
+        resp.close = mocker.Mock()
         return resp
     return mocker.patch.object(linux_repo_sync.requests, "get", side_effect=fake_get)
 
@@ -240,6 +249,30 @@ Description: SSL library
         _make_get(mocker)
         with pytest.raises(RepoSyncError):
             fetch_advisories(_source(url=""))
+
+    def test_compressed_bytes_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_COMPRESSED_BYTES", 8, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
+
+    def test_uncompressed_bytes_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_UNCOMPRESSED_BYTES", 32, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
+
+    def test_advisory_count_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_ADVISORIES", 1, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
+
+    def test_packages_per_advisory_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_PACKAGES_PER_ADVISORY", 1, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
 
 
 @pytest.mark.django_db
