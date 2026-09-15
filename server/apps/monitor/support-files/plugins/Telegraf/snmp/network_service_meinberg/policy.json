@@ -1,5 +1,20 @@
 {
   "object": "NetworkService",
   "plugin": "NetworkService Meinberg LANTIME SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Meinberg NTP状态异常",
+      "alert_name": "网络服务${resource_name} Meinberg NTP 状态异常",
+      "description": "监控 Meinberg LANTIME NTP 同步状态，未同步时触发告警。",
+      "metric_name": "network_service_meinberg_ntp_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
 }
