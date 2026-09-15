@@ -1,0 +1,73 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_h3c"
+        config_type = "h3c"
+        brand = "h3c"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- H3C/HPE Comware CPU (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage, %, per-entity table, PEN 25506) ----
+    # 列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.6（每实体 CPU%；多数实体返 0,载 CPU 实体非 0）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.6"
+        name = "usage"
+    # ---- H3C/HPE Comware memory (HH3C-ENTITY-EXT-MIB hh3cEntityExtMemUsage, 直接利用率%, per-entity table) ----
+    # 列 OID 1.3.6.1.4.1.25506.2.6.1.1.1.1.8（每实体内存%直采）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.8"
+        name = "usage"
+    # ---- H3C WLAN AC AP/STA scalars (HH3C-DOT11-ACMT-MIB hh3cDot11APObject, PEN 25506) ----
+    # 仅采集控制器级标量；不采集 HH3C-DOT11-APMT 逐 AP 表。
+    # hh3cDot11MaxAPNumPermitted 为可选标量，设备未实现时跳过该字段。
+    [[inputs.snmp.table]]
+        name = "wlan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.75.1.1.2.1"
+        name = "ap_connect_count"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.75.1.1.2.2"
+        name = "station_connect_count"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.75.1.1.1.2"
+        name = "max_ap_num_permitted"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.75.1.1.2.4"
+        name = "master_ap_count"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.75.1.1.2.21"
+        name = "total_ap_connected"
