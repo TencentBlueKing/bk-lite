@@ -180,12 +180,9 @@ class PatchTargetSerializer(PatchPermissionSerializer):
 
     def get_missing_count(self, obj):
         binding = getattr(obj, "baseline_binding", None)
-        if not binding:
+        if binding is None:
             return 0
-        if binding.missing_count:
-            return binding.missing_count
-        # 兜底：实时数一次
-        return binding.baseline.requirements.count() if binding.baseline_id else 0
+        return binding.missing_count
 
     def get_compliance_failure_reason(self, obj):
         binding = getattr(obj, "baseline_binding", None)
