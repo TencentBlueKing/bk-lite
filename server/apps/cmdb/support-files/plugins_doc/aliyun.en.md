@@ -1,6 +1,10 @@
 ### Overview
 Pulls inventories and core attributes of multiple resource types under an Alibaba Cloud account in parallel via Alibaba Cloud Open API (ECS, RDS, Redis, MongoDB, OSS, CLB, Kafka, etc.), formats them uniformly, and syncs them to CMDB.
 
+Collected timestamps are interpreted as Beijing time (UTC+08:00). Missing expiration times remain empty. When the OSS SDK does not provide the public access block attribute, its value is unknown, not disabled.
+
+A query or formatting failure in one resource category preserves its error record and the successful categories. Snapshots containing resource errors are not used to delete existing assets. Permission errors require correcting cloud account authorization and must not be treated as an empty resource inventory.
+
 
 
 ### Entry Point and Execution Location

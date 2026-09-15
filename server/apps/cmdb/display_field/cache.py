@@ -1,705 +1,376 @@
 # -- coding: utf-8 --
-"""
-排除字段缓存管理器
+"""CMDB 字段元数据缓存。
 
-职责：
-1. 项目启动时读取所有模型的 organization/user/enum 类型字段
-2. 缓存到 Redis，TTL 为 1 小时
-3. 模型字段变更时失效该模型 attrs 缓存，下次按 model_id 回源查询
-4. 为全文检索提供需要排除的字段列表
-
-缓存策略：
-- 缓存key: cmdb:exclude_fields:all
-- TTL: 3600秒（1小时）
-- 数据格式: ["organization", "created_by", "status", ...]
-- 预热时机: 启动时若全局缓存缺失则加载一次
-- 模型字段变更: 只失效该 model 的 attrs 缓存，下次 get_model_attrs 按 model_id 回源查询；不拉全量模型预热
-
-设计原则：
-- 单次查询：启动预热时所有缓存数据来自同一次模型查询，避免重复DB访问
-- 统一管理：初始化/清空/手动刷新使用统一的内部逻辑
-- 按需构建：根据 cache_key 选择对应的数据构建策略；单模型失效后按需回源
+缓存只保存可重建的查询投影：全局字段元数据在首次使用时从模型事实构建，单模型
+attrs 在首次读取时按 model_id 加载，模型写入成功后主动失效相关缓存。项目启动不
+读取、不清理也不预热这些缓存。
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, Iterable, List, Set
 
 from django.core.cache import cache
 
 from apps.cmdb.constants.constants import MODEL
 from apps.cmdb.display_field.constants import (
-    CACHE_KEY_EXCLUDE_FIELDS,
+    CACHE_KEY_FIELD_METADATA,
     CACHE_KEY_MODEL_ATTRS_INDEX,
     CACHE_KEY_MODEL_ATTRS_PREFIX,
-    CACHE_KEY_MODEL_FIELDS_MAPPING,
     CACHE_TTL_SECONDS,
     DISPLAY_FIELD_TYPES,
+    LEGACY_CACHE_KEY_EXCLUDE_FIELDS,
+    LEGACY_CACHE_KEY_MODEL_ATTRS_INDEX,
+    LEGACY_CACHE_KEY_MODEL_ATTRS_PREFIX,
+    LEGACY_CACHE_KEY_MODEL_FIELDS_MAPPING,
     SENSITIVE_FIELD_TYPES,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_exception_call_chain, safe_exception_info
 
 
 class ExcludeFieldsCache:
-    """
-    排除字段缓存管理器
-    管理全文检索时需要排除的原始字段列表（organization/user/enum类型）
-    使用 Redis 缓存；启动可预热，模型变更只失效对应 attrs，读取未命中时回源查询
+    """为全文检索和展示字段同步提供按需缓存的字段元数据。"""
 
-    常量说明:
-    - EXCLUDE_FIELDS_KEY: 缓存 key（从 constants 导入）
-    - MODEL_FIELDS_MAPPING_KEY: 缓存 key（从 constants 导入）
-    - CACHE_TTL: 缓存过期时间（从 constants 导入）
-    - EXCLUDE_FIELD_TYPES: 排除的字段类型（从 constants 导入 DISPLAY_FIELD_TYPES）
-    - MAPPING_FIELD_TYPES: 需要映射的字段类型（从 DISPLAY_FIELD_TYPES 派生）
-    """
-
-    # 缓存配置（使用统一的常量）
-    EXCLUDE_FIELDS_KEY = CACHE_KEY_EXCLUDE_FIELDS
-    MODEL_FIELDS_MAPPING_KEY = CACHE_KEY_MODEL_FIELDS_MAPPING
+    FIELD_METADATA_KEY = CACHE_KEY_FIELD_METADATA
     MODEL_ATTRS_KEY_PREFIX = CACHE_KEY_MODEL_ATTRS_PREFIX
     MODEL_ATTRS_INDEX_KEY = CACHE_KEY_MODEL_ATTRS_INDEX
-    STARTUP_INIT_LOCK_KEY = "cmdb:exclude_fields:startup_init_lock"
-    STARTUP_INIT_LOCK_TTL = 60
     CACHE_TTL = CACHE_TTL_SECONDS
 
-    # 需要排除的字段类型（使用统一的常量）
     EXCLUDE_FIELD_TYPES = DISPLAY_FIELD_TYPES
-    # 需要映射的字段类型（用户和组织）
     MAPPING_FIELD_TYPES = {"organization", "user"}
-
-    # ========== 对外接口 ==========
-
-    @classmethod
-    def initialize_all(cls) -> bool:
-        """
-        初始化所有缓存（项目启动时调用）
-
-        工作流程：
-        1. 清除所有旧缓存
-        2. 查询一次模型数据
-        3. 构建所有缓存数据
-        4. 存入 Redis
-
-        Returns:
-            初始化是否成功
-
-        Usage:
-            from apps.cmdb.display_field.cache import ExcludeFieldsCache
-            ExcludeFieldsCache.initialize_all()
-        """
-        logger.info("[ExcludeFieldsCache] 开始初始化所有缓存（每次启动强制刷新）...")
-
-        try:
-            # 清除所有缓存
-            cls._clear_all_caches()
-
-            # 从数据库加载一次模型数据，构建所有缓存
-            success = cls._refresh_all_caches()
-
-            if success:
-                logger.info("[ExcludeFieldsCache] 所有缓存初始化成功")
-            else:
-                logger.error("[ExcludeFieldsCache] 缓存初始化失败")
-
-            return success
-
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 缓存初始化异常: {e}", exc_info=True)
-            return False
-
-    @classmethod
-    def initialize_on_startup(cls) -> bool:
-        """
-        项目启动时预热缓存。
-
-        启动路径以“可用即跳过”为主，避免每次进程启动都清缓存、查图库。
-        手动刷新仍使用 initialize_all/refresh_cache 的强制刷新语义；
-        模型字段变更只失效对应 model 的 attrs，不在变更路径全量预热。
-        """
-        try:
-            if cls._global_caches_ready():
-                logger.info("[ExcludeFieldsCache] 启动缓存已存在，跳过初始化")
-                return True
-
-            if not cache.add(cls.STARTUP_INIT_LOCK_KEY, "1", timeout=cls.STARTUP_INIT_LOCK_TTL):
-                logger.info("[ExcludeFieldsCache] 其他进程正在初始化启动缓存，当前进程跳过")
-                return True
-
-            try:
-                if cls._global_caches_ready():
-                    logger.info("[ExcludeFieldsCache] 启动缓存已由其他进程初始化，跳过刷新")
-                    return True
-
-                return cls.initialize_all()
-            finally:
-                cache.delete(cls.STARTUP_INIT_LOCK_KEY)
-
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 启动缓存预热异常: {e}", exc_info=True)
-            return False
 
     @classmethod
     def get_exclude_fields(cls) -> List[str]:
-        """
-        获取需要排除的字段列表（用于全文检索）
-
-        Returns:
-            需要排除的字段名列表，如 ['organization', 'created_by', 'status']
-        """
-        return cls._get_or_load_cache(
-            cache_key=cls.EXCLUDE_FIELDS_KEY,
-            default_value=[],
-            cache_name="排除字段列表",
-        )
+        """返回全文检索应排除的原始字段名。"""
+        return list(cls._get_or_load_global_metadata()["exclude_fields"])
 
     @classmethod
     def get_model_fields_mapping(cls) -> Dict[str, Dict[str, List[str]]]:
-        """
-        获取模型字段映射（用于获取每个模型的用户和组织字段）
-
-        Returns:
-            模型字段映射字典，格式如：
-            {
-                "host": {
-                    "organization": ["organization"],
-                    "user": ["manage_user"]
-                }
-            }
-        """
-        return cls._get_or_load_cache(
-            cache_key=cls.MODEL_FIELDS_MAPPING_KEY,
-            default_value={},
-            cache_name="模型字段映射",
-        )
+        """返回各模型的 organization/user 字段映射。"""
+        return dict(cls._get_or_load_global_metadata()["model_fields_mapping"])
 
     @classmethod
     def get_model_attrs(cls, model_id: str) -> list:
-        """
-        获取模型字段定义 (attrs),优先从缓存读取
+        """按 model_id 返回标准化并补充唯一规则信息后的模型 attrs。"""
+        cache_key = cls._model_attrs_key(model_id)
+        cached_attrs = cls._read_cache(cache_key)
+        if cached_attrs is not None:
+            logger.debug("event=cmdb_model_attrs_cache_hit model_id=%s", model_id)
+            return cached_attrs
 
-        Args:
-            model_id: 模型 ID
-
-        Returns:
-            模型字段定义列表,格式为 [{"attr_id": "...", "attr_type": "...", ...}, ...]
-            缓存未命中或查询失败时返回 []
-
-        Usage:
-            attrs = ExcludeFieldsCache.get_model_attrs("host")
-        """
-        cache_key = f"{cls.MODEL_ATTRS_KEY_PREFIX}{model_id}"
-
-        try:
-            cached_attrs = cache.get(cache_key)
-
-            if cached_attrs is not None:
-                logger.debug(f"[ExcludeFieldsCache] 模型 attrs 缓存命中, model_id={model_id}")
-                return cached_attrs
-
-            logger.debug(f"[ExcludeFieldsCache] 模型 attrs 缓存未命中, 查询并缓存, model_id={model_id}")
-            from apps.cmdb.services.model import ModelManage
-
-            attrs = ModelManage.search_model_attr(model_id)
-
-            cache.set(cache_key, attrs, timeout=cls.CACHE_TTL)
-            # P2-2.6: 写入时同步登记到索引,供 clear_cache 精准删
-            index = cls._get_model_attrs_index()
-            index.add(model_id)
-            cls._set_model_attrs_index(index)
-            return attrs
-
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 获取模型 attrs 失败, model_id={model_id}, 错误: {e}")
-            return []
+        logger.debug("event=cmdb_model_attrs_cache_miss model_id=%s", model_id)
+        attrs = cls._load_model_attrs(model_id)
+        cls._cache_model_attrs(model_id, attrs)
+        return attrs
 
     @classmethod
     def update_on_model_change(cls, model_id: str) -> bool:
-        """
-        模型字段变更时失效该模型的 attrs 缓存。
+        """模型结构变化后失效该模型 attrs 和全局字段元数据。"""
+        return cls.invalidate_models([model_id], include_global_metadata=True)
 
-        模型变更低频，不在这里拉全量模型预热。下次 get_model_attrs(model_id)
-        缓存未命中时按该模型回源查询。
+    @classmethod
+    def invalidate_model_attrs(cls, model_id: str) -> bool:
+        """模型展示定义或唯一规则变化后只失效该模型 attrs。"""
+        return cls.invalidate_models([model_id], include_global_metadata=False)
 
-        使用场景：
-        - 模型新增字段
-        - 模型修改字段类型
-        - 模型删除字段
-
-        Args:
-            model_id: 发生变更的模型ID
-
-        Returns:
-            失效是否成功
-        """
-        logger.info(f"[ExcludeFieldsCache] 模型变更失效 attrs 缓存, 模型: {model_id}")
+    @classmethod
+    def invalidate_models(cls, model_ids: Iterable[str], *, include_global_metadata: bool = True) -> bool:
+        """批量失效模型缓存，不触发事实源查询。"""
+        normalized_ids = sorted({str(model_id).strip() for model_id in model_ids if model_id is not None and str(model_id).strip()})
+        keys = [cls._model_attrs_key(model_id) for model_id in normalized_ids]
+        keys.extend(f"{LEGACY_CACHE_KEY_MODEL_ATTRS_PREFIX}{model_id}" for model_id in normalized_ids)
+        if include_global_metadata:
+            keys.extend(
+                [
+                    cls.FIELD_METADATA_KEY,
+                    LEGACY_CACHE_KEY_EXCLUDE_FIELDS,
+                    LEGACY_CACHE_KEY_MODEL_FIELDS_MAPPING,
+                ]
+            )
 
         try:
-            cls._purge_model_attrs_cache(model_id)
-            logger.info(f"[ExcludeFieldsCache] 已失效模型 attrs 缓存, 模型: {model_id}")
+            if keys:
+                cache.delete_many(keys)
+            cls._discard_model_attrs_index(normalized_ids, cls.MODEL_ATTRS_INDEX_KEY)
+            cls._discard_model_attrs_index(normalized_ids, LEGACY_CACHE_KEY_MODEL_ATTRS_INDEX)
+            logger.debug(
+                "event=cmdb_field_cache_invalidated model_count=%s include_global_metadata=%s",
+                len(normalized_ids),
+                include_global_metadata,
+            )
             return True
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"[ExcludeFieldsCache] 失效模型 attrs 缓存异常, 模型: {model_id}, 错误: {e}",
-                exc_info=True,
+                "event=cmdb_field_cache_invalidation_failed model_count=%s include_global_metadata=%s failed_stage=%s error_type=%s call_chain=%s",
+                len(normalized_ids),
+                include_global_metadata,
+                "delete_cache_keys",
+                type(exc).__name__,
+                safe_exception_call_chain(exc),
+                exc_info=safe_exception_info(exc),
+            )
+            return False
+
+    @classmethod
+    def refresh_cache(cls) -> bool:
+        """从模型事实刷新全局字段元数据；失败时保留已有缓存。"""
+        try:
+            metadata = cls._load_global_metadata()
+            if not cls._save_cache(cls.FIELD_METADATA_KEY, metadata):
+                return False
+            logger.info(
+                "event=cmdb_field_metadata_cache_refreshed exclude_field_count=%s mapped_model_count=%s",
+                len(metadata["exclude_fields"]),
+                len(metadata["model_fields_mapping"]),
+            )
+            return True
+        except Exception as exc:
+            logger.error(
+                "event=cmdb_field_metadata_cache_refresh_failed failed_stage=%s error_type=%s call_chain=%s",
+                "load_model_metadata",
+                type(exc).__name__,
+                safe_exception_call_chain(exc),
+                exc_info=safe_exception_info(exc),
+            )
+            return False
+
+    @classmethod
+    def refresh_model_attrs(cls, model_id: str) -> bool:
+        """从模型事实刷新指定模型 attrs；失败时保留已有缓存。"""
+        try:
+            attrs = cls._load_model_attrs(model_id)
+            if not cls._cache_model_attrs(model_id, attrs):
+                return False
+            logger.info("event=cmdb_model_attrs_cache_refreshed model_id=%s attr_count=%s", model_id, len(attrs))
+            return True
+        except Exception as exc:
+            logger.error(
+                "event=cmdb_model_attrs_cache_refresh_failed model_id=%s failed_stage=%s error_type=%s call_chain=%s",
+                model_id,
+                "load_model_attrs",
+                type(exc).__name__,
+                safe_exception_call_chain(exc),
+                exc_info=safe_exception_info(exc),
             )
             return False
 
     @classmethod
     def clear_cache(cls) -> bool:
-        """
-        清除所有缓存（用于测试或手动刷新）
-
-        Returns:
-            清除是否成功
-        """
-        return cls._clear_all_caches()
-
-    @classmethod
-    def refresh_cache(cls) -> bool:
-        """
-        强制刷新所有缓存（从数据库重新加载）
-
-        Returns:
-            刷新是否成功
-        """
-        logger.info("[ExcludeFieldsCache] 强制刷新所有缓存...")
-        return cls._refresh_all_caches()
-
-    @classmethod
-    def get_cache_info(cls) -> dict:
-        """
-        获取缓存信息（用于监控和调试）
-
-        Returns:
-            缓存信息字典，包含字段数、缓存键、TTL等
-        """
+        """清除全局字段元数据和索引登记的单模型 attrs。"""
         try:
-            exclude_fields = cache.get(cls.EXCLUDE_FIELDS_KEY)
-            model_fields_mapping = cache.get(cls.MODEL_FIELDS_MAPPING_KEY)
-
-            return {
-                "exclude_fields": {
-                    "cache_key": cls.EXCLUDE_FIELDS_KEY,
-                    "ttl": cls.CACHE_TTL,
-                    "is_cached": exclude_fields is not None,
-                    "field_count": len(exclude_fields) if exclude_fields else 0,
-                    "fields": exclude_fields if exclude_fields else [],
-                },
-                "model_fields_mapping": {
-                    "cache_key": cls.MODEL_FIELDS_MAPPING_KEY,
-                    "ttl": cls.CACHE_TTL,
-                    "is_cached": model_fields_mapping is not None,
-                    "model_count": len(model_fields_mapping) if model_fields_mapping else 0,
-                    "mapping": model_fields_mapping if model_fields_mapping else {},
-                },
-            }
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 获取缓存信息失败: {e}")
-            return {
-                "exclude_fields": {
-                    "cache_key": cls.EXCLUDE_FIELDS_KEY,
-                    "ttl": cls.CACHE_TTL,
-                    "is_cached": False,
-                    "field_count": 0,
-                    "fields": [],
-                    "error": str(e),
-                },
-                "model_fields_mapping": {
-                    "cache_key": cls.MODEL_FIELDS_MAPPING_KEY,
-                    "ttl": cls.CACHE_TTL,
-                    "is_cached": False,
-                    "model_count": 0,
-                    "mapping": {},
-                    "error": str(e),
-                },
-            }
-
-    # ========== 内部统一缓存管理逻辑 ==========
-
-    @classmethod
-    def _get_or_load_cache(cls, cache_key: str, default_value: Any, cache_name: str) -> Any:
-        """
-        统一的缓存获取逻辑
-
-        Args:
-            cache_key: 缓存键
-            default_value: 缓存未命中时的默认值
-            cache_name: 缓存名称（用于日志）
-
-        Returns:
-            缓存值或默认值
-        """
-        try:
-            cached_value = cache.get(cache_key)
-
-            if cached_value is not None:
-                logger.debug(f"[ExcludeFieldsCache] {cache_name}缓存命中")
-                return cached_value
-
-            # 缓存未命中，重新加载所有缓存
-            logger.warning(f"[ExcludeFieldsCache] {cache_name}缓存未命中，重新加载所有缓存...")
-            cls._refresh_all_caches()
-
-            # 再次尝试获取
-            cached_value = cache.get(cache_key)
-            return cached_value if cached_value is not None else default_value
-
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 获取{cache_name}失败: {e}", exc_info=True)
-            return default_value
-
-    @classmethod
-    def _global_caches_ready(cls) -> bool:
-        """判断全局缓存是否已可用。"""
-        return cache.get(cls.EXCLUDE_FIELDS_KEY) is not None and cache.get(cls.MODEL_FIELDS_MAPPING_KEY) is not None
-
-    @classmethod
-    def _refresh_all_caches(cls) -> bool:
-        """
-        刷新所有缓存（核心逻辑：单次查询，构建所有缓存）
-
-        Returns:
-            刷新是否成功
-        """
-        try:
-            # 1. 单次查询所有模型数据
-            models_data = cls._load_models_from_db()
-
-            # 2. 基于同一份数据构建不同缓存
-            exclude_fields = cls._build_exclude_fields(models_data)
-            model_fields_mapping = cls._build_model_fields_mapping(models_data)
-            model_attrs_count = cls._build_and_cache_model_attrs(models_data)
-
-            # 3. 保存全局缓存
-            success1 = cls._save_cache(cls.EXCLUDE_FIELDS_KEY, exclude_fields)
-            success2 = cls._save_cache(cls.MODEL_FIELDS_MAPPING_KEY, model_fields_mapping)
-
-            success = success1 and success2
-
-            if success:
-                logger.info(
-                    f"[ExcludeFieldsCache] 所有缓存刷新成功, "
-                    f"排除字段数: {len(exclude_fields)}, "
-                    f"模型映射数: {len(model_fields_mapping)}, "
-                    f"模型 attrs 缓存数: {model_attrs_count}"
-                )
-
-            return success
-
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 刷新缓存失败: {e}", exc_info=True)
-            return False
-
-    @classmethod
-    def _clear_all_caches(cls) -> bool:
-        """
-        清除所有缓存
-
-        Returns:
-            清除是否成功
-        """
-        try:
-            cache.delete(cls.EXCLUDE_FIELDS_KEY)
-            cache.delete(cls.MODEL_FIELDS_MAPPING_KEY)
-
-            # P2-2.6: 本仓 cache 后端(locmem / Django 内置 RedisCache)不支持 delete_pattern,
-            # 原兜底只 log warning,导致已删除模型的 attrs 缓存会留 1h TTL。
-            # 改用索引集合记录已缓存的 model_ids,精准迭代删。
             cls._purge_all_model_attrs_cache()
-
-            logger.info("[ExcludeFieldsCache] 所有缓存已清除")
+            cache.delete_many(
+                [
+                    cls.FIELD_METADATA_KEY,
+                    LEGACY_CACHE_KEY_EXCLUDE_FIELDS,
+                    LEGACY_CACHE_KEY_MODEL_FIELDS_MAPPING,
+                ]
+            )
+            logger.info("event=cmdb_field_cache_cleared")
             return True
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 清除缓存失败: {e}")
-            return False
-
-    @classmethod
-    def _get_model_attrs_index(cls) -> set:
-        """读取已缓存 model_id 索引集合(失败时退化空集)。"""
-        try:
-            raw = cache.get(cls.MODEL_ATTRS_INDEX_KEY)
-            if isinstance(raw, (set, list, tuple)):
-                return set(raw)
-            return set()
-        except Exception as e:
-            logger.warning(f"[ExcludeFieldsCache] 读取 model attrs 索引失败: {e}")
-            return set()
-
-    @classmethod
-    def _set_model_attrs_index(cls, index: set) -> None:
-        """写入已缓存 model_id 索引集合。"""
-        try:
-            cache.set(cls.MODEL_ATTRS_INDEX_KEY, list(index), timeout=cls.CACHE_TTL)
-        except Exception as e:
-            logger.warning(f"[ExcludeFieldsCache] 写入 model attrs 索引失败: {e}")
-
-    @classmethod
-    def _purge_all_model_attrs_cache(cls) -> int:
-        """按索引集合精准删除所有 model attrs 缓存键,返回清理数量。"""
-        index = cls._get_model_attrs_index()
-        for model_id in list(index):
-            cache.delete(f"{cls.MODEL_ATTRS_KEY_PREFIX}{model_id}")
-        cache.delete(cls.MODEL_ATTRS_INDEX_KEY)
-        logger.info(f"[ExcludeFieldsCache] 已精准清除模型属性缓存,数量={len(index)}")
-        return len(index)
-
-    @classmethod
-    def _purge_model_attrs_cache(cls, model_id: str) -> None:
-        """精准删除单个 model 的 attrs 缓存,并从索引中移除。"""
-        if not model_id:
-            return
-        cache.delete(f"{cls.MODEL_ATTRS_KEY_PREFIX}{model_id}")
-        index = cls._get_model_attrs_index()
-        index.discard(model_id)
-        cls._set_model_attrs_index(index)
-
-    # ========== 数据加载与构建逻辑 ==========
-
-    @classmethod
-    def _load_models_from_db(cls) -> List[Dict[str, Any]]:
-        """
-        从数据库加载所有模型数据（单次查询，供所有缓存使用）
-
-        Returns:
-            模型数据列表
-        """
-        try:
-            with GraphClient() as ag:
-                models, _ = ag.query_entity(MODEL, [])
-
-            return models
-
-        except Exception as e:
-            logger.error(f"[ExcludeFieldsCache] 从数据库加载模型失败: {e}", exc_info=True)
-            return []
-
-    @classmethod
-    def _build_exclude_fields(cls, models: List[Dict[str, Any]]) -> List[str]:
-        """
-        构建排除字段列表（从模型数据中提取）
-
-        Args:
-            models: 模型数据列表
-
-        Returns:
-            排除字段列表（去重且排序）
-        """
-        all_exclude_fields: Set[str] = set()
-
-        for model in models:
-            model_id = model.get("model_id")
-            attrs_json = model.get("attrs", "[]")
-
-            try:
-                # 延迟导入避免循环依赖
-                from apps.cmdb.model_ops.extensions import is_file_attr_type
-                from apps.cmdb.services.model import ModelManage
-
-                attrs = ModelManage.parse_attrs(attrs_json)
-
-                for attr in attrs:
-                    attr_id = attr.get("attr_id")
-                    attr_type = attr.get("attr_type")
-
-                    # 展示型字段（有 _display 冗余）+ 文件型字段（附件/图片，值为元数据 JSON）
-                    # + 敏感型字段（pwd，密文）都排除出全文检索；
-                    # 缺企业版时 is_file_attr_type 恒 False，社区行为不变。
-                    if attr_type in cls.EXCLUDE_FIELD_TYPES or attr_type in SENSITIVE_FIELD_TYPES or is_file_attr_type(attr_type):
-                        all_exclude_fields.add(attr_id)
-
-            except Exception as e:
-                logger.warning(f"[ExcludeFieldsCache] 解析模型 {model_id} 字段失败: {e}")
-                continue
-
-        result = list(all_exclude_fields)
-        logger.debug(f"[ExcludeFieldsCache] 构建排除字段列表完成, 字段数: {len(result)}")
-        return result
-
-    @classmethod
-    def _build_model_fields_mapping(cls, models: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[str]]]:
-        """
-        构建模型字段映射（从模型数据中提取）
-
-        Args:
-            models: 模型数据列表
-
-        Returns:
-            模型字段映射字典，格式如：
-            {
-                "host": {
-                    "organization": ["organization"],
-                    "user": ["manage_user"]
-                }
-            }
-        """
-        model_fields_mapping = {}
-
-        for model in models:
-            model_id = model.get("model_id")
-            attrs_json = model.get("attrs", "[]")
-
-            try:
-                # 延迟导入避免循环依赖
-                from apps.cmdb.services.model import ModelManage
-
-                attrs = ModelManage.parse_attrs(attrs_json)
-
-                # 初始化当前模型的字段映射
-                model_mapping = {"organization": [], "user": []}
-
-                # 提取需要映射的字段
-                for attr in attrs:
-                    attr_id = attr.get("attr_id")
-                    attr_type = attr.get("attr_type")
-
-                    if attr_type == "organization":
-                        model_mapping["organization"].append(attr_id)
-                    elif attr_type == "user":
-                        model_mapping["user"].append(attr_id)
-
-                # 只保存有用户或组织字段的模型
-                if model_mapping["organization"] or model_mapping["user"]:
-                    model_fields_mapping[model_id] = model_mapping
-
-            except Exception as e:
-                logger.warning(f"[ExcludeFieldsCache] 解析模型 {model_id} 字段映射失败: {e}")
-                continue
-
-        logger.debug(f"[ExcludeFieldsCache] 构建模型字段映射完成, " f"有映射字段的模型数: {len(model_fields_mapping)}")
-        return model_fields_mapping
-
-    @classmethod
-    def _build_and_cache_model_attrs(cls, models: List[Dict[str, Any]]) -> int:
-        """
-        构建并缓存每个模型的 attrs (从模型数据中提取并分别缓存)
-
-        Args:
-            models: 模型数据列表
-
-        Returns:
-            成功缓存的模型数量
-        """
-        cached_count = 0
-
-        # P2-2.6: 维护已缓存 model_id 索引,供后续 _purge_* 精准删使用
-        old_index = cls._get_model_attrs_index()
-        new_index: set = set()
-
-        for model in models:
-            model_id = model.get("model_id")
-            attrs_json = model.get("attrs", "[]")
-
-            try:
-                from apps.cmdb.services.model import ModelManage
-
-                attrs = ModelManage.parse_attrs(attrs_json)
-
-                cache_key = f"{cls.MODEL_ATTRS_KEY_PREFIX}{model_id}"
-                cache.set(cache_key, attrs, timeout=cls.CACHE_TTL)
-                if model_id:
-                    new_index.add(model_id)
-                cached_count += 1
-
-            except Exception as e:
-                logger.warning(f"[ExcludeFieldsCache] 缓存模型 {model_id} attrs 失败: {e}")
-                continue
-
-        # P2-2.6: 删掉已下线模型的 attrs 缓存键(在旧索引但不在新索引)。
-        # 本仓 cache 后端不支持 delete_pattern,只能靠索引精准删。
-        for orphan_id in old_index - new_index:
-            cache.delete(f"{cls.MODEL_ATTRS_KEY_PREFIX}{orphan_id}")
-            logger.info(f"[ExcludeFieldsCache] 已删孤儿缓存: 模型 {orphan_id} 已下线")
-
-        cls._set_model_attrs_index(new_index)
-        logger.debug(f"[ExcludeFieldsCache] 构建并缓存模型 attrs 完成, " f"成功缓存模型数: {cached_count}/{len(models)}")
-        return cached_count
-
-    @classmethod
-    def _save_cache(cls, cache_key: str, data: Any) -> bool:
-        """
-        统一的缓存保存逻辑
-
-        Args:
-            cache_key: 缓存键
-            data: 要保存的数据
-
-        Returns:
-            保存是否成功
-        """
-        try:
-            cache.set(cache_key, data, timeout=cls.CACHE_TTL)
-            logger.debug(f"[ExcludeFieldsCache] 缓存已更新, key: {cache_key}, TTL: {cls.CACHE_TTL}s")
-            return True
-
-        except Exception as e:
+        except Exception as exc:
             logger.error(
-                f"[ExcludeFieldsCache] 保存缓存失败, key: {cache_key}, 错误: {e}",
-                exc_info=True,
+                "event=cmdb_field_cache_clear_failed failed_stage=%s error_type=%s call_chain=%s",
+                "delete_cache_keys",
+                type(exc).__name__,
+                safe_exception_call_chain(exc),
+                exc_info=safe_exception_info(exc),
             )
             return False
 
+    @classmethod
+    def get_cache_info(cls) -> dict:
+        """返回全局字段元数据缓存的有界状态摘要。"""
+        metadata = cls._read_cache(cls.FIELD_METADATA_KEY)
+        valid = cls._is_valid_global_metadata(metadata)
+        exclude_fields = metadata["exclude_fields"] if valid else []
+        model_fields_mapping = metadata["model_fields_mapping"] if valid else {}
+        return {
+            "exclude_fields": {
+                "cache_key": cls.FIELD_METADATA_KEY,
+                "ttl": cls.CACHE_TTL,
+                "is_cached": valid,
+                "field_count": len(exclude_fields),
+            },
+            "model_fields_mapping": {
+                "cache_key": cls.FIELD_METADATA_KEY,
+                "ttl": cls.CACHE_TTL,
+                "is_cached": valid,
+                "model_count": len(model_fields_mapping),
+            },
+        }
 
-# ========== 项目启动时初始化入口 ==========
+    @classmethod
+    def _get_or_load_global_metadata(cls) -> dict:
+        metadata = cls._read_cache(cls.FIELD_METADATA_KEY)
+        if cls._is_valid_global_metadata(metadata):
+            logger.debug("event=cmdb_field_metadata_cache_hit")
+            return metadata
+
+        logger.debug("event=cmdb_field_metadata_cache_miss")
+        metadata = cls._load_global_metadata()
+        cls._save_cache(cls.FIELD_METADATA_KEY, metadata)
+        return metadata
+
+    @classmethod
+    def _load_global_metadata(cls) -> dict:
+        return cls._build_global_metadata(cls._load_models_from_db())
+
+    @classmethod
+    def _load_models_from_db(cls) -> List[Dict[str, Any]]:
+        with GraphClient() as graph:
+            models, _ = graph.query_entity(MODEL, [])
+        return models
+
+    @classmethod
+    def _load_model_attrs(cls, model_id: str) -> list:
+        from apps.cmdb.services.model import ModelManage
+
+        return ModelManage.search_model_attr(model_id)
+
+    @classmethod
+    def _build_global_metadata(cls, models: List[Dict[str, Any]]) -> dict:
+        parsed_models = cls._parse_models(models)
+        return {
+            "exclude_fields": cls._build_exclude_fields_from_parsed(parsed_models),
+            "model_fields_mapping": cls._build_model_fields_mapping_from_parsed(parsed_models),
+        }
+
+    @classmethod
+    def _parse_models(cls, models: List[Dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+        from apps.cmdb.services.model import ModelManage
+
+        parsed_models = []
+        for model in models:
+            model_id = str(model.get("model_id") or "").strip()
+            if not model_id:
+                raise ValueError("模型字段元数据缺少 model_id")
+            attrs = ModelManage.parse_attrs(model.get("attrs", "[]"))
+            if not isinstance(attrs, list) or any(not isinstance(attr, dict) for attr in attrs):
+                raise ValueError(f"模型 {model_id} 的 attrs 不是对象列表")
+            parsed_models.append((model_id, attrs))
+        return parsed_models
+
+    @classmethod
+    def _build_exclude_fields(cls, models: List[Dict[str, Any]]) -> List[str]:
+        """由模型事实构建全文检索排除字段，主要供测试和诊断复用。"""
+        return cls._build_exclude_fields_from_parsed(cls._parse_models(models))
+
+    @classmethod
+    def _build_exclude_fields_from_parsed(cls, parsed_models: list[tuple[str, list[dict[str, Any]]]]) -> List[str]:
+        from apps.cmdb.model_ops.extensions import is_file_attr_type
+
+        exclude_fields: Set[str] = set()
+        for model_id, attrs in parsed_models:
+            for attr in attrs:
+                attr_id = str(attr.get("attr_id") or "").strip()
+                if not attr_id:
+                    raise ValueError(f"模型 {model_id} 的字段缺少 attr_id")
+                attr_type = attr.get("attr_type")
+                if attr_type in cls.EXCLUDE_FIELD_TYPES or attr_type in SENSITIVE_FIELD_TYPES or is_file_attr_type(attr_type):
+                    exclude_fields.add(attr_id)
+        return sorted(exclude_fields)
+
+    @classmethod
+    def _build_model_fields_mapping(cls, models: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[str]]]:
+        """由模型事实构建 organization/user 字段映射，主要供测试和诊断复用。"""
+        return cls._build_model_fields_mapping_from_parsed(cls._parse_models(models))
+
+    @classmethod
+    def _build_model_fields_mapping_from_parsed(cls, parsed_models: list[tuple[str, list[dict[str, Any]]]]) -> Dict[str, Dict[str, List[str]]]:
+        mapping = {}
+        for model_id, attrs in parsed_models:
+            model_mapping = {"organization": [], "user": []}
+            for attr in attrs:
+                attr_id = str(attr.get("attr_id") or "").strip()
+                if not attr_id:
+                    raise ValueError(f"模型 {model_id} 的字段缺少 attr_id")
+                attr_type = attr.get("attr_type")
+                if attr_type in cls.MAPPING_FIELD_TYPES:
+                    model_mapping[attr_type].append(attr_id)
+            if model_mapping["organization"] or model_mapping["user"]:
+                model_mapping["organization"].sort()
+                model_mapping["user"].sort()
+                mapping[model_id] = model_mapping
+        return mapping
+
+    @staticmethod
+    def _is_valid_global_metadata(metadata: Any) -> bool:
+        return (
+            isinstance(metadata, dict) and isinstance(metadata.get("exclude_fields"), list) and isinstance(metadata.get("model_fields_mapping"), dict)
+        )
+
+    @classmethod
+    def _model_attrs_key(cls, model_id: str) -> str:
+        return f"{cls.MODEL_ATTRS_KEY_PREFIX}{model_id}"
+
+    @classmethod
+    def _cache_model_attrs(cls, model_id: str, attrs: list) -> bool:
+        if not cls._save_cache(cls._model_attrs_key(model_id), attrs):
+            return False
+        index = cls._get_model_attrs_index(cls.MODEL_ATTRS_INDEX_KEY)
+        index.add(model_id)
+        cls._set_model_attrs_index(index, cls.MODEL_ATTRS_INDEX_KEY)
+        return True
+
+    @classmethod
+    def _read_cache(cls, cache_key: str) -> Any:
+        try:
+            return cache.get(cache_key)
+        except Exception as exc:
+            logger.warning(
+                "event=cmdb_field_cache_read_failed cache_key=%s failed_stage=%s error_type=%s",
+                cache_key,
+                "read_cache",
+                type(exc).__name__,
+            )
+            return None
+
+    @classmethod
+    def _save_cache(cls, cache_key: str, data: Any) -> bool:
+        try:
+            cache.set(cache_key, data, timeout=cls.CACHE_TTL)
+            return True
+        except Exception as exc:
+            logger.warning(
+                "event=cmdb_field_cache_write_failed cache_key=%s failed_stage=%s error_type=%s",
+                cache_key,
+                "write_cache",
+                type(exc).__name__,
+            )
+            return False
+
+    @classmethod
+    def _get_model_attrs_index(cls, index_key: str) -> set[str]:
+        raw = cls._read_cache(index_key)
+        if isinstance(raw, (set, list, tuple)):
+            return {str(model_id) for model_id in raw}
+        return set()
+
+    @classmethod
+    def _set_model_attrs_index(cls, index: set[str], index_key: str) -> bool:
+        return cls._save_cache(index_key, sorted(index))
+
+    @classmethod
+    def _discard_model_attrs_index(cls, model_ids: Iterable[str], index_key: str) -> None:
+        index = cls._get_model_attrs_index(index_key)
+        next_index = index - set(model_ids)
+        if next_index != index:
+            cls._set_model_attrs_index(next_index, index_key)
+
+    @classmethod
+    def _purge_all_model_attrs_cache(cls) -> int:
+        total = 0
+        for index_key, key_prefix in (
+            (cls.MODEL_ATTRS_INDEX_KEY, cls.MODEL_ATTRS_KEY_PREFIX),
+            (LEGACY_CACHE_KEY_MODEL_ATTRS_INDEX, LEGACY_CACHE_KEY_MODEL_ATTRS_PREFIX),
+        ):
+            model_ids = cls._get_model_attrs_index(index_key)
+            if model_ids:
+                cache.delete_many([f"{key_prefix}{model_id}" for model_id in model_ids])
+            cache.delete(index_key)
+            total += len(model_ids)
+        return total
 
 
-def init_all_caches_on_startup() -> bool:
-    """
-    项目启动时初始化所有缓存（主入口）
-
-    该函数应在 Django AppConfig.ready() 中调用，确保项目启动时：
-    1. 清除所有旧缓存
-    2. 从数据库加载最新模型数据
-    3. 构建并缓存所有需要的数据
-
-    Returns:
-        初始化是否成功
-
-    Usage:
-        # 在 apps/cmdb/apps.py 的 CmdbConfig.ready() 方法中调用
-        from apps.cmdb.display_field import init_all_caches_on_startup
-
-        def ready(self):
-            init_all_caches_on_startup()
-    """
-    logger.info("[CacheManager] 项目启动，开始初始化所有缓存...")
-
-    try:
-        success = ExcludeFieldsCache.initialize_on_startup()
-
-        if success:
-            logger.info("[CacheManager] 项目启动缓存初始化成功")
-        else:
-            logger.error("[CacheManager] 项目启动缓存初始化失败")
-
-        return success
-
-    except Exception as e:
-        logger.error(f"[CacheManager] 项目启动缓存初始化异常: {e}", exc_info=True)
-        return False
-
-
-# ========== 向后兼容的便捷方法 ==========
-
-
-def initialize_exclude_fields_cache() -> bool:
-    """
-    初始化排除字段缓存（向后兼容方法）
-
-    Returns:
-        初始化是否成功
-    """
-    return ExcludeFieldsCache.initialize_all()
-
-
-def initialize_model_fields_mapping_cache() -> bool:
-    """
-    初始化模型字段映射缓存（向后兼容方法）
-
-    Returns:
-        初始化是否成功
-    """
-    return ExcludeFieldsCache.initialize_all()
-
-
-# 便捷别名
 exclude_fields_cache = ExcludeFieldsCache()

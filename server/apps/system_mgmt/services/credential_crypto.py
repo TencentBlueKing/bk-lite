@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 from apps.core.mixinx import EncryptMixin
-from apps.system_mgmt.services.credential_schema import secret_field_ids
+from apps.system_mgmt.services.credential_schema import secret_field_ids, type_field_ids
 
 
 def encrypt_instance_fields(type_fields, new_values, old_encrypted=None) -> dict:
@@ -17,6 +17,8 @@ def encrypt_instance_fields(type_fields, new_values, old_encrypted=None) -> dict
         if incoming[field_id] in (None, ""):
             if field_id in old_values:
                 values[field_id] = old_values[field_id]
+            else:
+                values.pop(field_id, None)
         else:
             EncryptMixin.encrypt_field(field_id, values)
 
@@ -32,8 +34,13 @@ def decrypt_instance_fields(type_fields, encrypted_values) -> dict:
 
 
 def public_instance_fields(type_fields, encrypted_values) -> dict:
-    """Return instance fields without exposing secret values."""
-    values = deepcopy(encrypted_values or {})
+    """Return current-schema instance fields without exposing secret values."""
+    schema_ids = type_field_ids(type_fields)
+    values = {
+        key: value
+        for key, value in deepcopy(encrypted_values or {}).items()
+        if key in schema_ids
+    }
     for field_id in secret_field_ids(type_fields):
         values.pop(field_id, None)
     return values

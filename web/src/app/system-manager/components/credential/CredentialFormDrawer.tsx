@@ -8,6 +8,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import type { CredentialGroupOption, CredentialItem, CredentialTypeItem } from '@/components/credential-picker/types';
 import { CredentialFieldsBlock } from '@/components/credential-picker';
+import { normalizeCredentialFieldValues } from '@/components/credential-picker/normalizeFields';
 
 export type CredentialDrawerMode = 'create' | 'edit' | 'view';
 
@@ -63,7 +64,7 @@ const CredentialFormDrawer: React.FC<CredentialFormDrawerProps> = ({
         name: values.name,
         type: values.type,
         group_id: values.group_id,
-        fields: values.fields || {},
+        fields: normalizeCredentialFieldValues(selectedType?.fields || [], values.fields),
       });
       onClose();
     } finally {
@@ -169,6 +170,7 @@ const CredentialFormDrawer: React.FC<CredentialFormDrawerProps> = ({
                   fields={selectedType.fields}
                   form={form}
                   readOnly={readOnly}
+                  requireSecrets={mode === 'create'}
                   secretPlaceholder={secretPlaceholder}
                 />
               ) : selectedType ? (

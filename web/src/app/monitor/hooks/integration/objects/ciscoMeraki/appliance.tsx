@@ -1,6 +1,6 @@
 export const useMerakiApplianceConfig = () => {
   return {
-    instance_type: 'cisco_meraki_appliance',
+    instance_type: 'cisco_meraki',
     dashboardDisplay: [
       {
         indexId: 'meraki_appliance_vpn_peer_reachable',
@@ -35,7 +35,7 @@ export const useMerakiApplianceConfig = () => {
     ],
     groupIds: {},
     collectTypes: {
-      'Cisco Meraki Appliance': 'http'
+      'Cisco Meraki': 'http'
     }
   };
 };

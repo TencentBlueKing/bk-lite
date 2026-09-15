@@ -995,7 +995,9 @@
             "collapse": "收起凭据",
             "showSecret": "显示凭据",
             "hideSecret": "隐藏凭据",
-            "enablePassword": "特权密码"
+            "enablePassword": "特权密码",
+            "transportProtocol": "连接协议",
+            "telnetWarning": "Telnet 明文传输账号口令，仅应在隔离管理网或设备只开放 TCP/23 时使用。"
         },
         "networkConfigFileTask": {
             "supportedVendors": "当前支持厂商：{vendors}",
@@ -1059,6 +1061,7 @@
             "fieldNames": {
                 "sshAccount": "账户",
                 "sshPassword": "密码",
+                "transportProtocol": "连接协议",
                 "sshPort": "端口",
                 "databaseAccount": "账户",
                 "databasePassword": "密码",
@@ -1118,7 +1121,8 @@
             "fields": {
                 "sshAccount": "可选。目标主机的操作系统登录用户名；不填则走 Agent 采集。填写时需具备执行只读采集命令的权限。",
                 "sshPassword": "可选。上述操作系统账户对应的登录密码；可不填。",
-                "sshPort": "目标主机 SSH 服务监听端口；使用非标准端口时请按实际值修改。",
+                "transportProtocol": "选择 SSH（默认，TCP/22）或 Telnet（TCP/23）。Telnet 明文传输账号口令，不安全，仅设备只开放 Telnet 时使用。",
+                "sshPort": "目标设备 CLI 服务监听端口；SSH 默认 22，Telnet 默认 23。使用非标准端口时请按实际值修改。",
                 "databaseAccount": "可登录目标数据库并读取配置或元数据的数据库用户名。",
                 "databasePassword": "上述数据库账户对应的密码。",
                 "databasePort": "目标数据库服务监听端口；使用非标准端口时请按实际值修改。",
@@ -1192,7 +1196,8 @@
                 "winsphereApi": "WinSphere HTTPS API",
                 "vsphereApi": "VMware vSphere HTTPS API",
                 "ipmi": "IPMI RMCP/RMCP+",
-                "redfish": "Redfish HTTPS API"
+                "redfish": "Redfish HTTPS API",
+                "sshOrTelnet": "SSH / Telnet"
             },
             "kind": {
                 "hostAccount": "目标主机操作系统账户",
@@ -1212,7 +1217,7 @@
                 "winsphereAccount": "WinSphere 平台账户",
                 "vsphereAccount": "vCenter 平台账户",
                 "bmcAccount": "物理服务器 BMC 账户",
-                "networkDeviceAccount": "网络设备 SSH 账户"
+                "networkDeviceAccount": "网络设备 CLI 账户"
             },
             "instruction": {
                 "ssh": "凭据可不填；留空时走 Agent 采集。填写时请提供可通过 SSH（Linux）或 WMI（Windows）登录目标主机并执行只读采集命令的账户。",
@@ -1233,7 +1238,7 @@
                 "vsphere": "填写可访问 VMware vCenter SDK/API 的账户；建议使用只读角色并开启证书校验。",
                 "ipmi": "填写目标物理服务器 BMC 的 IPMI 登录账户；建议使用满足资产读取所需的最低权限。",
                 "redfish": "填写目标物理服务器 BMC 的 Redfish 只读账户；固定使用 HTTPS，默认校验服务端证书。仅在受信任管理网络中接入自签名证书时关闭校验。",
-                "networkConfig": "填写可通过 SSH 登录网络设备并执行只读配置查看命令的账户；需要进入特权模式时再填写特权密码。",
+                "networkConfig": "填写可通过 SSH 或 Telnet 登录网络设备并执行只读配置查看命令的账户。优先使用 SSH；Telnet 明文传输账号口令，仅设备只开放 TCP/23 时选用。需要进入特权模式时再填写特权密码。",
                 "configFile": "填写可通过 SSH 登录目标主机并读取指定配置文件的操作系统账户。"
             },
             "defaultPort": {

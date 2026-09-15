@@ -63,6 +63,14 @@ interface Pagination {
   total: number;
   pageSize: number;
 }
+export type CardTag =
+  | string
+  | {
+      name: string;
+      color?: string;
+      tooltip?: string;
+    };
+
 export interface CardItem {
   id: string;
   name: string;
@@ -71,7 +79,7 @@ export interface CardItem {
   icon: string;
   os: string;
   cpu_architecture?: string;
-  tagList: string[];
+  tagList: CardTag[];
 }
 
 export type {

@@ -160,19 +160,23 @@ def patch_model_rich(monkeypatch):
 
 @pytest.fixture
 def patch_exclude(monkeypatch):
-    monkeypatch.setattr(
-        "apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change", lambda model_id: None
-    )
+    monkeypatch.setattr("apps.cmdb.display_field.ExcludeFieldsCache.invalidate_model_attrs", lambda model_id: None)
 
 
 @pytest.mark.django_db
-def test_update_group_rename_syncs_graph(patch_model_rich, fake_graph):
+def test_update_group_rename_syncs_graph(patch_model_rich, fake_graph, monkeypatch):
+    invalidated = []
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.ExcludeFieldsCache.invalidate_model_attrs",
+        lambda model_id: invalidated.append(model_id),
+    )
     fg = fake_graph(MODULE)
     g = FieldGroup.objects.create(model_id="host", group_name="网络", order=1, created_by="admin")
     result = FieldGroupService.update_group(g, new_group_name="网络信息")
     assert result.group_name == "网络信息"
     # 改名应触发 set_entity_properties 同步图库属性
     assert any(c[0] == "set_entity_properties" for c in fg.calls)
+    assert invalidated == ["host"]
 
 
 @pytest.mark.django_db
@@ -199,7 +203,12 @@ def test_update_group_description_only(patch_model_rich):
 
 
 @pytest.mark.django_db
-def test_delete_group_migrates_attrs(patch_model_rich, fake_graph):
+def test_delete_group_migrates_attrs(patch_model_rich, fake_graph, monkeypatch):
+    invalidated = []
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.ExcludeFieldsCache.invalidate_model_attrs",
+        lambda model_id: invalidated.append(model_id),
+    )
     fg = fake_graph(MODULE)
     FieldGroup.objects.create(model_id="host", group_name="网络", order=1, created_by="admin")
     g2 = FieldGroup.objects.create(model_id="host", group_name="硬件", order=2, created_by="admin")
@@ -208,6 +217,7 @@ def test_delete_group_migrates_attrs(patch_model_rich, fake_graph):
     # 硬件分组下有 cpu 属性 → 迁移并写回图库
     assert any(c[0] == "set_entity_properties" for c in fg.calls)
     assert not FieldGroup.objects.filter(model_id="host", group_name="硬件").exists()
+    assert invalidated == ["host"]
 
 
 @pytest.mark.django_db

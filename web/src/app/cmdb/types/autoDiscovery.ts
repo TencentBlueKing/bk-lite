@@ -58,6 +58,7 @@ export interface CredentialPoolItem {
   user?: string;
   password?: string;
   enable_password?: string;
+  transport_protocol?: 'ssh' | 'telnet' | string;
   port?: number | string;
   database?: string;
   version?: string;

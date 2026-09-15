@@ -3,7 +3,7 @@
 import json
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
@@ -47,6 +47,11 @@ class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
     ORGANIZATION_FIELD = "team"
     permission_key = "patch"
     parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def get_queryset(self):
+        return super().get_queryset().annotate(
+            _baseline_requirement_count=Count("baseline_requirements", distinct=True)
+        )
 
     def _manual_windows_metadata(self, request):
         raw_metadata = request.data.get("metadata")

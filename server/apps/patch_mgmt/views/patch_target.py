@@ -50,7 +50,9 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
 
     @HasPermission("patch_target-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.get_queryset_by_permission(request, self.get_queryset())
+        queryset = self.filter_queryset(queryset)
+        return self._list(queryset.order_by(self.ORDERING_FIELD))
 
     @HasPermission("patch_target-View")
     def retrieve(self, request, *args, **kwargs):
@@ -89,6 +91,9 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         target_id = self.get_object().id
         target = PatchTarget.objects.select_for_update().get(pk=target_id)
+        access_error = self._validate_destroy_access(request, target)
+        if access_error is not None:
+            return access_error
         from apps.patch_mgmt.services.governance_convergence import reconcile_stale_history
 
         reconcile_stale_history(limit=1000, target_ids=[target.id])

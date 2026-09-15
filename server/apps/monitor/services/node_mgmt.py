@@ -682,6 +682,10 @@ class InstanceConfigService:
                     id=instance_id,
                     name=instance["instance_name"],
                     monitor_object_id=monitor_object_id,
+                    ip=str(instance["ip"]).strip() if instance.get("ip") not in (None, "") else None,
+                    cloud_region_id=instance.get("cloud_region_id"),
+                    node_id=str(instance["node_id"]).strip() if instance.get("node_id") not in (None, "") else None,
+                    cmdb_id=str(instance["cmdb_id"]).strip() if instance.get("cmdb_id") not in (None, "") else None,
                     summary_facts=InstanceFactResolver.merge(
                         {},
                         instance.get("summary_facts", {}),

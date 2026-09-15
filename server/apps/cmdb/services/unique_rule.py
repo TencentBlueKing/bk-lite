@@ -18,6 +18,8 @@ def unique_rule_unsupported_attr_types() -> set:
     from apps.cmdb.model_ops.extensions import unsupported_unique_attr_types
 
     return UNIQUE_RULE_UNSUPPORTED_ATTR_TYPES | unsupported_unique_attr_types()
+
+
 UNIQUE_RULE_UNSUPPORTED_FIELD_IDS = {"inst_name", "organization"}
 
 
@@ -662,6 +664,10 @@ def _save_unique_rules(model_id: str, rules: list[ModelUniqueRule]) -> None:
             [],
             False,
         )
+
+    from apps.cmdb.display_field import ExcludeFieldsCache
+
+    ExcludeFieldsCache.invalidate_model_attrs(model_id)
 
 
 def _query_model_instances(model_id: str) -> list[dict[str, Any]]:
