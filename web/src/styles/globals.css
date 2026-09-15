@@ -120,6 +120,14 @@ html.dark {
     linear-gradient(120deg, rgba(206, 224, 240, 0.1), transparent 48%),
     linear-gradient(180deg, rgba(30, 62, 94, 0.7) 0%, rgba(14, 34, 56, 0.68) 100%);
   --color-application3d-close-cta-focus: rgba(186, 200, 216, 0.4);
+  --color-application3d-wall-page-wing-border: rgba(186, 210, 236, 0.22);
+  --color-application3d-wall-page-wing-border-hover: rgba(214, 236, 255, 0.48);
+  --color-application3d-wall-page-wing-fg: rgba(226, 240, 254, 0.88);
+  --color-application3d-wall-page-wing-fg-hover: var(--color-application3d-text);
+  --color-application3d-wall-page-wing-glow: rgba(56, 189, 248, 0.28);
+  --color-application3d-wall-page-indicator-border: rgba(186, 210, 236, 0.18);
+  --color-application3d-wall-page-indicator-fg: rgba(226, 238, 250, 0.92);
+  --color-application3d-wall-page-indicator-dot: #38bdf8;
   --color-application3d-panel-normal-gradient: linear-gradient(180deg, #064790 0%, #062d5a 100%);
   --color-application3d-panel-normal-border: rgba(52, 158, 255, 0.8);
   --color-application3d-panel-normal-shadow: 0 0 20px 4px rgba(52, 158, 255, 0.57), inset 0 0 4px rgba(52, 158, 255, 0.71);
