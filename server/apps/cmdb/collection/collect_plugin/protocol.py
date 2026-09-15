@@ -66,6 +66,9 @@ class ProtocolCollectMetrics(CollectBase):
                         data[field] = key_or_func(index_data)
                     else:
                         data[field] = index_data.get(key_or_func, "")
-                if data.get("inst_name"):
+                if model_id == self.model_id:
+                    if data:
+                        result.append(data)
+                elif data.get("inst_name"):
                     result.append(data)
             self.result[model_id] = result

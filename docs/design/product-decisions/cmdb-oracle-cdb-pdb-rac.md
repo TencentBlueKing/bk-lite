@@ -17,8 +17,9 @@ Oracle 配置采集要覆盖传统非 CDB、CDB/PDB 和 RAC，做成可入库的
 
 - CDB 就是 `oracle`，RAC 是多条 `oracle_instance`，不另建 `oracle_cdb` / `oracle_rac`。
 - 单机非 CDB 也落 1 条 `oracle_instance`；没有 PDB 时不创建 PDB 实例，这是空清单不是失败。
-- 父模型 IP/端口/SID/服务名是本次接入点。身份用 `db_unique_name`，避免 `{ip}-oracle` 碰撞。
-- 连接支持 SID 与 Service Name；连不上或鉴权失败才失败。
+- 父模型 IP/端口/SID/服务名是本次接入点。父库身份保持 `{ip}-oracle`，避免重采改写现网实例。
+- 连接默认仍用 Service Name `orclpdb`；额外支持 SID。核心 SQL 失败仍整次失败。
+- `max_mem` 继续取 `v$sga` 汇总。
 - 协议采集默认不删未见子对象，避免 PDB 账号把兄弟对象清掉。
 
 ## 明确后置
@@ -37,6 +38,7 @@ Oracle 配置采集要覆盖传统非 CDB、CDB/PDB 和 RAC，做成可入库的
 
 - 2026-09-15 原先「单模型修身份即可」已改为：保留 oracle，新增实例和 PDB 子模型。
 - 2026-09-15 原先「必须 common user 连 CDB」已改为：CDB 与 PDB 账号都兼容，范围不足时降级落盘。
+- 2026-09-15 原先「父库身份改为 db_unique_name」已改回 `{ip}-oracle`，避免影响现网实例。
 
 ## 决策来源
 

@@ -273,18 +273,18 @@ class _OracleConn:
 @pytest.mark.asyncio
 async def test_oracle_list_all_resources_native_async(monkeypatch):
     rows = {
-        OracleInfo.SQL_QUERIES["con_name"]: {"CON_NAME": "ORCL"},
-        OracleInfo.SQL_QUERIES["database"]: {
-            "NAME": "ORCL",
+        OracleInfo.SQL_QUERIES["version"]: {"BANNER": "Oracle Database 19c"},
+        OracleInfo.SQL_QUERIES["max_mem"]: {"TOTAL_MEMORY": 1024},
+        OracleInfo.SQL_QUERIES["max_conn"]: {"VALUE": 300},
+        OracleInfo.SQL_QUERIES["db_name"]: {"NAME": "ORCL"},
+        OracleInfo.SQL_QUERIES["database_role"]: {"DATABASE_ROLE": "PRIMARY"},
+        OracleInfo.SQL_QUERIES["sid"]: {"SID": "orcl"},
+        OracleInfo.SQL_QUERIES["database_extra"]: {
             "DB_UNIQUE_NAME": "orcl_unique",
-            "DATABASE_ROLE": "PRIMARY",
             "LOG_MODE": "ARCHIVELOG",
             "OPEN_MODE": "READ WRITE",
         },
         OracleInfo.SQL_QUERIES["cdb_flag"]: {"CDB": "NO"},
-        OracleInfo.SQL_QUERIES["version"]: {"BANNER": "Oracle Database 19c"},
-        OracleInfo.SQL_QUERIES["sga_max_size"]: {"VALUE": "1024"},
-        OracleInfo.SQL_QUERIES["max_conn"]: {"VALUE": 300},
         OracleInfo.SQL_QUERIES["instance"]: {
             "SID": "orcl",
             "HOST_NAME": "db-1",
@@ -305,7 +305,7 @@ async def test_oracle_list_all_resources_native_async(monkeypatch):
                 "port": 1521,
                 "user": "system",
                 "password": "secret",
-                "service_name": "orcl",
+                "service_name": "orclpdb",
             }
         ).list_all_resources()
     )
@@ -314,7 +314,8 @@ async def test_oracle_list_all_resources_native_async(monkeypatch):
     assert row["version"] == "Oracle Database 19c"
     assert row["db_name"] == "ORCL"
     assert row["sid"] == "orcl"
-    assert row["inst_name"] == "orcl_unique"
+    assert row["max_mem"] == "1024"
+    assert row["inst_name"] == "10.0.0.10-oracle"
     assert row["collect_scope"] == "non_cdb"
     assert result["result"]["oracle_instance"][0]["inst_name"] == "orcl_unique-orcl"
     assert result["result"]["oracle_pdb"] == []

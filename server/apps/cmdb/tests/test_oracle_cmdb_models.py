@@ -39,7 +39,8 @@ def test_oracle_plugin_maps_three_models():
         "oracle_pdb_info_gauge",
     }
     assert set(OracleCollectionPlugin.field_mappings) == {"oracle", "oracle_instance", "oracle_pdb"}
-    assert OracleCollectionPlugin.field_mappings["oracle"]["inst_name"] == "inst_name"
+    assert OracleCollectionPlugin.field_mapping["inst_name"] is OracleCollectionPlugin.set_oracle_inst_name
+    assert OracleCollectionPlugin.field_mappings["oracle"]["inst_name"] is OracleCollectionPlugin.set_oracle_inst_name
 
 
 def test_oracle_plugin_format_metrics_maps_children_and_skips_empty_pdb():
@@ -55,13 +56,14 @@ def test_oracle_plugin_format_metrics_maps_children_and_skips_empty_pdb():
                 "inst_name": "orcl_unique-orcl",
                 "sid": "orcl",
                 "db_unique_name": "orcl_unique",
+                "parent_inst_name": "10.0.0.1-oracle",
                 "collect_status": "success",
             }
         ],
         "oracle_pdb_info_gauge": [{"collect_status": "success", "bk_obj_id": "oracle_pdb"}],
     }
     plugin.format_metrics()
-    assert plugin.result["oracle"][0]["inst_name"] == "orcl_unique"
+    assert plugin.result["oracle"][0]["inst_name"] == "10.0.0.1-oracle"
     assert plugin.result["oracle_instance"][0]["sid"] == "orcl"
-    assert plugin.result["oracle_instance"][0]["assos"][0]["model_asst_id"] == "oracle_instance_belong_oracle"
+    assert plugin.result["oracle_instance"][0]["assos"][0]["inst_name"] == "10.0.0.1-oracle"
     assert plugin.result["oracle_pdb"] == []

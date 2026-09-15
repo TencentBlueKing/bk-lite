@@ -22,8 +22,8 @@ Status: ready
 
 - 采集任务、监控对象绑定仍用 `oracle`。父模型现有 IP/端口/SID/服务名表示本次接入点，不是 RAC 节点清单。
 - 新增子模型 `oracle_instance`、`oracle_pdb`，分类 database，应用拓扑层级为应用服务层。
-- 父模型身份改为 `db_unique_name`（空则 `db_name`）。实例 `{db_unique_name}-{sid}`，PDB `{db_unique_name}-{pdb_name}`。单机也落 1 条实例。
-- 连接同时支持 SID 与 Service Name，不再默认 `orclpdb`。
+- 父模型身份保持 `{ip}-oracle`。实例 `{db_unique_name}-{sid}`，PDB `{db_unique_name}-{pdb_name}`。单机也落 1 条实例。
+- 连接默认 Service Name `orclpdb`，并额外支持 SID。核心 SQL（版本/SGA/会话/库名/角色/SID）失败则整次失败。
 - 连上后用 `CON_NAME`、`v$database`、`v$pdbs`、`gv$instance` 判断：`collect_scope` 为 `cdb` / `pdb` / `non_cdb`。无 `v$pdbs` 是非 CDB；`gv$` 失败退回 `v$instance`。
 - 协议采集默认不删除未见子对象，因此 PDB 范围采集不会清掉兄弟 PDB 或 RAC 节点。
 - 跳过 `PDB$SEED`。表空间 / ASM / Redo、Data Guard 集群对象、SCAN CI、单独的 `oracle_cdb` / `oracle_rac` 不做。
@@ -48,5 +48,5 @@ Status: ready
 
 ## Further Notes
 
-- 已按 `{ip}-oracle` 入库的数据需要重采。
-- `max_mem` 继续用该字段名，取值改为 `sga_max_size`（空则 `memory_target`）。
+- 已按 `{ip}-oracle` 入库的数据继续原地更新，不改名。
+- `max_mem` 继续用 `v$sga` 汇总。
