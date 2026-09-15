@@ -1,8 +1,9 @@
 Transmission Smartoptics SNMP:
   name: Smartoptics (Telegraf)
-  desc: SNMP monitoring template for Smartoptics transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 30826).
+  desc: SNMP monitoring template for Smartoptics transmission device. It reports
+    sensor temperature, fan status, optional fan speed, optional power consumption,
+    per-port inbound traffic rate, per-port outbound traffic rate, and system
+    uptime (IANA PEN 30826).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -51,14 +52,24 @@ monitor_object_metric:
         pressure or unstable device services.
     device_temperature_celsius:
       name: Temperature
-      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
-        High values may indicate cooling problems, high ambient temperature or overloaded
-        hardware.
+      desc: Environmental temperature of the Smartoptics DCP chassis in degrees
+        Celsius. The raw sensor value is in tenths of a degree and is divided by
+        10. High values may indicate cooling problems, high ambient temperature or
+        overloaded hardware.
     device_fan_state:
       name: Fan Status
-      desc: Operational state of each transmission device fan or fan controller. A
-        non-normal state indicates a cooling module fault, offline module, or communication
-        failure and may lead to overheating.
+      desc: Operational state of each Smartoptics DCP fan. A non-normal state
+        indicates a cooling-module alarm and may lead to overheating. Absent fans
+        are treated as healthy.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Optional fan rotation speed in RPM of the Smartoptics DCP chassis, taken
+        as the maximum across fans. Abnormally low or zero RPM indicates a stalled
+        or failed fan. Models without a speed column omit this metric.
+    device_power_watts:
+      name: Power Consumption
+      desc: Optional chassis power consumption in watts of the Smartoptics DCP
+        device. Models without a consumption sensor omit this metric.
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each transmission device power supply. A non-normal
@@ -72,3 +83,4 @@ monitor_object_metric_group:
     Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Power: Power
