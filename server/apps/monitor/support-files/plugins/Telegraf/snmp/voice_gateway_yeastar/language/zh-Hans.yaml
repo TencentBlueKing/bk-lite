@@ -1,6 +1,6 @@
 VoiceGateway Yeastar SNMP:
   name: Yeastar（Telegraf）
-  desc: 面向 Yeastar 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Yeastar 语音网关的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、并发通话数、本地存储使用率、电话引擎状态、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -30,9 +30,28 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: Yeastar 语音网关 CPU 使用率，由百分比文本标量解析为 0-100 数值。持续偏高可能表示呼叫处理压力或控制面过载。
+    memory_usage_percent:
+      name: 内存使用率
+      desc: Yeastar 语音网关内存使用率，由百分比文本标量解析为 0-100 数值。持续偏高可能表示资源紧张或服务异常。
+    local_storage_usage_percent:
+      name: 本地存储使用率
+      desc: Yeastar 语音网关本地存储使用率，由百分比文本标量解析为 0-100 数值。偏高可能导致录音或系统存储耗尽。
+    concurrent_calls:
+      name: 并发通话数
+      desc: Yeastar 语音网关当前并发通话数。用于对照许可或硬件通话上限观察语音容量。
+    asterisk_status:
+      name: 电话引擎状态
+      desc: Yeastar 语音网关电话引擎状态，归一后 1 表示运行/正常，2 表示停止或异常。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
     Temperature: 温度
     Hardware Status: 硬件状态
+    CPU: CPU
+    Memory: 内存
+    Voice: 语音
+    Storage: 存储
