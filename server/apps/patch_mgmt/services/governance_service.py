@@ -234,7 +234,7 @@ def _build_reboot_scope(target_ids: list[int]) -> tuple[list[dict], str]:
     from apps.patch_mgmt.services.risk_service import compute_risk_items
 
     pending_items = sorted(
-        (item for item in compute_risk_items() if item.remediation == RemediationStatus.PENDING_REBOOT and item.host_id in target_ids),
+        (item for item in compute_risk_items(target_ids) if item.remediation == RemediationStatus.PENDING_REBOOT and item.host_id in target_ids),
         key=lambda item: (item.host_id, item.patch_id, item.baseline_id),
     )
     source_by_pair = _source_record_by_pair(pending_items)
