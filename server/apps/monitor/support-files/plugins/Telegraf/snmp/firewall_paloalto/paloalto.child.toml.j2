@@ -62,8 +62,32 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.3.3.1.2"
         name = "usage"
+    # ---- Palo Alto memory (PAN-COMMON-MIB panhrStorageTable; used/total = used×units / size×units) ----
+    # 待现网核验：Descr 1.3.6.1.4.1.25461.2.1.2.12.3.1.3；AllocationUnits ...12.3.1.4；
+    #   Size ...12.3.1.5；Used ...12.3.1.6；Available ...12.3.1.7（可选）。
+    #   starlark 按 descr 保留 RAM 行（Memory / Physical Memory / Real Memory / RAM）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25461.2.1.2.12.3.1.3"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25461.2.1.2.12.3.1.4"
+        name = "allocation_units"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25461.2.1.2.12.3.1.5"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25461.2.1.2.12.3.1.6"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25461.2.1.2.12.3.1.7"
+        name = "available"
     # ---- Palo Alto firewall-specific session health (PAN-COMMON-MIB panSession, scalars) ----
-    # 来源：官方 PAN-COMMON-MIB（panSession = 1.3.6.1.4.1.25461.2.1.2.3），LibreNMS Panos.php 验证。待现网核验。
+    # PAN-COMMON-MIB panSession = 1.3.6.1.4.1.25461.2.1.2.3。待现网核验。
     #   panSessionUtilization .1.0(%) / panSessionMax .2.0 / panSessionActive .3.0 /
     #   panSessionActiveTcp .4.0 / panSessionActiveUdp .5.0 / panSessionActiveICMP .6.0
     [[inputs.snmp.table]]
@@ -87,6 +111,19 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25461.2.1.2.3.6"
         name = "active_sessions_icmp"
-# ---- 内存/温度/风扇/电源：Palo Alto 内存走 HOST-RESOURCES hrStorage（需按 hrStorageDescr 行级匹配 ----
-# ---- netbuffer/内存行）、温度/风扇/电源走 PAN-ENTITY-EXT entity-sensor（需按 entPhySensorType 行级过滤）。----
-# ---- telegraf inputs.snmp 不能行级过滤 → 标 N/A 不采（架构限制，同 fortinet/checkpoint 温度）。----
+
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    descr = metric.tags.get("descr", "").lower().strip()
+    if not descr:
+        return None
+    if "swap" in descr or "cached" in descr or "buffer" in descr or "virtual" in descr or "shared" in descr:
+        return None
+    if descr == "memory" or descr == "ram" or "physical memory" in descr or "real memory" in descr:
+        return metric
+    return None
+'''
+# ---- 温度/风扇/电源：Palo Alto 走 PAN-ENTITY-EXT entity-sensor（需按 entPhySensorType 行级过滤）。----
+# ---- telegraf inputs.snmp 不能按传感器类型过滤 → 标 N/A 不采（架构限制，同 fortinet/checkpoint 温度）。----
