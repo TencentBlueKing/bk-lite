@@ -92,6 +92,12 @@ import {
   writeCollapsedClassificationIds,
 } from './treeExpansionPreference';
 import { resetListPaginationToFirstPage } from './listPagination';
+import {
+  planFirstVisitTreeScroll,
+  queryAssetModelTreeNode,
+  scrollElementIntoContainer,
+  shouldFinishFirstVisitTreeScroll,
+} from './treeSelectedNodeScroll';
 
 const { confirm } = Modal;
 
@@ -298,6 +304,8 @@ const AssetDataContent = () => {
   const [isActionsCollapsed, setIsActionsCollapsed] = useState(false);
   const urlQueryInitialized = useRef(false);
   const initialDataLoaded = useRef(false);
+  const treeWrapperRef = useRef<HTMLDivElement | null>(null);
+  const firstVisitTreeScrollAttemptedRef = useRef(false);
 
   useActivate(() => {
     const { needRefresh, setNeedRefresh } = useAssetDataStore.getState();
@@ -928,7 +936,7 @@ const AssetDataContent = () => {
 
   const renderModelTitle = useCallback(
     (modelName: string, modelId: string) => (
-      <div className="flex items-center">
+      <div className="flex items-center" data-asset-model-id={modelId}>
         <EllipsisWithTooltip text={modelName} className={assetDataStyle.treeLabel} />
         <span className="ml-1 text-gray-400">({modelInstCount[modelId] || 0})</span>
       </div>
@@ -1019,6 +1027,39 @@ const AssetDataContent = () => {
   useEffect(() => {
     setFilteredTreeData(buildTreeData(modelGroup, renderModelTitle));
   }, [modelGroup, renderModelTitle]);
+
+  useEffect(() => {
+    const plan = planFirstVisitTreeScroll({
+      alreadyAttempted: firstVisitTreeScrollAttemptedRef.current,
+      selectedModelId: modelId,
+      treeLoaded: filteredTreeData.length > 0,
+      modelGroup,
+      expandedKeys: expandedTreeKeys,
+    });
+    if (plan.action === 'wait') return;
+    if (plan.action === 'skip') {
+      firstVisitTreeScrollAttemptedRef.current = true;
+      return;
+    }
+    if (plan.action === 'expand') {
+      setExpandedTreeKeys((prev) =>
+        prev.includes(plan.groupKey) ? prev : [...prev, plan.groupKey]
+      );
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      if (firstVisitTreeScrollAttemptedRef.current) return;
+      const didScroll = scrollElementIntoContainer(
+        treeWrapperRef.current,
+        queryAssetModelTreeNode(treeWrapperRef.current, plan.modelId)
+      );
+      if (shouldFinishFirstVisitTreeScroll({ didScroll, loading })) {
+        firstVisitTreeScrollAttemptedRef.current = true;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [expandedTreeKeys, filteredTreeData, loading, modelGroup, modelId]);
 
   const onSelectUnified = (selectedKeys: React.Key[]) => {
     useAssetDataStore.getState().clear();
@@ -1297,7 +1338,7 @@ const AssetDataContent = () => {
               </Tooltip>
             </div>
           </div>
-          <div className={assetDataStyle.treeWrapper}>
+          <div ref={treeWrapperRef} className={assetDataStyle.treeWrapper}>
             {filteredTreeData.length > 0 ? (
               <Tree
                 showLine
