@@ -1,7 +1,8 @@
 Access BDCOM SNMP:
   name: Access BDCOM SNMP
   desc: SNMP monitoring template for BDCOM access device. It reports system uptime,
-    per-port inbound traffic rate, and per-port outbound traffic rate
+    CPU utilization, primary memory-pool used and free bytes, optional system temperature,
+    and device inbound and outbound total traffic (IANA PEN 3320)
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -40,23 +41,28 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the access device, reported directly as a percentage
-        by a private scalar. Sustained high usage indicates OLT control-plane or management-plane
+      desc: Overall control-plane CPU utilization of the access device. Prefer the
+        5-minute average and fall back to the 1-minute average when the 5-minute reading
+        is absent. Sustained high usage indicates OLT control-plane or management-plane
         pressure.
     device_memory_total:
       name: Memory Total
       desc: Total physical memory capacity reported by the access device in bytes.
         This metric can be combined with free memory to derive overall memory utilization.
+    device_memory_used:
+      name: Memory Used
+      desc: Bytes currently in use in the access device primary memory pool. The primary
+        pool is selected by pool name and combined with free bytes to derive utilization.
     device_memory_free:
       name: Memory Free
-      desc: Available physical memory currently reported by the access device in bytes.
-        Persistently decreasing free memory can indicate pressure from control services
-        or service tables.
+      desc: Available bytes remaining in the access device primary memory pool. Persistently
+        decreasing free memory can indicate pressure from control services or service
+        tables.
     device_memory_usage:
       name: Memory Usage
-      desc: System memory utilization of the access device, reported directly as a
-        percentage by a private scalar. Sustained high memory can indicate forwarding
-        table, ONU management table, or control-service pressure.
+      desc: Primary memory-pool utilization of the access device, computed as used
+        / (used + free) * 100. Sustained high memory can indicate forwarding table,
+        ONU management table, or control-service pressure.
     device_temperature_celsius:
       name: System Temperature
       desc: System temperature of the access device in degrees Celsius. Persistently
