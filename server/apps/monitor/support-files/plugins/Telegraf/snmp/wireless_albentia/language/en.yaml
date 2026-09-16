@@ -1,6 +1,7 @@
 Wireless Albentia SNMP:
   name: Albentia (Telegraf)
-  desc: SNMP monitoring template for Albentia wireless device. It reports per-port
+  desc: SNMP monitoring template for Albentia wireless device. It reports RF
+    temperature, optional sector temperature, optional transmit power, per-port
     inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
     PEN 28087).
 monitor_object:
@@ -56,6 +57,21 @@ monitor_object_metric:
         with no scaling. Only models equipped with a temperature sensor report a real
         value; fanless access points return 0. High temperatures can indicate cooling
         failure or poor airflow and risk thermal shutdown.
+    rf_temperature_celsius:
+      name: RF Temperature
+      desc: RF temperature of the Albentia wireless device in degrees Celsius. The
+        SNMP Integer32 uses two implied decimal places, so the query divides by 100.
+        High values can indicate poor airflow or radio hardware thermal stress.
+    sector_temperature_celsius:
+      name: Sector Temperature
+      desc: Per-sector temperature in degrees Celsius where the device exposes it.
+        The SNMP Integer32 uses two implied decimal places, so the query divides by
+        100. Empty sector tables produce no rows.
+    tx_power:
+      name: Transmit Power
+      desc: Per-sector radio transmit power in dBm, reported as an Integer32 with
+        no scaling. Empty radio-info tables produce no rows. Target RSSI is a configuration
+        object and is not treated as measured RSSI.
 monitor_object_metric_group:
   Wireless:
     Base: Base
