@@ -19,11 +19,13 @@ import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUt
 import { buildAlertDimensionDisplayItems } from './alertDimensionUtils';
 import AlertHandlerActions from './alertHandlerActions';
 import { formatAlertHandlers } from './alertHandlerUtils';
+import type { AlertSnapshotOverlay } from './alertDetailUtils';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
   chartUnit?: string | null;
   chartXAxisDomain?: [number, number] | null;
+  chartOverlay?: AlertSnapshotOverlay;
 }
 
 const Information: React.FC<InformationProps> = ({
@@ -34,7 +36,8 @@ const Information: React.FC<InformationProps> = ({
   onClose,
   trapData,
   chartUnit,
-  chartXAxisDomain
+  chartXAxisDomain,
+  chartOverlay
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -277,6 +280,22 @@ const Information: React.FC<InformationProps> = ({
             <div className="text-[12px]">{`${
               formData.metric?.display_name
             }（${findUnitNameById(chartUnit || '')}）`}</div>
+            {chartOverlay &&
+              (chartOverlay.currentValue != null ||
+                chartOverlay.baselineValue != null ||
+                chartOverlay.comparedValue != null) && (
+              <div className="text-[12px] text-[var(--color-text-3)] mt-[4px]">
+                {t('monitor.events.dryRunCurrentValue')}
+                {': '}
+                {chartOverlay.currentValue ?? '—'}
+                {chartOverlay.baselineValue != null
+                  ? ` · ${t('monitor.events.dryRunBaselineValue')}: ${chartOverlay.baselineValue}`
+                  : ''}
+                {chartOverlay.comparedValue != null
+                  ? ` · ${t('monitor.events.dryRunComparedValue')}: ${chartOverlay.comparedValue}`
+                  : ''}
+              </div>
+            )}
             <div className="h-[250px]">
               <LineChart
                 allowSelect={false}

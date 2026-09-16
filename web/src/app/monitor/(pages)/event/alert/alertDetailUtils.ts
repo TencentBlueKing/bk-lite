@@ -3,21 +3,32 @@ import { attachGapIntervals } from '@/app/monitor/utils/gapIntervals';
 
 export type AlertSnapshotPoint = [number, string];
 
+interface AlertSnapshot {
+  type?: string;
+  event_time?: string;
+  snapshot_time?: string;
+  current_value?: number | null;
+  baseline_value?: number | null;
+  compared_value?: number | null;
+  result_unit?: string;
+  raw_data?: {
+    values?: AlertSnapshotPoint[];
+  } | Record<string, never>;
+}
+
+export interface AlertSnapshotOverlay {
+  currentValue?: number | null;
+  baselineValue?: number | null;
+  comparedValue?: number | null;
+}
+
 export interface AlertSnapshotChartModel {
   values: AlertSnapshotPoint[];
   dataValues: AlertSnapshotPoint[];
   gapIntervals: GapInterval[];
   xAxisDomain: [number, number] | null;
   noDataTimes: number[];
-}
-
-interface AlertSnapshot {
-  type?: string;
-  event_time?: string;
-  snapshot_time?: string;
-  raw_data?: {
-    values?: AlertSnapshotPoint[];
-  } | Record<string, never>;
+  overlay?: AlertSnapshotOverlay;
 }
 
 const hasRawData = (rawData: AlertSnapshot['raw_data']): boolean =>
@@ -166,12 +177,27 @@ export const buildAlertSnapshotChartModel = (
     ? ([Math.min(...domainTimes), Math.max(...domainTimes)] as [number, number])
     : null;
 
+  const overlay = [...snapshots]
+    .reverse()
+    .map((snapshot) => ({
+      currentValue: snapshot.current_value,
+      baselineValue: snapshot.baseline_value,
+      comparedValue: snapshot.compared_value
+    }))
+    .find(
+      (item) =>
+        item.currentValue != null ||
+        item.baselineValue != null ||
+        item.comparedValue != null
+    );
+
   return {
     values: dataValues,
     dataValues,
     gapIntervals,
     xAxisDomain,
-    noDataTimes: isNoDataAlert ? uniqueNoDataTimes : []
+    noDataTimes: isNoDataAlert ? uniqueNoDataTimes : [],
+    overlay
   };
 };
 

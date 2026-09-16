@@ -8,7 +8,17 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.expression.conditions import compile_filter_to_query
 from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
-from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds, query_formula_policy_metrics
+from apps.monitor.tasks.utils.policy_methods import (
+    COMPARE_MODE_ABSOLUTE,
+    COMPARE_MODE_TIMELEFT,
+    compile_baseline_query,
+    compile_existence_query,
+    compile_policy_query,
+    compile_window_query,
+    format_period as format_policy_period,
+    period_to_seconds,
+    resolve_result_unit,
+)
 from apps.monitor.utils.dimension import parse_instance_id, ScopedInstanceMatcher
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -52,12 +62,14 @@ class MetricQueryService:
             or [],
             self.instances_map,
         )
-        # 单位转换配置
+        self._result_unit = resolve_result_unit(self.policy)
         self._unit_conversion_enabled = bool(
-            self.policy.metric_unit
+            self._result_unit.conversion_enabled
+            and self.policy.metric_unit
             and self.policy.calculation_unit
             and self.policy.metric_unit != self.policy.calculation_unit
         )
+        self._overlay_last_values = None
 
     def set_monitor_obj_instance_key(self):
         """设置监控对象实例标识键
@@ -107,20 +119,7 @@ class MetricQueryService:
         """
         if not period:
             raise BaseAppException("policy period is empty")
-
-        period_type = period["type"]
-        period_value = int(period["value"])
-
-        period_unit_map = {
-            "min": "m",
-            "hour": "h",
-            "day": "d",
-        }
-
-        if period_type not in period_unit_map:
-            raise BaseAppException(f"invalid period type: {period_type}")
-
-        return f"{period_value}{period_unit_map[period_type]}"
+        return format_policy_period(period, points)
 
     def format_pmq(self):
         """格式化PromQL/MetricQL查询语句
@@ -140,52 +139,40 @@ class MetricQueryService:
 
         return compile_filter_to_query(self.metric.query, query_condition.get("filter", []))
 
-    def query_aggregation_metrics(self, period, points=1):
-        """查询聚合指标数据
-
-        Args:
-            period: 周期配置
-            points: 需要返回的连续汇聚点数；查询范围扩展为 period * points，步长仍为 period
-
-        Returns:
-            dict: VictoriaMetrics返回的指标数据
-
-        Raises:
-            BaseAppException: 算法方法无效时抛出
-        """
-        # 计算查询时间范围
+    def _query_range(self, query, period, points=1):
         end_timestamp = int(self.policy.last_run_time.timestamp())
         period_seconds = period_to_seconds(period)
         points = max(1, int(points or 1))
         start_timestamp = end_timestamp - period_seconds * points
-
-        # 准备查询参数
-        query = self.format_pmq()
         step = self.format_period(period, points)
-        group_by = ",".join(self.get_result_group_by())
-
-        # 获取聚合方法
-        method = METHOD.get(self.policy.algorithm)
-        if not method:
-            raise BaseAppException(f"invalid algorithm method: {self.policy.algorithm}")
-
-        if self.policy.query_condition.get("type") == "formula":
-            return query_formula_policy_metrics(
-                self.policy.algorithm,
-                query,
-                start_timestamp,
-                end_timestamp,
-                step,
-            )
-
-        return method(
-            query,
-            start_timestamp,
-            end_timestamp,
-            step,
-            group_by,
-            getattr(self.policy, "group_algorithm", None),
+        return VictoriaMetricsAPI().query_range(
+            query, start_timestamp, end_timestamp, step
         )
+
+    def _compiled_group_by(self):
+        return ",".join(self.get_result_group_by())
+
+    def query_comparison_metrics(self, period, points=1):
+        """带 algorithm / compare_mode 变换的比较查询。"""
+        step = self.format_period(period, points)
+        query = compile_policy_query(
+            self.policy,
+            self.format_pmq(),
+            step,
+            self._compiled_group_by(),
+        )
+        return self._query_range(query, period, points)
+
+    def query_existence_metrics(self, period, points=1):
+        """不带比较基准的存在性查询，供无数据检测/恢复与基线同步。"""
+        step = self.format_period(period, points)
+        query = compile_existence_query(
+            self.policy,
+            self.format_pmq(),
+            step,
+            self._compiled_group_by(),
+        )
+        return self._query_range(query, period, points)
 
     def query_raw_metrics(self, period, points=1):
         """查询原始指标数据(不进行聚合)
@@ -266,11 +253,18 @@ class MetricQueryService:
             return vm_data
 
     def get_effective_calculation_unit(self):
-        """返回最终结果单位，历史策略回退到指标原始单位。"""
-        return self.policy.calculation_unit or self.policy.metric_unit or ""
+        """返回最终结果单位，变换后量纲由 resolve_result_unit 决定。"""
+        return (
+            self._result_unit.unit
+            or self.policy.calculation_unit
+            or self.policy.metric_unit
+            or ""
+        )
 
     def get_effective_threshold_unit(self):
-        """返回阈值输入单位，历史空字段回退到最终结果单位。"""
+        """返回阈值输入单位；结果不再是指标量纲时锁死为结果单位。"""
+        if not self._result_unit.conversion_enabled:
+            return self._result_unit.unit or ""
         return (
             getattr(self.policy, "threshold_unit", "")
             or self.get_effective_calculation_unit()
@@ -280,6 +274,8 @@ class MetricQueryService:
         """把阈值临时副本换算到最终结果单位，不改写策略配置。"""
         converted = copy.deepcopy(thresholds)
         if not converted:
+            return converted
+        if not self._result_unit.conversion_enabled:
             return converted
 
         source_unit = self.get_effective_threshold_unit()
@@ -308,6 +304,43 @@ class MetricQueryService:
         """
         unit = self.get_effective_calculation_unit()
         return UnitConverter.get_display_unit(unit) if unit else ""
+
+    def get_source_display_unit(self):
+        unit = self.policy.calculation_unit or self.policy.metric_unit or ""
+        return UnitConverter.get_display_unit(unit) if unit else ""
+
+    def query_overlay_last_values(self):
+        if self._overlay_last_values is None:
+            self._overlay_last_values = self._load_overlay_last_values()
+        return self._overlay_last_values
+
+    def _load_overlay_last_values(self):
+        compare_mode = getattr(self.policy, "compare_mode", None) or COMPARE_MODE_ABSOLUTE
+        if compare_mode in ("", COMPARE_MODE_ABSOLUTE):
+            return {}, {}
+        step = self.format_period(self.policy.period, 1)
+        base_query = self.format_pmq()
+        group_by = self._compiled_group_by()
+        current_query = compile_window_query(self.policy, base_query, step, group_by)
+        current_data = self.convert_metric_values(
+            self._query_range(current_query, self.policy.period, 1)
+        )
+        current_map = self._last_numeric_map(current_data)
+        if compare_mode == COMPARE_MODE_TIMELEFT:
+            return current_map, {}
+        baseline_query = compile_baseline_query(self.policy, base_query, step, group_by)
+        baseline_data = self.convert_metric_values(
+            self._query_range(baseline_query, self.policy.period, 1)
+        )
+        return current_map, self._last_numeric_map(baseline_data)
+
+    def _last_numeric_map(self, vm_data):
+        formatted = self.format_aggregation_metrics(vm_data)
+        return {
+            key: item["value"]
+            for key, item in formatted.items()
+            if item.get("value") is not None
+        }
 
     def get_enum_value_map(self) -> dict:
         """获取枚举类型指标的值到名称的映射

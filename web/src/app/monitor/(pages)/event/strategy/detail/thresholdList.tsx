@@ -37,6 +37,8 @@ interface ThresholdListProps {
   isEnumMetric?: boolean;
   enumOptions?: EnumOption[];
   showUnitSelector?: boolean;
+  allowedMethods?: ListItem[];
+  unitAddonLabel?: string;
 }
 
 const ThresholdList: React.FC<ThresholdListProps> = ({
@@ -47,14 +49,19 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
   unitOptions = [],
   isEnumMetric = false,
   enumOptions = [],
-  showUnitSelector = true
+  showUnitSelector = true,
+  allowedMethods,
+  unitAddonLabel
 }) => {
   const { t } = useTranslation();
 
   // 根据是否为枚举类型选择操作符列表
   const comparisonMethods = useMemo(() => {
+    if (allowedMethods?.length) {
+      return allowedMethods;
+    }
     return isEnumMetric ? ENUM_COMPARISON_METHOD : COMPARISON_METHOD;
-  }, [isEnumMetric]);
+  }, [allowedMethods, isEnumMetric]);
 
   const handleMethodChange = (value: string, index: number) => {
     const newData = cloneDeep(data);
@@ -74,6 +81,9 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
 
   // 获取当前选中单位的显示文本
   const getUnitLabel = () => {
+    if (unitAddonLabel) {
+      return unitAddonLabel;
+    }
     const selectedUnit = unitOptions.find(
       (option) => option.unit_id === thresholdUnit
     );

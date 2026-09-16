@@ -41,6 +41,8 @@ WRITE_ACTION_CASES = [
     pytest.param(MonitorPolicyViewSet, "post", "import_templates", {}, "strategy_list-Edit", id="strategy-template-import"),
     pytest.param(MonitorPolicyViewSet, "post", "bulk_delete_templates", {}, "strategy_list-Delete", id="strategy-template-delete"),
     pytest.param(MonitorPolicyViewSet, "post", "bulk_create_from_templates", {}, "strategy_list-Add", id="strategy-template-bulk-create"),
+    pytest.param(MonitorPolicyViewSet, "post", "preview", {}, "strategy_list-Add", id="strategy-preview"),
+    pytest.param(MonitorPolicyViewSet, "post", "dry_run", {}, "strategy_list-Add", id="strategy-dry-run"),
 ]
 
 

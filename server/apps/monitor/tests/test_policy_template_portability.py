@@ -301,3 +301,34 @@ def test_formula_config_is_stored_portably_and_resolved_for_runtime():
 
     runtime = PolicyService._runtime_query_condition(portable["query_condition"], monitor_object)
     assert [item["metric_id"] for item in runtime["queries"]] == [cpu.id, memory.id]
+
+
+def test_old_template_gets_new_field_defaults():
+    portable = PolicyService.portable_config({
+        "name": "old",
+        "algorithm": "avg_over_time",
+        "threshold": [{"method": ">", "value": 80, "level": "warning"}],
+    })
+    assert portable["compare_mode"] == "absolute"
+    assert portable["compare_value_kind"] == ""
+    assert portable["count_predicate"] == {}
+    assert portable["forecast_lookback"] == {}
+    assert portable["recovery_threshold"] == {}
+    assert portable["forecast_target"] is None
+
+
+def test_portable_config_keeps_new_fields():
+    portable = PolicyService.portable_config({
+        "compare_mode": "previous_window",
+        "compare_value_kind": "percent",
+        "recovery_threshold": {"method": "<", "value": 70},
+        "count_predicate": {"method": ">", "value": 3},
+        "forecast_target": 90,
+        "forecast_lookback": {"type": "hour", "value": 4},
+    })
+    assert portable["compare_mode"] == "previous_window"
+    assert portable["compare_value_kind"] == "percent"
+    assert portable["recovery_threshold"] == {"method": "<", "value": 70}
+    assert portable["count_predicate"] == {"method": ">", "value": 3}
+    assert portable["forecast_target"] == 90
+    assert portable["forecast_lookback"] == {"type": "hour", "value": 4}

@@ -164,6 +164,22 @@ class TestGetSnapshots:
         snaps = resp.json()["data"]["snapshots"]
         assert snaps and snaps[0]["type"] == "info"
 
+    def test_percent_compare_uses_result_unit_as_chart_unit(
+        self, api_client, grant_all
+    ):
+        api_client.cookies["current_team"] = "1"
+        policy = _policy(
+            metric_unit="bytes",
+            calculation_unit="bytes",
+            threshold_unit="kibibytes",
+            compare_mode="previous_window",
+            compare_value_kind="percent",
+        )
+        alert = _alert(policy, monitor_instance_id="h1", status="new")
+        resp = api_client.get(f"{BASE}/api/monitor_alert/snapshots/{alert.id}/")
+        assert resp.status_code == 200
+        assert resp.json()["data"]["chart_unit"] == "percent"
+
 
 class TestAlertUpdateClose:
     def test_close_new_alert(self, api_client, grant_all, mocker, django_capture_on_commit_callbacks):

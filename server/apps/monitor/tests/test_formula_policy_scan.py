@@ -38,7 +38,10 @@ def _metric_query_service(**overrides):
     base = {
         "metric": None,
         "instance_id_keys": ["instance_id", "status"],
-        "query_aggregation_metrics": lambda period, points=1: overrides.get(
+        "query_comparison_metrics": lambda period, points=1: overrides.get(
+            "agg", {"data": {"result": []}}
+        ),
+        "query_existence_metrics": lambda period, points=1: overrides.get(
             "agg", {"data": {"result": []}}
         ),
         "convert_metric_values": lambda data: data,
@@ -46,6 +49,8 @@ def _metric_query_service(**overrides):
         "format_aggregation_metrics": lambda data: overrides.get("formatted", {}),
         "get_display_unit": lambda: "",
         "get_enum_value_map": lambda: {},
+        "query_overlay_last_values": lambda: ({}, {}),
+        "get_source_display_unit": lambda: "",
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -68,25 +73,23 @@ def test_formula_query_aggregation_uses_formula_query_and_anchor_group_by(mocker
         "apps.monitor.tasks.services.policy_scan.metric_query.build_formula_query",
         return_value=compiled,
     )
+    vm = mocker.patch(
+        "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
+    )
 
-    def fake_formula_method(algorithm, query, start, end, step):
-        captured["algorithm"] = algorithm
+    def fake_query_range(query, start, end, step):
         captured["query"] = query
         return {"status": "success", "data": {"result": []}}
 
-    mocker.patch(
-        "apps.monitor.tasks.services.policy_scan.metric_query.query_formula_policy_metrics",
-        side_effect=fake_formula_method,
-    )
+    vm.return_value.query_range.side_effect = fake_query_range
 
     service = MetricQueryService(policy, {})
     service.set_monitor_obj_instance_key()
-    service.query_aggregation_metrics(policy.period)
+    service.query_comparison_metrics(policy.period)
 
     build.assert_called_once_with(policy.query_condition)
     assert service.instance_id_keys == ["instance_id", "status"]
-    assert captured["algorithm"] == "avg_over_time"
-    assert captured["query"].startswith("sum(a{})")
+    assert captured["query"].startswith("avg_over_time((sum(a{})")
 
 
 def test_metric_query_path_supports_or_filter_without_formula():
@@ -128,7 +131,7 @@ def test_formula_metric_name_template_uses_result_name():
         _metric_query_service(agg=agg),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert infos == []
     assert alerts[0]["content"].startswith("错误率 主机1 - status:500 500")
@@ -153,7 +156,7 @@ def test_formula_negative_threshold_conversion_prevents_false_alert():
     )
     query_service = MetricQueryService(policy, {"('h1',)": "主机1"})
     query_service.instance_id_keys = ["instance_id", "status"]
-    query_service.query_aggregation_metrics = lambda period, points=1: agg
+    query_service.query_comparison_metrics = lambda period, points=1: agg
     query_service.get_result_group_by = lambda: ["instance_id", "status"]
 
     detector = AlertDetector(
@@ -164,7 +167,7 @@ def test_formula_negative_threshold_conversion_prevents_false_alert():
         query_service,
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert alerts == []
     assert infos[0]["value"] == str(-5 * 1024**3)
@@ -204,7 +207,7 @@ def test_formula_baseline_refresh_uses_final_result_group_by():
     MonitorInstance.objects.create(id="('h1',)", name="host1", monitor_object=obj)
     fake_query_svc = MagicMock()
     fake_query_svc.instance_id_keys = ["instance_id", "status"]
-    fake_query_svc.query_aggregation_metrics.return_value = {
+    fake_query_svc.query_existence_metrics.return_value = {
         "data": {
             "result": [
                 {
@@ -233,25 +236,24 @@ def test_metric_query_path_still_uses_policy_group_by(mocker):
         algorithm="avg_over_time",
     )
     captured = {}
+    vm = mocker.patch(
+        "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
+    )
 
-    def fake_method(query, start, end, step, group_by, group_algorithm=None):
+    def fake_query_range(query, start, end, step):
         captured["query"] = query
-        captured["group_by"] = group_by
         return {"status": "success", "data": {"result": []}}
 
-    mocker.patch.dict(
-        "apps.monitor.tasks.services.policy_scan.metric_query.METHOD",
-        {"avg_over_time": fake_method},
-        clear=False,
-    )
+    vm.return_value.query_range.side_effect = fake_query_range
 
     service = MetricQueryService(policy, {})
     service.metric = SimpleNamespace(
         query="cpu{__$labels__}", data_type="Number", unit=""
     )
-    service.query_aggregation_metrics(policy.period)
+    service.query_comparison_metrics(policy.period)
 
-    assert captured == {"query": "cpu{}", "group_by": "instance_id"}
+    assert "cpu{}" in captured["query"]
+    assert "by (instance_id)" in captured["query"]
 
 
 def test_metric_detector_uses_policy_group_by_not_metric_instance_id_keys():
@@ -282,7 +284,7 @@ def test_metric_detector_uses_policy_group_by_not_metric_instance_id_keys():
         ),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert infos == []
     assert alerts[0]["metric_instance_id"] == str(("h1", "/data"))
@@ -310,7 +312,7 @@ def test_formula_reversed_group_by_threshold_uses_instance_id_for_scope():
         _metric_query_service(instance_id_keys=["status", "instance_id"], agg=agg),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert infos == []
     assert alerts[0]["metric_instance_id"] == str(("500", "h1"))
@@ -336,7 +338,7 @@ def test_formula_reversed_group_by_baseline_uses_instance_id_for_scope():
     MonitorInstance.objects.create(id="('h1',)", name="host1", monitor_object=obj)
     fake_query_svc = MagicMock()
     fake_query_svc.instance_id_keys = ["status", "instance_id"]
-    fake_query_svc.query_aggregation_metrics.return_value = {
+    fake_query_svc.query_existence_metrics.return_value = {
         "data": {
             "result": [
                 {

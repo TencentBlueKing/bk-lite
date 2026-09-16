@@ -13,6 +13,7 @@ import {
   seedNoticeUsersFromHandlers,
   shouldRequireNoticeUsers
 } from './strategyDetailUtils';
+import { STRATEGY_CONDITION_LABEL_CLASS } from './alertDurationFields';
 
 const { Option } = Select;
 
@@ -108,7 +109,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
     <>
       <Form.Item<StrategyFields>
         label={
-          <span className="w-[100px]">{t('monitor.events.handler')}</span>
+          <span className={STRATEGY_CONDITION_LABEL_CLASS}>{t('monitor.events.handler')}</span>
         }
         name="handlers"
       >
@@ -140,7 +141,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
       </Form.Item>
       <Form.Item<StrategyFields>
         label={
-          <span className="w-[100px]">
+          <span className={STRATEGY_CONDITION_LABEL_CLASS}>
             {t('monitor.events.notificationConfig')}
           </span>
         }
@@ -163,7 +164,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
             <>
               <Form.Item<StrategyFields>
                 label={
-                  <span className="w-[100px]">
+                  <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                     {t('monitor.events.notificationChannel')}
                   </span>
                 }
@@ -212,7 +213,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                   return (
                     <Form.Item<StrategyFields>
                       label={
-                        <span className="w-[100px]">
+                        <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                           {t('monitor.events.notifier')}
                         </span>
                       }

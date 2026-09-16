@@ -70,12 +70,15 @@ def _mq(agg, instance_id_keys=None):
             instance_id_keys=instance_id_keys or ["instance_id"],
             dimensions=[],
         ),
-        query_aggregation_metrics=lambda period, points=1: agg,
+        query_comparison_metrics=lambda period, points=1: agg,
+        query_existence_metrics=lambda period, points=1: agg,
         convert_metric_values=lambda data: data,
         format_aggregation_metrics=lambda data: {},
         get_display_unit=lambda: "%",
         get_enum_value_map=lambda: {},
         convert_thresholds=lambda thresholds: thresholds,
+        query_overlay_last_values=lambda: ({}, {}),
+        get_source_display_unit=lambda: "%",
     )
 
 
@@ -89,10 +92,10 @@ def _cluster_agg(include_instance_id=True, value="80"):
 
 
 def _patch_scan(mocker, agg):
-    mocker.patch.dict(
-        metric_query_module.METHOD,
-        {"avg": lambda *args, **kwargs: agg},
-    )
+    mocker.patch.object(
+        metric_query_module,
+        "VictoriaMetricsAPI",
+    ).return_value.query_range.return_value = agg
     mocker.patch(
         "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
         return_value="2026/08/19/mock.json.gz",
@@ -149,7 +152,7 @@ def test_k8s_cluster_threshold_triggers_when_storage_id_matches():
         _mq(_cluster_agg()),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     assert len(alerts) == 1, f"K8s Cluster 超阈值应产生告警，实际={alerts}"
     assert alerts[0]["monitor_instance_id"] == CLUSTER_STORAGE_ID

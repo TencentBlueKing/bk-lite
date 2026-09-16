@@ -67,7 +67,9 @@
 
     .form {
         height: calc(100vh - 230px);
+        overflow-x: hidden;
         overflow-y: auto;
+        min-width: 0;
         padding: 10px;
 
         .clusterLabel {

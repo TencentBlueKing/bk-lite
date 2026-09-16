@@ -34,6 +34,7 @@ from apps.monitor.services.alert_access import visible_monitor_alerts
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.chart_unit import convert_snapshots_copy, resolve_chart_unit
+from apps.monitor.tasks.utils.policy_methods import resolve_result_unit
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.pagination import parse_page_params
@@ -418,16 +419,26 @@ class MonitorAlertViewSet(
         if alert_obj is None:
             return WebUtils.response_error("告警不存在", status_code=404)
 
-        policy_units = MonitorPolicy.objects.filter(id=alert_obj.policy_id).values("metric_unit", "calculation_unit", "threshold_unit").first() or {}
-        metric_unit = policy_units.get("metric_unit") or ""
-        calculation_unit = policy_units.get("calculation_unit") or ""
-        threshold_unit = policy_units.get("threshold_unit") or ""
-        source_unit = calculation_unit or metric_unit
-        chart_unit = resolve_chart_unit(
-            metric_unit,
-            calculation_unit,
-            threshold_unit,
-        )
+        policy = MonitorPolicy.objects.filter(id=alert_obj.policy_id).first()
+        if policy is None:
+            metric_unit = calculation_unit = threshold_unit = ""
+            chart_unit = ""
+            source_unit = ""
+        else:
+            metric_unit = policy.metric_unit or ""
+            calculation_unit = policy.calculation_unit or ""
+            threshold_unit = policy.threshold_unit or ""
+            result_unit = resolve_result_unit(policy)
+            if not result_unit.conversion_enabled:
+                chart_unit = result_unit.unit or ""
+                source_unit = chart_unit
+            else:
+                source_unit = calculation_unit or metric_unit
+                chart_unit = resolve_chart_unit(
+                    metric_unit,
+                    calculation_unit,
+                    threshold_unit,
+                )
 
         # 2. 查询该告警的快照记录
         try:
