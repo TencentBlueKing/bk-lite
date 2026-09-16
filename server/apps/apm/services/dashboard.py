@@ -142,9 +142,8 @@ class ApmDashboardService:
         ids = tuple(organization_ids) if organization_ids is not None else (organization_id,)
         ended_at = self.now_fn()
         started_at = ended_at - WINDOW_DELTAS[window]
-        services = list(self._visible_services(ids))
-        empty = len(services) == 0
-        if empty:
+        visible_services = self._visible_services(ids)
+        if not visible_services.exists():
             return {
                 "empty": True,
                 "window": window,
@@ -157,13 +156,13 @@ class ApmDashboardService:
                 "releases": _section_empty({"items": []}),
             }
 
-        targets = self._metric_targets(services, ended_at)
+        targets = self._metric_targets(visible_services, ended_at)
         red_by_key = self._load_service_red(targets, started_at, ended_at)
 
         return {
             "empty": False,
             "window": window,
-            "kpis": self._safe_section(lambda: self._build_kpis(ids, services, started_at, ended_at, window, targets, red_by_key)),
+            "kpis": self._safe_section(lambda: self._build_kpis(ids, started_at, ended_at, window, targets, red_by_key)),
             "health": self._safe_section(lambda: self._build_health(targets, red_by_key)),
             "slos": self._safe_section(lambda: self._build_slos(ids)),
             "alerts": self._safe_section(lambda: self._build_alerts(ids)),
@@ -190,42 +189,66 @@ class ApmDashboardService:
                 archived_at__isnull=True,
             )
             .select_related("application")
-            .prefetch_related(
-                Prefetch(
-                    "instances",
-                    queryset=ApmServiceInstance.objects.order_by("-last_seen_at"),
-                )
-            )
             .distinct()
             .order_by("-last_seen_at", "id")
         )
 
-    def _metric_targets(self, services: list[ApmService], observed_at: datetime) -> list[_ServiceTarget]:
-        targets: list[_ServiceTarget] = []
-        for service in services:
-            status = catalog_status(last_seen_at=service.last_seen_at, archived_at=service.archived_at, observed_at=observed_at)
-            views = service.instances.all()
-            environments: dict[str, datetime] = {}
-            for instance in views:
-                environment = instance.environment or ""
-                previous = environments.get(environment)
-                if previous is None or instance.last_seen_at > previous:
-                    environments[environment] = instance.last_seen_at
-            if not environments:
-                environments[""] = service.last_seen_at
-            for environment, last_seen_at in sorted(environments.items()):
-                targets.append(
-                    _ServiceTarget(
-                        service_id=str(service.id),
-                        namespace=service.namespace,
-                        name=service.name,
-                        environment=environment,
-                        status=status,
-                        last_seen_at=last_seen_at,
+    def _batched_visible_services(self, services: QuerySet[ApmService]):
+        offset = 0
+        while True:
+            page_ids = list(services.values_list("id", flat=True)[offset : offset + MAX_METRIC_TARGETS])
+            if not page_ids:
+                return
+            order = {pk: index for index, pk in enumerate(page_ids)}
+            batch = list(
+                ApmService.objects.filter(id__in=page_ids)
+                .select_related("application")
+                .prefetch_related(
+                    Prefetch(
+                        "instances",
+                        queryset=ApmServiceInstance.objects.order_by("-last_seen_at"),
                     )
                 )
+            )
+            batch.sort(key=lambda item: order[item.id])
+            yield batch
+            if len(page_ids) < MAX_METRIC_TARGETS:
+                return
+            offset += MAX_METRIC_TARGETS
+
+    def _metric_targets(self, services: QuerySet[ApmService], observed_at: datetime) -> list[_ServiceTarget]:
+        targets: list[_ServiceTarget] = []
+        for batch in self._batched_visible_services(services):
+            for service in batch:
+                status = catalog_status(last_seen_at=service.last_seen_at, archived_at=service.archived_at, observed_at=observed_at)
+                views = service.instances.all()
+                environments: dict[str, datetime] = {}
+                for instance in views:
+                    environment = instance.environment or ""
+                    previous = environments.get(environment)
+                    if previous is None or instance.last_seen_at > previous:
+                        environments[environment] = instance.last_seen_at
+                if not environments:
+                    environments[""] = service.last_seen_at
+                for environment, last_seen_at in sorted(environments.items()):
+                    targets.append(
+                        _ServiceTarget(
+                            service_id=str(service.id),
+                            namespace=service.namespace,
+                            name=service.name,
+                            environment=environment,
+                            status=status,
+                            last_seen_at=last_seen_at,
+                        )
+                    )
+                    if len(targets) >= MAX_METRIC_TARGETS:
+                        break
+                if len(targets) >= MAX_METRIC_TARGETS:
+                    break
+            if len(targets) >= MAX_METRIC_TARGETS:
+                break
         targets.sort(key=lambda item: (0 if item.status == "active" else 1, -item.last_seen_at.timestamp(), item.name))
-        return targets[:MAX_METRIC_TARGETS]
+        return targets
 
     def _load_service_red(
         self,
@@ -265,7 +288,6 @@ class ApmDashboardService:
     def _build_kpis(
         self,
         organization_ids: Sequence[int],
-        services: list[ApmService],
         started_at: datetime,
         ended_at: datetime,
         window: str,
@@ -273,9 +295,9 @@ class ApmDashboardService:
         red_by_key: dict[str, ServiceRed | None],
     ) -> dict[str, Any]:
         points = SPARKLINE_POINTS[window]
-        in_window = [service for service in services if service.last_seen_at >= started_at]
-        app_count = len({service.namespace for service in in_window})
-        service_count = len({service.name for service in in_window})
+        in_window = self._visible_services(organization_ids).filter(last_seen_at__gte=started_at).order_by()
+        app_count = in_window.values("namespace").distinct().count()
+        service_count = in_window.values("name").distinct().count()
         alert_count = self._active_alert_queryset(organization_ids).count()
 
         request_rate = 0.0
