@@ -127,16 +127,6 @@ function decodeServiceScope(scope: string) {
   };
 }
 
-function pruneByCandidateIds<T extends string | number>(
-  current: T[] | undefined,
-  candidates: Array<{ id: number | string }>,
-): T[] {
-  if (!Array.isArray(current) || !current.length) return [];
-  if (!candidates.length) return [];
-  const allowed = new Set(candidates.map((item) => String(item.id)));
-  return current.filter((item) => allowed.has(String(item)));
-}
-
 function seedRecipientsFromHandlers(
   recipients: string[] | undefined,
   handlers: Array<string | number> | undefined,
@@ -289,6 +279,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const noDataSeverity = Form.useWatch('no_data_severity', form);
   const notificationChannelIds = Form.useWatch('notification_channel_ids', form);
   const organizations = Form.useWatch('organizations', form);
+  const selectedHandlers = Form.useWatch('handlers', form);
   const organizationKey = (organizations || []).join(',');
   const policyName = Form.useWatch('name', form);
   const [services, setServices] = useState<ApmService[]>([]);
@@ -357,17 +348,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           }
           return list;
         });
-        const current = form.getFieldValue('handlers') || [];
-        const pruned = pruneByCandidateIds(current, list);
-        if (
-          Array.isArray(current)
-          && (
-            pruned.length !== current.length
-            || pruned.some((item, index) => String(item) !== String(current[index]))
-          )
-        ) {
-          form.setFieldValue('handlers', pruned);
-        }
       })
       .catch(() => {
         // 拉取失败时不改动已选处理人，避免误清空
@@ -459,6 +439,21 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     })),
     [availableEndpoints, selectedEndpoints],
   );
+
+  const handlerOptions = useMemo(() => {
+    const options = handlerUsers.map((item) => ({
+      value: item.id,
+      label: formatUserName(item),
+    }));
+    for (const id of selectedHandlers || []) {
+      if (options.some((item) => String(item.value) === String(id))) continue;
+      options.push({
+        value: id,
+        label: String(id),
+      });
+    }
+    return options;
+  }, [handlerUsers, selectedHandlers]);
 
   const channelRecipientModeMap = useMemo(() => {
     const map = new Map<number, ApmNotificationChannel['recipient_mode'] | undefined>();
@@ -769,10 +764,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               showSearch
               optionFilterProp="label"
               disabled={!organizationKey}
-              options={handlerUsers.map((item) => ({
-                value: item.id,
-                label: formatUserName(item),
-              }))}
+              options={handlerOptions}
               placeholder={organizationKey
                 ? t('apm.policies.handlersPlaceholder', '从策略所属组织选择处理人')
                 : t('apm.policies.selectOrganizationFirst', '请先选择所属组织')}
