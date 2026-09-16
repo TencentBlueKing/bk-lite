@@ -71,7 +71,21 @@ def apply_early_patches():
     # 4. 仅 psycopg(v3)：注册 Kingbase 自定义 date/time/timestamp OID 的 loader（运行期 Trunc/cast）
     _patch_psycopg3_kingbase_datetime_oids()
 
-    logger.info("KingbaseES MySQL-mode patches applied (introspection + pattern_ops + psycopg3 timestamptz + datetime OIDs)")
+    # 5. 运行期：聚合 FILTER (WHERE ...) 子句降级为 CASE WHEN（MySQL 模式解析器不保证支持）
+    _patch_aggregate_filter_clause()
+
+    logger.info("KingbaseES MySQL-mode patches applied (introspection + pattern_ops + psycopg3 timestamptz + datetime OIDs + aggregate filter)")
+
+
+def _patch_aggregate_filter_clause():
+    """
+    运行期修复：``Count(..., filter=Q(...))`` 生成的 ``COUNT(...) FILTER (WHERE ...)`` 是 PG 9.4
+    语法，MySQL 兼容模式的解析器不保证支持。关掉 ``supports_aggregate_filter_clause`` 后
+    Django 自动降级为 ``COUNT(CASE WHEN ... END)``，两种模式语义一致。实现见 ``pg_aggregate_filter``。
+    """
+    from apps.core.db_patches.pg_aggregate_filter import disable_aggregate_filter_clause
+
+    disable_aggregate_filter_clause()
 
 
 def _patch_introspection_pipe_concat():

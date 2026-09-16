@@ -398,6 +398,7 @@ def test_apply_early_patches_is_idempotent(monkeypatch):
     monkeypatch.setattr(vastbase, "_patch_sequence_reset_sql", lambda: calls.append("sequence"))
     monkeypatch.setattr(vastbase, "_patch_naive_datetime_converter", lambda: calls.append("datetime"))
     monkeypatch.setattr(vastbase, "_patch_psycopg3_timestamptz_missing_tz", lambda: calls.append("loader"))
+    monkeypatch.setattr(vastbase, "_patch_aggregate_filter_clause", lambda: calls.append("aggregate_filter"))
 
     vastbase.apply_early_patches()
     vastbase.apply_early_patches()
@@ -410,4 +411,5 @@ def test_apply_early_patches_is_idempotent(monkeypatch):
         "sequence",
         "datetime",
         "loader",
+        "aggregate_filter",
     ]
