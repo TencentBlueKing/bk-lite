@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_innovaphone",
   "plugin": "VoiceGateway Innovaphone SNMP",
-  "plugin_desc": "Innovaphone voice gateway and SBC SNMP baseline child template. This child template relies on the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Innovaphone enterprise root and gateway subtree are verified, but stable shared CPU, memory, temperature, fan and power health scalars are not proven in this pass, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "Innovaphone voice gateway and SBC SNMP child template for devices under PEN 6666. Interface traffic is supplied by the shared VoiceGateway SNMP IF-MIB floor. Proven private telemetry is ISDN l3Table B-channel occupancy (active B-channel gauge, plus configured B channels and calls since boot). CPU, memory, temperature, fan and power-supply health are not published as stable shared objects, so they are not collected. ISDN L2 link state is signalling state and is not treated as host health.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_innovaphone'}) by (instance_id)",
   "name": "VoiceGateway",
@@ -14,9 +14,64 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "active_b_channels"
   ],
   "metrics": [
+    {
+      "metric_group": "Voice",
+      "name": "active_b_channels",
+      "query": "active_b_channels{instance_type='voice_gateway', __$labels__}",
+      "display_name": "Active B Channels",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "l3Label",
+          "description": "ISDN L3 instance label"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of currently active ISDN B channels on this L3 instance (l3NumBchanActive, Gauge under PEN 6666 l3Table). The table index is the string l3Label. This is call occupancy, not host health."
+    },
+    {
+      "metric_group": "Voice",
+      "name": "configured_b_channels",
+      "query": "configured_b_channels{instance_type='voice_gateway', __$labels__}",
+      "display_name": "Configured B Channels",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "l3Label",
+          "description": "ISDN L3 instance label"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of B channels configured on this ISDN L3 instance (l3NumBchan under PEN 6666 l3Table). Compared with active B channels it shows remaining channel headroom."
+    },
+    {
+      "metric_group": "Voice",
+      "name": "calls_since_boot",
+      "query": "calls_since_boot{instance_type='voice_gateway', __$labels__}",
+      "display_name": "Calls Since Boot",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {
+          "name": "l3Label",
+          "description": "ISDN L3 instance label"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Accumulated call count on this ISDN L3 instance since the last boot (l3CallsBoot Counter under PEN 6666 l3Table)."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
