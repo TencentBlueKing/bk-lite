@@ -28,6 +28,7 @@ EXPECTED_PROTOCOL_EXECUTION_MODES = {
     "physcial_server": "sync",
     "postgresql": "async",
     "qcloud": "sync",
+    "ssl_cer": "async",
     "vastbase": "async",
     "vmware_vc": "sync",
 }

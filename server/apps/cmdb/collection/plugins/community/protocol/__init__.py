@@ -5,6 +5,7 @@ from apps.cmdb.collection.plugins.community.protocol.mssql import MssqlCollectio
 from apps.cmdb.collection.plugins.community.protocol.mysql import MysqlCollectionPlugin
 from apps.cmdb.collection.plugins.community.protocol.oracle import OracleCollectionPlugin
 from apps.cmdb.collection.plugins.community.protocol.postgresql import PostgresqlCollectionPlugin
+from apps.cmdb.collection.plugins.community.protocol.ssl_cer import SslCerCollectionPlugin
 
 __all__ = [
 	"MysqlCollectionPlugin",
@@ -12,4 +13,5 @@ __all__ = [
 	"PostgresqlCollectionPlugin",
 	"OracleCollectionPlugin",
 	"MssqlCollectionPlugin",
+	"SslCerCollectionPlugin",
 ]

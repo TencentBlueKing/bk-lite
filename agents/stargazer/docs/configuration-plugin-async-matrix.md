@@ -42,10 +42,11 @@
 | `physcial_server` protocol | 否 | `asyncio.to_thread` + `pyghmi` | IPMI 同步隔离；默认 executor 仍是 remote job |
 | `postgresql` | 是 | `psycopg.AsyncConnection.connect()`、异步 cursor | protocol 为异步；同插件 job executor 为远程异步 |
 | `qcloud` | 否 | `asyncio.to_thread` + Tencent/COS 同步 SDK | 同步隔离；TC3、COS 异步 HTTP Adapter 尚未完成等价迁移 |
+| `ssl_cer` | 否 | `asyncio.to_thread` + 标准库 `ssl`/`socket` | TLS 握手在线程中执行，采集入口仍是 async |
 | `vastbase` | 是 | 继承 `PostgresqlInfo`，使用 `psycopg.AsyncConnection` | PostgreSQL 兼容协议 |
 | `vmware_vc` | 否 | `asyncio.to_thread` + `pyVmomi` | SOAP SDK 同步隔离；需 vSphere REST 覆盖后才能原生异步 |
 
-当前 23 个 protocol executor 中：17 个原生异步，6 个同步隔离。同步隔离项继续受到
+当前 24 个 protocol executor 中：17 个原生异步，7 个同步隔离。同步隔离项继续受到
 `MAX_ACTIVE_TARGETS` 全局边界保护，不新增插件级并发参数。
 
 ## Enterprise protocol executor

@@ -873,6 +873,22 @@ COLLECT_OBJ_TREE = [
             },
         ],
     },
+    {
+        "id": "certificate",
+        "name": "证书许可",
+        "children": [
+            {
+                "id": "ssl_cer",
+                "model_id": "ssl_cer",
+                "name": "SSL证书",
+                "task_type": CollectPluginTypes.PROTOCOL,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "TLS"],
+                "desc": "对已录入 SSL 证书实例的域名做 TLS 握手，采集颁发者与有效期",
+                "encrypted_fields": [],
+            }
+        ],
+    },
 ]
 
 # JOB 是执行分类，不等于连接协议。这里显式列出当前真实通过 SSH 登录目标主机的

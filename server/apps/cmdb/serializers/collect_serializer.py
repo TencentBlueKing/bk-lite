@@ -89,6 +89,7 @@ class CollectModelSerializer(AuthSerializer):
         "inst_uuid",
         "model_id",
         "inst_name",
+        "domain",
         "ip_addr",
         "ip",
         "host",
@@ -602,6 +603,29 @@ class CollectModelSerializer(AuthSerializer):
         instance["endpoint"] = f"https://{management_address}:{https_port}"
         attrs["instances"] = [instance]
 
+    def _validate_ssl_cer_task(self, attrs):
+        if self._get_attr_or_instance_value(attrs, "ip_range"):
+            raise serializers.ValidationError({"ip_range": "SSL 证书任务不支持 IP 范围"})
+        instances = self._get_attr_or_instance_value(attrs, "instances")
+        if not isinstance(instances, list) or not instances:
+            raise serializers.ValidationError({"instances": "请选择 SSL 证书实例"})
+        names = []
+        for item in instances:
+            if not isinstance(item, dict) or not str(item.get("inst_name") or "").strip():
+                raise serializers.ValidationError({"instances": "SSL 证书实例必须包含实例名"})
+            if not str(item.get("domain") or "").strip():
+                raise serializers.ValidationError({"instances": "SSL 证书实例必须包含域名"})
+            snapshot_model_id = item.get("model_id")
+            if snapshot_model_id and snapshot_model_id != "ssl_cer":
+                raise serializers.ValidationError({"instances": "采集任务与平台实例模型不匹配"})
+            names.append(str(item.get("inst_name")).strip())
+        if len(names) != len(set(names)):
+            raise serializers.ValidationError({"instances": "同一任务中实例名不能重复"})
+        attrs["ip_range"] = ""
+        attrs["credential"] = []
+        attrs["driver_type"] = CollectDriverTypes.PROTOCOL
+        return attrs
+
     def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
@@ -666,6 +690,9 @@ class CollectModelSerializer(AuthSerializer):
                 raise serializers.ValidationError({"params": str(err)}) from err
             attrs["driver_type"] = CollectDriverTypes.JOB
             return attrs
+
+        if model_id == "ssl_cer":
+            return self._validate_ssl_cer_task(attrs)
 
         if task_type != CollectPluginTypes.CONFIG_FILE:
             params = self._get_effective_params(attrs)
