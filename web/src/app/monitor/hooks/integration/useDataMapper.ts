@@ -256,6 +256,8 @@ export class DataMapper {
    * postgres/mongodb DSN 会把口令嵌进 URL，Stargazer/Telegraf 依赖编码值。
    * SNMPv3 与 HTTP 头/专用 password 字段是明文消费者（Sidecar 只 AES 解密），
    * 编码后 Telegraf 会拿到 `%40` 而非 `@`。
+   * 自定义 PULL（UI collect_type=bkpull, config_type=custom_pull）的 ENV_PASSWORD
+   * 写入 Telegraf prometheus `password`，同样是明文消费者。
    */
   static shouldUrlEncodeEncryptedSecret(
     fieldName: string,
@@ -269,7 +271,11 @@ export class DataMapper {
       return false;
     }
     if (name === 'ENV_PASSWORD') {
-      if (String(context.collect_type || '') === 'web') {
+      if (
+        ['web', 'bkpull', 'custom_pull'].includes(
+          String(context.collect_type || '')
+        )
+      ) {
         return false;
       }
       const pluginTypes = Array.isArray(context.config_type)
@@ -279,9 +285,15 @@ export class DataMapper {
           : [];
       if (
         pluginTypes.some((type) =>
-          ['qcloud', 'windows_wmi', 'cisco_meraki', 'aliyun', 'cnware'].includes(
-            String(type)
-          )
+          [
+            'qcloud',
+            'windows_wmi',
+            'cisco_meraki',
+            'aliyun',
+            'cnware',
+            'custom_pull',
+            'bkpull',
+          ].includes(String(type))
         )
       ) {
         return false;
