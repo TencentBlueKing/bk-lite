@@ -8,6 +8,7 @@ COLLECT_GROUP:
   cloud: 云平台
   host_manage: 主机逻辑主机
   middleware: 中间件
+  certificate: 证书许可
 COLLECT_PLUGIN:
   k8s_cluster:
     name: K8S
@@ -369,6 +370,9 @@ COLLECT_PLUGIN:
   dell_powerstore:
     name: 【BETA】Dell PowerStore
     desc: 采集 Dell PowerStore 存储设备及其存储池、磁盘、卷（LUN）、以太口与 FC 口
+  ssl_cer:
+    name: SSL证书
+    desc: 对已录入 SSL 证书实例的域名做 TLS 握手，采集颁发者与有效期
 COLLECT_TAG:
   国产: 国产
   配置中心: 配置中心
