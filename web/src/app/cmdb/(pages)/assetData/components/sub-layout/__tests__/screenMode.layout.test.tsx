@@ -40,6 +40,18 @@ vi.mock('@/app/cmdb/api', () => ({
   }),
 }));
 
+vi.mock('@/app/cmdb/context/relationships', () => ({
+  useRelationships: () => ({
+    setSelectedAssoId: vi.fn(),
+    assoInstances: [],
+    assoTypes: [],
+  }),
+}));
+
+vi.mock('@/app/cmdb/hooks/useCmdbPublicMenuItems', () => ({
+  useCmdbPublicMenuItems: () => [],
+}));
+
 const menus: MenuItem[] = [
   {
     name: 'asset_data',
