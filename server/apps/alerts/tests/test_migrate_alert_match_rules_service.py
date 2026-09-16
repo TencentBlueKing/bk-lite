@@ -1,5 +1,6 @@
 """已发布旧规则升级后仍能回显并按当前目录执行。"""
 
+import logging
 import os
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 from django.apps import apps
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.db.migrations.state import ProjectState
 from django.utils import timezone
 
@@ -175,11 +176,10 @@ def test_monitor_source_candidates_support_scalar_and_set(scope, operator):
         ("push_source_ids", "all_of", "a"),
     ],
 )
-def test_unsupported_rule_blocks_whole_policy_without_dropping_or_branch(key, operator, value, levels):
+def test_unsupported_rule_skips_whole_policy_without_dropping_or_branch(key, operator, value, levels):
     rules = [[{"key": "title", "operator": "contains", "value": "safe"}], [{"key": key, "operator": operator, "value": value}]]
     saved = policy("assignment", rules)
-    with pytest.raises(RuntimeError, match=f"scope=assignment id={saved.pk}"):
-        run_migration()
+    assert run_migration() is None
     saved.refresh_from_db()
     assert saved.match_rules == rules
 
@@ -291,35 +291,83 @@ def test_empty_filter_does_not_become_all_and_other_empty_defaults_stay_unchange
     policy("assignment", [])
     for scope in ["correlation", "enrichment", "action"]:
         policy(scope, [])
-    with pytest.raises(RuntimeError, match="迁移失败"):
-        run_migration()
+    assert run_migration() is None
     assert all(model.objects.get().match_rules == [] for key, model in MODELS.items() if key != "shield")
 
 
 @pytest.mark.django_db
-def test_errors_never_print_rule_business_values():
+@pytest.mark.parametrize("error_type", [ValueError, TypeError])
+def test_skipped_policy_logs_once_without_rule_or_exception_business_values(caplog, capsys, error_type):
     sentinel = "private-business-sentinel"
-    policy("assignment", [[{"key": "title", "operator": "re", "value": sentinel}]])
-    with pytest.raises(RuntimeError) as error:
-        run_migration()
-    assert sentinel not in str(error.value)
+    rules = [[{"key": "title", "operator": "re", "value": sentinel}]]
+    saved = policy("assignment", rules)
+    error = error_type(sentinel)
+    with patch.object(migration.LegacyRuleConverter, "convert", side_effect=error):
+        assert run_migration() is None
+    saved.refresh_from_db()
+    assert saved.match_rules == rules
+    assert str(error) == sentinel
+    records = [record for record in caplog.records if record.name == "alert"]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.WARNING
+    assert record.msg == "event=legacy_rule_migration_skipped scope=%s policy_id=%s failed_stage=convert error_type=%s"
+    assert record.args == ("assignment", saved.pk, error_type.__name__)
+    assert record.getMessage() == (
+        f"event=legacy_rule_migration_skipped scope=assignment policy_id={saved.pk} failed_stage=convert error_type={error_type.__name__}"
+    )
+    assert record.exc_info is None
+    output = capsys.readouterr()
+    assert sentinel not in repr(record.args) + logging.Formatter().format(record) + caplog.text + output.out + output.err
 
 
 @pytest.mark.django_db
-def test_migration_failure_rolls_back_all_five_entries_then_can_retry(levels):
+@pytest.mark.parametrize("broken_scope", SCOPES)
+def test_migration_skips_whole_invalid_policy_and_continues_all_five_entries(levels, broken_scope):
     old = [[{"key": "level", "operator": "eq", "value": 1}]]
     saved = [policy(scope, old) for scope in SCOPES]
-    broken = policy("action", [[{"key": "title", "operator": "re", "value": "private"}]])
-    with pytest.raises(RuntimeError, match=f"scope=action id={broken.pk}"):
-        run_migration()
-    for obj in saved:
-        obj.refresh_from_db()
-        assert obj.match_rules == old
-    broken.delete()
-    run_migration()
+    broken_rules = [[*old[0], {"key": "source_name", "operator": "contains", "value": "private"}], old[0]]
+    broken = policy(broken_scope, broken_rules)
+    original = MODELS[broken_scope].objects.filter(pk=broken.pk).values().get()
+    saved.append(policy(broken_scope, old))
+
+    assert run_migration() is None
+
+    assert MODELS[broken_scope].objects.filter(pk=broken.pk).values().get() == original
     for obj in saved:
         obj.refresh_from_db()
         assert obj.match_rules == [[{"key": "level", "operator": "any_of", "value": ["1"]}]]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("failed_stage", ["convert", "update"])
+def test_database_failure_is_preserved_and_rolls_back_earlier_updates(failed_stage):
+    old = [[{"key": "resource_type", "operator": "eq", "value": "host"}]]
+    saved = [policy("assignment", old) for _ in range(2)]
+    error = DatabaseError("database-unavailable")
+    if failed_stage == "convert":
+        target, method = migration.LegacyRuleConverter, "convert"
+    else:
+        from django.db.models.query import QuerySet
+
+        target, method = QuerySet, "update"
+    original = getattr(target, method)
+    calls = 0
+
+    def fail_second(instance, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise error
+        return original(instance, *args, **kwargs)
+
+    with patch.object(target, method, fail_second), pytest.raises(DatabaseError) as caught:
+        run_migration()
+    assert caught.value is error
+    assert calls == 2
+    for obj in saved:
+        obj.refresh_from_db()
+        assert obj.match_rules == old
 
 
 @pytest.mark.django_db
@@ -333,11 +381,14 @@ def test_batches_idempotency_and_unrelated_configuration(levels):
         ]
     )
     timestamps = list(historical_model.objects.order_by("pk").values_list("pk", "updated_at"))
+    broken_ids = [timestamps[index][0] for index in (199, 399, 404)]
+    broken_rules = [[{"key": "source_name", "operator": "contains", "value": "legacy"}]]
+    historical_model.objects.filter(pk__in=broken_ids).update(match_rules=broken_rules)
     ignored = policy("assignment", old, match_type="all")
     run_migration()
     assert historical_model.objects.exclude(pk=ignored.pk).count() == 405
     assert all(
-        row.match_rules == [[{"key": "level", "operator": "any_of", "value": ["1"]}]]
+        row.match_rules == (broken_rules if row.pk in broken_ids else [[{"key": "level", "operator": "any_of", "value": ["1"]}]])
         and row.priority == 37
         and row.personnel == ["alice"]
         and not row.is_active
@@ -360,7 +411,7 @@ def test_frozen_migration_does_not_depend_on_runtime_catalog_or_model_managers()
     assert saved.match_rules == [[{"key": "resource_type", "operator": "any_of", "value": ["host"]}]]
 
 
-def test_real_migration_executor_upgrade_once_failure_retry_and_empty_database():
+def test_real_migration_executor_upgrade_once_skips_invalid_policy_and_empty_database():
     # 独立数据库按 0032 历史状态建表；只对 0033 使用真实执行器与迁移记录。
     # 0009 在 SQLite 删字段时残留索引，完整历史链的基线失败单独记入迁移说明。
     script = textwrap.dedent(
@@ -401,18 +452,11 @@ def test_real_migration_executor_upgrade_once_failure_retry_and_empty_database()
             name='客户旧分派', match_type='filter', match_rules=old, priority=37)
         broken = historical.get_model('alerts', 'ActionRule').objects.create(
             name='旧正则', match_rules=[[{'key': 'title', 'operator': 're', 'value': '^cpu'}]])
-        try:
-            MigrationExecutor(connection).migrate(after)
-        except RuntimeError as error:
-            assert 'scope=action' in str(error)
-        else:
-            raise AssertionError('不可转换规则应回滚并拒绝记录迁移成功')
-        assignment.refresh_from_db()
-        assert assignment.match_rules == old
-        assert not MigrationRecorder(connection).migration_qs.filter(app='alerts', name=after[0][1]).exists()
-        broken.delete()
+        broken_rules = broken.match_rules
         MigrationExecutor(connection).migrate(after)
         assignment.refresh_from_db()
+        broken.refresh_from_db()
+        assert broken.match_rules == broken_rules
         assert assignment.match_rules == [[{'key': 'source_names', 'operator': 'any_of', 'value': ['旧平台']}]]
         assert assignment.priority == 37
         assert MigrationRecorder(connection).migration_qs.filter(app='alerts', name=after[0][1]).count() == 1
