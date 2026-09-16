@@ -187,6 +187,14 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   summaryCards: [
     {
+      title: '阻塞进程',
+      metric: 'processes_blocked',
+      color: HOST_PALETTE.orange,
+      icon: 'node',
+      guide: [{ label: '阻塞进程', detail: '处于不可中断睡眠状态（通常等待 I/O）的进程数。' }],
+      footer: [{ label: '僵尸进程', metric: 'processes_zombies', unit: 'counts' }]
+    },
+    {
       title: '运行时长',
       metric: 'system_uptime',
       unit: 's',

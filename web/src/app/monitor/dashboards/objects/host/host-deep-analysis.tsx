@@ -9,19 +9,17 @@ import {
   DatabaseOutlined,
   DashboardOutlined,
   NodeIndexOutlined,
-  AlertOutlined,
   ClockCircleOutlined,
   SearchOutlined,
   ArrowRightOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  SwapOutlined
 } from '@ant-design/icons';
 import { StatCard, TrendChartPanel } from '../../shared/widgets';
 import type { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import type { DashboardStyles } from '../common/dashboard-components';
 import { buildSearchParams } from '../../shared/utils';
 import useViewApi from '@/app/monitor/api/view';
-import { useAlarmApi } from '@/app/alarm/api/alarms';
-import dayjs from 'dayjs';
 
 interface HostDeepAnalysisProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
@@ -44,17 +42,6 @@ interface MountPointRow {
   totalBytes?: number;
 }
 
-interface AlertTimelineItem {
-  id: string | number;
-  time: string;
-  isAlert: boolean;
-  levelText: string;
-  levelTone: 'critical' | 'warning' | 'info';
-  title: string;
-  detail: string;
-  raw?: any;
-}
-
 const formatBytes = (bytes?: number) => {
   if (bytes == null || !Number.isFinite(bytes)) return '--';
   const gb = bytes / (1024 * 1024 * 1024);
@@ -63,7 +50,6 @@ const formatBytes = (bytes?: number) => {
 
 export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: HostDeepAnalysisProps) {
   const { getInstanceQuery } = useViewApi();
-  const { getAlarmList } = useAlarmApi();
 
   const {
     idValues,
@@ -85,11 +71,15 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
   const memCard = summaryCards.find((c) => c.card.metric === 'mem_used_percent');
   const diskCard = summaryCards.find((c) => c.card.metric === 'disk_used_percent');
   const loadCard = summaryCards.find((c) => c.card.metric === 'system_load1');
+  const blockedCard = summaryCards.find((c) => c.card.metric === 'processes_blocked');
   const uptimeCard = summaryCards.find((c) => c.card.metric === 'system_uptime');
 
-  // 2. Resource Correlation Chart
+  // 2. Trend Charts
   const correlationChart = chartPanels.find((c) => c.chart.title === '资源关联分析')
     || chartPanels.find((c) => c.chart.title === '资源使用趋势');
+  const diskIoChart = chartPanels.find((c) => c.chart.title === '磁盘吞吐趋势');
+  const networkChart = chartPanels.find((c) => c.chart.title === '网络吞吐趋势');
+  const processAnomalyChart = chartPanels.find((c) => c.chart.title === '进程异常趋势');
 
   // 3. Disk Mount Points & Capacity Risk
   const [mountPoints, setMountPoints] = useState<MountPointRow[]>([]);
@@ -165,7 +155,7 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
     };
   }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, getInstanceQuery, monitorObjectId, instanceId]);
 
-  // 4. Process TopN
+  // 4. Process TopN with search and multi-column sort
   const [processList, setProcessList] = useState<ProcessRow[]>([]);
   const [processSearch, setProcessSearch] = useState('');
   const [processLoading, setProcessLoading] = useState(false);
@@ -178,8 +168,8 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
     let active = true;
     setProcessLoading(true);
 
-    const cpuProcQuery = `topk(10, sum by (process_name, pid) (procstat_cpu_usage{instance_type="process", __$labels__}))`;
-    const memProcQuery = `topk(10, sum by (process_name, pid) (procstat_memory_usage{instance_type="process", __$labels__}))`;
+    const cpuProcQuery = `topk(15, sum by (process_name, pid) (procstat_cpu_usage{instance_type="process", __$labels__}))`;
+    const memProcQuery = `topk(15, sum by (process_name, pid) (procstat_memory_usage{instance_type="process", __$labels__}))`;
 
     const paramsCpu = buildSearchParams(cpuProcQuery, 'percent', idValues, ['instance_id'], timeValues, undefined, false, currentInstanceInterval, { monitorObjectId, instanceId });
     const paramsMem = buildSearchParams(memProcQuery, 'percent', idValues, ['instance_id'], timeValues, undefined, false, currentInstanceInterval, { monitorObjectId, instanceId });
@@ -230,54 +220,6 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
     };
   }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, getInstanceQuery, monitorObjectId, instanceId]);
 
-  // 5. Alerts & Events Timeline
-  const [timelineItems, setTimelineItems] = useState<AlertTimelineItem[]>([]);
-  const [alarmCount, setAlarmCount] = useState<number>(0);
-  const [alarmLoading, setAlarmLoading] = useState(false);
-
-  useEffect(() => {
-    if (!instanceId) return;
-    let active = true;
-    setAlarmLoading(true);
-
-    getAlarmList({
-      resource_id: String(instanceId),
-      page_size: 10
-    })
-      .then((res: any) => {
-        if (!active) return;
-        setAlarmLoading(false);
-        const results = res?.results || res?.data?.results || [];
-        setAlarmCount(res?.count || results.length || 0);
-
-        const items: AlertTimelineItem[] = results.map((item: any) => {
-          const isCritical = item?.level_name?.includes('严重') || item?.level === 1;
-          const isWarning = item?.level_name?.includes('警告') || item?.level === 2;
-          return {
-            id: item.id || item.alert_id,
-            time: item.created_at ? dayjs(item.created_at).format('HH:mm') : '--:--',
-            isAlert: true,
-            levelText: item.level_name || (isCritical ? '严重' : '警告'),
-            levelTone: isCritical ? 'critical' : isWarning ? 'warning' : 'info',
-            title: item.title || '告警触发',
-            detail: item.content || item.description || '--',
-            raw: item
-          };
-        });
-        setTimelineItems(items);
-      })
-      .catch(() => {
-        if (!active) return;
-        setAlarmLoading(false);
-        setAlarmCount(0);
-        setTimelineItems([]);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [instanceId, getAlarmList]);
-
   // Filtered processes
   const filteredProcesses = useMemo(() => {
     if (!processSearch.trim()) return processList;
@@ -292,8 +234,8 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
       title: 'PID',
       dataIndex: 'pid',
       key: 'pid',
-      width: 90,
-      render: (text) => <span className="font-mono text-xs">{text}</span>
+      width: 80,
+      render: (text) => <span className="font-mono text-xs text-slate-500">{text}</span>
     },
     {
       title: '进程名称',
@@ -306,12 +248,12 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
       title: 'CPU (%)',
       dataIndex: 'cpu',
       key: 'cpu',
-      width: 100,
+      width: 95,
       align: 'right',
       sorter: (a, b) => a.cpu - b.cpu,
       render: (val) => (
-        <span className={val > 50 ? 'font-semibold text-amber-600 dark:text-amber-400' : ''}>
-          {val.toFixed(1)}
+        <span className={val > 50 ? 'font-semibold text-amber-600 dark:text-amber-400 font-mono' : 'font-mono'}>
+          {val.toFixed(1)}%
         </span>
       )
     },
@@ -319,12 +261,12 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
       title: '内存 (%)',
       dataIndex: 'memory',
       key: 'memory',
-      width: 100,
+      width: 95,
       align: 'right',
       sorter: (a, b) => a.memory - b.memory,
       render: (val) => (
-        <span className={val > 50 ? 'font-semibold text-purple-600 dark:text-purple-400' : ''}>
-          {val.toFixed(1)}
+        <span className={val > 50 ? 'font-semibold text-purple-600 dark:text-purple-400 font-mono' : 'font-mono'}>
+          {val.toFixed(1)}%
         </span>
       )
     }
@@ -389,27 +331,21 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
           styles={styles}
         />
 
-        {/* 告警 */}
+        {/* 阻塞进程 */}
         <StatCard
-          title="告警"
-          value={alarmCount}
+          title="阻塞进程"
+          value={blockedCard?.mainValue.value ?? '0'}
           unit=""
-          icon={<AlertOutlined />}
-          iconStyle={{ background: '#EF444418', color: '#EF4444' }}
-          color="#EF4444"
+          icon={<SwapOutlined />}
+          iconStyle={{ background: '#F9731618', color: '#F97316' }}
+          color="#F97316"
           footer={
             <span className={styles.statMetaItem}>
-              <span className={styles.statMetaLabel}>未恢复</span>
-              <span className={styles.statMetaValue}>{alarmCount}</span>
+              <span className={styles.statMetaLabel}>不可中断等待</span>
+              <span className={styles.statMetaValue}>{blockedCard?.mainValue.value ?? 0}</span>
             </span>
           }
-          hideTrend
-          extra={
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 pt-1">
-              <span className={`w-2 h-2 rounded-full ${alarmCount > 0 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
-              <span>{alarmCount > 0 ? `${alarmCount} 条活动告警` : '系统无活动告警'}</span>
-            </div>
-          }
+          trendData={blockedCard?.trendData}
           styles={styles}
         />
 
@@ -432,7 +368,7 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
         />
       </section>
 
-      {/* 2 & 3. Middle Row: 资源关联分析 (7) + 容量与风险 (5) */}
+      {/* 2 & 3. Middle Section: 资源关联分析 (7) + 容量与风险 (5) */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* 资源关联分析 */}
         <div className="lg:col-span-7 flex flex-col">
@@ -464,14 +400,14 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
           )}
         </div>
 
-        {/* 容量与风险 */}
+        {/* 容量与风险 + 实时磁盘吞吐 */}
         <div className="lg:col-span-5 flex flex-col">
           <div className={`${styles.panel} p-4 flex flex-col justify-between h-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl shadow-sm`}>
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
                 <div className="flex items-center gap-1.5">
                   <h3 className="text-sm font-semibold text-[var(--color-text-1)] m-0">容量与风险</h3>
-                  <Tooltip title="监控各磁盘分区使用水位，并基于历史趋势评估耗尽风险">
+                  <Tooltip title="监控各磁盘分区使用水位，高水位优先清理或扩容">
                     <InfoCircleOutlined className="text-slate-400 text-xs cursor-pointer" />
                   </Tooltip>
                 </div>
@@ -526,7 +462,7 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
               </div>
             </div>
 
-            {/* 容量预测 (基于历史趋势) */}
+            {/* 容量趋势推演 */}
             <div className="mt-2 pt-3 border-t border-[var(--color-border)]">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-[var(--color-text-1)] flex items-center gap-1">
@@ -540,7 +476,6 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
 
               {/* Forecast Card Shell */}
               <div className="bg-[var(--color-fill-1)] rounded-lg p-3 border border-[var(--color-border)]">
-                {/* SVG trend line preview matching mockup */}
                 <div className="relative h-12 w-full mb-2">
                   <svg className="w-full h-full overflow-visible" viewBox="0 0 300 48" preserveAspectRatio="none">
                     <defs>
@@ -586,23 +521,78 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
         </div>
       </section>
 
-      {/* 4 & 5. Bottom Row: 进程 TopN (6) + 告警与事件时间线 (6) */}
+      {/* 4. Live Storage & Network Trends Row: 磁盘吞吐 (6) + 网络吞吐 (6) */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* 磁盘吞吐趋势 */}
+        <div className="lg:col-span-6 flex flex-col">
+          {diskIoChart ? (
+            <TrendChartPanel
+              title={
+                <span className="flex items-center gap-1.5">
+                  磁盘读写吞吐
+                  <Tooltip title="主机所有磁盘设备的实时读写吞吐总量，可与 I/O Wait 及阻塞进程对照定位 I/O 瓶颈">
+                    <InfoCircleOutlined className="text-slate-400 text-xs font-normal cursor-pointer" />
+                  </Tooltip>
+                </span>
+              }
+              subtitle={diskIoChart.chart.subtitle}
+              legends={diskIoChart.legends}
+              data={diskIoChart.data}
+              metric={diskIoChart.metric}
+              unit={diskIoChart.unit}
+              loading={loading}
+              seriesStyles={diskIoChart.seriesStyles}
+              onXRangeChange={dashboard.onXRangeChange}
+              className={`${styles.panel} h-full`}
+              styles={styles}
+            />
+          ) : null}
+        </div>
+
+        {/* 网络吞吐趋势 */}
+        <div className="lg:col-span-6 flex flex-col">
+          {networkChart ? (
+            <TrendChartPanel
+              title={
+                <span className="flex items-center gap-1.5">
+                  网络吞吐趋势
+                  <Tooltip title="主机网卡入流量与出流量合计，反映外部网络调用与业务传输压力">
+                    <InfoCircleOutlined className="text-slate-400 text-xs font-normal cursor-pointer" />
+                  </Tooltip>
+                </span>
+              }
+              subtitle={networkChart.chart.subtitle}
+              legends={networkChart.legends}
+              data={networkChart.data}
+              metric={networkChart.metric}
+              unit={networkChart.unit}
+              loading={loading}
+              seriesStyles={networkChart.seriesStyles}
+              onXRangeChange={dashboard.onXRangeChange}
+              className={`${styles.panel} h-full`}
+              styles={styles}
+            />
+          ) : null}
+        </div>
+      </section>
+
+      {/* 5. Deep Diagnostics Row: 进程 TopN (7) + 进程异常与状态分布 (5) */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* 进程 TopN */}
-        <div className="lg:col-span-6 flex flex-col">
+        <div className="lg:col-span-7 flex flex-col">
           <div className={`${styles.panel} p-4 flex flex-col justify-between h-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl shadow-sm`}>
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
                 <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-semibold text-[var(--color-text-1)] m-0">进程 TopN</h3>
-                  <Tooltip title="按 CPU / 内存占用最高展示主机当前运行进程">
+                  <h3 className="text-sm font-semibold text-[var(--color-text-1)] m-0">进程 TopN 资源消耗</h3>
+                  <Tooltip title="按 CPU / 内存占用最高展示主机当前运行进程实时排行榜">
                     <InfoCircleOutlined className="text-slate-400 text-xs cursor-pointer" />
                   </Tooltip>
                 </div>
-                <div className="w-48">
+                <div className="w-56">
                   <Input
                     size="small"
-                    placeholder="搜索进程名称或 PID"
+                    placeholder="按名称或 PID 实时筛选"
                     prefix={<SearchOutlined className="text-slate-400 text-xs" />}
                     value={processSearch}
                     onChange={(e) => setProcessSearch(e.target.value)}
@@ -618,7 +608,7 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
                     size="small"
                     pagination={false}
                     columns={processColumns}
-                    dataSource={filteredProcesses.slice(0, 5)}
+                    dataSource={filteredProcesses.slice(0, 7)}
                     loading={processLoading}
                     className="overflow-x-auto"
                   />
@@ -639,7 +629,7 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-3 border-t border-[var(--color-border)] text-xs text-slate-500">
-              <span>已显示 Top {Math.min(5, filteredProcesses.length)} 进程</span>
+              <span>已显示 Top {Math.min(7, filteredProcesses.length)} 进程</span>
               {onViewAllProcesses ? (
                 <button
                   type="button"
@@ -660,83 +650,34 @@ export function HostDeepAnalysis({ dashboard, styles, onViewAllProcesses }: Host
           </div>
         </div>
 
-        {/* 告警与事件时间线 */}
-        <div className="lg:col-span-6 flex flex-col">
-          <div className={`${styles.panel} p-4 flex flex-col justify-between h-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl shadow-sm`}>
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-semibold text-[var(--color-text-1)] m-0">告警与事件时间线</h3>
-                  <Tooltip title="展示当前主机最近触发的告警与运维事件记录">
-                    <InfoCircleOutlined className="text-slate-400 text-xs cursor-pointer" />
+        {/* 进程异常趋势 (阻塞与僵尸进程) */}
+        <div className="lg:col-span-5 flex flex-col">
+          {processAnomalyChart ? (
+            <TrendChartPanel
+              title={
+                <span className="flex items-center gap-1.5">
+                  进程异常趋势
+                  <Tooltip title="阻塞进程持续非零多与慢 I/O / 不可中断等待相关；僵尸进程非零需排查父进程未回收">
+                    <InfoCircleOutlined className="text-slate-400 text-xs font-normal cursor-pointer" />
                   </Tooltip>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> 告警
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" /> 事件
-                  </span>
-                </div>
-              </div>
-
-              {/* Timeline List */}
-              <div className="flex flex-col gap-3 py-3">
-                {timelineItems.length > 0 ? (
-                  timelineItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start justify-between p-2 rounded-lg hover:bg-[var(--color-fill-1)] transition-colors text-xs"
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span className="w-2 h-2 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
-                        <span className="text-slate-500 font-mono flex-shrink-0">{item.time}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-500/10 text-red-600 dark:text-red-400 flex-shrink-0">
-                          {item.levelText}
-                        </span>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {item.title}
-                          </span>
-                          <span className="text-slate-500 text-[11px] mt-0.5 line-clamp-1">
-                            {item.detail}
-                          </span>
-                        </div>
-                      </div>
-                      <Link
-                        href={`/alarm/alarms?alert_id=${item.id}`}
-                        className="text-[var(--color-primary)] hover:underline whitespace-nowrap ml-2 flex-shrink-0 inline-flex items-center gap-0.5"
-                      >
-                        查看详情 <ArrowRightOutlined className="text-[9px]" />
-                      </Link>
-                    </div>
-                  ))
-                ) : (
-                  <div className="py-6 flex flex-col items-center justify-center text-center">
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={
-                        alarmLoading
-                          ? '正在查询主机告警流水...'
-                          : '所选时间范围内暂无告警事件（告警中心实时流接入中）'
-                      }
-                    />
-                  </div>
-                )}
-              </div>
+                </span>
+              }
+              subtitle={processAnomalyChart.chart.subtitle}
+              legends={processAnomalyChart.legends}
+              data={processAnomalyChart.data}
+              metric={processAnomalyChart.metric}
+              unit={processAnomalyChart.unit}
+              loading={loading}
+              seriesStyles={processAnomalyChart.seriesStyles}
+              onXRangeChange={dashboard.onXRangeChange}
+              className={`${styles.panel} h-full`}
+              styles={styles}
+            />
+          ) : (
+            <div className={`${styles.panel} p-6 flex flex-col items-center justify-center min-h-[300px]`}>
+              <Empty description="暂无进程异常趋势数据" />
             </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end pt-3 border-t border-[var(--color-border)] text-xs">
-              <Link
-                href="/alarm/alarms"
-                className="inline-flex items-center gap-1 text-[var(--color-primary)] hover:underline font-medium"
-              >
-                查看完整告警历史 <ArrowRightOutlined className="text-[10px]" />
-              </Link>
-            </div>
-          </div>
+          )}
         </div>
       </section>
     </div>

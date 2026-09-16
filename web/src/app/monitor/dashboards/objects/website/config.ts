@@ -275,6 +275,18 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { metric: 'website_response_time_avg', label: '平均响应', color: WEBSITE_PALETTE.blue, unit: 's' },
         { metric: 'website_response_time_max', label: '峰值响应', color: WEBSITE_PALETTE.indigo, unit: 's' }
       ]
+    },
+    {
+      title: 'HTTP 状态码结构趋势',
+      subtitle: '2xx / 3xx / 4xx / 5xx 节点分布',
+      metric: 'website_status_code_2xx_count',
+      guide: [{ label: '状态码分布', detail: '观察各类 HTTP 响应状态码节点数量随时间的变化趋势。' }],
+      series: [
+        { metric: 'website_status_code_2xx_count', label: '2xx 正常', color: WEBSITE_PALETTE.emerald, unit: 'counts' },
+        { metric: 'website_status_code_3xx_count', label: '3xx 重定向', color: WEBSITE_PALETTE.cyan, unit: 'counts' },
+        { metric: 'website_status_code_4xx_count', label: '4xx 客户端异常', color: WEBSITE_PALETTE.amber, unit: 'counts' },
+        { metric: 'website_status_code_5xx_count', label: '5xx 服务端错误', color: WEBSITE_PALETTE.rose, unit: 'counts' }
+      ]
     }
   ],
   ringPanels: [

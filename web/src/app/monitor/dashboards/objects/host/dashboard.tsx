@@ -11,6 +11,7 @@ import {
   KpiSection,
   useFilteredChartPanels,
   useFilteredRingPanels,
+  useFilteredSummaryCards,
   DashboardSectionLabel
 } from '../common/dashboard-components';
 import {
@@ -68,6 +69,10 @@ export default function HostDashboardPage() {
     [searchParams]
   );
 
+  const summaryCards = useFilteredSummaryCards(
+    dashboard.summaryCards,
+    ['运行时长', 'CPU 使用率', '内存使用率', '磁盘使用率', '1 分钟负载']
+  );
   const topCharts = useFilteredChartPanels(dashboard.chartPanels, TOP_CHART_TITLES);
   const networkCharts = useFilteredChartPanels(dashboard.chartPanels, NETWORK_CHART_TITLES);
   const diskProcessCharts = useFilteredChartPanels(dashboard.chartPanels, DISK_PROCESS_CHART_TITLES);
@@ -142,7 +147,7 @@ export default function HostDashboardPage() {
         ) : (
           <>
             <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
-            <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
+            <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
             <DashboardSectionLabel styles={styles}>性能与分布</DashboardSectionLabel>
             <FlexiblePanelSection styles={styles}>

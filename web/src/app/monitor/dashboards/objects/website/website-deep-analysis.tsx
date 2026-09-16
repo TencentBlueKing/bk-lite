@@ -1,9 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Empty, Select, Table, Tag, Tooltip } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Empty, Select, Tag, Tooltip } from 'antd';
 import {
   SafetyCertificateOutlined,
   CheckCircleOutlined,
@@ -11,7 +9,6 @@ import {
   DashboardOutlined,
   ExclamationCircleOutlined,
   NodeIndexOutlined,
-  ArrowRightOutlined,
   InfoCircleOutlined,
   LinkOutlined
 } from '@ant-design/icons';
@@ -32,15 +29,6 @@ interface NodeProbeItem {
   responseTimeMs: number;
   success: boolean;
   successRate?: number;
-}
-
-interface ProbeDetailRow {
-  key: string;
-  time: string;
-  node: string;
-  success: boolean;
-  statusCode: string | number;
-  duration: string;
 }
 
 const KNOWN_NODE_NAMES: Record<string, string> = {
@@ -104,7 +92,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
     return 'https://api.example.com/health';
   }, [resolvedInstanceName]);
 
-  // 2. Multi-node comparison
+  // 2. Multi-node comparison (by agent_id)
   const [nodeList, setNodeList] = useState<NodeProbeItem[]>([]);
   const [nodeLoading, setNodeLoading] = useState(false);
   const [nodeSort, setNodeSort] = useState<'desc' | 'asc' | 'success'>('desc');
@@ -151,7 +139,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
               agentId: agent,
               label: formatNodeName(agent),
               responseTimeMs: respMs,
-              successRate: succRate,
+              successRate: Number(succRate.toFixed(1)),
               success: succRate >= 90
             });
           }
@@ -185,55 +173,10 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
     return peak > 0 ? peak : 500;
   }, [sortedNodes]);
 
-  // 3. Failure Attribution Trend Chart
+  // 3. Live Trend Charts
   const failureTrendChart = chartPanels.find((c) => c.chart.title === '失败归因趋势');
-
-  // 4. Probe Details Table Columns
-  const probeDetailColumns: ColumnsType<ProbeDetailRow> = [
-    {
-      title: '时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 100,
-      render: (text) => <span className="font-mono text-xs">{text}</span>
-    },
-    {
-      title: '节点',
-      dataIndex: 'node',
-      key: 'node',
-      ellipsis: true,
-      render: (text) => <span className="font-medium">{text}</span>
-    },
-    {
-      title: '结果',
-      dataIndex: 'success',
-      key: 'success',
-      width: 80,
-      render: (val) => (
-        val ? (
-          <Tag color="success" className="m-0 text-xs px-2 py-0.5">成功</Tag>
-        ) : (
-          <Tag color="error" className="m-0 text-xs px-2 py-0.5">失败</Tag>
-        )
-      )
-    },
-    {
-      title: '状态码',
-      dataIndex: 'statusCode',
-      key: 'statusCode',
-      width: 80,
-      align: 'right',
-      render: (code) => <span className="font-mono text-xs">{code}</span>
-    },
-    {
-      title: '耗时',
-      dataIndex: 'duration',
-      key: 'duration',
-      width: 90,
-      align: 'right',
-      render: (dur) => <span className="font-mono text-xs">{dur}</span>
-    }
-  ];
+  const responseChart = chartPanels.find((c) => c.chart.title === '响应时间趋势');
+  const statusCodeChart = chartPanels.find((c) => c.chart.title === 'HTTP 状态码结构趋势');
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -252,7 +195,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
           </a>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span>HTTP / HTTPS 连通性监测</span>
+          <span>HTTP / HTTPS 拨测连通性监测</span>
         </div>
       </div>
 
@@ -347,7 +290,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
 
       {/* 2. Top Row: 响应阶段拆解 (6) + 多节点对比 (6) */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* 响应阶段拆解 */}
+        {/* 响应阶段拆解 (Intentional Pending Placeholder) */}
         <div className="lg:col-span-6 flex flex-col">
           <div className={`${styles.panel} p-4 flex flex-col justify-between h-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl shadow-sm`}>
             <div>
@@ -388,7 +331,6 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
               {/* Stacked Bar Visual Shell matching mockup */}
               <div className="py-2">
                 <div className="relative flex flex-col gap-2 bg-[var(--color-fill-1)] rounded-xl p-4 border border-[var(--color-border)]">
-                  {/* Visual stacked stages */}
                   <div className="flex flex-col gap-1.5 opacity-60">
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                       <span>阶段耗时</span>
@@ -428,7 +370,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
                   {/* Honest placeholder note */}
                   <div className="mt-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
                     <InfoCircleOutlined className="text-amber-500 flex-shrink-0" />
-                    <span>阶段耗时细分指标待探针支持（待接入 DNS / TCP / TLS / 首字节 / 下载耗时采集）</span>
+                    <span>阶段耗时细分指标待探针支持（待接入 DNS / TCP / TLS / 首字节 / 下载细分耗时采集）</span>
                   </div>
                 </div>
               </div>
@@ -446,7 +388,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
                 <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-semibold text-[var(--color-text-1)] m-0">多节点对比</h3>
+                  <h3 className="text-sm font-semibold text-[var(--color-text-1)] m-0">多节点对比 (按 agent_id)</h3>
                   <Tooltip title="对比同一网站实例在不同探测节点 (agent_id) 上的探测响应表现与成功率">
                     <InfoCircleOutlined className="text-slate-400 text-xs cursor-pointer" />
                   </Tooltip>
@@ -464,7 +406,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
                 />
               </div>
 
-              {/* Node Comparison List */}
+              {/* Node Comparison List with Dual Metric (Latency + Success Rate) */}
               <div className="flex flex-col gap-3 py-3">
                 {sortedNodes.length > 0 ? (
                   sortedNodes.map((node) => {
@@ -473,7 +415,7 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
 
                     return (
                       <div key={node.agentId} className="flex items-center gap-3 text-xs">
-                        <span className="w-16 font-medium text-slate-800 dark:text-slate-200 truncate">
+                        <span className="w-16 font-medium text-slate-800 dark:text-slate-200 truncate" title={node.agentId}>
                           {node.label}
                         </span>
                         <div className="w-14">
@@ -492,9 +434,14 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
                             }}
                           />
                         </div>
-                        <span className="w-16 text-right font-mono font-medium text-slate-700 dark:text-slate-300">
-                          {node.responseTimeMs}ms
-                        </span>
+                        <div className="flex items-center gap-2 w-28 justify-end font-mono">
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            {node.responseTimeMs}ms
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            ({node.successRate ?? 100}%)
+                          </span>
+                        </div>
                       </div>
                     );
                   })
@@ -520,14 +467,14 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-3 border-t border-[var(--color-border)] text-xs text-slate-500">
-              <span>覆盖 {sortedNodes.length} 个拨测节点</span>
+              <span>覆盖 {sortedNodes.length} 个拨测节点 (响应耗时与成功率双向对比)</span>
               <span className="text-[11px] text-slate-400">单位：毫秒 (ms)</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 3. Bottom Row: 失败归因趋势 (6) + 探测明细 (6) */}
+      {/* 3. Bottom Row: 失败归因趋势 (6) + HTTP 状态码结构趋势 (6) */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* 失败归因趋势 */}
         <div className="lg:col-span-6 flex flex-col">
@@ -559,64 +506,48 @@ export function WebsiteDeepAnalysis({ dashboard, styles }: WebsiteDeepAnalysisPr
           )}
         </div>
 
-        {/* 探测明细 */}
+        {/* HTTP 状态码结构趋势 */}
         <div className="lg:col-span-6 flex flex-col">
-          <div className={`${styles.panel} p-4 flex flex-col justify-between h-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl shadow-sm`}>
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-semibold text-[var(--color-text-1)] m-0">探测明细</h3>
-                  <Tooltip title="单次拨测采样的具体执行记录与 HTTP 返回码流水">
-                    <InfoCircleOutlined className="text-slate-400 text-xs cursor-pointer" />
+          {statusCodeChart ? (
+            <TrendChartPanel
+              title={
+                <span className="flex items-center gap-1.5">
+                  HTTP 状态码结构趋势
+                  <Tooltip title="观察各 HTTP 响应状态码段（2xx 正常、3xx 重定向、4xx 客户端异常、5xx 服务端错误）节点分布">
+                    <InfoCircleOutlined className="text-slate-400 text-xs font-normal cursor-pointer" />
                   </Tooltip>
-                </div>
-                <Link
-                  href="/monitor/view/detail"
-                  className="text-xs text-[var(--color-primary)] hover:underline inline-flex items-center gap-0.5"
-                >
-                  查看全部 <ArrowRightOutlined className="text-[10px]" />
-                </Link>
-              </div>
-
-              {/* Table */}
-              <div className="py-2">
-                <Table
-                  size="small"
-                  pagination={false}
-                  columns={probeDetailColumns}
-                  dataSource={[]}
-                  locale={{
-                    emptyText: (
-                      <div className="py-6 flex flex-col items-center justify-center text-center">
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="原始拨测采样明细流水接入中，待开启详细采样日志"
-                        />
-                        <span className="text-[11px] text-slate-400 mt-1">
-                          当前生产环境仅上报时序聚合指标
-                        </span>
-                      </div>
-                    )
-                  }}
-                  className="overflow-x-auto"
-                />
-              </div>
+                </span>
+              }
+              subtitle="2xx / 3xx / 4xx / 5xx 节点分布"
+              legends={statusCodeChart.legends}
+              data={statusCodeChart.data}
+              metric={statusCodeChart.metric}
+              unit={statusCodeChart.unit}
+              loading={loading}
+              seriesStyles={statusCodeChart.seriesStyles}
+              onXRangeChange={dashboard.onXRangeChange}
+              className={`${styles.panel} h-full`}
+              styles={styles}
+            />
+          ) : responseChart ? (
+            <TrendChartPanel
+              title="响应时间趋势"
+              subtitle={responseChart.chart.subtitle}
+              legends={responseChart.legends}
+              data={responseChart.data}
+              metric={responseChart.metric}
+              unit={responseChart.unit}
+              loading={loading}
+              seriesStyles={responseChart.seriesStyles}
+              onXRangeChange={dashboard.onXRangeChange}
+              className={`${styles.panel} h-full`}
+              styles={styles}
+            />
+          ) : (
+            <div className={`${styles.panel} p-6 flex flex-col items-center justify-center min-h-[300px]`}>
+              <Empty description="暂无状态码时序数据" />
             </div>
-
-            {/* Footer with pagination shell */}
-            <div className="flex items-center justify-between pt-3 border-t border-[var(--color-border)] text-xs text-slate-500">
-              <span>共 0 条明细记录</span>
-              <div className="flex items-center gap-1 text-slate-400">
-                <button type="button" disabled className="px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] text-slate-300 cursor-not-allowed">
-                  &lt;
-                </button>
-                <span className="px-2 py-0.5 rounded bg-[var(--color-primary)] text-white font-medium">1</span>
-                <button type="button" disabled className="px-2 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] text-slate-300 cursor-not-allowed">
-                  &gt;
-                </button>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </section>
     </div>
