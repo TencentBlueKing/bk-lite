@@ -140,7 +140,7 @@ class CollectNetworkMetrics(CollectBase):
 
     def set_interface_inst_name(self, data, *args, **kwargs):
         inst_name = self.set_self_device(data)
-        return f"{inst_name}-{data.get('alias', data['description'])}"
+        return f"{inst_name}-{self.interface_name(data)}"
 
     def set_self_device(self, data, *args, **kwargs):
         instance_id = data["instance_id"]
@@ -162,7 +162,7 @@ class CollectNetworkMetrics(CollectBase):
 
     @staticmethod
     def interface_name(data, *args, **kwargs):
-        return data.get("alias", data["description"])
+        return data.get("alias") or data.get("description") or f"if{data.get('index', '')}"
 
     @property
     def model_field_mapping(self):
