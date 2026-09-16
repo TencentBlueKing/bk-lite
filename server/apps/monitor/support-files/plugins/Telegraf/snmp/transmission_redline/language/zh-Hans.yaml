@@ -1,6 +1,6 @@
 Transmission Redline SNMP:
   name: Redline（Telegraf）
-  desc: 面向 Redline 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 10728）。
+  desc: 面向 Redline AN80i 传输设备的 SNMP 监控模板，可采集平均 SINADR、PMP 下行 RSSI、可选 PMP 上行 RSSI、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 10728）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -24,6 +24,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    sinadr:
+      name: SINADR
+      desc: AN80i 平均 SINADR（信号与干扰、噪声及失真比），来自 an80iIfAvrSinAdr 标量，Integer32 不换算。仅 PMP
+        且缺省该标量的电台会跳过该行。
+    dl_rssi:
+      name: PMP 下行 RSSI
+      desc: AN80i PMP 下行接收信号强度，来自 an80iIfPmpLinkDLRssi，按 an80iIfPmpLinkId 索引，Integer32
+        不换算。采集时先走 PMP 链路标识，再读取下行 RSSI 列。
+    ul_rssi:
+      name: PMP 上行 RSSI
+      desc: 可选的 AN80i PMP 上行接收信号强度，来自 an80iIfPmpLinkULRssi，按 an80iIfPmpLinkId 索引，Integer32
+        不换算。部分固件缺省该列时跳过。
     device_cpu_usage:
       name: CPU 使用率
       desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
@@ -47,3 +59,4 @@ monitor_object_metric_group:
     Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
+    Radio: 无线
