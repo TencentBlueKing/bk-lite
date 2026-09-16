@@ -1,5 +1,30 @@
 {
   "object": "Transmission",
   "plugin": "Transmission Ericsson SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Ericsson传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 Ericsson MINI-LINK/PT 微波传输设备的内部温度，持续高于阈值时提示散热异常、环境温度过高或硬件过载风险。读数为 0.0 时视为 N/A，不参与告警。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    }
+  ]
 }
