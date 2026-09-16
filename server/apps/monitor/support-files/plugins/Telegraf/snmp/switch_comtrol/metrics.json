@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_comtrol",
   "plugin": "Switch Comtrol RocketLinx SNMP",
-  "plugin_desc": "Comtrol RocketLinx industrial Ethernet switch SNMP baseline collection (enterprise 11545). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm RocketLinx managed switch products, the Pepperl+Fuchs Comtrol enterprise root, and an official SNMP MIB file download, but they do not expose stable shared CPU, memory, temperature, fan or power health leaf OIDs with conservative status semantics, so vendor health metrics are not promoted into device-health metrics.",
+  "plugin_desc": "Comtrol RocketLinx managed switch SNMP collection (IANA PEN 2882). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. SFP DDM walks portSfpTable on the es8520-xt model branch (1.3.6.1.4.1.2882.2.1.5; swap the model leaf to 8 for es9528) and parses DisplayString current temperature, transmit power and receive power; empty or no-module rows are skipped. Chassis CPU and memory utilization are not in the private MIB and are not collected. Supported brands/models — Comtrol RocketLinx managed switches (es8520-xt primary, es9528 model leaf).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_comtrol'}) by (instance_id)",
   "name": "Switch",
@@ -14,44 +14,77 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "sfp_temperature_celsius",
+    "sfp_tx_power",
+    "sfp_rx_power"
   ],
   "metrics": [
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "metric_group": "Temperature",
+      "name": "sfp_temperature_celsius",
+      "query": "sfp_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "SFP Temperature",
       "data_type": "Number",
-      "unit": "byteps",
+      "unit": "celsius",
       "dimensions": [
         {
-          "name": "ifDescr",
-          "description": "ifDescr"
+          "name": "index",
+          "description": "SFP port index (portSfpIndex)"
+        },
+        {
+          "name": "portSfpIndex",
+          "description": "SFP port index"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Current SFP DDM temperature in degrees Celsius from portSfpDdmTempatureCurrent on the es8520-xt portSfpTable branch. DisplayString text is parsed to a number (unit suffix such as C is stripped). Empty, N/A or no-module rows are skipped. Abnormally high module temperature can indicate airflow issues or a failing optic."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "metric_group": "Hardware Status",
+      "name": "sfp_tx_power",
+      "query": "sfp_tx_power{instance_type='switch', __$labels__}",
+      "display_name": "SFP TX Power",
       "data_type": "Number",
-      "unit": "byteps",
+      "unit": "counts",
       "dimensions": [
         {
-          "name": "ifDescr",
-          "description": "ifDescr"
+          "name": "index",
+          "description": "SFP port index (portSfpIndex)"
+        },
+        {
+          "name": "portSfpIndex",
+          "description": "SFP port index"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Current SFP DDM transmit power from portSfpDdmTxPowerCurrent on the es8520-xt portSfpTable branch. DisplayString text is parsed to a number (unit suffix such as dBm is stripped). Empty, N/A or no-module rows are skipped. Abnormally low Tx power can indicate an aging or failing optical module."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "sfp_rx_power",
+      "query": "sfp_rx_power{instance_type='switch', __$labels__}",
+      "display_name": "SFP RX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SFP port index (portSfpIndex)"
+        },
+        {
+          "name": "portSfpIndex",
+          "description": "SFP port index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current SFP DDM receive power from portSfpDdmRxPowerCurrent on the es8520-xt portSfpTable branch. DisplayString text is parsed to a number (unit suffix such as dBm is stripped). Empty, N/A or no-module rows are skipped. Abnormally low Rx power can indicate link attenuation, dirty fiber, or a faulty peer transmitter."
     },
     {
       "metric_group": "Base",

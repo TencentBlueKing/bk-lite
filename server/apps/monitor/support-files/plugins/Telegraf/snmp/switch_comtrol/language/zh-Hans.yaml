@@ -1,6 +1,6 @@
 Switch Comtrol RocketLinx SNMP:
   name: Comtrol RocketLinx（Telegraf）
-  desc: 面向 Comtrol RocketLinx 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Comtrol RocketLinx 交换机的 SNMP 监控模板，可采集 SFP DDM 温度、SFP 发送光功率、SFP 接收光功率、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 2882）。私有 MIB 无整机 CPU/内存使用率，故不采集。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -16,6 +16,15 @@ monitor_object_metric:
     device_optical_tx_power:
       name: 光模块发送功率
       desc: 该指标报告光模块（SFP/SFP+）发送光功率读数。发送功率异常可能意味着光模块老化或故障。
+    sfp_temperature_celsius:
+      name: SFP 温度
+      desc: 该指标报告光模块 DDM 当前温度，单位摄氏度。空行或无模块行会跳过。温度异常升高可能意味着散热不良或光模块故障。
+    sfp_tx_power:
+      name: SFP 发送光功率
+      desc: 该指标报告光模块 DDM 当前发送功率。空行或无模块行会跳过。发送功率异常偏低可能意味着光模块老化或故障。
+    sfp_rx_power:
+      name: SFP 接收光功率
+      desc: 该指标报告光模块 DDM 当前接收功率。空行或无模块行会跳过。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
