@@ -1,5 +1,5 @@
-username: {{ username }}
-password: {{ password }}
+username: '{{ username | replace("'", "''") }}'
+password: '{{ password | replace("'", "''") }}'
 jmxUrl: {{ jmx_url }}
 ssl: false
 startDelaySeconds: 0
