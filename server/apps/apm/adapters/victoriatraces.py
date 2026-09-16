@@ -159,7 +159,7 @@ def _decode_cursor(cursor: str) -> datetime:
         padded = cursor + "=" * (-len(cursor) % 4)
         microseconds = int(base64.urlsafe_b64decode(padded.encode()).decode())
         return datetime.fromtimestamp(microseconds / 1_000_000, tz=UTC)
-    except (ValueError, UnicodeDecodeError) as exc:
+    except (ValueError, UnicodeDecodeError, OverflowError, OSError) as exc:
         raise ValueError("Trace 游标无效") from exc
 
 
