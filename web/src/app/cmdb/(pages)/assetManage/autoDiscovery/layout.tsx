@@ -6,10 +6,8 @@ import WithSideMenuLayout from '@/components/sub-layout';
 const AutoDiscoveryLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div
-      style={{
-        height: 'calc(100vh - 155px)',
-        ['--custom-height' as string]: 'calc(100vh - 155px)',
-      }}
+      className="h-full min-h-0 min-w-0 w-full"
+      style={{ ['--custom-height' as string]: '100%' }}
     >
       <WithSideMenuLayout showBackButton={false}>{children}</WithSideMenuLayout>
     </div>

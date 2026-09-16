@@ -599,7 +599,7 @@ const Alert: React.FC = () => {
   };
 
   return (
-    <div className="w-full">
+    <div className="h-full min-h-0 w-full min-w-0 max-w-full">
       <div className={alertStyle.alert}>
         <ResizableSidebar collapseStorageKey="monitor.event.alert.sidebarCollapsed">
           <div className={alertStyle.filters}>

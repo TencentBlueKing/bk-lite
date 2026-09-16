@@ -84,7 +84,7 @@ describe('screen mode height chain', () => {
 
   it('keeps app-top workspace height chain and horizontal scroll without trapping table overflow', () => {
     expect(source).toMatch(
-      /flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden pl-4/,
+      /flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-x-auto overflow-y-hidden pl-4/,
     );
     expect(source).toMatch(
       /flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden/,
