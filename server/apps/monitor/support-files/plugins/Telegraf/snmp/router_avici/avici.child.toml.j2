@@ -32,24 +32,50 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns: ifInOctets/ifOutOctets/ifInErrors/ifOutErrors/ifInDiscards/ifOutDiscards/ifInUcastPkts/ifOutUcastPkts/ifSpeed/ifAdminStatus/ifOperStatus) ----
+# @bk_include_ifmib_table
+    # ---- CPU（PROCESS-MIB aviciCPUTotal*，INDEX 为库存 id，整表 walk，不写死单行）----
+    # 5 分钟 busy% → device_cpu_usage。1 分钟 / 5 秒为可选窗口。库存类型列作 tag，便于区分控制面/主库存行。
     [[inputs.snmp.table]]
-        name = "interface"
+        name = "device_cpu"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
+        oid = "1.3.6.1.4.1.2474.1.7.1.1.1.1"
+        name = "usage_5sec"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2474.1.7.1.1.1.2"
+        name = "usage_1min"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2474.1.7.1.1.1.3"
+        name = "usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2474.1.2.1.1.1.2"
+        name = "inventoryType"
         is_tag = true
+    # ---- 内存（MEMORY-MIB 总量/已用/空闲，同一库存 INDEX；usage=used/total×100，total=0 丢弃）----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.2474.1.6.1.1.1.1"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2474.1.6.1.1.1.2"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2474.1.6.1.1.1.3"
+        name = "free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2474.1.2.1.1.1.2"
+        name = "inventoryType"
         is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # ---- 模块温度（MODULE-MIB aviciModuleCurrTemp，INDEX bay.slot，多传感器）----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-# ---- CPU/内存/温度/风扇/电源：Avici Systems TSR/SSR 高速核心路由器的私有 MIB（企业号 2474）未以无需行级过滤的稳定标量形式公开 CPU/内存/温度/风扇/电源等可靠轮询的设备健康量 → 全部 N/A 不采。本基线模板仅采集标准 MIB-II 运行时长与 IF-MIB（含 64 位 HC）接口指标，干净可采。----
+        oid = "1.3.6.1.4.1.2474.1.5.1.1.1.4"
+        name = "celsius"
+# ---- 风扇/电源：私有 MIB 无独立风扇或电源状态对象，不编造采集。----
