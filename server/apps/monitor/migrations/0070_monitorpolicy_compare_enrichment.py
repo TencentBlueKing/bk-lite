@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("monitor", "0068_monitorevent_claim_assign_actions"),
+        ("monitor", "0069_monitorplugin_pack_version"),
     ]
 
     operations = [
