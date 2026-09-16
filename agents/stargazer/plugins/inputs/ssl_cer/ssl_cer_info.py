@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 import ssl
@@ -58,10 +59,10 @@ class SslCerInfo:
 
     async def probe(self) -> AccessProbeResult:
         if not self.host:
-            return AccessProbeResult(status=AccessProbeStatus.UNREACHABLE, error_code="domain_missing")
+            return AccessProbeResult(status=AccessProbeStatus.TARGET_UNREACHABLE, error_code="domain_missing")
         return AccessProbeResult(status=AccessProbeStatus.READY)
 
-    async def _fetch_peer_der(self) -> bytes:
+    def _fetch_peer_der(self) -> bytes:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
@@ -73,26 +74,29 @@ class SslCerInfo:
         return der
 
     def _rows_for_host(self) -> list[dict[str, str]]:
-        matched = [
-            item for item in self.targets if item["domain"] == self.host or not item["domain"]
-        ]
-        return matched or [{"inst_name": self.host, "domain": self.host}]
+        matched = [item for item in self.targets if item["domain"] == self.host]
+        if matched:
+            return matched
+        empty = [item for item in self.targets if not item["domain"]]
+        if empty:
+            return empty
+        return [{"inst_name": self.host, "domain": self.host}]
 
     async def list_all_resources(self):
         rows = []
-        try:
-            for target in self._rows_for_host():
-                if not target["domain"]:
-                    rows.append(
-                        {
-                            "inst_name": target["inst_name"],
-                            "domain": "",
-                            "collect_status": "failed",
-                            "collect_error": "domain_missing",
-                        }
-                    )
-                    continue
-                der = await self._fetch_peer_der()
+        for target in self._rows_for_host():
+            if not target["domain"]:
+                rows.append(
+                    {
+                        "inst_name": target["inst_name"],
+                        "domain": "",
+                        "collect_status": "failed",
+                        "collect_error": "domain_missing",
+                    }
+                )
+                continue
+            try:
+                der = await asyncio.to_thread(self._fetch_peer_der)
                 parsed = parse_der_certificate(der)
                 rows.append(
                     {
@@ -103,17 +107,14 @@ class SslCerInfo:
                         "expired_time": parsed["expired_time"],
                     }
                 )
-            return {"result": {"ssl_cer": rows}, "success": True}
-        except Exception as err:
-            logger.warning(
-                "event=ssl_cer_collect_failed host=%s task_id=%s failed_stage=handshake error_type=%s",
-                self.host,
-                self.collection_task_id,
-                type(err).__name__,
-            )
-            failed = []
-            for target in self._rows_for_host():
-                failed.append(
+            except Exception as err:
+                logger.warning(
+                    "event=ssl_cer_collect_failed host=%s task_id=%s failed_stage=handshake error_type=%s",
+                    self.host,
+                    self.collection_task_id,
+                    type(err).__name__,
+                )
+                rows.append(
                     {
                         "inst_name": target["inst_name"] or target["domain"],
                         "domain": target["domain"],
@@ -121,4 +122,4 @@ class SslCerInfo:
                         "collect_error": "tls_handshake_failed",
                     }
                 )
-            return {"result": {"ssl_cer": failed}, "success": True}
+        return {"result": {"ssl_cer": rows}, "success": True}
