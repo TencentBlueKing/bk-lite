@@ -7,6 +7,8 @@
 3. vastbase / kingbase / gaussdb 三个补丁都真的调用了该入口。
 """
 
+import logging
+
 import pytest
 from django.db import connections
 from django.db.backends.postgresql.base import DatabaseWrapper
@@ -72,6 +74,25 @@ def test_disable_is_idempotent(pg_features):
     disable_aggregate_filter_clause()
 
     assert pg_features.supports_aggregate_filter_clause is False
+
+
+def test_disable_logs_stable_template_with_lazy_count(pg_features, caplog):
+    """生命周期 INFO：稳定模板 + 独立参数，渲染结果只含被关掉的 features 类数量。"""
+
+    class ThirdPartyFeatures(pg_features):
+        supports_aggregate_filter_clause = True
+
+    with caplog.at_level(logging.INFO, logger="app"):
+        patched = disable_aggregate_filter_clause(ThirdPartyFeatures)
+
+    records = [r for r in caplog.records if r.name == "app" and "aggregate FILTER clause disabled" in r.getMessage()]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.INFO
+    assert record.msg == "postgresql aggregate FILTER clause disabled, falling back to CASE WHEN (%d feature classes)"
+    assert record.args == (len(patched),)
+    assert record.getMessage() == "postgresql aggregate FILTER clause disabled, falling back to CASE WHEN (2 feature classes)"
+    assert record.exc_info is None
 
 
 # ============================================================
