@@ -5,6 +5,8 @@ from copy import deepcopy
 
 from django.db import migrations, transaction
 
+from apps.core.logger import alert_logger as logger
+
 # 迁移只保存转换所需的 2026-09-14 契约；后续业务目录变化不得修改这里。
 EVENT_SCOPES = {"correlation", "shield", "enrichment"}
 MODEL_NAMES = {
@@ -233,7 +235,7 @@ class LegacyRuleConverter:
 
 def migrate_rules(apps, schema_editor):
     database = schema_editor.connection.alias
-    # 显式覆盖整个数据步骤，包含不能自动转换的策略失败；不提交半套新旧配置。
+    # 数据库失败仍回滚整个步骤；无法转换的策略原样保留，继续迁移其他策略。
     with transaction.atomic(using=database):
         for scope, model_name in MODEL_NAMES.items():
             queryset = apps.get_model("alerts", model_name)._base_manager.using(database)
@@ -254,9 +256,13 @@ def migrate_rules(apps, schema_editor):
                             raise ValueError("筛选模式的空规则不能转换为全部匹配")
                         converted = converter.convert(current.match_rules)
                     except (ValueError, TypeError) as error:
-                        raise RuntimeError(
-                            f"告警规则迁移失败 scope={scope} id={current.pk}: {error}。" "本次规则迁移已回滚；修正该策略后重新执行 migrate，禁止使用 --fake 跳过。"
-                        ) from error
+                        logger.warning(
+                            "event=legacy_rule_migration_skipped scope=%s policy_id=%s failed_stage=convert error_type=%s",
+                            scope,
+                            current.pk,
+                            type(error).__name__,
+                        )
+                        continue
                     if converted != current.match_rules:
                         queryset.filter(pk=current.pk).update(match_rules=converted)
                 last_id = records[-1].pk
