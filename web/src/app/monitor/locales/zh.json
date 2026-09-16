@@ -188,7 +188,6 @@
       "algorithmDeriv": "斜率",
       "algorithmGroupWindow": "窗口统计",
       "algorithmGroupChange": "变化类",
-      "compareGroupOffset": "N 前同窗",
       "compareModeDisabledPeriod": "对照窗不能等于汇聚周期",
       "compareModeDisabledCountIf": "条件计数只比点数，不能再套同窗",
       "compareModeDisabledTimeleft": "距容量线剩余时间只允许平均、最大、最小或末值",

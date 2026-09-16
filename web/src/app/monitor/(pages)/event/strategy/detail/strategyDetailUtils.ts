@@ -563,13 +563,6 @@ export const isCompareModeAvailable = (
   return periodSeconds !== offsetSeconds;
 };
 
-export const OFFSET_COMPARE_MODES = new Set([
-  COMPARE_MODE_OFFSET_1H,
-  COMPARE_MODE_OFFSET_24H,
-  COMPARE_MODE_OFFSET_7D,
-  COMPARE_MODE_OFFSET_30D,
-  COMPARE_MODE_BASELINE_4W
-]);
 export const HIGH_SIDE_THRESHOLD_METHODS = new Set(['>', '>=']);
 
 export const isHighSideThresholdMethod = (method?: string | null): boolean =>
@@ -595,7 +588,6 @@ export type CompareModeSelectOption = {
   value: string;
   disabled: boolean;
   reasonKey?: string;
-  group: 'flat' | 'offset';
 };
 
 export const getCompareModeSelectOptions = ({
@@ -627,8 +619,7 @@ export const getCompareModeSelectOptions = ({
     return {
       value: mode,
       disabled,
-      reasonKey,
-      group: OFFSET_COMPARE_MODES.has(mode) ? 'offset' : 'flat'
+      reasonKey
     };
   });
 };

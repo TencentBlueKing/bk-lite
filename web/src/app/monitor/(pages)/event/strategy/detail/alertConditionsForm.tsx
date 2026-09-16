@@ -202,14 +202,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     () => getCompareValueKinds(compareMode),
     [compareMode]
   );
-  const flatCompareModes = useMemo(
-    () => compareModeOptions.filter((item) => item.group === 'flat'),
-    [compareModeOptions]
-  );
-  const offsetCompareModes = useMemo(
-    () => compareModeOptions.filter((item) => item.group === 'offset'),
-    [compareModeOptions]
-  );
   const sceneChips = useMemo(
     () =>
       getSceneChipStates({
@@ -447,19 +439,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                             : '100%'
                       }}
                     >
-                      {flatCompareModes
-                        .filter((item) => item.value !== COMPARE_MODE_TIMELEFT)
-                        .map(renderCompareOption)}
-                      {offsetCompareModes.length > 0 ? (
-                        <Select.OptGroup
-                          label={t('monitor.events.compareGroupOffset')}
-                        >
-                          {offsetCompareModes.map(renderCompareOption)}
-                        </Select.OptGroup>
-                      ) : null}
-                      {flatCompareModes
-                        .filter((item) => item.value === COMPARE_MODE_TIMELEFT)
-                        .map(renderCompareOption)}
+                      {compareModeOptions.map(renderCompareOption)}
                     </Select>
                     {compareKindOptions.length > 0 ? (
                       <Select

@@ -188,7 +188,6 @@
       "algorithmDeriv": "Slope",
       "algorithmGroupWindow": "Window stats",
       "algorithmGroupChange": "Change",
-      "compareGroupOffset": "Same window N ago",
       "compareModeDisabledPeriod": "Compare window cannot equal the aggregation period",
       "compareModeDisabledCountIf": "Count-if can only compare a point count, not another window",
       "compareModeDisabledTimeleft": "Time-left is only available with average, max, min, or last",
