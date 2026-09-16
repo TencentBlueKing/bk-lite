@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 import pytest
+from django.db import connection
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryNotificationDispatcher
@@ -14,11 +15,21 @@ from apps.apm.tasks import expire_apm_event_snapshot_payloads, persist_apm_event
 pytestmark = pytest.mark.django_db
 
 
+def _assert_outside_atomic():
+    extra = [block for block in connection.atomic_blocks if not getattr(block, "_from_testcase", False)]
+    assert extra == []
+    assert connection.savepoint_ids == []
+
+
 @pytest.fixture(autouse=True)
 def snapshot_object_storage(mocker):
+    def upload_outside_atomic(*args, **kwargs):
+        _assert_outside_atomic()
+        return "apm/test-snapshot.json.gz"
+
     mocker.patch(
         "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
-        return_value="apm/test-snapshot.json.gz",
+        side_effect=upload_outside_atomic,
     )
 
 
@@ -94,14 +105,42 @@ def test_persist_task_skips_empty_payload_and_exhausted_retries():
     assert exhausted == {"processed": 0, "available": 0, "unavailable": 0}
 
 
+def test_persist_task_marks_unavailable_when_upload_fails(mocker):
+    snapshot, _ = _trigger()
+
+    def fail_upload(*args, **kwargs):
+        _assert_outside_atomic()
+        raise RuntimeError("minio unavailable")
+
+    mocker.patch(
+        "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
+        side_effect=fail_upload,
+    )
+
+    result = persist_apm_event_snapshot_payloads.run()
+    snapshot.refresh_from_db()
+
+    assert result == {"processed": 1, "available": 0, "unavailable": 1}
+    assert snapshot.payload_status == ApmEventSnapshot.PayloadStatus.UNAVAILABLE
+    assert snapshot.payload_error_code == "object_storage_unavailable"
+    assert snapshot.pending_payload
+    assert snapshot.payload_attempts == 1
+    assert not ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).exists()
+
+
 def test_expire_task_clears_due_snapshot_payloads(mocker):
     snapshot, at = _trigger()
     persist_apm_event_snapshot_payloads.run()
     snapshot.refresh_from_db()
     snapshot.retention_expires_at = at - timedelta(seconds=1)
     snapshot.save(update_fields=("retention_expires_at", "updated_at"))
+
+    def delete_outside_atomic(payload_path):
+        _assert_outside_atomic()
+
     delete_payload = mocker.patch(
         "apps.apm.services.snapshots.ApmEventSnapshotStore._delete_payload_object",
+        side_effect=delete_outside_atomic,
     )
 
     result = expire_apm_event_snapshot_payloads.run()
@@ -112,3 +151,28 @@ def test_expire_task_clears_due_snapshot_payloads(mocker):
     assert snapshot.pending_payload == {}
     assert not ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).exists()
     delete_payload.assert_called_once()
+
+
+def test_expire_task_keeps_payload_when_delete_fails(mocker):
+    snapshot, at = _trigger()
+    persist_apm_event_snapshot_payloads.run()
+    snapshot.refresh_from_db()
+    snapshot.retention_expires_at = at - timedelta(seconds=1)
+    snapshot.save(update_fields=("retention_expires_at", "updated_at"))
+
+    def fail_delete(payload_path):
+        _assert_outside_atomic()
+        raise RuntimeError("minio unavailable")
+
+    mocker.patch(
+        "apps.apm.services.snapshots.ApmEventSnapshotStore._delete_payload_object",
+        side_effect=fail_delete,
+    )
+
+    result = expire_apm_event_snapshot_payloads.run()
+    snapshot.refresh_from_db()
+
+    assert result == {"expired": 0}
+    assert snapshot.payload_status == ApmEventSnapshot.PayloadStatus.UNAVAILABLE
+    assert snapshot.payload_error_code == "retention_delete_failed"
+    assert ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).exists()
