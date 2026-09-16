@@ -252,6 +252,43 @@ export class DataMapper {
   }
 
   /**
+   * encrypted 字段默认仍 URL 编码：host 族 `credential_encoding=url` 与
+   * postgres/mongodb DSN 会把口令嵌进 URL，Stargazer/Telegraf 依赖编码值。
+   * SNMPv3 与 HTTP 头/专用 password 字段是明文消费者（Sidecar 只 AES 解密），
+   * 编码后 Telegraf 会拿到 `%40` 而非 `@`。
+   */
+  static shouldUrlEncodeEncryptedSecret(
+    fieldName: string,
+    context: { collect_type?: string; config_type?: string | string[] }
+  ): boolean {
+    const name = String(fieldName || '');
+    if (name === 'ENV_AUTH_PASSWORD' || name === 'ENV_PRIV_PASSWORD') {
+      return false;
+    }
+    if (name === 'ENV_BEARER_TOKEN') {
+      return false;
+    }
+    if (name === 'ENV_PASSWORD') {
+      if (String(context.collect_type || '') === 'web') {
+        return false;
+      }
+      const pluginTypes = Array.isArray(context.config_type)
+        ? context.config_type
+        : context.config_type
+          ? [context.config_type]
+          : [];
+      if (
+        pluginTypes.some((type) =>
+          ['qcloud', 'windows_wmi', 'cisco_meraki'].includes(String(type))
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Auto 模式：将表单和表格数据转换为 API 请求参数
    */
   static transformAutoRequest(
@@ -293,8 +330,11 @@ export class DataMapper {
       context.formFields.forEach((field: any) => {
         const { name, transform_on_create, encrypted } = field;
         let fieldValue = formData[name];
-        // 如果字段标记为加密，使用 URL 编码
-        if (encrypted && fieldValue) {
+        if (
+          encrypted &&
+          fieldValue &&
+          this.shouldUrlEncodeEncryptedSecret(name, context)
+        ) {
           fieldValue = encodeURIComponent(String(fieldValue));
         }
         // 如果有 transform_on_create.mapping 配置，应用映射转换（auto 模式专用）
@@ -430,11 +470,14 @@ export class DataMapper {
         )
         .reduce((acc, fieldKey) => {
           let fieldValue = row[fieldKey];
-          // 检查该字段是否需要加密（从 tableColumns 中查找配置）
           const fieldConfig = context.tableColumns?.find(
             (f: any) => f.name === fieldKey
           );
-          if (fieldConfig?.encrypted && fieldValue) {
+          if (
+            fieldConfig?.encrypted &&
+            fieldValue &&
+            this.shouldUrlEncodeEncryptedSecret(fieldKey, context)
+          ) {
             fieldValue = encodeURIComponent(String(fieldValue));
           }
           acc[fieldKey] = fieldValue;
