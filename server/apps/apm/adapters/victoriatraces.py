@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import os
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -507,6 +508,139 @@ class VictoriaTracesTelemetryStore:
                 continue
             merged.append(replace(span, attributes={**base, **extra}))
         return replace(detail, spans=tuple(merged), truncated=truncated)
+
+    def get_span_details(self, keys: Sequence[tuple[str, str]]) -> dict[tuple[str, str], SpanDetail]:
+        wanted = list(dict.fromkeys((trace_id, span_id) for trace_id, span_id in keys if trace_id and span_id))
+        if not wanted:
+            return {}
+        ended_at = datetime.now(UTC) + timedelta(minutes=1)
+        started_at = ended_at - MAX_QUERY_WINDOW
+        traces_by_id = self._traces_from_span_rows(
+            self._query_span_structure_rows(wanted, started_at=started_at, ended_at=ended_at)
+        )
+        found: dict[tuple[str, str], SpanDetail] = {}
+        for trace_id, span_id in wanted:
+            detail = traces_by_id.get(trace_id)
+            if detail is None:
+                continue
+            span = next((item for item in detail.spans if item.span_id == span_id), None)
+            if span is not None:
+                found[(trace_id, span_id)] = span
+        attributes_by_key = self._fetch_span_details_attributes(
+            list(found),
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+        details: dict[tuple[str, str], SpanDetail] = {}
+        for key, span in found.items():
+            base = _row_detail_attributes(span.attributes)
+            extra = attributes_by_key.get(key)
+            details[key] = replace(span, attributes=base if extra is None else {**base, **extra})
+        return details
+
+    def _query_span_structure_rows(
+        self,
+        keys: list[tuple[str, str]],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> list[dict[str, Any]]:
+        if not keys:
+            return []
+        try:
+            return self._query_rows(
+                self._span_details_query(keys, fields_pipe=_trace_structure_fields_pipe()),
+                started_at,
+                ended_at,
+                limit=len(keys),
+            )
+        except TelemetryStoreUnavailable as exc:
+            if _is_response_too_large(exc) and len(keys) > 1:
+                mid = max(1, len(keys) // 2)
+                return self._query_span_structure_rows(
+                    keys[:mid],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                ) + self._query_span_structure_rows(
+                    keys[mid:],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+            raise
+
+    def _fetch_span_details_attributes(
+        self,
+        keys: list[tuple[str, str]],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> dict[tuple[str, str], dict[str, object]]:
+        attributes: dict[tuple[str, str], dict[str, object]] = {}
+        for offset in range(0, len(keys), TRACE_DETAIL_ATTR_BATCH):
+            attributes.update(
+                self._fetch_span_details_attribute_batch(
+                    keys[offset : offset + TRACE_DETAIL_ATTR_BATCH],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+            )
+        return attributes
+
+    def _fetch_span_details_attribute_batch(
+        self,
+        keys: list[tuple[str, str]],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> dict[tuple[str, str], dict[str, object]]:
+        if not keys:
+            return {}
+        wanted = set(keys)
+        try:
+            rows = self._query_rows(
+                self._span_details_query(keys),
+                started_at,
+                ended_at,
+                limit=len(keys),
+            )
+        except TelemetryStoreUnavailable as exc:
+            if _is_response_too_large(exc) and len(keys) > 1:
+                mid = max(1, len(keys) // 2)
+                left = self._fetch_span_details_attribute_batch(
+                    keys[:mid],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+                right = self._fetch_span_details_attribute_batch(
+                    keys[mid:],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+                return {**left, **right}
+            if _is_response_too_large(exc):
+                logger.warning(
+                    "event=apm_span_details_omitted failed_stage=get_span_details error_type=%s omitted_spans=%s",
+                    type(exc).__name__,
+                    1,
+                )
+                return {}
+            raise
+        result: dict[tuple[str, str], dict[str, object]] = {}
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            span_id = str(row.get("span_id", "")).strip()
+            key = (trace_id, span_id)
+            if not trace_id or not span_id or key not in wanted:
+                continue
+            result[key] = _row_detail_attributes(row)
+        return result
+
+    @staticmethod
+    def _span_details_query(keys: list[tuple[str, str]], *, fields_pipe: str = "") -> str:
+        quoted_traces = ",".join(_logsql_string(trace_id) for trace_id in dict.fromkeys(trace_id for trace_id, _ in keys))
+        quoted_spans = ",".join(_logsql_string(span_id) for span_id in dict.fromkeys(span_id for _, span_id in keys))
+        suffix = f" {fields_pipe}" if fields_pipe else ""
+        return f"trace_id:in({quoted_traces}) span_id:in({quoted_spans}) | limit {len(keys)}{suffix}"
 
     def _fetch_trace_span_attributes(
         self,

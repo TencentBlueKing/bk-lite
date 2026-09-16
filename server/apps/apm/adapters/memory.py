@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from apps.apm.services.contracts import (
     DeploymentReleaseQuery,
@@ -19,6 +19,7 @@ from apps.apm.services.contracts import (
     ServiceRed,
     SloMeasurement,
     SloMetricQuery,
+    SpanDetail,
     SpanPage,
     SpanSearchQuery,
     SpanSummary,
@@ -113,6 +114,20 @@ class InMemoryTraceStore:
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         return self._details.get(trace_id)
+
+    def get_span_details(self, keys: Sequence[tuple[str, str]]) -> dict[tuple[str, str], SpanDetail]:
+        details: dict[tuple[str, str], SpanDetail] = {}
+        for trace_id, span_id in keys:
+            key = (trace_id, span_id)
+            if key in details:
+                continue
+            detail = self._details.get(trace_id)
+            if detail is None:
+                continue
+            span = next((item for item in detail.spans if item.span_id == span_id), None)
+            if span is not None:
+                details[key] = span
+        return details
 
     def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         if query.sample_limit < 1 or query.sample_limit > 50:
