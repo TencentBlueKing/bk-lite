@@ -5,6 +5,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { Spin } from 'antd';
 import ChartEmptyState from '@/components/chart-empty-state';
 import { ChartData, MetricItem } from '@/app/monitor/types';
+import { useOptionalThemeTokens } from '@/theme';
 import { useECharts } from './useECharts';
 import { formatMetricValue } from '../utils/format';
 import { MetricUnit } from '../types';
@@ -88,6 +89,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
   onXRangeChange
 }) => {
   const dragStartRef = useRef<number | null>(null);
+  const themeTokens = useOptionalThemeTokens();
 
   const areaKeys = useMemo(() => getChartAreaKeys(data), [data]);
   const gapIntervals = useMemo(
@@ -204,10 +206,10 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
         axisLabel: {
           formatter: (val: number) => dayjs(val * 1000).format(xAxisTimeFormat),
           fontSize: 11,
-          color: '#475467'
+          color: themeTokens.chartAxisLabel
         },
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLine: { lineStyle: { color: themeTokens.chartAxisLine } },
         splitLine: { show: false }
       },
       yAxis: {
@@ -217,29 +219,29 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
         axisLabel: {
           formatter: (val: number) => allSeriesValuesAreZero && val !== 0 ? '' : formatAxisNumber(val),
           fontSize: 11,
-          color: '#475467'
+          color: themeTokens.chartAxisLabel
         },
-        splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' as const } },
+        splitLine: { lineStyle: { color: themeTokens.chartSplitLine, type: 'dashed' as const } },
         axisLine: { show: false },
         axisTick: { show: false }
       },
       tooltip: {
         trigger: 'axis' as const,
-        backgroundColor: 'rgba(255,255,255,0.96)',
-        borderColor: '#e8e8e8',
+        backgroundColor: themeTokens.chartTooltipBackground,
+        borderColor: themeTokens.chartTooltipBorder,
         borderWidth: 1,
-        textStyle: { fontSize: 12, color: '#333' },
+        textStyle: { fontSize: 12, color: themeTokens.chartTextPrimary },
         formatter: (params: any[]) => {
           if (!params.length) return '';
           const time = dayjs(Number(params[0].axisValue) * 1000).format('YYYY-MM-DD HH:mm:ss');
-          let html = `<div style="font-weight:500;margin-bottom:4px">${time}</div>`;
+          let html = `<div style="font-weight:500;margin-bottom:4px;color:${themeTokens.chartTextPrimary}">${time}</div>`;
 
           const timeKey = String(params[0].axisValue);
           const detailForTime = details[timeKey];
 
           if (detailForTime && detailForTime.length > 0) {
             detailForTime.forEach((d: { label: string; value: string }) => {
-              html += `<div style="display:flex;justify-content:space-between;gap:16px"><span>${d.label}</span><span style="font-weight:500">${d.value}</span></div>`;
+              html += `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:${themeTokens.chartTextSecondary}">${d.label}</span><span style="font-weight:500;color:${themeTokens.chartTextPrimary}">${d.value}</span></div>`;
             });
           } else {
             params.forEach((p: any, idx: number) => {
@@ -259,7 +261,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
                 displayUnit = formatted.unit;
               }
               const color = style.color || CHART_COLORS[idx % CHART_COLORS.length];
-              html += `<div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${displayValue} ${displayUnit}</span></div>`;
+              html += `<div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span style="color:${themeTokens.chartTextPrimary}">${displayValue} ${displayUnit}</span></div>`;
             });
           }
           return html;
@@ -267,7 +269,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       },
       series: seriesList
     };
-  }, [data, areaKeys, seriesStyles, unit, xAxisTimeFormat, leftAxisWidthOverride, details, gapIntervals]);
+  }, [data, areaKeys, seriesStyles, unit, xAxisTimeFormat, leftAxisWidthOverride, details, gapIntervals, themeTokens]);
 
   const handleZrMouseDown = useCallback((params: any) => {
     if (!allowSelect || !onXRangeChange) return;
