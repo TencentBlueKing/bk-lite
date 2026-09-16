@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, screen, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -128,6 +128,40 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
+
+function deferredBreakdown() {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+function errorBreakdownFixture(errorType: string, environment = 'production') {
+  return {
+    service_id: 'svc-1',
+    environment,
+    started_at: '2026-08-24T00:00:00Z',
+    ended_at: '2026-08-24T01:00:00Z',
+    data_state: 'available',
+    request_count: 10,
+    error_count: 4,
+    error_rate: 0.4,
+    failed_endpoints: [
+      { endpoint: 'POST /checkout', error_count: 3, request_count: 8, error_rate: 0.375 },
+    ],
+    other_error_count: 0,
+    error_types: [{
+      error_type: errorType,
+      message: '',
+      count: 2,
+      location: 'downstream',
+      last_seen_at: '2026-08-24T00:50:00Z',
+      sample_traces: [],
+    }],
+    recent_failures: [],
+  };
+}
 
 describe('APM 服务详情页头', () => {
   it('用面包屑「服务」回到服务目录，而不是依赖已选中的二级菜单', async () => {
@@ -356,5 +390,80 @@ describe('APM 服务详情错误 Tab', () => {
     expect(await screen.findByText('本窗无失败请求')).not.toBeNull();
     expect(screen.queryByText('失败端点')).toBeNull();
     expect(screen.queryByText('错误原因')).toBeNull();
+  }, 15_000);
+
+  it('时间窗切换后只展示后发请求的结果，先完成的新窗不被旧窗覆盖', async () => {
+    const pending: ReturnType<typeof deferredBreakdown>[] = [];
+    api.getServiceErrorBreakdown.mockImplementation(() => {
+      const request = deferredBreakdown();
+      pending.push(request);
+      return request.promise;
+    });
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    await user.click(await screen.findByRole('tab', { name: '错误' }));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    await user.click(screen.getByText('15m'));
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    await act(async () => {
+      pending[1].resolve(errorBreakdownFixture('current-15m-window'));
+    });
+    expect(await screen.findByText('current-15m-window')).not.toBeNull();
+
+    await act(async () => {
+      pending[0].resolve(errorBreakdownFixture('stale-1h-window'));
+    });
+    expect(screen.getByText('current-15m-window')).not.toBeNull();
+    expect(screen.queryByText('stale-1h-window')).toBeNull();
+  }, 15_000);
+
+  it('环境切换后只展示后发请求的结果，先完成的新环境不被旧环境覆盖', async () => {
+    api.getService.mockResolvedValue({
+      id: 'svc-1',
+      application_id: 'shop',
+      application_name: 'Shop',
+      namespace: 'shop',
+      name: 'checkout',
+      language: 'python',
+      first_seen_at: '2026-08-01T00:00:00Z',
+      last_seen_at: '2026-08-24T00:00:00Z',
+      archived_at: null,
+      archive_reason: '',
+      status: 'active',
+      environment_views: [
+        { environment: 'production', last_seen_at: '2026-08-24T00:00:00Z', status: 'active' },
+        { environment: 'staging', last_seen_at: '2026-08-24T00:00:00Z', status: 'active' },
+      ],
+      organization_ids: [10],
+    });
+    const pending: ReturnType<typeof deferredBreakdown>[] = [];
+    api.getServiceErrorBreakdown.mockImplementation(() => {
+      const request = deferredBreakdown();
+      pending.push(request);
+      return request.promise;
+    });
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    await user.click(await screen.findByRole('tab', { name: '错误' }));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    await user.click(screen.getByRole('combobox', { name: '选择环境' }));
+    await user.click(screen.getAllByTitle('staging').at(-1)!);
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    await act(async () => {
+      pending[1].resolve(errorBreakdownFixture('current-staging', 'staging'));
+    });
+    expect(await screen.findByText('current-staging')).not.toBeNull();
+
+    await act(async () => {
+      pending[0].resolve(errorBreakdownFixture('stale-production', 'production'));
+    });
+    expect(screen.getByText('current-staging')).not.toBeNull();
+    expect(screen.queryByText('stale-production')).toBeNull();
   }, 15_000);
 });

@@ -66,6 +66,7 @@ import { isInferredTopologyNode } from '@/app/apm/services/topology/topology-lay
 import ServiceErrorTab from '@/app/apm/services/[serviceId]/error-tab';
 import Permission from '@/components/permission';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
@@ -125,6 +126,7 @@ export default function ApmServiceDetailPage() {
   const [deployments, setDeployments] = useState<ApmDeploymentEvent[]>([]);
   const [deploymentsState, setDeploymentsState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [errorRequestGuard] = useState(createLatestRequestGuard);
   const queryWindow = useMemo(() => {
     const endedAt = new Date().toISOString();
     return {
@@ -282,6 +284,7 @@ export default function ApmServiceDetailPage() {
 
   const loadErrorBreakdown = useCallback(() => {
     if (!service || environment === undefined || authLoading) return;
+    const requestId = errorRequestGuard.begin();
     setErrorsState('loading');
     setErrorsError(undefined);
     void getServiceErrorBreakdown(service.id, {
@@ -291,19 +294,26 @@ export default function ApmServiceDetailPage() {
       sample_limit: 20,
     })
       .then((result) => {
-        setErrorBreakdown(result);
-        setErrorsState('ready');
+        errorRequestGuard.commitIfCurrent(requestId, () => {
+          setErrorBreakdown(result);
+          setErrorsState('ready');
+        });
       })
       .catch((error) => {
-        setErrorsError(error);
-        setErrorsState(catalogErrorKind(error));
+        errorRequestGuard.commitIfCurrent(requestId, () => {
+          setErrorsError(error);
+          setErrorsState(catalogErrorKind(error));
+        });
       });
-  }, [authLoading, environment, getServiceErrorBreakdown, queryWindow, service]);
+  }, [authLoading, environment, errorRequestGuard, getServiceErrorBreakdown, queryWindow, service]);
 
   useEffect(() => {
     if (activeTab !== 'errors') return;
     loadErrorBreakdown();
-  }, [activeTab, loadErrorBreakdown, refreshKey]);
+    return () => {
+      errorRequestGuard.invalidate();
+    };
+  }, [activeTab, errorRequestGuard, loadErrorBreakdown, refreshKey]);
 
   const exploreHref = service && red
     ? `/apm/explore/traces?${new URLSearchParams({
