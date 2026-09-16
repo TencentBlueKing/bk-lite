@@ -1,6 +1,6 @@
 NetworkService Gude PDU SNMP:
   name: Gude PDU（Telegraf）
-  desc: 面向 Gude PDU 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Gude PDU8310 的 SNMP 监控模板，可采集 PDU 有功功率、通道电流、通道电压、EPC8 插座开关状态回退、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -16,7 +16,7 @@ monitor_object_metric:
         位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
     interface_ifHCOutOctets:
       name: 接口发送流量速率
-      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
         位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     device_total_incoming_traffic:
       name: 设备接收总流量速率
@@ -78,8 +78,21 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP 层级
       desc: Spectracom NTP 当前 stratum 层级。
+    pdu_active_power_watts:
+      name: PDU 有功功率
+      desc: 来自 pdu8310PowerActive 与 pdu8310PowerIndex 的逐通道有功功率，单位为瓦。原始值已是瓦。
+    pdu_channel_current_amps:
+      name: PDU 通道电流
+      desc: 来自 pdu8310Current 与 pdu8310PowerIndex 的逐通道电流，单位为安培。原始值为毫安，查询除以 1000。
+    pdu_channel_voltage_volts:
+      name: PDU 通道电压
+      desc: 来自同一 pdu8310PowerTable 父表中 pdu8310Voltage 的逐通道电压，单位为伏特。原始值已是伏特。
+    pdu_outlet_power_state:
+      name: PDU 插座开关状态
+      desc: 来自 epc8PortState、epc8PortIndex 与 epc8PortName 的逐插座开关状态，供无计量的旧 EPC8 回退。0 为关、1 为开。此路径不采集电流。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础
     Traffic: 流量
     NetworkService: 网络服务
+    Power: 电力
