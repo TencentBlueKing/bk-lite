@@ -1268,7 +1268,21 @@ assert.equal(
     thresholdMethod: '>',
     thresholdValue: 50,
   }),
-  '这条策略在判断：CPU 使用率的P95，比 1 小时前同窗 高 50%。'
+  '这条策略在判断：CPU 使用率的P95，比 1 小时前高出 50%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU使用率',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'previous_window',
+    compareValueKind: 'percent',
+    compareModeLabel: '相对上一等长窗',
+    thresholdMethod: '>',
+    thresholdValue: 0,
+  }),
+  '这条策略在判断：CPU使用率的平均，比 上一等长窗高出 0%。'
 );
 assert.equal(
   buildPolicyRestatement({

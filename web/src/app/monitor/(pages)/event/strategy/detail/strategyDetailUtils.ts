@@ -397,6 +397,36 @@ export const ENABLED_COMPARE_MODES = [
 export const COMPARE_VALUE_KIND_DELTA = 'delta';
 export const COMPARE_VALUE_KIND_PERCENT = 'percent';
 export const COMPARE_VALUE_KIND_RATIO = 'ratio';
+
+const COMPARE_RESTATEMENT_BASELINE_KEYS: Record<
+  string,
+  { key: string; fallback: string }
+> = {
+  [COMPARE_MODE_PREVIOUS_WINDOW]: {
+    key: 'monitor.events.compareModePreviousWindowRestate',
+    fallback: '上一等长窗'
+  },
+  [COMPARE_MODE_OFFSET_1H]: {
+    key: 'monitor.events.compareModeOffset1hRestate',
+    fallback: '1 小时前'
+  },
+  [COMPARE_MODE_OFFSET_24H]: {
+    key: 'monitor.events.compareModeOffset24hRestate',
+    fallback: '24 小时前'
+  },
+  [COMPARE_MODE_OFFSET_7D]: {
+    key: 'monitor.events.compareModeOffset7dRestate',
+    fallback: '上周同期'
+  },
+  [COMPARE_MODE_OFFSET_30D]: {
+    key: 'monitor.events.compareModeOffset30dRestate',
+    fallback: '30 天前'
+  },
+  [COMPARE_MODE_BASELINE_4W]: {
+    key: 'monitor.events.compareModeBaseline4wRestate',
+    fallback: '近 4 周同窗均值'
+  }
+};
 export const COMPARE_VALUE_KIND_HOURS = 'hours';
 export const COUNT_IF_ALGORITHM = 'count_if_over_time';
 export const PER_SERIES_ALGORITHMS = ['rate', 'changes', 'deriv'];
@@ -1053,9 +1083,9 @@ export const buildPolicyRestatement = ({
   }
 
   const direction = isHighSideThresholdMethod(thresholdMethod)
-    ? t('monitor.events.policyRestatementHigh', '高')
+    ? t('monitor.events.policyRestatementHigh', '高出')
     : isLowSideThresholdMethod(thresholdMethod)
-      ? t('monitor.events.policyRestatementLow', '低')
+      ? t('monitor.events.policyRestatementLow', '低出')
       : t('monitor.events.policyRestatementDiff', '相差');
   let compared = valueWithUnit;
   if (compareValueKind === COMPARE_VALUE_KIND_PERCENT) {
@@ -1067,13 +1097,19 @@ export const buildPolicyRestatement = ({
       { value: valueText }
     );
   }
+  const baselineKey = compareMode
+    ? COMPARE_RESTATEMENT_BASELINE_KEYS[compareMode]
+    : undefined;
+  const baseline = baselineKey
+    ? t(baselineKey.key, baselineKey.fallback)
+    : compareModeLabel || '';
   return t(
     'monitor.events.policyRestatementCompare',
-      '这条策略在判断：{metric}的{algorithm}，比 {baseline} {direction} {value}。',
+    '这条策略在判断：{metric}的{algorithm}，比 {baseline}{direction} {value}。',
     {
       metric,
       algorithm: algo,
-      baseline: compareModeLabel || '',
+      baseline,
       direction,
       value: compared
     }
