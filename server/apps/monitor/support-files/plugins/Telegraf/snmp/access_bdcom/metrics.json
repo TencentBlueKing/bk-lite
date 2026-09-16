@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bdcom",
   "plugin": "Access BDCOM SNMP",
-  "plugin_desc": "BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。",
+  "plugin_desc": "BDCOM access-device SNMP collection under enterprise PEN 3320 (BDCOM-PROCESS-MIB, BDCOM-MEMORY-POOL-MIB, optional BDCOM-SYS). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB interface traffic, it collects control-plane CPU utilization (prefer bdpmCPUTotal5min, optional bdpmCPUTotal1min fallback), primary memory-pool used and free bytes (bdcomMemoryPoolUsed / bdcomMemoryPoolFree, selected by bdcomMemoryPoolName), and optional chassis temperature (bdenvTestPt1Measure). Memory utilization is computed as used / (used + free). PON, ONU and optical-power tables are not collected. Supported brands/models — BDCOM access devices and OLT (GP/EP series).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_bdcom'}) by (instance_id)",
   "name": "Access",
@@ -15,21 +15,76 @@
   ],
   "supplementary_indicators": [
     "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
+    "device_total_outgoing_traffic",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
     {
-      "metric_group": "Base",
-      "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
-      "display_name": "System Uptime",
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='access', __$labels__} or device_cpu_usage_1min{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
       "data_type": "Number",
-      "unit": "s",
+      "unit": "percent",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart, derived from IF-MIB sysUpTime."
+      "description": "Control-plane CPU utilization from BDCOM-PROCESS-MIB. Prefer bdpmCPUTotal5min; if the 5-minute reading is absent, fall back to bdpmCPUTotal1min. Reported directly as a percentage."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_used",
+      "query": "sum(device_memory_used{instance_type='access', name=~\"(?i)processor\", __$labels__}) by (instance_id) or sum(device_memory_used{instance_type='access', index=\"1\", __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Bytes in use in the BDCOM primary memory pool from bdcomMemoryPoolUsed. The primary pool is selected by bdcomMemoryPoolName (Processor), falling back to SNMP table index 1."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_free",
+      "query": "sum(device_memory_free{instance_type='access', name=~\"(?i)processor\", __$labels__}) by (instance_id) or sum(device_memory_free{instance_type='access', index=\"1\", __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free bytes remaining in the BDCOM primary memory pool from bdcomMemoryPoolFree. The primary pool is selected by bdcomMemoryPoolName (Processor), falling back to SNMP table index 1."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "(sum(device_memory_used{instance_type='access', name=~\"(?i)processor\", __$labels__}) by (instance_id) or sum(device_memory_used{instance_type='access', index=\"1\", __$labels__}) by (instance_id)) / ((sum(device_memory_used{instance_type='access', name=~\"(?i)processor\", __$labels__}) by (instance_id) or sum(device_memory_used{instance_type='access', index=\"1\", __$labels__}) by (instance_id)) + (sum(device_memory_free{instance_type='access', name=~\"(?i)processor\", __$labels__}) by (instance_id) or sum(device_memory_free{instance_type='access', index=\"1\", __$labels__}) by (instance_id))) * 100",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Primary memory-pool utilization of the BDCOM access device, computed as used / (used + free) * 100 from bdcomMemoryPoolUsed and bdcomMemoryPoolFree."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "System Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional chassis temperature from BDCOM-SYS bdenvTestPt1Measure, reported in degrees Celsius. Devices that do not expose this object simply omit the metric."
     },
     {
       "metric_group": "Traffic",
@@ -70,7 +125,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m]) or rate(interface_ifInOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -78,12 +133,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCInOctets counters."
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from IF-MIB inbound octet counters (prefer 64-bit ifHCInOctets)."
     },
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m]) or rate(interface_ifOutOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
       "display_name": "Device Total Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -91,7 +146,20 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCOutOctets counters."
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from IF-MIB outbound octet counters (prefer 64-bit ifHCOutOctets)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart, derived from IF-MIB sysUpTime."
     }
   ]
 }

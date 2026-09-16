@@ -558,6 +558,9 @@ class TraceStore(Protocol):
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         ...
 
+    def get_span_details(self, keys: Sequence[tuple[str, str]]) -> Mapping[tuple[str, str], SpanDetail]:
+        ...
+
     def service_error_breakdown(self, query: ServiceErrorBreakdownQuery) -> ServiceErrorBreakdown:
         ...
 

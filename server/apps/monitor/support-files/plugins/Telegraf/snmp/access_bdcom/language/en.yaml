@@ -1,7 +1,8 @@
 Access BDCOM SNMP:
   name: Access BDCOM SNMP
   desc: SNMP monitoring template for BDCOM access device. It reports system uptime,
-    per-port inbound traffic rate, and per-port outbound traffic rate
+    CPU utilization, primary memory-pool used and free bytes, optional system temperature,
+    and device inbound and outbound total traffic (IANA PEN 3320)
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -47,6 +48,10 @@ monitor_object_metric:
       name: Memory Total
       desc: Total physical memory capacity reported by the access device in bytes.
         This metric can be combined with free memory to derive overall memory utilization.
+    device_memory_used:
+      name: Memory Used
+      desc: Bytes currently in use in the access device primary memory pool. This
+        metric can be combined with free memory to derive overall memory utilization.
     device_memory_free:
       name: Memory Free
       desc: Available physical memory currently reported by the access device in bytes.
