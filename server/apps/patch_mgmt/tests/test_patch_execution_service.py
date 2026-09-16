@@ -197,21 +197,116 @@ def test_collect_install_impact_dry_runs_each_requirement_independently(monkeypa
     target = SimpleNamespace(id=23, os_type=OSType.LINUX)
     executed = []
 
-    def execute_command(_target, command, **_kwargs):
-        executed.append(command)
-        return {'stdout': '2 upgraded, 0 newly installed, 0 to remove'}
+    def execute_command(_target, command, **kwargs):
+        executed.append((command, kwargs.get('timeout')))
+        return {
+            'stdout': '\n'.join(
+                [
+                    'Inst pkg-a [1.0] (2.0)',
+                    'Inst pkg-c [1.1] (2.1)',
+                    '2 upgraded, 0 newly installed, 0 to remove',
+                ]
+            )
+        }
 
     monkeypatch.setattr(pes, '_execute_command', execute_command)
 
     impact = pes._collect_install_impact(target, [requirement, second], 'dry-run-1', 'apt')
 
-    assert len(executed) == 2
-    assert 'pkg-a' in executed[0] and 'pkg-b' in executed[0]
-    assert 'pkg;rm' not in executed[0]
-    assert 'pkg-c' not in executed[0] and 'pkg-c' in executed[1]
-    assert all('apt-get -s install' in command for command in executed)
-    assert all('dnf' not in command and 'yum' not in command for command in executed)
+    assert len(executed) == 1
+    command, timeout = executed[0]
+    assert timeout == 30
+    assert 'pkg-a' in command and 'pkg-b' in command and 'pkg-c' in command
+    assert 'pkg;rm' not in command
+    assert 'apt-get -s install' in command
+    assert 'dnf' not in command and 'yum' not in command
     assert impact[requirement.id]['summary'] == '2 upgraded, 0 newly installed, 0 to remove'
+    assert impact[second.id]['summary'] == '2 upgraded, 0 newly installed, 0 to remove'
+    assert impact[requirement.id]['upgrade'] == ['pkg-a (1.0 -> 2.0)']
+    assert impact[second.id]['upgrade'] == ['pkg-c (1.1 -> 2.1)']
+    assert 'pkg-c' not in str(impact[requirement.id]['upgrade'])
+    assert 'pkg-a' not in str(impact[second.id]['upgrade'])
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('count', 'remaining_timeout', 'expected_timeout'),
+    [
+        (50, None, 30),
+        (50, 60, 30),
+        (500, 12, 12),
+    ],
+)
+def test_collect_install_impact_batches_missing_requirements_into_one_rpc(
+    monkeypatch, count, remaining_timeout, expected_timeout
+):
+    requirements = []
+    for index in range(count):
+        pkg_name = f'pkg-{index}'
+        requirements.append(
+            SimpleNamespace(
+                id=index,
+                patch=SimpleNamespace(
+                    linux_detail=SimpleNamespace(package_names=(lambda name=pkg_name: [name])),
+                ),
+            )
+        )
+    target = SimpleNamespace(id=23, os_type=OSType.LINUX)
+    executed = []
+
+    def execute_command(_target, command, **kwargs):
+        executed.append((command, kwargs.get('timeout')))
+        return {'stdout': '0 upgraded, 0 newly installed, 0 to remove'}
+
+    monkeypatch.setattr(pes, '_execute_command', execute_command)
+
+    collect_kwargs = {}
+    if remaining_timeout is not None:
+        collect_kwargs['remaining_timeout'] = remaining_timeout
+    impact = pes._collect_install_impact(
+        target, requirements, 'dry-run-batch', 'apt', **collect_kwargs
+    )
+
+    assert len(executed) == 1
+    command, timeout = executed[0]
+    assert timeout == expected_timeout
+    assert 'pkg-0' in command
+    assert f'pkg-{count - 1}' in command
+    assert len(impact) == count
+    assert all(req.id in impact for req in requirements)
+
+
+@pytest.mark.unit
+def test_collect_install_impact_batch_failure_marks_every_requirement_without_fallback(monkeypatch):
+    requirement = SimpleNamespace(
+        id=17,
+        patch=SimpleNamespace(linux_detail=SimpleNamespace(package_names=lambda: ['pkg-a'])),
+    )
+    second = SimpleNamespace(
+        id=18,
+        patch=SimpleNamespace(linux_detail=SimpleNamespace(package_names=lambda: ['pkg-c'])),
+    )
+    target = SimpleNamespace(id=23, os_type=OSType.LINUX)
+    executed = []
+
+    def execute_command(_target, command, **_kwargs):
+        executed.append(command)
+        raise RuntimeError(
+            'Command execution failed: Process exited with status 1 | Output: '
+            'No match for argument: pkg-a\nError: Unable to find a match'
+        )
+
+    monkeypatch.setattr(pes, '_execute_command', execute_command)
+
+    impact = pes._collect_install_impact(target, [requirement, second], 'dry-run-fail', 'dnf')
+
+    assert len(executed) == 1
+    assert 'error' in impact[requirement.id]
+    assert 'error' in impact[second.id]
+    assert 'Unable to find a match' in impact[requirement.id]['error']
+    assert 'Unable to find a match' in impact[second.id]['error']
+    assert impact[requirement.id]['summary'] == ''
+    assert impact[second.id]['summary'] == ''
 
 
 @pytest.mark.django_db
