@@ -1,7 +1,9 @@
 NetworkService Geist PDU Environmental SNMP:
   name: Geist PDU Environmental (Telegraf)
-  desc: SNMP monitoring template for Geist network service device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Geist and Vertiv PDU environmental device. It
+    reports PDU active power, phase and outlet current, environment temperature and
+    humidity, per-port inbound traffic rate, per-port outbound traffic rate, and system
+    uptime (IANA PEN 21239).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -21,8 +23,8 @@ monitor_object_metric:
         ifInOctets on high-speed ports, keeping the rate accurate.
     interface_ifHCOutOctets:
       name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+      desc: This metric calculates the average rate of outbound bytes sent over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
         counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
         ifOutOctets on high-speed ports, keeping the rate accurate.
     device_total_incoming_traffic:
@@ -100,8 +102,40 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    pdu_active_power_watts:
+      name: PDU Active Power
+      desc: PDU total real power in watts from VERTIV-V5 pduTotalRealPower. Empty
+        PDU tables yield no rows. Persistently high values may indicate overload on
+        the PDU feed.
+    pdu_phase_current_amps:
+      name: PDU Phase Current
+      desc: PDU phase current in amperes from VERTIV-V5 pduPhaseCurrent. The SNMP
+        value is hundredths of an amp RMS and is scaled by /100. Empty phase tables
+        yield no rows.
+    pdu_line_current_amps:
+      name: PDU Line Current
+      desc: Optional PDU line current in amperes from VERTIV-V5 pduLineCurrent. The
+        SNMP value is hundredths of an amp RMS and is scaled by /100. Empty line tables
+        yield no rows.
+    pdu_outlet_current_amps:
+      name: PDU Outlet Current
+      desc: PDU outlet current in amperes from VERTIV-V5 pduOutletMeterCurrent. The
+        SNMP value is hundredths of an amp RMS and is scaled by /100. Empty outlet-meter
+        tables yield no rows.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Per-sensor environment temperature in degrees Celsius from VERTIV-V5 tempSensorTemp.
+        The SNMP value is tenths of a degree and is scaled by /10. When temperatureUnits
+        is present, 1 is Celsius and 0 is converted from Fahrenheit. Empty temperature
+        tables yield no rows.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Per-sensor relative humidity in percent from VERTIV-V5 humiditySensorValue.
+        The SNMP value is already 0-100 percent. Empty humidity tables yield no rows.
 monitor_object_metric_group:
   NetworkService:
     Base: Base
     Traffic: Traffic
     NetworkService: NetworkService
+    Power: Power
+    Environment: Environment

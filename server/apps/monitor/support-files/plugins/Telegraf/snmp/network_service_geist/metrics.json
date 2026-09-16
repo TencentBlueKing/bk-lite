@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_geist",
   "plugin": "NetworkService Geist PDU Environmental SNMP",
-  "plugin_desc": "Geist and Vertiv PDU, environmental monitor and remote power SNMP baseline child template for devices under Geist PEN 21239. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm internal, temperature sensor, airflow, relay, RPM, analog, outlet, device-availability and remote-power tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and PDU business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "Geist and Vertiv PDU and environmental SNMP child template for devices under Geist PEN 21239. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven VERTIV-V5 private increments under 1.3.6.1.4.1.21239.5 are pduTotalRealPower as pdu_active_power_watts, pduPhaseCurrent and optional pduLineCurrent plus pduOutletMeterCurrent as ampere readings scaled by /100, tempSensorTemp as env_temperature_celsius scaled by /10 with temperatureUnits (0=Fahrenheit, 1=Celsius), and humiditySensorValue as env_humidity_percent. CPU, memory, fan and PSU scalars are not invented. Airflow, RPM and relay trees are not collected in this pass. Supported brands/models - Geist and Vertiv IMD/PDU devices that expose the VERTIV-V5 tree and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_geist'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,144 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "pdu_active_power_watts",
+    "env_temperature_celsius",
+    "env_humidity_percent"
   ],
   "metrics": [
+    {
+      "metric_group": "Power",
+      "name": "pdu_active_power_watts",
+      "query": "pdu_active_power_watts{instance_type='network_service', __$labels__}",
+      "display_name": "PDU Active Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "PDU main index"
+        },
+        {
+          "name": "pduMainName",
+          "description": "PDU factory name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PDU total real power in watts from VERTIV-V5 pduTotalRealPower (1.3.6.1.4.1.21239.5.2.3.1.1.9). Empty PDU tables yield no rows. Persistently high values may indicate overload on the PDU feed."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_phase_current_amps",
+      "query": "pdu_phase_current_amps{instance_type='network_service', __$labels__} / 100",
+      "display_name": "PDU Phase Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "PDU phase index"
+        },
+        {
+          "name": "pduPhaseName",
+          "description": "PDU phase name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PDU phase current in amperes from VERTIV-V5 pduPhaseCurrent (1.3.6.1.4.1.21239.5.2.3.2.1.8). The SNMP value is hundredths of an amp RMS and is scaled by /100 in the query. Empty phase tables yield no rows."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_line_current_amps",
+      "query": "pdu_line_current_amps{instance_type='network_service', __$labels__} / 100",
+      "display_name": "PDU Line Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "PDU line index"
+        },
+        {
+          "name": "pduLineName",
+          "description": "PDU line name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional PDU line current in amperes from VERTIV-V5 pduLineCurrent (1.3.6.1.4.1.21239.5.2.3.4.1.4). The SNMP value is hundredths of an amp RMS and is scaled by /100 in the query. Empty line tables yield no rows."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_outlet_current_amps",
+      "query": "pdu_outlet_current_amps{instance_type='network_service', __$labels__} / 100",
+      "display_name": "PDU Outlet Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "PDU outlet meter index"
+        },
+        {
+          "name": "pduOutletMeterName",
+          "description": "PDU outlet name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PDU outlet current in amperes from VERTIV-V5 pduOutletMeterCurrent (1.3.6.1.4.1.21239.5.2.3.6.1.8). The SNMP value is hundredths of an amp RMS and is scaled by /100 in the query. Empty outlet-meter tables yield no rows."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "((env_temperature_celsius{instance_type='network_service', __$labels__} / 10) * on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 1)) or (((env_temperature_celsius{instance_type='network_service', __$labels__} / 10 - 32) * 5 / 9) * on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 0)) or (env_temperature_celsius{instance_type='network_service', __$labels__} / 10)",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Temperature sensor index"
+        },
+        {
+          "name": "tempSensorLabel",
+          "description": "Temperature sensor label"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor environment temperature in degrees Celsius from VERTIV-V5 tempSensorTemp (1.3.6.1.4.1.21239.5.2.4.1.5). The SNMP value is tenths of a degree and is scaled by /10. When temperatureUnits is present, 1 is Celsius and 0 is converted from Fahrenheit. Empty temperature tables yield no rows. Persistently high values may indicate cooling or ambient-temperature risk."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "env_humidity_percent{instance_type='network_service', __$labels__}",
+      "display_name": "Environment Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Humidity sensor index"
+        },
+        {
+          "name": "humiditySensorLabel",
+          "description": "Humidity sensor label"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor relative humidity in percent from VERTIV-V5 humiditySensorValue (1.3.6.1.4.1.21239.5.2.12.1.5). The SNMP value is already 0-100 percent. Empty humidity tables yield no rows."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +168,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +186,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Base",
