@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_rittal",
   "plugin": "NetworkService Rittal CMC III SNMP",
-  "plugin_desc": "Rittal CMC III SNMP baseline child template for network-service rack, environment, power and monitoring units under Rittal PEN 2606.7. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The current MIB facts confirm unit, power-load, current-consumption, device-status and variable tables, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private health, environment and PDU business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "Rittal CMC III SNMP child template for network-service rack, environment, power and monitoring units under Rittal PEN 2606.7 (RITTAL-CMC-III-MIB). Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. CMC-III variable-table rows are walked from cmcIIIVarTable (cmcIIIVarName, cmcIIIVarUnit, cmcIIIVarValueInt, optional cmcIIIVarValueStr) and normalized by unit and name into env_temperature_celsius, env_humidity_percent, pdu_active_power_watts and pdu_current_amps. Exact sensor names vary by configuration, so row indexes are never assumed. CPU and memory scalars are not invented. CMC-III control and command trees are not collected. Supported brands/models - Rittal CMC III units that expose RITTAL-CMC-III-MIB under PEN 2606.7 and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_rittal'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,101 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "env_temperature_celsius",
+    "env_humidity_percent",
+    "pdu_active_power_watts",
+    "pdu_current_amps"
   ],
   "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)degree[[:space:]]*C\", cmcIIIVarName=~\"(?i)temp\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "CMC-III variable table index"
+        },
+        {
+          "name": "cmcIIIVarName",
+          "description": "cmcIIIVarName"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor environment temperature in degrees Celsius, mapped from cmcIIIVarTable rows whose unit is degree C and whose name matches a temperature reading. Exact names vary by sensor configuration; row indexes are never assumed. Setpoint, hysteresis and description rows are excluded."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)(^%|[[:space:]]*%[[:space:]]*$|percent)\", cmcIIIVarName=~\"(?i)humid\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "display_name": "Environment Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "CMC-III variable table index"
+        },
+        {
+          "name": "cmcIIIVarName",
+          "description": "cmcIIIVarName"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor relative humidity in percent, mapped from cmcIIIVarTable rows whose unit is % or percent and whose name matches a humidity reading. Exact names vary by sensor configuration; row indexes are never assumed. Setpoint, hysteresis and description rows are excluded."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_active_power_watts",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)^[[:space:]]*W[[:space:]]*$\", cmcIIIVarName=~\"(?i)power\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "display_name": "PDU Active Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "CMC-III variable table index"
+        },
+        {
+          "name": "cmcIIIVarName",
+          "description": "cmcIIIVarName"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PDU active power in watts, mapped from cmcIIIVarTable rows whose unit is W and whose name matches a power reading. Exact names vary by sensor configuration; row indexes are never assumed. Setpoint, hysteresis and description rows are excluded."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_current_amps",
+      "query": "cmcIIIVar_cmcIIIVarValueInt{instance_type='network_service', cmcIIIVarUnit=~\"(?i)^[[:space:]]*A[[:space:]]*$\", cmcIIIVarName=~\"(?i)(current|amp)\", cmcIIIVarName!~\"(?i)(setpt|setpoint|hysteresis|descname)\", __$labels__}",
+      "display_name": "PDU Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "CMC-III variable table index"
+        },
+        {
+          "name": "cmcIIIVarName",
+          "description": "cmcIIIVarName"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PDU current in amperes, mapped from cmcIIIVarTable rows whose unit is A and whose name matches a current reading. Exact names vary by sensor configuration; row indexes are never assumed. Setpoint, hysteresis and description rows are excluded."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +125,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +143,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Base",
