@@ -1,7 +1,9 @@
 Transmission Exalt SNMP:
   name: Exalt (Telegraf)
-  desc: SNMP monitoring template for Exalt transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Exalt transmission device. It reports internal
+    temperature, received signal level, optional temperature alarm, optional link
+    state, per-port inbound traffic rate, per-port outbound traffic rate, and system
+    uptime (IANA PEN 25651).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -50,9 +52,23 @@ monitor_object_metric:
         pressure or unstable device services.
     device_temperature_celsius:
       name: Temperature
-      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
-        High values may indicate cooling problems, high ambient temperature or overloaded
-        hardware.
+      desc: Exalt internal temperature in degrees Celsius, read from locCurrentTemp.
+        The SNMP scalar is already in whole degrees. High values may indicate cooling
+        problems, high ambient temperature or overloaded hardware.
+    device_temp_alarm:
+      name: Temperature Alarm
+      desc: Optional Exalt temperature alarm from locTempAlarm. Values are normal,
+        minor or major. Some revisions omit this leaf; missing rows are skipped.
+    rsl_dbm:
+      name: Received Signal Level
+      desc: Exalt current received signal level in dBm, read from locCurrentRSL. The
+        SNMP scalar is already in whole dBm. A dropping RSL is an early sign of path
+        fade, antenna misalignment or radio degradation.
+    device_link_state:
+      name: Link State
+      desc: Optional Exalt microwave link alarm from locLinkState. Values are normal
+        (error-free), minor (errored connection) or major (no link). Some revisions
+        omit this leaf; missing rows are skipped.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A
@@ -70,4 +86,6 @@ monitor_object_metric_group:
     CPU: CPU
     Memory: Memory
     Temperature: Temperature
+    Status: Status
+    Radio: Radio
     Hardware Status: Hardware Status
