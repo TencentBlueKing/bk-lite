@@ -132,6 +132,11 @@ const api = {
   isLoading: false,
 };
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
+vi.mock('@/hooks/usePermissions', () => ({
+  default: () => ({
+    hasPermission: () => true,
+  }),
+}));
 vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
