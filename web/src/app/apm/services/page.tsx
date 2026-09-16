@@ -47,10 +47,10 @@ import type { ActiveAlertStatus } from '@/app/apm/components/application-card';
 import ServiceCatalogTable from '@/app/apm/components/service-catalog-table';
 import {
   alertStatusFromLevel,
-  alertKey,
   countActiveAlerts,
   expandServiceRows,
   indexEnabledSlos,
+  lookupActiveAlert,
   isAlertStatusFilter,
   isTimeWindow,
   metricKey,
@@ -344,7 +344,7 @@ export default function ApmServicesPage() {
   const filteredRows = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
     return rows.filter((item) => {
-      const alertStatus = alertStatusFromLevel(alertCounts.get(alertKey(item.serviceName, item.environment))?.level);
+      const alertStatus = alertStatusFromLevel(lookupActiveAlert(alertCounts, item.serviceId, item.serviceName, item.environment)?.level);
       const matchesKeyword = !normalizedKeyword
         || `${item.namespace} ${item.serviceName} ${item.applicationName}`.toLowerCase().includes(normalizedKeyword);
       const matchesStatus = statusFilter === undefined || statusFilter === alertStatus;
@@ -429,7 +429,7 @@ export default function ApmServicesPage() {
       const metric = redMetrics[metricKey(row.serviceId, row.environment)];
       if (metric) current.metrics.push(metric);
       if (metricFailureKeys.includes(metricKey(row.serviceId, row.environment))) current.metricUnavailable = true;
-      const activeAlert = alertCounts.get(alertKey(row.serviceName, row.environment));
+      const activeAlert = lookupActiveAlert(alertCounts, row.serviceId, row.serviceName, row.environment);
       current.alertCount += activeAlert?.count ?? 0;
       current.alertLevel = Math.min(current.alertLevel, activeAlert?.level ?? 5);
       summaries.set(row.namespace, current);
