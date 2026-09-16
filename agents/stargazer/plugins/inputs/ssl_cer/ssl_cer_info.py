@@ -80,6 +80,8 @@ class SslCerInfo:
         empty = [item for item in self.targets if not item["domain"]]
         if empty:
             return empty
+        if any(item["domain"] for item in self.targets):
+            return []
         return [{"inst_name": self.host, "domain": self.host}]
 
     async def list_all_resources(self):

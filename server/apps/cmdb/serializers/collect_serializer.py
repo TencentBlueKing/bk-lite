@@ -613,6 +613,11 @@ class CollectModelSerializer(AuthSerializer):
         for item in instances:
             if not isinstance(item, dict) or not str(item.get("inst_name") or "").strip():
                 raise serializers.ValidationError({"instances": "SSL 证书实例必须包含实例名"})
+            if not str(item.get("domain") or "").strip():
+                raise serializers.ValidationError({"instances": "SSL 证书实例必须包含域名"})
+            snapshot_model_id = item.get("model_id")
+            if snapshot_model_id and snapshot_model_id != "ssl_cer":
+                raise serializers.ValidationError({"instances": "采集任务与平台实例模型不匹配"})
             names.append(str(item.get("inst_name")).strip())
         if len(names) != len(set(names)):
             raise serializers.ValidationError({"instances": "同一任务中实例名不能重复"})

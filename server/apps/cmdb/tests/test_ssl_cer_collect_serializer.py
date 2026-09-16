@@ -112,3 +112,41 @@ def test_ssl_cer_serializer_accepts_named_instances_and_clears_ip_range():
     assert serializer.validated_data["driver_type"] == CollectDriverTypes.PROTOCOL
     assert serializer.validated_data["instances"][0]["inst_name"] == "rex-test"
     assert serializer.validated_data["instances"][0]["domain"] == "www.baidu.cn"
+
+
+def test_ssl_cer_serializer_rejects_empty_domain(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [
+            {
+                "inst_uuid": inst_uuid,
+                "model_id": "ssl_cer",
+                "inst_name": "rex-test",
+                "domain": "",
+            }
+            for inst_uuid in uuids
+        ],
+    )
+    serializer = _serializer(instances=[_ssl_cer_instance()])
+
+    assert serializer.is_valid() is False
+    assert "instances" in serializer.errors
+
+
+def test_ssl_cer_serializer_rejects_non_ssl_cer_model(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [
+            {
+                "inst_uuid": inst_uuid,
+                "model_id": "host",
+                "inst_name": "rex-test",
+                "domain": "www.baidu.cn",
+            }
+            for inst_uuid in uuids
+        ],
+    )
+    serializer = _serializer(instances=[_ssl_cer_instance()])
+
+    assert serializer.is_valid() is False
+    assert "instances" in serializer.errors

@@ -130,6 +130,22 @@ async def test_matched_host_does_not_attach_empty_domain_rows():
 
 
 @pytest.mark.asyncio
+async def test_unmatched_nonempty_targets_do_not_synthesize_host_identity():
+    collector = SslCerInfo(
+        {
+            "host": "www.example.com",
+            "ssl_cer_targets": '[{"inst_name":"rex-test","domain":"other.example"}]',
+        }
+    )
+    with patch.object(SslCerInfo, "_fetch_peer_der", return_value=b"unused"):
+        payload = await collector.list_all_resources()
+    rows = payload["result"]["ssl_cer"]
+    assert payload["success"] is True
+    assert rows == []
+    assert all(row.get("inst_name") not in {"www.example.com", "rex-test"} for row in rows)
+
+
+@pytest.mark.asyncio
 async def test_handshake_failure_does_not_rewrite_prior_success_rows():
     der = _self_signed_der(
         not_before=datetime(2023, 1, 1, tzinfo=timezone.utc),
