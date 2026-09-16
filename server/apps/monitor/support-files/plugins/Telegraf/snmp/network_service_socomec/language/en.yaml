@@ -1,7 +1,9 @@
 NetworkService Socomec iPDU UPS SNMP:
   name: Socomec iPDU UPS (Telegraf)
-  desc: SNMP monitoring template for Socomec iPDU UPS network service device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Socomec Net Vision UPS network service device. It
+    reports battery charge remaining, battery status, per-line output load, battery
+    voltage, per-port inbound traffic rate, per-port outbound traffic rate, and system
+    uptime (IANA PEN 4555).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -15,14 +17,14 @@ monitor_object_metric:
         device stability and identify unexpected reboots or failures.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+      desc: This metric indicates the average rate of inbound bytes received over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
         counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
         ifInOctets on high-speed ports, keeping the rate accurate.
     interface_ifHCOutOctets:
       name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+      desc: This metric calculates the average rate of outbound bytes sent over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
         counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
         ifOutOctets on high-speed ports, keeping the rate accurate.
     device_total_incoming_traffic:
@@ -100,8 +102,30 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    ups_battery_charge_percent:
+      name: UPS Battery Charge Remaining
+      desc: Estimated battery charge remaining in percent from SOCOMECUPS-MIB
+        upsEstimatedChargeRemaining on the Net Vision classic tree. The SNMP value
+        is already a percentage.
+    ups_battery_status:
+      name: UPS Battery Status
+      desc: Battery status from SOCOMECUPS-MIB upsBatteryStatus on the Net Vision
+        classic tree. Values follow the MIB enumeration unknown(1), batteryNormal(2),
+        batteryLow(3) and batteryDepleted(4).
+    ups_output_load_percent:
+      name: UPS Output Load
+      desc: Per-line output percent load from SOCOMECUPS-MIB upsOutputPercentLoad
+        on the Net Vision classic tree. The SNMP value is already a percentage. Empty
+        output-line tables yield no rows.
+    ups_battery_voltage:
+      name: UPS Battery Voltage
+      desc: Battery voltage in volts from SOCOMECUPS-MIB upsBatteryVoltage on the
+        Net Vision classic tree. The SNMP value is tenths of a volt and is scaled
+        by /10.
 monitor_object_metric_group:
   NetworkService:
     Base: Base
     Traffic: Traffic
     NetworkService: NetworkService
+    Power: Power
+    Status: Status
