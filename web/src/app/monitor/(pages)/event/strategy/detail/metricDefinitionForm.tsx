@@ -35,6 +35,8 @@ import {
   COUNT_IF_ALGORITHM,
   NEW_ALGORITHMS,
   PER_SERIES_ALGORITHMS,
+  formatAlgorithmDisplayLabel,
+  getAlgorithmShortName,
   groupAlgorithmOptions
 } from './strategyDetailUtils';
 
@@ -353,6 +355,20 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   placeholder={t('monitor.events.convergenceMethod')}
                   showSearch
                   optionFilterProp="label"
+                  filterOption={(input, option) => {
+                    const query = input.trim().toLowerCase();
+                    if (!query) return true;
+                    const label = String(option?.label || '').toLowerCase();
+                    const value = String(option?.value || '').toLowerCase();
+                    const shortName = getAlgorithmShortName(
+                      String(option?.value || '')
+                    ).toLowerCase();
+                    return (
+                      label.includes(query) ||
+                      value.includes(query) ||
+                      shortName.includes(query)
+                    );
+                  }}
                   onChange={onAlgorithmChange}
                 >
                   {groupedAlgorithmOptions.map((group) => (
@@ -364,12 +380,23 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                           : t('monitor.events.algorithmGroupWindow')
                       }
                     >
-                      {group.options.map((item) => (
+                      {group.options.map((item) => {
+                        const shortName = getAlgorithmShortName(
+                          String(item.value)
+                        );
+                        const showShort =
+                          Boolean(shortName) &&
+                          shortName !==
+                            String(item.label).trim().toUpperCase();
+                        return (
                         <Option
                           value={item.value}
                           key={item.value}
                           disabled={item.disabled}
-                          label={item.label}
+                          label={formatAlgorithmDisplayLabel(
+                            String(item.label),
+                            String(item.value)
+                          )}
                         >
                           <Tooltip
                             overlayInnerStyle={{
@@ -385,10 +412,20 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                                 : item.title
                             }
                           >
-                            <span className="flex w-full">{item.label}</span>
+                            <span className="inline-flex min-w-0 max-w-full items-baseline">
+                              <span className="shrink-0 text-[var(--color-text-1)]">
+                                {item.label}
+                              </span>
+                              {showShort ? (
+                                <span className="text-[var(--color-text-3)]">
+                                  （{shortName}）
+                                </span>
+                              ) : null}
+                            </span>
                           </Tooltip>
                         </Option>
-                      ))}
+                        );
+                      })}
                     </Select.OptGroup>
                   ))}
                 </Select>
