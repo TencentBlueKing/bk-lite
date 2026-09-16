@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Alert, Button, Select } from 'antd';
 import useApmApi from '@/app/apm/api';
@@ -9,6 +9,7 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import ApmIssueList from '@/app/apm/components/issue-list';
 import type { ApmIssue, ApmService } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
@@ -36,6 +37,12 @@ export default function ApmErrorsPage() {
   const [truncated, setTruncated] = useState(false);
   const [state, setState] = useState<PageState>('loading');
   const [loadingMore, setLoadingMore] = useState(false);
+  const [requestGuard] = useState(createLatestRequestGuard);
+  const requestIdRef = useRef(0);
+  const queryKeyRef = useRef('');
+  const nextCursorRef = useRef<string | null>(null);
+  const loadingMoreRef = useRef(false);
+  const queryKey = `${serviceId ?? ''}|${environment ?? ''}|${timeRange}`;
 
   useEffect(() => {
     if (!authLoading) void getServices().then(setServices).catch(() => setServices([]));
@@ -51,16 +58,49 @@ export default function ApmErrorsPage() {
   const selectedService = useMemo(() => services.find((service) => service.id === serviceId), [serviceId, services]);
   const load = useCallback((cursor?: string) => {
     if (authLoading) return;
-    if (cursor) setLoadingMore(true); else setState('loading');
+    let requestId: number;
+    if (cursor) {
+      if (loadingMoreRef.current) return;
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+      requestId = requestIdRef.current;
+    } else {
+      requestId = requestGuard.begin();
+      requestIdRef.current = requestId;
+      queryKeyRef.current = queryKey;
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+      setState('loading');
+      nextCursorRef.current = null;
+      setNextCursor(null);
+    }
+    const requestedQueryKey = queryKey;
+    const requestedCursor = cursor;
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - RANGE_MS[timeRange]);
     void getIssues({ service_namespace: selectedService?.namespace, service_name: selectedService?.name, environment, started_at: startedAt.toISOString(), ended_at: endedAt.toISOString(), cursor, limit: 50 })
       .then((page) => {
-        setItems((current) => cursor ? [...current, ...page.items] : page.items);
-        setNextCursor(page.next_cursor); setTruncated(page.truncated);
-        setState(page.items.length || cursor || page.next_cursor ? 'ready' : 'empty');
-      }).catch((error) => setState(catalogErrorKind(error))).finally(() => setLoadingMore(false));
-  }, [authLoading, environment, getIssues, selectedService, timeRange]);
+        requestGuard.commitIfCurrent(requestId, () => {
+          if (cursor) {
+            if (queryKeyRef.current !== requestedQueryKey || nextCursorRef.current !== requestedCursor) return;
+            setItems((current) => [...current, ...page.items]);
+          } else {
+            setItems(page.items);
+          }
+          nextCursorRef.current = page.next_cursor;
+          setNextCursor(page.next_cursor);
+          setTruncated(page.truncated);
+          setState(page.items.length || cursor || page.next_cursor ? 'ready' : 'empty');
+        });
+      }).catch((error) => {
+        requestGuard.commitIfCurrent(requestId, () => setState(catalogErrorKind(error)));
+      }).finally(() => {
+        requestGuard.commitIfCurrent(requestId, () => {
+          loadingMoreRef.current = false;
+          setLoadingMore(false);
+        });
+      });
+  }, [authLoading, environment, getIssues, queryKey, requestGuard, selectedService, timeRange]);
   useEffect(() => { load(); }, [load]);
 
   return (
