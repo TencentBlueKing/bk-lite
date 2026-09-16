@@ -188,6 +188,43 @@ class TestConvertMetricValues:
 
         assert out["data"]["result"][0]["values"] == [[100, "inf"]]
 
+    def test_mid_series_conversion_failure_keeps_all_original_values(self, mocker):
+        svc = MetricQueryService(_policy(metric_unit="bytes", calculation_unit="kibibytes"), {})
+        data = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "a"}, "values": [[100, "2048"]]},
+                    {"metric": {"instance_id": "b"}, "values": [[100, "2048"]]},
+                    {"metric": {"instance_id": "c"}, "values": [[100, "2048"]]},
+                ]
+            }
+        }
+        original_values = [[[100, "2048"]], [[100, "2048"]], [[100, "2048"]]]
+        calls = {"n": 0}
+
+        def _convert_values(values, _source_unit, _target_unit):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise ValueError("conversion failed on second series")
+            return [value / 1024 for value in values]
+
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.metric_query.UnitConverter.convert_values",
+            side_effect=_convert_values,
+        )
+
+        out = svc.convert_metric_values(data)
+        result_values = [item["values"][0][1] for item in out["data"]["result"]]
+        has_converted = any(float(value) == pytest.approx(2.0) for value in result_values)
+        has_raw = any(float(value) == pytest.approx(2048) for value in result_values)
+
+        assert not (has_converted and has_raw), f"mixed units: {result_values}"
+        for result, expected in zip(out["data"]["result"], original_values):
+            assert result["values"] == expected
+        assert data["data"]["result"][0]["values"] == [[100, "2048"]]
+        assert data["data"]["result"][1]["values"] == [[100, "2048"]]
+        assert data["data"]["result"][2]["values"] == [[100, "2048"]]
+
 
 class TestConvertThresholds:
     def test_legacy_empty_threshold_unit_uses_calculation_unit(self):
