@@ -32,6 +32,7 @@
       "recoveryThresholdPlaceholder": "与触发线相同",
       "consecutiveCountPrefix": "连续",
       "consecutivePeriodUnit": "个周期",
+      "consecutivePeriodUnitOne": "个周期",
       "noDataWindow": "检测窗口",
       "editPolicy": "编辑策略",
       "setPeriod": "请选择检测周期，用于测量收集监控数据的时间范围。",

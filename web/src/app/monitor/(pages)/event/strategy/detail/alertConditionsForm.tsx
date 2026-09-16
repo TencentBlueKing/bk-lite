@@ -32,7 +32,10 @@ import {
   type SceneChipId
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
-import AlertDurationFields from './alertDurationFields';
+import AlertDurationFields, {
+  STRATEGY_CONDITION_LABEL_CLASS,
+  STRATEGY_CONDITION_LABEL_WIDTH
+} from './alertDurationFields';
 
 const { Option } = Select;
 const COMPARE_KIND_SELECT_WIDTH = 108;
@@ -373,7 +376,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               <Form.Item
                 colon={false}
                 label={
-                  <span className="w-[100px] font-normal text-[var(--color-text-3)]">
+                  <span className={`${STRATEGY_CONDITION_LABEL_CLASS} font-normal text-[var(--color-text-3)]`}>
                     {t('monitor.events.sceneChipCommon')}
                   </span>
                 }
@@ -416,7 +419,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               {!isEnumMetric && (
                 <Form.Item
                   label={
-                    <span className="w-[100px]">
+                    <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                       {t('monitor.events.compareBaseline')}
                     </span>
                   }
@@ -461,7 +464,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   <Form.Item
                     required
                     label={
-                      <span className="w-[100px]">
+                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                         {t('monitor.events.forecastTarget')}
                       </span>
                     }
@@ -493,7 +496,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   </Form.Item>
                   <Form.Item
                     label={
-                      <span className="w-[100px]">
+                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                         {t('monitor.events.forecastLookback')}
                       </span>
                     }
@@ -526,7 +529,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               <Form.Item<StrategyFields>
                 name="threshold"
                 label={
-                  <span className="w-[100px]">
+                  <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                     {t('monitor.events.alertThreshold')}
                   </span>
                 }
@@ -547,7 +550,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   unitAddonLabel={recoveryThresholdUnitLabel}
                 />
               </Form.Item>
-              <p className="mb-4 ml-[100px] text-[13px] leading-[22px] text-[var(--color-text-3)]">
+              <p
+                className="mb-4 text-[13px] leading-[22px] text-[var(--color-text-3)]"
+                style={{ marginLeft: STRATEGY_CONDITION_LABEL_WIDTH }}
+              >
                 {restatement}
               </p>
               <AlertDurationFields

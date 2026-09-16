@@ -16,6 +16,10 @@ const NO_DATA_LEVEL_OPTIONS = [
 
 const FIELD_NUMBER_CLASS = 'w-[200px]';
 
+export const STRATEGY_CONDITION_LABEL_WIDTH = 160;
+export const STRATEGY_CONDITION_LABEL_CLASS =
+  'inline-block w-[160px] whitespace-nowrap';
+
 interface RecoveryMethodOption {
   value?: string | number;
   label?: React.ReactNode;
@@ -43,12 +47,15 @@ interface AlertDurationFieldsProps {
 }
 
 const fieldLabel = (text: string) => (
-  <span className="w-[100px]">{text}</span>
+  <span className={STRATEGY_CONDITION_LABEL_CLASS}>{text}</span>
 );
 
 const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
   const { t } = useTranslation();
   const noDataEnabled = props.noDataAlertLevel !== 'none';
+  const triggerCount = Form.useWatch('trigger_count');
+  const recoveryCount = Form.useWatch('recovery_condition');
+  const consecutivePrefix = t('monitor.events.consecutiveCountPrefix');
 
   return (
     <>
@@ -61,8 +68,8 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
           min={1}
           precision={0}
           className={FIELD_NUMBER_CLASS}
-          addonBefore={t('monitor.events.consecutiveCountPrefix')}
-          addonAfter={t('monitor.events.consecutivePeriodUnit')}
+          addonBefore={consecutivePrefix || undefined}
+          addonAfter={consecutivePeriodUnit(t, triggerCount)}
         />
       </Form.Item>
       <Form.Item<StrategyFields>
@@ -73,8 +80,8 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
           min={1}
           precision={0}
           className={FIELD_NUMBER_CLASS}
-          addonBefore={t('monitor.events.consecutiveCountPrefix')}
-          addonAfter={t('monitor.events.consecutivePeriodUnit')}
+          addonBefore={consecutivePrefix || undefined}
+          addonAfter={consecutivePeriodUnit(t, recoveryCount)}
         />
       </Form.Item>
       <Form.Item label={fieldLabel(t('monitor.events.recoveryThreshold'))}>
@@ -245,6 +252,15 @@ function RecoveryThresholdInput({
       />
     </Space.Compact>
   );
+}
+
+function consecutivePeriodUnit(
+  t: (id: string) => string,
+  count: number | string | null | undefined
+) {
+  return Number(count) === 1
+    ? t('monitor.events.consecutivePeriodUnitOne')
+    : t('monitor.events.consecutivePeriodUnit');
 }
 
 function setNoDataEnabled(props: AlertDurationFieldsProps, enabled: boolean) {
