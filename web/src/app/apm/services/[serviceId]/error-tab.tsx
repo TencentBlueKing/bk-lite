@@ -351,25 +351,39 @@ function SectionTitle({ children, hint }: { children: ReactNode; hint?: string }
 function SampleTraceLinks({ traces }: { traces: ApmServiceErrorType['sample_traces'] }) {
   const { t } = useTranslation();
   if (!traces.length) return <span className="text-xs text-[var(--color-text-3)]">—</span>;
-  const endpoint = traces[0].endpoint;
+
+  const groups: Array<{ endpoint: string; samples: Array<{ sample: ApmServiceErrorType['sample_traces'][number]; index: number }> }> = [];
+  traces.forEach((sample, index) => {
+    const group = groups.find((item) => item.endpoint === sample.endpoint);
+    if (group) {
+      group.samples.push({ sample, index });
+      return;
+    }
+    groups.push({ endpoint: sample.endpoint, samples: [{ sample, index }] });
+  });
+
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <span className="truncate font-mono text-xs text-[var(--color-text-2)]" title={endpoint}>{endpoint}</span>
-      <div className="flex flex-wrap gap-1">
-        {traces.map((sample, index) => (
-          <Link
-            key={`${sample.trace_id}:${sample.span_id}`}
-            href={`/apm/explore/traces/${sample.trace_id}`}
-            aria-label={t('apm.serviceDetail.sampleTraceLabel', '{endpoint} · 样本 {n}', {
-              endpoint: sample.endpoint,
-              n: index + 1,
-            })}
-            className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-[var(--color-fill-1)] px-1.5 font-mono text-[11px] font-medium tabular-nums text-[var(--color-primary)] transition-colors duration-150 hover:bg-[var(--color-primary-bg-active)] hover:text-[var(--color-primary)]"
-          >
-            {index + 1}
-          </Link>
-        ))}
-      </div>
+      {groups.map((group) => (
+        <div key={group.endpoint} className="flex min-w-0 flex-col gap-1">
+          <span className="truncate font-mono text-xs text-[var(--color-text-2)]" title={group.endpoint}>{group.endpoint}</span>
+          <div className="flex flex-wrap gap-1">
+            {group.samples.map(({ sample, index }) => (
+              <Link
+                key={`${sample.trace_id}:${sample.span_id}`}
+                href={`/apm/explore/traces/${sample.trace_id}`}
+                aria-label={t('apm.serviceDetail.sampleTraceLabel', '{endpoint} · 样本 {n}', {
+                  endpoint: sample.endpoint,
+                  n: index + 1,
+                })}
+                className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-[var(--color-fill-1)] px-1.5 font-mono text-[11px] font-medium tabular-nums text-[var(--color-primary)] transition-colors duration-150 hover:bg-[var(--color-primary-bg-active)] hover:text-[var(--color-primary)]"
+              >
+                {index + 1}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

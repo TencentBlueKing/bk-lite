@@ -289,6 +289,51 @@ describe('APM 服务详情错误 Tab', () => {
     expect(within(recentSection!).getByText('POST /checkout')).not.toBeNull();
   }, 15_000);
 
+  it('同一错误类型的不同端点样本各自展示端点标签和调用链', async () => {
+    api.getServiceErrorBreakdown.mockResolvedValue({
+      service_id: 'svc-1',
+      environment: 'production',
+      started_at: '2026-08-24T00:00:00Z',
+      ended_at: '2026-08-24T01:00:00Z',
+      data_state: 'available',
+      request_count: 10,
+      error_count: 2,
+      error_rate: 0.2,
+      failed_endpoints: [],
+      other_error_count: 0,
+      error_types: [{
+        error_type: 'timeout',
+        message: '',
+        count: 2,
+        location: 'entry',
+        last_seen_at: '2026-08-24T00:50:00Z',
+        sample_traces: [{
+          trace_id: 'd'.repeat(32),
+          span_id: '4'.repeat(16),
+          endpoint: 'POST /orders',
+          started_at: '2026-08-24T00:50:00Z',
+        }, {
+          trace_id: 'e'.repeat(32),
+          span_id: '5'.repeat(16),
+          endpoint: 'GET /inventory',
+          started_at: '2026-08-24T00:49:00Z',
+        }],
+      }],
+      recent_failures: [],
+    });
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServiceDetailPage />);
+    await user.click(await screen.findByRole('tab', { name: '错误' }));
+
+    expect(await screen.findByText('timeout')).not.toBeNull();
+    const typeSection = screen.getByText('错误原因').closest('section');
+    expect(typeSection).not.toBeNull();
+    expect(within(typeSection!).getByText('POST /orders')).not.toBeNull();
+    expect(within(typeSection!).getByText('GET /inventory')).not.toBeNull();
+    expect(screen.getByRole('link', { name: /POST \/orders/ }).getAttribute('href')).toBe(`/apm/explore/traces/${'d'.repeat(32)}`);
+    expect(screen.getByRole('link', { name: /GET \/inventory/ }).getAttribute('href')).toBe(`/apm/explore/traces/${'e'.repeat(32)}`);
+  }, 15_000);
+
   it('没有失败请求时只显示空态，不展示三个列表区块', async () => {
     api.getServiceErrorBreakdown.mockResolvedValue({
       service_id: 'svc-1',
