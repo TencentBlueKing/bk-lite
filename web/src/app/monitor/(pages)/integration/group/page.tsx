@@ -303,9 +303,9 @@ const GroupPage = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 gap-2.5 overflow-hidden">
       <ResizableSidebar collapseStorageKey="monitor.integration.group.sidebarCollapsed">
-        <div className="flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-[var(--color-bg-1)] p-[20px_10px]">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-y-auto overflow-x-hidden bg-[var(--color-bg-1)] px-2.5 py-5">
           <TreeSelector
             showAllMenu
             data={treeData}
@@ -315,8 +315,8 @@ const GroupPage = () => {
           />
         </div>
       </ResizableSidebar>
-      <div className="flex h-full min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-[20px]">
-        <div className="mb-[10px] flex min-w-0 shrink-0 items-center justify-between gap-3">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
+        <div className="mb-4 flex min-w-0 shrink-0 items-center justify-between gap-3">
           <Input
             allowClear
             className="w-full max-w-[320px] min-w-0"

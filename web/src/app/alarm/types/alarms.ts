@@ -376,7 +376,7 @@ export interface AlarmTableProps {
   dataSource: TableDataItem[];
   pagination?: Pagination;
   loading: boolean;
-  tableScrollY: string;
+  tableScrollY?: string;
   selectedRowKeys: React.Key[];
   onChange: (pag: any) => void;
   onRefresh: () => void;

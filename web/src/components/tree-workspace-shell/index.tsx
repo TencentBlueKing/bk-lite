@@ -24,10 +24,10 @@ function TreeWorkspaceShell<TSortData = unknown>({
   sidebarMode = 'fixed',
   collapseStorageKey,
   sidebarClassName = '',
-  sidebarContentClassName = 'h-[calc(100vh-146px)] w-full overflow-y-auto overflow-x-hidden bg-[var(--color-bg-1)] px-[10px] py-5',
+  sidebarContentClassName = 'flex h-full min-h-0 w-full flex-col overflow-y-auto overflow-x-hidden bg-[var(--color-bg-1)] px-2.5 py-5',
   treeContainerClassName = '',
-  contentClassName = 'flex-1 min-w-0 bg-[var(--color-bg-1)] p-5',
-  containerClassName = 'flex w-full overflow-hidden',
+  contentClassName = 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5',
+  containerClassName = 'flex h-full min-h-0 w-full min-w-0 gap-2.5 overflow-hidden',
 }: TreeWorkspaceShellProps<TSortData>) {
   const sidebarContent = (
     <div className={sidebarContentClassName}>

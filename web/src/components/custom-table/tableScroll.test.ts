@@ -32,6 +32,16 @@ describe('resolveTableScroll fill width', () => {
     }).x).toBeUndefined();
   });
 
+  it('omits y when the table should hug its rows instead of filling leftover viewport', () => {
+    expect(resolveTableScroll({
+      calculatedScrollX: undefined,
+      containerWidth: 1280,
+      scroll: { y: 'auto' },
+      calculatedScrollY: undefined,
+      hasData: true,
+    }).y).toBeUndefined();
+  });
+
   it('leaves an explicit numeric x unchanged', () => {
     expect(resolveTableScroll({
       calculatedScrollX: 900,

@@ -441,7 +441,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   );
 
   const handlerOptions = useMemo(() => {
-    const options = handlerUsers.map((item) => ({
+    const options: Array<{ value: string | number; label: string }> = handlerUsers.map((item) => ({
       value: item.id,
       label: formatUserName(item),
     }));

@@ -394,7 +394,10 @@ const Strategy: React.FC = () => {
   };
 
   return (
-    <Spin spinning={treeLoading} className="block h-full min-h-0 w-full min-w-0 max-w-full">
+    <Spin
+      spinning={treeLoading}
+      wrapperClassName="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col [&>.ant-spin-container]:flex [&>.ant-spin-container]:h-full [&>.ant-spin-container]:min-h-0 [&>.ant-spin-container]:flex-1 [&>.ant-spin-container]:flex-col"
+    >
       <div className={assetStyle.asset}>
         <ResizableSidebar collapseStorageKey="monitor.event.strategy.sidebarCollapsed">
           <div className={assetStyle.assetTree}>

@@ -174,12 +174,13 @@ export default function NotificationTemplatesPage() {
     <>
       {messageContextHolder}
       {modalContextHolder}
+      <div className="flex h-full min-h-0 w-full flex-1 flex-col">
       <Introduction
         title={t('settings.notificationTemplate.title')}
         message={t('settings.notificationTemplate.message')}
       />
-      <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
-        <div className="mb-5 flex flex-wrap items-center justify-end gap-2">
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="mb-5 flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Input.Search
             allowClear
             value={search}
@@ -194,16 +195,18 @@ export default function NotificationTemplatesPage() {
             </Button>
           </PermissionWrapper>
         </div>
-        <CustomTable
-          rowKey="id"
-          size="middle"
-          loading={loading}
-          columns={columns}
-          dataSource={items}
-          pagination={pagination}
-          onChange={(next) => void load(next.current || 1, next.pageSize || 20)}
-          scroll={{ y: 'calc(100vh - 440px)' }}
-        />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <CustomTable
+            rowKey="id"
+            size="middle"
+            loading={loading}
+            columns={columns}
+            dataSource={items}
+            pagination={pagination}
+            onChange={(next) => void load(next.current || 1, next.pageSize || 20)}
+          />
+        </div>
+      </div>
       </div>
     </>
   );
