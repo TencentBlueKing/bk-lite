@@ -11,7 +11,73 @@ def format_time(param):
     return f"n.{field} >= '{start}' AND n.{field} <= '{end}'"
 
 
+CLOUD_ID_FIELDS = frozenset({"cloud", "cloud_id"})
+
+
+def parse_cloud_id_value(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.lstrip("-").isdigit():
+            return int(text)
+    return None
+
+
+def coerce_cloud_id_properties(properties):
+    if not isinstance(properties, dict):
+        return properties
+    result = None
+    for field in CLOUD_ID_FIELDS:
+        if field not in properties:
+            continue
+        parsed = parse_cloud_id_value(properties[field])
+        if parsed is None or properties[field] == parsed:
+            continue
+        if result is None:
+            result = dict(properties)
+        result[field] = parsed
+    return properties if result is None else result
+
+
+def attr_values_equal(attr, left, right):
+    if attr in CLOUD_ID_FIELDS:
+        left_parsed = parse_cloud_id_value(left)
+        right_parsed = parse_cloud_id_value(right)
+        if left_parsed is not None and right_parsed is not None:
+            return left_parsed == right_parsed
+    return left == right
+
+
+def format_cloud_id_eq(param):
+    field = param["field"]
+    parsed = parse_cloud_id_value(param["value"])
+    if parsed is None:
+        value = param["value"]
+        return f"n.{field} = '{value}'"
+    return f"(n.{field} = {parsed} OR n.{field} = '{parsed}')"
+
+
+def format_cloud_id_eq_params(param, collector):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    parsed = parse_cloud_id_value(param["value"])
+    if parsed is None:
+        param_name = collector.add_param("" if param.get("value") is None else str(param["value"]), prefix="str")
+        return f"n.{field} = {param_name}"
+    int_name = collector.add_param(parsed, prefix="int")
+    str_name = collector.add_param(str(parsed), prefix="str")
+    return f"(n.{field} = {int_name} OR n.{field} = {str_name})"
+
+
 def format_str_eq(param):
+    if param.get("field") in CLOUD_ID_FIELDS:
+        return format_cloud_id_eq(param)
     field = param["field"]
     value = param["value"]
     return f"n.{field} = '{value}'"
@@ -50,6 +116,8 @@ def format_user_in(param):
 
 
 def format_int_eq(param):
+    if param.get("field") in CLOUD_ID_FIELDS:
+        return format_cloud_id_eq(param)
     field = param["field"]
     value = param["value"]
     return f"n.{field} = {value}"
@@ -234,6 +302,8 @@ def format_time_params(param, collector):
 
 def format_str_eq_params(param, collector):
     """参数化版本：str="""
+    if param.get("field") in CLOUD_ID_FIELDS:
+        return format_cloud_id_eq_params(param, collector)
     from apps.cmdb.graph.validators import CQLValidator
 
     field = CQLValidator.validate_field(param["field"])
@@ -296,6 +366,8 @@ def format_user_in_params(param, collector):
 
 def format_int_eq_params(param, collector):
     """参数化版本：int="""
+    if param.get("field") in CLOUD_ID_FIELDS:
+        return format_cloud_id_eq_params(param, collector)
     from apps.cmdb.graph.validators import CQLValidator
 
     field = CQLValidator.validate_field(param["field"])

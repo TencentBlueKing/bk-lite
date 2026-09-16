@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.cmdb.services.host_sync_identity import build_host_inst_name, is_unique_conflict, normalize_link_id, resolve_host_identity
+from apps.cmdb.services.host_sync_identity import (
+    build_host_inst_name,
+    is_unique_conflict,
+    normalize_link_id,
+    resolve_host_identity,
+    should_refresh_host_inst_name,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
@@ -326,7 +332,6 @@ class CmdbModuleIngestService:
             raw=raw,
             node_id=node_id,
             monitor_id=monitor_id,
-            source_module=source_module,
         )
 
         if model_id == "host":
@@ -614,14 +619,12 @@ class CmdbModuleIngestService:
         raw: dict[str, Any],
         node_id: str | None,
         monitor_id: str | None = None,
-        source_module: str = "",
     ) -> dict[str, Any]:
         if model_id == "host":
             return cls._build_host_desired(
                 raw=raw,
                 node_id=node_id,
                 monitor_id=monitor_id,
-                source_module=source_module,
             )
         return cls._build_ip_only_desired(model_id=model_id, raw=raw, node_id=node_id, monitor_id=monitor_id)
 
@@ -632,7 +635,6 @@ class CmdbModuleIngestService:
         raw: dict[str, Any],
         node_id: str | None,
         monitor_id: str | None = None,
-        source_module: str = "",
     ) -> dict[str, Any]:
         ip = cls._extract_ip(raw)
         cloud_raw = raw.get("cloud_region_id") if "cloud_region_id" in raw else raw.get("cloud")
@@ -642,17 +644,11 @@ class CmdbModuleIngestService:
             cloud = None
 
         organization = NodeMgmtSyncService._normalize_org_ids(raw.get("organization_ids") if "organization_ids" in raw else raw.get("organization"))
-        ip_cloud_name = build_host_inst_name(
+        inst_name = build_host_inst_name(
             ip=ip,
             cloud_name=raw.get("cloud_region_name"),
             cloud_id=cloud,
         )
-        if source_module == "node_mgmt":
-            inst_name = ip_cloud_name
-        else:
-            inst_name = str(raw.get("name") or raw.get("inst_name") or "").strip()
-            if not inst_name:
-                inst_name = ip_cloud_name
 
         os_type = NodeMgmtSyncService._map_host_os_type(raw.get("operating_system") or raw.get("os_type"))
 
@@ -763,7 +759,10 @@ class CmdbModuleIngestService:
         update_fields: tuple[str, ...],
     ) -> dict[str, Any]:
         changes: dict[str, Any] = {}
+        skip_inst_name = "cloud" in update_fields and not should_refresh_host_inst_name(existing, desired)
         for field in update_fields:
+            if field == "inst_name" and skip_inst_name:
+                continue
             if field not in desired:
                 continue
             value = desired.get(field)

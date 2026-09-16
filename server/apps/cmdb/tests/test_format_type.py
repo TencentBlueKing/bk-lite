@@ -148,3 +148,39 @@ def test_format_id_eq_params():
 
 def test_format_type_params_map_complete():
     assert set(ft.FORMAT_TYPE_PARAMS.keys()) == set(ft.FORMAT_TYPE.keys())
+
+
+def test_cloud_id_eq_matches_int_and_legacy_string():
+    assert ft.format_int_eq({"field": "cloud", "value": 1}) == "(n.cloud = 1 OR n.cloud = '1')"
+    assert ft.format_str_eq({"field": "cloud", "value": "2"}) == "(n.cloud = 2 OR n.cloud = '2')"
+    assert ft.format_str_eq({"field": "cloud_id", "value": "3"}) == "(n.cloud_id = 3 OR n.cloud_id = '3')"
+    assert ft.format_str_eq({"field": "name", "value": "host"}) == "n.name = 'host'"
+
+
+def test_cloud_id_eq_params_matches_int_and_legacy_string():
+    collector = ft.ParameterCollector()
+    out = ft.format_int_eq_params({"field": "cloud", "value": 1}, collector)
+    params = collector.get_params()
+    assert "n.cloud = $" in out and " OR " in out
+    assert 1 in params.values()
+    assert "1" in params.values()
+
+    collector = ft.ParameterCollector()
+    out = ft.format_str_eq_params({"field": "cloud", "value": "7"}, collector)
+    params = collector.get_params()
+    assert "n.cloud = $" in out and " OR " in out
+    assert 7 in params.values()
+    assert "7" in params.values()
+
+
+def test_coerce_cloud_id_properties_normalizes_numeric_strings():
+    props = {"cloud": "1", "cloud_id": "8", "inst_name": "h"}
+    assert ft.coerce_cloud_id_properties(props) == {"cloud": 1, "cloud_id": 8, "inst_name": "h"}
+    assert ft.coerce_cloud_id_properties({"inst_name": "h"}) == {"inst_name": "h"}
+
+
+def test_attr_values_equal_cloud_int_matches_legacy_string():
+    assert ft.attr_values_equal("cloud", 1, "1") is True
+    assert ft.attr_values_equal("cloud_id", "8", 8) is True
+    assert ft.attr_values_equal("cloud", 1, "2") is False
+    assert ft.attr_values_equal("inst_name", "1", 1) is False

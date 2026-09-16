@@ -3,6 +3,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from apps.cmdb.graph.format_type import CLOUD_ID_FIELDS, parse_cloud_id_value
 from apps.cmdb.services.model_graph_query import parse_attrs, search_model_info
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -139,6 +140,14 @@ def _normalize_compare_value(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+def _normalize_unique_field_value(field_id: str, value: Any) -> Any:
+    if field_id in CLOUD_ID_FIELDS:
+        parsed = parse_cloud_id_value(value)
+        if parsed is not None:
+            return parsed
+    return value
+
+
 def _format_value_for_message(value: Any) -> str:
     if isinstance(value, (dict, list, tuple, set)):
         normalized = list(value) if isinstance(value, set) else value
@@ -167,7 +176,7 @@ def _build_rule_signature(
         has_skipped_value = any(_is_empty_unique_rule_value(value) for value in values)
     if has_skipped_value:
         return None
-    return tuple(_normalize_compare_value(item.get(field_id)) for field_id in field_ids)
+    return tuple(_normalize_compare_value(_normalize_unique_field_value(field_id, item.get(field_id))) for field_id in field_ids)
 
 
 def _get_attr_name(attrs_by_id: dict[str, dict[str, Any]], field_id: str) -> str:
