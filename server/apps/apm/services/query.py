@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import timedelta
 
 from apps.apm.services.contracts import (
@@ -6,6 +7,7 @@ from apps.apm.services.contracts import (
     ServiceErrorBreakdownQuery,
     ServiceMetricQuery,
     ServiceRed,
+    SpanDetail,
     SpanPage,
     SpanSearchQuery,
     TraceDetail,
@@ -87,6 +89,23 @@ class DjangoTelemetryQueryService:
             raise RuntimeError("TraceStore 未配置")
         detail = self.trace_store.get_trace(trace_id)
         return sanitize_trace_detail(detail) if detail is not None else None
+
+    def get_span_details(self, keys: Sequence[tuple[str, str]]) -> dict[tuple[str, str], SpanDetail]:
+        if self.trace_store is None:
+            raise RuntimeError("TraceStore 未配置")
+        details = self.trace_store.get_span_details(keys)
+        sanitized: dict[tuple[str, str], SpanDetail] = {}
+        for key, span in details.items():
+            dummy = TraceDetail(
+                trace_id=key[0],
+                spans=(span,),
+                service_namespace=span.service_namespace,
+                service_name=span.service_name,
+                environment=span.environment,
+                instance_id=span.instance_id,
+            )
+            sanitized[key] = sanitize_trace_detail(dummy).spans[0]
+        return sanitized
 
     @staticmethod
     def _validate_trace_window(started_at, ended_at) -> None:
