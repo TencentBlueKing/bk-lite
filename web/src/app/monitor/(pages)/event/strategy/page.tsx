@@ -429,7 +429,7 @@ const Strategy: React.FC = () => {
             </Permission>
           </div>
           <CustomTable
-            scroll={{ y: 'calc(100vh - 336px)', x: 'calc(100vw - 500px)' }}
+            scroll={{ y: 'calc(100vh - 336px)', x: 'max-content' }}
             columns={columns}
             dataSource={tableData}
             pagination={pagination}

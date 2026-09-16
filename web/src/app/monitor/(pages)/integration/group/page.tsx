@@ -338,7 +338,7 @@ const GroupPage = () => {
           </Permission>
         </div>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 330px)', x: 'calc(100vw - 320px)' }}
+          scroll={{ y: 'calc(100vh - 330px)', x: 'max-content' }}
           columns={columns}
           dataSource={ruleList}
           pagination={pagination}

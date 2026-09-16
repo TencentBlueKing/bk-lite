@@ -811,7 +811,7 @@ const SearchView: React.FC = () => {
                   dataSource={tableData}
                   fields={columnFields}
                   highlightQuery={highlightQuery}
-                  scroll={{ x: 'calc(100vw-350px)', y: scrollHeight }}
+                  scroll={{ x: 'max-content', y: scrollHeight }}
                   addToQuery={addToQuery}
                   onCreateExtractor={(row, sourceField) => {
                     void createExtractorFromLog(row, sourceField);

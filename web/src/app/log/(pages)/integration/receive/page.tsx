@@ -300,9 +300,9 @@ const Asset = () => {
           handoff?.event ||
             (shouldCreate
               ? consumeExtractorCreateSample({
-                  kind: 'instance',
-                  id: extractorId
-                })
+                kind: 'instance',
+                id: extractorId
+              })
               : null)
         );
         setExtractorInitialSourceField(
@@ -570,7 +570,7 @@ const Asset = () => {
         onNodeSelect={handleObjectChange}
         style={{ width: 236, height: 'calc(100vh - 146px)' }}
       />
-      <div className="w-[calc(100vw-236px)] min-w-[1040px] bg-[var(--color-bg-1)] p-[20px]">
+      <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
         <div className="flex justify-between items-center mb-[10px]">
           <Input
             allowClear
@@ -604,7 +604,7 @@ const Asset = () => {
         </div>
         <CustomTable
           className="w-full"
-          scroll={{ y: 'calc(100vh - 340px)', x: 'calc(100vw- 280x)' }}
+          scroll={{ y: 'calc(100vh - 340px)', x: 'max-content' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}
