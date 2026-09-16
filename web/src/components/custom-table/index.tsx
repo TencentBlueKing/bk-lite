@@ -322,15 +322,17 @@ const CustomTable = <T extends object>({
     hasData,
   });
 
+  const fillParentHeight = scrollY === undefined && hasPagination;
+
   return (
     <div
       ref={containerRef}
-      className={`relative ${customTableStyle.customTable}`}
+      className={`relative min-h-0 ${fillParentHeight ? 'h-full' : ''} ${customTableStyle.customTable}`}
       style={{
         height:
           containerHeight !== undefined && hasPagination
             ? `${containerHeight}px`
-            : 'auto',
+            : undefined,
       }}
     >
       <Table
