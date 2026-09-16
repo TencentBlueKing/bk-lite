@@ -234,9 +234,10 @@ class MetricQueryService:
             )
             return vm_data
 
+        converted_data = copy.deepcopy(vm_data)
         try:
-            # 遍历所有result，转换values中的数值
-            for result in vm_data.get("data", {}).get("result", []):
+            # 先在副本上转换，全部成功后再返回，避免中途失败留下混合单位。
+            for result in converted_data.get("data", {}).get("result", []):
                 if "values" not in result:
                     continue
 
@@ -250,7 +251,7 @@ class MetricQueryService:
                     values, self.policy.metric_unit, self.policy.calculation_unit
                 )
 
-                # 更新result中的values
+                # 更新副本中的values
                 for i, (timestamp, _) in enumerate(result["values"]):
                     result["values"][i] = [timestamp, str(converted_values[i])]
 
@@ -258,11 +259,11 @@ class MetricQueryService:
                 f"策略 {self.policy.id}: 成功转换指标单位 "
                 f"{self.policy.metric_unit} -> {self.policy.calculation_unit}"
             )
+            return converted_data
 
         except Exception as e:
             logger.error(f"策略 {self.policy.id}: 单位转换失败: {e}")
-
-        return vm_data
+            return vm_data
 
     def get_effective_calculation_unit(self):
         """返回最终结果单位，历史策略回退到指标原始单位。"""
