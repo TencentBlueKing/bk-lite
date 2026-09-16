@@ -84,7 +84,10 @@
     }
 
     .rightSide {
-        width: calc(100vw - 246px);
+        flex: 1;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
         background-color: var(--color-bg-1);
         padding: 20px;
         display: flex;

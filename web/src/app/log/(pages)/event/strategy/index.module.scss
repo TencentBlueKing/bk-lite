@@ -16,8 +16,9 @@
 }
 
 .asset .table :global(.ant-table) {
-    width: calc(100vw - 280px);
-    min-width: 800px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .assetNoTree {
@@ -40,7 +41,8 @@
 
 .assetNoTree .table :global(.ant-table) {
     width: 100%;
-    min-width: 800px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .policyTypeGrid {

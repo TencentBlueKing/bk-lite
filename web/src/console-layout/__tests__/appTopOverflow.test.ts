@@ -47,6 +47,12 @@ describe('screen mode height chain', () => {
       /screenMode\s*\?\s*'min-h-0 min-w-0 h-full flex-1 flex-col p-0'/,
     );
     expect(source).toMatch(
+      /\['--custom-height' as string\]: '100%'/,
+    );
+    expect(source).toMatch(
+      /\['--custom-height' as string\]: 'calc\(100vh - 90px\)'/,
+    );
+    expect(source).not.toMatch(
       /style=\{showAppTopSide \|\| screenMode \? \{ \['--custom-height' as string\]: '100%' \} : undefined\}/,
     );
     expect(source).not.toMatch(/screenMode\s*\?\s*'min-w-0 flex-1 flex-col p-0'/);
@@ -74,5 +80,17 @@ describe('screen mode height chain', () => {
     );
     expect(source).toMatch(/showAppTopSide \? 'h-screen overflow-x-auto overflow-y-hidden'/);
     expect(source).toMatch(/min-w-0 flex-col py-4 pr-4/);
+  });
+
+  it('keeps app-top workspace height chain and horizontal scroll without trapping table overflow', () => {
+    expect(source).toMatch(
+      /flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden pl-4/,
+    );
+    expect(source).toMatch(
+      /flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden/,
+    );
+    expect(source).not.toMatch(
+      /min-h-0 min-w-0 flex-1 overflow-auto">\{children\}/,
+    );
   });
 });

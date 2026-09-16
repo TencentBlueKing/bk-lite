@@ -3,5 +3,7 @@
 }
 
 .attrLayout :global(section) {
-  width: calc(100vw - 250px);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }

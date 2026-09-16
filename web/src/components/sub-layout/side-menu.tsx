@@ -126,13 +126,13 @@ const SideMenu: React.FC<SideMenuProps> = ({
   }
 
   return (
-    <aside className={`flex h-full w-[216px] flex-shrink-0 flex-col pr-4 ${sideMenuStyle.sideMenu}`}>
+    <aside className={`flex h-full min-h-0 w-[216px] flex-shrink-0 flex-col self-stretch pr-4 ${sideMenuStyle.sideMenu}`}>
       {children && (
-        <div className={`mb-3 min-h-[80px] rounded-md p-4 ${sideMenuStyle.introduction}`}>
+        <div className={`mb-3 min-h-[80px] shrink-0 rounded-md p-4 ${sideMenuStyle.introduction}`}>
           {children}
         </div>
       )}
-      <nav className={`relative flex-1 rounded-md ${sideMenuStyle.nav}`}>
+      <nav className={`relative min-h-0 flex-1 rounded-md ${sideMenuStyle.nav}`}>
         {renderMenuList('p-3')}
         {showProgress ? taskProgressComponent : null}
         {backButton}
