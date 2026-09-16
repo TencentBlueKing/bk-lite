@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cdata",
   "plugin": "Access C-Data SNMP",
-  "plugin_desc": "Baseline SNMP child template for C-Data GPON and EPON access devices under the CDATA-GPON-MIB enterprise tree. The current MIB facts confirm the C-Data enterprise root and GPON access-device family, but no reliable row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets and ifHCOutOctets, and aggregate device traffic. Supported brands/models — C-Data GPON and EPON OLT devices that expose standard IF-MIB.",
+  "plugin_desc": "C-Data GPON and EPON access-device SNMP collection under enterprise PEN 34592 (FD-SYSTEM). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects sysCpuUtilization as CPU percent, chassisTemperature as Celsius with no extra scale, powerStatusBit as PSU A/B on bits, and fanStatusBit as a fan status bitmap. Memory utilization is not collected because no stable private scalar was confirmed. Supported brands/models - C-Data GPON and EPON OLT devices that expose FD-SYSTEM and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_cdata'}) by (instance_id)",
   "name": "Access",
@@ -14,9 +14,79 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_temperature_celsius",
+    "psu_a_on",
+    "psu_b_on",
+    "fan_status_bitmap"
   ],
   "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device CPU utilization from sysCpuUtilization, reported directly as a percentage (Integer32 0-100)."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Chassis Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature from chassisTemperature. The Unsigned32 value is reported as Celsius with no extra scale."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu_a_on",
+      "query": "(avg(psu_status{instance_type='access', __$labels__}) by (instance_id) % 2)",
+      "display_name": "PSU A On",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"关闭\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"开启\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power supply A on bit from powerStatusBit (bit 0). Value 1 means on and 0 means off."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu_b_on",
+      "query": "(floor(avg(psu_status{instance_type='access', __$labels__}) by (instance_id) / 2) % 2)",
+      "display_name": "PSU B On",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"关闭\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"开启\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power supply B on bit from powerStatusBit (bit 1). Value 1 means on and 0 means off."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "fan_status_bitmap",
+      "query": "avg(fan_status_bitmap{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status Bitmap",
+      "data_type": "Number",
+      "unit": "",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis fan status bitmap from fanStatusBit. Bit 0 is fan 1, bit 1 is fan 2, bit 2 is fan 3, and bit 3 is fan 4, each with 1 meaning on."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
