@@ -1,4 +1,3 @@
-import { canShowCrossModulePublicWidget } from '@/context/appCapabilities/crossModuleEmbed';
 import type { AppWidgetKey } from '@/context/appCapabilities/widgets';
 
 export interface ViewModalPublicTabItem {
@@ -32,19 +31,13 @@ export function buildViewModalLocalTabs(
 }
 
 export function resolveViewModalPublicTabs(input: {
-  hasOpsAnalysis: boolean;
   instUuid: string;
   nodeId: string;
   widgets: Partial<Record<AppWidgetKey, boolean>>;
   t: (id: string) => string;
 }): ViewModalPublicTabItem[] {
-  const canShow = (widgetKey: AppWidgetKey) =>
-    canShowCrossModulePublicWidget({
-      hostApp: 'monitor',
-      widgetKey,
-      hasOpsAnalysis: input.hasOpsAnalysis,
-      providerDeclared: Boolean(input.widgets[widgetKey]),
-    });
+  // 提供方未购 / 无模块级访问时目录探测不到该键，declared 即为 false。
+  const canShow = (widgetKey: AppWidgetKey) => Boolean(input.widgets[widgetKey]);
   const tabs: ViewModalPublicTabItem[] = [];
   if (input.instUuid && canShow('ops-analysis.relatedTopology')) {
     tabs.push({
@@ -78,22 +71,15 @@ export function resolveViewModalPublicTabs(input: {
 }
 
 export function shouldLookupViewModalStableIds(input: {
-  hasOpsAnalysis: boolean;
   monitorId: string;
   instUuid: string;
   nodeId: string;
   widgets: Partial<Record<AppWidgetKey, boolean>>;
 }): boolean {
-  if (!input.hasOpsAnalysis || !input.monitorId.trim()) {
+  if (!input.monitorId.trim()) {
     return false;
   }
-  const canShow = (widgetKey: AppWidgetKey) =>
-    canShowCrossModulePublicWidget({
-      hostApp: 'monitor',
-      widgetKey,
-      hasOpsAnalysis: input.hasOpsAnalysis,
-      providerDeclared: Boolean(input.widgets[widgetKey]),
-    });
+  const canShow = (widgetKey: AppWidgetKey) => Boolean(input.widgets[widgetKey]);
   const needsInstUuid =
     !input.instUuid &&
     (canShow('ops-analysis.relatedTopology') ||

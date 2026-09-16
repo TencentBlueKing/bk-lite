@@ -5,9 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { useInstanceApi } from '@/app/cmdb/api';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { resolveCmdbPublicMenuItems } from '@/app/cmdb/utils/cmdbPublicMenus';
-import { hasAppAccess, useAppWidget } from '@/context/appCapabilities';
+import { useAppWidget } from '@/context/appCapabilities';
 import type { AppWidgetKey } from '@/context/appCapabilities';
-import { useClientData } from '@/context/client';
 
 export function useCmdbPublicMenuItems() {
   const searchParams = useSearchParams();
@@ -16,8 +15,6 @@ export function useCmdbPublicMenuItems() {
   const { getInstanceDetail, getTopoThemes } = useInstanceApi();
   const instanceApiRef = useRef({ getInstanceDetail, getTopoThemes });
   instanceApiRef.current = { getInstanceDetail, getTopoThemes };
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const monitorView = useAppWidget('monitor.monitorView');
   const alertList = useAppWidget('monitor.alertList');
   const monitorPolicy = useAppWidget('monitor.monitorPolicy');
@@ -101,7 +98,6 @@ export function useCmdbPublicMenuItems() {
     monitorId,
     nodeId,
     isNetworkDevice,
-    hasOpsAnalysis,
     widgets,
   });
 }

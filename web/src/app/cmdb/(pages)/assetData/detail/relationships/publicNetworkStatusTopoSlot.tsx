@@ -9,6 +9,7 @@ import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 
 type InstUuidWidget = React.ComponentType<{ instUuid: string }>;
 
+// 未购运营分析时目录探测不到 `ops-analysis.networkStatusTopology`，declared 即为 false。
 export function canShowNetworkStatusTopoTab(options: {
   hasNetworkTheme: boolean;
   declared: boolean;

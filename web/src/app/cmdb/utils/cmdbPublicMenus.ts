@@ -1,5 +1,4 @@
 import type { AppWidgetKey } from '@/context/appCapabilities/widgets';
-import { canShowCrossModulePublicWidget } from '@/context/appCapabilities/crossModuleEmbed';
 
 export interface CmdbPublicMenuItem {
   key:
@@ -37,20 +36,14 @@ export function resolveCmdbPublicMenuItems(input: {
   monitorId: string;
   nodeId: string;
   isNetworkDevice: boolean;
-  hasOpsAnalysis: boolean;
   widgets: Partial<Record<AppWidgetKey, boolean>>;
 }): CmdbPublicMenuItem[] {
   const instUuid = input.instUuid.trim();
   const monitorId = input.monitorId.trim();
   const nodeId = input.nodeId.trim();
   const items: CmdbPublicMenuItem[] = [];
-  const canShow = (widgetKey: AppWidgetKey) =>
-    canShowCrossModulePublicWidget({
-      hostApp: 'cmdb',
-      widgetKey,
-      hasOpsAnalysis: input.hasOpsAnalysis,
-      providerDeclared: Boolean(input.widgets[widgetKey]),
-    });
+  // 提供方未购 / 无模块级访问时目录探测不到该键，declared 即为 false。
+  const canShow = (widgetKey: AppWidgetKey) => Boolean(input.widgets[widgetKey]);
 
   if (monitorId && canShow('monitor.monitorView')) {
     items.push({

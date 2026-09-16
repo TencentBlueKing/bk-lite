@@ -1,19 +1,9 @@
-import { canShowCrossModulePublicWidget } from '@/context/appCapabilities/crossModuleEmbed';
-
+// 未购 CMDB 时目录探测不到 `cmdb.assetChange`，declared 即为 false。
 export function canShowIncidentAssetChangeTab(input: {
-  hasOpsAnalysis: boolean;
   declared: boolean;
   instUuids: readonly string[];
 }): boolean {
-  return (
-    input.instUuids.length > 0 &&
-    canShowCrossModulePublicWidget({
-      hostApp: 'alarm',
-      widgetKey: 'cmdb.assetChange',
-      hasOpsAnalysis: input.hasOpsAnalysis,
-      providerDeclared: input.declared,
-    })
-  );
+  return input.declared && input.instUuids.length > 0;
 }
 
 export function resolveIncidentSelectedAssetUuid(

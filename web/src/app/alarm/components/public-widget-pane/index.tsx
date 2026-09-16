@@ -4,12 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Select, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CompactEmptyState from '@/components/compact-empty-state';
-import { useClientData } from '@/context/client';
-import {
-  hasAppAccess,
-  useAppWidget,
-  useLazyAppWidget,
-} from '@/context/appCapabilities';
+import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
 import {
   alarmHasAnyInstUuid,
@@ -43,8 +38,6 @@ export function useAlarmPublicWidgets(options: {
   logAlertId?: string;
   serviceId?: string;
 }) {
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const alertRawLog = useAppWidget('log.alertRawLog');
   const monitorView = useAppWidget('monitor.monitorView');
   const relatedTopology = useAppWidget('ops-analysis.relatedTopology');
@@ -58,7 +51,6 @@ export function useAlarmPublicWidgets(options: {
     [options.monitorObjects],
   );
   const visibility = resolveAlarmPublicWidgetVisibility({
-    hasOpsAnalysis,
     alertRawLogDeclared: alertRawLog.declared,
     monitorViewDeclared: monitorView.declared,
     relatedTopologyDeclared: relatedTopology.declared,

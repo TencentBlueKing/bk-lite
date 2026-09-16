@@ -26,7 +26,8 @@ describe('viewModal public widget host isolation', () => {
     expect(source).toContain("useAppWidget('cmdb.baseInfo')");
     expect(source).toContain("useAppWidget('cmdb.assetChange')");
     expect(source).toContain("useAppWidget('node.nodeStatus')");
-    expect(source).toContain("hasAppAccess(clientData, 'ops-analysis')");
+    // 公开 Tab 的售卖门只由 declared 表达，宿主不再自判「已购运营分析」。
+    expect(source).not.toContain('hasAppAccess');
     expect(source).toContain('ViewModalPublicPane');
     expect(source).toContain('shouldLookupViewModalStableIds');
     expect(source).toContain("currentTab === 'monitorPolicy'");

@@ -17,7 +17,7 @@ Status: implemented
 
 沿用 689 公共机制：提供模块声明；宿主探测后，进入对应 Tab 再按需加载；只传稳定 ID；未购买、无权限、未声明或没有稳定 ID 时不显示入口；禁止按 IP、名称猜测关联；宿主不得直接引用其他业务模块页面或组件。
 
-本期新增 7 个公开组件；扩展告警详情与 CMDB 资产详情；新增监控 viewModal 与事故详情两个宿主。跨模块公开嵌入一律先过已购运营分析，再要求提供方已购、组件已声明、有稳定 ID。`monitorId` 一律指监控实例 ID（`MonitorInstance.id`）。
+本期新增 7 个公开组件；扩展告警详情与 CMDB 资产详情；新增监控 viewModal 与事故详情两个宿主。公开嵌入只要求组件已声明（提供方未购时该键即未声明）+ 有稳定 ID，不额外收「已购运营分析」的门。`monitorId` 一律指监控实例 ID（`MonitorInstance.id`）。
 
 **689 已交付的 6 个公开组件，以及告警详情、CMDB 资产详情两个既有宿主的既定行为，不在本需求重复实现**；本变更只新增能力与扩展宿主接缝。
 
@@ -30,7 +30,7 @@ Status: implemented
 5. As an 查看主机或快照已有 `nodeId` 的主机类告警的运维人员, I want 打开「节点状态」, so that 能看到节点在线、采集器与最近心跳。
 6. As an 处置已带明确 APM `serviceId` 的告警的运维人员, I want 分别打开服务概览与调用链, so that 无明确 serviceId 时不出现入口。
 7. As an 在监控对象列表点击实例打开抽屉的运维人员, I want 动态看到适用的公开 Tab 且不新建详情页, so that 本地三 Tab 与公开能力并存且不重复嵌入。
-8. As an 未购买运营分析或提供方模块的用户, I want 宿主不出现对应入口且原有能力仍可用, so that 售卖与权限降级不打断主路径。
+8. As an 未购买提供方模块的用户, I want 宿主不出现对应入口且原有能力仍可用（未购运营分析只影响 `ops-analysis.*` 件）, so that 售卖与权限降级不打断主路径。
 9. As an 研判事故的运维人员, I want 在成员告警之后打开「资产变更」，多对象时由宿主切换且每次只传一个 `instUuid`, so that 不必下钻单条告警也能看资产变更历史。
 
 ## Implementation Decisions
@@ -38,8 +38,8 @@ Status: implemented
 ### 公共机制（沿用并扩展 689）
 
 - 延续系统层 `appCapabilities`：提供模块在各自 `capability` 中声明组件并登记目录；使用模块先按售卖 / 模块级访问探测，再按稳定组件键检查声明与可加载性。不另建运行时注册表，不把业务组件搬进 shared `src/components`。
-- 入口层（藏入口）：未购买运营分析、提供方未购 / 无模块级访问、组件未声明 / 不可加载、缺稳定标识。
-- **跨模块公开嵌入一律须已购运营分析**（含本期日志、节点管理、APM、CMDB 变更等挂到告警 / 监控 / CMDB / 事故宿主）；同模块自用不加此门。提供方模块的探测语义不变。
+- 入口层（藏入口）：组件未声明 / 不可加载（`useAppWidget().declared === false`）、缺稳定标识。
+- **公开能力目录是加载接缝，不是售卖 SKU**：本期日志、节点管理、APM、CMDB 变更等挂到告警 / 监控 / CMDB / 事故宿主，**不要求已购运营分析**。售卖门只有一处——`useAppCapability` 按 `hasAppAccess(clientData, <提供方 app>)` 判授权，未购则该 app 名下所有键 `declared` 恒为 `false`；「未购运营分析 ⇒ `ops-analysis.*` 不出」由这条链兜住。宿主一律不得自行 `hasAppAccess(clientData, 'ops-analysis')`，也不得以「宿主 app ≠ 提供方 app」为由加门；同模块自用同样不加此门。
 - 组件内（展示入口再提示）：资源无权、不存在、关联失效、查询失败；成功无数据 → 空态。实例级 ACL 不回头关掉 Tab / 入口。
 - 使用模块只传稳定业务标识，禁止直接引用提供模块页面、内部组件路径或 NATS 接口；禁止宿主串他模块数据再拼装业务组件。
 - 除告警原始日志外，嵌入展示**当前**数据，不作告警发生时快照；原始日志只读发生时保存的两类历史证据：查询线索与原始数据。
@@ -99,9 +99,9 @@ Status: implemented
 
 ### CMDB 资产详情宿主（扩展 689）
 
-- **监控策略**：侧栏入口；资产 `monitor_id` 非空 ∧ OA ∧ 组件已声明 → 传入该 `monitorId`。
-- **节点状态**：侧栏入口；`model_id === 'host'` ∧ 资产实例 `node_id` 非空 ∧ OA ∧ 组件已声明 → 传入该 `nodeId`。直接读 CMDB 主机上的系统关联字段，禁止经 `monitor_id` 反查监控实例补 `nodeId`。
-- **3D 机房**：挂关联关系 Segmented（与网络状态拓扑并列，不替换原网络拓扑 / 列表 / 二维应用拓扑等）；同时在侧栏提供快捷入口，与「机房视图」同逻辑——点击落到关联关系 `?tab=room3D`，选中时与「关联关系」父菜单互斥，直达 `/detail/room3D` 的旧链接按保参重定向落到该 tab（与网络状态拓扑同模式）。门同 Segmented：仅 `model_id === 'server_room'` ∧ 有 `instUuid` ∧ OA ∧ 组件已声明；**`rack` 不出**。侧栏与 Segmented 都不得挂 `ops-analysis.application3D` 冒充机房。
+- **监控策略**：侧栏入口；资产 `monitor_id` 非空 ∧ 组件已声明 → 传入该 `monitorId`。不要求已购运营分析。
+- **节点状态**：侧栏入口；`model_id === 'host'` ∧ 资产实例 `node_id` 非空 ∧ 组件已声明 → 传入该 `nodeId`。不要求已购运营分析。直接读 CMDB 主机上的系统关联字段，禁止经 `monitor_id` 反查监控实例补 `nodeId`。
+- **3D 机房**：挂关联关系 Segmented（与网络状态拓扑并列，不替换原网络拓扑 / 列表 / 二维应用拓扑等）；同时在侧栏提供快捷入口，与「机房视图」同逻辑——点击落到关联关系 `?tab=room3D`，选中时与「关联关系」父菜单互斥，直达 `/detail/room3D` 的旧链接按保参重定向落到该 tab（与网络状态拓扑同模式）。门同 Segmented：仅 `model_id === 'server_room'` ∧ 有 `instUuid` ∧ 组件已声明（未购 OA 时该键即未声明）；**`rack` 不出**。侧栏与 Segmented 都不得挂 `ops-analysis.application3D` 冒充机房。
 - 689 已定的默认「拓扑」槽替换、监控视图 / 告警列表 / 网络状态拓扑 / 3D应用等既有入口行为不在本期重复改写。
 
 ### 事故详情宿主（新建薄宿主）
@@ -109,7 +109,7 @@ Status: implemented
 - 只加载「资产变更」。
 - 稳定 ID 取自成员告警已有 `monitor_objects`：汇总非空 `cmdb_id`，按 uuid 去重。
 - 0 个非空 `cmdb_id` → 不展示入口；1 个 → 直接加载该 `instUuid`；多个 → 必须提供宿主切换器，每次只传当前一个 `instUuid`；允许默认选中去重后的第一项；选择为空 / 过期时允许回落第一项。禁止：在 length > 1 时不提供切换器、却固定只查某一个；禁止一次传入多个 ID。
-- Tab 插在**成员告警之后**（现网事故页未必有「变更记录」锚点，不以不存在的栏位定位）。仍过 OA + `cmdb.assetChange` 声明；进入再按需加载。
+- Tab 插在**成员告警之后**（现网事故页未必有「变更记录」锚点，不以不存在的栏位定位）。过 `cmdb.assetChange` 声明即可，不要求已购运营分析；进入再按需加载。
 
 ### 建议实现序
 
@@ -122,7 +122,7 @@ Status: implemented
 最高接缝优先（沿用 689 与 `appCapabilities` 既有风格）：
 
 - **目录与探测**：七新键已声明 / 未声明 / 模块不可用；`log` / `node` / `apm` 加载器登记；按键失败不得误伤无关键。
-- **跨模块 OA 门**：未购运营分析时，即使提供方已购且组件已声明，告警 / viewModal / CMDB / 事故上的跨模块新入口也不出。
+- **售卖门只有一处**：锁「未购某模块 ⇒ 该 app 所有键 `declared === false`」（`useAppWidget` 测试）。在此之上，未购运营分析 + 已购监控 / CMDB / 日志 / 节点 / APM 的夹具下，告警、viewModal、CMDB、事故上的 `monitor.*` / `cmdb.*` / `log.*` / `node.*` / `apm.*` 入口**仍要出**（已声明 + 有稳定 ID 时）；`ops-analysis.*` 因未声明而不出，已购时不回归。宿主源码不得出现 `hasAppAccess`，不得存在「宿主 app ≠ 提供方 app 就收 OA 税」的路径。
 - **隔离**：告警详情页 / 抽屉、CMDB 详情、viewModal、事故详情不得静态 import 提供方 `@/app/*` 业务实现；经 `useAppWidget`（或同等目录接缝）按需加载。
 - **快照**：监控产生告警时 payload / Event / `monitor_objects` 含 `node_id`；历史缺字段不出节点状态入口；打开详情不反查补齐。日志告警新快照 `snapshots[]` 含冻结 `query_clue` + `raw_data`；历史 API 原样返回、不读 live Policy。
 - **告警宿主**：Tab 序；`labels.log_alert_id` 可驱动原始日志；新快照含冻结查询线索；嵌入同时展示线索与原始数据且不走 VictoriaLogs / 现行策略重跑；改策略后仍显示发生时线索；缺线索 / 缺原始数据可区分；`apm_service` + `resource_id` 才出 APM 两 Tab；资产变更 / 节点状态告警级出 Tab、当前对象缺 ID 进 Tab 后不查；对象切换对二者生效；单据 Tab 不依赖该切换器。
@@ -149,4 +149,5 @@ Status: implemented
 - **本变更正式修订 689 Spec 的目录键集合与告警详情 Tab 序**（目录由 6 键扩至 13 键；告警详情插入本期公共 Tab）。其它 689 行为不回滚；独立复核不得再按「冻死 6 键 / 旧 Tab 序」卡本期交付。
 - `ops-analysis.room3D` 不得用 `ops-analysis.application3D` 顶替。
 - 现网已具备、可直接消费的事实：APM 推送 `resource_id` = 服务 UUID 且 `resource_type = apm_service`；日志推送 `labels.log_alert_id`；CMDB 主机实例自带系统关联字段 `node_id`；监控实例模型与列表序列化已有 `node_id` / `cmdb_id`。监控 → 告警中心身份快照**尚缺** `node_id`，由本变更按与 `cmdb_id` 同路径补齐。
-- 「可以加载」是模块声明与组件键可用性，不是「这台资产有没有变更记录 / 节点是否在线」。缺标识是绑定门；资源无权是组件内权限门；二者与售卖门（含 OA 门）分开。
+- 「可以加载」是模块声明与组件键可用性，不是「这台资产有没有变更记录 / 节点是否在线」。缺标识是绑定门；资源无权是组件内权限门；二者与售卖门分开。
+- **本条口径已修订**：初版写成「跨模块公开嵌入一律须已购运营分析」，是把「目录」当成了售卖 SKU。运营分析要收的是它自己编排出来的跨域件（`ops-analysis.*`），不是「别人的组件被挂到另一页」这个动作；而 OA 件本来就靠「未购 OA ⇒ 该键未声明」挡住，宿主侧那道 `hasAppAccess('ops-analysis')` 是重复防线，已全部删除。现行判定就是 `declared && <稳定 ID>`；689 spec 同步修订。

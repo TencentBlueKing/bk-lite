@@ -33,8 +33,7 @@ import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { useRelationships } from '@/app/cmdb/context/relationships';
-import { hasAppAccess, useAppWidget } from '@/context/appCapabilities';
-import { useClientData } from '@/context/client';
+import { useAppWidget } from '@/context/appCapabilities';
 import usePermissions from '@/hooks/usePermissions';
 import {
   buildRelationshipTabHref,
@@ -63,8 +62,6 @@ const Ralationships = () => {
   const tabParam: string = searchParams.get('tab') || '';
 
   const { getTopoThemes } = useInstanceApi();
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const [themes, setThemes] = useState<string[]>([]);
   const [themesReady, setThemesReady] = useState(false);
   const networkStatus = useAppWidget('ops-analysis.networkStatusTopology');
@@ -78,7 +75,6 @@ const Ralationships = () => {
     modelId,
     declared: room3D.declared,
     instUuid,
-    hasOpsAnalysis,
   });
   // 机柜视图点设备：右侧抽屉展示详情（再从抽屉下钻到实例详情），与机房视图一致
   const [device, setDevice] = useState<RackDevice | null>(null);

@@ -48,6 +48,7 @@ afterEach(() => {
 });
 
 describe('canShowNetworkStatusTopoTab', () => {
+  // 未购运营分析 = 目录探测不到 ops-analysis.networkStatusTopology，declared 为 false。
   it('shows only when network theme, declared widget and instUuid are all present', () => {
     expect(
       canShowNetworkStatusTopoTab({
@@ -98,6 +99,15 @@ describe('PublicNetworkStatusTopoSlot', () => {
     render(<PublicNetworkStatusTopoSlot instUuid={INST_UUID} />);
     expect(screen.getByText(`public-network-status:${INST_UUID}`)).toBeTruthy();
     expect(lazyState.loadCalls.at(-1)).toBe(true);
+  });
+
+  // 未购运营分析走的就是这条分支：目录探测不到该键，declared 为 false。
+  it('does not activate when the key is undeclared', () => {
+    widgetState.status = 'ready';
+    widgetState.declared = false;
+    render(<PublicNetworkStatusTopoSlot instUuid={INST_UUID} />);
+    expect(screen.getByText('common.noData')).toBeTruthy();
+    expect(lazyState.loadCalls.at(-1)).toBe(false);
   });
 
   it('keeps an in-slot error when the public widget fails to load', () => {

@@ -72,7 +72,6 @@ describe('CMDB public widget host isolation', () => {
     expect(hookSource).toContain("useAppWidget('monitor.monitorView')");
     expect(hookSource).toContain("useAppWidget('monitor.monitorPolicy')");
     expect(hookSource).toContain("useAppWidget('node.nodeStatus')");
-    expect(hookSource).toContain("hasAppAccess(clientData, 'ops-analysis')");
     expect(hookSource).toContain(
       "useAppWidget('ops-analysis.networkStatusTopology')",
     );
@@ -82,8 +81,6 @@ describe('CMDB public widget host isolation', () => {
     expect(hookSource).toContain("useAppWidget('ops-analysis.room3D')");
     expect(pageSource).toContain('useAppWidget(widgetKey)');
     expect(pageSource).toContain('useLazyAppWidget');
-    expect(pageSource).toContain('canShowCrossModulePublicWidget');
-    expect(pageSource).toContain("hasAppAccess(clientData, 'ops-analysis')");
     expect(pageSource).toContain('canUsePublic && Boolean(identifier)');
     expect(slotSource).toContain("useAppWidget('ops-analysis.relatedTopology')");
     expect(slotSource).toContain('useLazyAppWidget');
@@ -93,8 +90,18 @@ describe('CMDB public widget host isolation', () => {
     expect(networkStatusSlotSource).toContain('useLazyAppWidget');
     expect(room3DSlotSource).toContain("useAppWidget('ops-analysis.room3D')");
     expect(room3DSlotSource).toContain('useLazyAppWidget');
-    expect(room3DSlotSource).toContain('canShowCrossModulePublicWidget');
-    expect(room3DSlotSource).toContain("hasAppAccess(clientData, 'ops-analysis')");
+    // 售卖门只由目录声明表达：OA 件在侧栏、Segmented 与槽里一律只看 declared，
+    // 宿主不得再自行拿 clientData 判一次「已购运营分析」。
+    for (const source of [
+      hookSource,
+      pageSource,
+      slotSource,
+      networkStatusSlotSource,
+      room3DSlotSource,
+      relationshipsSource,
+    ]) {
+      expect(source).not.toContain('hasAppAccess');
+    }
     expect(room3DSlotSource).not.toContain('application3D');
     expect(monitorPolicyPage).toContain('widgetKey="monitor.monitorPolicy"');
     expect(monitorPolicyPage).toContain('identifierProp="monitorId"');
@@ -103,7 +110,6 @@ describe('CMDB public widget host isolation', () => {
     expect(relationshipsSource).toContain('PublicRelatedTopoSlot');
     expect(relationshipsSource).toContain('PublicNetworkStatusTopoSlot');
     expect(relationshipsSource).toContain('PublicRoom3DSlot');
-    expect(relationshipsSource).toContain("hasAppAccess(clientData, 'ops-analysis')");
     expect(relationshipsSource).toContain("activeTab === 'topo'");
     expect(relationshipsSource).toContain("activeTab === 'network'");
     expect(relationshipsSource).toContain('<NetworkTopo');

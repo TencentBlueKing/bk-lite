@@ -5,47 +5,28 @@ import { Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
-import {
-  canShowCrossModulePublicWidget,
-  hasAppAccess,
-  useAppWidget,
-  useLazyAppWidget,
-} from '@/context/appCapabilities';
-import { useClientData } from '@/context/client';
+import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 
 type InstUuidWidget = React.ComponentType<{ instUuid: string }>;
 
+// 未购运营分析时目录探测不到 `ops-analysis.room3D`，declared 即为 false。
 export function canShowRoom3DTab(options: {
   modelId: string;
   declared: boolean;
   instUuid: string;
-  hasOpsAnalysis: boolean;
 }): boolean {
   return (
     options.modelId === 'server_room' &&
-    Boolean(resolveCmdbInstUuid(options.instUuid)) &&
-    canShowCrossModulePublicWidget({
-      hostApp: 'cmdb',
-      widgetKey: 'ops-analysis.room3D',
-      hasOpsAnalysis: options.hasOpsAnalysis,
-      providerDeclared: options.declared,
-    })
+    options.declared &&
+    Boolean(resolveCmdbInstUuid(options.instUuid))
   );
 }
 
 export function PublicRoom3DSlot({ instUuid }: { instUuid: string }) {
   const { t } = useTranslation();
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const widget = useAppWidget('ops-analysis.room3D');
   const resolvedInstUuid = resolveCmdbInstUuid(instUuid) || '';
-  const canUsePublic =
-    canShowCrossModulePublicWidget({
-      hostApp: 'cmdb',
-      widgetKey: 'ops-analysis.room3D',
-      hasOpsAnalysis,
-      providerDeclared: widget.declared,
-    }) && Boolean(resolvedInstUuid);
+  const canUsePublic = widget.declared && Boolean(resolvedInstUuid);
   const { Widget, loadFailed } = useLazyAppWidget({
     loadWidget: widget.loadWidget,
     active: canUsePublic,

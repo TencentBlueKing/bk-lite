@@ -17,10 +17,9 @@ describe('viewModal public tabs', () => {
     expect(localKeys).not.toContain('monitor.monitorView');
   });
 
-  it('inserts public tabs in the spec order when ids and OA gate pass', () => {
+  it('inserts public tabs in the spec order when the providers declared them and ids exist', () => {
     expect(
       resolveViewModalPublicTabs({
-        hasOpsAnalysis: true,
         instUuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         nodeId: 'node-1',
         widgets: {
@@ -55,21 +54,20 @@ describe('viewModal public tabs', () => {
     ]);
   });
 
-  it('hides public tabs without OA even if providers declared ids', () => {
+  it('keeps the cmdb / node tabs when only the ops-analysis key is undeclared', () => {
+    // 未购运营分析 = relatedTopology 探测不到；CMDB / 节点的 Tab 不受牵连。
     expect(
       resolveViewModalPublicTabs({
-        hasOpsAnalysis: false,
         instUuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         nodeId: 'node-1',
         widgets: {
-          'ops-analysis.relatedTopology': true,
           'cmdb.baseInfo': true,
           'cmdb.assetChange': true,
           'node.nodeStatus': true,
         },
         t,
-      }),
-    ).toEqual([]);
+      }).map((item) => item.key),
+    ).toEqual(['baseInfo', 'assetChange', 'nodeStatus']);
   });
 
   it('reads stable ids from the instance form without guessing', () => {
@@ -86,7 +84,7 @@ describe('viewModal public tabs', () => {
     });
   });
 
-  it('looks up missing ids only when OA is sold and a public tab could use them', () => {
+  it('looks up missing ids whenever a visible public tab could use them', () => {
     const widgets = {
       'ops-analysis.relatedTopology': true,
       'cmdb.baseInfo': true,
@@ -95,17 +93,28 @@ describe('viewModal public tabs', () => {
     };
     expect(
       shouldLookupViewModalStableIds({
-        hasOpsAnalysis: true,
         monitorId: 'm-1',
         instUuid: '',
         nodeId: '',
         widgets,
       }),
     ).toBe(true);
+    // 未购运营分析只少了 relatedTopology，CMDB / 节点 Tab 仍需要补 instUuid / nodeId。
     expect(
       shouldLookupViewModalStableIds({
-        hasOpsAnalysis: false,
         monitorId: 'm-1',
+        instUuid: '',
+        nodeId: '',
+        widgets: {
+          'cmdb.baseInfo': true,
+          'cmdb.assetChange': true,
+          'node.nodeStatus': true,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldLookupViewModalStableIds({
+        monitorId: '',
         instUuid: '',
         nodeId: '',
         widgets,
@@ -113,7 +122,6 @@ describe('viewModal public tabs', () => {
     ).toBe(false);
     expect(
       shouldLookupViewModalStableIds({
-        hasOpsAnalysis: true,
         monitorId: 'm-1',
         instUuid: '',
         nodeId: '',
@@ -122,7 +130,6 @@ describe('viewModal public tabs', () => {
     ).toBe(false);
     expect(
       shouldLookupViewModalStableIds({
-        hasOpsAnalysis: true,
         monitorId: 'm-1',
         instUuid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         nodeId: 'node-1',

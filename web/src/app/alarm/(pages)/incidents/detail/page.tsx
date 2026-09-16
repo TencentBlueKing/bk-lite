@@ -49,8 +49,7 @@ import { useAiPageContext } from '@/components/ai-page-context';
 import { buildIncidentDetailPageContext } from './incidentDetail.context';
 import { PublicWidgetPane } from '@/app/alarm/components/public-widget-pane';
 import { listIncidentAssetOptions } from '@/app/alarm/utils/alarmSnapshotObjects';
-import { hasAppAccess, useAppWidget } from '@/context/appCapabilities';
-import { useClientData } from '@/context/client';
+import { useAppWidget } from '@/context/appCapabilities';
 import {
   canShowIncidentAssetChangeTab,
   resolveIncidentSelectedAssetUuid,
@@ -60,8 +59,6 @@ const { TabPane } = Tabs;
 
 const IncidentDetail: React.FC = () => {
   const { t } = useTranslation();
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const assetChange = useAppWidget('cmdb.assetChange');
   const { getLogList } = useSettingApi();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -116,7 +113,6 @@ const IncidentDetail: React.FC = () => {
     [assetOptions],
   );
   const showAssetChange = canShowIncidentAssetChangeTab({
-    hasOpsAnalysis,
     declared: assetChange.declared,
     instUuids,
   });

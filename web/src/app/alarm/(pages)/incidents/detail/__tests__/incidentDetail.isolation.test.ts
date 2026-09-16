@@ -24,7 +24,9 @@ describe('incident detail public widget host isolation', () => {
 
   it('loads asset change through the shared capability seam and one instUuid at a time', () => {
     expect(pageSource).toContain("useAppWidget('cmdb.assetChange')");
-    expect(pageSource).toContain('hasAppAccess(clientData, \'ops-analysis\')');
+    // CMDB 提供的件挂到事故页不收「已购运营分析」的税：入口只看 declared + instUuid。
+    expect(pageSource).not.toContain('hasAppAccess');
+    expect(helperSource).not.toContain('hasOpsAnalysis');
     expect(pageSource).toContain('PublicWidgetPane');
     expect(pageSource).toContain('listIncidentAssetOptions');
     expect(pageSource).toContain('identifierProp="instUuid"');
@@ -33,8 +35,6 @@ describe('incident detail public widget host isolation', () => {
     expect(pageSource).toContain("tab={t('alarms.assetChange')}");
     expect(pageSource).toContain('key="assetChange"');
     expect(pageSource).toContain('key="alert"');
-    expect(helperSource).toContain("hostApp: 'alarm'");
-    expect(helperSource).toContain("widgetKey: 'cmdb.assetChange'");
   });
 
   it('renders a host switcher when there are multiple instUuids and may default to the first', () => {

@@ -22,8 +22,7 @@ import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
-import { hasAppAccess, useAppWidget } from '@/context/appCapabilities';
-import { useClientData } from '@/context/client';
+import { useAppWidget } from '@/context/appCapabilities';
 import useMonitorApi from '@/app/monitor/api';
 import { ViewModalPublicPane } from '@/app/monitor/components/public/ViewModalPublicPane';
 import {
@@ -37,11 +36,9 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
     const { t } = useTranslation();
     const router = useScreenAwareRouter();
-    const { clientData } = useClientData();
     const { lookupInstance } = useMonitorApi();
     const lookupInstanceRef = useRef(lookupInstance);
     lookupInstanceRef.current = lookupInstance;
-    const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
     const relatedTopology = useAppWidget('ops-analysis.relatedTopology');
     const baseInfo = useAppWidget('cmdb.baseInfo');
     const assetChange = useAppWidget('cmdb.assetChange');
@@ -56,7 +53,6 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
     const instUuid = formIds.instUuid || lookupIds.instUuid;
     const nodeId = formIds.nodeId || lookupIds.nodeId;
     const publicTabs = resolveViewModalPublicTabs({
-      hasOpsAnalysis,
       instUuid,
       nodeId,
       widgets: {
@@ -99,7 +95,6 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       const shouldLookup =
         groupVisible &&
         shouldLookupViewModalStableIds({
-          hasOpsAnalysis,
           monitorId,
           instUuid: formIds.instUuid,
           nodeId: formIds.nodeId,
@@ -140,7 +135,6 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       formIds.monitorId,
       formIds.nodeId,
       groupVisible,
-      hasOpsAnalysis,
       nodeStatus.declared,
       relatedTopology.declared,
     ]);

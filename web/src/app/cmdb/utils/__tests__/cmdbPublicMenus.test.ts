@@ -15,7 +15,6 @@ describe('resolveCmdbPublicMenuItems', () => {
       monitorId: 'mon-1',
       nodeId: '',
       isNetworkDevice: false,
-      hasOpsAnalysis: true,
       widgets: {
         'monitor.monitorView': true,
         'monitor.alertList': true,
@@ -37,7 +36,6 @@ describe('resolveCmdbPublicMenuItems', () => {
       monitorId: '',
       nodeId: '',
       isNetworkDevice: false,
-      hasOpsAnalysis: true,
       widgets: {
         'monitor.monitorView': true,
         'monitor.alertList': true,
@@ -57,7 +55,6 @@ describe('resolveCmdbPublicMenuItems', () => {
       monitorId: 'mon-1',
       nodeId: '',
       isNetworkDevice: true,
-      hasOpsAnalysis: true,
       widgets: {
         'monitor.monitorView': true,
         'ops-analysis.relatedTopology': true,
@@ -76,7 +73,6 @@ describe('resolveCmdbPublicMenuItems', () => {
       monitorId: '',
       nodeId: '',
       isNetworkDevice: true,
-      hasOpsAnalysis: true,
       widgets: {
         'ops-analysis.relatedTopology': true,
         'ops-analysis.networkStatusTopology': true,
@@ -94,7 +90,6 @@ describe('resolveCmdbPublicMenuItems', () => {
       monitorId: '',
       nodeId: '',
       isNetworkDevice: false,
-      hasOpsAnalysis: true,
       widgets: {
         'ops-analysis.relatedTopology': true,
         'ops-analysis.networkStatusTopology': true,
@@ -109,7 +104,6 @@ describe('resolveCmdbPublicMenuItems', () => {
       monitorId: '',
       nodeId: '',
       isNetworkDevice: false,
-      hasOpsAnalysis: true,
       widgets: {
         'ops-analysis.relatedTopology': true,
         'ops-analysis.application3D': true,
@@ -126,7 +120,6 @@ describe('resolveCmdbPublicMenuItems', () => {
         monitorId: 'mon-1',
         nodeId: '',
         isNetworkDevice: true,
-        hasOpsAnalysis: true,
         widgets: {
           'monitor.monitorView': true,
           'ops-analysis.relatedTopology': true,
@@ -143,13 +136,13 @@ describe('resolveCmdbPublicMenuItems', () => {
         monitorId: 'mon-1',
         nodeId: '',
         isNetworkDevice: true,
-        hasOpsAnalysis: true,
         widgets: {},
       }).map((item) => item.key),
     ).toEqual([]);
   });
 
-  it('hides monitor public entries when ops-analysis is not sold', () => {
+  it('keeps monitor and node entries when only the ops-analysis keys are undeclared', () => {
+    // 未购运营分析 = OA 三键探测不到；监控 / 节点入口不受牵连，不收「跨模块」税。
     expect(
       resolveCmdbPublicMenuItems({
         instUuid: INST_UUID,
@@ -157,16 +150,23 @@ describe('resolveCmdbPublicMenuItems', () => {
         monitorId: 'mon-1',
         nodeId: 'node-1',
         isNetworkDevice: true,
-        hasOpsAnalysis: false,
         widgets: {
           'monitor.monitorView': true,
           'monitor.alertList': true,
           'monitor.monitorPolicy': true,
           'node.nodeStatus': true,
-          'ops-analysis.networkStatusTopology': true,
-          'ops-analysis.application3D': true,
-          'ops-analysis.room3D': true,
         },
+      }).map((item) => item.key),
+    ).toEqual(['monitorView', 'alertList', 'monitorPolicy', 'nodeStatus']);
+
+    expect(
+      resolveCmdbPublicMenuItems({
+        instUuid: INST_UUID,
+        modelId: 'server_room',
+        monitorId: '',
+        nodeId: '',
+        isNetworkDevice: false,
+        widgets: {},
       }).map((item) => item.key),
     ).toEqual([]);
   });
@@ -179,7 +179,6 @@ describe('resolveCmdbPublicMenuItems', () => {
         monitorId: '',
         nodeId: 'node-1',
         isNetworkDevice: false,
-        hasOpsAnalysis: true,
         widgets: { 'node.nodeStatus': true },
       }).map((item) => item.key),
     ).toEqual(['nodeStatus']);
@@ -191,7 +190,6 @@ describe('resolveCmdbPublicMenuItems', () => {
         monitorId: '',
         nodeId: 'node-1',
         isNetworkDevice: true,
-        hasOpsAnalysis: true,
         widgets: { 'node.nodeStatus': true },
       }).map((item) => item.key),
     ).toEqual([]);
@@ -204,7 +202,6 @@ describe('resolveCmdbPublicMenuItems', () => {
       monitorId: '',
       nodeId: '',
       isNetworkDevice: false,
-      hasOpsAnalysis: true,
       widgets: {
         'ops-analysis.room3D': true,
         'ops-analysis.application3D': true,
@@ -221,7 +218,6 @@ describe('resolveCmdbPublicMenuItems', () => {
         monitorId: '',
         nodeId: '',
         isNetworkDevice: false,
-        hasOpsAnalysis: true,
         widgets: {
           'ops-analysis.room3D': true,
           'ops-analysis.application3D': true,
@@ -236,7 +232,6 @@ describe('resolveCmdbPublicMenuItems', () => {
         monitorId: '',
         nodeId: '',
         isNetworkDevice: false,
-        hasOpsAnalysis: true,
         widgets: { 'ops-analysis.application3D': true },
       }).map((item) => item.key),
     ).toEqual([]);

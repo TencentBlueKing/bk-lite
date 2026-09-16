@@ -4,10 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const INST_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-const clientState = vi.hoisted(() => ({
-  clientData: [{ name: 'ops-analysis' }] as Array<{ name: string }>,
-}));
-
 const widgetState = vi.hoisted(() => ({
   status: 'unavailable' as 'unavailable' | 'loading' | 'ready',
   declared: false,
@@ -22,13 +18,6 @@ const lazyState = vi.hoisted(() => ({
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
-}));
-
-vi.mock('@/context/client', () => ({
-  useClientData: () => ({
-    clientData: clientState.clientData,
-    loading: false,
-  }),
 }));
 
 vi.mock('@/context/appCapabilities', async () => {
@@ -53,7 +42,6 @@ import { canShowRoom3DTab, PublicRoom3DSlot } from '../publicRoom3DSlot';
 
 afterEach(() => {
   cleanup();
-  clientState.clientData = [{ name: 'ops-analysis' }];
   widgetState.status = 'unavailable';
   widgetState.declared = false;
   widgetState.loadWidget = null;
@@ -63,29 +51,20 @@ afterEach(() => {
 });
 
 describe('canShowRoom3DTab', () => {
-  it('shows only for server_room with OA, a declared widget and instUuid', () => {
+  // 未购运营分析 = 目录探测不到 ops-analysis.room3D，declared 为 false。
+  it('shows only for server_room with a declared widget and instUuid', () => {
     expect(
       canShowRoom3DTab({
         modelId: 'server_room',
         declared: true,
         instUuid: INST_UUID,
-        hasOpsAnalysis: true,
       }),
     ).toBe(true);
-    expect(
-      canShowRoom3DTab({
-        modelId: 'server_room',
-        declared: true,
-        instUuid: INST_UUID,
-        hasOpsAnalysis: false,
-      }),
-    ).toBe(false);
     expect(
       canShowRoom3DTab({
         modelId: 'rack',
         declared: true,
         instUuid: INST_UUID,
-        hasOpsAnalysis: true,
       }),
     ).toBe(false);
     expect(
@@ -93,7 +72,6 @@ describe('canShowRoom3DTab', () => {
         modelId: 'host',
         declared: true,
         instUuid: INST_UUID,
-        hasOpsAnalysis: true,
       }),
     ).toBe(false);
     expect(
@@ -101,7 +79,6 @@ describe('canShowRoom3DTab', () => {
         modelId: 'server_room',
         declared: false,
         instUuid: INST_UUID,
-        hasOpsAnalysis: true,
       }),
     ).toBe(false);
     expect(
@@ -109,7 +86,6 @@ describe('canShowRoom3DTab', () => {
         modelId: 'server_room',
         declared: true,
         instUuid: '',
-        hasOpsAnalysis: true,
       }),
     ).toBe(false);
     expect(
@@ -117,14 +93,13 @@ describe('canShowRoom3DTab', () => {
         modelId: 'server_room',
         declared: true,
         instUuid: 'room-1',
-        hasOpsAnalysis: true,
       }),
     ).toBe(false);
   });
 });
 
 describe('PublicRoom3DSlot', () => {
-  it('mounts the public widget when OA, declared and instUuid are present', () => {
+  it('mounts the public widget when declared and instUuid are present', () => {
     widgetState.status = 'ready';
     widgetState.declared = true;
     widgetState.loadWidget = async () => ({ default: () => null });
@@ -136,11 +111,10 @@ describe('PublicRoom3DSlot', () => {
     expect(lazyState.loadCalls.at(-1)).toBe(true);
   });
 
-  it('does not activate when ops-analysis is not sold', () => {
-    clientState.clientData = [];
+  // 未购运营分析走的就是这条分支：目录探测不到该键，declared 为 false。
+  it('does not activate when the key is undeclared', () => {
     widgetState.status = 'ready';
-    widgetState.declared = true;
-    widgetState.loadWidget = async () => ({ default: () => null });
+    widgetState.declared = false;
     render(<PublicRoom3DSlot instUuid={INST_UUID} />);
     expect(screen.getByText('common.noData')).toBeTruthy();
     expect(lazyState.loadCalls.at(-1)).toBe(false);

@@ -6,14 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
-import {
-  canShowCrossModulePublicWidget,
-  hasAppAccess,
-  useAppWidget,
-  useLazyAppWidget,
-} from '@/context/appCapabilities';
+import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 import type { AppWidgetKey } from '@/context/appCapabilities';
-import { useClientData } from '@/context/client';
 import { useInstanceApi } from '@/app/cmdb/api';
 
 type InstUuidWidget = React.ComponentType<{ instUuid: string }>;
@@ -29,8 +23,6 @@ export function CmdbPublicWidgetPage({
 }) {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const instUuid = resolveCmdbInstUuid(searchParams.get('inst_uuid')) || '';
   const widget = useAppWidget(widgetKey);
   const { getInstanceDetail } = useInstanceApi();
@@ -84,12 +76,8 @@ export function CmdbPublicWidgetPage({
       : identifierProp === 'monitorId'
         ? monitorId
         : nodeId;
-  const canUsePublic = canShowCrossModulePublicWidget({
-    hostApp: 'cmdb',
-    widgetKey,
-    hasOpsAnalysis,
-    providerDeclared: widget.declared,
-  });
+  // 提供方未购 / 无模块级访问时目录探测不到该键，declared 即为 false。
+  const canUsePublic = widget.declared;
   const { Widget, loadFailed } = useLazyAppWidget({
     loadWidget: widget.loadWidget,
     active: canUsePublic && Boolean(identifier),

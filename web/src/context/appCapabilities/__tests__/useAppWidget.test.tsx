@@ -39,6 +39,7 @@ describe('useAppWidget', () => {
     mocks.loading = false;
   });
 
+  // 这是公开组件唯一的售卖门：宿主不再各自判一次「提供方买没买」。
   it('stays undeclared when the sold module is missing', async () => {
     mocks.clientData = [{ name: 'monitor' }];
     const { result } = renderHook(() =>

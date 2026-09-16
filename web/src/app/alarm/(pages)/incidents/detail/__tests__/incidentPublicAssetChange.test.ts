@@ -9,34 +9,24 @@ const UUID_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const UUID_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 describe('canShowIncidentAssetChangeTab', () => {
-  it('hides the tab when there is no cmdb id, ops-analysis is missing, or the widget is undeclared', () => {
+  it('hides the tab when there is no cmdb id or the widget is undeclared', () => {
     expect(
       canShowIncidentAssetChangeTab({
-        hasOpsAnalysis: true,
         declared: true,
         instUuids: [],
       }),
     ).toBe(false);
     expect(
       canShowIncidentAssetChangeTab({
-        hasOpsAnalysis: false,
-        declared: true,
-        instUuids: [UUID_A],
-      }),
-    ).toBe(false);
-    expect(
-      canShowIncidentAssetChangeTab({
-        hasOpsAnalysis: true,
         declared: false,
         instUuids: [UUID_A],
       }),
     ).toBe(false);
   });
 
-  it('shows the tab only when ops-analysis is sold, the widget is declared, and at least one instUuid exists', () => {
+  it('shows the tab on cmdb declaration and an instUuid, without charging an ops-analysis toll', () => {
     expect(
       canShowIncidentAssetChangeTab({
-        hasOpsAnalysis: true,
         declared: true,
         instUuids: [UUID_A],
       }),

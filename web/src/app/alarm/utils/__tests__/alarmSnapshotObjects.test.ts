@@ -248,31 +248,8 @@ describe('resolveAlarmPublicWidgetVisibility', () => {
     hasServiceId: true,
   };
 
-  it('hides public tabs when ops-analysis is not sold', () => {
-    expect(
-      resolveAlarmPublicWidgetVisibility({
-        ...declared,
-        hasOpsAnalysis: false,
-      }),
-    ).toEqual({
-      alertRawLog: false,
-      monitorView: false,
-      relatedTopology: false,
-      assetInfo: false,
-      assetChange: false,
-      nodeStatus: false,
-      serviceOverview: false,
-      callChain: false,
-    });
-  });
-
-  it('shows public tabs when ops-analysis is sold and identifiers exist', () => {
-    expect(
-      resolveAlarmPublicWidgetVisibility({
-        ...declared,
-        hasOpsAnalysis: true,
-      }),
-    ).toEqual({
+  it('shows public tabs when the providers declared them and identifiers exist', () => {
+    expect(resolveAlarmPublicWidgetVisibility(declared)).toEqual({
       alertRawLog: true,
       monitorView: true,
       relatedTopology: true,
@@ -284,11 +261,46 @@ describe('resolveAlarmPublicWidgetVisibility', () => {
     });
   });
 
+  it('drops only the undeclared widget, never a sibling from another module', () => {
+    // 未购运营分析只会让 ops-analysis.relatedTopology 变成未声明，监控 / CMDB 的 Tab 不受牵连。
+    expect(
+      resolveAlarmPublicWidgetVisibility({
+        ...declared,
+        relatedTopologyDeclared: false,
+      }),
+    ).toEqual({
+      alertRawLog: true,
+      monitorView: true,
+      relatedTopology: false,
+      assetInfo: true,
+      assetChange: true,
+      nodeStatus: true,
+      serviceOverview: true,
+      callChain: true,
+    });
+    expect(
+      resolveAlarmPublicWidgetVisibility({
+        ...declared,
+        monitorViewDeclared: false,
+      }).monitorView,
+    ).toBe(false);
+  });
+
+  it('still needs the stable id even when the provider declared the widget', () => {
+    expect(
+      resolveAlarmPublicWidgetVisibility({ ...declared, hasMonitorId: false })
+        .monitorView,
+    ).toBe(false);
+    expect(
+      resolveAlarmPublicWidgetVisibility({ ...declared, hasInstUuid: false })
+        .assetInfo,
+    ).toBe(false);
+  });
+
   it('keeps the tab when any object has an id even if the current object does not', () => {
     expect(
       resolveAlarmPublicWidgetVisibility({
         ...declared,
-        hasOpsAnalysis: true,
         hasInstUuid: true,
         hasNodeId: true,
       }).assetChange,

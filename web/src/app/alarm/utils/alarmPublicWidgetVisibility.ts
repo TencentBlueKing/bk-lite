@@ -1,7 +1,6 @@
-import { canShowCrossModulePublicWidget } from '@/context/appCapabilities/crossModuleEmbed';
-
+// 公开入口只看「提供方声明了这个键」+「有约定稳定 ID」。提供方未购 / 无模块级访问时
+// 目录探测不到该键，declared 即为 false，所以这里不再额外判断售卖。
 export function resolveAlarmPublicWidgetVisibility(input: {
-  hasOpsAnalysis: boolean;
   alertRawLogDeclared: boolean;
   monitorViewDeclared: boolean;
   relatedTopologyDeclared: boolean;
@@ -25,37 +24,14 @@ export function resolveAlarmPublicWidgetVisibility(input: {
   serviceOverview: boolean;
   callChain: boolean;
 } {
-  const canShow = (
-    widgetKey:
-      | 'log.alertRawLog'
-      | 'monitor.monitorView'
-      | 'ops-analysis.relatedTopology'
-      | 'cmdb.baseInfo'
-      | 'cmdb.assetChange'
-      | 'node.nodeStatus'
-      | 'apm.serviceOverview'
-      | 'apm.callChain',
-    declared: boolean,
-  ) =>
-    canShowCrossModulePublicWidget({
-      hostApp: 'alarm',
-      widgetKey,
-      hasOpsAnalysis: input.hasOpsAnalysis,
-      providerDeclared: declared,
-    });
-
   return {
-    alertRawLog: canShow('log.alertRawLog', input.alertRawLogDeclared) && input.hasLogAlertId,
-    monitorView:
-      canShow('monitor.monitorView', input.monitorViewDeclared) && input.hasMonitorId,
-    relatedTopology:
-      canShow('ops-analysis.relatedTopology', input.relatedTopologyDeclared) &&
-      input.hasInstUuid,
-    assetInfo: canShow('cmdb.baseInfo', input.assetInfoDeclared) && input.hasInstUuid,
-    assetChange: canShow('cmdb.assetChange', input.assetChangeDeclared) && input.hasInstUuid,
-    nodeStatus: canShow('node.nodeStatus', input.nodeStatusDeclared) && input.hasNodeId,
-    serviceOverview:
-      canShow('apm.serviceOverview', input.serviceOverviewDeclared) && input.hasServiceId,
-    callChain: canShow('apm.callChain', input.callChainDeclared) && input.hasServiceId,
+    alertRawLog: input.alertRawLogDeclared && input.hasLogAlertId,
+    monitorView: input.monitorViewDeclared && input.hasMonitorId,
+    relatedTopology: input.relatedTopologyDeclared && input.hasInstUuid,
+    assetInfo: input.assetInfoDeclared && input.hasInstUuid,
+    assetChange: input.assetChangeDeclared && input.hasInstUuid,
+    nodeStatus: input.nodeStatusDeclared && input.hasNodeId,
+    serviceOverview: input.serviceOverviewDeclared && input.hasServiceId,
+    callChain: input.callChainDeclared && input.hasServiceId,
   };
 }

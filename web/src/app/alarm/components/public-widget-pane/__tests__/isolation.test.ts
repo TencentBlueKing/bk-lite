@@ -39,7 +39,8 @@ describe('alarm public widget host isolation', () => {
     expect(paneSource).toContain("useAppWidget('node.nodeStatus')");
     expect(paneSource).toContain("useAppWidget('apm.serviceOverview')");
     expect(paneSource).toContain("useAppWidget('apm.callChain')");
-    expect(paneSource).toContain("hasAppAccess(clientData, 'ops-analysis')");
+    // 公开 Tab 的售卖门只由 declared 表达，宿主不再自判「已购运营分析」。
+    expect(paneSource).not.toContain('hasAppAccess');
     expect(paneSource).toContain('resolveAlarmPublicWidgetVisibility');
     expect(paneSource).toContain('useLazyAppWidget');
     expect(paneSource).toContain('active && Boolean(identifier)');
