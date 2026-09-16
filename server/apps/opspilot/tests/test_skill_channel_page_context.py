@@ -789,3 +789,90 @@ class TestPageContextMultimodalAndBudget:
             )
             == chat_svc.PAGE_CONTEXT_SESSION_OVERFLOW_MESSAGE
         )
+
+
+class TestPublishedSkillWikiKeepsTools:
+    """平台发布智能体 + 监控视图内容对话：非强制知识库不得关掉工具循环。"""
+
+    def test_build_params_copies_wiki_and_force_from_skill(self):
+        from apps.opspilot.models import WikiKnowledgeBase
+
+        kb = WikiKnowledgeBase.objects.create(name="it-kb", team=[1])
+        skill = _skill()
+        skill.force_wiki_grounded = False
+        skill.save(update_fields=["force_wiki_grounded"])
+        skill.wiki_knowledge_bases.add(kb)
+        user = _superuser("pub_wiki_u")
+        with patch("apps.opspilot.services.skill_channel_chat_service.resolve_request_tools", return_value=[]):
+            with patch("apps.opspilot.services.skill_channel_chat_service.hydrate_skill_packages", return_value=[]):
+                with patch(
+                    "apps.opspilot.services.skill_channel_chat_service.build_skill_package_prompt",
+                    return_value=("p", []),
+                ):
+                    with patch(
+                        "apps.opspilot.services.skill_channel_chat_service.build_skill_package_strategy",
+                        return_value={},
+                    ):
+                        params = chat_svc.build_skill_chat_params(skill, "当前时间", user)
+        assert params["wiki_kb_ids"] == [kb.id]
+        assert params["force_wiki_grounded"] is False
+
+    def test_page_context_time_question_does_not_disable_tools(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from apps.opspilot.enum import SkillTypeChoices
+        from apps.opspilot.services import chat_service
+        from apps.opspilot.services.wiki.wiki_context_service import should_skip_wiki_retrieval
+
+        captured = {}
+
+        def fake_augment(system_prompt, kb_ids, query, **options):
+            captured["query"] = query
+            captured["force"] = options.get("force_wiki_grounded")
+            return "aug", [], {"overview_status": "routed", "llm_budget": {"used_calls": 0}}
+
+        monkeypatch.setattr(chat_service, "augment_prompt_with_trace", fake_augment)
+        monkeypatch.setattr(
+            chat_service,
+            "load_wiki_budget_config",
+            lambda: SimpleNamespace(qa_max_llm_calls=3, qa_max_output_tokens=1024),
+        )
+
+        injected = chat_svc.inject_page_context(
+            "当前时间",
+            {
+                "url": "/monitor/view/dashboard/host",
+                "app": "monitor",
+                "title": "主机监控",
+                "sections": [{"id": "meta", "label": "对象", "content": "主机 A CPU 42%", "priority": 1}],
+            },
+        )
+        assert should_skip_wiki_retrieval(injected if isinstance(injected, str) else injected[-1]["message"]) is False
+
+        chat_kwargs, _, _ = chat_service.ChatService.format_chat_server_kwargs(
+            {
+                "show_think": True,
+                "user_message": injected,
+                "chat_history": [],
+                "conversation_window_size": 10,
+                "skill_prompt": "你是运维助手",
+                "skill_params": [],
+                "wiki_kb_ids": [1],
+                "force_wiki_grounded": False,
+                "temperature": 0.2,
+                "user_id": "u1",
+                "skill_type": SkillTypeChoices.BASIC_TOOL,
+            },
+            SimpleNamespace(
+                openai_api_base="http://llm",
+                openai_api_key="key",
+                model_name="model",
+                protocol_type="openai",
+                vendor_id=None,
+                pk=1,
+            ),
+        )
+
+        assert captured["force"] is False
+        assert "max_model_calls" not in chat_kwargs
+        assert "max_steps" not in chat_kwargs

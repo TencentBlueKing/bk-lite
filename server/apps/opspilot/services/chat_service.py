@@ -150,6 +150,28 @@ def _wiki_context_options(kwargs):
     return options
 
 
+def _attach_wiki_answer_budget(chat_kwargs, extra_config, wiki_budget_trace, derived, *, force_wiki_grounded):
+    extra_config["wiki_budget"] = {
+        **wiki_budget_trace,
+        "max_output_tokens": derived.output_reserve_tokens,
+    }
+    if not force_wiki_grounded:
+        return
+    # 强制知识库回答：单次模型调用。图节点在 max_model_calls=1 时不绑定工具。
+    budget_config = load_wiki_budget_config()
+    route_calls = int((wiki_budget_trace.get("llm_budget") or {}).get("used_calls") or 0)
+    remaining_calls = budget_config.qa_max_llm_calls - route_calls
+    if remaining_calls <= 0:
+        raise WikiBudgetExceeded(
+            "wiki_llm_call_budget_exceeded",
+            "知识库问答 LLM 调用次数已达到上限",
+            details=wiki_budget_trace,
+        )
+    chat_kwargs["max_steps"] = remaining_calls
+    chat_kwargs["max_model_calls"] = 1
+    extra_config["wiki_budget"]["remaining_answer_calls"] = remaining_calls
+
+
 def _resolve_agent_execute_timeout() -> int:
     """整轮 agent 执行预算（秒）：覆盖一次 invoke_chat 内的全部多轮 LLM + 工具调用。
 
@@ -575,8 +597,10 @@ class ChatService:
 
         # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词。
         # 寒暄/闲聊跳过检索与 Wiki 答疑预算收口，按普通对话回复。
+        # 非强制只把知识库当参考，保留工具循环；强制才收成单次 grounded 回答。
         wiki_budget_trace = {}
         wiki_kb_ids = kwargs.get("wiki_kb_ids")
+        force_wiki_grounded = bool(kwargs.get("force_wiki_grounded"))
         wiki_active = bool(wiki_kb_ids) and not should_skip_wiki_retrieval(user_message)
         if wiki_kb_ids and not wiki_active:
             wiki_budget_trace = {
@@ -645,22 +669,13 @@ class ChatService:
         )
 
         if wiki_active:
-            budget_config = load_wiki_budget_config()
-            route_calls = int((wiki_budget_trace.get("llm_budget") or {}).get("used_calls") or 0)
-            remaining_calls = budget_config.qa_max_llm_calls - route_calls
-            if remaining_calls <= 0:
-                raise WikiBudgetExceeded(
-                    "wiki_llm_call_budget_exceeded",
-                    "知识库问答 LLM 调用次数已达到上限",
-                    details=wiki_budget_trace,
-                )
-            chat_kwargs["max_steps"] = remaining_calls
-            chat_kwargs["max_model_calls"] = 1
-            extra_config["wiki_budget"] = {
-                **wiki_budget_trace,
-                "remaining_answer_calls": remaining_calls,
-                "max_output_tokens": derived.output_reserve_tokens,
-            }
+            _attach_wiki_answer_budget(
+                chat_kwargs,
+                extra_config,
+                wiki_budget_trace,
+                derived,
+                force_wiki_grounded=force_wiki_grounded,
+            )
         if kwargs.get("thread_id"):
             chat_kwargs["thread_id"] = str(kwargs["thread_id"])
         elif kwargs.get("execution_id"):
