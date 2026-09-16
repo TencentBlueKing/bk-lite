@@ -1011,6 +1011,18 @@ assert.equal(
   false
 );
 assert.equal(shouldDrawPreviewThreshold(), true);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, compareValueKind: 'percent' }),
+  false
+);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, compareValueKind: 'ratio' }),
+  false
+);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, compareValueKind: 'delta' }),
+  true
+);
 
 assert.equal(formatDryRunHitCountCopy(1, 1), null);
 assert.equal(formatDryRunHitCountCopy(2, 2), null);

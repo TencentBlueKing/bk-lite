@@ -269,6 +269,49 @@ class TestPreviewEndToEnd:
         assert out["warnings"] == []
         assert out["result_unit"] == "percent"
 
+    def test_preview_overlay_keeps_source_unit_when_compare_is_percent(self, mocker):
+        current = {
+            "status": "success",
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[1, "8192"]]}
+                ]
+            },
+        }
+        baseline = {
+            "status": "success",
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[1, "4096"]]}
+                ]
+            },
+        }
+        api = mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value
+        api.query_range.side_effect = [current, baseline]
+        svc = PolicyPreviewService(
+            {
+                "query_condition": {"type": "pmq", "query": "nvidia_smi_memory_total"},
+                "period": {"type": "min", "value": 5},
+                "algorithm": "last_over_time",
+                "group_algorithm": "avg",
+                "group_by": ["instance_id"],
+                "metric_unit": "mebibytes",
+                "calculation_unit": "mebibytes",
+                "threshold_unit": "percent",
+                "compare_mode": "offset_1h",
+                "compare_value_kind": "percent",
+                "threshold": [{"level": "critical", "method": ">", "value": 10}],
+            }
+        )
+        out = svc.preview()
+        assert out["overlay"] is True
+        assert out["result_unit"] == "percent"
+        assert out["chart_unit"] == "mebibytes"
+        assert out["data"]["data"]["result"][0]["values"] == [[1, "8192"]]
+        assert out["warnings"] == []
+
     def test_preview_overlay_warns_when_baseline_missing(self, mocker):
         current = {
             "status": "success",

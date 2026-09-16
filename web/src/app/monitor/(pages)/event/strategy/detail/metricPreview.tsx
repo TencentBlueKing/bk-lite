@@ -23,7 +23,7 @@ import {
   buildMetricExpressionPreviewPayload,
   MetricExpressionMode
 } from './formulaExpressionUtils';
-import { resolvePreviewChartUnit, OVERLAY_ROLE_LABEL, shouldDrawPreviewThreshold } from './strategyDetailUtils';
+import { resolvePreviewChartUnit, OVERLAY_ROLE_LABEL, shouldDrawPreviewThreshold, COMPARE_MODE_ABSOLUTE, COMPARE_MODE_TIMELEFT } from './strategyDetailUtils';
 
 const { Option } = Select;
 
@@ -477,8 +477,17 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   }
 
   // 过滤掉空值的阈值
+  const overlayPreview =
+    Boolean(compareMode) &&
+    compareMode !== COMPARE_MODE_ABSOLUTE &&
+    compareMode !== COMPARE_MODE_TIMELEFT;
   const validThreshold = (
-    shouldDrawPreviewThreshold() ? previewThreshold : []
+    shouldDrawPreviewThreshold({
+      overlay: overlayPreview,
+      compareValueKind
+    })
+      ? previewThreshold
+      : []
   ).filter((item) => item.value !== null && item.value !== undefined);
   const effectiveChartUnit = resolvePreviewChartUnit(
     previewChartUnit,

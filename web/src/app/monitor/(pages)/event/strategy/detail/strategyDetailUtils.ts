@@ -760,7 +760,21 @@ export const resolveThresholdUnitBase = ({
   return result.conversionEnabled ? calculationUnit || null : result.unit;
 };
 
-export const shouldDrawPreviewThreshold = (): boolean => true;
+export const shouldDrawPreviewThreshold = ({
+  overlay,
+  compareValueKind
+}: {
+  overlay?: boolean;
+  compareValueKind?: string | null;
+} = {}): boolean => {
+  if (!overlay) {
+    return true;
+  }
+  return (
+    compareValueKind !== COMPARE_VALUE_KIND_PERCENT &&
+    compareValueKind !== COMPARE_VALUE_KIND_RATIO
+  );
+};
 
 export const buildMetricSelectOption = (
   metric: MetricItem,

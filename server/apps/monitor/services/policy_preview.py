@@ -80,11 +80,11 @@ class PolicyPreviewService:
             self._raise_for_vm_error(baseline_data)
             chart_unit = self._overlay_chart_unit(query_condition.get("type"))
             source_unit = self._chart_source_unit(query_condition.get("type"))
-            current_data = convert_vm_result_copy(
-                current_data, source_unit or chart_unit, chart_unit
+            current_data, chart_unit = self._convert_preview_chart(
+                current_data, source_unit, chart_unit
             )
-            baseline_data = convert_vm_result_copy(
-                baseline_data, source_unit or chart_unit, chart_unit
+            baseline_data, _ = self._convert_preview_chart(
+                baseline_data, source_unit, chart_unit
             )
             data = self._merge_overlay_series(current_data, baseline_data)
             if self._has_series(current_data) and not self._has_series(baseline_data):
@@ -98,8 +98,8 @@ class PolicyPreviewService:
                 if not result_unit.conversion_enabled
                 else self._chart_source_unit(query_condition.get("type"))
             )
-            data = convert_vm_result_copy(
-                data, source_unit or chart_unit, chart_unit
+            data, chart_unit = self._convert_preview_chart(
+                data, source_unit, chart_unit
             )
 
         data["unit"] = (
@@ -144,10 +144,29 @@ class PolicyPreviewService:
         return self._chart_unit()
 
     def _overlay_chart_unit(self, query_type):
-        result_unit = resolve_result_unit(self.payload)
-        if not result_unit.conversion_enabled:
-            return result_unit.unit or ""
-        return self._chart_unit()
+        # 叠对照画的是当前窗 / 对照窗的原始汇聚，必须用指标量纲。
+        # percent / ratio 是比较结果单位，不能拿来换算时间序列。
+        source_unit = self._chart_source_unit(query_type)
+        calculation_unit = self.payload.get("calculation_unit") or ""
+        if calculation_unit and (
+            not source_unit
+            or calculation_unit == source_unit
+            or UnitConverter.is_convertible(source_unit, calculation_unit)
+        ):
+            return calculation_unit
+        return source_unit or ""
+
+    def _convert_preview_chart(self, data, source_unit, chart_unit):
+        source = source_unit or chart_unit or ""
+        target = chart_unit or source
+        if (
+            source
+            and target
+            and source != target
+            and not UnitConverter.is_convertible(source, target)
+        ):
+            target = source
+        return convert_vm_result_copy(data, source, target), target
 
     @staticmethod
     def _raise_for_vm_error(data):
