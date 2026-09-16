@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
-import { Form, Select, InputNumber, Input, Tooltip, Space } from 'antd';
+import { Form, Select, InputNumber, Tooltip, Space } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
-import { SCHEDULE_UNIT_MAP, COMPARISON_METHOD } from '@/app/monitor/constants/event';
+import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
 import { useMethodList } from '@/app/monitor/hooks/event';
 import {
   COMPARE_MODE_ABSOLUTE,
@@ -32,17 +32,10 @@ import {
   type SceneChipId
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
+import AlertDurationFields from './alertDurationFields';
 
 const { Option } = Select;
 const COMPARE_KIND_SELECT_WIDTH = 108;
-
-// 无数据告警级别选项
-const NO_DATA_ALERT_OPTIONS = [
-  { value: 'none', labelKey: 'noTriggerNoDataAlert' },
-  { value: 'critical', labelKey: 'triggerCriticalAlert' },
-  { value: 'error', labelKey: 'triggerErrorAlert' },
-  { value: 'warning', labelKey: 'triggerWarningAlert' }
-];
 
 interface AlertConditionsFormProps {
   enableAlerts: string[];
@@ -557,178 +550,23 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               <p className="mb-4 ml-[100px] text-[13px] leading-[22px] text-[var(--color-text-3)]">
                 {restatement}
               </p>
-
-              {/* 触发条件 */}
-              <Form.Item<StrategyFields>
-                label={
-                  <span className="w-[100px]">
-                    {t('monitor.events.triggerCondition')}
-                  </span>
-                }
-              >
-                {t('monitor.events.triggerConditionPrefix')}
-                <Form.Item
-                  name="trigger_count"
-                  noStyle
-                  rules={[
-                    {
-                      required: true,
-                      message: t('common.required')
-                    }
-                  ]}
-                >
-                  <InputNumber
-                    className="mx-[10px] w-[100px]"
-                    min={1}
-                    precision={0}
-                  />
-                </Form.Item>
-                {t('monitor.events.triggerConditionSuffix')}
-              </Form.Item>
-
-              {/* 自动恢复 */}
-              <Form.Item<StrategyFields>
-                label={
-                  <span className="w-[100px]">
-                    {t('monitor.events.recovery')}
-                  </span>
-                }
-              >
-                {t('monitor.events.recoveryCondition')}
-                <Form.Item name="recovery_condition" noStyle>
-                  <InputNumber
-                    className="mx-[10px] w-[100px]"
-                    min={1}
-                    precision={0}
-                  />
-                </Form.Item>
-                {t('monitor.events.consecutivePeriods')}
-              </Form.Item>
-              <Form.Item
-                label={
-                  <span className="w-[100px]">
-                    {t('monitor.events.recoveryThreshold')}
-                  </span>
-                }
-              >
-                <InputNumber
-                  className="w-full"
-                  style={{ width: '100%' }}
-                  addonBefore={
-                    <Select
-                      allowClear
-                      value={recoveryThreshold?.method || undefined}
-                      popupMatchSelectWidth={false}
-                      style={{ width: 80 }}
-                      aria-label={t('monitor.events.method')}
-                      onChange={(method) =>
-                        onRecoveryThresholdChange?.({
-                          method: method || '',
-                          value: recoveryThreshold?.value ?? null
-                        })
-                      }
-                    >
-                      {allowedRecoveryMethods.map((item) => (
-                        <Option key={item.value} value={item.value}>
-                          {item.label}
-                        </Option>
-                      ))}
-                    </Select>
-                  }
-                  addonAfter={recoveryThresholdUnitLabel || undefined}
-                  placeholder={t(
-                    'monitor.events.recoveryThresholdPlaceholder'
-                  )}
-                  value={recoveryThreshold?.value ?? null}
-                  onChange={(value) =>
-                    onRecoveryThresholdChange?.({
-                      method: recoveryThreshold?.method || '',
-                      value: typeof value === 'number' ? value : null
-                    })
-                  }
-                />
-              </Form.Item>
-
-              {/* 无数据告警 */}
-              <Form.Item
-                label={
-                  <span className="w-[100px]">
-                    {t('monitor.events.noDataAlertLevel')}
-                  </span>
-                }
-                extra={
-                  functionDelayTip ? (
-                    <span className="text-[12px] text-[var(--color-text-3)]">
-                      {functionDelayTip}
-                    </span>
-                  ) : undefined
-                }
-              >
-                {t('monitor.events.noDataAlertCondition')}
-                <InputNumber
-                  className="mx-[10px] w-[100px]"
-                  min={SCHEDULE_UNIT_MAP[`${nodataUnit}Min`]}
-                  max={SCHEDULE_UNIT_MAP[`${nodataUnit}Max`]}
-                  value={noDataAlert}
-                  precision={0}
-                  onChange={onNoDataAlertChange}
-                />
-                {t('monitor.events.noDataAlertSuffix')}
-                <Select
-                  value={noDataAlertLevel}
-                  popupMatchSelectWidth={false}
-                  style={{ width: 200 }}
-                  onChange={onNoDataAlertLevelChange}
-                >
-                  {NO_DATA_ALERT_OPTIONS.map((item) => (
-                    <Option key={item.value} value={item.value}>
-                      {t(`monitor.events.${item.labelKey}`)}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-              <Form.Item
-                label={
-                  <span className="w-[100px]">
-                    {t('monitor.events.noDataRecoveryWindow')}
-                  </span>
-                }
-              >
-                <InputNumber
-                  className="mr-[10px] w-[100px]"
-                  min={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Min`]}
-                  max={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Max`]}
-                  value={noDataRecovery}
-                  precision={0}
-                  onChange={onNoDataRecoveryChange}
-                />
-                {t('monitor.events.nodataRecover')}
-              </Form.Item>
-
-              {/* 无数据告警名称 - 条件显示 */}
-              {showNoDataAlertName && (
-                <Form.Item<StrategyFields>
-                  name="no_data_alert_name"
-                  label={
-                    <span className="w-[100px]">
-                      {t('monitor.events.noDataAlertName')}
-                    </span>
-                  }
-                  rules={[
-                    {
-                      required: true,
-                      message: t('common.required')
-                    }
-                  ]}
-                >
-                  <Input
-                    style={{ width: '100%' }}
-                    value={noDataAlertName}
-                    placeholder={t('monitor.events.noDataAlertName')}
-                    onChange={(e) => onNoDataAlertNameChange(e.target.value)}
-                  />
-                </Form.Item>
-              )}
+              <AlertDurationFields
+                recoveryThreshold={recoveryThreshold}
+                onRecoveryThresholdChange={onRecoveryThresholdChange}
+                allowedRecoveryMethods={allowedRecoveryMethods}
+                recoveryThresholdUnitLabel={recoveryThresholdUnitLabel}
+                noDataAlert={noDataAlert}
+                nodataUnit={nodataUnit}
+                noDataRecovery={noDataRecovery}
+                noDataRecoveryUnit={noDataRecoveryUnit}
+                noDataAlertLevel={noDataAlertLevel}
+                noDataAlertName={noDataAlertName}
+                functionDelayTip={functionDelayTip}
+                onNoDataAlertChange={onNoDataAlertChange}
+                onNoDataRecoveryChange={onNoDataRecoveryChange}
+                onNoDataAlertLevelChange={onNoDataAlertLevelChange}
+                onNoDataAlertNameChange={onNoDataAlertNameChange}
+              />
             </>
           )
         }
