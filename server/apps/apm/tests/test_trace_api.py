@@ -1,3 +1,4 @@
+import base64
 from datetime import timedelta
 
 import pytest
@@ -173,6 +174,18 @@ def test_trace_permission_is_checked_before_querying_storage(apm_user_without_pe
 
     assert response.status_code == 403
     query.assert_not_called()
+
+
+def test_overflow_cursor_returns_invalid_query_before_searching_storage(apm_api_client):
+    overflow_cursor = base64.urlsafe_b64encode(b"9" * 80).decode().rstrip("=")
+
+    response = apm_api_client.get(
+        "/api/v1/apm/traces/",
+        {"service_name": "checkout", "environment": "production", "cursor": overflow_cursor},
+    )
+
+    assert response.status_code == 400
+    assert response.data["code"] == "invalid_query"
 
 
 def test_arbitrary_traceql_is_rejected_instead_of_forwarded(apm_api_client, mocker):
