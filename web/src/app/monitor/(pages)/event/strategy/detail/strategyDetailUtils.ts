@@ -543,6 +543,21 @@ export const isCompareModeAvailable = (
   return periodSeconds !== offsetSeconds;
 };
 
+export const OFFSET_COMPARE_MODES = new Set([
+  COMPARE_MODE_OFFSET_1H,
+  COMPARE_MODE_OFFSET_24H,
+  COMPARE_MODE_OFFSET_7D,
+  COMPARE_MODE_OFFSET_30D,
+  COMPARE_MODE_BASELINE_4W
+]);
+export const HIGH_SIDE_THRESHOLD_METHODS = new Set(['>', '>=']);
+
+export const isHighSideThresholdMethod = (method?: string | null): boolean =>
+  HIGH_SIDE_THRESHOLD_METHODS.has(method || '');
+
+export const isLowSideThresholdMethod = (method?: string | null): boolean =>
+  LOW_SIDE_THRESHOLD_METHODS.has(method || '');
+
 export const getEnabledCompareModes = ({
   periodType,
   periodValue,
@@ -551,20 +566,507 @@ export const getEnabledCompareModes = ({
   periodType?: string | null;
   periodValue?: number | null;
   algorithm?: string | null;
-}): string[] => {
-  if (algorithm === COUNT_IF_ALGORITHM) {
-    return [COMPARE_MODE_ABSOLUTE];
-  }
-  return ENABLED_COMPARE_MODES.filter((mode) => {
-    if (
+}): string[] =>
+  getCompareModeSelectOptions({ periodType, periodValue, algorithm })
+    .filter((item) => !item.disabled)
+    .map((item) => item.value);
+
+export type CompareModeSelectOption = {
+  value: string;
+  disabled: boolean;
+  reasonKey?: string;
+  group: 'flat' | 'offset';
+};
+
+export const getCompareModeSelectOptions = ({
+  periodType,
+  periodValue,
+  algorithm
+}: {
+  periodType?: string | null;
+  periodValue?: number | null;
+  algorithm?: string | null;
+}): CompareModeSelectOption[] => {
+  const countIfLocked = algorithm === COUNT_IF_ALGORITHM;
+  return ENABLED_COMPARE_MODES.map((mode) => {
+    const periodBlocked = !isCompareModeAvailable(mode, periodType, periodValue);
+    const countIfBlocked = countIfLocked && mode !== COMPARE_MODE_ABSOLUTE;
+    const timeleftBlocked =
       mode === COMPARE_MODE_TIMELEFT &&
-      algorithm &&
-      !LEVEL_ALGORITHMS.includes(algorithm)
-    ) {
-      return false;
+      !!algorithm &&
+      !LEVEL_ALGORITHMS.includes(algorithm);
+    const disabled = periodBlocked || countIfBlocked || timeleftBlocked;
+    let reasonKey: string | undefined;
+    if (countIfBlocked) {
+      reasonKey = 'monitor.events.compareModeDisabledCountIf';
+    } else if (periodBlocked) {
+      reasonKey = 'monitor.events.compareModeDisabledPeriod';
+    } else if (timeleftBlocked) {
+      reasonKey = 'monitor.events.compareModeDisabledTimeleft';
     }
-    return isCompareModeAvailable(mode, periodType, periodValue);
+    return {
+      value: mode,
+      disabled,
+      reasonKey,
+      group: OFFSET_COMPARE_MODES.has(mode) ? 'offset' : 'flat'
+    };
   });
+};
+
+export const getAlgorithmGroupKey = (
+  value: string | null | undefined
+): 'window' | 'change' =>
+  PER_SERIES_ALGORITHMS.includes(String(value || '')) ? 'change' : 'window';
+
+export const groupAlgorithmOptions = <T extends { value?: string | number }>(
+  items: T[]
+): Array<{ key: 'window' | 'change'; options: T[] }> => {
+  const windowOptions: T[] = [];
+  const changeOptions: T[] = [];
+  items.forEach((item) => {
+    if (getAlgorithmGroupKey(String(item.value)) === 'change') {
+      changeOptions.push(item);
+    } else {
+      windowOptions.push(item);
+    }
+  });
+  return [
+    windowOptions.length
+      ? { key: 'window' as const, options: windowOptions }
+      : null,
+    changeOptions.length
+      ? { key: 'change' as const, options: changeOptions }
+      : null
+  ].filter((group): group is { key: 'window' | 'change'; options: T[] } =>
+    Boolean(group)
+  );
+};
+
+export const coerceThresholdsForCompareMode = <
+  T extends { method?: string | null }
+>(
+  compareMode: string,
+  thresholds: T[]
+): T[] => {
+  if (compareMode !== COMPARE_MODE_TIMELEFT) {
+    return thresholds;
+  }
+  return thresholds.map((item) => {
+    if (item.method === '>') {
+      return { ...item, method: '<' };
+    }
+    if (item.method === '>=') {
+      return { ...item, method: '<=' };
+    }
+    return item;
+  });
+};
+
+export const recoveryConflictsWithThresholds = (
+  recovery: { method?: string | null } | null | undefined,
+  thresholds: Array<{ method?: string | null }> | null | undefined
+): boolean => {
+  const recoveryMethod = recovery?.method;
+  if (!recoveryMethod) {
+    return false;
+  }
+  const triggerMethods = (thresholds || [])
+    .map((item) => item.method)
+    .filter((method): method is string => !!method);
+  if (!triggerMethods.length) {
+    return false;
+  }
+  const sides = new Set(
+    triggerMethods.map((method) =>
+      isHighSideThresholdMethod(method)
+        ? 'high'
+        : isLowSideThresholdMethod(method)
+          ? 'low'
+          : 'other'
+    )
+  );
+  if (sides.has('other') || sides.size > 1) {
+    return true;
+  }
+  if (sides.has('high')) {
+    return isHighSideThresholdMethod(recoveryMethod);
+  }
+  return isLowSideThresholdMethod(recoveryMethod);
+};
+
+export const coerceRecoveryForThresholds = <
+  T extends { method?: string; value?: number | null }
+>(
+  recovery: T | null | undefined,
+  thresholds: Array<{ method?: string | null }> | null | undefined
+): T | { method: string; value: null } => {
+  if (recoveryConflictsWithThresholds(recovery, thresholds)) {
+    return { method: '', value: null };
+  }
+  return recovery || { method: '', value: null };
+};
+
+export const getAllowedThresholdMethods = <T extends { value?: string | number }>(
+  compareMode: string,
+  allMethods: T[]
+): T[] => {
+  if (compareMode !== COMPARE_MODE_TIMELEFT) {
+    return allMethods;
+  }
+  return allMethods.filter((item) =>
+    isLowSideThresholdMethod(String(item.value || ''))
+  );
+};
+
+export const getAllowedRecoveryMethods = <T extends { value?: string | number }>(
+  thresholds: Array<{ method?: string | null }> | null | undefined,
+  allMethods: T[]
+): T[] => {
+  const triggerMethods = (thresholds || [])
+    .map((item) => item.method)
+    .filter((method): method is string => !!method);
+  if (!triggerMethods.length) {
+    return allMethods;
+  }
+  const allHigh = triggerMethods.every((method) =>
+    isHighSideThresholdMethod(method)
+  );
+  const allLow = triggerMethods.every((method) =>
+    isLowSideThresholdMethod(method)
+  );
+  if (allHigh) {
+    return allMethods.filter((item) =>
+      isLowSideThresholdMethod(String(item.value || ''))
+    );
+  }
+  if (allLow) {
+    return allMethods.filter((item) =>
+      isHighSideThresholdMethod(String(item.value || ''))
+    );
+  }
+  return [];
+};
+
+export type SceneChipId =
+  | 'p95_absolute'
+  | 'prev_window_up'
+  | 'offset_1h_up'
+  | 'yoy_week'
+  | 'disk_timeleft'
+  | 'count_if_n';
+
+export type SceneChipDefinition = {
+  id: SceneChipId;
+  labelKey: string;
+  algorithm: string;
+  compareMode: string;
+  compareValueKind: string;
+  thresholdMethod?: string;
+  countPredicate?: { method: string; value: number };
+};
+
+export const SCENE_CHIPS: SceneChipDefinition[] = [
+  {
+    id: 'p95_absolute',
+    labelKey: 'monitor.events.sceneChipP95Absolute',
+    algorithm: 'p95_over_time',
+    compareMode: COMPARE_MODE_ABSOLUTE,
+    compareValueKind: ''
+  },
+  {
+    id: 'prev_window_up',
+    labelKey: 'monitor.events.sceneChipPrevWindowUp',
+    algorithm: 'avg_over_time',
+    compareMode: COMPARE_MODE_PREVIOUS_WINDOW,
+    compareValueKind: COMPARE_VALUE_KIND_PERCENT
+  },
+  {
+    id: 'offset_1h_up',
+    labelKey: 'monitor.events.sceneChipOffset1hUp',
+    algorithm: 'p95_over_time',
+    compareMode: COMPARE_MODE_OFFSET_1H,
+    compareValueKind: COMPARE_VALUE_KIND_PERCENT
+  },
+  {
+    id: 'yoy_week',
+    labelKey: 'monitor.events.sceneChipYoyWeek',
+    algorithm: 'avg_over_time',
+    compareMode: COMPARE_MODE_OFFSET_7D,
+    compareValueKind: COMPARE_VALUE_KIND_PERCENT
+  },
+  {
+    id: 'disk_timeleft',
+    labelKey: 'monitor.events.sceneChipDiskTimeleft',
+    algorithm: 'last_over_time',
+    compareMode: COMPARE_MODE_TIMELEFT,
+    compareValueKind: COMPARE_VALUE_KIND_HOURS,
+    thresholdMethod: '<'
+  },
+  {
+    id: 'count_if_n',
+    labelKey: 'monitor.events.sceneChipCountIfN',
+    algorithm: COUNT_IF_ALGORITHM,
+    compareMode: COMPARE_MODE_ABSOLUTE,
+    compareValueKind: '',
+    countPredicate: { method: '>', value: 0 }
+  }
+];
+
+export type SceneChipView = SceneChipDefinition & {
+  disabled: boolean;
+  reasonKey?: string;
+};
+
+export const getSceneChipStates = ({
+  isEnumMetric,
+  isFormulaMode,
+  disableRateAlgorithm,
+  periodType,
+  periodValue
+}: {
+  isEnumMetric?: boolean;
+  isFormulaMode?: boolean;
+  disableRateAlgorithm?: boolean;
+  periodType?: string | null;
+  periodValue?: number | null;
+}): SceneChipView[] =>
+  SCENE_CHIPS.map((chip) => {
+    if (isEnumMetric && (NEW_ALGORITHMS.includes(chip.algorithm) || chip.compareMode !== COMPARE_MODE_ABSOLUTE)) {
+      return {
+        ...chip,
+        disabled: true,
+        reasonKey: 'monitor.events.sceneChipDisabledEnum'
+      };
+    }
+    if (isFormulaMode && PER_SERIES_ALGORITHMS.includes(chip.algorithm)) {
+      return {
+        ...chip,
+        disabled: true,
+        reasonKey: 'monitor.events.sceneChipDisabledFormula'
+      };
+    }
+    if (disableRateAlgorithm && chip.algorithm === 'rate') {
+      return {
+        ...chip,
+        disabled: true,
+        reasonKey: 'monitor.events.rateAlreadyInQuery'
+      };
+    }
+    const compareOption = getCompareModeSelectOptions({
+      periodType,
+      periodValue,
+      algorithm: chip.algorithm
+    }).find((item) => item.value === chip.compareMode);
+    if (compareOption?.disabled) {
+      return {
+        ...chip,
+        disabled: true,
+        reasonKey: compareOption.reasonKey
+      };
+    }
+    return { ...chip, disabled: false };
+  });
+
+export const matchSceneChipId = ({
+  algorithm,
+  compareMode,
+  compareValueKind
+}: {
+  algorithm?: string | null;
+  compareMode?: string | null;
+  compareValueKind?: string | null;
+}): SceneChipId | null => {
+  const matched = SCENE_CHIPS.find(
+    (chip) =>
+      chip.algorithm === algorithm &&
+      chip.compareMode === (compareMode || COMPARE_MODE_ABSOLUTE) &&
+      (chip.compareValueKind || '') === (compareValueKind || '')
+  );
+  return matched?.id || null;
+};
+
+export type SceneChipApplyResult = {
+  algorithm: string;
+  compareMode: string;
+  compareValueKind: string;
+  thresholds: Array<{ level?: string; method?: string; value?: number | null }>;
+  recoveryThreshold: { method: string; value: number | null };
+  countPredicate: { method: string; value: number | null };
+};
+
+export const applySceneChip = ({
+  chipId,
+  algorithm,
+  compareMode,
+  compareValueKind,
+  thresholds,
+  recoveryThreshold,
+  countPredicate
+}: {
+  chipId: SceneChipId;
+  algorithm?: string | null;
+  compareMode?: string | null;
+  compareValueKind?: string | null;
+  thresholds: Array<{ level?: string; method?: string; value?: number | null }>;
+  recoveryThreshold?: { method?: string; value?: number | null } | null;
+  countPredicate?: { method?: string; value?: number | null } | null;
+}): SceneChipApplyResult | null => {
+  const chip = SCENE_CHIPS.find((item) => item.id === chipId);
+  if (!chip) {
+    return null;
+  }
+  const nextThresholds = coerceThresholdsForCompareMode(
+    chip.compareMode,
+    chip.thresholdMethod
+      ? thresholds.map((item) => ({
+        ...item,
+        method: chip.thresholdMethod
+      }))
+      : thresholds
+  );
+  const nextCountPredicate =
+    chip.countPredicate &&
+    (!countPredicate?.method ||
+      countPredicate.value == null ||
+      !Number.isFinite(Number(countPredicate.value)))
+      ? chip.countPredicate
+      : {
+        method: countPredicate?.method || '>',
+        value: countPredicate?.value ?? null
+      };
+  return {
+    algorithm: chip.algorithm,
+    compareMode: chip.compareMode,
+    compareValueKind: chip.compareValueKind,
+    thresholds: nextThresholds,
+    recoveryThreshold: coerceRecoveryForThresholds(
+      recoveryThreshold,
+      nextThresholds
+    ) as { method: string; value: number | null },
+    countPredicate: {
+      method: nextCountPredicate.method || '>',
+      value:
+        typeof nextCountPredicate.value === 'number'
+          ? nextCountPredicate.value
+          : null
+    }
+  };
+};
+
+type TranslateFn = (
+  key: string,
+  defaultValue?: string,
+  values?: Record<string, string | number>
+) => string;
+
+export const buildPolicyRestatement = ({
+  t,
+  metricLabel,
+  algorithmLabel,
+  algorithm,
+  compareMode,
+  compareValueKind,
+  compareModeLabel,
+  thresholdMethod,
+  thresholdValue,
+  thresholdUnitLabel,
+  countPredicateMethod,
+  countPredicateValue,
+  forecastTarget
+}: {
+  t: TranslateFn;
+  metricLabel?: string | null;
+  algorithmLabel?: string | null;
+  algorithm?: string | null;
+  compareMode?: string | null;
+  compareValueKind?: string | null;
+  compareModeLabel?: string | null;
+  thresholdMethod?: string | null;
+  thresholdValue?: number | null;
+  thresholdUnitLabel?: string | null;
+  countPredicateMethod?: string | null;
+  countPredicateValue?: number | null;
+  forecastTarget?: number | null;
+}): string => {
+  const metric =
+    metricLabel?.trim() ||
+    t('monitor.events.policyRestatementMetricFallback', '所选指标');
+  const algo = algorithmLabel?.trim() || '';
+  const method = thresholdMethod || '';
+  const valueText =
+    thresholdValue == null || !Number.isFinite(Number(thresholdValue))
+      ? '…'
+      : String(thresholdValue);
+  const unit = thresholdUnitLabel || '';
+  const valueWithUnit = `${valueText}${unit ? ` ${unit}` : ''}`.trim();
+
+  if (algorithm === COUNT_IF_ALGORITHM) {
+    const innerValue =
+      countPredicateValue == null ||
+      !Number.isFinite(Number(countPredicateValue))
+        ? '…'
+        : String(countPredicateValue);
+    const inner = `${countPredicateMethod || ''} ${innerValue}`.trim();
+    return t(
+      'monitor.events.policyRestatementCountIf',
+      '这条策略在判断：窗口内满足 {inner} 的点数 {method} {value}。',
+      { inner, method, value: valueWithUnit }
+    );
+  }
+
+  if (compareMode === COMPARE_MODE_TIMELEFT) {
+    const direction =
+      thresholdMethod === '<='
+        ? t('monitor.events.policyRestatementAtMost', '不超过')
+        : t('monitor.events.policyRestatementUnder', '不足');
+    if (forecastTarget == null) {
+      return t(
+        'monitor.events.policyRestatementTimeleftNeedTarget',
+        '这条策略在判断：{metric}距容量线还剩{direction} {value} 小时（请填写容量线）。',
+        { metric, direction, value: valueText }
+      );
+    }
+    return t(
+      'monitor.events.policyRestatementTimeleft',
+      '这条策略在判断：{metric}距容量线还剩{direction} {value} 小时。',
+      { metric, direction, value: valueText }
+    );
+  }
+
+  if (!compareMode || compareMode === COMPARE_MODE_ABSOLUTE) {
+    return t(
+      'monitor.events.policyRestatementAbsolute',
+      '这条策略在判断：{metric}的{algorithm} {method} {value}。',
+      { metric, algorithm: algo, method, value: valueWithUnit }
+    );
+  }
+
+  const direction = isHighSideThresholdMethod(thresholdMethod)
+    ? t('monitor.events.policyRestatementHigh', '高')
+    : isLowSideThresholdMethod(thresholdMethod)
+      ? t('monitor.events.policyRestatementLow', '低')
+      : t('monitor.events.policyRestatementDiff', '相差');
+  let compared = valueWithUnit;
+  if (compareValueKind === COMPARE_VALUE_KIND_PERCENT) {
+    compared = `${valueText}%`;
+  } else if (compareValueKind === COMPARE_VALUE_KIND_RATIO) {
+    compared = t(
+      'monitor.events.policyRestatementRatioValue',
+      '{value} 倍',
+      { value: valueText }
+    );
+  }
+  return t(
+    'monitor.events.policyRestatementCompare',
+      '这条策略在判断：{metric}的{algorithm}，比 {baseline} {direction} {value}。',
+    {
+      metric,
+      algorithm: algo,
+      baseline: compareModeLabel || '',
+      direction,
+      value: compared
+    }
+  );
 };
 
 export const getCompareValueKinds = (mode: string): string[] =>
@@ -703,6 +1205,41 @@ export const mapQuantityToRateUnit = (
     return normalized;
   }
   return QUANTITY_TO_RATE_UNIT[normalized] || raw;
+};
+
+export const shouldAnnotatePerSecond = (
+  unit?: string | null,
+  algorithm?: string | null
+): boolean => {
+  if (algorithm !== 'rate' && algorithm !== 'deriv') {
+    return false;
+  }
+  const normalized = (unit || '').trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (ALREADY_PER_SECOND_UNITS.has(normalized)) {
+    return false;
+  }
+  return !QUANTITY_TO_RATE_UNIT[normalized];
+};
+
+export const formatUnitLabelWithRateSuffix = (
+  label: string,
+  unit?: string | null,
+  algorithm?: string | null
+): string => {
+  const text = label || '';
+  if (!shouldAnnotatePerSecond(unit, algorithm)) {
+    return text;
+  }
+  if (!text) {
+    return '/s';
+  }
+  if (/\/s$/i.test(text)) {
+    return text;
+  }
+  return `${text}/s`;
 };
 
 export const resolvePolicyResultUnit = ({

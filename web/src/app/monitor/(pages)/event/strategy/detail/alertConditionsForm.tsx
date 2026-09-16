@@ -1,26 +1,35 @@
 import React, { useMemo } from 'react';
-import { Form, Select, InputNumber, Input, Tooltip, Space } from 'antd';
+import { Form, Select, InputNumber, Input, Tooltip, Space, Tag } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
 import { SCHEDULE_UNIT_MAP, COMPARISON_METHOD } from '@/app/monitor/constants/event';
+import { useMethodList } from '@/app/monitor/hooks/event';
 import {
   COMPARE_MODE_ABSOLUTE,
   COMPARE_MODE_TIMELEFT,
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
   FORECAST_LOOKBACK_OPTIONS,
+  applySceneChip,
+  buildPolicyRestatement,
   defaultCompareValueKind,
+  formatUnitLabelWithRateSuffix,
+  getAllowedRecoveryMethods,
+  getAllowedThresholdMethods,
+  getCompareModeSelectOptions,
   getCompareValueKinds,
-  getEnabledCompareModes,
   getMetricThresholdEnumState,
+  getSceneChipStates,
   getThresholdUnitOptions,
   isVacantThresholdUnit,
+  matchSceneChipId,
   resolveMetricDisplayUnit,
   shouldShowThresholdUnitSelector,
-  timeleftRequiresLowSideThresholds
+  timeleftRequiresLowSideThresholds,
+  type SceneChipId
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
 
@@ -74,6 +83,11 @@ interface AlertConditionsFormProps {
     method?: string;
     value?: number | null;
   }) => void;
+  metricLabel?: string | null;
+  disableRateAlgorithm?: boolean;
+  countPredicate?: { method?: string; value?: number | null } | null;
+  onCountPredicateChange?: (val: { method: string; value: number | null }) => void;
+  onSceneChipApply?: (payload: NonNullable<ReturnType<typeof applySceneChip>>) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -98,6 +112,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   forecastTarget,
   forecastLookback,
   recoveryThreshold,
+  metricLabel,
+  disableRateAlgorithm,
+  countPredicate,
   onThresholdChange,
   onThresholdUnitChange,
   onNoDataAlertChange,
@@ -109,11 +126,14 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onForecastTargetChange,
   onForecastLookbackChange,
   onRecoveryThresholdChange,
+  onCountPredicateChange,
+  onSceneChipApply,
   isTrap
 }) => {
   const { t } = useTranslation();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
+  const METHOD_LIST = useMethodList();
 
   const { isEnumMetric, enumOptions } = useMemo(
     () => getMetricThresholdEnumState({ isFormulaMode, metricUnit }),
@@ -169,9 +189,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     return Promise.resolve();
   };
 
-  const compareModes = useMemo(
+  const compareModeOptions = useMemo(
     () =>
-      getEnabledCompareModes({
+      getCompareModeSelectOptions({
         periodType: periodUnit,
         periodValue: period,
         algorithm
@@ -181,6 +201,44 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const compareKindOptions = useMemo(
     () => getCompareValueKinds(compareMode),
     [compareMode]
+  );
+  const flatCompareModes = useMemo(
+    () => compareModeOptions.filter((item) => item.group === 'flat'),
+    [compareModeOptions]
+  );
+  const offsetCompareModes = useMemo(
+    () => compareModeOptions.filter((item) => item.group === 'offset'),
+    [compareModeOptions]
+  );
+  const sceneChips = useMemo(
+    () =>
+      getSceneChipStates({
+        isEnumMetric,
+        isFormulaMode,
+        disableRateAlgorithm,
+        periodType: periodUnit,
+        periodValue: period
+      }),
+    [isEnumMetric, isFormulaMode, disableRateAlgorithm, periodUnit, period]
+  );
+  const activeSceneChipId = matchSceneChipId({
+    algorithm,
+    compareMode,
+    compareValueKind
+  });
+  const allowedThresholdMethods = useMemo(
+    () => getAllowedThresholdMethods(compareMode, COMPARISON_METHOD),
+    [compareMode]
+  );
+  const allowedRecoveryMethods = useMemo(
+    () => getAllowedRecoveryMethods(threshold, COMPARISON_METHOD),
+    [threshold]
+  );
+  const algorithmLabel = useMemo(
+    () =>
+      METHOD_LIST.find((item) => String(item.value) === String(algorithm))
+        ?.label || '',
+    [METHOD_LIST, algorithm]
   );
   const compareModeLabels: Record<string, string> = {
     absolute: t('monitor.events.compareModeAbsolute'),
@@ -212,15 +270,50 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   }, [metricUnit, unitList]);
   const recoveryThresholdUnitLabel = useMemo(() => {
     if (!thresholdUnit || isVacantThresholdUnit(thresholdUnit)) {
-      return '';
+      return formatUnitLabelWithRateSuffix('', thresholdUnit, algorithm);
     }
     const matched = unitList.find((item) => item.unit_id === thresholdUnit);
-    return (
+    return formatUnitLabelWithRateSuffix(
       resolveMetricDisplayUnit(thresholdUnit, unitList) ||
-      matched?.unit_name ||
-      ''
+        matched?.unit_name ||
+        '',
+      thresholdUnit,
+      algorithm
     );
-  }, [thresholdUnit, unitList]);
+  }, [thresholdUnit, unitList, algorithm]);
+  const restatement = useMemo(() => {
+    const primary = threshold.find((item) => item.method && item.value != null) ||
+      threshold[0];
+    return buildPolicyRestatement({
+      t,
+      metricLabel,
+      algorithmLabel,
+      algorithm,
+      compareMode,
+      compareValueKind,
+      compareModeLabel: compareModeLabels[compareMode] || '',
+      thresholdMethod: primary?.method,
+      thresholdValue:
+        typeof primary?.value === 'number' ? primary.value : null,
+      thresholdUnitLabel: recoveryThresholdUnitLabel,
+      countPredicateMethod: countPredicate?.method,
+      countPredicateValue:
+        typeof countPredicate?.value === 'number' ? countPredicate.value : null,
+      forecastTarget
+    });
+  }, [
+    t,
+    metricLabel,
+    algorithmLabel,
+    algorithm,
+    compareMode,
+    compareValueKind,
+    compareModeLabels,
+    threshold,
+    recoveryThresholdUnitLabel,
+    countPredicate,
+    forecastTarget
+  ]);
 
   const handleCompareModeChange = (val: string) => {
     onCompareModeChange(val);
@@ -233,6 +326,42 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       onCompareValueKindChange(defaultCompareValueKind(val));
     }
   };
+
+  const handleSceneChipClick = (chipId: SceneChipId, disabled: boolean) => {
+    if (disabled || !onSceneChipApply) {
+      return;
+    }
+    const next = applySceneChip({
+      chipId,
+      algorithm,
+      compareMode,
+      compareValueKind,
+      thresholds: threshold,
+      recoveryThreshold,
+      countPredicate
+    });
+    if (next) {
+      onSceneChipApply(next);
+    }
+  };
+
+  const renderCompareOption = (item: {
+    value: string;
+    disabled: boolean;
+    reasonKey?: string;
+  }) => (
+    <Option key={item.value} value={item.value} disabled={item.disabled}>
+      <Tooltip
+        title={
+          item.disabled && item.reasonKey ? t(item.reasonKey) : undefined
+        }
+      >
+        <span className="flex w-full">
+          {compareModeLabels[item.value] || item.value}
+        </span>
+      </Tooltip>
+    </Option>
+  );
 
   // 是否显示无数据告警名称（选择了非"不触发"的选项时显示）
   const showNoDataAlertName = noDataAlertLevel && noDataAlertLevel !== 'none';
@@ -256,6 +385,31 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         {({ getFieldValue }) =>
           isTrap(getFieldValue) ? null : (
             <>
+              <div className="mb-4 ml-[100px] flex flex-wrap items-center gap-2">
+                <span className="text-[13px] leading-[22px] text-[var(--color-text-3)]">
+                  {t('monitor.events.sceneChipCommon')}
+                </span>
+                {sceneChips.map((chip) => (
+                  <Tooltip
+                    key={chip.id}
+                    title={
+                      chip.disabled && chip.reasonKey
+                        ? t(chip.reasonKey)
+                        : undefined
+                    }
+                  >
+                    <Tag.CheckableTag
+                      checked={activeSceneChipId === chip.id}
+                      className={`rounded-[6px]${chip.disabled ? ' cursor-not-allowed opacity-50' : ''}`}
+                      onChange={() =>
+                        handleSceneChipClick(chip.id, chip.disabled)
+                      }
+                    >
+                      {t(chip.labelKey)}
+                    </Tag.CheckableTag>
+                  </Tooltip>
+                ))}
+              </div>
               {!isEnumMetric && (
                 <Form.Item
                   label={
@@ -275,11 +429,19 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                             : '100%'
                       }}
                     >
-                      {compareModes.map((mode) => (
-                        <Option key={mode} value={mode}>
-                          {compareModeLabels[mode] || mode}
-                        </Option>
-                      ))}
+                      {flatCompareModes
+                        .filter((item) => item.value !== COMPARE_MODE_TIMELEFT)
+                        .map(renderCompareOption)}
+                      {offsetCompareModes.length > 0 ? (
+                        <Select.OptGroup
+                          label={t('monitor.events.compareGroupOffset')}
+                        >
+                          {offsetCompareModes.map(renderCompareOption)}
+                        </Select.OptGroup>
+                      ) : null}
+                      {flatCompareModes
+                        .filter((item) => item.value === COMPARE_MODE_TIMELEFT)
+                        .map(renderCompareOption)}
                     </Select>
                     {compareKindOptions.length > 0 ? (
                       <Select
@@ -388,8 +550,15 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   isEnumMetric={isEnumMetric}
                   enumOptions={enumOptions}
                   showUnitSelector={showUnitSelector}
+                  allowedMethods={
+                    isEnumMetric ? undefined : allowedThresholdMethods
+                  }
+                  unitAddonLabel={recoveryThresholdUnitLabel}
                 />
               </Form.Item>
+              <p className="mb-4 ml-[100px] text-[13px] leading-[22px] text-[var(--color-text-3)]">
+                {restatement}
+              </p>
 
               {/* 触发条件 */}
               <Form.Item<StrategyFields>
@@ -461,7 +630,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                         })
                       }
                     >
-                      {COMPARISON_METHOD.map((item) => (
+                      {allowedRecoveryMethods.map((item) => (
                         <Option key={item.value} value={item.value}>
                           {item.label}
                         </Option>

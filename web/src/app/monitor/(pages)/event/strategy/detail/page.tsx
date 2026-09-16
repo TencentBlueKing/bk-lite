@@ -76,9 +76,12 @@ import {
   COMPARE_MODE_ABSOLUTE,
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
+  coerceRecoveryForThresholds,
+  coerceThresholdsForCompareMode,
   defaultCompareValueKind,
+  getCompareModeSelectOptions,
   getCompareValueKinds,
-  isCompareModeAvailable
+  type SceneChipApplyResult
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -1000,14 +1003,24 @@ const StrategyOperation = () => {
   };
 
   useEffect(() => {
-    if (!isCompareModeAvailable(compareMode, periodUnit, period)) {
+    const current = getCompareModeSelectOptions({
+      periodType: periodUnit,
+      periodValue: period,
+      algorithm
+    }).find((item) => item.value === compareMode);
+    if (!current || current.disabled) {
       setCompareMode(COMPARE_MODE_ABSOLUTE);
       setCompareValueKind('');
     }
-  }, [compareMode, period, periodUnit]);
+  }, [compareMode, period, periodUnit, algorithm]);
 
   const handleCompareModeChange = (val: string) => {
     setCompareMode(val);
+    const nextThresholds = coerceThresholdsForCompareMode(val, threshold);
+    setThreshold(nextThresholds);
+    setRecoveryThreshold(
+      coerceRecoveryForThresholds(recoveryThreshold, nextThresholds)
+    );
     if (val === COMPARE_MODE_ABSOLUTE) {
       setCompareValueKind('');
       return;
@@ -1023,10 +1036,21 @@ const StrategyOperation = () => {
 
   const handleAlgorithmChange = (val: string) => {
     setAlgorithm(val);
+    form.setFieldsValue({ algorithm: val });
     if (val === COUNT_IF_ALGORITHM) {
       setCompareMode(COMPARE_MODE_ABSOLUTE);
       setCompareValueKind('');
     }
+  };
+
+  const handleSceneChipApply = (payload: SceneChipApplyResult) => {
+    setAlgorithm(payload.algorithm);
+    form.setFieldsValue({ algorithm: payload.algorithm });
+    setCompareMode(payload.compareMode);
+    setCompareValueKind(payload.compareValueKind);
+    setThreshold(payload.thresholds as ThresholdField[]);
+    setRecoveryThreshold(payload.recoveryThreshold);
+    setCountPredicate(payload.countPredicate);
   };
 
   const handleNodataUnitChange = (val: string) => {
@@ -1518,6 +1542,16 @@ const StrategyOperation = () => {
                           algorithm={algorithm}
                           forecastTarget={forecastTarget}
                           forecastLookback={forecastLookback}
+                          metricLabel={
+                            metrics.find((item) => item.name === metric)
+                              ?.display_name ||
+                            metric ||
+                            null
+                          }
+                          disableRateAlgorithm={disableRateAlgorithm}
+                          countPredicate={countPredicate}
+                          onCountPredicateChange={setCountPredicate}
+                          onSceneChipApply={handleSceneChipApply}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onThresholdUnitChange={handleThresholdUnitChange}

@@ -34,7 +34,8 @@ import {
 import {
   COUNT_IF_ALGORITHM,
   NEW_ALGORITHMS,
-  PER_SERIES_ALGORITHMS
+  PER_SERIES_ALGORITHMS,
+  groupAlgorithmOptions
 } from './strategyDetailUtils';
 
 const { Option } = Select;
@@ -115,12 +116,16 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
       ) {
         return false;
       }
-      if (disableRateAlgorithm && value === 'rate') {
-        return false;
-      }
       return true;
-    });
+    }).map((item) => ({
+      ...item,
+      disabled: disableRateAlgorithm && String(item.value) === 'rate'
+    }));
   }, [METHOD_LIST, isEnumMetric, metricExpressionMode, disableRateAlgorithm]);
+  const groupedAlgorithmOptions = useMemo(
+    () => groupAlgorithmOptions(algorithmOptions),
+    [algorithmOptions]
+  );
   const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
@@ -347,23 +352,44 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   }}
                   placeholder={t('monitor.events.convergenceMethod')}
                   showSearch
+                  optionFilterProp="label"
                   onChange={onAlgorithmChange}
                 >
-                  {algorithmOptions.map((item) => (
-                    <Option value={item.value} key={item.value}>
-                      <Tooltip
-                        overlayInnerStyle={{
-                          whiteSpace: 'pre-line',
-                          color: 'var(--color-text-1)'
-                        }}
-                        placement="rightTop"
-                        arrow={false}
-                        color="var(--color-bg-1)"
-                        title={item.title}
-                      >
-                        <span className="w-full flex">{item.label}</span>
-                      </Tooltip>
-                    </Option>
+                  {groupedAlgorithmOptions.map((group) => (
+                    <Select.OptGroup
+                      key={group.key}
+                      label={
+                        group.key === 'change'
+                          ? t('monitor.events.algorithmGroupChange')
+                          : t('monitor.events.algorithmGroupWindow')
+                      }
+                    >
+                      {group.options.map((item) => (
+                        <Option
+                          value={item.value}
+                          key={item.value}
+                          disabled={item.disabled}
+                          label={item.label}
+                        >
+                          <Tooltip
+                            overlayInnerStyle={{
+                              whiteSpace: 'pre-line',
+                              color: 'var(--color-text-1)'
+                            }}
+                            placement="rightTop"
+                            arrow={false}
+                            color="var(--color-bg-1)"
+                            title={
+                              item.disabled
+                                ? t('monitor.events.rateAlreadyInQuery')
+                                : item.title
+                            }
+                          >
+                            <span className="flex w-full">{item.label}</span>
+                          </Tooltip>
+                        </Option>
+                      ))}
+                    </Select.OptGroup>
                   ))}
                 </Select>
               </Form.Item>

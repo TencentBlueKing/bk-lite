@@ -316,12 +316,12 @@ assert.match(
 
 assert.equal(
   formatTemplateAlgorithmSummary({ algorithm: 'p95_over_time' }),
-  'P95_OVER_TIME'
+  'P95'
 );
 assert.equal(
   formatTemplateAlgorithmSummary({ algorithm: 'count_if_over_time' }),
-  'COUNT_IF_OVER_TIME'
+  '条件计数'
 );
-assert.equal(formatTemplateAlgorithmSummary({ algorithm: 'rate' }), 'RATE');
+assert.equal(formatTemplateAlgorithmSummary({ algorithm: 'rate' }), '速率');
 
 console.log('monitor-template-bulk logic validation passed');

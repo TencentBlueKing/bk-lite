@@ -31,6 +31,16 @@ import {
   shouldRequireNoticeUsers,
   shouldShowThresholdUnitSelector,
   getEnabledCompareModes,
+  getCompareModeSelectOptions,
+  getSceneChipStates,
+  matchSceneChipId,
+  applySceneChip,
+  buildPolicyRestatement,
+  coerceThresholdsForCompareMode,
+  coerceRecoveryForThresholds,
+  groupAlgorithmOptions,
+  shouldAnnotatePerSecond,
+  formatUnitLabelWithRateSuffix,
   resolveCompareFieldsForSave,
   resolveRecoveryThresholdForSave,
   resolveNoDataPeriodsForSave,
@@ -1104,6 +1114,207 @@ assert.deepEqual(
     no_data_period: { type: 'min', value: 10 },
     no_data_recovery_period: { type: 'min', value: 10 },
   }
+);
+
+const offset1hOption = getCompareModeSelectOptions({
+  periodType: 'hour',
+  periodValue: 1,
+}).find((item) => item.value === 'offset_1h');
+assert.equal(offset1hOption?.disabled, true);
+assert.equal(
+  offset1hOption?.reasonKey,
+  'monitor.events.compareModeDisabledPeriod'
+);
+assert.ok(
+  getCompareModeSelectOptions({ periodType: 'hour', periodValue: 1 }).some(
+    (item) => item.value === 'offset_1h'
+  )
+);
+
+const countIfCompare = getCompareModeSelectOptions({
+  algorithm: 'count_if_over_time',
+});
+assert.equal(
+  countIfCompare.find((item) => item.value === 'absolute')?.disabled,
+  false
+);
+assert.equal(
+  countIfCompare.find((item) => item.value === 'offset_1h')?.disabled,
+  true
+);
+assert.equal(
+  countIfCompare.find((item) => item.value === 'offset_1h')?.reasonKey,
+  'monitor.events.compareModeDisabledCountIf'
+);
+
+assert.deepEqual(
+  coerceThresholdsForCompareMode('timeleft', [
+    { level: 'critical', method: '>', value: 24 },
+    { level: 'error', method: '>=', value: 48 },
+  ]),
+  [
+    { level: 'critical', method: '<', value: 24 },
+    { level: 'error', method: '<=', value: 48 },
+  ]
+);
+assert.deepEqual(
+  coerceRecoveryForThresholds({ method: '<', value: 70 }, [{ method: '<' }]),
+  { method: '', value: null }
+);
+assert.deepEqual(
+  coerceRecoveryForThresholds({ method: '<', value: 70 }, [{ method: '>' }]),
+  { method: '<', value: 70 }
+);
+
+assert.equal(
+  matchSceneChipId({
+    algorithm: 'p95_over_time',
+    compareMode: 'absolute',
+    compareValueKind: '',
+  }),
+  'p95_absolute'
+);
+assert.equal(
+  matchSceneChipId({
+    algorithm: 'avg_over_time',
+    compareMode: 'offset_7d',
+    compareValueKind: 'percent',
+  }),
+  'yoy_week'
+);
+assert.equal(
+  matchSceneChipId({
+    algorithm: 'avg_over_time',
+    compareMode: 'offset_7d',
+    compareValueKind: 'ratio',
+  }),
+  null
+);
+
+const yoyApplied = applySceneChip({
+  chipId: 'yoy_week',
+  algorithm: 'p95_over_time',
+  compareMode: 'absolute',
+  compareValueKind: '',
+  thresholds: [{ level: 'critical', method: '>', value: 50 }],
+  recoveryThreshold: { method: '>', value: 40 },
+  countPredicate: { method: '>', value: 0 },
+});
+assert.equal(yoyApplied?.algorithm, 'avg_over_time');
+assert.equal(yoyApplied?.compareMode, 'offset_7d');
+assert.equal(yoyApplied?.compareValueKind, 'percent');
+assert.equal(yoyApplied?.thresholds[0]?.value, 50);
+assert.deepEqual(yoyApplied?.recoveryThreshold, { method: '', value: null });
+
+const diskApplied = applySceneChip({
+  chipId: 'disk_timeleft',
+  thresholds: [{ level: 'critical', method: '>', value: 24 }],
+  recoveryThreshold: { method: '<', value: 8 },
+});
+assert.equal(diskApplied?.algorithm, 'last_over_time');
+assert.equal(diskApplied?.compareMode, 'timeleft');
+assert.equal(diskApplied?.thresholds[0]?.method, '<');
+assert.deepEqual(diskApplied?.recoveryThreshold, { method: '', value: null });
+
+const countIfApplied = applySceneChip({
+  chipId: 'count_if_n',
+  thresholds: [{ level: 'warning', method: '>=', value: 3 }],
+  countPredicate: { method: '', value: null },
+});
+assert.equal(countIfApplied?.algorithm, 'count_if_over_time');
+assert.deepEqual(countIfApplied?.countPredicate, { method: '>', value: 0 });
+assert.equal(countIfApplied?.thresholds[0]?.value, 3);
+
+const hourPeriodChips = getSceneChipStates({
+  periodType: 'hour',
+  periodValue: 1,
+});
+assert.equal(
+  hourPeriodChips.find((item) => item.id === 'offset_1h_up')?.disabled,
+  true
+);
+assert.equal(
+  hourPeriodChips.find((item) => item.id === 'p95_absolute')?.disabled,
+  false
+);
+assert.equal(
+  getSceneChipStates({ isEnumMetric: true }).find(
+    (item) => item.id === 'p95_absolute'
+  )?.disabled,
+  true
+);
+
+const t = (
+  _key: string,
+  fallback = _key,
+  vars: Record<string, string | number> = {}
+) =>
+  Object.entries(vars).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
+    fallback
+  );
+
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU 使用率',
+    algorithmLabel: 'P95',
+    algorithm: 'p95_over_time',
+    compareMode: 'offset_1h',
+    compareValueKind: 'percent',
+    compareModeLabel: '1 小时前同窗',
+    thresholdMethod: '>',
+    thresholdValue: 50,
+  }),
+  '这条策略在判断：CPU 使用率的P95，比 1 小时前同窗 高 50%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘用量',
+    algorithmLabel: '末值',
+    algorithm: 'last_over_time',
+    compareMode: 'timeleft',
+    compareValueKind: 'hours',
+    thresholdMethod: '<',
+    thresholdValue: 24,
+  }),
+  '这条策略在判断：磁盘用量距容量线还剩不足 24 小时（请填写容量线）。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    algorithm: 'count_if_over_time',
+    compareMode: 'absolute',
+    thresholdMethod: '>=',
+    thresholdValue: 3,
+    thresholdUnitLabel: 'count',
+    countPredicateMethod: '>',
+    countPredicateValue: 0,
+  }),
+  '这条策略在判断：窗口内满足 > 0 的点数 >= 3 count。'
+);
+
+assert.equal(shouldAnnotatePerSecond('percent', 'rate'), true);
+assert.equal(shouldAnnotatePerSecond('bytes', 'rate'), false);
+assert.equal(shouldAnnotatePerSecond('byteps', 'rate'), false);
+assert.equal(formatUnitLabelWithRateSuffix('%', 'percent', 'rate'), '%/s');
+assert.equal(formatUnitLabelWithRateSuffix('B/s', 'byteps', 'rate'), 'B/s');
+
+assert.deepEqual(
+  groupAlgorithmOptions([
+    { value: 'avg_over_time' },
+    { value: 'p95_over_time' },
+    { value: 'rate' },
+    { value: 'changes' },
+  ]).map((group) => ({
+    key: group.key,
+    values: group.options.map((item) => item.value),
+  })),
+  [
+    { key: 'window', values: ['avg_over_time', 'p95_over_time'] },
+    { key: 'change', values: ['rate', 'changes'] },
+  ]
 );
 
 console.log('monitor-strategy-detail logic validation passed');

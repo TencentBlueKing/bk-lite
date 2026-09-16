@@ -152,28 +152,28 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 const ALGORITHM_LABELS: Record<string, string> = {
-  avg_over_time: 'AVG_OVER_TIME',
-  max_over_time: 'MAX_OVER_TIME',
-  min_over_time: 'MIN_OVER_TIME',
-  sum_over_time: 'SUM_OVER_TIME',
-  count_over_time: 'COUNT_OVER_TIME',
-  last_over_time: 'LAST_OVER_TIME',
-  p90_over_time: 'P90_OVER_TIME',
-  p95_over_time: 'P95_OVER_TIME',
-  p99_over_time: 'P99_OVER_TIME',
-  stddev_over_time: 'STDDEV_OVER_TIME',
-  count_if_over_time: 'COUNT_IF_OVER_TIME',
-  rate: 'RATE',
-  changes: 'CHANGES',
-  deriv: 'DERIV',
+  avg_over_time: '平均',
+  max_over_time: '最大',
+  min_over_time: '最小',
+  sum_over_time: '求和',
+  count_over_time: '点数',
+  last_over_time: '末值',
+  p90_over_time: 'P90',
+  p95_over_time: 'P95',
+  p99_over_time: 'P99',
+  stddev_over_time: '标准差',
+  count_if_over_time: '条件计数',
+  rate: '速率',
+  changes: '变化次数',
+  deriv: '斜率',
 };
 
 const GROUP_ALGORITHM_LABELS: Record<string, string> = {
-  avg: 'AVG',
-  max: 'MAX',
-  min: 'MIN',
-  sum: 'SUM',
-  count: 'COUNT',
+  avg: '平均',
+  max: '最大',
+  min: '最小',
+  sum: '求和',
+  count: '计数',
 };
 
 const formatUnitSuffix = (unit?: string | null): string => {
