@@ -11,8 +11,14 @@ from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from apps.node_mgmt.views import installer as installer_view
 from apps.node_mgmt.views import node as node_view
+from apps.system_mgmt.models import Group
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _team_one(db):
+    Group.objects.get_or_create(id=1, defaults={"name": "push-api-team", "parent_id": 0})
 
 
 @pytest.fixture(autouse=True)
@@ -95,6 +101,8 @@ def test_detail_push_action(mocker, node, monkeypatch):
     assert kwargs["targets"] == ["cmdb"]
     assert kwargs["actor_scope"]["operator"] == "alice"
     assert 1 in kwargs["actor_scope"]["allowed_org_ids"]
+    assert kwargs["actor_scope"]["user_info"]["user"] == "alice"
+    assert kwargs["actor_scope"]["user_info"]["team"] == 1
 
 
 def test_create_node_with_push_targets_cmdb_calls_push(mocker, node, monkeypatch):
