@@ -242,6 +242,18 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   charts: [
     {
+      title: '资源关联分析',
+      subtitle: 'CPU、内存、磁盘与网络出向联动趋势',
+      metric: 'cpu_usage_total',
+      guide: [{ label: '资源关联', detail: '多维度联动观察主机算力、内存、存储与网络瓶颈与突增点。' }],
+      series: [
+        { metric: 'cpu_usage_total', label: 'CPU 使用率 (%)', color: HOST_PALETTE.blue, unit: 'percent' },
+        { metric: 'mem_used_percent', label: '内存使用率 (%)', color: '#8B5CF6', unit: 'percent' },
+        { metric: 'disk_used_percent', label: '磁盘使用率 (%)', color: HOST_PALETTE.amber, unit: 'percent' },
+        { metric: 'net_bytes_sent_rate', label: '网络出站 (MB/s)', color: HOST_PALETTE.cyan, unit: 'byteps' }
+      ]
+    },
+    {
       title: '资源使用趋势',
       subtitle: 'CPU、内存、磁盘、I/O Wait',
       metric: 'cpu_usage_total',

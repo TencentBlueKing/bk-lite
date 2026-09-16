@@ -702,6 +702,10 @@ export interface DashboardShellProps {
   metricsContent?: React.ReactNode;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
+  /** 可选页面级二级页签（如 概览 | 深度分析） */
+  tabsSlot?: React.ReactNode;
+  /** 可选覆盖标题 */
+  title?: string;
   styles: DashboardStyles;
 }
 
@@ -714,6 +718,8 @@ export const DashboardShell = ({
   dashboardContent,
   metricsContent,
   brandLabel,
+  tabsSlot,
+  title,
   styles
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
@@ -724,7 +730,7 @@ export const DashboardShell = ({
     <div className={styles.shell}>
       <div className={styles.pageHeader}>
         <DashboardPageHeader
-          title={dashboard.pageTitle}
+          title={title || dashboard.pageTitle}
           displayMode={dashboard.displayMode}
           onDisplayModeChange={dashboard.setDisplayMode}
           timeDefaultValue={dashboard.timeDefaultValue}
@@ -767,6 +773,7 @@ export const DashboardShell = ({
           }}
           styles={styles}
         />
+        {tabsSlot}
       </div>
 
       {showProtocolBar && dashboard.isDashboardMode ? <DashboardProtocolBarSlot /> : null}

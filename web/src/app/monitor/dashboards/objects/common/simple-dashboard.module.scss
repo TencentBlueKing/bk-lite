@@ -64,6 +64,43 @@
   border-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
 }
 
+.pageTabsBar {
+  margin-top: 4px;
+  padding-top: 2px;
+  border-top: 1px solid var(--color-border);
+
+  :global(.ant-tabs-nav) {
+    margin-bottom: 0 !important;
+  }
+
+  :global(.ant-tabs-nav::before) {
+    border-bottom: none !important;
+  }
+
+  :global(.ant-tabs-tab) {
+    font-size: 14px;
+    font-weight: 500;
+    padding: 6px 16px 8px !important;
+    color: var(--color-text-3);
+    transition: color 0.15s ease;
+  }
+
+  :global(.ant-tabs-tab:hover) {
+    color: var(--color-primary);
+  }
+
+  :global(.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn) {
+    font-weight: 600;
+    color: var(--color-primary) !important;
+  }
+
+  :global(.ant-tabs-ink-bar) {
+    background: var(--color-primary);
+    height: 3px !important;
+    border-radius: 2px;
+  }
+}
+
 .protocolBar {
   display: flex;
   align-items: center;

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Tabs } from 'antd';
 import useViewApi from '@/app/monitor/api/view';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
@@ -9,7 +10,9 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredRingPanels, DashboardSectionLabel } from '../common/dashboard-components';
+  useFilteredRingPanels,
+  DashboardSectionLabel
+} from '../common/dashboard-components';
 import {
   HorizontalBarPanel,
   RingChartPanel,
@@ -20,6 +23,7 @@ import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency, topLabelBars } from '../../shared/utils';
 import { HOST_DASHBOARD_CONFIG } from './config';
 import { HOST_TOP_QUERIES } from './queries';
+import { HostDeepAnalysis } from './host-deep-analysis';
 import styles from './index.module.scss';
 
 const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
@@ -29,9 +33,36 @@ const RING_TITLES = ['CPU 时间分布'];
 const TOP_CONCURRENCY = 1;
 
 export default function HostDashboardPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const dashboard = useSimpleDashboardData(HOST_DASHBOARD_CONFIG);
   const { getInstanceQuery } = useViewApi();
-  const searchParams = useSearchParams();
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'deep'>(() => {
+    return searchParams.get('tab') === 'deep' ? 'deep' : 'overview';
+  });
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'deep') {
+      setActiveTab('deep');
+    } else if (tabParam === 'overview') {
+      setActiveTab('overview');
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (key: string) => {
+    const nextTab = key === 'deep' ? 'deep' : 'overview';
+    setActiveTab(nextTab);
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextTab === 'deep') {
+      params.set('tab', 'deep');
+    } else {
+      params.delete('tab');
+    }
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+
   const instanceIdKeys = useMemo(
     () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
     [searchParams]
@@ -82,125 +113,148 @@ export default function HostDashboardPage() {
     };
   }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
 
+  const tabsSlot = (
+    <div className={styles.pageTabsBar}>
+      <Tabs
+        activeKey={activeTab}
+        onChange={handleTabChange}
+        items={[
+          { key: 'overview', label: '概览' },
+          { key: 'deep', label: '深度分析' }
+        ]}
+      />
+    </div>
+  );
+
   return (
     <DashboardShell
       dashboard={dashboard}
       styles={styles}
+      title={activeTab === 'deep' ? '主机深度分析' : dashboard.pageTitle}
+      tabsSlot={tabsSlot}
       dashboardContent={
-        <>
-          <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
-          <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
+        activeTab === 'deep' ? (
+          <HostDeepAnalysis
+            dashboard={dashboard}
+            styles={styles}
+            onViewAllProcesses={() => dashboard.setDisplayMode('metrics')}
+          />
+        ) : (
+          <>
+            <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
+            <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
 
-          <DashboardSectionLabel styles={styles}>性能与分布</DashboardSectionLabel>
-          <FlexiblePanelSection styles={styles}>
-            {[resourceChart, loadChart].map((chart) => chart ? (
-              <TrendChartPanel
-                key={chart.chart.title}
-                title={chart.chart.title}
-                subtitle={chart.chart.subtitle}
-                guide={chart.chart.guide}
-                legends={chart.legends}
-                data={chart.data}
-                metric={chart.metric}
-                unit={chart.unit}
-                loading={dashboard.loading}
-                seriesStyles={chart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null)}
-            {cpuRing ? (
-              <RingChartPanel
-                key={cpuRing.panel.title}
-                title={cpuRing.panel.title}
-                subtitle={cpuRing.panel.subtitle}
-                guide={cpuRing.panel.guide}
-                data={cpuRing.data}
-                centerValue={cpuRing.centerValue}
-                centerCaption={cpuRing.panel.centerCaption}
-                isEmpty={cpuRing.isEmpty}
-                className={styles.span4}
-                styles={styles}
-              />
-            ) : null}
-          </FlexiblePanelSection>
+            <DashboardSectionLabel styles={styles}>性能与分布</DashboardSectionLabel>
+            <FlexiblePanelSection styles={styles}>
+              {[resourceChart, loadChart].map((chart) => chart ? (
+                <TrendChartPanel
+                  key={chart.chart.title}
+                  title={chart.chart.title}
+                  subtitle={chart.chart.subtitle}
+                  guide={chart.chart.guide}
+                  legends={chart.legends}
+                  data={chart.data}
+                  metric={chart.metric}
+                  unit={chart.unit}
+                  loading={dashboard.loading}
+                  seriesStyles={chart.seriesStyles}
+                  onXRangeChange={dashboard.onXRangeChange}
+                  className={`${styles.span4} ${styles.compactTrend}`}
+                  styles={styles}
+                />
+              ) : null)}
+              {cpuRing ? (
+                <RingChartPanel
+                  key={cpuRing.panel.title}
+                  title={cpuRing.panel.title}
+                  subtitle={cpuRing.panel.subtitle}
+                  guide={cpuRing.panel.guide}
+                  data={cpuRing.data}
+                  centerValue={cpuRing.centerValue}
+                  centerCaption={cpuRing.panel.centerCaption}
+                  isEmpty={cpuRing.isEmpty}
+                  className={styles.span4}
+                  styles={styles}
+                />
+              ) : null}
+            </FlexiblePanelSection>
 
-          <DashboardSectionLabel styles={styles}>网络观察</DashboardSectionLabel>
-          <FlexiblePanelSection styles={styles}>
-            {[networkChart, networkErrorChart].map((chart) => chart ? (
-              <TrendChartPanel
-                key={chart.chart.title}
-                title={chart.chart.title}
-                subtitle={chart.chart.subtitle}
-                guide={chart.chart.guide}
-                legends={chart.legends}
-                data={chart.data}
-                metric={chart.metric}
-                unit={chart.unit}
-                loading={dashboard.loading}
-                seriesStyles={chart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null)}
-          </FlexiblePanelSection>
+            <DashboardSectionLabel styles={styles}>网络观察</DashboardSectionLabel>
+            <FlexiblePanelSection styles={styles}>
+              {[networkChart, networkErrorChart].map((chart) => chart ? (
+                <TrendChartPanel
+                  key={chart.chart.title}
+                  title={chart.chart.title}
+                  subtitle={chart.chart.subtitle}
+                  guide={chart.chart.guide}
+                  legends={chart.legends}
+                  data={chart.data}
+                  metric={chart.metric}
+                  unit={chart.unit}
+                  loading={dashboard.loading}
+                  seriesStyles={chart.seriesStyles}
+                  onXRangeChange={dashboard.onXRangeChange}
+                  className={`${styles.span6} ${styles.compactTrend}`}
+                  styles={styles}
+                />
+              ) : null)}
+            </FlexiblePanelSection>
 
-          <DashboardSectionLabel styles={styles}>磁盘与进程</DashboardSectionLabel>
-          <FlexiblePanelSection styles={styles}>
-            {diskChart ? (
-              <TrendChartPanel
-                key={diskChart.chart.title}
-                title={diskChart.chart.title}
-                subtitle={diskChart.chart.subtitle}
-                guide={diskChart.chart.guide}
-                legends={diskChart.legends}
-                data={diskChart.data}
-                metric={diskChart.metric}
-                unit={diskChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={diskChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
-            {HOST_TOP_QUERIES.map((q) => (
-              <HorizontalBarPanel
-                key={q.key}
-                styles={styles}
-                className={`${styles.panel} ${styles.span4}`}
-                title={
-                  <TitleWithGuide
-                    styles={styles}
-                    title={q.title}
-                    items={q.guide}
-                    className={styles.panelTitleWithGuide}
-                  />
-                }
-                items={topBars[q.key] || []}
-              />
-            ))}
-            {processAnomalyChart ? (
-              <TrendChartPanel
-                key={processAnomalyChart.chart.title}
-                title={processAnomalyChart.chart.title}
-                subtitle={processAnomalyChart.chart.subtitle}
-                guide={processAnomalyChart.chart.guide}
-                legends={processAnomalyChart.legends}
-                data={processAnomalyChart.data}
-                metric={processAnomalyChart.metric}
-                unit={processAnomalyChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={processAnomalyChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
-          </FlexiblePanelSection>
-        </>
+            <DashboardSectionLabel styles={styles}>磁盘与进程</DashboardSectionLabel>
+            <FlexiblePanelSection styles={styles}>
+              {diskChart ? (
+                <TrendChartPanel
+                  key={diskChart.chart.title}
+                  title={diskChart.chart.title}
+                  subtitle={diskChart.chart.subtitle}
+                  guide={diskChart.chart.guide}
+                  legends={diskChart.legends}
+                  data={diskChart.data}
+                  metric={diskChart.metric}
+                  unit={diskChart.unit}
+                  loading={dashboard.loading}
+                  seriesStyles={diskChart.seriesStyles}
+                  onXRangeChange={dashboard.onXRangeChange}
+                  className={`${styles.span4} ${styles.compactTrend}`}
+                  styles={styles}
+                />
+              ) : null}
+              {HOST_TOP_QUERIES.map((q) => (
+                <HorizontalBarPanel
+                  key={q.key}
+                  styles={styles}
+                  className={`${styles.panel} ${styles.span4}`}
+                  title={
+                    <TitleWithGuide
+                      styles={styles}
+                      title={q.title}
+                      items={q.guide}
+                      className={styles.panelTitleWithGuide}
+                    />
+                  }
+                  items={topBars[q.key] || []}
+                />
+              ))}
+              {processAnomalyChart ? (
+                <TrendChartPanel
+                  key={processAnomalyChart.chart.title}
+                  title={processAnomalyChart.chart.title}
+                  subtitle={processAnomalyChart.chart.subtitle}
+                  guide={processAnomalyChart.chart.guide}
+                  legends={processAnomalyChart.legends}
+                  data={processAnomalyChart.data}
+                  metric={processAnomalyChart.metric}
+                  unit={processAnomalyChart.unit}
+                  loading={dashboard.loading}
+                  seriesStyles={processAnomalyChart.seriesStyles}
+                  onXRangeChange={dashboard.onXRangeChange}
+                  className={`${styles.span4} ${styles.compactTrend}`}
+                  styles={styles}
+                />
+              ) : null}
+            </FlexiblePanelSection>
+          </>
+        )
       }
     />
   );

@@ -147,10 +147,48 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: 'count(http_response_http_response_code{__$labels__} >= 500) or on() vector(0)',
       color: WEBSITE_PALETTE.rose
+    },
+    {
+      name: 'website_failure_count',
+      display_name: '失败次数',
+      description: '所选时间窗口内拨测失败总次数。',
+      unit: 'counts',
+      query: 'sum(count_over_time(http_response_result_type{result!="success", __$labels__}[__$window__])) or on() vector(0)',
+      color: WEBSITE_PALETTE.rose
+    },
+    {
+      name: 'website_probe_node_count',
+      display_name: '探测节点数',
+      description: '当前参与拨测的独立探测节点数量。',
+      unit: 'counts',
+      query: 'count(count by (agent_id) (http_response_result_type{__$labels__})) or on() vector(0)',
+      color: WEBSITE_PALETTE.emerald
+    },
+    {
+      name: 'website_p95_response_time',
+      display_name: 'P95 响应时间',
+      description: '网站探测 P95 响应耗时（若无分位数则基于峰值响应）。',
+      unit: 's',
+      query: 'quantile(0.95, http_response_response_time{__$labels__}) or max by (instance_id) (http_response_response_time{__$labels__})',
+      color: WEBSITE_PALETTE.indigo
     }
   ],
   // Layer0 + A 成功率 + B 响应时间；失败归因交给下方「探测结果分布 / 状态码分布」
   summaryCards: [
+    {
+      title: '可用性 SLA',
+      guide: [
+        {
+          label: '可用性 SLA',
+          detail: '网站所选时间窗口内整体服务可用性比率。'
+        }
+      ],
+      metric: 'website_success_rate_avg',
+      color: WEBSITE_PALETTE.emerald,
+      icon: 'health',
+      compare: true,
+      compareFavorableDirection: 'up'
+    },
     {
       title: '探测成功率',
       guide: [
@@ -178,9 +216,44 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'clock',
       compare: true,
       footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
+    },
+    {
+      title: 'P95',
+      guide: [{ label: 'P95 响应', detail: '网站 95% 拨测请求的响应耗时上界；平滑极端离群点。' }],
+      metric: 'website_p95_response_time',
+      color: WEBSITE_PALETTE.indigo,
+      icon: 'node',
+      compare: true
+    },
+    {
+      title: '失败次数',
+      guide: [{ label: '失败次数', detail: '当前时间范围内探测发生错误或非预期响应的总次数。' }],
+      metric: 'website_failure_count',
+      color: WEBSITE_PALETTE.rose,
+      icon: 'thunder',
+      compare: true
+    },
+    {
+      title: '探测节点',
+      guide: [{ label: '探测节点', detail: '当前覆盖并参与拨测的全球/区域节点总数。' }],
+      metric: 'website_probe_node_count',
+      color: WEBSITE_PALETTE.emerald,
+      icon: 'node'
     }
   ],
   charts: [
+    {
+      title: '失败归因趋势',
+      subtitle: '超时、建连、DNS 与 5xx 随时间分布',
+      metric: 'website_result_timeout_rate',
+      guide: [{ label: '失败归因', detail: '按原因细分失败请求变化趋势，定位是链路故障还是业务端异常。' }],
+      series: [
+        { metric: 'website_result_timeout_rate', label: '超时', color: WEBSITE_PALETTE.crimson, unit: 'percent' },
+        { metric: 'website_result_conn_fail_rate', label: '连接失败', color: WEBSITE_PALETTE.orange, unit: 'percent' },
+        { metric: 'website_result_dns_fail_rate', label: 'DNS 解析失败', color: WEBSITE_PALETTE.ruby, unit: 'percent' },
+        { metric: 'website_status_code_5xx_count', label: '5xx 错误', color: WEBSITE_PALETTE.blue, unit: 'counts' }
+      ]
+    },
     {
       title: '探测成功率趋势',
       subtitle: '可用性变化',
