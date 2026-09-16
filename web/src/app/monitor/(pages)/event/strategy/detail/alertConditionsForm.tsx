@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Form, Select, InputNumber, Input, Tooltip, Space, Tag } from 'antd';
+import { Form, Select, InputNumber, Input, Tooltip, Space } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
@@ -385,31 +385,49 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         {({ getFieldValue }) =>
           isTrap(getFieldValue) ? null : (
             <>
-              <div className="mb-4 ml-[100px] flex flex-wrap items-center gap-2">
-                <span className="text-[13px] leading-[22px] text-[var(--color-text-3)]">
-                  {t('monitor.events.sceneChipCommon')}
-                </span>
-                {sceneChips.map((chip) => (
-                  <Tooltip
-                    key={chip.id}
-                    title={
-                      chip.disabled && chip.reasonKey
-                        ? t(chip.reasonKey)
-                        : undefined
-                    }
-                  >
-                    <Tag.CheckableTag
-                      checked={activeSceneChipId === chip.id}
-                      className={`rounded-[6px]${chip.disabled ? ' cursor-not-allowed opacity-50' : ''}`}
-                      onChange={() =>
-                        handleSceneChipClick(chip.id, chip.disabled)
-                      }
-                    >
-                      {t(chip.labelKey)}
-                    </Tag.CheckableTag>
-                  </Tooltip>
-                ))}
-              </div>
+              <Form.Item
+                colon={false}
+                label={
+                  <span className="w-[100px] font-normal text-[var(--color-text-3)]">
+                    {t('monitor.events.sceneChipCommon')}
+                  </span>
+                }
+              >
+                <div className="flex flex-wrap gap-2">
+                  {sceneChips.map((chip) => {
+                    const active = activeSceneChipId === chip.id;
+                    return (
+                      <Tooltip
+                        key={chip.id}
+                        title={
+                          chip.disabled && chip.reasonKey
+                            ? t(chip.reasonKey)
+                            : undefined
+                        }
+                      >
+                        <span className="inline-flex">
+                          <button
+                            type="button"
+                            disabled={chip.disabled}
+                            className={`rounded-md px-3 py-1.5 text-xs font-normal transition-colors ${
+                              chip.disabled
+                                ? 'cursor-not-allowed bg-[var(--color-fill-1)]/70 text-[var(--color-text-4)]'
+                                : active
+                                  ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                                  : 'cursor-pointer bg-[var(--color-fill-1)]/70 text-[var(--color-text-2)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-primary)]'
+                            }`}
+                            onClick={() =>
+                              handleSceneChipClick(chip.id, chip.disabled)
+                            }
+                          >
+                            {t(chip.labelKey)}
+                          </button>
+                        </span>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </Form.Item>
               {!isEnumMetric && (
                 <Form.Item
                   label={
