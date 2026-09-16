@@ -20,13 +20,13 @@ from apps.cmdb.constants.constants import (
     APP_NAME,
     ENUM_SELECT_MODE_MULTIPLE,
     INSTANCE,
+    OPERATE,
     PERMISSION_INSTANCES,
     PERMISSION_MODEL,
     PERMISSION_TASK,
+    VIEW,
     CollectPluginTypes,
     CollectRunStatusType,
-    OPERATE,
-    VIEW,
 )
 from apps.cmdb.display_field.cache import ExcludeFieldsCache
 from apps.cmdb.display_field.constants import (
@@ -46,7 +46,7 @@ from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services import rack_room
-from apps.cmdb.services.application_system import build_application_system_row, expand_systems_to_host_uuids
+from apps.cmdb.services.application_system import build_application_system_row
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.host_zombie_whitelist import ensure_host_zombie_whitelist_attr
@@ -57,6 +57,7 @@ from apps.cmdb.services.module_ingest import CmdbModuleIngestService
 from apps.cmdb.services.monitored_host import build_monitored_host_row
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
+from apps.cmdb.services.service_tree import expand_systems_to_host_uuids_via_service_tree
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
@@ -1731,7 +1732,7 @@ def list_host_uuids_for_systems(system_uuids=None, user_info=None, **kwargs):
     if not selected:
         return {"result": True, "data": [], "message": ""}
 
-    host_uuids = expand_systems_to_host_uuids(selected)
+    host_uuids = expand_systems_to_host_uuids_via_service_tree(selected)
     return {"result": True, "data": [{"inst_uuid": item} for item in host_uuids], "message": ""}
 
 
@@ -1794,7 +1795,7 @@ def list_monitored_hosts_for_systems(system_uuids=None, user_info=None, **kwargs
     if not selected:
         return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
 
-    host_uuids = expand_systems_to_host_uuids(selected)
+    host_uuids = expand_systems_to_host_uuids_via_service_tree(selected)
     if not host_uuids:
         return {"result": True, "data": {"items": [], "expanded_host_count": 0}, "message": ""}
 
@@ -2989,4 +2990,3 @@ def topo_search_expand_by_uuid(inst_uuid=None, parent_uuids=None, depth=2, user_
         return _topo_search_lite_failure("not_found", "实例不存在")
 
     return {"result": True, "data": result, "message": ""}
-

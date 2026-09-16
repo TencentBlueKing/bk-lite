@@ -54,6 +54,7 @@ INSTANCE_ASSOCIATION = "instance_association"
 TOPO_THEME_NETWORK = "network"
 TOPO_THEME_IPAM = "ipam"
 TOPO_THEME_APP_OVERVIEW = "app_overview"
+TOPO_THEME_SERVICE_TREE = "service_tree"
 # 网络设备判定：存在 interface --belong--> <model> 的模型关联即视为网络设备
 NETWORK_INTERFACE_MODEL = "interface"
 NETWORK_INTERFACE_BELONG_ASST = "belong"
