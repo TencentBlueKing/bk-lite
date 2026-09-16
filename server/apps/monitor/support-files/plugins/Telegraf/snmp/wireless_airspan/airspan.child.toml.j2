@@ -32,18 +32,39 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # Sensor tables (PEN 989). Walk full tables; empty tables yield no rows.
+    # Do not invent CPU% or memory. Do not bind HOST-RESOURCES or UCD.
+    # Do not treat product/sysObject trees or traps as health.
+    # Temperature Integer32 is degrees Celsius; metric query does not scale.
+    # INDEX asCmnSensorTempMonItem. Optional name/status columns share that index.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "device_temperature"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.989.1.22.3.3.1.1.3"
+        name = "sensor"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.989.1.22.3.3.1.1.4"
+        name = "celsius"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.989.1.22.3.3.1.1.5"
+        name = "status"
+    # Optional DC voltage Integer32 millivolts; metric query uses /1000 to volts.
+    # INDEX asCmnSensorDcVoltageMonItem. Optional name/status columns share that index.
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.989.1.22.3.3.2.1.3"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.989.1.22.3.3.2.1.4"
+        name = "volts"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.989.1.22.3.3.2.1.5"
+        name = "status"

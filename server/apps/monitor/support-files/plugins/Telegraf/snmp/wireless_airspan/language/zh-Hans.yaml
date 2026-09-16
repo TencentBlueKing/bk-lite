@@ -1,6 +1,6 @@
 Wireless Airspan SNMP:
   name: Airspan（Telegraf）
-  desc: 面向 Airspan 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 1803）。
+  desc: 面向 Airspan 无线设备的 SNMP 监控模板,可采集传感器温度、可选直流电压、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 989）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -31,11 +31,21 @@ monitor_object_metric:
       name: 内存使用率
       desc: 无线设备的整体内存使用率，以 0-100 百分比直接上报。内存压力过高会导致接入点丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。
     device_temperature_celsius:
-      name: 温度
-      desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
+      name: 传感器温度
+      desc: 无线设备逐传感器温度读数（摄氏度，直采无缩放）。空表不产生数据点。温度持续偏高可能表示散热失效、气流不畅或硬件热压力。
+    device_temperature_status:
+      name: 温度传感器状态
+      desc: 无线设备可选的逐传感器温度状态。0 为正常，1 为过高，2 为过低。空表不产生数据点。
+    device_voltage_volts:
+      name: 直流电压
+      desc: 无线设备可选的逐传感器直流电压读数，单位伏特（由毫伏换算）。空表不产生数据点。读数偏离预期直流轨压可能表示电源或硬件异常。
+    device_voltage_status:
+      name: 直流电压传感器状态
+      desc: 无线设备可选的逐传感器直流电压状态。0 为额定，1 为过高，2 为过低，3 为超出范围。空表不产生数据点。
 monitor_object_metric_group:
   Wireless:
     Base: 基础
     Traffic: 流量
     Wireless: 无线
     Temperature: 温度
+    Hardware Status: 硬件状态
