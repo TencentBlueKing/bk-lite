@@ -170,6 +170,99 @@ def test_slo_evaluation_preserves_no_data_and_disabled_semantics():
     assert disabled.reason == "disabled"
 
 
+def _counting_store(measurement=None, *, error=None):
+    calls = []
+
+    def slo_measurement(query):
+        calls.append(query)
+        if error is not None:
+            raise error
+        return measurement
+
+    store = InMemoryMetricStore()
+    store.slo_measurement = slo_measurement
+    return store, calls
+
+
+def test_evaluate_many_reuses_one_measurement_for_identical_enabled_rules():
+    now = timezone.now()
+    service = ApmService.objects.create(
+        namespace="shop",
+        normalized_namespace="shop",
+        name="checkout",
+        normalized_name="checkout",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    slos = [
+        ApmSlo.objects.create(
+            name=f"结算可用性 {index:02d}",
+            service=service,
+            environment="production",
+            sli_type="availability",
+            objective=Decimal("99.900"),
+            evaluation_window="rolling30d",
+            is_enabled=True,
+        )
+        for index in range(20)
+    ]
+    evaluated_at = datetime(2026, 8, 3, 12, tzinfo=UTC)
+    store, calls = _counting_store(
+        SloMeasurement(
+            compliance_percent=99.5,
+            good_rate=99.5,
+            total_rate=100,
+            data_state=MetricDataState.AVAILABLE,
+        )
+    )
+
+    results = DjangoApmReliabilityService(store).evaluate_many(slos, evaluated_at=evaluated_at)
+
+    assert len(calls) == 1
+    assert [results[slo.id].current_rate for slo in slos] == [99.5] * 20
+
+
+def test_evaluate_many_skips_disabled_and_keeps_failed_metadata():
+    now = timezone.now()
+    service = ApmService.objects.create(
+        namespace="shop",
+        normalized_namespace="shop",
+        name="checkout",
+        normalized_name="checkout",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    disabled = ApmSlo.objects.create(
+        name="已禁用",
+        service=service,
+        environment="production",
+        sli_type="availability",
+        objective=Decimal("99.900"),
+        evaluation_window="rolling30d",
+        is_enabled=False,
+    )
+    failed = ApmSlo.objects.create(
+        name="遥测失败",
+        service=service,
+        environment="staging",
+        sli_type="availability",
+        objective=Decimal("99.900"),
+        evaluation_window="rolling30d",
+        is_enabled=True,
+    )
+    evaluated_at = datetime(2026, 8, 3, 12, tzinfo=UTC)
+    store, calls = _counting_store(error=TelemetryStoreUnavailable("VictoriaTraces 查询不可用"))
+
+    results = DjangoApmReliabilityService(store).evaluate_many([disabled, failed], evaluated_at=evaluated_at)
+
+    assert len(calls) == 1
+    assert results[disabled.id].reason == "disabled"
+    assert results[disabled.id].current_rate is None
+    assert results[failed.id].current_rate is None
+    assert results[failed.id].reason
+    assert "VictoriaTraces" in results[failed.id].reason
+
+
 def test_slo_evaluation_treats_telemetry_unavailable_as_no_data():
     slo = _slo()
     evaluated_at = datetime(2026, 8, 3, 12, tzinfo=UTC)

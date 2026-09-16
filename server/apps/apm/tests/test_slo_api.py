@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.apm.adapters import TelemetryStoreUnavailable
 from apps.apm.models import ApmService, ApmServiceOrganization, ApmSlo
-from apps.apm.services.contracts import SloEvaluation
+from apps.apm.services.contracts import MetricDataState, SloEvaluation, SloMeasurement
 
 
 pytestmark = pytest.mark.django_db
@@ -90,6 +90,88 @@ def test_latency_slo_requires_threshold(apm_api_client):
 
     assert response.status_code == 400
     assert "latency_threshold_ms" in response.data
+
+
+def _available_measurement():
+    return SloMeasurement(
+        compliance_percent=99.95,
+        good_rate=99.95,
+        total_rate=100,
+        data_state=MetricDataState.AVAILABLE,
+    )
+
+
+def test_slo_list_reuses_one_measurement_for_identical_enabled_rules(apm_api_client, mocker):
+    service = _service(10)
+    for index in range(20):
+        ApmSlo.objects.create(
+            name=f"结算可用性 {index:02d}",
+            service=service,
+            environment="production",
+            sli_type="availability",
+            objective="99.900",
+            evaluation_window="rolling30d",
+            is_enabled=True,
+        )
+    measurement = mocker.patch(
+        "apps.apm.views.control_plane.VictoriaTracesTelemetryStore.slo_measurement",
+        return_value=_available_measurement(),
+    )
+
+    response = apm_api_client.get("/api/v1/apm/slos/")
+
+    assert response.status_code == 200
+    assert len(response.data) == 20
+    assert measurement.call_count == 1
+    assert {item["current_rate"] for item in response.data} == {99.95}
+
+
+def test_slo_list_skips_measurement_for_disabled_rules(apm_api_client, mocker):
+    service = _service(10)
+    ApmSlo.objects.create(
+        name="已禁用结算可用性",
+        service=service,
+        environment="production",
+        sli_type="availability",
+        objective="99.900",
+        evaluation_window="rolling30d",
+        is_enabled=False,
+    )
+    measurement = mocker.patch(
+        "apps.apm.views.control_plane.VictoriaTracesTelemetryStore.slo_measurement",
+        return_value=_available_measurement(),
+    )
+
+    response = apm_api_client.get("/api/v1/apm/slos/")
+
+    assert response.status_code == 200
+    assert measurement.call_count == 0
+    assert response.data[0]["id"]
+    assert response.data[0]["is_enabled"] is False
+    assert response.data[0]["current_rate"] is None
+    assert response.data[0]["data_state"] == "no_data"
+
+
+def test_slo_retrieve_still_evaluates_immediately(apm_api_client, mocker):
+    payload = _payload(_service())
+    slo = ApmSlo.objects.create(
+        name=payload["name"],
+        service_id=payload["service_id"],
+        environment=payload["environment"],
+        sli_type=payload["sli_type"],
+        objective=payload["objective"],
+        evaluation_window=payload["evaluation_window"],
+    )
+    measurement = mocker.patch(
+        "apps.apm.views.control_plane.VictoriaTracesTelemetryStore.slo_measurement",
+        return_value=_available_measurement(),
+    )
+
+    response = apm_api_client.get(f"/api/v1/apm/slos/{slo.id}/")
+
+    assert response.status_code == 200
+    assert measurement.call_count == 1
+    assert response.data["current_rate"] == 99.95
 
 
 def test_slo_list_degrades_each_evaluation_without_hiding_metadata(apm_api_client, mocker):
