@@ -1,7 +1,8 @@
 Transmission MRV SNMP:
   name: MRV (Telegraf)
-  desc: SNMP monitoring template for MRV transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for MRV OptiDriver transmission device. It reports
+    chassis temperature, per-port inbound traffic rate, per-port outbound traffic
+    rate, and system uptime (IANA PEN 629).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -53,6 +54,11 @@ monitor_object_metric:
       desc: CPU or chassis temperature of the transmission device in degrees Celsius.
         High values may indicate cooling problems, high ambient temperature or overloaded
         hardware.
+    temperature_celsius:
+      name: Temperature
+      desc: MRV OptiDriver chassis temperature in degrees Celsius. Unsupported instances
+        report -2147483648 and those samples are skipped. High values may indicate
+        cooling problems, high ambient temperature or overloaded hardware.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A
