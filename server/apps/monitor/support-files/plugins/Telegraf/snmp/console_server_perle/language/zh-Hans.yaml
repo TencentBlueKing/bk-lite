@@ -1,6 +1,6 @@
 ConsoleServer Perle IOLAN SNMP:
   name: Perle IOLAN 控制台服务器（Telegraf）
-  desc: 面向 Perle IOLAN 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Perle IOLAN 控制台服务器的 SNMP 监控模板,可采集 机箱内部温度、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 1966）。
 monitor_object:
   ConsoleServer: 控制台服务器
 monitor_object_type:
@@ -27,6 +27,9 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 控制台服务器的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+    temperature_celsius:
+      name: 温度
+      desc: 控制台服务器的机箱内部温度，单位为摄氏度。空值或无法解析的文本读数会跳过。温度偏高可能表示散热或环境温度风险。
     device_psu_state:
       name: 电源状态
       desc: 控制台服务器的输入电源状态，统一归一为 1=正常、2=异常。未知或非正常码均按电源路径风险处理。

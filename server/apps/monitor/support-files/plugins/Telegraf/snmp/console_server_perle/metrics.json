@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_perle",
   "plugin": "ConsoleServer Perle IOLAN SNMP",
-  "plugin_desc": "Perle IOLAN console-server SNMP baseline child template for Perle console and serial servers. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public MIB facts confirm official Perle IOLAN MIB packages but do not prove stable shared CPU, memory, temperature, fan or power device-health scalars, so this child template does not promote private objects into shared health metrics.",
+  "plugin_desc": "Perle IOLAN console-server SNMP child template for devices under PEN 1966. Interface traffic is supplied by the shared ConsoleServer SNMP IF-MIB floor. Proven private health is chassis internal temperature in degrees Celsius (adminTemperature DisplayString; the leading numeric value is parsed and empty or unparseable samples are skipped). CPU, memory, fan and chassis power-supply health are not published as stable shared objects, so they are not collected. adminPowerStatus is a per-plug power-management string and is not treated as chassis PSU health.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='console_server', collect_type='snmp_perle'}) by (instance_id)",
   "name": "ConsoleServer",
@@ -14,9 +14,23 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "temperature_celsius",
+      "query": "max(temperature_celsius{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Perle IOLAN chassis internal temperature in degrees Celsius (adminTemperature under PEN 1966). The SNMP object is a DisplayString such as 42 C; the leading numeric value is parsed and empty or unparseable samples are skipped. High values may indicate cooling problems, high ambient temperature or overloaded hardware."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
