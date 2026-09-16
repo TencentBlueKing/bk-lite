@@ -17,6 +17,8 @@ import {
   getEnabledCompareModes,
   getMetricThresholdEnumState,
   getThresholdUnitOptions,
+  isVacantThresholdUnit,
+  resolveMetricDisplayUnit,
   shouldShowThresholdUnitSelector,
   timeleftRequiresLowSideThresholds
 } from './strategyDetailUtils';
@@ -196,6 +198,18 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     ratio: t('monitor.events.compareValueKindRatio'),
     hours: t('monitor.events.compareValueKindHours')
   };
+  const forecastTargetUnitLabel = useMemo(() => {
+    // 容量线是源指标量纲（例如磁盘 B），不是剩余时间 hours。
+    if (!metricUnit || isVacantThresholdUnit(metricUnit)) {
+      return '';
+    }
+    const matched = unitList.find((item) => item.unit_id === metricUnit);
+    return (
+      resolveMetricDisplayUnit(metricUnit, unitList) ||
+      matched?.unit_name ||
+      ''
+    );
+  }, [metricUnit, unitList]);
 
   const handleCompareModeChange = (val: string) => {
     onCompareModeChange(val);
@@ -281,19 +295,31 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               {compareMode === COMPARE_MODE_TIMELEFT && !isEnumMetric && (
                 <>
                   <Form.Item
+                    required
                     label={
-                      <span className="w-[100px] inline-flex items-center gap-1">
+                      <span className="w-[100px]">
                         {t('monitor.events.forecastTarget')}
-                        <Tooltip title={t('monitor.events.forecastTargetTitle')}>
-                          <QuestionCircleOutlined className="text-[var(--color-text-3)]" />
-                        </Tooltip>
                       </span>
                     }
-                    required
                   >
                     <InputNumber
-                      className="w-[220px]"
+                      className="w-full"
+                      style={{ width: '100%' }}
+                      min={0}
                       value={forecastTarget}
+                      placeholder={t('common.inputTip')}
+                      addonAfter={
+                        <span className="inline-flex items-center gap-1">
+                          {forecastTargetUnitLabel ? (
+                            <span>{forecastTargetUnitLabel}</span>
+                          ) : null}
+                          <Tooltip
+                            title={t('monitor.events.forecastTargetTitle')}
+                          >
+                            <QuestionCircleOutlined className="text-[var(--color-text-3)]" />
+                          </Tooltip>
+                        </span>
+                      }
                       onChange={(value) =>
                         onForecastTargetChange?.(
                           typeof value === 'number' ? value : null
@@ -309,7 +335,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     }
                   >
                     <Select
-                      className="w-[220px]"
+                      className="w-full"
                       value={`${forecastLookback?.type || DEFAULT_FORECAST_LOOKBACK.type}:${forecastLookback?.value || DEFAULT_FORECAST_LOOKBACK.value}`}
                       onChange={(val) => {
                         const [type, rawValue] = val.split(':');

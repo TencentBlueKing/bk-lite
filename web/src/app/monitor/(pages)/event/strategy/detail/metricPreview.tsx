@@ -293,7 +293,11 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
 
   // 查询数据
   const fetchData = async () => {
-    if (!canQuery) {
+    if (
+      !canQuery ||
+      (compareMode === COMPARE_MODE_TIMELEFT &&
+        (forecastTarget == null || !Number.isFinite(forecastTarget)))
+    ) {
       setChartData([]);
       setPreviewError('');
       setPreviewWarnings([]);
@@ -450,6 +454,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     thresholdUnit,
     compareMode,
     compareValueKind,
+    forecastTarget,
+    forecastLookback,
     metricRows,
     metricExpressionMode,
     resultName,
