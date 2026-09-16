@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_utstarcom",
   "plugin": "Access UTStarcom SNMP",
-  "plugin_desc": "Baseline SNMP child template for UTStarcom DSLAM and broadband access devices under enterprise PEN 4666. The current MIB facts confirm the enterprise root and Access device class, but no reliable row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — UTStarcom DSLAM and broadband access devices that expose standard IF-MIB.",
+  "plugin_desc": "UTStarcom BBS4000/EPON4000 access-device SNMP collection under enterprise PEN 1949. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it walks the private board performance table for per-board CPU utilization, memory utilization and board temperature. CPU and memory are Integer32 values 0-1000 and are converted to percent on the query side by dividing by 10. Board type is collected as a dimension. PON, ONU, optical transceiver, fan and power-supply tables are not promoted to shared device-health metrics. Supported brands/models - UTStarcom BBS4000 and EPON4000 access devices that expose the private board performance table and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_utstarcom'}) by (instance_id)",
   "name": "Access",
@@ -14,9 +14,90 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='access', __$labels__} / 10",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (boardPhyId)"
+        },
+        {
+          "name": "boardPhyId",
+          "description": "Board physical ID (1-12 service, 13 CSM A, 14 CSM B)"
+        },
+        {
+          "name": "boardType",
+          "description": "Board type"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-board CPU utilization from utsSystemPerfCpuUtil. The SNMP Integer32 is 0-1000; the query divides by 10 so the metric is reported as percent, not the raw tenths value."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "device_memory_usage{instance_type='access', __$labels__} / 10",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (boardPhyId)"
+        },
+        {
+          "name": "boardPhyId",
+          "description": "Board physical ID (1-12 service, 13 CSM A, 14 CSM B)"
+        },
+        {
+          "name": "boardType",
+          "description": "Board type"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-board memory utilization from utsSystemPerfMemUtil. The SNMP Integer32 is 0-1000; the query divides by 10 so the metric is reported as percent, not the raw tenths value."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='access', __$labels__}",
+      "display_name": "Board Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (boardPhyId)"
+        },
+        {
+          "name": "boardPhyId",
+          "description": "Board physical ID (1-12 service, 13 CSM A, 14 CSM B)"
+        },
+        {
+          "name": "boardType",
+          "description": "Board type"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-board temperature from utsSystemPerfTemperature, reported directly in degrees Celsius."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

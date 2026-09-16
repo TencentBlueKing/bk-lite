@@ -1,6 +1,6 @@
 Access UTStarcom SNMP:
   name: UTStarcom（Telegraf）
-  desc: 面向 UTStarcom 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4666）。
+  desc: 面向 UTStarcom BBS4000/EPON4000 接入设备的 SNMP 监控模板,可采集每板卡 CPU 使用率、内存使用率、板卡温度、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 1949）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:
@@ -26,7 +26,7 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 接入设备的整机 CPU 使用率（设备私有标量直接上报的百分比）。持续偏高说明 OLT 控制平面或管理平面负载过高。
+      desc: 接入设备每块板卡的 CPU 使用率。SNMP 上报 Integer32（0-1000，十分之一百分比），查询侧除以 10 后为百分比。持续偏高说明 OLT 控制平面或管理平面负载过高。
     device_memory_total:
       name: 内存总量
       desc: 接入设备上报的物理内存总容量，单位为字节。该指标可与空闲内存一起推导整体内存使用率。
@@ -35,10 +35,10 @@ monitor_object_metric:
       desc: 接入设备当前可用的物理内存容量，单位为字节。空闲内存持续降低可能表示控制服务或业务表项造成内存压力。
     device_memory_usage:
       name: 内存使用率
-      desc: 接入设备的系统内存使用率（设备私有标量直接上报的百分比）。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
+      desc: 接入设备每块板卡的内存使用率。SNMP 上报 Integer32（0-1000，十分之一百分比），查询侧除以 10 后为百分比。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
     device_temperature_celsius:
-      name: 系统温度
-      desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
+      name: 板卡温度
+      desc: 接入设备每块板卡的温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或板卡负载过高。
     device_card_temperature_level:
       name: 板卡温度级别
       desc: 接入设备板卡相对温度级别。数值 1-10 表示从低温到高温，999 表示未上报；该指标用于发现板卡温度趋势，不等同于摄氏度读数。
