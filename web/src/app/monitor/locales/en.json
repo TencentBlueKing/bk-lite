@@ -29,7 +29,7 @@
       "sumTitle": "Represents the sum of all dimension data within the selected time range.\n The sum function is used to calculate the total value of multiple time series within the same time range, suitable for merging and aggregating data from all dimensions, such as calculating total traffic.",
       "recoveryCondition": "Restored if the condition is not met for",
       "recoveryThreshold": "Recovery threshold",
-      "recoveryThresholdPlaceholder": "Leave empty to use the trigger line",
+      "recoveryThresholdPlaceholder": "Same as trigger",
       "consecutiveCountPrefix": "Consecutive",
       "consecutivePeriodUnit": "periods",
       "noDataWindow": "Lookback",

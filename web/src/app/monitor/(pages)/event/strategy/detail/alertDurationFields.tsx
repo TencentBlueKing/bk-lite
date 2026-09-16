@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, InputNumber, Select, Switch } from 'antd';
+import { Form, Input, InputNumber, Select, Space, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { StrategyFields } from '@/app/monitor/types/event';
@@ -78,38 +78,13 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         />
       </Form.Item>
       <Form.Item label={fieldLabel(t('monitor.events.recoveryThreshold'))}>
-        <InputNumber
-          className="w-[280px]"
-          addonBefore={
-            <Select
-              allowClear
-              value={props.recoveryThreshold?.method || undefined}
-              popupMatchSelectWidth={false}
-              style={{ width: 80 }}
-              aria-label={t('monitor.events.method')}
-              onChange={(method) =>
-                props.onRecoveryThresholdChange?.({
-                  method: method || '',
-                  value: props.recoveryThreshold?.value ?? null
-                })
-              }
-            >
-              {props.allowedRecoveryMethods.map((item) => (
-                <Option key={String(item.value)} value={item.value}>
-                  {item.label}
-                </Option>
-              ))}
-            </Select>
-          }
-          addonAfter={props.recoveryThresholdUnitLabel || undefined}
+        <RecoveryThresholdInput
+          recoveryThreshold={props.recoveryThreshold}
+          allowedRecoveryMethods={props.allowedRecoveryMethods}
+          recoveryThresholdUnitLabel={props.recoveryThresholdUnitLabel}
           placeholder={t('monitor.events.recoveryThresholdPlaceholder')}
-          value={props.recoveryThreshold?.value ?? null}
-          onChange={(value) =>
-            props.onRecoveryThresholdChange?.({
-              method: props.recoveryThreshold?.method || '',
-              value: typeof value === 'number' ? value : null
-            })
-          }
+          methodAriaLabel={t('monitor.events.method')}
+          onRecoveryThresholdChange={props.onRecoveryThresholdChange}
         />
       </Form.Item>
       <Form.Item label={fieldLabel(t('monitor.events.noDataAlertLevel'))}>
@@ -202,6 +177,75 @@ const NoDataDetailFields: React.FC<AlertDurationFieldsProps> = ({
     </>
   );
 };
+
+function RecoveryThresholdInput({
+  recoveryThreshold,
+  allowedRecoveryMethods,
+  recoveryThresholdUnitLabel,
+  placeholder,
+  methodAriaLabel,
+  onRecoveryThresholdChange
+}: {
+  recoveryThreshold?: { method?: string; value?: number | null };
+  allowedRecoveryMethods: RecoveryMethodOption[];
+  recoveryThresholdUnitLabel: string;
+  placeholder: string;
+  methodAriaLabel: string;
+  onRecoveryThresholdChange?: (val: {
+    method?: string;
+    value?: number | null;
+  }) => void;
+}) {
+  const displayedMethod =
+    recoveryThreshold?.method ||
+    String(allowedRecoveryMethods[0]?.value || '>');
+
+  const commit = (next: {
+    method?: string;
+    value?: number | null;
+  }) => {
+    onRecoveryThresholdChange?.({
+      method: next.method || displayedMethod,
+      value: next.value ?? null
+    });
+  };
+
+  return (
+    <Space.Compact>
+      <Select
+        value={displayedMethod}
+        popupMatchSelectWidth={false}
+        style={{ width: 72 }}
+        aria-label={methodAriaLabel}
+        disabled={!allowedRecoveryMethods.length}
+        onChange={(method) =>
+          commit({
+            method: String(method),
+            value: recoveryThreshold?.value ?? null
+          })
+        }
+      >
+        {allowedRecoveryMethods.map((item) => (
+          <Option key={String(item.value)} value={item.value}>
+            {item.label}
+          </Option>
+        ))}
+      </Select>
+      <InputNumber
+        className={FIELD_NUMBER_CLASS}
+        placeholder={placeholder}
+        value={recoveryThreshold?.value ?? null}
+        addonAfter={recoveryThresholdUnitLabel || undefined}
+        onChange={(value) =>
+          commit({
+            method: displayedMethod,
+            value: typeof value === 'number' ? value : null
+          })
+        }
+      />
+    </Space.Compact>
+  );
+}
 
 function setNoDataEnabled(props: AlertDurationFieldsProps, enabled: boolean) {
   if (enabled) {

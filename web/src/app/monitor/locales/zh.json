@@ -29,7 +29,7 @@
       "sumTitle": "表示选中时间范围内，所有维度数据之和。\n sum函数用于计算多个时间序列在同时间范围内的值的总和，适用于合并和聚合所有维度的数据，例如计算总流量。",
       "recoveryCondition": "连续",
       "recoveryThreshold": "恢复阈值",
-      "recoveryThresholdPlaceholder": "不填则与触发线相同",
+      "recoveryThresholdPlaceholder": "与触发线相同",
       "consecutiveCountPrefix": "连续",
       "consecutivePeriodUnit": "个周期",
       "noDataWindow": "检测窗口",
