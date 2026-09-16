@@ -236,7 +236,7 @@ const Grouping = () => {
   };
 
   return (
-    <div className="bg-[var(--color-bg-1)] h-full p-[20px]">
+    <div className="h-full min-w-0 w-full bg-[var(--color-bg-1)] p-[20px]">
       <Spin spinning={pageLoading}>
         <div className="flex justify-end items-center mb-[10px]">
           <Search
@@ -260,7 +260,7 @@ const Grouping = () => {
           <Button icon={<ReloadOutlined />} onClick={onRefresh} />
         </div>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 320px)', x: 'calc(100vh - 80px)' }}
+          scroll={{ y: 'calc(100vh - 320px)', x: 'max-content' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}

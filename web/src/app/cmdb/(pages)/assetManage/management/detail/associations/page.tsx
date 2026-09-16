@@ -320,7 +320,7 @@ const Associations: React.FC = () => {
   };
 
   return (
-    <div>
+    <div className="min-w-0 w-full">
       <div>
         <div className="nav-box flex justify-end mb-[16px]">
           <div className="left-side w-[240px] mr-[8px]">

@@ -22,5 +22,12 @@ describe('WithSideMenuLayout overflow contract', () => {
     expect(source).toMatch(
       /flex h-full min-h-0 min-w-0 w-full grow flex-1 overflow-hidden/,
     );
+    // segmented 内容区用纵向 flex，避免横向 flex 的 min-width:auto 把宽表撑出视口
+    expect(source).toMatch(
+      /flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden rounded-lg/,
+    );
+    expect(source).not.toMatch(
+      /flex min-h-0 min-w-0 flex-1 overflow-auto rounded-lg/,
+    );
   });
 });

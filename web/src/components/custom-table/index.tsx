@@ -78,18 +78,21 @@ const CustomTable = <T extends object>({
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
   const [columns, setColumns] = useState<any[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [containerWidth, setContainerWidth] = useState<number | undefined>(undefined);
   const scrollY = scroll?.y;
   const hasPagination = Boolean(pagination);
   const hasData = Boolean(TableProps.dataSource?.length);
 
-  // 监听父容器高度变化
+  // 监听父容器高度与自身宽度：横向按列宽定死会让短表缩在左侧，铺不满工作区
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const parentElement = container.parentElement;
     if (!parentElement) return;
 
-    const updateTableHeight = () => {
+    const updateTableLayout = () => {
+      const nextWidth = container.clientWidth;
+      setContainerWidth(previous => (previous === nextWidth ? previous : nextWidth));
       const dimensions = resolveTableDimensions({
         scrollY,
         viewportHeight: window.innerHeight,
@@ -107,20 +110,22 @@ const CustomTable = <T extends object>({
       );
     };
 
-    updateTableHeight();
+    updateTableLayout();
 
     const scheduler = createRafScheduler(
-      updateTableHeight,
+      updateTableLayout,
       window.requestAnimationFrame.bind(window),
       window.cancelAnimationFrame.bind(window)
     );
     let resizeObserver: ResizeObserver | undefined;
 
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(scheduler.schedule);
+      resizeObserver.observe(container);
+      resizeObserver.observe(parentElement);
+    }
     if (typeof scrollY === 'string' && scrollY.includes('vh')) {
       window.addEventListener('resize', scheduler.schedule);
-    } else if (scrollY === undefined && hasPagination && typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(scheduler.schedule);
-      resizeObserver.observe(parentElement);
     }
 
     return () => {
@@ -197,8 +202,9 @@ const CustomTable = <T extends object>({
       columns,
       columnWidths,
       tableLayout: TableProps.tableLayout,
+      containerWidth,
     })
-  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout]);
+  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout, containerWidth]);
 
   const resizableColumns = useCallback(() => {
     return columns.map((col: any, index: number) => {
@@ -317,6 +323,7 @@ const CustomTable = <T extends object>({
   };
   const mergedScroll: TableProps<T>['scroll'] = resolveTableScroll({
     calculatedScrollX: columnLayout.scrollX,
+    containerWidth,
     scroll,
     calculatedScrollY: tableHeight,
     hasData,
