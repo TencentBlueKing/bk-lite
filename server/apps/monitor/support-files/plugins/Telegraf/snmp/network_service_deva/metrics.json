@@ -158,7 +158,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Base",
