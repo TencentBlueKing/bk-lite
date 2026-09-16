@@ -1,6 +1,7 @@
 Transmission Pan Dacom SNMP:
   name: Pan Dacom（Telegraf）
-  desc: 面向 Pan Dacom 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Pan Dacom 传输设备的 SNMP 监控模板,可采集 NMS 板卡温度、电源1/电源2状态、可选风扇与电源3状态、每端口入向流量速率、每端口出向流量速率和运行时长（企业号
+    PEN 3652）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -33,6 +34,24 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    temperature_celsius:
+      name: NMS 板卡温度
+      desc: NMS 板卡温度（nmATemperature），单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    psu1_status:
+      name: 电源1状态
+      desc: 机箱电源1运行状态。原生码为 notInstalled(0)、fail(1)、temperatureWarning(2)、pass(3)。fail
+        或过温告警需排查；notInstalled 表示该槽位未使用。
+    psu2_status:
+      name: 电源2状态
+      desc: 机箱电源2运行状态。原生码为 notInstalled(0)、fail(1)、temperatureWarning(2)、pass(3)。fail
+        或过温告警需排查；notInstalled 表示该槽位未使用。
+    fan_status:
+      name: 风扇状态
+      desc: 可选机箱风扇状态。原生码为 notAvailable(0)、pass(3)、fail(4)、notInstalled(5)。fail 表示散热模块故障。
+    psu3_status:
+      name: 电源3状态
+      desc: 可选机箱电源3运行状态。原生码为 notInstalled(0)、fail(1)、temperatureWarning(2)、pass(3)、notAvailable(255)。fail
+        或过温告警需排查；notInstalled 与 notAvailable 表示该槽位未使用或不支持。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。

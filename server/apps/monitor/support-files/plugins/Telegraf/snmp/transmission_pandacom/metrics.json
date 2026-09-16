@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_pandacom",
   "plugin": "Transmission Pan Dacom SNMP",
-  "plugin_desc": "Pan Dacom optical transmission SNMP child template. The currently verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific row-filter-free health gauges are confirmed for link state, temperature, optical power, fan or power state. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Transmission SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/transmission metric model while this plugin provides the Pan Dacom collect_type, UI and Telegraf child template. Supported brands/models — Pan Dacom CWDM and optical transmission devices.",
+  "plugin_desc": "Pan Dacom optical transmission SNMP child template for devices under enterprise PEN 3652. Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health scalars are NMS board temperature in degrees Celsius (nmATemperature) and chassis PSU1/PSU2 status (nmPSU1Status/nmPSU2Status, native notInstalled/fail/temperatureWarning/pass). Optional fan_status (nmFanState) and psu3_status (nmPSU3Status, including notAvailable) are collected when present. CPU and memory percentages are not collected because no stable private scalar was confirmed. Supported brands/models — Pan Dacom CWDM and optical transmission chassis that expose these scalars and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_pandacom'}) by (instance_id)",
   "name": "Transmission",
@@ -14,9 +14,79 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "temperature_celsius",
+    "psu1_status",
+    "psu2_status",
+    "fan_status",
+    "psu3_status"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "temperature_celsius",
+      "query": "max(temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "NMS Board Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "NMS board temperature in degrees Celsius from nmATemperature under PEN 3652. High values may indicate cooling problems, high ambient temperature or overloaded hardware."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu1_status",
+      "query": "psu1_status{instance_type='transmission', __$labels__}",
+      "display_name": "PSU1 Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"notInstalled\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"fail\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"temperatureWarning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of chassis power supply 1 from nmPSU1Status. Native codes are notInstalled (0), fail (1), temperatureWarning (2), and pass (3). fail or temperatureWarning should be investigated; notInstalled means the slot is unused."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu2_status",
+      "query": "psu2_status{instance_type='transmission', __$labels__}",
+      "display_name": "PSU2 Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"notInstalled\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"fail\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"temperatureWarning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of chassis power supply 2 from nmPSU2Status. Native codes are notInstalled (0), fail (1), temperatureWarning (2), and pass (3). fail or temperatureWarning should be investigated; notInstalled means the slot is unused."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "fan_status",
+      "query": "fan_status{instance_type='transmission', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"notAvailable\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"fail\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notInstalled\",\"id\":5,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional chassis fan state from nmFanState. Native codes are notAvailable (0), pass (3), fail (4), and notInstalled (5). fail indicates a cooling-module fault; notAvailable or notInstalled means the object is unused on this chassis."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu3_status",
+      "query": "psu3_status{instance_type='transmission', __$labels__}",
+      "display_name": "PSU3 Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"notInstalled\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"fail\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"temperatureWarning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"pass\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"notAvailable\",\"id\":255,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional chassis power supply 3 state from nmPSU3Status. Native codes are notInstalled (0), fail (1), temperatureWarning (2), pass (3), and notAvailable (255). fail or temperatureWarning should be investigated; notInstalled and notAvailable mean the slot is unused or unsupported."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
