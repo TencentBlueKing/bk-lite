@@ -1,5 +1,30 @@
 {
   "object": "NetworkService",
   "plugin": "NetworkService DEVA Broadcast SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "DEVA Broadcast机箱温度过高",
+      "alert_name": "网络服务${resource_name} 机箱温度过高",
+      "description": "监控 DEVA Broadcast 接收机机箱温度（Fr8p8 原值按 /256 换算为摄氏度），超过阈值时触发告警，提示可能存在散热不良或环境温度风险。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ]
+    }
+  ]
 }
