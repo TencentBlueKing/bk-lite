@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_servertech",
   "plugin": "NetworkService Server Technology Sentry3 SNMP",
-  "plugin_desc": "Server Technology Sentry3 network-service SNMP collection for remote power, PDU and environmental monitor devices under Server Technology PEN 1718.3. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The current MIB facts identify Sentry3 tower, infeed, outlet, temperature/humidity sensor, contact-closure and branch tables, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private health and PDU business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "Server Technology Sentry3 PDU and environmental SNMP child template for network-service devices under Server Technology PEN 1718.3. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven private increments are systemTotalPower as pdu_active_power_watts (negative values are unavailable), infeedLoadValue plus infeedName as pdu_infeed_current_amps scaled by /100, optional infeedVoltage scaled by /10 and infeedPower in Watts, outletLoadValue plus outletName as pdu_outlet_current_amps scaled by /100, tempHumidSensorTempValue as env_temperature_celsius (tenths of a degree, converted from Fahrenheit when tempHumidSensorTempScale is Fahrenheit), tempHumidSensorHumidValue as env_humidity_percent, and towerStatus as pdu_tower_state normalized to 1=healthy / 2=fault. CPU and memory scalars are not invented. The Sentry4 tree is not collected. Supported brands/models - Server Technology Sentry3 PDUs that expose Sentry3-MIB under PEN 1718.3 and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_servertech'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,180 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "pdu_active_power_watts",
+    "pdu_infeed_current_amps",
+    "env_temperature_celsius",
+    "env_humidity_percent"
   ],
   "metrics": [
+    {
+      "metric_group": "Power",
+      "name": "pdu_active_power_watts",
+      "query": "(pdu_active_power_watts{instance_type='network_service', __$labels__} >= 0)",
+      "display_name": "PDU Active Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "System total active power in Watts from Sentry3 systemTotalPower (1.3.6.1.4.1.1718.3.1.6). A non-negative value is the sum of infeed power. Negative values mean the agent could not measure total power and are filtered out."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_infeed_current_amps",
+      "query": "(pdu_infeed_current_amps{instance_type='network_service', __$labels__} >= 0) / 100",
+      "display_name": "PDU Infeed Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Infeed index"
+        },
+        {
+          "name": "infeed",
+          "description": "Infeed name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-infeed load current in amperes from Sentry3 infeedLoadValue (1.3.6.1.4.1.1718.3.2.2.1.7) with infeedName (1.3.6.1.4.1.1718.3.2.2.1.3). The SNMP value is hundredths of amperes, so the query divides by 100. Negative values mean the load could not be measured and are filtered out."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_infeed_voltage_volts",
+      "query": "(pdu_infeed_voltage_volts{instance_type='network_service', __$labels__} >= 0) / 10",
+      "display_name": "PDU Infeed Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Infeed index"
+        },
+        {
+          "name": "infeed",
+          "description": "Infeed name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-infeed voltage in volts from Sentry3 infeedVoltage (1.3.6.1.4.1.1718.3.2.2.1.11). The SNMP value is tenths of volts, so the query divides by 10. Negative values mean the voltage could not be measured and are filtered out."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_infeed_power_watts",
+      "query": "(pdu_infeed_power_watts{instance_type='network_service', __$labels__} >= 0)",
+      "display_name": "PDU Infeed Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Infeed index"
+        },
+        {
+          "name": "infeed",
+          "description": "Infeed name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-infeed active power in Watts from Sentry3 infeedPower (1.3.6.1.4.1.1718.3.2.2.1.12). Negative values mean the power could not be measured and are filtered out."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_outlet_current_amps",
+      "query": "(pdu_outlet_current_amps{instance_type='network_service', __$labels__} >= 0) / 100",
+      "display_name": "PDU Outlet Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Outlet index"
+        },
+        {
+          "name": "outlet",
+          "description": "Outlet name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-outlet load current in amperes from Sentry3 outletLoadValue (1.3.6.1.4.1.1718.3.2.3.1.7) with outletName (1.3.6.1.4.1.1718.3.2.3.1.3). The SNMP value is hundredths of amperes, so the query divides by 100. Negative values mean the load could not be measured and are filtered out."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "pdu_tower_state",
+      "query": "pdu_tower_state{instance_type='network_service', __$labels__}",
+      "display_name": "PDU Tower Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Tower index"
+        },
+        {
+          "name": "tower",
+          "description": "Tower name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Sentry3 towerStatus (1.3.6.1.4.1.1718.3.2.1.1.4) with towerName (1.3.6.1.4.1.1718.3.2.1.1.3), normalized so normal(0) is 1=healthy and every other code (noComm, fanFail, overTemp, and later alarm codes) is 2=fault."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "((env_temperature_celsius{instance_type='network_service', temp_scale=\"0\", __$labels__} >= 0) / 10) or ((((env_temperature_celsius{instance_type='network_service', temp_scale=\"1\", __$labels__} >= 0) / 10) - 32) * 5 / 9) or ((env_temperature_celsius{instance_type='network_service', __$labels__} >= 0) / 10)",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Temperature sensor index"
+        },
+        {
+          "name": "sensor",
+          "description": "Temperature sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor environment temperature in degrees Celsius from Sentry3 tempHumidSensorTempValue (1.3.6.1.4.1.1718.3.2.5.1.6). The SNMP value is tenths of a degree in the scale selected by tempHumidSensorTempScale (1.3.6.1.4.1.1718.3.2.5.1.13, celsius=0, fahrenheit=1). The query divides by 10 and converts Fahrenheit readings to Celsius. Negative values mean the temperature could not be measured and are filtered out. When the scale object is absent the agent uses Celsius."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "(env_humidity_percent{instance_type='network_service', __$labels__} >= 0)",
+      "display_name": "Environment Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Humidity sensor index"
+        },
+        {
+          "name": "sensor",
+          "description": "Humidity sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor relative humidity in percent from Sentry3 tempHumidSensorHumidValue (1.3.6.1.4.1.1718.3.2.5.1.10). The SNMP value is already 0-100 percent. Negative values mean humidity could not be measured and are filtered out."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +204,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +222,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Base",
