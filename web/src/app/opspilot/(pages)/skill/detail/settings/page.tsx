@@ -28,7 +28,7 @@ import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { useSkill } from '@/app/opspilot/context/skillContext';
 import { notifyWebchatAppsChanged } from '@/app/(core)/components/global-webchat/apps-changed';
-import { getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
+import { filterModelOption, getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
 import {
   buildSkillSaveTools,
   buildStudioRuntimeTools,
@@ -772,7 +772,12 @@ const SkillSettingsPage: React.FC = () => {
                     name="llmModel"
                     rules={[{ required: true, message: `${t('common.input')} ${t('skill.form.llmModel')}` }]}
                   >
-                    <Select placeholder={`${t('common.selectMsg')}${t('skill.form.llmModel')}`}>
+                    <Select
+                      showSearch
+                      placeholder={`${t('common.selectMsg')}${t('skill.form.llmModel')}`}
+                      optionFilterProp="title"
+                      filterOption={filterModelOption}
+                    >
                       {llmModels.map(model => (
                         <Option key={model.id} value={model.id} disabled={!model.enabled} title={getModelOptionText(model)}>
                           {renderModelOptionLabel(model)}
