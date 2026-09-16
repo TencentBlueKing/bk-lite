@@ -392,34 +392,37 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
               }
               required
             >
-              <div className="flex flex-wrap items-center gap-[10px]">
-                <Select
-                  className="w-[120px]"
-                  value={countPredicate?.method || '>'}
-                  onChange={(method) =>
-                    onCountPredicateChange?.({
-                      method,
-                      value: countPredicate?.value ?? null
-                    })
-                  }
-                >
-                  {COMPARISON_METHOD.map((item) => (
-                    <Option value={item.value} key={String(item.value)}>
-                      {item.label}
-                    </Option>
-                  ))}
-                </Select>
-                <InputNumber
-                  className="w-[160px]"
-                  value={countPredicate?.value}
-                  onChange={(value) =>
-                    onCountPredicateChange?.({
-                      method: countPredicate?.method || '>',
-                      value: typeof value === 'number' ? value : null
-                    })
-                  }
-                />
-              </div>
+              <InputNumber
+                className="w-full"
+                addonBefore={
+                  <Select
+                    value={countPredicate?.method || '>'}
+                    popupMatchSelectWidth={false}
+                    style={{ width: 80 }}
+                    aria-label={t('monitor.events.method')}
+                    onChange={(method) =>
+                      onCountPredicateChange?.({
+                        method,
+                        value: countPredicate?.value ?? null
+                      })
+                    }
+                  >
+                    {COMPARISON_METHOD.map((item) => (
+                      <Option value={item.value} key={String(item.value)}>
+                        {item.label}
+                      </Option>
+                    ))}
+                  </Select>
+                }
+                value={countPredicate?.value}
+                placeholder={t('common.inputTip')}
+                onChange={(value) =>
+                  onCountPredicateChange?.({
+                    method: countPredicate?.method || '>',
+                    value: typeof value === 'number' ? value : null
+                  })
+                }
+              />
             </Form.Item>
           )
         }
