@@ -145,7 +145,7 @@ beforeEach(() => {
       service: 'bklite-server',
       item: 'error_rate',
       value: 0.2,
-      resource_id: 'r1',
+      resource_id: 'service-bklite',
       resource_name: 'bklite-server',
       start_time: '2026-07-31T06:00:00Z',
       end_time: null,
@@ -365,4 +365,120 @@ describe('APM 服务目录服务视角与归档', () => {
     expect(api.setServiceArchived).toHaveBeenCalledWith('service-checkout', true);
     confirmSpy.mockRestore();
   }, 15_000);
+});
+
+const catalogApplication = (id: string, name: string) => ({
+  id,
+  application_id: id,
+  name,
+  description: '',
+  is_builtin: false,
+  service_count: 1,
+  organization_ids: [1],
+  created_at: '2026-08-05T00:00:00Z',
+  updated_at: '2026-08-05T00:00:00Z',
+  created_by: 'admin',
+  updated_by: 'admin',
+});
+
+const catalogEvent = (overrides: Record<string, unknown> = {}) => ({
+  id: 'evt-1',
+  event_id: 'evt-1',
+  external_id: 'ext-1',
+  title: '错误率升高',
+  description: '',
+  severity: 'critical',
+  action: 'triggered',
+  status: 'active',
+  service: 'bklite-server',
+  item: 'error_rate',
+  value: 0.2,
+  resource_id: 'service-bklite',
+  resource_name: 'bklite-server',
+  start_time: '2026-07-31T06:00:00Z',
+  end_time: null,
+  received_at: '2026-07-31T06:00:00Z',
+  policy_id: 'p1',
+  environment: 'production',
+  notification_deliveries: [],
+  ...overrides,
+});
+
+describe('APM 服务目录告警按服务身份归并', () => {
+  const checkoutA = {
+    ...serviceWithEnv,
+    id: 'service-checkout-orders',
+    application_id: 'orders',
+    application_name: '订单应用',
+    namespace: 'orders',
+    name: 'checkout',
+    language: 'go',
+  };
+  const checkoutB = {
+    ...serviceWithEnv,
+    id: 'service-checkout-billing',
+    application_id: 'billing',
+    application_name: '结算应用',
+    namespace: 'billing',
+    name: 'checkout',
+    language: 'python',
+  };
+
+  it('两个应用下同名 checkout 只把带 resource_id 的活跃告警归到对应服务', async () => {
+    api.getApplications.mockResolvedValue([
+      catalogApplication('orders', '订单应用'),
+      catalogApplication('billing', '结算应用'),
+    ]);
+    api.getServices.mockResolvedValue([checkoutA, checkoutB]);
+    api.getEvents.mockResolvedValue([
+      catalogEvent({
+        id: 'evt-orders',
+        event_id: 'evt-orders',
+        service: 'checkout',
+        resource_id: 'service-checkout-orders',
+        resource_name: 'checkout',
+      }),
+    ]);
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServicesPage />);
+
+    const ordersCard = (await screen.findByRole('link', { name: '查看应用 订单应用 详情' })).closest('article');
+    const billingCard = (await screen.findByRole('link', { name: '查看应用 结算应用 详情' })).closest('article');
+    expect(ordersCard).not.toBeNull();
+    expect(billingCard).not.toBeNull();
+    expect(within(ordersCard!).getByRole('link', { name: /应用内 1 个活跃告警/ })).not.toBeNull();
+    expect(within(billingCard!).getByRole('link', { name: /应用内 0 个活跃告警/ })).not.toBeNull();
+    expect(within(billingCard!).queryByRole('link', { name: /应用内 1 个活跃告警/ })).toBeNull();
+
+    await user.click(screen.getByRole('radio', { name: '服务' }).closest('label')!);
+    await screen.findAllByRole('link', { name: /checkout 有 \d+ 个活跃告警/ });
+    const checkoutLinks = screen.getAllByRole('link', { name: 'checkout' }).filter((link) => (
+      link.getAttribute('href')?.startsWith('/apm/services/')
+    ));
+    expect(checkoutLinks).toHaveLength(2);
+    const rowA = checkoutLinks.find((link) => link.getAttribute('href')?.includes('service-checkout-orders'))?.closest('tr');
+    const rowB = checkoutLinks.find((link) => link.getAttribute('href')?.includes('service-checkout-billing'))?.closest('tr');
+    expect(rowA).not.toBeNull();
+    expect(rowB).not.toBeNull();
+    expect(within(rowA!).getByRole('link', { name: /checkout 有 1 个活跃告警/ })).not.toBeNull();
+    expect(within(rowB!).getByRole('link', { name: /checkout 有 0 个活跃告警/ })).not.toBeNull();
+  });
+
+  it('缺少 resource_id 的历史事件仍按服务名回退到同名行', async () => {
+    api.getEvents.mockResolvedValue([
+      catalogEvent({
+        resource_id: '',
+        service: 'bklite-server',
+        resource_name: 'bklite-server',
+      }),
+    ]);
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServicesPage />);
+
+    const card = await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
+    expect(within(card.closest('article')!).getByRole('link', { name: /应用内 1 个活跃告警/ })).not.toBeNull();
+
+    await user.click(screen.getByRole('radio', { name: '服务' }).closest('label')!);
+    expect(await screen.findByRole('link', { name: /bklite-server 有 1 个活跃告警/ })).not.toBeNull();
+  });
 });
