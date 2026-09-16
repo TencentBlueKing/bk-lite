@@ -1319,10 +1319,10 @@ assert.deepEqual(
   ]
 );
 
-assert.equal(formatAlgorithmDisplayLabel('平均', 'avg_over_time'), '平均（AVG）');
-assert.equal(formatAlgorithmDisplayLabel('最大', 'max_over_time'), '最大（MAX）');
-assert.equal(formatAlgorithmDisplayLabel('P95', 'p95_over_time'), 'P95');
+assert.equal(formatAlgorithmDisplayLabel('平均', 'avg_over_time'), '平均（AVG_OVER_TIME）');
+assert.equal(formatAlgorithmDisplayLabel('最大', 'max_over_time'), '最大（MAX_OVER_TIME）');
+assert.equal(formatAlgorithmDisplayLabel('P95', 'p95_over_time'), 'P95（P95_OVER_TIME）');
 assert.equal(formatAlgorithmDisplayLabel('速率', 'rate'), '速率（RATE）');
-assert.equal(getAlgorithmShortName('count_if_over_time'), 'COUNT_IF');
+assert.equal(getAlgorithmShortName('count_if_over_time'), 'COUNT_IF_OVER_TIME');
 
 console.log('monitor-strategy-detail logic validation passed');

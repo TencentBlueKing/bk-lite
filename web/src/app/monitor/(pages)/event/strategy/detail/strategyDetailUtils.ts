@@ -463,29 +463,12 @@ export const NEW_ALGORITHMS = [
   'deriv'
 ];
 
-/** 搜索页汇聚和下拉历史展示用的大写方法名，升级后仍能对上旧策略。 */
-export const ALGORITHM_SHORT_NAMES: Record<string, string> = {
-  sum_over_time: 'SUM',
-  max_over_time: 'MAX',
-  min_over_time: 'MIN',
-  avg_over_time: 'AVG',
-  count_over_time: 'COUNT',
-  last_over_time: 'LAST',
-  p90_over_time: 'P90',
-  p95_over_time: 'P95',
-  p99_over_time: 'P99',
-  stddev_over_time: 'STDDEV',
-  count_if_over_time: 'COUNT_IF',
-  rate: 'RATE',
-  changes: 'CHANGES',
-  deriv: 'DERIV'
-};
-
+/** 括号里用第一版下拉的方法全称（大写），方便对上旧策略。 */
 export const getAlgorithmShortName = (
   algorithm: string | null | undefined
 ): string => {
   if (!algorithm) return '';
-  return ALGORITHM_SHORT_NAMES[algorithm] || String(algorithm).toUpperCase();
+  return String(algorithm).toUpperCase();
 };
 
 export const formatAlgorithmDisplayLabel = (
