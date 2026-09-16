@@ -5,6 +5,7 @@ import pytest
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import (
     CurrentTeamDataScope,
+    build_request_push_actor_scope,
     resolve_assignable_organization_ids,
     resolve_current_team_data_scope,
     scope_permission_queryset,
@@ -132,3 +133,29 @@ def test_validate_assignable_organizations_requires_at_least_one_id(monkeypatch,
 
     with pytest.raises(BaseAppException, match="organization"):
         validate_assignable_organizations(request, organization_ids)
+
+
+@pytest.mark.django_db
+def test_build_request_push_actor_scope_includes_user_info(monkeypatch):
+    from apps.system_mgmt.models import Group
+
+    team = Group.objects.create(name="push-actor-team", parent_id=0)
+    request = make_request(current_team=team.id, include_children=True)
+    patch_scoped_groups(monkeypatch, [team.id, team.id + 1])
+
+    scope = build_request_push_actor_scope(request)
+
+    assert set(scope["allowed_org_ids"]) == {team.id, team.id + 1}
+    assert scope["operator"] == "admin"
+    assert scope["user_info"] == {
+        "user": "admin",
+        "domain": "domain.com",
+        "team": team.id,
+        "include_children": True,
+    }
+
+
+def test_build_request_push_actor_scope_omits_user_info_when_scope_fails():
+    scope = build_request_push_actor_scope(make_request(current_team=None))
+
+    assert scope == {"allowed_org_ids": [], "operator": "admin"}
