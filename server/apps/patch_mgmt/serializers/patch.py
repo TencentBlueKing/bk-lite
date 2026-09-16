@@ -143,6 +143,9 @@ class PatchListSerializer(PatchPermissionSerializer):
         return source_details_for_patch(obj)
 
     def get_baseline_requirement_count(self, obj):
+        annotated = getattr(obj, "_baseline_requirement_count", None)
+        if annotated is not None:
+            return annotated
         return obj.baseline_requirements.count()
 
     def get_package_info(self, obj):

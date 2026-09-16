@@ -7,7 +7,9 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
+
+from django.db.models import Q
 
 from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import (
@@ -153,9 +155,15 @@ def _task_contains_pair(task: GovernanceTask, target_id: int, patch_id: int) -> 
     return target_id in (task.target_list or []) and patch_id in (task.patch_list or [])
 
 
-def _latest_task_for_pair(queryset, target_id: int, patch_id: int):
+def _latest_task_for_pair(tasks, target_id: int, patch_id: int):
     return next(
-        (task for task in queryset.order_by("-created_at") if _task_contains_pair(task, target_id, patch_id)),
+        (
+            task
+            for task in tasks
+            if target_id in (task.target_list or [])
+            and patch_id in (task.patch_list or [])
+            and _task_contains_pair(task, target_id, patch_id)
+        ),
         None,
     )
 
@@ -176,72 +184,121 @@ def _is_reboot_completed(target_id: int) -> bool:
     ).exists()
 
 
-def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluated_at=None) -> str:
-    # 活动状态按安装 > 重启 > 验证优先展示，避免重启过程中仍显示“待重启”。
-    install_task = _latest_task_for_pair(GovernanceTask.objects.filter(
-        task_type=GovernanceTaskType.INSTALL,
-        status__in=(GovernanceTaskStatus.PENDING, GovernanceTaskStatus.RUNNING),
-        target_list__contains=[target_id],
-        patch_list__contains=[patch_id],
-    ), target_id, patch_id)
-    if install_task:
-        host_stage = GovernanceTaskHost.objects.filter(
-            task=install_task, target_id=target_id
-        ).values_list('stage', flat=True).first()
-        return RemediationStatus.SCHEDULED if host_stage == 'waiting' else 'installing'
+class _RemediationIndex:
+    """按创建时间倒序缓存候选治理任务与主机结果，避免逐 pair 查库。"""
 
-    reboot_task = _latest_task_for_pair(GovernanceTask.objects.filter(
-        task_type=GovernanceTaskType.REBOOT,
-        status__in=GovernanceTaskStatus.ACTIVE_STATES,
-        target_list__contains=[target_id],
-        patch_list__contains=[patch_id],
-    ), target_id, patch_id)
+    def __init__(self, tasks_newest_first: list[GovernanceTask], hosts: list[GovernanceTaskHost]):
+        self._tasks = tasks_newest_first
+        self._host_by_task_target = {(host.task_id, host.target_id): host for host in hosts}
+
+    def latest(self, target_id: int, patch_id: int, task_type: str, statuses: tuple[str, ...]):
+        return _latest_task_for_pair(
+            (
+                task
+                for task in self._tasks
+                if task.task_type == task_type and task.status in statuses
+            ),
+            target_id,
+            patch_id,
+        )
+
+    def host(self, task: GovernanceTask | None, target_id: int) -> GovernanceTaskHost | None:
+        if task is None:
+            return None
+        return self._host_by_task_target.get((task.id, target_id))
+
+
+def _load_remediation_index(target_ids: list[int] | None) -> _RemediationIndex:
+    qs = GovernanceTask.objects.filter(
+        task_type__in=(
+            GovernanceTaskType.INSTALL,
+            GovernanceTaskType.REBOOT,
+            GovernanceTaskType.VERIFY,
+        )
+    ).order_by("-created_at")
+    if target_ids is not None:
+        scoped = Q(host_results__target_id__in=target_ids)
+        for target_id in target_ids:
+            scoped |= Q(target_list__contains=[target_id])
+        qs = qs.filter(scoped).distinct()
+    tasks = list(qs)
+    if not tasks:
+        return _RemediationIndex([], [])
+    host_qs = GovernanceTaskHost.objects.filter(task_id__in=[task.id for task in tasks])
+    if target_ids is not None:
+        host_qs = host_qs.filter(target_id__in=target_ids)
+    return _RemediationIndex(tasks, list(host_qs))
+
+
+def _compute_remediation(
+    target_id: int,
+    patch_id: int,
+    compliance: str,
+    evaluated_at=None,
+    *,
+    index: _RemediationIndex,
+) -> str:
+    # 活动状态按安装 > 重启 > 验证优先展示，避免重启过程中仍显示“待重启”。
+    install_task = index.latest(
+        target_id,
+        patch_id,
+        GovernanceTaskType.INSTALL,
+        (GovernanceTaskStatus.PENDING, GovernanceTaskStatus.RUNNING),
+    )
+    if install_task:
+        host = index.host(install_task, target_id)
+        host_stage = host.stage if host else None
+        return RemediationStatus.SCHEDULED if host_stage == "waiting" else "installing"
+
+    reboot_task = index.latest(
+        target_id,
+        patch_id,
+        GovernanceTaskType.REBOOT,
+        GovernanceTaskStatus.ACTIVE_STATES,
+    )
     if reboot_task:
-        reboot_stage = GovernanceTaskHost.objects.filter(
-            task=reboot_task, target_id=target_id
-        ).values_list('stage', flat=True).first()
-        return RemediationStatus.SCHEDULED if reboot_stage == 'waiting' else 'rebooting'
+        host = index.host(reboot_task, target_id)
+        reboot_stage = host.stage if host else None
+        return RemediationStatus.SCHEDULED if reboot_stage == "waiting" else "rebooting"
 
     # 安装后无需重启会直接创建验证任务；验证完成前仍属于治理中。
-    verifying = _latest_task_for_pair(GovernanceTask.objects.filter(
-        task_type=GovernanceTaskType.VERIFY,
-        status__in=(GovernanceTaskStatus.PENDING, GovernanceTaskStatus.RUNNING),
-        target_list__contains=[target_id],
-        patch_list__contains=[patch_id],
-    ), target_id, patch_id)
+    verifying = index.latest(
+        target_id,
+        patch_id,
+        GovernanceTaskType.VERIFY,
+        (GovernanceTaskStatus.PENDING, GovernanceTaskStatus.RUNNING),
+    )
     if verifying:
-        return 'verifying'
+        return "verifying"
 
     # 技术性验证失败不覆盖当前合规快照，但风险项必须明确显示治理失败。
-    failed_verify = _latest_task_for_pair(GovernanceTask.objects.filter(
-        task_type=GovernanceTaskType.VERIFY,
-        status__in=(GovernanceTaskStatus.FAILED, GovernanceTaskStatus.PARTIAL_SUCCESS),
-        target_list__contains=[target_id],
-        patch_list__contains=[patch_id],
-    ), target_id, patch_id)
+    failed_verify = index.latest(
+        target_id,
+        patch_id,
+        GovernanceTaskType.VERIFY,
+        (GovernanceTaskStatus.FAILED, GovernanceTaskStatus.PARTIAL_SUCCESS),
+    )
     if failed_verify and _task_finished_after_evaluation(failed_verify, evaluated_at):
         return RemediationStatus.FAILED
 
     # 已完成的安装任务按 host stage 推断下一步
-    install_task = _latest_task_for_pair(GovernanceTask.objects.filter(
-        task_type=GovernanceTaskType.INSTALL,
-        status=GovernanceTaskStatus.COMPLETED,
-        target_list__contains=[target_id],
-        patch_list__contains=[patch_id],
-    ), target_id, patch_id)
+    install_task = index.latest(
+        target_id,
+        patch_id,
+        GovernanceTaskType.INSTALL,
+        (GovernanceTaskStatus.COMPLETED,),
+    )
     if install_task and not _task_finished_after_evaluation(install_task, evaluated_at):
         install_task = None
     if install_task:
-        install_host = GovernanceTaskHost.objects.filter(
-            task=install_task, target_id=target_id,
-        ).first()
+        install_host = index.host(install_task, target_id)
         if install_host:
-            if install_host.stage == 'pending_reboot':
+            if install_host.stage == "pending_reboot":
                 return RemediationStatus.PENDING_REBOOT
-            elif install_host.stage == 'failed':
+            elif install_host.stage == "failed":
                 # 安装失败
                 return RemediationStatus.FAILED
-            elif install_host.stage == 'completed':
+            elif install_host.stage == "completed":
                 # 安装+验证已完成，快照仍未满足 -> 安装可能未生效
                 return (
                     RemediationStatus.FIXED
@@ -253,13 +310,24 @@ def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluat
     return RemediationStatus.UNPLANNED
 
 
-def compute_risk_items() -> list[RiskItem]:
-    """计算所有风险项
+def compute_risk_items(target_ids: Iterable[int] | None = None) -> list[RiskItem]:
+    """计算风险项。
 
-    遍历所有主机基线绑定，对每个绑定的主机×要求组合，
-    查最新扫描结果和安装结果，计算合规和治理状态。
+    target_ids 为已授权主机范围：空列表立即返回；None 保留给现有单测的全量调用。
+    遍历范围内主机基线绑定，对每个绑定的主机×要求组合计算合规和治理状态。
     """
-    bindings = list(HostBaselineBinding.objects.select_related("target", "baseline").all())
+    scoped_ids: list[int] | None
+    if target_ids is None:
+        scoped_ids = None
+    else:
+        scoped_ids = [int(target_id) for target_id in target_ids]
+        if not scoped_ids:
+            return []
+
+    binding_qs = HostBaselineBinding.objects.select_related("target", "baseline")
+    if scoped_ids is not None:
+        binding_qs = binding_qs.filter(target_id__in=scoped_ids)
+    bindings = list(binding_qs)
     if not bindings:
         return []
 
@@ -290,6 +358,8 @@ def compute_risk_items() -> list[RiskItem]:
         p["id"]: p["title"]
         for p in Patch.objects.filter(pk__in=related_patch_ids).values("id", "title")
     }
+
+    index = _load_remediation_index(scoped_ids)
 
     risk_items: list[RiskItem] = []
     for binding in bindings:
@@ -328,6 +398,7 @@ def compute_risk_items() -> list[RiskItem]:
                 patch.id,
                 compliance,
                 snapshot.evaluated_at if snapshot else None,
+                index=index,
             )
 
             # 跳过已满足+已修复的，不展示
@@ -498,7 +569,10 @@ def _has_active_assessment(target_id: int) -> bool:
     ).exists()
 
 
-def compute_host_compliance_status(target: PatchTarget) -> str:
+_PROJECTED_UNSET = object()
+
+
+def compute_host_compliance_status(target: PatchTarget, projected=_PROJECTED_UNSET) -> str:
     """计算单台主机的合规状态
 
     优先读 HostBaselineBinding 持久化字段（由评估任务写回）；
@@ -506,16 +580,18 @@ def compute_host_compliance_status(target: PatchTarget) -> str:
     已绑定且存在进行中的 assess/verify 任务时返回 EVALUATING；
     已绑定但尚未完成过评估时返回 PENDING；
     评估完成后按 persistence 状态或 missing_count 推断。
+    projected 可传入已批量算好的活动评估投影，避免再查库。
     """
     binding = getattr(target, "baseline_binding", None)
     if not binding:
         return ComplianceStatus.UNCONFIGURED
 
-    from apps.patch_mgmt.services.governance_convergence import (
-        project_target_assessment_status,
-    )
+    if projected is _PROJECTED_UNSET:
+        from apps.patch_mgmt.services.governance_convergence import (
+            project_target_assessment_status,
+        )
 
-    projected = project_target_assessment_status(target.id)
+        projected = project_target_assessment_status(target.id)
     if projected == "failed":
         return ComplianceStatus.FAILED
     if projected == "evaluating":

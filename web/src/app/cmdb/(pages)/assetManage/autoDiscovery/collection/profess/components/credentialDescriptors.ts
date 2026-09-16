@@ -340,11 +340,13 @@ export const CREDENTIAL_DESCRIPTORS = {
     },
     network_config_file: {
       formKind: 'network_config_file',
-      protocolKey: 'ssh',
+      protocolKey: 'sshOrTelnet',
       credentialKindKey: 'networkDeviceAccount',
       instructionKey: 'networkConfig',
       defaultPort: 22,
+      defaultPortLabel: 'SSH 22 / Telnet 23',
       fields: [
+        { key: 'transportProtocol', defaultValue: 'ssh' },
         { key: 'sshAccount' },
         { key: 'sshPassword' },
         { key: 'sshPort', defaultValue: '22' },

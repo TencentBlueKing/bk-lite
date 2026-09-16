@@ -2,26 +2,40 @@ import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
+from apps.core.tests.migration_helpers import migrated_from
+from apps.patch_mgmt.models import PatchSource
 
-@pytest.mark.django_db(transaction=True)
-def test_architecture_migration_normalizes_aliases_and_clears_unsupported_values():
+
+def _current_patch_mgmt_leaf():
+    executor = MigrationExecutor(connection)
+    return executor.loader.graph.leaf_nodes("patch_mgmt")
+
+
+def _assert_current_patch_source_accepts_builtin_key(builtin_key):
+    source = PatchSource.objects.create(
+        name="probe-current-schema",
+        source_type="apt_repo",
+        builtin_key=builtin_key,
+    )
+    assert source.builtin_key == builtin_key
+
+
+def _run_architecture_normalization(*, fail_after_assertions=False):
     old_target = [("patch_mgmt", "0002_governance_record_snapshot")]
     new_target = [("patch_mgmt", "0003_normalize_cpu_architectures")]
-    executor = MigrationExecutor(connection)
-    executor.migrate(old_target)
+    restore_target = _current_patch_mgmt_leaf()
 
-    try:
-        old_apps = executor.loader.project_state(old_target).apps
+    with migrated_from(connection, old_target, restore_target) as old_apps:
         Patch = old_apps.get_model("patch_mgmt", "Patch")
-        PatchSource = old_apps.get_model("patch_mgmt", "PatchSource")
+        PatchSourceModel = old_apps.get_model("patch_mgmt", "PatchSource")
         PatchTarget = old_apps.get_model("patch_mgmt", "PatchTarget")
         LinuxPatchDetail = old_apps.get_model("patch_mgmt", "LinuxPatchDetail")
         WindowsPatchDetail = old_apps.get_model("patch_mgmt", "WindowsPatchDetail")
 
-        apt_source = PatchSource.objects.create(
+        apt_source = PatchSourceModel.objects.create(
             name="apt-amd64", source_type="apt_repo", arch="amd64"
         )
-        wsus_source = PatchSource.objects.create(
+        wsus_source = PatchSourceModel.objects.create(
             name="wsus-x64", source_type="wsus", arch="x64"
         )
         linux_target = PatchTarget.objects.create(
@@ -77,5 +91,18 @@ def test_architecture_migration_normalizes_aliases_and_clears_unsupported_values
         assert MigratedWindowsDetail.objects.get(
             pk=windows_patch_without_arch.pk
         ).architectures == ["x86_64"]
-    finally:
-        MigrationExecutor(connection).migrate(new_target)
+        if fail_after_assertions:
+            raise AssertionError("intentional architecture migration failure")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_architecture_migration_normalizes_aliases_and_clears_unsupported_values():
+    _run_architecture_normalization()
+    _assert_current_patch_source_accepts_builtin_key("probe-success-path")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_architecture_migration_restores_schema_when_assertions_fail():
+    with pytest.raises(AssertionError, match="intentional architecture migration failure"):
+        _run_architecture_normalization(fail_after_assertions=True)
+    _assert_current_patch_source_accepts_builtin_key("probe-failure-path")

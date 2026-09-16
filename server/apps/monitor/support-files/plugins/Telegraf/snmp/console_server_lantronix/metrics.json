@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_lantronix",
   "plugin": "ConsoleServer Lantronix SLC SNMP",
-  "plugin_desc": "Lantronix SLC and EMG console-server SNMP baseline child template for devices under Lantronix PEN 244. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm SLC 8000 SNMP MIB-II compatibility, SNMPv1/v2/v3 support, custom-MIB capability, and environmental-sensor support, but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.",
+  "plugin_desc": "Lantronix SLC console-server SNMP collection for devices under Lantronix PEN 244 (LANTRONIX-SLC). The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds verified chassis leaves: slcSystemInternalTemp as device_temperature_celsius (9999 read-error values are dropped), slcDevPowerSupplyA/B as psu_a_status/psu_b_status normalized conservatively to 1=healthy and 2=fault (notInstalled on B is not treated as fault) and rolled up to device_psu_state, plus optional slcConnNumber as active_sessions. Optional per-port sensor temperature and humidity DisplayString columns are collected when numeric; empty values are skipped. CPU and memory percentages are not faked because LANTRONIX-SLC-MIB does not expose stable shared CPU or memory gauges.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='console_server', collect_type='snmp_lantronix'}) by (instance_id)",
   "name": "ConsoleServer",
@@ -14,9 +14,37 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_psu_state",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Lantronix SLC internal chassis temperature in degrees Celsius, read from slcSystemInternalTemp. A sentinel 9999 read-error value is dropped and not reported."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Lantronix SLC power-supply state rolled up from slcDevPowerSupplyA/B, normalized to 1=healthy and 2=fault. notInstalled on supply B is not treated as a fault."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -65,6 +93,81 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Power",
+      "name": "psu_a_status",
+      "query": "psu_a_status{instance_type='console_server', __$labels__}",
+      "display_name": "Power Supply A Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of Lantronix SLC power supply A from slcDevPowerSupplyA, normalized to 1 (healthy/up) or 2 (fault/down)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "psu_b_status",
+      "query": "psu_b_status{instance_type='console_server', __$labels__}",
+      "display_name": "Power Supply B Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of Lantronix SLC power supply B from slcDevPowerSupplyB, normalized to 1 (healthy/up or notInstalled) or 2 (fault/down)."
+    },
+    {
+      "metric_group": "Sessions",
+      "name": "active_sessions",
+      "query": "active_sessions{instance_type='console_server', __$labels__}",
+      "display_name": "Active Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of active console connections on the Lantronix SLC, read from optional slcConnNumber (connections table row count)."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "lantronix_port_temperature_celsius",
+      "query": "lantronix_port_temperature_celsius{instance_type='console_server', __$labels__}",
+      "display_name": "Port Sensor Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "port_name",
+          "description": "Device port name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional per-port sensor temperature in degrees Celsius from slcDevPortCfgDevTemperature. Empty or non-numeric values on ports without a sensor are skipped."
+    },
+    {
+      "metric_group": "Humidity",
+      "name": "lantronix_port_humidity_percent",
+      "query": "lantronix_port_humidity_percent{instance_type='console_server', __$labels__}",
+      "display_name": "Port Sensor Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "port_name",
+          "description": "Device port name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional per-port sensor relative humidity percent from slcDevPortCfgDevHumidity. Empty or non-numeric values on ports without a sensor are skipped."
     }
   ]
 }

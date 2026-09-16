@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error
+from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_metric_window, wrap_error
 
 
 @tool(description=("【主机CPU使用率】第3步：列出该对象指标定义，确认CPU使用率等metric名称。" "查时序前先调；不要用系统命令采集。"))
@@ -49,7 +49,13 @@ def monitor_list_instance_metrics(
     )
 
 
-@tool(description=("【主机CPU使用率】第4步：查询指标时序（返回CPU使用率数值）。" "必填monitor_obj_id、metric、start、end；用instance_ids指定主机。" "这是查CPU的正确方式，禁止建议top/htop/SSH。"))
+@tool(
+    description=(
+        "【主机CPU使用率】第4步：查询指标时序（返回CPU使用率数值）。"
+        "必填monitor_obj_id、metric；用监控instance_ids指定主机（可用主机名或IP）。"
+        "禁止CMDB的inst_uuid/_id。可省略start/end（默认近1小时）。禁止建议top/htop/SSH。"
+    )
+)
 def monitor_query_metric_data(
     monitor_obj_id: Optional[str] = None,
     metric: Optional[str] = None,
@@ -64,15 +70,15 @@ def monitor_query_metric_data(
         return wrap_error("monitor_obj_id is required")
     if not metric:
         return wrap_error("metric is required")
-    if start in (None, ""):
-        return wrap_error("start is required")
-    if end in (None, ""):
-        return wrap_error("end is required")
+    try:
+        start_ms, end_ms = resolve_metric_window(start, end)
+    except ValueError as exc:
+        return wrap_error(str(exc))
     query_data = {
         "monitor_obj_id": monitor_obj_id,
         "metric": metric,
-        "start": start,
-        "end": end,
+        "start": start_ms,
+        "end": end_ms,
         "step": step,
         "instance_ids": instance_ids or [],
         "dimensions": dimensions or {},
@@ -81,4 +87,18 @@ def monitor_query_metric_data(
         "query_monitor_data_by_metric",
         config,
         query_data=query_data,
+    )
+
+
+@tool(description=("【主机CPU使用率】按监控 instance_ids 查询主机 CPU/内存/磁盘均值与最高值快照。" "须用监控 instance_id/主机名/IP，禁止 CMDB 的 inst_uuid/_id。"))
+def monitor_get_host_resource_snapshot(
+    instance_ids: Optional[List[str]] = None,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
+    if not instance_ids:
+        return wrap_error("instance_ids is required")
+    return call_monitor_rpc(
+        "get_host_resource_snapshot",
+        config,
+        instance_ids=instance_ids,
     )

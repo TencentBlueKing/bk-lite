@@ -1,7 +1,8 @@
 Wireless ACKSYS SNMP:
   name: ACKSYS (Telegraf)
   desc: SNMP monitoring template for ACKSYS wireless device. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+    traffic rate, per-port outbound traffic rate, system uptime, heap bytes, motherboard
+    temperature, dual power-line state, AP client count, and bridge RSSI (IANA PEN 28097)
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
@@ -38,26 +39,54 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
-    device_cpu_usage:
-      name: CPU Usage
-      desc: CPU utilization of the wireless device reported directly as a 0-100 percentage.
-        Sustained high CPU usage can indicate heavy client-association load, control-plane
-        pressure, or RF management overhead affecting roaming and management responsiveness.
+    heap_free_bytes:
+      name: Heap Free
+      desc: Currently available heap memory in bytes on the ACKSYS WaveOS platform.
+        Sustained low free heap indicates memory pressure that can affect wireless
+        forwarding or management services.
+    heap_total_bytes:
+      name: Heap Total
+      desc: Total heap size in bytes on the ACKSYS WaveOS platform. Together with
+        free heap it is the denominator for heap utilization.
+    heap_low_water_bytes:
+      name: Heap Low Water
+      desc: Heap low-water mark in bytes on the ACKSYS WaveOS platform. This is the
+        lowest free-heap observation since the watermark was last reset and helps
+        catch transient memory pressure.
     device_memory_usage:
-      name: Memory Usage
-      desc: Memory utilization of the wireless device reported directly as a 0-100
-        percentage. High memory pressure can cause the access point to drop client
-        associations or restart services, so investigate client counts or abnormal
-        load promptly.
+      name: Heap Usage
+      desc: Heap utilization of the ACKSYS WaveOS platform derived as (total-free)/total
+        from heap total and free bytes. High usage indicates heap pressure rather
+        than a faked CPU or generic RAM percentage.
     device_temperature_celsius:
       name: Temperature
-      desc: Chassis temperature in degrees Celsius of the wireless device, read directly
-        with no scaling. Only models equipped with a temperature sensor report a real
-        value; fanless access points return 0. High temperatures can indicate cooling
-        failure or poor airflow and risk thermal shutdown.
+      desc: Motherboard sensor 0 temperature of the ACKSYS device. The SNMP scalar
+        reports millicelsius, so the query divides by 1000. Values at or below -274000
+        millicelsius mean the sensor is unavailable. High temperatures can indicate
+        enclosure heat buildup or wireless hardware thermal stress.
+    device_psu_state:
+      name: Power Line 1 State
+      desc: Power line 1 state of the ACKSYS industrial wireless device. Raw powerOn/powerOff
+        codes are normalized to normal or abnormal. Dual-feed models expose a second
+        line as the backup power state.
+    device_psu_state_backup:
+      name: Power Line 2 State
+      desc: Power line 2 state of the ACKSYS industrial wireless device. Raw powerOn/powerOff
+        codes are normalized to normal or abnormal.
+    wireless_client_count:
+      name: Associated Client Count
+      desc: Number of associated wireless clients on the ACKSYS access point. This
+        scalar is significant in access-point mode. Per-client RSSI rows are not collected.
+    wireless_signal_strength:
+      name: Bridge RSSI
+      desc: Bridge-mode connection RSSI in dBm on the ACKSYS device. This scalar is
+        significant in bridge mode; access-point client RSSI is a per-row table and
+        is not collected.
 monitor_object_metric_group:
   Wireless:
     Base: Base
     Traffic: Traffic
     Wireless: Wireless
+    Memory: Memory
     Temperature: Temperature
+    Hardware Status: Hardware Status

@@ -19,6 +19,7 @@ from apps.patch_mgmt.serializers.governance import (
     GovernanceTaskListSerializer,
 )
 from apps.patch_mgmt.services.execution_record_service import (
+    build_host_requirement_projection,
     filter_execution_record_roots,
 )
 from apps.patch_mgmt.services.governance_service import (
@@ -92,20 +93,39 @@ class GovernanceTaskViewSet(AuthViewSet):
 
     def get_detail(self, request, *args, **kwargs):
         """详情是否存在已由 get_queryset 的可见主机范围决定。"""
-        return self.get_serializer(self.get_object())
+        instance = self.get_object()
+        self._requirement_projection_task = instance
+        return self.get_serializer(instance)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["visible_target_ids"] = set(
+        visible_target_ids = set(
             target_access_scope(self.request)
             .queryset("View")
             .values_list("id", flat=True)
         )
+        context["visible_target_ids"] = visible_target_ids
         context["operable_target_ids"] = set(
             target_access_scope(self.request)
             .queryset("Operate")
             .values_list("id", flat=True)
         )
+        instance = getattr(self, "_requirement_projection_task", None)
+        if instance is not None:
+            hosts = getattr(instance, "_visible_host_results", None)
+            if hosts is None:
+                hosts = [
+                    host
+                    for host in instance.host_results.select_related("task").all()
+                    if int(host.target_id) in {int(value) for value in visible_target_ids}
+                ]
+            patch_ids = None
+            if instance.task_type == GovernanceTaskType.INSTALL and instance.patch_list:
+                patch_ids = instance.patch_list
+            context["host_requirement_index"] = build_host_requirement_projection(
+                [host.target_id for host in hosts],
+                patch_ids=patch_ids,
+            )
         return context
 
     def get_serializer_class(self):

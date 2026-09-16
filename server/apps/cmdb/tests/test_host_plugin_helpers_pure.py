@@ -233,15 +233,21 @@ def test_add_host_proc_no_key_noop(runner):
 
 
 def test_set_cloud_from_matched_instance(monkeypatch, runner):
-    task = _fake_task(instances=[{"ip_addr": "1.2.3.4", "cloud": "aliyun"}])
+    task = _fake_task(instances=[{"ip_addr": "1.2.3.4", "cloud": "1"}])
     monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
-    assert runner.set_cloud({"host": "1.2.3.4"}) == "aliyun"
+    assert runner.set_cloud({"host": "1.2.3.4"}) == 1
 
 
 def test_set_cloud_from_cloud_id(monkeypatch, runner):
-    task = _fake_task(instances=[{"ip_addr": "1.2.3.4", "cloud_id": "cid-9"}])
+    task = _fake_task(instances=[{"ip_addr": "1.2.3.4", "cloud_id": "9"}])
     monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
-    assert runner.set_cloud({"host": "1.2.3.4"}) == "cid-9"
+    assert runner.set_cloud({"host": "1.2.3.4"}) == 9
+
+
+def test_set_cloud_ignores_non_numeric(monkeypatch, runner):
+    task = _fake_task(instances=[{"ip_addr": "1.2.3.4", "cloud": "aliyun"}])
+    monkeypatch.setattr(runner, "get_collect_inst", lambda: task)
+    assert runner.set_cloud({"host": "1.2.3.4"}) == ""
 
 
 def test_set_cloud_empty_when_none(monkeypatch, runner):

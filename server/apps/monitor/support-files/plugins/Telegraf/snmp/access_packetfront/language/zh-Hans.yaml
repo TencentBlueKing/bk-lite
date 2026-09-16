@@ -1,6 +1,6 @@
 Access PacketFront SNMP:
   name: PacketFront（Telegraf）
-  desc: 面向 PacketFront 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 PacketFront 接入设备的 SNMP 监控模板,可采集 机箱传感器温度、风扇转速、板卡电压、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 9303）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:
@@ -37,8 +37,14 @@ monitor_object_metric:
       name: 内存使用率
       desc: 接入设备的系统内存使用率（设备私有标量直接上报的百分比）。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
     device_temperature_celsius:
-      name: 系统温度
-      desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
+      name: 机箱温度
+      desc: 接入设备机箱传感器温度读数，单位摄氏度（由百分之一摄氏度换算）。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
+    device_fan_rpm:
+      name: 风扇转速
+      desc: 接入设备风扇转速，单位为转每分钟。转速持续偏低或为零可能表示风扇停转或散热失效。
+    device_voltage_volts:
+      name: 板卡电压
+      desc: 接入设备板卡电压读数，单位伏特（由毫伏换算）。读数偏离预期轨压可能表示电源或硬件异常。
     device_card_temperature_level:
       name: 板卡温度级别
       desc: 接入设备板卡相对温度级别。数值 1-10 表示从低温到高温，999 表示未上报；该指标用于发现板卡温度趋势，不等同于摄氏度读数。

@@ -73,6 +73,7 @@ class TestValidateNodesAgainstSelector:
 
     def test_container_required_accepts_container(self):
         from apps.node_mgmt.constants.controller import ControllerConstants
+
         nodes = [{"id": "n1", "node_type": ControllerConstants.NODE_TYPE_CONTAINER}]
         assert SVC._validate_nodes_against_selector(nodes, {"is_container": True}) is None
 
@@ -83,12 +84,14 @@ class TestSanitizeInstancesForOnboarding:
             @staticmethod
             def get_authorized_nodes_by_ids(node_ids, permission_data):
                 assert node_ids == ["node-a"]
-                return [{
-                    "id": "node-a",
-                    "name": "北京节点",
-                    "ip": "10.0.0.1",
-                    "organization_ids": [1],
-                }]
+                return [
+                    {
+                        "id": "node-a",
+                        "name": "北京节点",
+                        "ip": "10.0.0.1",
+                        "organization_ids": [1],
+                    }
+                ]
 
         monkeypatch.setattr("apps.monitor.services.node_mgmt.NodeMgmt", NodeClient)
         result = SVC._sanitize_instances_for_onboarding(
@@ -96,12 +99,14 @@ class TestSanitizeInstancesForOnboarding:
             _actor_context(),
         )
 
-        assert result[0]["_trusted_nodes"] == [{
-            "id": "node-a",
-            "name": "北京节点",
-            "ip": "10.0.0.1",
-            "organization_ids": [1],
-        }]
+        assert result[0]["_trusted_nodes"] == [
+            {
+                "id": "node-a",
+                "name": "北京节点",
+                "ip": "10.0.0.1",
+                "organization_ids": [1],
+            }
+        ]
 
 
 class TestGetDefaultGroupMetric:
@@ -111,7 +116,10 @@ class TestGetDefaultGroupMetric:
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         Metric.objects.create(monitor_object=obj, monitor_plugin=plugin, metric_group=group, name="other")
         preferred = Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group, name="pod_status_phase",
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="pod_status_phase",
         )
         out = SVC._get_default_group_metric(obj)
         assert out.id == preferred.id
@@ -132,7 +140,11 @@ class TestSyncExistingInstanceAttrs:
     def test_updates_to_manual_and_active(self):
         obj = MonitorObject.objects.create(name="SyncAttrObj", level="base")
         MonitorInstance.objects.create(
-            id="('h1',)", name="old", monitor_object=obj, auto=True, is_active=False,
+            id="('h1',)",
+            name="old",
+            monitor_object=obj,
+            auto=True,
+            is_active=False,
         )
         count = SVC._sync_existing_instance_attrs(
             [{"instance_id": "('h1',)", "instance_name": "new"}],
@@ -148,7 +160,10 @@ class TestSyncExistingInstanceAttrs:
     def test_records_actor_as_updater(self):
         obj = MonitorObject.objects.create(name="SyncAttrActorObj", level="base")
         MonitorInstance.objects.create(
-            id="('h1',)", name="old", monitor_object=obj, created_by="alice",
+            id="('h1',)",
+            name="old",
+            monitor_object=obj,
+            created_by="alice",
         )
         SVC._sync_existing_instance_attrs(
             [{"instance_id": "('h1',)", "instance_name": "new"}],
@@ -163,14 +178,16 @@ class TestSyncExistingInstanceAttrs:
         MonitorInstance.objects.create(id="('probe-1',)", name="old", monitor_object=obj)
 
         SVC._sync_existing_instance_attrs(
-            [{
-                "instance_id": "('probe-1',)",
-                "instance_name": "friendly-name",
-                "summary_facts": {
-                    "asset.ip": "2001:db8::1",
-                    "probe.target": "[2001:db8::1]:443",
-                },
-            }],
+            [
+                {
+                    "instance_id": "('probe-1',)",
+                    "instance_name": "friendly-name",
+                    "summary_facts": {
+                        "asset.ip": "2001:db8::1",
+                        "probe.target": "[2001:db8::1]:443",
+                    },
+                }
+            ],
         )
 
         inst = MonitorInstance.objects.get(id="('probe-1',)")
@@ -202,6 +219,26 @@ class TestBuildInstanceObjects:
         assert objs[0].created_by == "system"
         assert objs[0].updated_by == "system"
 
+    def test_copies_link_fields_when_present(self):
+        objs, _, _ = SVC._build_instance_objects(
+            [
+                {
+                    "instance_id": "('h1',)",
+                    "instance_name": "h1",
+                    "group_ids": [1],
+                    "ip": "10.0.0.1",
+                    "cloud_region_id": 1,
+                    "node_id": "n1",
+                    "cmdb_id": "ci-1",
+                }
+            ],
+            1,
+        )
+        assert objs[0].ip == "10.0.0.1"
+        assert objs[0].cloud_region_id == 1
+        assert objs[0].node_id == "n1"
+        assert objs[0].cmdb_id == "ci-1"
+
 
 class TestGetConfigContent:
     def _mk_config(self, is_child, file_type):
@@ -209,9 +246,14 @@ class TestGetConfigContent:
         plugin = MonitorPlugin.objects.create(name=f"CCPlugin-{is_child}-{file_type}")
         inst = MonitorInstance.objects.create(id=f"('cc-{is_child}-{file_type}',)", name="i", monitor_object=obj)
         return CollectConfig.objects.create(
-            id=f"cfg-{is_child}-{file_type}", monitor_instance=inst, monitor_plugin=plugin,
-            collector="Telegraf", collect_type="snmp", config_type="child" if is_child else "base",
-            file_type=file_type, is_child=is_child,
+            id=f"cfg-{is_child}-{file_type}",
+            monitor_instance=inst,
+            monitor_plugin=plugin,
+            collector="Telegraf",
+            collect_type="snmp",
+            config_type="child" if is_child else "base",
+            file_type=file_type,
+            is_child=is_child,
         )
 
     def test_empty_ids(self):
@@ -220,9 +262,7 @@ class TestGetConfigContent:
     def test_child_toml_config(self, mocker):
         cfg = self._mk_config(is_child=True, file_type="toml")
         node = mocker.patch("apps.monitor.services.node_mgmt.NodeMgmt")
-        node.return_value.get_child_configs_by_ids.return_value = [
-            {"id": cfg.id, "content": '[[inputs.snmp]]\nagents=["x"]'}
-        ]
+        node.return_value.get_child_configs_by_ids.return_value = [{"id": cfg.id, "content": '[[inputs.snmp]]\nagents=["x"]'}]
         out = SVC.get_config_content([cfg.id])
         assert "child" in out
         assert isinstance(out["child"]["content"], dict)
@@ -230,9 +270,7 @@ class TestGetConfigContent:
     def test_base_yaml_config(self, mocker):
         cfg = self._mk_config(is_child=False, file_type="yaml")
         node = mocker.patch("apps.monitor.services.node_mgmt.NodeMgmt")
-        node.return_value.get_configs_by_ids.return_value = [
-            {"id": cfg.id, "config_template": "key: value"}
-        ]
+        node.return_value.get_configs_by_ids.return_value = [{"id": cfg.id, "config_template": "key: value"}]
         out = SVC.get_config_content([cfg.id])
         assert "base" in out
         assert out["base"]["content"] == {"key": "value"}
@@ -270,9 +308,14 @@ class TestGetInstanceConfigs:
         plugin = MonitorPlugin.objects.create(name="GICPlugin")
         inst = MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
         CollectConfig.objects.create(
-            id="gic-base", monitor_instance=inst, monitor_plugin=plugin,
-            collector="Telegraf", collect_type="snmp", config_type="base",
-            file_type="toml", is_child=False,
+            id="gic-base",
+            monitor_instance=inst,
+            monitor_plugin=plugin,
+            collector="Telegraf",
+            collect_type="snmp",
+            config_type="base",
+            file_type="toml",
+            is_child=False,
         )
         # get_config_content 已单测，这里 stub 掉避免触达 NodeMgmt
         mocker.patch(
@@ -293,6 +336,7 @@ class TestCreateDefaultRule:
 
     def test_creates_rule_for_child(self):
         from apps.monitor.models import MonitorObjectOrganizationRule
+
         parent = MonitorObject.objects.create(name="CDRParent", level="base")
         child = MonitorObject.objects.create(name="CDRChild", level="derivative", parent=parent)
         plugin = MonitorPlugin.objects.create(name="CDRPlugin")
@@ -331,9 +375,7 @@ class TestDockerCollectConfigUniqueness:
 
     def test_second_host_with_different_instance_id_is_allowed(self):
         obj, plugin = self._setup()
-        existing = MonitorInstance.objects.create(
-            id="('hash-host-a',)", name="docker-10-20-6-209", monitor_object=obj
-        )
+        existing = MonitorInstance.objects.create(id="('hash-host-a',)", name="docker-10-20-6-209", monitor_object=obj)
         CollectConfig.objects.create(
             id="docker-cfg-a",
             monitor_instance=existing,
@@ -358,9 +400,7 @@ class TestDockerCollectConfigUniqueness:
 
     def test_same_instance_id_is_still_rejected(self):
         obj, plugin = self._setup()
-        existing = MonitorInstance.objects.create(
-            id="('hash-host-a',)", name="docker-10-20-6-209", monitor_object=obj
-        )
+        existing = MonitorInstance.objects.create(id="('hash-host-a',)", name="docker-10-20-6-209", monitor_object=obj)
         CollectConfig.objects.create(
             id="docker-cfg-dup",
             monitor_instance=existing,

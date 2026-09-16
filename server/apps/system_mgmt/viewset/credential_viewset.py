@@ -186,7 +186,6 @@ class CredentialTypeViewSet(MaintainerViewSet):
         return Response(status=204)
 
     @action(methods=["GET"], detail=False)
-    @HasPermission("credential-View")
     def selectable(self, request, *args, **kwargs):
         items = list_types(
             {
@@ -303,7 +302,6 @@ class CredentialViewSet(MaintainerViewSet):
         return Response(status=204)
 
     @action(methods=["GET"], detail=False)
-    @HasPermission("credential-View")
     def selectable(self, request, *args, **kwargs):
         actor = _request_actor(request)
         filters = {

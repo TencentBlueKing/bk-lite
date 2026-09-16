@@ -34,9 +34,9 @@ Status: implemented
 - 令牌：应用令牌使用 `client_credentials`，scope 为 Graph `.default`。委托令牌使用 `grant_type=password`（ROPC），同一 client 与 secret。应用令牌可按不可逆缓存键做进程内短缓存，临近过期或认证失败刷新。用户令牌缓存不得以明文密码入键。缓存与日志不得含 token、secret、密码。
 - `list_external_users`：应用令牌分页拉取 Graph 用户。第一页传 `$top=999`（Graph 上限）和 `$filter=userType eq 'Member'`，之后跟随 `@odata.nextLink`（后页不再重拼查询）。页数上限 100（约 10 万 Member），超限失败而不是截断当成功。客户端仍排除 Guest / `#EXT#`。对外字段至少包含 `id`、`name`（displayName）、`mail`、`userPrincipalName`、`mobile`。无邮箱的用户仍可出现在列表中，匹配是否成功交给渠道配置。
 - 通知业务模板：`identity_fields` 与 `receivable_fields` 仅为 `id`；`matchable_fields` 为 `id`、`mail`、`userPrincipalName`；默认外部匹配字段 `mail`，默认接收字段 `id`。映射、同步 run、定时任务、先同步再发送，全部走现有 IM 通知服务，不新建 Teams 专用表。
-- `send_message`：对每个 `receive_ids` 项（Graph 用户 id）独立处理。用应用令牌创建或取得委托用户与该 id 的 `oneOnOne` chat，再用委托用户令牌向该 chat 发一条文本消息。标题与正文按现有通知服务合成纯文本（与企微/飞书相同拼接），不做 Adaptive Card、Tab 深链或 HTML 卡片。多人即多次 1:1。单人失败记入 `failures` 并继续；有成功有失败则 `partial_success`。未映射用户由通知服务拦截，adapter 不按邮箱/手机号改投。
+- `send_message`：对每个 `receive_ids` 项（Graph 用户 id）独立处理。用委托用户令牌调 `/me` 取得发送方 Graph id（与 WeOps `USER_INFO_URL` 一致），再用应用令牌创建或取得该发送方与收件人的 `oneOnOne` chat，最后用委托用户令牌向该 chat 发一条文本消息。`chat_id` 按 Graph 返回值原样拼进消息 URL（含 `:`），不 percent-encode。标题与正文按现有通知服务合成纯文本（与企微/飞书相同拼接），不做 Adaptive Card、Tab 深链或 HTML 卡片。多人即多次 1:1。单人失败记入 `failures` 并继续；有成功有失败则 `partial_success`。未映射用户由通知服务拦截，adapter 不按邮箱/手机号改投。
 - 连接测试：基础连接必须成功取得应用令牌。能力测试必须再成功取得委托用户令牌；只测应用令牌算未就绪。ROPC 因 MFA、无密码、联邦或 `invalid_grant` 失败时使用稳定 `provider.auth_failed`（或已有认证失败码），摘要可行动且不含 Microsoft 原始 error_description 全文、不含密码。
-- 外呼 URL 只接受 HTTP/HTTPS。代理仅作用于 BK-Lite 发出的 token 与 Graph 请求。日志用稳定模板和惰性参数；一个失败只在 adapter/runtime 约定的一层打 traceback；不得记录 Authorization 头、密码、token、完整用户列表或响应正文。
+- 外呼 URL 只接受 HTTP/HTTPS。代理仅作用于 BK-Lite 发出的 token 与 Graph 请求。日志用稳定模板和惰性参数；一个失败只在 adapter/runtime 约定的一层打 traceback；不得记录 Authorization 头、密码、token、完整用户列表或响应正文。ROPC 失败时 `error_type` 只记录 `AADSTS` 数字码（无 `error_description`）；发送成功时记录有界 `chat_id`、`message_id` 和 `has_policy_violation`，仍不记正文。
 - 前端：集成中心创建/详情按 manifest 自动只出现基础连接与 IM 通知 Tab（现有「有 capability_status 才出 Tab」即可）。补 provider 显示名、描述、中英文 pack 文案；图标用 provider key。不改登录页，不增加 Teams Bot 渠道类型。社区 loader 注册表断言覆盖社区四包；企业 overlay 测试断言纳入 `teams`。
 - 不移植 WeOps 的 JWT 免登、Excel 导入用户管理、CMSI `send_teams_weops`、未验签解码。参考其 Graph 建 chat + ROPC 发消息的协议顺序，但错误处理、分页上限、日志与部分成功必须对齐 BK-Lite 企微/飞书通知，而不是 WeOps 循环里覆盖成功 payload 的行为。
 
@@ -47,8 +47,10 @@ Status: implemented
 | 应用/用户令牌 | `https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token` |
 | 用户列表 | `https://graph.microsoft.com/v1.0/users` |
 | 按 id 取用户 | `https://graph.microsoft.com/v1.0/users/{userid}` |
+| 委托用户（发送方） | `https://graph.microsoft.com/v1.0/me`（用户令牌；覆盖 `im_notification_user_url` 时把 `/users/{userid}` 换成 `/me`） |
 | 创建会话 | `https://graph.microsoft.com/v1.0/chats` |
-| 发消息 | `https://graph.microsoft.com/v1.0/chats/{chat_id}/messages` |
+| 会话成员绑定 | `https://graph.microsoft.com/v1.0/users('{id}')`（OData 键语法，不是 REST 斜杠路径） |
+| 发消息 | `https://graph.microsoft.com/v1.0/chats/{chat_id}/messages`（`{chat_id}` 原样替换，不 percent-encode） |
 | scope | `https://graph.microsoft.com/.default` |
 
 `{tenant_id}`、`{userid}`、`{chat_id}` 由运行时替换，不在表单里让管理员拼路径。

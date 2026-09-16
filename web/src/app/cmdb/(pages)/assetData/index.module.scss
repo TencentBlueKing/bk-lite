@@ -1,12 +1,16 @@
 .assetLoading {
-  .assetData {
+    .assetData {
     display: flex;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     background: var(--color-bg-1);
     padding: 12px;
 
     .assetList {
       flex: 1;
-      min-width: 988px;
+      min-width: 0;
+      max-width: 100%;
       height: calc(100vh - 124px);
       overflow: hidden;
       padding: 12px 16px;

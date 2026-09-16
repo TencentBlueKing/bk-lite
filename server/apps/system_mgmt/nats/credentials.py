@@ -1,23 +1,18 @@
 # flake8: noqa
 """NATS handlers for the system-management credential vault."""
 
-from apps.system_mgmt.models import Menu, Role
-from apps.system_mgmt.services.credential_service import (
-    CredentialServiceError,
-    create_credential as create_credential_record,
-    get_credential,
-    page_credentials,
-    resolve_credential as resolve_credential_record,
-)
-
 import nats_client
+from apps.system_mgmt.models import Menu, Role
+from apps.system_mgmt.services.credential_service import CredentialServiceError
+from apps.system_mgmt.services.credential_service import create_credential as create_credential_record
+from apps.system_mgmt.services.credential_service import get_credential, page_credentials
+from apps.system_mgmt.services.credential_service import resolve_credential as resolve_credential_record
 
 from .common import get_user_all_roles
 from .users import _actor_scope_response, _is_persisted_superuser
 
 _CREDENTIAL_APP = "system-manager"
 _CREDENTIAL_ADD = "credential-Add"
-_CREDENTIAL_VIEW = "credential-View"
 
 
 def _actor_from_user(user_obj, actor_context):
@@ -64,8 +59,6 @@ def list_credentials(actor_context, category=None, type=None, search="", page=1,
         return error_response
     if not user_obj:
         return {"result": True, "data": [], "count": 0}
-    if not _user_has_menu_permission(user_obj, _CREDENTIAL_VIEW):
-        return {"result": False, "message": "forbidden"}
     if type and not category:
         return {"result": False, "message": "invalid"}
 
@@ -122,13 +115,11 @@ def create_credential(actor_context, name, type, group_id, fields):
 
 @nats_client.register
 def resolve_credential(actor_context, credential_id):
-    """返回 {credential_id, type, name, group_id, fields: 明文}。停用/越权失败。"""
+    """返回 {credential_id, type, name, group_id, fields: 明文}。不占 View。停用/越权失败。"""
     user_obj, _authorized_groups, error_response = _actor_scope_response(actor_context)
     if error_response is not None:
         return error_response
     if not user_obj:
-        return {"result": False, "message": "forbidden"}
-    if not _user_has_menu_permission(user_obj, _CREDENTIAL_VIEW):
         return {"result": False, "message": "forbidden"}
 
     actor = _actor_from_user(user_obj, actor_context)

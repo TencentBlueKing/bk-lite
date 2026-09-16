@@ -62,6 +62,26 @@ const IPMI_PRIVILEGE_OPTIONS = [
   { label: 'administrator', value: 'administrator' },
 ];
 
+const NETWORK_SSH_DEFAULT_PORT = 22;
+const NETWORK_TELNET_DEFAULT_PORT = 23;
+
+function normalizeNetworkTransport(value?: string): 'ssh' | 'telnet' {
+  return String(value || 'ssh').trim().toLowerCase() === 'telnet' ? 'telnet' : 'ssh';
+}
+
+function defaultPortForNetworkTransport(protocol: 'ssh' | 'telnet'): number {
+  return protocol === 'telnet' ? NETWORK_TELNET_DEFAULT_PORT : NETWORK_SSH_DEFAULT_PORT;
+}
+
+function portForNetworkTransportSwitch(currentPort: unknown, nextProtocol: 'ssh' | 'telnet'): number {
+  const numeric = Number(currentPort);
+  const previousDefault = nextProtocol === 'telnet' ? NETWORK_SSH_DEFAULT_PORT : NETWORK_TELNET_DEFAULT_PORT;
+  if (currentPort === undefined || currentPort === null || currentPort === '' || numeric === previousDefault) {
+    return defaultPortForNetworkTransport(nextProtocol);
+  }
+  return Number.isFinite(numeric) ? numeric : defaultPortForNetworkTransport(nextProtocol);
+}
+
 export interface CredentialPoolEditorProps {
   value?: CredentialPoolItem[];
   maxCount?: number;
@@ -180,6 +200,7 @@ const createEmptyCredential = (
     ...(shape === 'ipmi' ? { port: '623', privilege: 'administrator' } : {}),
     ...(shape === 'redfish' ? { port: '443', verify_tls: true } : {}),
     ...(shape === 'sql' && showDatabase ? { database: 'master' } : {}),
+    ...(shape === 'network_config_file' ? { transport_protocol: 'ssh' } : {}),
   };
 };
 
@@ -357,6 +378,13 @@ function getPreviewFields(
     });
   }
   if (shape === 'network_config_file') {
+    const transportProtocol = String(item.transport_protocol || 'ssh').toLowerCase() === 'telnet'
+      ? 'telnet'
+      : 'ssh';
+    fields.splice(0, 0, {
+      label: t('Collection.credentialPool.transportProtocol', '连接协议'),
+      value: transportProtocol === 'telnet' ? 'Telnet' : 'SSH',
+    });
     fields.push({
       label: t('Collection.credentialPool.enablePassword', '特权密码'),
       value: passwordVisible && item.enable_password && item.enable_password !== PASSWORD_PLACEHOLDER
@@ -997,6 +1025,36 @@ function renderCredentialFields({
 
   return (
     <div className={styles.credentialFieldGrid}>
+      {shape === 'network_config_file' && (
+        <>
+          <InputRow label={t('Collection.credentialPool.transportProtocol', '连接协议')}>
+            <Select
+              value={normalizeNetworkTransport(item.transport_protocol)}
+              options={[
+                { label: 'SSH', value: 'ssh' },
+                { label: 'Telnet', value: 'telnet' },
+              ]}
+              onChange={(nextValue) => {
+                const transport_protocol = normalizeNetworkTransport(nextValue);
+                updateItem(index, {
+                  transport_protocol,
+                  port: portForNetworkTransportSwitch(item.port, transport_protocol),
+                });
+              }}
+            />
+          </InputRow>
+          {normalizeNetworkTransport(item.transport_protocol) === 'telnet' && (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                'Collection.credentialPool.telnetWarning',
+                'Telnet 明文传输账号口令，仅应在隔离管理网或设备只开放 TCP/23 时使用。',
+              )}
+            />
+          )}
+        </>
+      )}
       <InputRow
         label={shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.username', '用户') : t('user', '用户')}
         required={shape !== 'ssh'}

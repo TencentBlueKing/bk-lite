@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Typography } from 'antd';
+import { Tag, Tooltip, Typography } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
 import { useSearchParams } from 'next/navigation';
 import { useScreenAwareRouter } from '@/console-layout';
@@ -22,6 +22,7 @@ const IntegrationDetailLayout = ({
   const objId = searchParams.get('id') || '';
   const icon = searchParams.get('icon');
   const pluginName = searchParams.get('plugin_name') || '';
+  const packVersion = searchParams.get('pack_version') || '';
   const resolvedIcon = getPluginBrandIcon(pluginName) || icon || 'cc-default_默认';
   const templateType = searchParams.get('template_type') || '';
 
@@ -45,7 +46,24 @@ const IntegrationDetailLayout = ({
         />
       </div>
       <div className="w-full min-w-0">
-        <h2 className="text-lg font-semibold mb-2">{pluginDisplayName}</h2>
+        <h2 className="text-lg font-semibold mb-2">
+          {pluginDisplayName}
+          <Tooltip
+            title={
+              packVersion
+                ? t('monitor.integrations.pinnedPackHint', '', {
+                  version: packVersion
+                })
+                : t('monitor.integrations.builtinPackHint')
+            }
+          >
+            <Tag className="ml-2 align-middle">
+              {packVersion
+                ? packVersion
+                : t('monitor.integrations.builtinPack')}
+            </Tag>
+          </Tooltip>
+        </h2>
         <Typography.Paragraph
           className="!mb-0 text-sm text-[var(--color-text-3)]"
           ellipsis={{

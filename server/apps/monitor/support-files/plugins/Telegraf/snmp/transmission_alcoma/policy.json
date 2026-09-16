@@ -1,5 +1,56 @@
 {
   "object": "Transmission",
   "plugin": "Transmission Alcoma SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Alcoma传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 Alcoma 微波传输设备的射频温度（alMPTemperature，摄氏度）。离线哨兵 -1 已在指标查询中跳过；有读数且持续高于阈值时触发告警，提示射频硬件热压力、环境温度过高或散热异常。",
+      "metric_name": "temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Alcoma传输设备接收电平过低",
+      "alert_name": "传输设备${resource_name} 接收电平过低",
+      "description": "监控 Alcoma 微波传输设备的接收电平（alMPRX-Level，dB）。离线哨兵 -128 已在指标查询中跳过；有读数且持续低于阈值时触发告警，提示路径衰落、天线失准或射频劣化。",
+      "metric_name": "rx_level_db",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": -90,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": -80,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": -70,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

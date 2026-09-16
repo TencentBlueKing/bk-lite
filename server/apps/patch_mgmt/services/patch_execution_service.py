@@ -1314,6 +1314,7 @@ def _update_binding_after_assess(
     try:
         requirements = list(
             binding.baseline.requirements.select_related('patch__linux_detail', 'patch__windows_detail')
+            .prefetch_related('patch__sources')
         )
         assessments = assess_requirements(target.os_type, stdout, requirements)
     except Exception as exc:  # noqa: BLE001

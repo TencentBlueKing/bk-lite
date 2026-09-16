@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
@@ -121,39 +122,104 @@ def project_task_status(task, *, now=None) -> str:
     return GovernanceTaskStatus.FAILED
 
 
-def target_has_effective_active_task(target_id: int, *, now=None) -> bool:
-    """按与展示一致的超时投影判断目标是否仍有真实活动任务。"""
+def target_has_effective_active_tasks(target_ids: Iterable[int], *, now=None) -> dict[int, bool]:
+    """按 target_id 批量判断是否仍有真实活动任务，复用 project_host_state。"""
     from apps.patch_mgmt.models import GovernanceTaskHost
 
+    unique_ids = list(dict.fromkeys(int(target_id) for target_id in target_ids))
+    projected = {target_id: False for target_id in unique_ids}
+    if not unique_ids:
+        return projected
+
     current = now or timezone.now()
-    hosts = GovernanceTaskHost.objects.filter(
-        target_id=target_id,
-        task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
-    ).select_related("task")
-    return any(project_host_state(host, now=current).stage not in _terminal_host_stages(host.task.task_type) for host in hosts)
+    for start in range(0, len(unique_ids), _ASSESSMENT_STATUS_IN_CHUNK):
+        chunk = unique_ids[start : start + _ASSESSMENT_STATUS_IN_CHUNK]
+        hosts = GovernanceTaskHost.objects.filter(
+            target_id__in=chunk,
+            task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
+        ).select_related("task")
+        for host in hosts:
+            if projected.get(host.target_id):
+                continue
+            if project_host_state(host, now=current).stage not in _terminal_host_stages(host.task.task_type):
+                projected[host.target_id] = True
+    return projected
+
+
+def target_has_effective_active_task(target_id: int, *, now=None) -> bool:
+    """按与展示一致的超时投影判断目标是否仍有真实活动任务。"""
+    return bool(target_has_effective_active_tasks([target_id], now=now).get(int(target_id)))
+
+
+_ASSESSMENT_STATUS_IN_CHUNK = 500
+_TERMINAL_ASSESSMENT_STAGES = {"failed", "completed", "cancelled", "pending_confirmation"}
+
+
+def _assessment_status_from_stages(stages: list[str]) -> str | None:
+    if any(stage not in _TERMINAL_ASSESSMENT_STAGES for stage in stages):
+        return "evaluating"
+    if any(stage == "failed" for stage in stages):
+        return "failed"
+    return None
+
+
+def project_target_assessment_statuses(target_ids: Iterable[int], *, now=None) -> dict[int, str | None]:
+    """按 target_id 批量投影活动评估状态，复用 project_host_state。"""
+    from apps.patch_mgmt.models import GovernanceTaskHost
+
+    unique_ids = list(dict.fromkeys(int(target_id) for target_id in target_ids))
+    projected = {target_id: None for target_id in unique_ids}
+    if not unique_ids:
+        return projected
+
+    current = now or timezone.now()
+    hosts_by_target: dict[int, list] = defaultdict(list)
+    for start in range(0, len(unique_ids), _ASSESSMENT_STATUS_IN_CHUNK):
+        chunk = unique_ids[start : start + _ASSESSMENT_STATUS_IN_CHUNK]
+        hosts = (
+            GovernanceTaskHost.objects.filter(
+                target_id__in=chunk,
+                task__task_type__in=(GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY),
+                task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
+            )
+            .select_related("task")
+            .order_by("-created_at")
+        )
+        for host in hosts:
+            hosts_by_target[host.target_id].append(host)
+
+    for target_id, hosts in hosts_by_target.items():
+        stages = [project_host_state(host, now=current).stage for host in hosts]
+        projected[target_id] = _assessment_status_from_stages(stages)
+    return projected
 
 
 def project_target_assessment_status(target_id: int, *, now=None) -> str | None:
     """返回目标活动评估的展示状态；无活动评估时返回 None。"""
+    return project_target_assessment_statuses([target_id], now=now).get(int(target_id))
+
+
+def project_latest_assessment_failure_reasons(target_ids: Iterable[int]) -> dict[int, str]:
+    """批量取每个目标最近一次评估/验证失败原因。"""
     from apps.patch_mgmt.models import GovernanceTaskHost
 
-    hosts = list(
-        GovernanceTaskHost.objects.filter(
-            target_id=target_id,
+    unique_ids = list(dict.fromkeys(int(target_id) for target_id in target_ids))
+    reasons: dict[int, str] = {}
+    if not unique_ids:
+        return reasons
+
+    for start in range(0, len(unique_ids), _ASSESSMENT_STATUS_IN_CHUNK):
+        chunk = unique_ids[start : start + _ASSESSMENT_STATUS_IN_CHUNK]
+        hosts = GovernanceTaskHost.objects.filter(
+            target_id__in=chunk,
             task__task_type__in=(GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY),
-            task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
-        )
-        .select_related("task")
-        .order_by("-created_at")
-    )
-    if not hosts:
-        return None
-    states = [project_host_state(host, now=now).stage for host in hosts]
-    if any(stage not in {"failed", "completed", "cancelled", "pending_confirmation"} for stage in states):
-        return "evaluating"
-    if any(stage == "failed" for stage in states):
-        return "failed"
-    return None
+            stage__in=("failed", "pending_confirmation"),
+        ).order_by("-created_at")
+        for host in hosts:
+            if host.target_id in reasons:
+                continue
+            reasons[host.target_id] = host.reason or host.timeout_reason or ""
+    return reasons
 
 
 def reconcile_stale_history(
@@ -172,9 +238,15 @@ def reconcile_stale_history(
     current = now or timezone.now()
     bounded_limit = max(1, min(int(limit), 1000))
     expired = (
-        Q(
-            stage="waiting",
-            created_at__lt=current - timedelta(seconds=DISPATCH_TIMEOUT),
+        (
+            Q(
+                stage="waiting",
+                created_at__lt=current - timedelta(seconds=DISPATCH_TIMEOUT),
+            )
+            & ~Q(
+                task__execution_mode="window",
+                task__execution_window_end__gt=current,
+            )
         )
         | Q(
             stage__in=("scanning", "installing", "rebooting"),
@@ -221,8 +293,9 @@ def reconcile_stale_history(
             host = GovernanceTaskHost.objects.select_for_update().select_related("task").get(pk=host_id)
             if host.task.status not in GovernanceTaskStatus.ACTIVE_STATES:
                 continue
+            waiting_deadline = _deadline(host, now=current) if host.stage == "waiting" else None
             still_expired = (
-                (host.stage == "waiting" and host.created_at < current - timedelta(seconds=DISPATCH_TIMEOUT))
+                (host.stage == "waiting" and waiting_deadline is not None and waiting_deadline < current)
                 or (host.stage in {"scanning", "installing", "rebooting"} and host.stage_deadline_at is not None and host.stage_deadline_at < current)
                 or (host.stage == "reconciling" and host.reconcile_deadline_at is not None and host.reconcile_deadline_at < current)
             )

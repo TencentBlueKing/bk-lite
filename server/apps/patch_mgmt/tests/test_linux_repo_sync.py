@@ -5,11 +5,16 @@
   - 无 updateinfo / 非 yum 源 → 返回空
   - sync_linux_repo():建 Patch + LinuxPatchDetail、严重级别映射、team 继承、幂等
   - sync view action:返回计数;非 Linux 源 400
+
+sync view 会 import apps.node_mgmt.models.Node；相关 pytest 包装器
+需要据此把 node_mgmt 列入 INSTALL_APPS。node_mgmt.urls 会再拉起 monitor。
 """
 import gzip
 
 import pytest
 
+from apps.monitor.models import MonitorPlugin  # noqa: F401  INSTALL_APPS 需含 monitor（node_mgmt.urls → collector_release）
+from apps.node_mgmt.models import Node  # noqa: F401  列表 URL 加载依赖 node_mgmt
 from apps.patch_mgmt.constants import (
     OSType,
     PackageManagerType,
@@ -78,11 +83,20 @@ def _make_get(mocker, repomd=REPOMD, updateinfo=UPDATEINFO):
         resp = mocker.Mock()
         resp.raise_for_status = mocker.Mock()
         if url.endswith("repomd.xml"):
-            resp.content = repomd.encode()
+            payload = repomd.encode()
         elif "updateinfo" in url:
-            resp.content = gzip.compress(updateinfo.encode())
+            payload = gzip.compress(updateinfo.encode())
         else:
-            resp.content = b""
+            payload = b""
+        resp.content = payload
+
+        def iter_content(chunk_size=1):
+            size = chunk_size if chunk_size and chunk_size > 0 else 1
+            for index in range(0, len(payload), size):
+                yield payload[index : index + size]
+
+        resp.iter_content = iter_content
+        resp.close = mocker.Mock()
         return resp
     return mocker.patch.object(linux_repo_sync.requests, "get", side_effect=fake_get)
 
@@ -240,6 +254,30 @@ Description: SSL library
         _make_get(mocker)
         with pytest.raises(RepoSyncError):
             fetch_advisories(_source(url=""))
+
+    def test_compressed_bytes_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_COMPRESSED_BYTES", 8, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
+
+    def test_uncompressed_bytes_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_UNCOMPRESSED_BYTES", 32, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
+
+    def test_advisory_count_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_ADVISORIES", 1, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
+
+    def test_packages_per_advisory_over_limit_raises(self, mocker, monkeypatch):
+        monkeypatch.setattr(linux_repo_sync, "LINUX_REPO_SYNC_MAX_PACKAGES_PER_ADVISORY", 1, raising=False)
+        _make_get(mocker)
+        with pytest.raises(RepoSyncError, match="上限"):
+            fetch_advisories(_source())
 
 
 @pytest.mark.django_db

@@ -1,0 +1,110 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cisco_router"
+        config_type = "cisco_router"
+        brand = "cisco"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Cisco CPU utilization (CISCO-PROCESS-MIB cpmCPUTotal5minRev) ----
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.8"
+        name = "usage"
+    # ---- Cisco Memory pool (CISCO-MEMORY-POOL-MIB name/used/free) ----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.5"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.6"
+        name = "free"
+    # ---- Cisco Temperature sensors (CISCO-ENVMON-MIB) ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.13.1.3.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.13.1.3.1.3"
+        name = "celsius"
+    # ---- Cisco Fans (CISCO-ENVMON-MIB ciscoEnvMonFanState) ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.13.1.4.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.13.1.4.1.3"
+        name = "state"
+    # ---- Cisco Power supplies (CISCO-ENVMON-MIB ciscoEnvMonSupplyState) ----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.13.1.5.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.13.1.5.1.3"
+        name = "state"
+
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_cisco_router"]
+    source = '''
+def apply(metric):
+    name = (metric.tags.get("name") or "").lower()
+    if "lsmpi" in name or "reserved" in name or "*dead*" in name or name == "image" or "driver text" in name:
+        return None
+    used = metric.fields.get("used")
+    free = metric.fields.get("free")
+    if used == None or free == None:
+        return None
+    total = used + free
+    if total <= 0:
+        return None
+    metric.fields["usage"] = float(used) / float(total) * 100.0
+    return metric
+'''

@@ -341,4 +341,37 @@ describe('APM 应用观测详情', () => {
     expect(new Date(payload.ended_at).getTime() - new Date(payload.started_at).getTime()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
     expect(screen.queryByText('RED 指标查询失败')).toBeNull();
   });
+
+  it('事件带 resource_id 为服务 id 时应用详情告警数仍为 1', async () => {
+    api.getEvents.mockResolvedValue([
+      {
+        id: 'evt-1',
+        event_id: 'evt-1',
+        external_id: 'ext-1',
+        title: '错误率升高',
+        description: '',
+        severity: 'critical',
+        action: 'triggered',
+        status: 'active',
+        service: 'checkout',
+        item: 'error_rate',
+        value: 0.2,
+        resource_id: 'shop-service',
+        resource_name: 'checkout',
+        start_time: '2026-08-14T00:30:00Z',
+        end_time: null,
+        received_at: '2026-08-14T00:30:00Z',
+        policy_id: 'p1',
+        environment: 'prod',
+        notification_deliveries: [],
+      },
+    ]);
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    expect(await screen.findByText('电商应用')).not.toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector('[data-key-info="alerts"]')?.textContent).toMatch(/告警数\s*1/);
+    });
+  });
 });

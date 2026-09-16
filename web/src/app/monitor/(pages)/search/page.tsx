@@ -240,13 +240,13 @@ const SearchView: React.FC = () => {
 
   return (
     <div
-      className="flex h-full"
+      className="flex h-full min-h-0 min-w-0 w-full"
       style={{ backgroundColor: 'var(--color-bg-1)' }}
     >
       {/* 左侧查询面板 */}
       <QueryPanel ref={queryPanelRef} onSearch={handleSearchFromPanel} />
       {/* 右侧内容区 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* 顶部工具栏 */}
         <div className="flex items-center justify-end p-5 pb-0">
           <div className="flex items-center gap-4">

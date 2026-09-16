@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_asterfusion",
   "plugin": "Switch AsterFusion SNMP",
-  "plugin_desc": "AsterFusion open-network switch SNMP collection for AsterNOS devices under PEN 55955. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The public AsterNOS SNMP material confirms SNMP v1/v2c/v3 and private nodes for RoCE, BGP and RIB data, but stable shared CPU, memory, temperature, fan and power health scalars with conservative status semantics are not proven in the current facts, so service and fabric indicators are not promoted into shared device-health metrics.",
+  "plugin_desc": "AsterFusion AsterNOS switch SNMP collection (IANA PEN 56928). This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB interface traffic. Proven private device-health objects: control-plane CPU utilization (cpuUtilization DisplayString parsed to a 0-100 percent) and memory utilization (memUtilization DisplayString parsed to a 0-100 percent), plus optional CPU and switch temperature scalars (afTemperatureCPU / afTemperatureSwitch) reported as the higher reading. Fan speed/status and power-supply state are not collected because a stable pollable table with conservative status semantics is not in the current proven set. Fabric-oriented private objects are not promoted into shared device-health metrics. Supported brands/models — AsterFusion AsterNOS open-network switches.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_asterfusion'}) by (instance_id)",
   "name": "Switch",
@@ -14,9 +14,51 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the AsterFusion AsterNOS device control plane (cpuUtilization scalar under IANA PEN 56928). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the AsterFusion AsterNOS device (memUtilization scalar under IANA PEN 56928). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the higher of the AsterFusion AsterNOS CPU and switch temperature scalars (afTemperatureCPU and afTemperatureSwitch), in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

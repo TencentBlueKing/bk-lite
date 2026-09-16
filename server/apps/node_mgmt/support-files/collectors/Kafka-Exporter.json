@@ -42,5 +42,49 @@
     "package_name": "kafka_exporter",
     "cpu_architecture": "arm64",
     "default_config": {}
+  },
+  {
+    "id": "exporter_kafka_windows",
+    "name": "Kafka-Exporter",
+    "controller_default_run": false,
+    "icon": "",
+    "node_operating_system": "windows",
+    "service_type": "exec",
+    "executable_path": "C:\\fusion-collectors\\bin\\kafka_exporter.exe",
+    "execute_parameters": "--kafka.server $KAFKA_SERVER --kafka.version $KAFKA_VERSION  $SASL_ENABLED --web.listen-address 127.0.0.1:$LISTEN_PORT",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "Kafka Exporter is a monitoring tool that collects and exports Kafka metrics, providing insights into message broker performance and health.",
+    "tags": [
+      "windows",
+      "exporter",
+      "monitor",
+      "x86_64"
+    ],
+    "package_name": "kafka_exporter",
+    "cpu_architecture": "x86_64",
+    "default_config": {}
+  },
+  {
+    "id": "exporter_kafka_windows_arm64",
+    "name": "Kafka-Exporter",
+    "controller_default_run": false,
+    "icon": "",
+    "node_operating_system": "windows",
+    "service_type": "exec",
+    "executable_path": "C:\\fusion-collectors\\bin\\kafka_exporter.exe",
+    "execute_parameters": "--kafka.server $KAFKA_SERVER --kafka.version $KAFKA_VERSION  $SASL_ENABLED --web.listen-address 127.0.0.1:$LISTEN_PORT",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "Kafka Exporter is a monitoring tool that collects and exports Kafka metrics, providing insights into message broker performance and health.",
+    "tags": [
+      "windows",
+      "exporter",
+      "monitor",
+      "arm64"
+    ],
+    "package_name": "kafka_exporter",
+    "cpu_architecture": "arm64",
+    "default_config": {}
   }
 ]

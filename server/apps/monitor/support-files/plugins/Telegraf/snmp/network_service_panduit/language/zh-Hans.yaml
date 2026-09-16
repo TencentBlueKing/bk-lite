@@ -1,6 +1,6 @@
 NetworkService Panduit iPDU SNMP:
   name: Panduit iPDU（Telegraf）
-  desc: 面向 Panduit iPDU 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Panduit G5 iPDU 网络服务设备的 SNMP 监控模板，可采集 PDU 插座电流、环境温度与湿度、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -16,7 +16,7 @@ monitor_object_metric:
         位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
     interface_ifHCOutOctets:
       name: 接口发送流量速率
-      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
         位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     device_total_incoming_traffic:
       name: 设备接收总流量速率
@@ -78,8 +78,19 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP 层级
       desc: Spectracom NTP 当前 stratum 层级。
+    pdu_outlet_current_amps:
+      name: PDU 插座电流
+      desc: 来自 PANDUIT-MIB pdug5OutletCurrent 的逐插座负载电流，单位为安培。SNMP 原始值为百分之一安培，查询侧除以 100。空表不产生数据点。
+    env_temperature_celsius:
+      name: 环境温度
+      desc: 来自 PANDUIT-MIB pdug5TemperatureValue 的逐传感器环境温度，单位为摄氏度。SNMP 原始值已是度数。若存在 pdug5TemperatureScale，1 为摄氏、2 从华氏换算。空表不产生数据点。
+    env_humidity_percent:
+      name: 环境湿度
+      desc: 来自 PANDUIT-MIB pdug5HumidityValue 的逐传感器相对湿度，单位为百分比 %RH。空表不产生数据点。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础
     Traffic: 流量
     NetworkService: 网络服务
+    Power: 电力
+    Environment: 环境

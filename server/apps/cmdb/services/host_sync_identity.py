@@ -30,13 +30,69 @@ def build_host_inst_name(*, ip: str, cloud_name: Any = None, cloud_id: Any = Non
     return f"{ip_str}[{label}]"
 
 
+CLOUD_ATTR_BY_MODEL = {
+    "host": "cloud",
+    "subnet": "cloud_id",
+}
+
+
+def parse_cloud_id(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if value in (None, ""):
+        return None
+    try:
+        text = str(value).strip()
+        if not text or not text.lstrip("-").isdigit():
+            return None
+        return int(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def apply_model_cloud_id(model_id: str, instance_info: dict[str, Any]) -> dict[str, Any]:
+    field = CLOUD_ATTR_BY_MODEL.get(model_id)
+    if not field or not isinstance(instance_info, dict) or field not in instance_info:
+        return instance_info
+    parsed = parse_cloud_id(instance_info.get(field))
+    if parsed is not None:
+        instance_info[field] = parsed
+    return instance_info
+
+
+def heal_legacy_cloud_id(model_id: str, instance_info: dict[str, Any] | None, update_attr: dict[str, Any]) -> dict[str, Any]:
+    field = CLOUD_ATTR_BY_MODEL.get(model_id)
+    if not field or not isinstance(update_attr, dict) or field in update_attr:
+        return update_attr
+    stored = (instance_info or {}).get(field)
+    parsed = parse_cloud_id(stored)
+    if parsed is not None and stored != parsed:
+        update_attr[field] = parsed
+    return update_attr
+
+
 def host_lookup_key(*, ip_addr: Any, cloud: Any) -> tuple[str, int | None]:
     ip = str(ip_addr or "").strip()
-    try:
-        normalized_cloud = int(cloud) if cloud not in (None, "") else None
-    except (TypeError, ValueError):
-        normalized_cloud = None
-    return ip, normalized_cloud
+    return ip, parse_cloud_id(cloud)
+
+
+def host_record_lookup_key(record: dict[str, Any] | None) -> tuple[str, int | None]:
+    record = record or {}
+    cloud = record.get("cloud")
+    if cloud in (None, ""):
+        cloud = record.get("cloud_id")
+    return host_lookup_key(ip_addr=record.get("ip_addr"), cloud=cloud)
+
+
+def should_refresh_host_inst_name(existing: dict[str, Any] | None, desired: dict[str, Any]) -> bool:
+    """新建或 IP/云区域变化时刷新 `{ip}[{云区域}]`；身份未变则保留用户自定义名。"""
+    if existing is None:
+        return True
+    return host_record_lookup_key(existing) != host_record_lookup_key(desired)
 
 
 @dataclass

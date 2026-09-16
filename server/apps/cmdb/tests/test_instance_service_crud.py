@@ -235,6 +235,36 @@ def test_instance_update_ok(fake_graph, patch_side_effects):
 
 
 @pytest.mark.django_db
+def test_instance_update_heals_legacy_string_cloud(fake_graph, patch_side_effects):
+    graph = fake_graph(
+        MODULE,
+        query_entity_by_id={
+            "_id": 5,
+            "inst_uuid": HOST_UUID,
+            "model_id": "host",
+            "inst_name": "h1",
+            "organization": [1],
+            "cloud": "1",
+        },
+        query_entity=([], 0),
+        set_entity_properties=[
+            {
+                "_id": 5,
+                "inst_uuid": HOST_UUID,
+                "model_id": "host",
+                "inst_name": "h2",
+                "organization": [1],
+                "cloud": 1,
+            }
+        ],
+    )
+    InstanceManage.instance_update([{"id": 1}], ["admin"], 5, {"inst_name": "h2"}, "admin")
+    update_call = next(call for call in graph.calls if call[0] == "set_entity_properties")
+    assert update_call[1][2]["cloud"] == 1
+    assert update_call[1][2]["inst_name"] == "h2"
+
+
+@pytest.mark.django_db
 def test_instance_update_skip_permission_can_clear_non_editable_node_id(fake_graph, patch_side_effects, monkeypatch):
     monkeypatch.setattr(
         f"{MODULE}.InstanceManage._build_unique_rule_check_attr_map",

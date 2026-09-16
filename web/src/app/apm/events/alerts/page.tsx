@@ -116,9 +116,13 @@ export default function ApmAlertsPage() {
   const [deliveries, setDeliveries] = useState<ApmNotificationDelivery[]>([]);
   const [retryingDeliveryId, setRetryingDeliveryId] = useState<string | null>(null);
   const [eventEvidenceLoading, setEventEvidenceLoading] = useState(false);
+  const [eventEvidenceError, setEventEvidenceError] = useState<CatalogStateKind | null>(null);
+  const [deliveriesLoading, setDeliveriesLoading] = useState(false);
+  const [deliveriesError, setDeliveriesError] = useState<CatalogStateKind | null>(null);
   const loadSequence = useRef(0);
   const snapshotLoadSequence = useRef(0);
   const [eventRequestGuard] = useState(createLatestRequestGuard);
+  const [deliveryRequestGuard] = useState(createLatestRequestGuard);
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -177,33 +181,26 @@ export default function ApmAlertsPage() {
     [distribution],
   );
 
-  const chooseEvent = useCallback(
-    (alert: ApmAlert, event: ApmAlertEvent) => {
-      const requestId = eventRequestGuard.begin();
-      setSelectedEvent(event);
-      setEventEvidence(null);
-      setDeliveries([]);
-      if (event.action === 'claimed' || event.action === 'assigned') {
-        setEventEvidenceLoading(false);
-        return;
-      }
-      setEventEvidenceLoading(true);
-      Promise.all([
-        getEventEvidence(alert.id, event.event_id),
-        getNotificationDeliveries({ event_id: event.event_id }),
-      ])
-        .then(([snapshots, deliveryItems]) => {
+  const loadEventEvidence = useCallback(
+    (alert: ApmAlert, event: ApmAlertEvent, requestId: number) => {
+      getEventEvidence(alert.id, event.event_id)
+        .then((snapshots) => {
           commitAlertEventEvidenceSuccess(
             eventRequestGuard,
             requestId,
             { alertId: alert.id, eventId: event.event_id },
             snapshots,
-            deliveryItems,
-            (evidence, items) => {
+            [],
+            (evidence) => {
               setEventEvidence(evidence);
-              setDeliveries(items);
+              setEventEvidenceError(null);
             },
           );
+        })
+        .catch((error) => {
+          commitAlertEventEvidenceSettled(eventRequestGuard, requestId, () => {
+            setEventEvidenceError(catalogErrorKind(error));
+          });
         })
         .finally(() => {
           commitAlertEventEvidenceSettled(eventRequestGuard, requestId, () => {
@@ -211,12 +208,83 @@ export default function ApmAlertsPage() {
           });
         });
     },
-    [eventRequestGuard, getEventEvidence, getNotificationDeliveries],
+    [eventRequestGuard, getEventEvidence],
   );
+
+  const loadEventDeliveries = useCallback(
+    (alert: ApmAlert, event: ApmAlertEvent, requestId: number) => {
+      getNotificationDeliveries({ event_id: event.event_id })
+        .then((deliveryItems) => {
+          commitAlertEventEvidenceSuccess(
+            deliveryRequestGuard,
+            requestId,
+            { alertId: alert.id, eventId: event.event_id },
+            [],
+            deliveryItems,
+            (_evidence, items) => {
+              setDeliveries(items);
+              setDeliveriesError(null);
+            },
+          );
+        })
+        .catch((error) => {
+          commitAlertEventEvidenceSettled(deliveryRequestGuard, requestId, () => {
+            setDeliveriesError(catalogErrorKind(error));
+          });
+        })
+        .finally(() => {
+          commitAlertEventEvidenceSettled(deliveryRequestGuard, requestId, () => {
+            setDeliveriesLoading(false);
+          });
+        });
+    },
+    [deliveryRequestGuard, getNotificationDeliveries],
+  );
+
+  const chooseEvent = useCallback(
+    (alert: ApmAlert, event: ApmAlertEvent) => {
+      const evidenceRequestId = eventRequestGuard.begin();
+      const deliveryRequestId = deliveryRequestGuard.begin();
+      setSelectedEvent(event);
+      setEventEvidence(null);
+      setDeliveries([]);
+      setEventEvidenceError(null);
+      setDeliveriesError(null);
+      if (event.action === 'claimed' || event.action === 'assigned') {
+        setEventEvidenceLoading(false);
+        setDeliveriesLoading(false);
+        return;
+      }
+      setEventEvidenceLoading(true);
+      setDeliveriesLoading(true);
+      loadEventEvidence(alert, event, evidenceRequestId);
+      loadEventDeliveries(alert, event, deliveryRequestId);
+    },
+    [deliveryRequestGuard, eventRequestGuard, loadEventDeliveries, loadEventEvidence],
+  );
+
+  const retryEventEvidence = useCallback(() => {
+    if (!selected || !selectedEvent) return;
+    if (selectedEvent.action === 'claimed' || selectedEvent.action === 'assigned') return;
+    const requestId = eventRequestGuard.begin();
+    setEventEvidenceLoading(true);
+    setEventEvidenceError(null);
+    loadEventEvidence(selected, selectedEvent, requestId);
+  }, [eventRequestGuard, loadEventEvidence, selected, selectedEvent]);
+
+  const retryEventDeliveries = useCallback(() => {
+    if (!selected || !selectedEvent) return;
+    if (selectedEvent.action === 'claimed' || selectedEvent.action === 'assigned') return;
+    const requestId = deliveryRequestGuard.begin();
+    setDeliveriesLoading(true);
+    setDeliveriesError(null);
+    loadEventDeliveries(selected, selectedEvent, requestId);
+  }, [deliveryRequestGuard, loadEventDeliveries, selected, selectedEvent]);
 
   const resetDrawerState = useCallback(() => {
     snapshotLoadSequence.current += 1;
     eventRequestGuard.invalidate();
+    deliveryRequestGuard.invalidate();
     setSelected(null);
     setSelectedEvent(null);
     setEventEvidence(null);
@@ -224,9 +292,12 @@ export default function ApmAlertsPage() {
     setMetricSnapshotError(null);
     setMetricSnapshotLoading(false);
     setEventEvidenceLoading(false);
+    setEventEvidenceError(null);
+    setDeliveriesLoading(false);
+    setDeliveriesError(null);
     setDeliveries([]);
     setRetryingDeliveryId(null);
-  }, [eventRequestGuard]);
+  }, [deliveryRequestGuard, eventRequestGuard]);
 
   const openDrawer = (alert: ApmAlert) => {
     const snapshotSequence = snapshotLoadSequence.current + 1;
@@ -600,13 +671,18 @@ export default function ApmAlertsPage() {
         selectedEvent={selectedEvent}
         eventEvidence={eventEvidence}
         eventEvidenceLoading={eventEvidenceLoading}
+        eventEvidenceError={eventEvidenceError}
         deliveries={deliveries}
+        deliveriesLoading={deliveriesLoading}
+        deliveriesError={deliveriesError}
         retryingDeliveryId={retryingDeliveryId}
         onClose={resetDrawerState}
         onHandlerActionSuccess={() => handleHandlerActionSuccess(selected ?? undefined)}
         onRetrySnapshot={openDrawer}
         onSelectEvent={chooseEvent}
         onRetryDelivery={handleRetryDelivery}
+        onRetryEventEvidence={retryEventEvidence}
+        onRetryDeliveries={retryEventDeliveries}
       />
     </ApmRouteShell>
   );

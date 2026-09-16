@@ -1,5 +1,56 @@
 {
   "object": "NetworkService",
   "plugin": "NetworkService Tripp Lite UPS PDU Environmental SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Tripp Lite电池容量过低",
+      "alert_name": "网络服务${resource_name} Tripp Lite 电池剩余容量过低",
+      "description": "监控 Tripp Lite UPS 电池剩余容量，低于阈值时触发告警。",
+      "metric_name": "network_service_tripplite_battery_capacity",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 20,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 30,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 40,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Tripp Lite输出负载过高",
+      "alert_name": "网络服务${resource_name} Tripp Lite 输出负载过高",
+      "description": "监控 Tripp Lite UPS 输出负载百分比，持续偏高时触发告警。",
+      "metric_name": "network_service_tripplite_output_load",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

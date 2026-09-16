@@ -3,101 +3,71 @@
   "plugin": "Switch Phoenix Contact SNMP",
   "templates": [
     {
-      "name": "接口接收错误包过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
-      "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",
-      "metric_name": "interface_ifInErrors",
+      "name": "Phoenix Contact交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Phoenix Contact FL SWITCH 机箱温度（flWorkFWCtrlActualDeviceTemperature），当持续高于阈值时触发告警，提示机柜散热不良或环境过热，避免热保护或器件损坏。",
+      "metric_name": "device_temperature_celsius",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 100,
+          "value": 70,
           "method": ">"
         },
         {
           "level": "error",
-          "value": 50,
+          "value": 60,
           "method": ">"
         },
         {
           "level": "warning",
-          "value": 10,
+          "value": 50,
           "method": ">"
         }
       ],
       "group_algorithm": "avg"
     },
     {
-      "name": "接口发送错误包过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送错误包数过高",
-      "description": "监控设备接口发送端错误包数，每秒发送错误包数量超出限制时发出告警，及时定位和处理网络发送问题。",
-      "metric_name": "interface_ifOutErrors",
+      "name": "Phoenix Contact交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Phoenix Contact FL SWITCH 冗余电源状态（flWorkBasicPowerStat，5=两路均正常）。取值不是 5 时提示未知状态或任一路电源失电，需检查供电冗余。",
+      "metric_name": "power_status",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 100,
-          "method": ">"
-        },
-        {
-          "level": "error",
-          "value": 50,
-          "method": ">"
-        },
-        {
-          "level": "warning",
-          "value": 10,
-          "method": ">"
+          "value": 5,
+          "method": "!="
         }
       ],
       "group_algorithm": "avg"
     },
     {
-      "name": "接口接收丢包数过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
-      "description": "实时监控设备接口的丢包情况，当接收丢包速率超过阈值时告警，帮助排查网络接收质量问题并优化链路性能。",
-      "metric_name": "interface_ifInDiscards",
+      "name": "Phoenix Contact交换机固件运行异常",
+      "alert_name": "交换机${resource_name} 固件运行状态异常",
+      "description": "监控 Phoenix Contact FL SWITCH 固件运行状态（flWorkFWInfoOperStatus，2=ok）。取值不是 2 时提示固件未处于正常运行模式。",
+      "metric_name": "firmware_oper_status",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 100,
-          "method": ">"
-        },
-        {
-          "level": "error",
-          "value": 50,
-          "method": ">"
-        },
-        {
-          "level": "warning",
-          "value": 10,
-          "method": ">"
+          "value": 2,
+          "method": "!="
         }
       ],
       "group_algorithm": "avg"
     },
     {
-      "name": "接口发送丢包数过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
-      "description": "监测接口发送丢包速率是否异常，当发送丢包数量高于预设阈值时触发告警，为网络发送端问题提供及时反馈。",
-      "metric_name": "interface_ifOutDiscards",
+      "name": "Phoenix Contact交换机告警触点动作",
+      "alert_name": "交换机${resource_name} 告警触点已打开",
+      "description": "监控 Phoenix Contact FL SWITCH 告警触点状态（flWorkFWCtrlAlarmContactStatus，2=闭合/正常，1=打开/告警）。触点打开表示已配置的告警条件被触发。",
+      "metric_name": "alarm_contact_status",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 100,
-          "method": ">"
-        },
-        {
-          "level": "error",
-          "value": 50,
-          "method": ">"
-        },
-        {
-          "level": "warning",
-          "value": 10,
-          "method": ">"
+          "value": 2,
+          "method": "!="
         }
       ],
       "group_algorithm": "avg"

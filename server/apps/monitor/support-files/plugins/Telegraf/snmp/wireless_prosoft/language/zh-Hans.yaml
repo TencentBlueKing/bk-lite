@@ -1,6 +1,6 @@
 Wireless ProSoft Technology SNMP:
   name: ProSoft Technology（Telegraf）
-  desc: 面向 ProSoft 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 ProSoft RadioLinx/RLX2 无线设备的 SNMP 监控模板,可采集每端口入向流量速率、每端口出向流量速率、运行时长、射频状态、链路质量百分比和信号强度（dBm）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -33,6 +33,15 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
+    radio_status:
+      name: 射频状态
+      desc: RadioLinx/RLX2 射频状态整型值，来自 RadioLinx 企业私有树。该指标为设备上报的射频状态标量，不由其伪造 CPU 或内存百分比。
+    link_quality_percent:
+      name: 链路质量
+      desc: RadioLinx/RLX2 无线链路质量，以 0-100 百分比直接上报。持续偏低可能表示射频干扰、天线异常或工业无线跳变差。
+    signal_strength_dbm:
+      name: 信号强度
+      desc: RadioLinx/RLX2 接收信号强度（dBm，直采无缩放）。数值越负表示无线链路越弱，丢包或漫游失败风险上升。
 monitor_object_metric_group:
   Wireless:
     Base: 基础

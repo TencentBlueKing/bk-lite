@@ -31,6 +31,7 @@ import {
   CmdbInstanceOption,
   toCmdbInstanceOptions,
 } from '@/app/cmdb/utils/instanceOption';
+import { buildHostCloudQueryList } from '@/app/cmdb/utils/cloudRegion';
 
 import {
   CYCLE_OPTIONS,
@@ -318,17 +319,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       if (!isHostTask || !hasSelectedAccessPointCloudRegion) {
         return [];
       }
-
-      const rawCloudRegion = selectedAccessPointCloudRegion;
-      const cloudRegionString = String(rawCloudRegion).trim();
-
-      return [
-        {
-          field: 'cloud',
-          type: 'str=',
-          value: cloudRegionString,
-        },
-      ];
+      return buildHostCloudQueryList(selectedAccessPointCloudRegion);
     };
 
     useEffect(() => {

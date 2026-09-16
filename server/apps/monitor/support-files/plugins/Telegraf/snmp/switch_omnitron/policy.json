@@ -1,5 +1,31 @@
 {
   "object": "Switch",
   "plugin": "Switch Omnitron SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Omnitron交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Omnitron iConverter 管理模块的每模块 CPU 使用率（milli-percent 已归一为 0-100），当持续高于阈值时触发告警，提示可能存在控制平面过载或模块异常，避免管理响应变慢。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

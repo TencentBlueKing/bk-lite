@@ -32,18 +32,43 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # ---- AN80i (PEN 10728) 射频链路 ----
+    # Prefer scalar an80iIfAvrSinAdr 1.3.6.1.4.1.10728.2.10.2.1.2.12.0 → sinadr
+    # Integer32，不换算。PTP 平均 SINADR 标量；禁止改绑 PMP 表列 an80iIfPmpLinkDLSinAdr（.2.2.3.1.8）。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "sinadr"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.10728.2.10.2.1.2.12.0"
+        name = "sinadr"
+        conversion = "int"
+    # PMP an80iIfPmpLinkDLRssi 1.3.6.1.4.1.10728.2.10.2.2.3.1.7.<linkId> → dl_rssi
+    # 先走 an80iIfPmpLinkId（.2.2.2.1.1）发现 linkId，再取 DL RSSI。禁止绑定 PTP RSSI 标量或 PMP 父表。
+    [[inputs.snmp.table]]
+        name = "dl"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10728.2.10.2.2.2.1.1"
+        name = "linkId"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.10728.2.10.2.2.3.1.7"
+        name = "rssi"
+        conversion = "int"
+    # 可选 an80iIfPmpLinkULRssi 1.3.6.1.4.1.10728.2.10.2.2.3.1.14.<linkId> → ul_rssi
+    # 同样先走 linkId。部分 PMP 行或缺省固件可能无此列。
+    [[inputs.snmp.table]]
+        name = "ul"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.10728.2.10.2.2.2.1.1"
+        name = "linkId"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10728.2.10.2.2.3.1.14"
+        name = "rssi"
+        conversion = "int"
+# ---- CPU/内存/温度/风扇/电源：AN80i 无私有稳定共享健康标量 → N/A，不臆造 CPU%/内存%。----

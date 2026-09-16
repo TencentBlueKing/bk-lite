@@ -789,24 +789,24 @@ const Asset = () => {
           />
         </div>
       </ResizableSidebar>
-      <div className={assetStyle.table}>
-        <div className={assetStyle.search}>
-          <Input
-            allowClear
-            className="w-[320px]"
-            placeholder={t('common.searchPlaceHolder')}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onPressEnter={() => getAssetInsts(objectId)}
-            onClear={clearText}
-          ></Input>
-          <div className="flex">
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              className="mr-[8px]"
-              onClick={goToIntegration}
-            >
+        <div className={assetStyle.table}>
+          <div className={assetStyle.search}>
+            <Input
+              allowClear
+              className="w-full max-w-[320px] min-w-0"
+              placeholder={t('common.searchPlaceHolder')}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onPressEnter={() => getAssetInsts(objectId)}
+              onClear={clearText}
+            ></Input>
+            <div className="flex shrink-0">
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                className="mr-[8px]"
+                onClick={goToIntegration}
+              >
               {t('monitor.integrations.access')}
             </Button>
             <Dropdown
@@ -829,17 +829,19 @@ const Asset = () => {
             />
           </div>
         </div>
-        <CustomTable
-          key={String(objectId || 'asset-table')}
-          scroll={{ y: 'calc(100vh - 330px)', x: 'max-content' }}
-          columns={columns}
-          dataSource={tableData}
-          pagination={pagination}
-          loading={tableLoading}
-          rowKey="instance_id"
-          onChange={handleTableChange}
-          rowSelection={rowSelection}
-        ></CustomTable>
+        <div className="min-h-0 min-w-0 flex-1">
+          <CustomTable
+            key={String(objectId || 'asset-table')}
+            scroll={{ x: 'max-content' }}
+            columns={columns}
+            dataSource={tableData}
+            pagination={pagination}
+            loading={tableLoading}
+            rowKey="instance_id"
+            onChange={handleTableChange}
+            rowSelection={rowSelection}
+          ></CustomTable>
+        </div>
       </div>
       <EditConfig ref={configRef} onSuccess={() => getAssetInsts(objectId)} />
       <EditInstance

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_deva",
   "plugin": "NetworkService DEVA Broadcast SNMP",
-  "plugin_desc": "DEVA Broadcast receiver SNMP collection for devices under DEVA PEN 35833. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts expose broadcast receiver alarms and RF/audio service indicators, but do not prove stable shared CPU, memory, temperature, fan or power health scalars, so those business indicators are not promoted into shared device-health metrics.",
+  "plugin_desc": "DEVA Broadcast receiver SNMP collection for devices under DEVA PEN 35833 whose sysObjectID is under 1.3.6.1.4.1.35833.37. Beyond the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects chassis temperature (Fr8p8 Integer32 scaled by /256 to Celsius), fan RPM, and RF level in dBµV (Fr8p8 scaled by /256). Optional broadcast monitors are pilot average, MPX average, left/right audio averages (same Fr8p8 /256), and RDS BER (scaled by /32768). Firmware revision and serial number are inventory tags only. CPU and memory percentages are not collected because no private CPU or memory leaves were confirmed. HOST-RESOURCES is not bound. Supported brands/models - DEVA Broadcast receivers that expose the 35833.37 monitoring tree and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_deva'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,116 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_fan_rpm",
+    "deva_rf_level"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='network_service', __$labels__} / 256",
+      "display_name": "Chassis Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature from the PEN 35833.37 monitoring tree. The Fr8p8 Integer32 value is scaled by /256 in the query to degrees Celsius. Do not treat the raw SNMP value as °C. High values may indicate cooling or ambient-temperature risk."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_rpm",
+      "query": "device_fan_rpm{instance_type='network_service', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed in revolutions per minute from the PEN 35833.37 monitoring tree. The Integer32 value is used as reported with no scaling. Persistently low or zero RPM can indicate a stalled fan or cooling failure."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "deva_rf_level",
+      "query": "deva_rf_level{instance_type='network_service', __$labels__} / 256",
+      "display_name": "RF Level",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "RF input level in dBµV from the PEN 35833.37 monitoring tree. The Fr8p8 Integer32 value is scaled by /256 in the query. Persistently low RF level can indicate antenna, feeder, or off-air signal problems."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "deva_pilot_level",
+      "query": "deva_pilot_level{instance_type='network_service', __$labels__} / 256",
+      "display_name": "Pilot Level",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional 19 kHz pilot average level from the PEN 35833.37 monitoring tree. The Fr8p8 Integer32 value is scaled by /256 in the query. Missing scalars yield no point."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "deva_mpx_level",
+      "query": "deva_mpx_level{instance_type='network_service', __$labels__} / 256",
+      "display_name": "MPX Level",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional MPX average level from the PEN 35833.37 monitoring tree. The Fr8p8 Integer32 value is scaled by /256 in the query. Missing scalars yield no point."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "deva_left_audio_level",
+      "query": "deva_left_audio_level{instance_type='network_service', __$labels__} / 256",
+      "display_name": "Left Audio Level",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional left-channel audio average level from the PEN 35833.37 monitoring tree. The Fr8p8 Integer32 value is scaled by /256 in the query. Missing scalars yield no point."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "deva_right_audio_level",
+      "query": "deva_right_audio_level{instance_type='network_service', __$labels__} / 256",
+      "display_name": "Right Audio Level",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional right-channel audio average level from the PEN 35833.37 monitoring tree. The Fr8p8 Integer32 value is scaled by /256 in the query. Missing scalars yield no point."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "deva_rds_ber",
+      "query": "deva_rds_ber{instance_type='network_service', __$labels__} / 32768",
+      "display_name": "RDS BER",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional RDS bit-error ratio from the PEN 35833.37 monitoring tree. The Fr1p15 Integer32 value is scaled by /32768 in the query. Missing scalars yield no point."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

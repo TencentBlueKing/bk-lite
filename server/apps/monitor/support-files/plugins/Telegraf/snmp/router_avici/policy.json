@@ -3,8 +3,83 @@
   "plugin": "Router Avici SNMP",
   "templates": [
     {
+      "name": "Avici路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Avici 路由器各库存实体 5 分钟 CPU 忙闲百分比，当持续高于阈值时触发告警，提示可能存在控制平面过载或转发压力。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Avici路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Avici 路由器各库存实体内存使用率（按 used/total 计算，total=0 的行已跳过），当超过阈值时触发告警，便于及时发现内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Avici路由器模块温度过高",
+      "alert_name": "路由器${resource_name} 模块温度过高",
+      "description": "监控 Avici 路由器各模块当前温度，当超过阈值时触发告警，提示散热或风道异常。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
+      "alert_name": "路由器${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",
       "metric_name": "interface_ifInErrors",
       "algorithm": "last_over_time",
@@ -29,7 +104,7 @@
     },
     {
       "name": "接口发送错误包过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送错误包数过高",
+      "alert_name": "路由器${resource_name} 接口 ${metric_ifDescr} 每秒发送错误包数过高",
       "description": "监控设备接口发送端错误包数，每秒发送错误包数量超出限制时发出告警，及时定位和处理网络发送问题。",
       "metric_name": "interface_ifOutErrors",
       "algorithm": "last_over_time",
@@ -54,7 +129,7 @@
     },
     {
       "name": "接口接收丢包数过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
+      "alert_name": "路由器${resource_name} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
       "description": "实时监控设备接口的丢包情况，当接收丢包速率超过阈值时告警，帮助排查网络接收质量问题并优化链路性能。",
       "metric_name": "interface_ifInDiscards",
       "algorithm": "last_over_time",
@@ -79,7 +154,7 @@
     },
     {
       "name": "接口发送丢包数过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
+      "alert_name": "路由器${resource_name} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
       "description": "监测接口发送丢包速率是否异常，当发送丢包数量高于预设阈值时触发告警，为网络发送端问题提供及时反馈。",
       "metric_name": "interface_ifOutDiscards",
       "algorithm": "last_over_time",

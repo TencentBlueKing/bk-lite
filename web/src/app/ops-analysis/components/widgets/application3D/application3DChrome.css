@@ -216,6 +216,164 @@
   background: linear-gradient(90deg, transparent, rgba(214, 220, 228, 0.18), transparent);
 }
 
+.app3d-wall-page-wing {
+  position: absolute;
+  top: 50%;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 92px;
+  padding: 0;
+  border: 1px solid var(--color-application3d-wall-page-wing-border);
+  border-radius: 999px;
+  color: var(--color-application3d-wall-page-wing-fg);
+  background: linear-gradient(180deg, rgba(30, 46, 68, 0.72) 0%, rgba(14, 22, 34, 0.82) 100%);
+  box-shadow:
+    0 0 0 1px rgba(186, 210, 236, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateY(-50%);
+  transition:
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app3d-wall-page-wing--prev {
+  left: 24px;
+}
+
+.app3d-wall-page-wing--next {
+  right: 24px;
+}
+
+.app3d-wall-page-wing:hover {
+  border-color: var(--color-application3d-wall-page-wing-border-hover);
+  color: var(--color-application3d-wall-page-wing-fg-hover);
+  background: linear-gradient(180deg, rgba(42, 62, 90, 0.82) 0%, rgba(18, 28, 44, 0.88) 100%);
+  box-shadow:
+    0 0 0 1px rgba(200, 225, 250, 0.2),
+    0 0 20px var(--color-application3d-wall-page-wing-glow),
+    0 12px 28px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.app3d-wall-page-wing--prev:hover {
+  transform: translate(-3px, -50%);
+}
+
+.app3d-wall-page-wing--next:hover {
+  transform: translate(3px, -50%);
+}
+
+.app3d-wall-page-wing:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
+.app3d-wall-page-wing--prev:active {
+  transform: translate(-2px, -50%) scale(0.96);
+}
+
+.app3d-wall-page-wing--next:active {
+  transform: translate(2px, -50%) scale(0.96);
+}
+
+.app3d-wall-page-wing:focus-visible {
+  outline: 2px solid var(--color-application3d-close-cta-focus);
+  outline-offset: 3px;
+}
+
+.app3d-wall-page-wing__icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.2;
+  transition: transform 0.2s ease;
+}
+
+.app3d-wall-page-wing--prev:hover .app3d-wall-page-wing__icon {
+  transform: translateX(-2px);
+}
+
+.app3d-wall-page-wing--next:hover .app3d-wall-page-wing__icon {
+  transform: translateX(2px);
+}
+
+.app3d-wall-page-indicator {
+  position: absolute;
+  right: 24px;
+  bottom: 20px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-application3d-wall-page-indicator-border);
+  background: linear-gradient(180deg, rgba(22, 34, 52, 0.72) 0%, rgba(10, 18, 28, 0.82) 100%);
+  box-shadow:
+    0 0 0 1px rgba(186, 210, 236, 0.06),
+    0 4px 16px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: var(--color-application3d-wall-page-indicator-fg);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.app3d-wall-page-indicator-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-application3d-wall-page-indicator-dot);
+  box-shadow: 0 0 9px var(--color-application3d-wall-page-indicator-dot);
+  animation: app3d-pulse-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes app3d-pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app3d-wall-page-wing,
+  .app3d-wall-page-wing__icon {
+    transition: none;
+  }
+
+  .app3d-wall-page-wing--prev:hover,
+  .app3d-wall-page-wing--next:hover,
+  .app3d-wall-page-wing:active,
+  .app3d-wall-page-wing--prev:active,
+  .app3d-wall-page-wing--next:active {
+    transform: translateY(-50%);
+  }
+
+  .app3d-wall-page-indicator-dot {
+    animation: none;
+  }
+}
+
 .app3d-close-cta,
 .app3d-close-cta.ant-btn {
   display: inline-flex;

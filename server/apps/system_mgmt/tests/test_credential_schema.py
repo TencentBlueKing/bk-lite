@@ -3,6 +3,7 @@ import pytest
 from apps.system_mgmt.services.credential_schema import (
     SchemaError,
     secret_field_ids,
+    type_field_ids,
     validate_instance_fields,
     validate_type_fields,
     visible_field_ids,
@@ -112,6 +113,7 @@ def test_secret_field_ids_returns_schema_order():
         {"id": "private_key", "kind": "secret"},
     ]
     assert secret_field_ids(fields) == ["password", "private_key"]
+    assert type_field_ids(fields) == {"username", "password", "private_key"}
 
 
 def test_validate_instance_fields_requires_secrets_on_creation_and_filters_hidden_fields():
@@ -155,7 +157,7 @@ def test_validate_instance_fields_update_allows_blank_secret_and_does_not_overwr
     fields = [
         {"id": "auth_method", "kind": "enum", "values": ["password", "key"]},
         {"id": "password", "kind": "secret", "required": True, "visible_when": {"auth_method": "password"}},
-        {"id": "private_key", "kind": "secret", "required": True, "visible_when": {"auth_method": "key"}}
+        {"id": "private_key", "kind": "secret", "required": True, "visible_when": {"auth_method": "key"}},
     ]
 
     assert validate_instance_fields(
@@ -185,6 +187,7 @@ def test_validate_instance_fields_rejects_unknown_or_invalid_values(values):
     ]
     with pytest.raises(SchemaError):
         validate_instance_fields(type_fields=fields, values=values, require_secrets=False)
+
 
 def test_validate_instance_fields_rejects_blank_required_non_secret():
     with pytest.raises(SchemaError):
@@ -216,9 +219,9 @@ def test_validate_instance_fields_checks_number_and_required_values():
 
 
 def test_builtin_type_payloads_match_schema():
-    from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES
+    from apps.system_mgmt.services.credential_builtin import builtin_type_payloads
 
-    for definition in BUILTIN_TYPES.values():
+    for definition in builtin_type_payloads().values():
         validate_type_fields(definition["fields"])
 
 
@@ -231,6 +234,19 @@ def test_new_builtin_instance_shapes_persist_expected_fields():
         require_secrets=True,
     )
     assert platform["verify_tls"] == "true"
+    assert validate_instance_fields(
+        type_fields=BUILTIN_TYPES["platform_api"]["fields"],
+        values={"username": "ops", "password": "secret"},
+        require_secrets=True,
+    ) == {"username": "ops", "password": "secret"}
+
+    redfish = validate_instance_fields(
+        type_fields=BUILTIN_TYPES["redfish"]["fields"],
+        values={"username": "root", "password": "secret"},
+        require_secrets=True,
+    )
+    assert redfish == {"username": "root", "password": "secret"}
+    assert {field["id"] for field in BUILTIN_TYPES["redfish"]["fields"]} == {"username", "password"}
 
     network = validate_instance_fields(
         type_fields=BUILTIN_TYPES["network_cli"]["fields"],
@@ -263,3 +279,87 @@ def test_new_builtin_instance_shapes_persist_expected_fields():
         require_secrets=True,
     )
     assert oauth["extra"] == "sub-1"
+
+    ssh_fields = {field["id"]: field for field in BUILTIN_TYPES["ssh"]["fields"]}
+    assert "port" not in ssh_fields
+    assert ssh_fields["passphrase"]["kind"] == "secret"
+    assert ssh_fields["passphrase"].get("required") is not True
+    assert ssh_fields["passphrase"]["visible_when"] == {"auth_method": "key"}
+
+    openstack = validate_instance_fields(
+        type_fields=BUILTIN_TYPES["openstack"]["fields"],
+        values={"username": "demo", "password": "secret"},
+        require_secrets=True,
+    )
+    assert openstack == {"username": "demo", "password": "secret", "user_domain_name": "Default"}
+    with pytest.raises(SchemaError, match="user_domain_name"):
+        validate_instance_fields(
+            type_fields=BUILTIN_TYPES["openstack"]["fields"],
+            values={"username": "demo", "password": "secret", "user_domain_name": ""},
+            require_secrets=True,
+        )
+
+
+def test_snmp_v3_conditional_required_and_v2c_ignores_leftover_level():
+    from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES
+
+    snmp = BUILTIN_TYPES["snmp"]["fields"]
+    version_field = next(field for field in snmp if field["id"] == "version")
+    community_field = next(field for field in snmp if field["id"] == "community")
+    assert version_field["values"] == ["v2", "v2c", "v3"]
+    assert community_field["visible_when"] == {"version": {"op": "ne", "value": "v3"}}
+
+    v2 = validate_instance_fields(
+        type_fields=snmp,
+        values={"version": "v2", "community": "public", "security_level": "authPriv"},
+        require_secrets=True,
+    )
+    assert v2 == {"version": "v2", "community": "public"}
+
+    v2c = validate_instance_fields(
+        type_fields=snmp,
+        values={"version": "v2c", "community": "public", "security_level": "authPriv"},
+        require_secrets=True,
+    )
+    assert v2c == {"version": "v2c", "community": "public"}
+
+    with pytest.raises(SchemaError, match="username"):
+        validate_instance_fields(
+            type_fields=snmp,
+            values={"version": "v3", "security_level": "noAuthNoPriv"},
+            require_secrets=True,
+        )
+
+    no_auth = validate_instance_fields(
+        type_fields=snmp,
+        values={"version": "v3", "security_level": "noAuthNoPriv", "username": "monitor"},
+        require_secrets=True,
+    )
+    assert no_auth == {"version": "v3", "security_level": "noAuthNoPriv", "username": "monitor"}
+
+    with pytest.raises(SchemaError, match="auth_password"):
+        validate_instance_fields(
+            type_fields=snmp,
+            values={
+                "version": "v3",
+                "security_level": "authNoPriv",
+                "username": "monitor",
+                "auth_protocol": "SHA",
+            },
+            require_secrets=True,
+        )
+
+    auth_priv = validate_instance_fields(
+        type_fields=snmp,
+        values={
+            "version": "v3",
+            "security_level": "authPriv",
+            "username": "monitor",
+            "auth_protocol": "SHA",
+            "auth_password": "auth",
+            "priv_protocol": "AES",
+            "priv_password": "priv",
+        },
+        require_secrets=True,
+    )
+    assert auth_priv["priv_protocol"] == "AES"

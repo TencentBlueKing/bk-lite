@@ -8,6 +8,7 @@ from apps.cmdb.services.ipam_edit import (
     ACTION_NOOP,
     ACTION_UPDATE,
     IpamEditError,
+    as_id_list,
     decide_manual_ip_action,
     find_ip_in_subnet,
     first_enum,
@@ -50,6 +51,16 @@ def test_required_asset_permission_matches_action():
     assert required_asset_permission(ACTION_UPDATE) == "asset_info-Edit"
     assert required_asset_permission(ACTION_DELETE) == "asset_info-Delete"
     assert required_asset_permission(ACTION_NOOP) is None
+
+
+def test_as_id_list_normalizes_user_ids_to_int():
+    """使用人与资产详情一致：落库必须是整数用户 ID。"""
+    assert as_id_list([1, "2"]) == [1, 2]
+    assert as_id_list("3") == [3]
+    assert as_id_list([]) == []
+    assert as_id_list(None) == []
+    with pytest.raises(IpamEditError):
+        as_id_list(["alice"])
 
 
 def test_find_ip_in_subnet_matches_address():
@@ -111,7 +122,7 @@ def test_execute_create_marks_manual_and_unknown_status(monkeypatch):
         allocated_status="allocated",
         ip_status="offline",
         ip_type="static",
-        ip_user=["alice"],
+        ip_user=["1"],
         mac="AA:BB:CC:DD:EE:FF",
         description="web vip",
         operator="bob",
@@ -124,7 +135,7 @@ def test_execute_create_marks_manual_and_unknown_status(monkeypatch):
     assert captured["payload"]["ip_status"] == ["offline"]
     assert captured["payload"]["ip_allocated_status"] == ["allocated"]
     assert captured["payload"]["ip_type"] == ["static"]
-    assert captured["payload"]["ip_user"] == ["alice"]
+    assert captured["payload"]["ip_user"] == [1]
     assert captured["payload"]["mac"] == "AA:BB:CC:DD:EE:FF"
     assert captured["payload"]["description"] == "web vip"
     assert captured["operator"] == "bob"

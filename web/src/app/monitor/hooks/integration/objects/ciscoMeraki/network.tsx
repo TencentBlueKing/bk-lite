@@ -1,6 +1,6 @@
 export const useMerakiNetworkConfig = () => {
   return {
-    instance_type: 'cisco_meraki_organization',
+    instance_type: 'cisco_meraki',
     dashboardDisplay: [
       {
         indexId: 'meraki_network_present',
@@ -15,7 +15,7 @@ export const useMerakiNetworkConfig = () => {
     ],
     groupIds: {},
     collectTypes: {
-      'Cisco Meraki Organization': 'http'
+      'Cisco Meraki': 'http'
     }
   };
 };

@@ -215,21 +215,94 @@ tools:
       [Host CPU] Query BK-Lite monitored objects, instances, metric series, and alerts with caller identity.
       Typical flow: object type → match host name to instance → confirm metric → query series.
       Prefer these tools; do not suggest SSH/top/htop.
+      instance_ids are monitor instance IDs (or host name/IP), not CMDB inst_uuid/_id.
     tools:
       monitor_list_objects:
         description: "[Host CPU] Step 1: list object types and find the host monitor_obj_id."
       monitor_list_object_instances:
-        description: "[Host CPU] Step 2: list instances; match host name to get instance_id."
+        description: "[Host CPU] Step 2: list instances; match host name to get monitor instance_id. Do not use CMDB inst_uuid."
       monitor_list_object_metrics:
         description: "[Host CPU] Step 3: list metric definitions; confirm CPU usage metric name."
       monitor_list_instance_metrics:
         description: "[Host CPU] Optional: confirm whether an instance has CPU metrics."
       monitor_query_metric_data:
-        description: "[Host CPU] Step 4: query metric time series; needs object, metric, time range, optional instance_ids."
+        description: "[Host CPU] Step 4: query metric time series; needs object, metric, optional time range (default last 1h). instance_ids must be monitor IDs/name/IP, not CMDB inst_uuid."
       monitor_list_active_alerts:
-        description: "[Host alerts] List current active alerts; filter by object/instance/level."
+        description: "[Host alerts] List current active alerts; filter by object/instance/level. instance_ids accepts monitor instance_id, name, or IP, not CMDB inst_uuid."
       monitor_query_alert_segments:
         description: "[Host alert history] Query alert segments in a time window."
+      monitor_get_host_resource_snapshot:
+        description: "[Host CPU] Query CPU/memory/disk avg and max snapshot by monitor instance_ids; not CMDB inst_uuid."
+  cmdb:
+    name: CMDB
+    description: |
+      Query and change BK-Lite CMDB assets with caller identity. Models, instance CRUD, associations, topology, and full-text search. Permissions are enforced server-side.
+      When linking to Monitor: CMDB inst_uuid/_id is not a monitor instance_id; use monitor_id or cmdb_get_monitor_ids.
+    tools:
+      cmdb_list_models:
+        description: List accessible CMDB models.
+      cmdb_get_model_info:
+        description: Get model details by model_id.
+      cmdb_list_model_attrs:
+        description: List model attributes.
+      cmdb_search_instances:
+        description: Search instances by model with pagination. Returns inst_uuid and linked monitor_id; do not pass inst_uuid/_id as monitor instance_ids.
+      cmdb_get_instance:
+        description: Get an instance by UUID. Use monitor_id for monitor queries; do not pass inst_uuid as instance_ids.
+      cmdb_get_monitor_ids:
+        description: Map CMDB inst_uuids to linked monitor instance_ids (monitor_id).
+      cmdb_create_instance:
+        description: Create an instance.
+      cmdb_update_instance:
+        description: Update an instance.
+      cmdb_batch_update_instances:
+        description: Batch update instances.
+      cmdb_delete_instance:
+        description: Delete an instance.
+      cmdb_batch_delete_instances:
+        description: Batch delete instances.
+      cmdb_topo_search:
+        description: Query instance topology.
+      cmdb_topo_expand:
+        description: Expand instance topology.
+      cmdb_list_model_associations:
+        description: List model association definitions.
+      cmdb_list_instance_associations:
+        description: List instance associations.
+      cmdb_list_associated_instances:
+        description: List associated instances.
+      cmdb_create_instance_association:
+        description: Create an instance association.
+      cmdb_delete_instance_association:
+        description: Delete an instance association.
+      cmdb_fulltext_search:
+        description: Full-text search instances.
+      cmdb_fulltext_search_stats:
+        description: Full-text search stats.
+      cmdb_fulltext_search_by_model:
+        description: Full-text search instances by model.
+  alerts:
+    name: Alert Center
+    description: |
+      Query unified alert-center alerts, details, and related events with caller identity. Read-only; no acknowledge or close.
+    tools:
+      alerts_list_alerts:
+        description: List alerts; filter by status/level/keyword.
+      alerts_get_alert_detail:
+        description: Get alert details by alert_id.
+      alerts_list_alert_events:
+        description: List events related to an alert.
+  log:
+    name: Log Center
+    description: |
+      Query logs with caller identity. List groups, then search by keyword and time range; use raw LogsQL for advanced queries.
+    tools:
+      log_list_groups:
+        description: List accessible log groups.
+      log_search_structured:
+        description: Search logs by keyword and time range.
+      log_search_raw:
+        description: Search logs with native LogsQL.
   attachment_file:
     name: Workflow Attachment File
     description: |

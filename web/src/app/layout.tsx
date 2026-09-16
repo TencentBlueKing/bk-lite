@@ -364,10 +364,17 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
                 ? 'min-h-0 min-w-0 h-full flex-1 flex-col p-0'
                 : showAppTopSide ? 'min-h-0 min-w-0 flex-col py-4 pr-4' : 'p-4'
           } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute || lockConsoleViewport ? 'h-screen' : ''}`}
-          style={showAppTopSide || screenMode ? { ['--custom-height' as string]: '100%' } : undefined}
+          style={
+            screenMode
+              ? { ['--custom-height' as string]: '100%' }
+              : showAppTopSide
+                // 应用顶栏不能用 100%：中间层高度不定时百分比会回落成 content 高度，侧栏/主卡撑不满
+                ? { ['--custom-height' as string]: 'calc(100vh - 90px)' }
+                : undefined
+          }
         >
           {showAppTopSide ? (
-            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-auto pl-4">
+            <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-x-auto overflow-y-hidden pl-4">
               {shouldRenderMenu ? (
                 <WithSideMenuLayout
                   layoutType="segmented"
@@ -376,7 +383,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
                   {children}
                 </WithSideMenuLayout>
               ) : (
-                <div className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</div>
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
               )}
             </div>
           ) : shouldRenderMenu ? (
@@ -414,13 +421,13 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     <>
       <Watermark
         content={watermarkContent}
-        gap={[120, 120]}
-        rotate={-24}
+        gap={[160, 160]}
+        rotate={-22}
         zIndex={20}
         style={{ overflow: 'visible' }}
         font={{
-          color: 'rgba(93,103,121,0.14)',
-          fontSize: 14,
+          color: 'rgba(93,103,121,0.06)',
+          fontSize: 13,
         }}
       >
         {layoutContent}

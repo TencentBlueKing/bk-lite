@@ -66,7 +66,7 @@ def test_existing_host_diff_calls_instance_update(mocker, existing_host, desired
         user_groups=[],
         roles=[],
         inst_id=existing_host["_id"],
-        update_attr={"inst_name": "new-name", "organization": [2], "os_type": "2", "node_id": "node-7"},
+        update_attr={"organization": [2], "os_type": "2", "node_id": "node-7"},
         operator="system",
         allowed_org_ids=None,
         skip_permission_check=True,
@@ -76,6 +76,26 @@ def test_existing_host_diff_calls_instance_update(mocker, existing_host, desired
     assert result["update"] == 1
     assert result["update_success"] == 1
     assert result["changed_instance_ids"] == [7]
+
+
+def test_persist_does_not_write_when_only_custom_inst_name_differs(mocker, existing_host):
+    update = mocker.patch(f"{SERVICE}.InstanceManage.instance_update")
+
+    result = NodeMgmtSyncService._persist_hosts(
+        [
+            {
+                **existing_host,
+                "inst_name": "10.0.0.7[华东]",
+                "node_id": existing_host.get("node_id") or "",
+            }
+        ],
+        existing_hosts={(existing_host["ip_addr"], 2): existing_host},
+        operator="system",
+        operation_id=str(GENERATION),
+    )
+
+    update.assert_not_called()
+    assert result["update"] == 0
 
 
 def test_unchanged_host_is_not_written(mocker, existing_host):
@@ -92,6 +112,32 @@ def test_unchanged_host_is_not_written(mocker, existing_host):
     assert result["update"] == 0
     assert result["update_success"] == 0
     assert result["changed_instance_ids"] == []
+
+
+def test_legacy_string_cloud_is_healed_to_int(mocker, existing_host, desired_host):
+    existing = {
+        **existing_host,
+        "cloud": "2",
+        "organization": desired_host["organization"],
+        "os_type": desired_host["os_type"],
+        "node_id": desired_host["node_id"],
+        "inst_name": desired_host["inst_name"],
+    }
+    update = mocker.patch(
+        f"{SERVICE}.InstanceManage.instance_update",
+        return_value={**existing, "cloud": 2},
+    )
+
+    result = NodeMgmtSyncService._persist_hosts(
+        [desired_host],
+        existing_hosts={(existing["ip_addr"], 2): existing},
+        operator="system",
+        operation_id=str(GENERATION),
+    )
+
+    update.assert_called_once()
+    assert update.call_args.kwargs["update_attr"] == {"cloud": 2}
+    assert result["update"] == 1
 
 
 def test_update_failure_is_counted_and_sanitized(mocker, caplog, existing_host, desired_host):
@@ -405,6 +451,7 @@ def test_persist_matches_by_node_id_even_when_ip_cloud_differs(mocker, desired_h
 
     create.assert_not_called()
     update.assert_called_once()
+    assert update.call_args.kwargs["update_attr"]["inst_name"] == "new-name"
     assert result["update_success"] == 1
 
 
@@ -501,6 +548,7 @@ def test_persist_unique_conflict_updates_existing_instead_of_duplicate(mocker, d
     update.assert_called_once()
     assert update.call_args.kwargs["inst_id"] == 44
     assert update.call_args.kwargs["update_attr"]["node_id"] == "node-7"
+    assert "inst_name" not in update.call_args.kwargs["update_attr"]
     assert result["add"] == 0
     assert result["update_success"] == 1
 

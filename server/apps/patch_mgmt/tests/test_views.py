@@ -311,7 +311,7 @@ class TestPatchSourceViewApi:
         assert resp.status_code == status.HTTP_200_OK, resp.data
         source.refresh_from_db()
         assert source.connectivity_status == "unknown"
-        probe.assert_called_once_with(source.id)
+        probe.assert_called_once_with(source.id, 1)
 
     def test_create_api_missing_required_name_returns_400(self, su_client):
         """malformed_input: 缺少必填字段 name"""

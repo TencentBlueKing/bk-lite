@@ -1,7 +1,8 @@
 Switch Sixnet SNMP:
   name: Sixnet (Telegraf)
-  desc: SNMP monitoring template for Sixnet switch. It reports system uptime, interface
-    speed, inbound error packets, and other key metrics
+  desc: SNMP monitoring template for Sixnet SLX industrial Ethernet switches. It reports
+    system uptime, interface traffic via the shared IF-MIB floor, P1 and P2 power-input
+    status, and OK alarm-relay status (IANA PEN 20540).
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -160,6 +161,21 @@ monitor_object_metric:
         the device. A non-normal state signals a power redundancy or hardware fault;
         on devices with redundant PSUs a single failure may not cause an outage but
         removes redundancy and must be remediated promptly.
+    psu1_status:
+      name: PSU1 Status
+      desc: Operational state of Sixnet P1 power input. Native codes are off (0),
+        on (1), and unknown (2). A value other than 1 means the primary power input
+        is lost or the state cannot be determined.
+    psu2_status:
+      name: PSU2 Status
+      desc: Operational state of Sixnet P2 power input. Native codes are off (0),
+        on (1), and unknown (2). A value other than 1 means the redundant power input
+        is lost or the state cannot be determined.
+    ok_relay_status:
+      name: OK Relay Status
+      desc: Operational state of the Sixnet OK alarm relay. Native codes are off (0),
+        on (1), and unknown (2). on means the relay is on the OK side; off or unknown
+        means an alarm condition or an undetermined relay state.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

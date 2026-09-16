@@ -1,6 +1,6 @@
 Transmission RACOM SNMP:
   name: RACOM（Telegraf）
-  desc: 面向 RACOM 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 33555）。
+  desc: 面向 RACOM RAy3 传输设备的 SNMP 监控模板，可采集 CPU 使用率、内存使用率、调制解调器温度、可选射频温度、可选供电电压、可选接收信号强度和运行时长（企业号 PEN 33555）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -24,6 +24,24 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: RACOM RAy3 微波设备的 CPU 使用率，以 0-100 百分比直接上报、不做换算。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
+    memory_usage_percent:
+      name: 内存使用率
+      desc: RACOM RAy3 微波设备的内存使用率，以 0-100 百分比直接上报、不做换算。持续偏高可能表示控制面资源压力或设备服务不稳定。
+    modem_temperature_celsius:
+      name: 调制解调器温度
+      desc: RACOM RAy3 微波设备调制解调器板温度，单位为摄氏度。SNMP 标量以百分之一摄氏度上报，查询侧除以 100。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    radio_temperature_celsius:
+      name: 射频温度
+      desc: RACOM RAy3 微波设备可选射频模块温度，单位为摄氏度。SNMP 标量以百分之一摄氏度上报，查询侧除以 100。部分固件不返回该对象。温度偏高可能表示射频硬件热压力。
+    device_voltage_volts:
+      name: 供电电压
+      desc: RACOM RAy3 微波设备可选供电电压，单位为伏特。SNMP 标量以十分之一伏特上报，查询侧除以 10。偏离额定直流输入可能表示欠压、接线故障或电源异常。
+    rss_dbm:
+      name: 接收信号强度
+      desc: RACOM RAy3 微波链路可选接收信号强度，单位为 dBm。SNMP 标量以十分之一 dBm 上报（例如 -39 表示 -3.9 dBm），查询侧除以 10。RSS 持续下降可能表示路径衰落、天线失准或射频劣化。
     device_cpu_usage:
       name: CPU 使用率
       desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
@@ -47,3 +65,4 @@ monitor_object_metric_group:
     Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
+    Radio: 无线

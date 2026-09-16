@@ -117,6 +117,9 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
             if (item.port !== undefined && item.port !== null && item.port !== '') {
               credential.port = item.port;
             }
+            credential.transport_protocol = String(item.transport_protocol || 'ssh').toLowerCase() === 'telnet'
+              ? 'telnet'
+              : 'ssh';
             return credential;
           }),
           params: {
@@ -142,6 +145,9 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
     ...NETWORK_CONFIG_FILE_FORM_INITIAL_VALUES,
     credentialPool: normalizeCredentialPool(values.credential).map((item) => ({
       ...item,
+      transport_protocol: String(item.transport_protocol || 'ssh').toLowerCase() === 'telnet'
+        ? 'telnet'
+        : 'ssh',
       password: isCopy ? '' : PASSWORD_PLACEHOLDER,
       enable_password: isCopy ? '' : PASSWORD_PLACEHOLDER,
     })),

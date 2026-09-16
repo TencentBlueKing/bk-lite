@@ -1,6 +1,6 @@
 NetworkService Meinberg LANTIME SNMP:
   name: Meinberg LANTIME（Telegraf）
-  desc: 面向 Meinberg LANTIME 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Meinberg LANTIME 网络服务设备的 SNMP 监控模板,可采集 NTP 状态、NTP 层级、内部温度、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -78,6 +78,15 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP 层级
       desc: Spectracom NTP 当前 stratum 层级。
+    network_service_meinberg_ntp_state:
+      name: Meinberg NTP 状态
+      desc: LANTIME NTP 同步状态，统一归一为 1=正常、2=异常。
+    network_service_meinberg_ntp_stratum:
+      name: Meinberg NTP 层级
+      desc: LANTIME 当前 NTP stratum，NG 优先并回退到经典 MIB。
+    network_service_meinberg_temperature:
+      name: Meinberg 温度
+      desc: LANTIME NG 内部温度，单位为摄氏度。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础

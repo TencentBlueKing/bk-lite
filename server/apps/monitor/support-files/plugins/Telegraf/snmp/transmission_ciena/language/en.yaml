@@ -1,7 +1,8 @@
 Transmission Ciena SNMP:
   name: Transmission Ciena SNMP
-  desc: SNMP monitoring template for Ciena transmission device. It reports system
-    uptime, per-port inbound traffic rate, and per-port outbound traffic rate
+  desc: SNMP monitoring template for Ciena CES/SAOS transmission devices. It reports
+    per-slot CPU utilization, chassis memory used, and interface traffic. It does
+    not bind 6500 Packet-Optical.
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -40,9 +41,14 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: CPU utilization of the transmission device reported directly as a 0-100
-        percentage. Sustained high CPU usage can indicate wireless backhaul traffic
-        pressure, control-plane load or abnormal traffic.
+      desc: Per-slot CES/SAOS chassis CPU utilization from cienaCesChassisCPUHealthCurrMeasurement
+        (cpu-Usage), reported directly as a 0-100 percentage. Sustained high CPU usage
+        can indicate control-plane load, forwarding pressure or abnormal traffic.
+    device_memory_used:
+      name: Memory Used
+      desc: CES/SAOS chassis memory current measurement from cienaCesChassisMemoryHealthCurrMeasurement,
+        reported by the device in KB and scaled to bytes. The table has no paired
+        used/total, so memory utilization percent is not derived.
     device_memory_usage:
       name: Memory Usage
       desc: Memory utilization of the transmission device reported directly as a 0-100

@@ -148,6 +148,9 @@ const useIntegrationApi = () => {
       deleteCustomTemplate: async (id: React.Key) => {
         return await del(`/monitor/api/monitor_plugin/${String(id)}/`);
       },
+      restoreBuiltinPlugin: async (id: React.Key) => {
+        return await post(`/monitor/api/monitor_plugin/${String(id)}/restore_builtin/`);
+      },
       getUiTemplateByParams: async (params: {
         collector: string;
         collect_type: string;

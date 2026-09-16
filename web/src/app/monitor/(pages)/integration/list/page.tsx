@@ -5,6 +5,7 @@ import {
   Input,
   Button,
   Tag,
+  Tooltip,
   message,
   Modal,
   Pagination as AntPagination
@@ -64,7 +65,8 @@ const Integration = () => {
     updateMonitorObject,
     createCustomTemplate,
     updateCustomTemplate,
-    deleteCustomTemplate
+    deleteCustomTemplate,
+    restoreBuiltinPlugin
   } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useScreenAwareRouter();
@@ -397,6 +399,28 @@ const Integration = () => {
     setExportDisabled(false);
   };
 
+  const handleRestoreBuiltin = (app: ObjectItem) => {
+    confirm({
+      title: t('monitor.integrations.restoreBuiltin'),
+      content: t('monitor.integrations.restoreBuiltinConfirm'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk() {
+        return restoreBuiltinPlugin(app.id).then(() => {
+          message.success(t('monitor.integrations.restoreBuiltinSuccess'));
+          invalidateMonitorPluginCache(objectId);
+          getPluginList({
+            monitor_object_id: objectId,
+            monitor_object_type: objectType,
+            keyword: searchText,
+            page: pagination.current
+          });
+        });
+      }
+    });
+  };
+
   const buildTemplateActionItems = (app: ObjectItem): MoreActionsDropdownItem[] => [
     {
       key: 'edit',
@@ -524,6 +548,21 @@ const Integration = () => {
                                 app.collect_type ||
                                 '--'}
                             </Tag>
+                            <Tooltip
+                              title={
+                                app.pack_version
+                                  ? t('monitor.integrations.pinnedPackHint', '', {
+                                    version: app.pack_version
+                                  })
+                                  : t('monitor.integrations.builtinPackHint')
+                              }
+                            >
+                              <Tag className="mt-[4px] ml-[6px]">
+                                {app.pack_version
+                                  ? app.pack_version
+                                  : t('monitor.integrations.builtinPack')}
+                              </Tag>
+                            </Tooltip>
                             {app.is_custom && (
                               <Tag className="mt-[4px] ml-[6px]">
                                 {t('monitor.integrations.selfBuilt')}
@@ -537,13 +576,28 @@ const Integration = () => {
                         >
                           {app.display_description || '--'}
                         </p>
-                        {app.is_custom && (
+                        {(app.is_custom || app.pack_version) && (
                           <div
                             className="absolute top-[12px] right-[12px]"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreActionsDropdown
-                              items={buildTemplateActionItems(app)}
+                              items={[
+                                ...(app.pack_version
+                                  ? [
+                                    {
+                                      key: 'restore',
+                                      label: t(
+                                        'monitor.integrations.restoreBuiltin'
+                                      ),
+                                      onClick: () => handleRestoreBuiltin(app)
+                                    }
+                                  ]
+                                  : []),
+                                ...(app.is_custom
+                                  ? buildTemplateActionItems(app)
+                                  : [])
+                              ]}
                               placement="bottomRight"
                               stopPropagation
                             />

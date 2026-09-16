@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_zte",
   "plugin": "Switch ZTE SNMP",
-  "plugin_desc": "ZTE ZXR10-series switch-specific SNMP collection (ZXR10-MIB, IANA PEN 3902). In addition to standard IF-MIB interface metrics, it collects ZTE private OIDs for device health: per-unit CPU utilization (zxr10SystemCpuUtility5m) and memory utilization (zxr10SystemMemUsed, a direct percent-used value). The ZXR10-MIB system table exposes no temperature/fan/power-supply sensors (those live in ZTE-AN-ENVMON-MIB for the access-node/OLT line, not the ZXR10 switch), so those are not collected (N/A). Supported brands/models — ZTE ZXR10-series switches.",
+  "plugin_desc": "ZTE ZXR10-series switch-specific SNMP collection (ZXR10-MIB / POWERFANS-MIB, IANA PEN 3902). In addition to standard IF-MIB interface metrics, it collects ZTE private OIDs for device health: per-unit CPU utilization (zxr10SystemCpuUtility5m), system memory (zxr10SystemMemSize bytes + zxr10SystemMemUsed octets, utilization computed as used/total), slot temperature (zxr10SlotTemperature), fan state (POWERFANS fanStat) and power-supply state (POWERFANS powerStat). Fan raw codes (0=online, 1=offline) and PSU raw codes (0=work, 1=online, 2=offline) are normalized via telegraf processors.enum to 1=healthy / 2=fault. The newer ZXR10-SYSTEM-HARDWARE fan/power objects under 3902.3.6002 overlap POWERFANS and are not collected, to avoid duplicate alerts. Supported brands/models — ZTE ZXR10-series switches.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_zte'}) by (instance_id)",
   "name": "Switch",
@@ -16,7 +16,10 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_usage"
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
@@ -39,8 +42,44 @@
     },
     {
       "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total size in bytes of the ZTE ZXR10 unit memory (ZXR10-MIB zxr10SystemMemSize). Together with the used octets it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of octets currently in use by the ZTE ZXR10 unit memory (ZXR10-MIB zxr10SystemMemUsed). It is an absolute used-byte value, not a percent-used reading. It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+    },
+    {
+      "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='switch', __$labels__}",
+      "query": "device_memory_used{instance_type='switch', __$labels__} / device_memory_total{instance_type='switch', __$labels__} * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -53,7 +92,61 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports overall memory utilization of the ZTE ZXR10 device, read directly as a percent-used value (ZXR10-MIB zxr10SystemMemUsed). High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+      "description": "This metric reports overall memory utilization of the ZTE ZXR10 device, computed as used / total * 100 from zxr10SystemMemUsed (octets) and zxr10SystemMemSize (bytes). High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the board temperature in degrees Celsius of each ZTE ZXR10 slot (ZXR10-MIB zxr10SlotTemperature). Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each ZTE ZXR10 cooling fan (POWERFANS-MIB fanStat, raw 0=online / 1=offline), normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each ZTE ZXR10 power supply (POWERFANS-MIB powerStat, raw 0=work / 1=online / 2=offline), normalized via telegraf processors.enum so that 1 = healthy (work or online) and 2 = fault. A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly."
     },
     {
       "metric_group": "Traffic",

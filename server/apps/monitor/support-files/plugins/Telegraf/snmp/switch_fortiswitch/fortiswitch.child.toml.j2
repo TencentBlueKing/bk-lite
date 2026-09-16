@@ -34,9 +34,13 @@
         is_tag = true
     # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
         name = "interface"
         inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
@@ -52,7 +56,7 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.106.4.1.2.0"
+        oid = "1.3.6.1.4.1.12356.106.4.1.2"
         name = "usage"
     # ---- FortiSwitch 内存 (fsSysMemUsage 已用 + fsSysMemCapacity 总量, KB*1024；used/total) ----
     # 待现网核验：fsSysMemUsage .12356.106.4.1.3.0(已用KB) / fsSysMemCapacity .4.1.4.0(总量KB)；snmprec used=323484 total=769604。
@@ -60,9 +64,9 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.106.4.1.3.0"
+        oid = "1.3.6.1.4.1.12356.106.4.1.3"
         name = "used"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.106.4.1.4.0"
+        oid = "1.3.6.1.4.1.12356.106.4.1.4"
         name = "total"
 # ---- 温度/风扇/电源:FortiSwitch 仅经 ENTITY-SENSOR(按 entPhySensorType 行级过滤,inputs.snmp 不能过滤)暴露 → N/A。CPU+内存(used/total)干净可采。----

@@ -178,32 +178,32 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   ]);
 
   return (
-    <div className={`flex w-full h-full text-sm ${sideMenuStyle.sideMenuLayout} ${(intro && topSection) ? 'grow' : 'flex-col'}`}>
+    <div className={`flex h-full min-h-0 min-w-0 w-full text-sm ${sideMenuStyle.sideMenuLayout} ${(intro && topSection) ? 'grow' : 'flex-col'}`}>
       {layoutType === 'sideMenu' ? (
         <>
           {(!intro && topSection) && (
-            <div className="mb-4 w-full rounded-md">
+            <div className="mb-4 w-full shrink-0 rounded-md">
               {topSection}
             </div>
           )}
-          <div className="w-full flex grow flex-1 h-full">
+          <div className="flex h-full min-h-0 min-w-0 w-full grow flex-1 overflow-hidden">
             {showSideMenu && menuItems.length > 0 && !screenMode && (
               sideMenuContent
             )}
-            <section className="flex-1 flex flex-col overflow-hidden">
+            <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {(intro && topSection) && (
-                <div className={`mb-4 w-full rounded-md ${sideMenuStyle.sectionContainer}`}>
+                <div className={`mb-4 w-full shrink-0 rounded-md ${sideMenuStyle.sectionContainer}`}>
                   {topSection}
                 </div>
               )}
-              <div className={`p-4 flex-1 rounded-md overflow-auto ${sideMenuStyle.sectionContainer} ${sideMenuStyle.sectionContext}`}>
+              <div className={`flex-1 min-h-0 min-w-0 overflow-auto rounded-md p-4 ${sideMenuStyle.sectionContainer} ${sideMenuStyle.sectionContext}`}>
                 {children}
               </div>
             </section>
           </div>
         </>
       ) : (
-        <div className={`flex flex-col w-full h-full ${sideMenuStyle.segmented}`}>
+        <div className={`flex h-full min-h-0 min-w-0 w-full flex-col ${sideMenuStyle.segmented}`}>
           {menuItems.length > 0 && !screenMode ? (
             <>
               <div className={sideMenuStyle.segmentedNav}>
@@ -214,12 +214,12 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
                   onChange={handleSegmentChange}
                 />
               </div>
-              <div className="flex-1 pt-4 rounded-md overflow-auto">
+              <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden rounded-lg">
                 {children}
               </div>
             </>
           ) : (
-            <div className="flex-1 rounded-md overflow-auto">
+            <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden rounded-md">
               {children}
             </div>
           )}

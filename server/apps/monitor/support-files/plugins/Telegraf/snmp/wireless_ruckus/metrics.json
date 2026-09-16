@@ -1,0 +1,114 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ruckus_wireless",
+  "plugin": "Wireless Ruckus SNMP",
+  "plugin_desc": "Ruckus wireless controller SNMP collection for ZoneDirector under Ruckus PEN 25053. It collects RUCKUS-SYSTEM CPU and memory utilization, plus ZoneDirector associated AP count, registered AP count, client station count, licensed AP count, and ZoneDirector CPU and memory. SmartZone/SCG and Unleashed use different OID trees and must not share this instance. Interface traffic comes from the built-in IF-MIB table. Per-AP tables are not collected.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_ruckus_wireless'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the wireless controller since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Ruckus platform (RUCKUS-SYSTEM ruckusSystemCPUUtil and ZoneDirector ruckusZDSystemCPUUtil), reported directly as a 0-100 percentage. Sustained high CPU usage can indicate heavy client-association load or control-plane pressure affecting roaming and management responsiveness."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Ruckus platform (RUCKUS-SYSTEM ruckusSystemMemoryUtil and ZoneDirector ruckusZDSystemMemoryUtil), reported directly as a 0-100 percentage. High memory pressure can cause the controller to drop client associations or restart services."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_ap_count",
+      "query": "avg(wireless_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Associated AP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of access points associated with the ZoneDirector controller (ruckusZDSystemNumAP). A sudden drop can indicate AP connectivity loss or a controller failover."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_registered_ap_count",
+      "query": "avg(wireless_registered_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Registered AP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of access points currently registered with the ZoneDirector controller (ruckusZDSystemNumRegisteredAP). Compare with associated and licensed AP counts to spot registration gaps."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_client_count",
+      "query": "avg(wireless_client_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Client Station Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of wireless client stations currently associated through the ZoneDirector controller (ruckusZDSystemNumSta). Rapid growth can correlate with CPU and memory pressure on the controller."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_licensed_ap_count",
+      "query": "avg(wireless_licensed_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Licensed AP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of access points licensed on the ZoneDirector controller (ruckusZDSystemLicensedAPs). When associated APs approach this limit, additional licenses may be required."
+    }
+  ]
+}

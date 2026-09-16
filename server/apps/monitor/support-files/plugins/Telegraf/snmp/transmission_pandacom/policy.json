@@ -1,5 +1,76 @@
 {
   "object": "Transmission",
   "plugin": "Transmission Pan Dacom SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Pan Dacom传输设备NMS板卡温度过高",
+      "alert_name": "传输设备${resource_name} NMS板卡温度过高",
+      "description": "监控光传输设备 NMS 板卡温度（nmATemperature，摄氏度）。持续高于阈值时触发告警，提示散热异常、环境温度过高或硬件过载。",
+      "metric_name": "temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Pan Dacom传输设备电源1故障",
+      "alert_name": "传输设备${resource_name} 电源1故障",
+      "description": "监控机箱电源1状态（nmPSU1Status）。取值为 fail(1) 时触发告警；notInstalled(0) 表示槽位未使用，pass(3) 为正常。",
+      "metric_name": "psu1_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Pan Dacom传输设备电源2故障",
+      "alert_name": "传输设备${resource_name} 电源2故障",
+      "description": "监控机箱电源2状态（nmPSU2Status）。取值为 fail(1) 时触发告警；notInstalled(0) 表示槽位未使用，pass(3) 为正常。",
+      "metric_name": "psu2_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Pan Dacom传输设备风扇故障",
+      "alert_name": "传输设备${resource_name} 风扇故障",
+      "description": "监控机箱风扇状态（nmFanState）。取值为 fail(4) 时触发告警；notAvailable(0) 与 notInstalled(5) 表示该对象不适用。",
+      "metric_name": "fan_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 4,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

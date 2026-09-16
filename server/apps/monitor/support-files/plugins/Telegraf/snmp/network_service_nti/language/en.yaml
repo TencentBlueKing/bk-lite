@@ -1,7 +1,8 @@
 NetworkService NTI ENVIROMUX SNMP:
   name: NTI ENVIROMUX (Telegraf)
-  desc: SNMP monitoring template for NTI ENVIROMUX network service device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for NTI ENVIROMUX network service device. It reports internal
+    temperature, humidity, per-port inbound traffic rate, per-port outbound traffic rate,
+    and system uptime
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -100,6 +101,12 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    network_service_nti_temperature:
+      name: NTI Temperature
+      desc: ENVIROMUX internal temperature reading.
+    network_service_nti_humidity:
+      name: NTI Humidity
+      desc: ENVIROMUX internal relative humidity percent.
 monitor_object_metric_group:
   NetworkService:
     Base: Base

@@ -32,18 +32,67 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # PANDUIT-MIB G5 subtree under PEN 19536.10. Do not invent CPU% or memory.
+    # Do not collect HID, door, dry-contact or rack access-control tables.
+    # Read pdug5TemperatureScale first. Values are degrees (not tenths).
+    # 1=Celsius, 2=Fahrenheit; query converts Fahrenheit to Celsius.
+    # Optional pdug5TemperatureCount / pdug5HumidityCount (max 6 per probe).
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "env"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.19536.10.1.4.1.1.1"
+        name = "temperature_units"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19536.10.1.4.1.1.2"
+        name = "temperature_count"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19536.10.1.4.1.1.3"
+        name = "humidity_count"
+    # Optional pdug5OutletCount from pdug5IdentTable (per PDU).
+    [[inputs.snmp.table]]
+        name = "pdu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19536.10.1.1.2.1.13"
+        name = "outlet_count"
+    # pdug5OutletName plus pdug5OutletCurrent (0.01 A, /100 in query).
+    [[inputs.snmp.table]]
+        name = "pdu_outlet"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19536.10.1.5.1.1.2"
+        name = "outlet"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.19536.10.1.5.1.1.5"
+        name = "current_amps"
+    # pdug5TemperatureName plus pdug5TemperatureValue (degrees). Empty tables
+    # yield no rows. Query uses pdug5TemperatureScale to convert to Celsius.
+    [[inputs.snmp.table]]
+        name = "env_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.19536.10.1.4.2.1.2"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19536.10.1.4.2.1.4"
+        name = "celsius"
+    # pdug5HumidityName plus pdug5HumidityValue (%RH). Empty tables yield no rows.
+    [[inputs.snmp.table]]
+        name = "env_humidity"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19536.10.1.4.3.1.2"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19536.10.1.4.3.1.4"
+        name = "percent"

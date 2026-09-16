@@ -1,6 +1,6 @@
 Switch Phoenix Contact SNMP:
   name: Phoenix Contact（Telegraf）
-  desc: 面向 Phoenix Contact 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标（企业号 PEN 4346）。
+  desc: 面向 Phoenix Contact FL SWITCH 工业以太网交换机的 SNMP 监控模板，可采集运行时长、接口流量、冗余电源状态、机箱温度、固件运行状态与告警触点状态（企业号 PEN 4346）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -92,6 +92,15 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
+    power_status:
+      name: 电源状态
+      desc: 该指标报告 Phoenix Contact FL SWITCH 冗余电源输入状态。原始码为未知(1)、电源1正常(3)、电源2正常(4)、两路均正常(5)。取值不是 5 表示未知状态或任一路失电。
+    firmware_oper_status:
+      name: 固件运行状态
+      desc: 该指标报告 Phoenix Contact FL SWITCH 固件运行状态。原始码为 other(1)、ok(2)、notOk(3)。取值不是 2 表示固件未处于正常运行模式。
+    alarm_contact_status:
+      name: 告警触点状态
+      desc: 该指标报告 Phoenix Contact FL SWITCH 告警触点状态。原始码为打开/告警(1)、闭合/正常(2)。触点打开表示已配置的告警条件被触发。
     device_fan_speed:
       name: 风扇转速
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。

@@ -54,6 +54,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_asterfusion",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_aruba",
       "capabilities": [
         "uptime",
@@ -248,6 +258,9 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "temperature",
+        "fan",
+        "psu",
         "traffic"
       ]
     },
@@ -575,6 +588,18 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cisco_router",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_cradlepoint",
       "capabilities": [
         "uptime",
@@ -719,6 +744,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "cpu",
         "memory",
         "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_cisco_asa",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic",
+        "session"
       ]
     },
     {

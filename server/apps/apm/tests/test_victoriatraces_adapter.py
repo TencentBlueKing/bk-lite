@@ -1,3 +1,4 @@
+import base64
 import json
 from datetime import timedelta
 from logging import LogRecord
@@ -8,7 +9,13 @@ import requests
 from django.utils import timezone
 
 from apps.apm.adapters import TelemetryQueryTooLarge, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
-from apps.apm.adapters.victoriatraces import MAX_RESPONSE_BYTES, RESPONSE_TOO_LARGE, _pack_trace_ids
+from apps.apm.adapters.victoriatraces import (
+    MAX_RESPONSE_BYTES,
+    RESPONSE_TOO_LARGE,
+    _decode_cursor,
+    _encode_cursor,
+    _pack_trace_ids,
+)
 from apps.apm.services.contracts import (
     InstanceActivityQuery,
     MetricDataState,
@@ -62,6 +69,19 @@ def _oversized_response():
     response.raise_for_status.return_value = None
     response.iter_content.return_value = []
     return response
+
+
+def _overflow_cursor() -> str:
+    return base64.urlsafe_b64encode(b"9" * 80).decode().rstrip("=")
+
+
+def test_decode_cursor_maps_overflowing_timestamp_to_value_error():
+    with pytest.raises(ValueError, match="Trace 游标无效"):
+        _decode_cursor(_overflow_cursor())
+
+    now = timezone.now()
+    decoded = _decode_cursor(_encode_cursor(now))
+    assert now - decoded < timedelta(milliseconds=2)
 
 
 def test_search_builds_controlled_resource_filters_and_maps_logsql_spans():

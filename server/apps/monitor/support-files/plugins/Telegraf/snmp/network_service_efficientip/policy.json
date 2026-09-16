@@ -1,5 +1,126 @@
 {
   "object": "NetworkService",
   "plugin": "NetworkService EfficientIP SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "EfficientIP网络服务CPU负载过高",
+      "alert_name": "网络服务${resource_name} CPU 负载过高",
+      "description": "监控 EfficientIP DDI 设备的每核 CPU load average（eipHwCpuLoadInt，查询已除以 100），当持续高于阈值时触发告警。",
+      "metric_name": "cpu_load",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 4,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "EfficientIP网络服务内存使用过高",
+      "alert_name": "网络服务${resource_name} 内存使用过高",
+      "description": "监控 EfficientIP DDI 设备的已用物理内存百分比（eipHwMemUsed），当持续高于阈值时触发告警。",
+      "metric_name": "memory_used",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "EfficientIP网络服务温度过高",
+      "alert_name": "网络服务${resource_name} CPU 温度过高",
+      "description": "监控 EfficientIP DDI 设备的 CPU 温度（eipHwTempCpu），当温度持续偏高时触发告警。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "EfficientIP网络服务电源异常",
+      "alert_name": "网络服务${resource_name} 电源状态异常",
+      "description": "监控 EfficientIP DDI 设备电源 1 状态（eipHwPsu1Status，归一后 1=正常，>1=异常）。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "EfficientIP DNS服务异常",
+      "alert_name": "网络服务${resource_name} DNS 服务异常",
+      "description": "监控 EfficientIP DNS 服务状态（eipSvcDnsStatus），非正常状态时触发告警。",
+      "metric_name": "network_service_dns_service_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "EfficientIP DHCP服务异常",
+      "alert_name": "网络服务${resource_name} DHCP 服务异常",
+      "description": "监控 EfficientIP DHCP 服务状态（eipSvcDhcpStatus），非正常状态时触发告警。",
+      "metric_name": "network_service_dhcp_service_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

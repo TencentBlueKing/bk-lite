@@ -33,11 +33,19 @@ def first_enum(value):
 
 
 def as_id_list(value) -> list:
+    """用户/组织类 ID：与资产详情一致，落库为整数列表。"""
     if value in (None, ""):
         return []
-    if isinstance(value, list):
-        return [str(item) for item in value if item not in (None, "")]
-    return [str(value)]
+    items = value if isinstance(value, list) else [value]
+    result = []
+    for item in items:
+        if item in (None, ""):
+            continue
+        try:
+            result.append(int(item))
+        except (TypeError, ValueError) as exc:
+            raise IpamEditError("使用人必须是用户 ID") from exc
+    return result
 
 
 def enum_list(value, default=None) -> list | None:

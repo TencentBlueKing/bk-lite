@@ -60,10 +60,6 @@ def _grant_add(user):
     return _grant_menu(user, "credential-Add", "credential-operator")
 
 
-def _grant_view(user):
-    return _grant_menu(user, "credential-View", "credential-viewer")
-
-
 @pytest.mark.django_db
 def test_list_omits_password_and_disabled_and_cross_org_is_empty():
     typ = _sql_type()
@@ -81,9 +77,6 @@ def test_list_omits_password_and_disabled_and_cross_org_is_empty():
     )
     set_disabled(child_cred.credential_id, True)
 
-    denied = credential_nats.list_credentials(_ctx(actor, child.id))
-    assert denied == {"result": False, "message": "forbidden"}
-    _grant_view(actor)
     missing_category = credential_nats.list_credentials(_ctx(actor, child.id), type=typ.key)
     assert missing_category == {"result": False, "message": "invalid"}
 
@@ -100,21 +93,23 @@ def test_list_omits_password_and_disabled_and_cross_org_is_empty():
 
 
 @pytest.mark.django_db
-def test_resolve_returns_plaintext_and_disabled_fails():
+def test_resolve_does_not_require_view_and_disabled_or_out_of_scope_fails():
     typ = _sql_type()
     owner = _group("nats-resolve")
+    other = _group("nats-resolve-other")
     actor = _user("nats-resolve", [owner])
+    outsider = _user("nats-resolve-out", [other])
     created = create_credential(
         {"name": "DB", "type": typ.key, "group_id": owner.id, "fields": {"username": "root", "password": SECRET}},
         actor={"current_team": owner.id, "group_list": [owner.id], "is_superuser": True, "username": actor.username, "domain": actor.domain},
     )
 
-    denied = credential_nats.resolve_credential(_ctx(actor, owner.id), created.credential_id)
-    assert denied == {"result": False, "message": "forbidden"}
-    _grant_view(actor)
     resolved = credential_nats.resolve_credential(_ctx(actor, owner.id), created.credential_id)
     assert resolved["result"] is True
     assert resolved["data"]["fields"]["password"] == SECRET
+
+    denied = credential_nats.resolve_credential(_ctx(outsider, other.id), created.credential_id)
+    assert denied == {"result": False, "message": "forbidden"}
 
     set_disabled(created.credential_id, True)
     disabled = credential_nats.resolve_credential(_ctx(actor, owner.id), created.credential_id)

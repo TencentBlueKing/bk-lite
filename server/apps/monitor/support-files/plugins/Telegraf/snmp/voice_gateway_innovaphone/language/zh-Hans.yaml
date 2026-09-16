@@ -1,6 +1,6 @@
 VoiceGateway Innovaphone SNMP:
   name: Innovaphone（Telegraf）
-  desc: 面向 Innovaphone 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Innovaphone 语音网关的 SNMP 监控模板,可采集 活动 B 通道数、配置 B 通道数、自启动以来呼叫数、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 6666）。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -30,9 +30,19 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
+    active_b_channels:
+      name: 活动 B 通道数
+      desc: 该 ISDN L3 实例当前占用的 B 通道数（l3NumBchanActive）。维度 l3Label 为 L3 实例名。该指标表示呼叫占用，不是主机健康。
+    configured_b_channels:
+      name: 配置 B 通道数
+      desc: 该 ISDN L3 实例已配置的 B 通道数（l3NumBchan）。与活动 B 通道数对比可判断剩余容量。
+    calls_since_boot:
+      name: 自启动以来呼叫数
+      desc: 该 ISDN L3 实例自上次启动以来累计的呼叫次数（l3CallsBoot）。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
     Temperature: 温度
     Hardware Status: 硬件状态
+    Voice: 语音

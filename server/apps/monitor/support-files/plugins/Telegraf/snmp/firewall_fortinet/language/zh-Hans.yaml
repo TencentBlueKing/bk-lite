@@ -1,6 +1,6 @@
 Firewall Fortinet SNMP:
   name: Fortinet（Telegraf）
-  desc: 面向 Fortinet 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  desc: 面向 Fortinet 防火墙的 SNMP 监控模板,可采集运行时长、CPU 使用率、内存使用率、会话建立速率等主要指标。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -91,6 +91,9 @@ monitor_object_metric:
     firewall_active_sessions:
       name: IPv4 活动会话数
       desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。
+    firewall_session_rate:
+      name: 会话建立速率
+      desc: 该指标报告 FortiGate 防火墙过去 1 分钟的平均会话建立速率，单位为会话每秒（FORTINET-FORTIGATE-MIB fgSysSesRate1）。突然升高可能意味着连接洪泛。
     firewall_vpn_tunnels:
       name: 活动 IPsec VPN 隧道数
       desc: 该指标报告 FortiGate 防火墙当前活动的 IPsec VPN 隧道数量（FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount）。数量骤降可能意味着

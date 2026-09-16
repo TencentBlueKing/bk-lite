@@ -17,12 +17,19 @@
 """
 
 import gzip
+import io
 from dataclasses import dataclass, field
 from typing import List, Optional
 from xml.etree import ElementTree as ET
 
 import requests
 from apps.core.logger import patch_mgmt_logger as logger
+from apps.patch_mgmt.config import (
+    LINUX_REPO_SYNC_MAX_ADVISORIES,
+    LINUX_REPO_SYNC_MAX_COMPRESSED_BYTES,
+    LINUX_REPO_SYNC_MAX_PACKAGES_PER_ADVISORY,
+    LINUX_REPO_SYNC_MAX_UNCOMPRESSED_BYTES,
+)
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.utils.architecture import (
@@ -32,6 +39,7 @@ from apps.patch_mgmt.utils.architecture import (
 )
 
 FETCH_TIMEOUT = (5, 30)  # (连接, 读取) 秒
+_CHUNK_SIZE = 64 * 1024
 
 
 class RepoSyncError(Exception):
@@ -64,17 +72,58 @@ def _build_proxies(source: PatchSource) -> Optional[dict]:
     return None
 
 
+def _local_name(tag: str) -> str:
+    if tag.startswith("{") and "}" in tag:
+        return tag.rsplit("}", 1)[-1]
+    return tag
+
+
+class _BoundedReader:
+    """按解压后累计字节截断的只读流，避免 gzip.decompress 一次展开。"""
+
+    def __init__(self, inner, max_bytes: int, message: str):
+        self._inner = inner
+        self._max_bytes = max_bytes
+        self._message = message
+        self._total = 0
+
+    def read(self, size: int = -1) -> bytes:
+        data = self._inner.read(size)
+        if data:
+            self._total += len(data)
+            if self._total > self._max_bytes:
+                raise RepoSyncError(self._message)
+        return data
+
+
+def _read_bounded_content(resp, max_bytes: int, url: str) -> bytes:
+    content = bytearray()
+    for chunk in resp.iter_content(chunk_size=_CHUNK_SIZE):
+        if not chunk:
+            continue
+        content.extend(chunk)
+        if len(content) > max_bytes:
+            raise RepoSyncError(f"拉取失败 {url}: 元数据压缩体积超过上限 {max_bytes} 字节")
+    return bytes(content)
+
+
 def _get(url: str, source: PatchSource) -> bytes:
     try:
         resp = requests.get(
             url,
             timeout=FETCH_TIMEOUT,
             proxies=_build_proxies(source),
+            stream=True,
         )
-        resp.raise_for_status()
-        return resp.content
     except requests.RequestException as exc:
-        raise RepoSyncError(f"拉取失败 {url}: {exc}")
+        raise RepoSyncError(f"拉取失败 {url}: {exc}") from exc
+    try:
+        resp.raise_for_status()
+        return _read_bounded_content(resp, LINUX_REPO_SYNC_MAX_COMPRESSED_BYTES, url)
+    except requests.RequestException as exc:
+        raise RepoSyncError(f"拉取失败 {url}: {exc}") from exc
+    finally:
+        resp.close()
 
 
 def _find_updateinfo_href(repomd_bytes: bytes) -> Optional[str]:
@@ -91,57 +140,70 @@ def _find_updateinfo_href(repomd_bytes: bytes) -> Optional[str]:
     return None
 
 
-def _parse_updateinfo(xml_bytes: bytes) -> List[ParsedAdvisory]:
-    try:
-        root = ET.fromstring(xml_bytes)
-    except ET.ParseError as exc:
-        raise RepoSyncError(f"updateinfo 解析失败: {exc}")
+def _parse_one_update(upd) -> Optional[ParsedAdvisory]:
+    adv_id = (upd.findtext("{*}id") or "").strip()
+    if not adv_id:
+        return None
+    title = (upd.findtext("{*}title") or "").strip() or adv_id
+    severity = (upd.findtext("{*}severity") or "").strip()
+    if severity.lower() == "none":
+        severity = ""
 
+    cve_list: List[str] = []
+    refs = upd.find("{*}references")
+    if refs is not None:
+        for ref in refs.findall("{*}reference"):
+            if (ref.get("type") or "").lower() == "cve":
+                cid = ref.get("id") or ref.get("title")
+                if cid:
+                    cve_list.append(cid)
+
+    packages: List[ParsedPackage] = []
+    max_packages = LINUX_REPO_SYNC_MAX_PACKAGES_PER_ADVISORY
+    pkglist = upd.find("{*}pkglist")
+    if pkglist is not None:
+        for col in pkglist.findall("{*}collection"):
+            for pkg in col.findall("{*}package"):
+                if len(packages) >= max_packages:
+                    raise RepoSyncError(f"单条公告软件包数量超过上限 {max_packages}")
+                ver = pkg.get("version", "")
+                rel = pkg.get("release", "")
+                packages.append(ParsedPackage(
+                    name=pkg.get("name", ""),
+                    version=f"{ver}-{rel}".strip("-"),
+                    arch=pkg.get("arch", ""),
+                ))
+
+    issued_el = upd.find("{*}issued")
+    issued = issued_el.get("date") if issued_el is not None else None
+
+    return ParsedAdvisory(
+        advisory_id=adv_id,
+        title=title,
+        adv_type=upd.get("type", ""),
+        severity=severity,
+        cve_list=cve_list,
+        packages=packages,
+        issued=issued,
+    )
+
+
+def _parse_updateinfo(xml_file) -> List[ParsedAdvisory]:
     advisories: List[ParsedAdvisory] = []
-    for upd in root.findall("{*}update"):
-        adv_id = (upd.findtext("{*}id") or "").strip()
-        if not adv_id:
-            continue
-        title = (upd.findtext("{*}title") or "").strip() or adv_id
-        severity = (upd.findtext("{*}severity") or "").strip()
-        if severity.lower() == "none":
-            severity = ""
-
-        cve_list: List[str] = []
-        refs = upd.find("{*}references")
-        if refs is not None:
-            for ref in refs.findall("{*}reference"):
-                if (ref.get("type") or "").lower() == "cve":
-                    cid = ref.get("id") or ref.get("title")
-                    if cid:
-                        cve_list.append(cid)
-
-        packages: List[ParsedPackage] = []
-        pkglist = upd.find("{*}pkglist")
-        if pkglist is not None:
-            for col in pkglist.findall("{*}collection"):
-                for pkg in col.findall("{*}package"):
-                    ver = pkg.get("version", "")
-                    rel = pkg.get("release", "")
-                    packages.append(ParsedPackage(
-                        name=pkg.get("name", ""),
-                        version=f"{ver}-{rel}".strip("-"),
-                        arch=pkg.get("arch", ""),
-                    ))
-
-        issued_el = upd.find("{*}issued")
-        issued = issued_el.get("date") if issued_el is not None else None
-
-        advisories.append(ParsedAdvisory(
-            advisory_id=adv_id,
-            title=title,
-            adv_type=upd.get("type", ""),
-            severity=severity,
-            cve_list=cve_list,
-            packages=packages,
-            issued=issued,
-        ))
-
+    max_advisories = LINUX_REPO_SYNC_MAX_ADVISORIES
+    try:
+        for _event, elem in ET.iterparse(xml_file, events=("end",)):
+            if _local_name(elem.tag) != "update":
+                continue
+            advisory = _parse_one_update(elem)
+            elem.clear()
+            if advisory is None:
+                continue
+            if len(advisories) >= max_advisories:
+                raise RepoSyncError(f"安全公告数量超过上限 {max_advisories}")
+            advisories.append(advisory)
+    except ET.ParseError as exc:
+        raise RepoSyncError(f"updateinfo 解析失败: {exc}") from exc
     return advisories
 
 
@@ -176,12 +238,23 @@ def fetch_advisories(source: PatchSource) -> List[ParsedAdvisory]:
         return []
 
     data = _get(f"{base}/{href}", source)
-    if href.endswith(".gz"):
-        try:
-            data = gzip.decompress(data)
-        except OSError as exc:
-            raise RepoSyncError(f"updateinfo 解压失败: {exc}")
-    parsed_advisories = _parse_updateinfo(data)
+    max_uncompressed = LINUX_REPO_SYNC_MAX_UNCOMPRESSED_BYTES
+    try:
+        if href.endswith(".gz"):
+            xml_source = _BoundedReader(
+                gzip.GzipFile(fileobj=io.BytesIO(data)),
+                max_uncompressed,
+                f"元数据解压体积超过上限 {max_uncompressed} 字节",
+            )
+        else:
+            if len(data) > max_uncompressed:
+                raise RepoSyncError(f"元数据解压体积超过上限 {max_uncompressed} 字节")
+            xml_source = io.BytesIO(data)
+        parsed_advisories = _parse_updateinfo(xml_source)
+    except RepoSyncError:
+        raise
+    except (OSError, EOFError) as exc:
+        raise RepoSyncError(f"updateinfo 解压失败: {exc}") from exc
     canonical_arch = normalize_architecture(source.arch, default=X86_64)
     advisories = []
     for advisory in parsed_advisories:

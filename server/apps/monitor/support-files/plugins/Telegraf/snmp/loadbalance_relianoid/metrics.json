@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_relianoid",
   "plugin": "Loadbalance RELIANOID SNMP",
-  "plugin_desc": "RELIANOID load balancer SNMP child template (enterprise 61269). The currently verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific scalar device-health gauges are confirmed for CPU, memory, temperature, fan, power state or current connections. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Loadbalance SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/loadbalance metric model while this plugin provides the RELIANOID collect_type, UI and Telegraf child template. Supported brands/models — RELIANOID ADC and load-balancing appliances.",
+  "plugin_desc": "RELIANOID load balancer SNMP child template (enterprise 61269). RELIANOID appliances do not expose CPU or memory scalars under private enterprise 61269; health is collected from UCD-SNMP (enterprise 2021). CPU utilization is 100 minus ssCpuIdle, or ssCpuUser plus ssCpuSystem when idle is absent. Memory utilization is derived from memTotalReal and memAvailReal (kB). Optional 1/5/15-minute load averages (laLoad) are collected when present. noidHostname under enterprise 61269 is identity only. Interface traffic stays on the existing IF-MIB 64-bit HC chassis; error counters and ifOperStatus are not expanded. Temperature, fan, power and current connections remain N/A. Supported brands/models — RELIANOID ADC and load-balancing appliances.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_relianoid'}) by (instance_id)",
   "name": "Loadbalance",
@@ -14,9 +14,128 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='loadbalance', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id) or (100 - avg(device_cpu_idle{instance_type='loadbalance', __$labels__}) by (instance_id)) or (avg(device_cpu_user{instance_type='loadbalance', __$labels__}) by (instance_id) + avg(device_cpu_system{instance_type='loadbalance', __$labels__}) by (instance_id))",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilization of the RELIANOID load balancer from UCD-SNMP ssCpuIdle (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when idle is absent."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='loadbalance', __$labels__}*1024",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total real memory of the RELIANOID load balancer (UCD-SNMP memTotalReal, reported in kB and converted to bytes)."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='loadbalance', __$labels__}*1024",
+      "display_name": "Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free real memory of the RELIANOID load balancer (UCD-SNMP memAvailReal, reported in kB and converted to bytes)."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_used",
+      "query": "(device_memory_total{instance_type='loadbalance', __$labels__} - device_memory_free{instance_type='loadbalance', __$labels__})*1024",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used real memory of the RELIANOID load balancer, derived as memTotalReal minus memAvailReal and converted from kB to bytes."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_usage",
+      "query": "100 * (device_memory_total{instance_type='loadbalance', __$labels__} - device_memory_free{instance_type='loadbalance', __$labels__}) / device_memory_total{instance_type='loadbalance', __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Real memory utilization of the RELIANOID load balancer, derived as (memTotalReal - memAvailReal) / memTotalReal * 100."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_load1",
+      "query": "avg(device_load1{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Load Average (1m)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional 1-minute load average of the RELIANOID load balancer (UCD-SNMP laLoad.1)."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_load5",
+      "query": "avg(device_load5{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Load Average (5m)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional 5-minute load average of the RELIANOID load balancer (UCD-SNMP laLoad.2)."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_load15",
+      "query": "avg(device_load15{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Load Average (15m)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional 15-minute load average of the RELIANOID load balancer (UCD-SNMP laLoad.3)."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -51,20 +170,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
-    },
-    {
-      "metric_group": "Base",
-      "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='loadbalance', __$labels__}/100) by (instance_id)",
-      "display_name": "System Uptime",
-      "data_type": "Number",
-      "unit": "s",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     }
   ]
 }

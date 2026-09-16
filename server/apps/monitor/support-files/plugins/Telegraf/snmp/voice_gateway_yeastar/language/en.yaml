@@ -1,7 +1,8 @@
 VoiceGateway Yeastar SNMP:
   name: Yeastar (Telegraf)
-  desc: SNMP monitoring template for Yeastar voice gateway. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Yeastar voice gateway. It reports CPU utilization,
+    memory utilization, concurrent calls, local storage usage, telephony engine status,
+    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:
@@ -46,9 +47,36 @@ monitor_object_metric:
       name: PSU State
       desc: Voice gateway power-source state normalized so 1 means healthy and 2 means
         fault.
+    cpu_usage_percent:
+      name: CPU Usage
+      desc: CPU utilization of the Yeastar voice gateway, parsed from a percent text
+        scalar to a 0-100 gauge. Sustained high CPU usage can indicate call-processing
+        pressure or abnormal control-plane load.
+    memory_usage_percent:
+      name: Memory Usage
+      desc: Memory utilization of the Yeastar voice gateway, parsed from a percent
+        text scalar to a 0-100 gauge. Sustained high memory usage may indicate resource
+        pressure or unstable services.
+    local_storage_usage_percent:
+      name: Local Storage Usage
+      desc: Local storage utilization of the Yeastar voice gateway, parsed from a
+        percent text scalar to a 0-100 gauge. High usage can exhaust recording or
+        system storage.
+    concurrent_calls:
+      name: Concurrent Calls
+      desc: Number of concurrent calls on the Yeastar voice gateway. Use this gauge
+        to watch voice capacity against the licensed or hardware call limit.
+    asterisk_status:
+      name: Telephony Engine Status
+      desc: Telephony-engine status of the Yeastar voice gateway, normalized so 1
+        means running/healthy and 2 means stopped or fault.
 monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
     Temperature: Temperature
     Hardware Status: Hardware Status
+    CPU: CPU
+    Memory: Memory
+    Voice: Voice
+    Storage: Storage

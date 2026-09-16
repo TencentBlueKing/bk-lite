@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -115,8 +115,64 @@ describe('APM 端点详情抽屉', () => {
     expect(screen.getByText('错误率 %')).not.toBeNull();
     expect(screen.getByText('P95 / P99')).not.toBeNull();
     expect(await screen.findByText('样本调用链')).not.toBeNull();
-    await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
+    await waitFor(() => expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({
+      span_name: 'POST /pay',
+    })));
+    expect(api.getTraces).not.toHaveBeenCalledWith(expect.objectContaining({
+      span_name: '/pay',
+    }));
     expect(await screen.findByText(/trace-endpoint-1/)).not.toBeNull();
+  });
+
+  it('同一路径不同 HTTP 方法分别按完整 Span 名查询样本', async () => {
+    api.getServiceRed.mockResolvedValue({
+      service_id: 'svc-1',
+      environment: 'prod',
+      started_at: '2026-08-06T01:00:00Z',
+      ended_at: '2026-08-06T02:00:00Z',
+      request_rate: 10,
+      error_rate: 0.01,
+      p95_ms: 100,
+      p99_ms: 200,
+      timeseries: [],
+      top_endpoints: [
+        {
+          endpoint: 'POST /pay',
+          request_rate: 8.2,
+          error_rate: 0.05,
+          p95_ms: 180,
+          p99_ms: 260,
+        },
+        {
+          endpoint: 'GET /pay',
+          request_rate: 3.1,
+          error_rate: 0.01,
+          p95_ms: 80,
+          p99_ms: 120,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithApmIntl(<ApmEndpointsPage />);
+
+    await screen.findAllByText('/pay');
+    const postRow = screen.getByText('POST').closest('tr');
+    const getRow = screen.getByText('GET').closest('tr');
+    expect(postRow).not.toBeNull();
+    expect(getRow).not.toBeNull();
+
+    await user.click(within(postRow as HTMLElement).getByRole('button', { name: '查看' }));
+    await waitFor(() => expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({
+      span_name: 'POST /pay',
+    })));
+
+    await user.click(within(getRow as HTMLElement).getByRole('button', { name: '查看' }));
+    await waitFor(() => expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({
+      span_name: 'GET /pay',
+    })));
+    expect(api.getTraces).not.toHaveBeenCalledWith(expect.objectContaining({
+      span_name: '/pay',
+    }));
   });
 
   it('把服务筛选放在左侧，并由表头承载三个指标排序', async () => {

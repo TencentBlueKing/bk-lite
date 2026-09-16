@@ -512,9 +512,11 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
           if (drawerMode === 'create') {
             await createCredential(payload);
             await Promise.all([loadMeta(), loadList()]);
+            message.success(t('common.saveSuccess'));
           } else if (current) {
             await updateCredential(current.credential_id, payload);
             await loadList();
+            message.success(t('common.saveSuccess'));
           }
         }}
       />

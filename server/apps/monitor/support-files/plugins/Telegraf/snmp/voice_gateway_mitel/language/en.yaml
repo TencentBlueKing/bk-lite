@@ -1,7 +1,8 @@
 VoiceGateway Mitel SNMP:
   name: Mitel (Telegraf)
-  desc: SNMP monitoring template for Mitel voice gateway. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Mitel MiVoice 5000. It reports CPU utilization,
+    memory utilization, optional total free memory, per-port inbound traffic rate,
+    per-port outbound traffic rate, and system uptime
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:
@@ -46,9 +47,39 @@ monitor_object_metric:
       name: PSU State
       desc: Voice gateway power-source state normalized so 1 means healthy and 2 means
         fault.
+    cpu_usage_percent:
+      name: CPU Usage
+      desc: Overall CPU utilization of the Mitel MiVoice 5000 from UCD-SNMP ssCpuIdle
+        (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when idle is
+        absent. Sustained high usage can indicate call-processing or control-plane
+        load.
+    memory_total:
+      name: Total Memory
+      desc: Total real memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalReal,
+        reported in kB and converted to bytes).
+    memory_free:
+      name: Free Memory
+      desc: Available real memory of the Mitel MiVoice 5000 (UCD-SNMP memAvailReal,
+        reported in kB and converted to bytes). A persistently low value indicates memory
+        pressure.
+    memory_used:
+      name: Used Memory
+      desc: Used real memory of the Mitel MiVoice 5000, derived as memTotalReal minus
+        memAvailReal and converted from kB to bytes.
+    memory_usage_percent:
+      name: Memory Usage
+      desc: Real memory utilization of the Mitel MiVoice 5000, derived as (memTotalReal
+        - memAvailReal) / memTotalReal * 100. Sustained high usage may indicate resource
+        pressure.
+    memory_total_free:
+      name: Total Free Memory
+      desc: Optional total free memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalFree,
+        reported in kB and converted to bytes). Collected when the scalar is present.
 monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
     Temperature: Temperature
     Hardware Status: Hardware Status
+    CPU: CPU
+    Memory: Memory

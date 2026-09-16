@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_albentia",
   "plugin": "Wireless Albentia SNMP",
-  "plugin_desc": "Albentia Systems WiMAX / AerDOCSIS wireless SNMP child template (ALBENTIA-AS-MIB, enterprise PEN 28087). The source queue confirms private Albentia telemetry for sector temperature, clients, frequency, distance and power, but the exact raw MIB object list is not present in this worktree; without row-filter-free OIDs, those private temperature/client/radio/link health metrics are N/A and not faked. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the Albentia collect_type, UI and Telegraf child template. Applicable to Albentia wireless base stations / access devices and other IF-MIB compliant wireless devices.",
+  "plugin_desc": "Albentia wireless SNMP child template (enterprise PEN 28087). Beyond the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects the RF temperature scalar (Integer32 with two implied decimals, converted to Celsius on the query side by dividing by 100), optionally walks per-sector temperature with the same scale, and optionally walks per-sector transmit power in dBm. CPU and memory percentages are not collected because no stable private scalar was confirmed. Target RSSI is a radio configuration object and is not treated as measured RSSI. Applicable to Albentia wireless base stations and access devices that expose the private wireless tree and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_albentia'}) by (instance_id)",
   "name": "Wireless",
@@ -14,9 +14,69 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "rf_temperature_celsius",
+    "sector_temperature_celsius",
+    "tx_power"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "rf_temperature_celsius",
+      "query": "max(rf_temperature_celsius{instance_type='wireless', __$labels__} / 100) by (instance_id)",
+      "display_name": "RF Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "RF temperature of the Albentia wireless device. The SNMP Integer32 uses two implied decimal places, so the query divides the raw value by 100 before display and alert evaluation. High values can indicate poor airflow, enclosure heat buildup, or radio hardware thermal stress."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "sector_temperature_celsius",
+      "query": "sector_temperature_celsius{instance_type='wireless', __$labels__} / 100",
+      "display_name": "Sector Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (sectorColor)"
+        },
+        {
+          "name": "sectorColor",
+          "description": "Sector color index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sector temperature where the device exposes it. The SNMP Integer32 uses two implied decimal places; the query divides by 100 so the metric is reported in Celsius. Empty sector tables produce no rows."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "tx_power",
+      "query": "tx_power{instance_type='wireless', __$labels__}",
+      "display_name": "Transmit Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (sectorColor)"
+        },
+        {
+          "name": "sectorColor",
+          "description": "Sector color index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sector radio transmit power in dBm. The SNMP Integer32 is used as reported with no scaling. Empty radio-info tables produce no rows. Target RSSI is a configuration object and is not treated as measured RSSI."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

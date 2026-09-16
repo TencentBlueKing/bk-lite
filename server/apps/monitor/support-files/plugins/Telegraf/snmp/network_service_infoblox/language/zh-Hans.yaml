@@ -1,6 +1,6 @@
 NetworkService Infoblox SNMP:
   name: Infoblox (Telegraf)
-  desc: 面向 Infoblox 网络服务设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  desc: 面向 Infoblox 网络服务设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:

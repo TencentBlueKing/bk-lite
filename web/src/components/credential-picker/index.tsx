@@ -11,6 +11,7 @@ import { CREDENTIAL_CATEGORIES, CREDENTIAL_MENU_PATH } from './types';
 import type { CredentialItem, CredentialTypeItem } from './types';
 import { useCredentialPickerApi } from './api';
 import { CredentialQuickCreateForm, inferredCategory } from './quick-create';
+import { normalizeCredentialFieldValues } from './normalizeFields';
 
 export { CREDENTIAL_MENU_PATH, CREDENTIAL_CATEGORIES };
 export type { CredentialItem, CredentialTypeItem, CredentialFieldSchema } from './types';
@@ -176,7 +177,10 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, val
         name: values.name,
         type: values.type,
         group_id: values.group_id,
-        fields: values.fields || {},
+        fields: normalizeCredentialFieldValues(
+          types.find((item) => item.key === values.type)?.fields || [],
+          values.fields,
+        ),
       });
       setModalOpen(false);
       await load();

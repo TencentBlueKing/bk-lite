@@ -1,8 +1,8 @@
 Transmission DragonWave SNMP:
   name: DragonWave (Telegraf)
-  desc: SNMP monitoring template for DragonWave transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 7262).
+  desc: SNMP monitoring template for DragonWave transmission device. It reports radio
+    temperature, optional MWR system temperature, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime (IANA PEN 7262).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -51,9 +51,15 @@ monitor_object_metric:
         pressure or unstable device services.
     device_temperature_celsius:
       name: Temperature
-      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
+      desc: Optional Harmony MWR system temperature of the DragonWave transmission
+        device in degrees Celsius. Horizon Compact Plus devices omit this object.
         High values may indicate cooling problems, high ambient temperature or overloaded
         hardware.
+    radio_temperature_celsius:
+      name: Radio Temperature
+      desc: Horizon Compact Plus radio temperature of the DragonWave transmission
+        device in degrees Celsius. The SNMP column reports tenths of a degree and
+        the query divides by 10. High values may indicate RF hardware thermal stress.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A

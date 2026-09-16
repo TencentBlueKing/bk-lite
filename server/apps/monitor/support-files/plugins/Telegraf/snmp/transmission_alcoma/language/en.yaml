@@ -1,7 +1,8 @@
 Transmission Alcoma SNMP:
   name: Alcoma (Telegraf)
-  desc: SNMP monitoring template for Alcoma transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Alcoma transmission device. It reports temperature,
+    receive level, transmit power, optional SNR, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime (IANA PEN 12140).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -53,6 +54,25 @@ monitor_object_metric:
       desc: CPU or chassis temperature of the transmission device in degrees Celsius.
         High values may indicate cooling problems, high ambient temperature or overloaded
         hardware.
+    temperature_celsius:
+      name: Temperature
+      desc: Alcoma alMP radio temperature in degrees Celsius. Offline units report
+        -1 and those samples are skipped. High values may indicate RF hardware thermal
+        stress, high ambient temperature or overloaded hardware.
+    rx_level_db:
+      name: Receive Level
+      desc: Alcoma alMP receive level in dB. Offline units report -128 and those
+        samples are skipped. A dropping receive level is an early sign of path fade,
+        antenna misalignment or radio degradation.
+    tx_power_db:
+      name: Transmit Power
+      desc: Alcoma alMP transmit power in dB. Offline units report -128 and those
+        samples are skipped. Unexpectedly low transmit power can indicate radio mute,
+        hardware fault or configuration change.
+    snr_db:
+      name: SNR
+      desc: Optional Alcoma alMP signal-to-noise ratio in dB. Some firmware omits
+        this object. A dropping SNR is an early sign of path fade or interference.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A
@@ -71,3 +91,4 @@ monitor_object_metric_group:
     Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Radio: Radio

@@ -25,6 +25,7 @@ import {
   expandServiceRows,
   indexEnabledSlos,
   isTimeWindow,
+  lookupActiveAlert,
   metricKey,
   timeWindowRange,
   type TimeWindow,
@@ -264,7 +265,7 @@ export default function ApplicationObservability({
   const alertCounts = useMemo(() => countActiveAlerts(events), [events]);
   const sloByServiceEnv = useMemo(() => indexEnabledSlos(slos), [slos]);
   const applicationAlertCount = useMemo(
-    () => rows.reduce((sum, row) => sum + (alertCounts.get(`${row.serviceName}::${row.environment}`)?.count ?? 0), 0),
+    () => rows.reduce((sum, row) => sum + (lookupActiveAlert(alertCounts, row.serviceId, row.serviceName, row.environment)?.count ?? 0), 0),
     [alertCounts, rows],
   );
   const applicationSloCount = useMemo(

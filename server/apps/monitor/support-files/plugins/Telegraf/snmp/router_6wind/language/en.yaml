@@ -1,8 +1,8 @@
 Router 6WIND VSR SNMP:
   name: 6WIND VSR (Telegraf)
-  desc: SNMP monitoring template for 6WIND VSR router. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, per-core CPU utilization (HOST-RESOURCES),
-    and system uptime
+  desc: SNMP monitoring template for 6WIND VSR router. It reports CPU utilization,
+    memory utilization, per-port inbound traffic rate, per-port outbound traffic
+    rate, and system uptime
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -23,29 +23,32 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      desc: Total real memory of the 6WIND VSR router (UCD-SNMP memTotalReal, reported
+        in kB and converted to bytes), falling back to HOST-RESOURCES hrStorage
+        physical-memory size.
     device_memory_free:
       name: Free Memory
-      desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+      desc: Available real memory of the 6WIND VSR router (UCD-SNMP memAvailReal,
+        reported in kB and converted to bytes), falling back to HOST-RESOURCES
+        hrStorage physical-memory free. Persistently low free memory can indicate
+        rising memory pressure.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+      desc: Used real memory of the 6WIND VSR router, derived as memTotalReal minus
+        memAvailReal and converted from kB to bytes, falling back to HOST-RESOURCES
+        hrStorage physical-memory used.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports per-core CPU load on the 6WIND VSR router as a percentage
-        (HOST-RESOURCES-MIB hrProcessorLoad, per index dimension). Sustained high values
+      desc: Overall CPU utilization of the 6WIND VSR router from UCD-SNMP ssCpuIdle
+        (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when idle is
+        absent, then to HOST-RESOURCES hrProcessorLoad. Sustained high values
         indicate control-plane or forwarding load.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: Real memory utilization of the 6WIND VSR router, derived as
+        (memTotalReal - memAvailReal) / memTotalReal * 100, falling back to
+        HOST-RESOURCES hrStorage physical-memory used/size. Sustained high usage
+        may indicate resource pressure.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

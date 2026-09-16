@@ -1,5 +1,4 @@
 from celery import current_app
-from django.conf import settings
 from django.db import transaction
 
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION
@@ -41,13 +40,8 @@ def schedule_instance_auto_relation_reconcile(instance_ids: list[int] | tuple[in
         return
 
     def _dispatch() -> None:
-        from apps.cmdb.tasks.celery_tasks import reconcile_instances_auto_association_task
-
         # 同批实例合并为一个任务，避免逐实例重复触发相同规则全量同步。
-        if settings.DEBUG:
-            reconcile_instances_auto_association_task(normalized_ids)
-        else:
-            current_app.send_task(INSTANCE_BATCH_RECONCILE_TASK, args=[normalized_ids])
+        current_app.send_task(INSTANCE_BATCH_RECONCILE_TASK, args=[normalized_ids])
 
     transaction.on_commit(_dispatch)
 
@@ -65,14 +59,9 @@ def schedule_rule_auto_relation_full_sync(model_asst_ids: list[str] | tuple[str,
         return
 
     def _dispatch() -> None:
-        from apps.cmdb.tasks.celery_tasks import full_sync_auto_association_rule_task
-
         try:
             for model_asst_id in normalized_ids:
-                if settings.DEBUG:
-                    full_sync_auto_association_rule_task(model_asst_id)
-                else:
-                    current_app.send_task(RULE_FULL_SYNC_TASK, args=[model_asst_id])
+                current_app.send_task(RULE_FULL_SYNC_TASK, args=[model_asst_id])
         finally:
             for model_asst_id in normalized_ids:
                 _PENDING_RULE_FULL_SYNC_IDS.discard(model_asst_id)
@@ -314,8 +303,7 @@ class AutoRelationRuleReconcileService:
         auto_edges = [
             edge
             for edge in existing_edges
-            if edge.get(AUTO_RELATION_EDGE_SOURCE_FIELD) == AUTO_RELATION_EDGE_SOURCE
-            and edge.get(AUTO_RELATION_EDGE_RULE_ID_FIELD) == model_asst_id
+            if edge.get(AUTO_RELATION_EDGE_SOURCE_FIELD) == AUTO_RELATION_EDGE_SOURCE and edge.get(AUTO_RELATION_EDGE_RULE_ID_FIELD) == model_asst_id
         ]
         all_existing_target_ids = {int(edge["dst_inst_id"]) for edge in existing_edges if edge.get("dst_inst_id") is not None}
         desired_target_ids = cls._calculate_desired_target_ids(source_instance, association, rules, target_instances=target_instances)
@@ -415,9 +403,7 @@ class AutoRelationRuleReconcileService:
 
         instances_by_id = {int(instance["_id"]): instance for instance in instances}
         summary["instances"] = len(instances_by_id)
-        summary["missing"] = [
-            instance_id for instance_id in normalized_ids if instance_id not in instances_by_id
-        ]
+        summary["missing"] = [instance_id for instance_id in normalized_ids if instance_id not in instances_by_id]
         # 目标侧规则跨实例去重，每条规则本轮只全量同步一次。
         incoming_rule_ids = []
 
@@ -426,9 +412,7 @@ class AutoRelationRuleReconcileService:
             if not instance:
                 continue
             try:
-                for association, rules in cls._list_enabled_rules_by_src_model(
-                    instance["model_id"]
-                ):
+                for association, rules in cls._list_enabled_rules_by_src_model(instance["model_id"]):
                     item_summary = cls.reconcile_source_instance(instance, association, rules)
                     summary["source_rules"] += 1
                     summary["created"] += item_summary["created"]
@@ -436,9 +420,7 @@ class AutoRelationRuleReconcileService:
                     summary["skipped"] += item_summary["skipped"]
                     summary["conflicts"] += item_summary["conflicts"]
 
-                for model_asst_id in cls._list_enabled_rule_ids_by_dst_model(
-                    instance["model_id"]
-                ):
+                for model_asst_id in cls._list_enabled_rule_ids_by_dst_model(instance["model_id"]):
                     if model_asst_id not in incoming_rule_ids:
                         incoming_rule_ids.append(model_asst_id)
             except Exception as exc:
@@ -446,9 +428,7 @@ class AutoRelationRuleReconcileService:
                     "[AutoRelationRule] batch instance reconcile failed, instance_id=%s",
                     instance_id,
                 )
-                summary["failed"].append(
-                    {"instance_id": instance_id, "error": str(getattr(exc, "message", exc))}
-                )
+                summary["failed"].append({"instance_id": instance_id, "error": str(getattr(exc, "message", exc))})
 
         if incoming_rule_ids:
             schedule_rule_auto_relation_full_sync(incoming_rule_ids)

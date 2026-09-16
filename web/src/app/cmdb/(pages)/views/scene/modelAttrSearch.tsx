@@ -17,6 +17,7 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import type { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
 import { getEnumOptions, getTagOptions } from '@/app/cmdb/utils/fieldUtils';
+import { isCloudRegionAttr, toCloudSelectValue } from '@/app/cmdb/utils/cloudRegion';
 import {
   buildAttrSearchCondition,
   defaultSearchField,
@@ -89,7 +90,7 @@ const ModelAttrSearch: React.FC<ModelAttrSearchProps> = ({
   };
 
   const renderValueInput = () => {
-    if (selectedAttr?.attr_id === 'cloud' && proxyOptions.length) {
+    if (isCloudRegionAttr(selectedAttr?.attr_id) && proxyOptions.length) {
       return (
         <Select
           size="small"
@@ -98,12 +99,12 @@ const ModelAttrSearch: React.FC<ModelAttrSearchProps> = ({
           placeholder={t('common.selectTip')}
           className={joinedControlClass}
           style={{ width: VALUE_CONTROL_WIDTH }}
-          value={value as string | number | undefined}
+          value={toCloudSelectValue(value)}
           onChange={(next) => handleValueCommit(next)}
           onClear={() => handleValueCommit('')}
         >
           {proxyOptions.map((opt) => (
-            <Select.Option key={opt.proxy_id} value={opt.proxy_id}>
+            <Select.Option key={String(opt.proxy_id)} value={Number(opt.proxy_id)}>
               {opt.proxy_name}
             </Select.Option>
           ))}

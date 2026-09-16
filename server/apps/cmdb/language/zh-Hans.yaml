@@ -37,6 +37,8 @@ MODEL:
   module: 模块
   host: 主机
   oracle: Oracle
+  oracle_instance: Oracle实例
+  oracle_pdb: Oracle PDB
   mysql: MySQL
   mssql: MSSQL
   redis: Redis
@@ -465,6 +467,35 @@ ATTR:
     collect_time: 上次更新时间
     service_name: 服务名称
     tag: 标签
+    db_unique_name: 数据库唯一名
+    open_mode: 打开模式
+    log_mode: 归档模式
+    nls_characterset: 字符集
+    is_cdb: 是否CDB
+    collect_scope: 采集范围
+    cluster_type: 集群类型
+    instance_count: 实例数量
+    pdb_count: PDB数量
+  oracle_instance:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+    db_unique_name: 数据库唯一名
+    sid: SID
+    host_name: 主机名
+    ip_addr: IP
+    port: 端口
+    status: 状态
+    version: 版本
+  oracle_pdb:
+    inst_name: 实例名
+    organization: 组织
+    tag: 标签
+    db_unique_name: 数据库唯一名
+    pdb_name: PDB名称
+    open_mode: 打开模式
+    restricted: 是否受限
+    service_name: 服务名称
   mysql:
     inst_name: 实例名
     organization: 组织

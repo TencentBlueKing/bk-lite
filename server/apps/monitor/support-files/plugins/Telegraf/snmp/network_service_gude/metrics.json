@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_gude",
   "plugin": "NetworkService Gude PDU SNMP",
-  "plugin_desc": "Gude Expert Power Control, PDU, ATS and ETS network-service SNMP baseline child template for devices under Gude PEN 28507. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm PDU8310 power, channel status and ETS primary or secondary power-availability tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and PDU business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "Gude PDU SNMP child template for network-service devices under Gude PEN 28507. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. The primary live metering subtree is GUDEADS-PDU8310-MIB (28507.27), selected by sysObjectID gadsPDU8310 and a responding pdu8310PowerTable. Proven private increments are pdu8310PowerActive as pdu_active_power_watts, pdu8310Current as pdu_channel_current_amps scaled by /1000 from milliamperes to amperes, and optional pdu8310Voltage as pdu_channel_voltage_volts from the same parent table. Old EPC8 devices without metering fall back to epc8PortState as pdu_outlet_power_state (0=off/1=on, state only, no current). CPU and memory scalars are not invented. Other GUDEADS product branches such as 28507.64 are not mix-bound in this child. Supported brands/models - Gude PDU8310 metering devices under PEN 28507.27, with EPC8 port-state fallback under PEN 28507.1, plus standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_gude'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,104 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "pdu_active_power_watts",
+    "pdu_channel_current_amps",
+    "pdu_outlet_power_state"
   ],
   "metrics": [
+    {
+      "metric_group": "Power",
+      "name": "pdu_active_power_watts",
+      "query": "pdu_active_power_watts{instance_type='network_service', __$labels__}",
+      "display_name": "PDU Active Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Power channel index"
+        },
+        {
+          "name": "channel",
+          "description": "Power channel ID"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-channel active power in Watts from pdu8310PowerActive (1.3.6.1.4.1.28507.27.1.5.1.2.1.4) with pdu8310PowerIndex (1.3.6.1.4.1.28507.27.1.5.1.2.1.1). The SNMP value is already in Watts."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_channel_current_amps",
+      "query": "pdu_channel_current_amps{instance_type='network_service', __$labels__} / 1000",
+      "display_name": "PDU Channel Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Power channel index"
+        },
+        {
+          "name": "channel",
+          "description": "Power channel ID"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-channel current in amperes from pdu8310Current (1.3.6.1.4.1.28507.27.1.5.1.2.1.5) with pdu8310PowerIndex (1.3.6.1.4.1.28507.27.1.5.1.2.1.1). The SNMP value is milliamperes, so the query divides by 1000."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_channel_voltage_volts",
+      "query": "pdu_channel_voltage_volts{instance_type='network_service', __$labels__}",
+      "display_name": "PDU Channel Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Power channel index"
+        },
+        {
+          "name": "channel",
+          "description": "Power channel ID"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-channel voltage in volts from pdu8310Voltage (1.3.6.1.4.1.28507.27.1.5.1.2.1.6) on the same pdu8310PowerTable parent as pdu8310Current. The SNMP value is already in volts."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_outlet_power_state",
+      "query": "pdu_outlet_power_state{instance_type='network_service', __$labels__}",
+      "display_name": "PDU Outlet Power State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"off\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Outlet index"
+        },
+        {
+          "name": "outlet",
+          "description": "Outlet ID"
+        },
+        {
+          "name": "outlet_name",
+          "description": "Outlet name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-outlet power switch state from epc8PortState (1.3.6.1.4.1.28507.1.1.2.2.1.3) with epc8PortIndex and epc8PortName. This is the fallback for old EPC8 devices without metering. Value 0 is off and 1 is on. Current is not collected on this path."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +128,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +146,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Base",
