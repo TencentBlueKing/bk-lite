@@ -483,8 +483,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               </Form.Item>
 
               {/* 无数据告警 */}
-              <Form.Item<StrategyFields>
-                name="no_data_level"
+              <Form.Item
                 label={
                   <span className="w-[100px]">
                     {t('monitor.events.noDataAlertLevel')}
@@ -498,43 +497,45 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   ) : undefined
                 }
               >
-                <div className="flex flex-wrap items-center">
-                  <span>{t('monitor.events.noDataAlertCondition')}</span>
-                  <InputNumber
-                    className="mx-[10px] w-[80px]"
-                    min={SCHEDULE_UNIT_MAP[`${nodataUnit}Min`]}
-                    max={SCHEDULE_UNIT_MAP[`${nodataUnit}Max`]}
-                    value={noDataAlert}
-                    precision={0}
-                    onChange={onNoDataAlertChange}
-                  />
-                  <span className="mr-[10px]">
-                    {t('monitor.events.noDataAlertSuffix')}
+                {t('monitor.events.noDataAlertCondition')}
+                <InputNumber
+                  className="mx-[10px] w-[100px]"
+                  min={SCHEDULE_UNIT_MAP[`${nodataUnit}Min`]}
+                  max={SCHEDULE_UNIT_MAP[`${nodataUnit}Max`]}
+                  value={noDataAlert}
+                  precision={0}
+                  onChange={onNoDataAlertChange}
+                />
+                {t('monitor.events.noDataAlertSuffix')}
+                <Select
+                  value={noDataAlertLevel}
+                  popupMatchSelectWidth={false}
+                  style={{ width: 200 }}
+                  onChange={onNoDataAlertLevelChange}
+                >
+                  {NO_DATA_ALERT_OPTIONS.map((item) => (
+                    <Option key={item.value} value={item.value}>
+                      {t(`monitor.events.${item.labelKey}`)}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              <Form.Item
+                label={
+                  <span className="w-[100px]">
+                    {t('monitor.events.noDataRecoveryWindow')}
                   </span>
-                  <Select
-                    value={noDataAlertLevel}
-                    className="w-[180px]"
-                    onChange={onNoDataAlertLevelChange}
-                  >
-                    {NO_DATA_ALERT_OPTIONS.map((item) => (
-                      <Option key={item.value} value={item.value}>
-                        {t(`monitor.events.${item.labelKey}`)}
-                      </Option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="flex flex-wrap items-center mt-[10px]">
-                  <span>{t('monitor.events.noDataRecoveryWindow')}</span>
-                  <InputNumber
-                    className="mx-[10px] w-[80px]"
-                    min={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Min`]}
-                    max={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Max`]}
-                    value={noDataRecovery}
-                    precision={0}
-                    onChange={onNoDataRecoveryChange}
-                  />
-                  <span>{t('monitor.events.nodataRecover')}</span>
-                </div>
+                }
+              >
+                <InputNumber
+                  className="mr-[10px] w-[100px]"
+                  min={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Min`]}
+                  max={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Max`]}
+                  value={noDataRecovery}
+                  precision={0}
+                  onChange={onNoDataRecoveryChange}
+                />
+                {t('monitor.events.nodataRecover')}
               </Form.Item>
 
               {/* 无数据告警名称 - 条件显示 */}

@@ -23,7 +23,7 @@
       "alertEndTime": "End Time of Alert",
       "recovery": "Recovery",
       "notification": "Notification",
-      "nodataRecover": ",the 'No Data Alert' will automatically recover.",
+      "nodataRecover": "minutes, the 'No Data Alert' will automatically recover.",
       "executionTime": "Execution Time",
       "index": "Asset",
       "sumTitle": "Represents the sum of all dimension data within the selected time range.\n The sum function is used to calculate the total value of multiple time series within the same time range, suitable for merging and aggregating data from all dimensions, such as calculating total traffic.",

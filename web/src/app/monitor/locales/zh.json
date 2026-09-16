@@ -23,7 +23,7 @@
       "alertEndTime": "告警结束时间",
       "recovery": "自动恢复",
       "notification": "通知",
-      "nodataRecover": "内恢复上报时，“无数据告警” 将自动恢复。",
+      "nodataRecover": "分钟内恢复上报时，“无数据告警” 将自动恢复。",
       "executionTime": "执行时间",
       "index": "资产",
       "sumTitle": "表示选中时间范围内，所有维度数据之和。\n sum函数用于计算多个时间序列在同时间范围内的值的总和，适用于合并和聚合所有维度的数据，例如计算总流量。",
