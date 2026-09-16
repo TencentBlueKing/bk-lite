@@ -8,6 +8,7 @@ they can be unit-tested without Django.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
@@ -25,6 +26,15 @@ from apps.monitor.utils.dimension import parse_instance_id
 
 HOST_OBJECT_NAME = "Host"
 DEFAULT_RANGE_STEP = "5m"
+
+DENIED_MONITOR_INSTANCE_MESSAGE = "没有权限访问指定的实例"
+CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE = (
+    "这些 instance_ids 是 CMDB 实例标识（inst_uuid 或数字 inst_id），不能直接查询监控。"
+    "请改用 CMDB 实例的 monitor_id，或调用 cmdb_get_monitor_ids；"
+    "未联动则用 monitor_list_object_instances 按主机名或 IP 获取监控 instance_id。"
+)
+_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_CMDB_NUMERIC_INST_ID_RE = re.compile(r"^[1-9]\d{9,15}$")
 
 RANGE_METRIC_FOLD_SUM = "sum"
 RANGE_METRIC_FOLD_MAX = "max"
@@ -283,7 +293,22 @@ def _alias_tokens_for_instance(storage_id: str, instance: Any) -> list[str]:
     collect(getattr(instance, "name", ""))
     collect(getattr(instance, "ip", ""))
     collect(resolve_resource_ip(getattr(instance, "summary_facts", None), getattr(instance, "ip", None)))
+    collect(getattr(instance, "cmdb_id", ""))
     return tokens
+
+
+def looks_like_cmdb_instance_locator(token: Any) -> bool:
+    text = str(token or "").strip()
+    if not text:
+        return False
+    return bool(_UUID_RE.fullmatch(text) or _CMDB_NUMERIC_INST_ID_RE.fullmatch(text))
+
+
+def unresolved_monitor_instance_message(unresolved: Iterable[Any]) -> str:
+    tokens = [str(item).strip() for item in unresolved if item not in (None, "")]
+    if tokens and all(looks_like_cmdb_instance_locator(item) for item in tokens):
+        return CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE
+    return DENIED_MONITOR_INSTANCE_MESSAGE
 
 
 def _instance_id_aliases(authorized_instances: dict[str, Any]) -> dict[str, list[Any]]:

@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.cmdb.utils import call_cmdb_kwargs, call_cmdb_params, normalize_query_list, wrap_error
 
 
-@tool(description="按模型分页查询 CMDB 实例。query_list 为字段过滤条件。")
+@tool(description="按模型分页查询 CMDB 实例。query_list 为字段过滤条件。返回 inst_uuid 与已联动的 monitor_id；查监控不要把 inst_uuid/_id 当 instance_ids。")
 def cmdb_search_instances(
     model_id: str,
     query_list: Optional[List[Dict[str, Any]]] = None,
@@ -29,7 +29,7 @@ def cmdb_search_instances(
     )
 
 
-@tool(description="按 UUID 获取一条 CMDB 实例。")
+@tool(description="按 UUID 获取一条 CMDB 实例。返回含 inst_uuid 与 monitor_id；查监控须用 monitor_id，不要把 inst_uuid 当 instance_ids。")
 def cmdb_get_instance(
     inst_uuid: str,
     config: RunnableConfig = None,
@@ -37,6 +37,18 @@ def cmdb_get_instance(
     if not inst_uuid:
         return wrap_error("inst_uuid is required")
     return call_cmdb_params("get_instance_by_uuid", config, inst_uuid=inst_uuid)
+
+
+@tool(description="按 CMDB inst_uuid 列表取已联动的监控 instance_id（monitor_id）。查监控必须用这个 ID，禁止把 inst_uuid/_id 当 instance_ids。")
+def cmdb_get_monitor_ids(
+    inst_uuids: List[str],
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
+    if not inst_uuids:
+        return wrap_error("inst_uuids is required")
+    if not isinstance(inst_uuids, list):
+        return wrap_error("inst_uuids must be a list")
+    return call_cmdb_kwargs("get_monitor_ids_by_inst_uuids", config, inst_uuids=inst_uuids)
 
 
 @tool(description="创建 CMDB 实例。instance_info 为属性键值，权限由服务端校验。")

@@ -15,7 +15,10 @@ def test_monitor_language_keys_exist_in_en_and_zh():
     zh_loader = LanguageLoader(app="opspilot", default_lang="zh-Hans")
 
     assert en_loader.get("tools.monitor.name")
-    assert zh_loader.get("tools.cmdb.description")
+    assert zh_loader.get("tools.cmdb.tools.cmdb_get_monitor_ids.description")
+    assert en_loader.get("tools.cmdb.tools.cmdb_get_monitor_ids.description")
+    assert "monitor_id" in zh_loader.get("tools.cmdb.description")
+    assert "monitor_id" in en_loader.get("tools.cmdb.description")
     assert zh_loader.get("tools.alerts.tools.alerts_list_alerts.description")
     assert zh_loader.get("tools.log.tools.log_search_structured.description")
     assert en_loader.get("tools.monitor.description")

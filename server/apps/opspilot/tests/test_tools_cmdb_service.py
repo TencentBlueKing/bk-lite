@@ -15,6 +15,13 @@ _CMDB_TOOL_CASES = [
     ("cmdb_list_model_attrs", {"model_id": "host"}, "search_model_attrs_for_llm", False, {"model_id": "host"}),
     ("cmdb_get_instance", {"inst_uuid": "u1"}, "get_instance_by_uuid", False, {"inst_uuid": "u1"}),
     (
+        "cmdb_get_monitor_ids",
+        {"inst_uuids": ["u1"]},
+        "get_monitor_ids_by_inst_uuids",
+        True,
+        {"inst_uuids": ["u1"]},
+    ),
+    (
         "cmdb_create_instance",
         {"model_id": "host", "instance_info": {"inst_name": "box1"}},
         "create_instance_for_llm",
@@ -129,6 +136,12 @@ def test_cmdb_search_instances_requires_model_id():
     out = inst.cmdb_search_instances.invoke({"model_id": ""}, config=cfg())
     assert out["success"] is False
     assert "model_id is required" in out["error"]
+
+
+def test_cmdb_get_monitor_ids_requires_inst_uuids():
+    out = inst.cmdb_get_monitor_ids.invoke({"inst_uuids": []}, config=cfg())
+    assert out["success"] is False
+    assert "inst_uuids is required" in out["error"]
 
 
 def test_cmdb_tools_require_caller_identity():

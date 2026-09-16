@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error, wrap_success
 
 _MONITOR_OBJECT_SUMMARY_KEYS = ("id", "name", "type", "type_info", "level", "parent", "display_name")
-_INSTANCE_KEYWORD_KEYS = ("name", "id", "ip", "instance_id", "instance_name")
+_INSTANCE_KEYWORD_KEYS = ("name", "id", "ip", "instance_id", "instance_name", "cmdb_id")
 
 
 def _summarize_monitor_objects(data: Any) -> Any:
@@ -33,6 +33,8 @@ def _summarize_monitor_instances(data: Any) -> Any:
         row = {"id": logical_id, "name": item.get("name"), "ip": item.get("ip")}
         if item.get("instance_id"):
             row["instance_id"] = item["instance_id"]
+        if item.get("cmdb_id"):
+            row["cmdb_id"] = item["cmdb_id"]
         summarized.append(row)
     return summarized
 
@@ -55,7 +57,11 @@ def monitor_list_objects(
     return wrap_success(_summarize_monitor_objects(result.get("data")))
 
 
-@tool(description=("【主机CPU使用率】第2步：按monitor_obj_id列出实例（含主机名和IP）。" "可用keyword按主机名或IP过滤；匹配得到instance_id。后续工具的instance_ids也可用实例名或IP；不要SSH登录。"))
+@tool(
+    description=(
+        "【主机CPU使用率】第2步：按monitor_obj_id列出实例（含主机名和IP）。" "可用keyword按主机名或IP过滤；匹配得到监控instance_id。后续工具的instance_ids须用监控ID/主机名/IP，禁止CMDB的inst_uuid/_id。"
+    )
+)
 def monitor_list_object_instances(
     monitor_obj_id: str,
     keyword: Optional[str] = None,
