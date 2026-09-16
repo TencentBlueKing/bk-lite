@@ -115,7 +115,6 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         serializer.is_valid(raise_exception=True)
         payload = serializer.validated_data
         baseline = self.get_object()
-        self._assert_not_locked(request, baseline)
         with transaction.atomic():
             baseline = PatchBaseline.objects.select_for_update().get(pk=baseline.pk)
             if not self._same_baseline_version(baseline.updated_at, payload["expected_updated_at"]):

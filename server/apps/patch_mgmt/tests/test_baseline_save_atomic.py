@@ -6,8 +6,15 @@ import pytest
 from django.utils import timezone
 from rest_framework import status
 
-from apps.patch_mgmt.constants import ComplianceStatus, OSType
-from apps.patch_mgmt.models import BaselineRequirement, HostBaselineBinding, Patch, PatchBaseline, PatchTarget
+from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType, OSType
+from apps.patch_mgmt.models import (
+    BaselineRequirement,
+    GovernanceTask,
+    HostBaselineBinding,
+    Patch,
+    PatchBaseline,
+    PatchTarget,
+)
 
 
 BASELINE_URL = "/api/v1/patch_mgmt/api/baseline/"
@@ -241,3 +248,33 @@ class TestBaselineSaveAtomic:
         assert add_resp.status_code == status.HTTP_200_OK
         assert delete_resp.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT)
         assert _patch_ids(baseline) == [extra.id]
+
+    def test_update_save_cancels_active_assessment_when_requirements_change(self, su_client):
+        kept = _patch("openssl")
+        added = _patch("curl")
+        baseline = _baseline()
+        _requirement(baseline, kept, condition="openssl >= 3.0")
+        task = GovernanceTask.objects.create(
+            name="assessing",
+            task_type=GovernanceTaskType.ASSESS,
+            status=GovernanceTaskStatus.RUNNING,
+            risk_snapshot=[{"baseline_id": baseline.id}],
+            team=[1],
+        )
+        expected = su_client.get(f"{BASELINE_URL}{baseline.id}/").data["updated_at"]
+
+        resp = su_client.put(
+            f"{BASELINE_URL}{baseline.id}/save/",
+            {
+                "name": baseline.name,
+                "description": "",
+                "patch_ids": [kept.id, added.id],
+                "expected_updated_at": expected,
+            },
+            format="json",
+        )
+
+        task.refresh_from_db()
+        assert resp.status_code == status.HTTP_200_OK
+        assert set(_patch_ids(baseline)) == {kept.id, added.id}
+        assert task.status == GovernanceTaskStatus.CANCELLED
