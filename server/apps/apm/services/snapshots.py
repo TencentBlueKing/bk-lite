@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import UUID
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.apm.models import ApmEvent, ApmEventSnapshot, ApmEventSnapshotPayload, ApmPolicy
@@ -113,28 +113,54 @@ class ApmEventSnapshotStore:
             if snapshot.payload_attempts >= MAX_SNAPSHOT_RETRIES:
                 return snapshot
             snapshot.payload_attempts += 1
-            try:
-                ApmEventSnapshotPayload.objects.get_or_create(
-                    snapshot=snapshot,
-                    defaults={"data": snapshot.pending_payload},
+            pending_payload = snapshot.pending_payload
+            snapshot.save(update_fields=("payload_attempts", "updated_at"))
+
+        try:
+            existing_path = (
+                ApmEventSnapshotPayload.objects.filter(snapshot_id=snapshot_id).values_list("data", flat=True).first()
+            )
+            if not existing_path:
+                field = ApmEventSnapshotPayload._meta.get_field("data")
+                uploaded_path = field._upload_to_s3(
+                    ApmEventSnapshotPayload(snapshot_id=snapshot_id),
+                    pending_payload,
                 )
-            except Exception as exc:
+                payload, _created = ApmEventSnapshotPayload.objects.get_or_create(
+                    snapshot_id=snapshot_id,
+                    defaults={"data": ""},
+                )
+                ApmEventSnapshotPayload.objects.filter(pk=payload.pk).update(data=uploaded_path)
+        except IntegrityError:
+            pass
+        except Exception as exc:
+            with transaction.atomic():
+                snapshot = ApmEventSnapshot.objects.select_for_update().get(id=snapshot_id)
+                if snapshot.payload_status in {
+                    ApmEventSnapshot.PayloadStatus.AVAILABLE,
+                    ApmEventSnapshot.PayloadStatus.EXPIRED,
+                }:
+                    return snapshot
                 snapshot.payload_status = ApmEventSnapshot.PayloadStatus.UNAVAILABLE
                 snapshot.payload_error_code = "object_storage_unavailable"
                 snapshot.payload_error_message = str(exc)[:512]
                 snapshot.save(
                     update_fields=(
                         "payload_status",
-                        "payload_attempts",
                         "payload_error_code",
                         "payload_error_message",
                         "updated_at",
                     )
                 )
-                logger.warning(
-                    "APM event snapshot payload upload failed",
-                    extra={"snapshot_id": str(snapshot.id), "error_type": type(exc).__name__},
-                )
+            logger.warning(
+                "APM event snapshot payload upload failed",
+                extra={"snapshot_id": str(snapshot.id), "error_type": type(exc).__name__},
+            )
+            return snapshot
+
+        with transaction.atomic():
+            snapshot = ApmEventSnapshot.objects.select_for_update().get(id=snapshot_id)
+            if snapshot.payload_status == ApmEventSnapshot.PayloadStatus.EXPIRED:
                 return snapshot
             snapshot.payload_status = ApmEventSnapshot.PayloadStatus.AVAILABLE
             snapshot.payload_error_code = ""
@@ -143,7 +169,6 @@ class ApmEventSnapshotStore:
             snapshot.save(
                 update_fields=(
                     "payload_status",
-                    "payload_attempts",
                     "payload_error_code",
                     "payload_error_message",
                     "pending_payload",
@@ -167,11 +192,17 @@ class ApmEventSnapshotStore:
                 snapshot = ApmEventSnapshot.objects.select_for_update().get(id=snapshot_id)
                 if snapshot.retention_expires_at > now:
                     continue
-                payload_path = ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).values_list("data", flat=True).first()
-                if payload_path:
-                    try:
-                        ApmEventSnapshotStore._delete_payload_object(payload_path)
-                    except Exception as exc:
+                if snapshot.payload_status == ApmEventSnapshot.PayloadStatus.EXPIRED:
+                    continue
+                payload_path = (
+                    ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).values_list("data", flat=True).first()
+                )
+            if payload_path:
+                try:
+                    ApmEventSnapshotStore._delete_payload_object(payload_path)
+                except Exception as exc:
+                    with transaction.atomic():
+                        snapshot = ApmEventSnapshot.objects.select_for_update().get(id=snapshot_id)
                         snapshot.payload_status = ApmEventSnapshot.PayloadStatus.UNAVAILABLE
                         snapshot.payload_error_code = "retention_delete_failed"
                         snapshot.payload_error_message = str(exc)[:512]
@@ -183,11 +214,17 @@ class ApmEventSnapshotStore:
                                 "updated_at",
                             )
                         )
-                        logger.warning(
-                            "APM event snapshot payload retention delete failed",
-                            extra={"snapshot_id": str(snapshot.id), "error_type": type(exc).__name__},
-                        )
-                        continue
+                    logger.warning(
+                        "APM event snapshot payload retention delete failed",
+                        extra={"snapshot_id": str(snapshot.id), "error_type": type(exc).__name__},
+                    )
+                    continue
+            with transaction.atomic():
+                snapshot = ApmEventSnapshot.objects.select_for_update().get(id=snapshot_id)
+                if snapshot.retention_expires_at > now:
+                    continue
+                if snapshot.payload_status == ApmEventSnapshot.PayloadStatus.EXPIRED:
+                    continue
                 ApmEventSnapshotPayload.objects.filter(snapshot=snapshot).delete()
                 snapshot.payload_status = ApmEventSnapshot.PayloadStatus.EXPIRED
                 snapshot.pending_payload = {}
