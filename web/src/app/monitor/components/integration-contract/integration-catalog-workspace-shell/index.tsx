@@ -51,8 +51,8 @@ function IntegrationCatalogWorkspaceShell<T>({
   sidebarContentClassName,
   treeContainerClassName = '',
   contentClassName,
-  toolbarClassName = 'mb-[20px]',
-  gridClassName = 'grid h-[calc(100vh-236px)] w-full gap-4 overflow-y-auto',
+  toolbarClassName = 'mb-4',
+  gridClassName = 'grid min-h-0 w-full flex-1 gap-4 overflow-y-auto',
   gridStyle = defaultGridStyle,
 }: IntegrationCatalogWorkspaceShellProps<T>) {
   return (

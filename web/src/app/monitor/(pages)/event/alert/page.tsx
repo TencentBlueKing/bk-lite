@@ -599,7 +599,7 @@ const Alert: React.FC = () => {
   };
 
   return (
-    <div className="h-full min-h-0 w-full min-w-0 max-w-full">
+    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col">
       <div className={alertStyle.alert}>
         <ResizableSidebar collapseStorageKey="monitor.event.alert.sidebarCollapsed">
           <div className={alertStyle.filters}>
@@ -613,7 +613,7 @@ const Alert: React.FC = () => {
           </div>
         </ResizableSidebar>
         <div className={alertStyle.alarmList}>
-          <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
+          <Tabs className="shrink-0" activeKey={activeTab} items={tabs} onChange={changeTab} />
           <div className={alertStyle.searchCondition}>
             <div className="mb-[10px]">
               {t('monitor.search.searchCriteria')}
@@ -705,7 +705,7 @@ const Alert: React.FC = () => {
             </div>
           </Spin>
           <div className={alertStyle.table}>
-            <div className="mb-[10px] flex items-center gap-3">
+            <div className="mb-[10px] flex shrink-0 items-center gap-3">
               <Search
                 allowClear
                 className="w-[240px]"
@@ -727,14 +727,10 @@ const Alert: React.FC = () => {
                 {t('monitor.events.myAlert')}
               </Checkbox>
             </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
             <CustomTable
               className="w-full"
-              scroll={{
-                y: chartExpanded
-                  ? 'calc(100vh - 640px)'
-                  : 'calc(100vh - 530px)',
-                x: 'max-content'
-              }}
+              scroll={{ x: 'max-content' }}
               columns={columns}
               dataSource={tableData}
               pagination={pagination}
@@ -742,6 +738,7 @@ const Alert: React.FC = () => {
               rowKey="id"
               onChange={handleTableChange}
             />
+            </div>
           </div>
         </div>
       </div>

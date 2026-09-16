@@ -54,6 +54,10 @@ export const resolveTableDimensions = ({
   const paginationHeight = hasPagination ? 56 : 0;
   const fixedHeight = headerHeight + paginationHeight;
 
+  if (scrollY === 'auto') {
+    return { tableHeight: undefined, containerHeight: undefined };
+  }
+
   if (scrollY !== undefined && scrollY !== null) {
     const parsedHeight = parseScrollY(scrollY, viewportHeight);
     if (parsedHeight === undefined) {

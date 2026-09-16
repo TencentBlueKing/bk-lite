@@ -214,12 +214,12 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
                   onChange={handleSegmentChange}
                 />
               </div>
-              <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden rounded-lg">
+              <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-auto rounded-lg [&>*]:w-full [&>*]:max-w-full [&>*]:min-w-0">
                 {children}
               </div>
             </>
           ) : (
-            <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden rounded-md">
+            <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-auto rounded-md [&>*]:w-full [&>*]:max-w-full [&>*]:min-w-0">
               {children}
             </div>
           )}

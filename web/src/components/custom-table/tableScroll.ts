@@ -2,7 +2,7 @@ type ScrollValue = number | string;
 
 export interface CustomTableScroll {
   x?: ScrollValue | true;
-  y?: ScrollValue;
+  y?: ScrollValue | 'auto';
   scrollToFirstRowOnChange?: boolean;
 }
 
@@ -16,6 +16,9 @@ interface ResolveTableScrollOptions {
 
 const isFillableScrollX = (value: CustomTableScroll['x']): boolean =>
   value === undefined || value === 'max-content' || value === true;
+
+const isHugContentScrollY = (value: CustomTableScroll['y']): boolean =>
+  value === 'auto';
 
 export const resolveTableScroll = ({
   calculatedScrollX,
@@ -41,7 +44,7 @@ export const resolveTableScroll = ({
     }
   }
 
-  const hasExplicitScrollY = scroll?.y !== undefined && scroll?.y !== null;
+  const hasExplicitScrollY = scroll?.y !== undefined && scroll?.y !== null && !isHugContentScrollY(scroll?.y);
 
   if (
     calculatedScrollY !== undefined &&
@@ -51,6 +54,10 @@ export const resolveTableScroll = ({
   }
 
   if (!hasData && !hasExplicitScrollY) {
+    delete resolvedScroll.y;
+  }
+
+  if (isHugContentScrollY(scroll?.y)) {
     delete resolvedScroll.y;
   }
 

@@ -237,7 +237,7 @@ export default function UnallocatedNotificationConfig() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <Card
         className="min-h-0 flex-1 overflow-hidden"
         styles={{

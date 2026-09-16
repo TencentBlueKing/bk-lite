@@ -321,6 +321,7 @@ const CustomTable = <T extends object>({
       cell: ResizableTitle,
     },
   };
+  const lockVerticalSize = containerHeight !== undefined && hasPagination;
   const mergedScroll: TableProps<T>['scroll'] = resolveTableScroll({
     calculatedScrollX: columnLayout.scrollX,
     containerWidth,
@@ -332,11 +333,12 @@ const CustomTable = <T extends object>({
   return (
     <div
       ref={containerRef}
-      className={`relative ${customTableStyle.customTable}`}
+      className={`relative ${customTableStyle.customTable}${hasPagination && scrollY !== 'auto' ? ' h-full' : ''}`}
       style={{
-        height:
-          containerHeight !== undefined && hasPagination
-            ? `${containerHeight}px`
+        height: lockVerticalSize
+          ? `${containerHeight}px`
+          : hasPagination && scrollY !== 'auto'
+            ? '100%'
             : 'auto',
       }}
     >
@@ -359,25 +361,27 @@ const CustomTable = <T extends object>({
           handleTableChange(filters, sorter, extra)
         }
       />
-      {pagination && !loading && !!pagination.total && (<div className="absolute right-0 bottom-0 flex justify-end">
-        <Pagination
-          total={pagination?.total}
-          showSizeChanger={pagination?.showSizeChanger ?? true}
-          current={pagination?.current}
-          pageSize={pagination?.pageSize}
-          onChange={handlePageChange}
-          showTotal={(total) => (
-            <div className="flex items-center">
-              <span>{`${t('common.total')} ${total} ${t('common.items')}`}</span>
-              {rowSelection ? (
-                <div className="text-sm h-[32px] flex items-center px-4">
-                  {`${t('common.checked')} ${rowSelection?.selectedRowKeys?.length} ${t('common.items')}`}
-                </div>
-              ) : null}
-            </div>
-          )}
-        />
-      </div>)}
+      {pagination && !loading && !!pagination.total && (
+        <div className={lockVerticalSize ? 'absolute right-0 bottom-0 flex justify-end' : 'mt-3 flex justify-end'}>
+          <Pagination
+            total={pagination?.total}
+            showSizeChanger={pagination?.showSizeChanger ?? true}
+            current={pagination?.current}
+            pageSize={pagination?.pageSize}
+            onChange={handlePageChange}
+            showTotal={(total) => (
+              <div className="flex items-center">
+                <span>{`${t('common.total')} ${total} ${t('common.items')}`}</span>
+                {rowSelection ? (
+                  <div className="text-sm h-[32px] flex items-center px-4">
+                    {`${t('common.checked')} ${rowSelection?.selectedRowKeys?.length} ${t('common.items')}`}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          />
+        </div>
+      )}
       {fieldSetting.showSetting ? (
         <Button
           type="text"
