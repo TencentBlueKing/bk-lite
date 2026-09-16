@@ -1,8 +1,9 @@
 Access Topvision SNMP:
   name: Access Topvision SNMP
-  desc: SNMP monitoring template for Topvision access device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 32285).
+  desc: SNMP monitoring template for Topvision CCMTS and EPON access devices. It
+    reports CPU utilization, memory utilization, flash usage, temperature, fan
+    speed, per-port inbound traffic rate, per-port outbound traffic rate, and system
+    uptime (IANA PEN 32285).
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -41,9 +42,17 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the access device, reported directly as a percentage
-        by a private scalar. Sustained high usage indicates OLT control-plane or management-plane
-        pressure.
+      desc: Overall CPU utilization of the access device from the CCMTS system
+        table or EPON board table, reported as a percentage. Sustained high usage
+        indicates control-plane or management-plane pressure.
+    device_flash_usage:
+      name: Flash Usage
+      desc: CCMTS flash utilization of the access device, reported directly as a
+        percentage. Sustained high usage can risk configuration or firmware writes.
+    device_fan_speed:
+      name: Fan Speed
+      desc: EPON fan rotation speed of the access device in revolutions per second.
+        Abnormally low or zero speed can indicate a stalled fan and impending overheating.
     device_memory_total:
       name: Memory Total
       desc: Total physical memory capacity reported by the access device in bytes.
@@ -55,13 +64,14 @@ monitor_object_metric:
         or service tables.
     device_memory_usage:
       name: Memory Usage
-      desc: System memory utilization of the access device, reported directly as a
-        percentage by a private scalar. Sustained high memory can indicate forwarding
+      desc: System memory utilization of the access device from the CCMTS RAM ratio
+        or EPON board total/free memory. Sustained high memory can indicate forwarding
         table, ONU management table, or control-service pressure.
     device_temperature_celsius:
       name: System Temperature
-      desc: System temperature of the access device in degrees Celsius. Persistently
-        high values may indicate cooling problems, high ambient temperature, or excessive
+      desc: Highest temperature of the access device in degrees Celsius from CCMTS
+        equipment sensors, EPON boards, or EPON PSU AC temperature. Persistently high
+        values may indicate cooling problems, high ambient temperature, or excessive
         device load.
     device_card_temperature_level:
       name: Card Temperature Level
