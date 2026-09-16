@@ -4,6 +4,7 @@ import { Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { ObjectItem } from '@/app/monitor/types';
 import { buildMetricDimensionVariables } from './strategyDetailUtils';
 
@@ -129,24 +130,30 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
       title: t('monitor.events.variableName'),
       dataIndex: 'variable',
       key: 'variable',
+      width: '44%',
+      ellipsis: true,
       render: (text: string) => (
-        <span className="text-[var(--color-primary)] font-mono">{text}</span>
+        <EllipsisWithTooltip
+          text={text}
+          className="w-full truncate font-mono text-[var(--color-primary)]"
+        />
       )
     },
     {
       title: t('common.description'),
       dataIndex: 'description',
-      key: 'description'
+      key: 'description',
+      ellipsis: true
     },
     {
       title: t('common.actions'),
       key: 'action',
-      fixed: 'right',
-      width: 80,
+      width: 64,
       render: (_: unknown, record: VariableItem) => (
         <Button
           type="link"
           size="small"
+          className="px-0"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onVariableSelect?.(record.variable)}
         >
@@ -157,12 +164,13 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
   ];
 
   return (
-    <div className="w-full border border-[var(--color-border-2)] rounded-md p-4 bg-[var(--color-bg-1)] shadow-md mb-4">
-      <div className="font-medium text-[14px] mb-3">
+    <div className="mb-4 min-w-0 overflow-hidden rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-4 shadow-md">
+      <div className="mb-3 text-[14px] font-medium">
         {t('monitor.events.optionalVariables')}
       </div>
       <CustomTable
         autoScrollX={false}
+        tableLayout="fixed"
         columns={variableColumns}
         dataSource={variableData}
         pagination={false}

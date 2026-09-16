@@ -1447,8 +1447,8 @@ const StrategyOperation = () => {
           )}
         </div>
         <div className={strategyStyle.form} ref={formContainerRef}>
-          <div className="flex gap-6">
-            <div className="w-[820px] flex-shrink-0">
+          <div className="flex min-w-0 gap-6">
+            <div className="min-w-0 max-w-[820px] flex-[1.7] basis-0">
               <Form form={form} name="basic" scrollToFirstError>
                 <Steps
                   direction="vertical"
@@ -1591,7 +1591,7 @@ const StrategyOperation = () => {
                 />
               </Form>
             </div>
-            <div className="flex flex-col flex-1 min-w-[400px]">
+            <div className="flex min-w-0 flex-1 basis-0 flex-col">
               <VariablesTable
                 displayFields={currentMonitorObject?.display_fields}
                 groupBy={sanitizeGroupBy(metricRows[0]?.groupBy || groupBy)}
