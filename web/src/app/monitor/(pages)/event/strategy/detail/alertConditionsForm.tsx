@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Form, Select, InputNumber, Input, Tooltip } from 'antd';
+import { Form, Select, InputNumber, Input, Tooltip, Space } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
@@ -23,6 +23,7 @@ import {
 import ThresholdList from './thresholdList';
 
 const { Option } = Select;
+const COMPARE_KIND_SELECT_WIDTH = 108;
 
 // 无数据告警级别选项
 const NO_DATA_ALERT_OPTIONS = [
@@ -238,11 +239,16 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     </span>
                   }
                 >
-                  <div className="flex flex-wrap items-center gap-[10px]">
+                  <Space.Compact block>
                     <Select
-                      className="w-[220px]"
                       value={compareMode}
                       onChange={handleCompareModeChange}
+                      style={{
+                        width:
+                          compareKindOptions.length > 0
+                            ? `calc(100% - ${COMPARE_KIND_SELECT_WIDTH}px)`
+                            : '100%'
+                      }}
                     >
                       {compareModes.map((mode) => (
                         <Option key={mode} value={mode}>
@@ -250,12 +256,17 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                         </Option>
                       ))}
                     </Select>
-                    {compareKindOptions.length > 0 && (
+                    {compareKindOptions.length > 0 ? (
                       <Select
-                        className="w-[120px]"
-                        value={compareValueKind}
+                        value={
+                          compareKindOptions.includes(compareValueKind)
+                            ? compareValueKind
+                            : defaultCompareValueKind(compareMode)
+                        }
                         onChange={onCompareValueKindChange}
                         aria-label={t('monitor.events.compareValueKind')}
+                        popupMatchSelectWidth={false}
+                        style={{ width: COMPARE_KIND_SELECT_WIDTH }}
                       >
                         {compareKindOptions.map((kind) => (
                           <Option key={kind} value={kind}>
@@ -263,8 +274,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                           </Option>
                         ))}
                       </Select>
-                    )}
-                  </div>
+                    ) : null}
+                  </Space.Compact>
                 </Form.Item>
               )}
               {compareMode === COMPARE_MODE_TIMELEFT && !isEnumMetric && (
