@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_rad",
   "plugin": "Access RAD SNMP",
-  "plugin_desc": "Baseline SNMP child template for RAD access, CPE, industrial router and broadband wireless devices under the RAD Data Communications private MIB tree. The current facts confirm RAD Data Communications enterprise PEN 164 and public access-device product scope, but no reliable row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — RAD access, CPE, industrial router and broadband wireless devices that expose standard IF-MIB.",
+  "plugin_desc": "RAD access, CPE, industrial-router and broadband-wireless SNMP collection under enterprise PEN 164 (RAD-GEN). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it walks systemPsTable for per-supply status (notApplicable/failed/ok/degraded) and optionally walks optPrtMonitorTable for optical-port laser temperature in hundredths of a degree Celsius, converted to Celsius on the query side by dividing by 100. Empty optical-monitor tables produce no rows. CPU and memory percentages are not collected because no stable private scalar was confirmed. Alarm-only enumerations are not treated as health scalars. Supported brands/models - RAD access, CPE, industrial router and broadband wireless devices that expose RAD-GEN and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_rad'}) by (instance_id)",
   "name": "Access",
@@ -14,9 +14,51 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "psu_status",
+    "sfp_laser_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu_status",
+      "query": "psu_status{instance_type='access', __$labels__}",
+      "display_name": "PSU Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"notApplicable\",\"id\":1,\"color\":\"#d9d9d9\"},{\"name\":\"failed\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"ok\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"degraded\",\"id\":4,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (psIndex)"
+        },
+        {
+          "name": "psType",
+          "description": "Power supply type"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-supply status from RAD-GEN systemPsStatus. Native codes are notApplicable (1), failed (2), ok (3), and degraded (4). Each row is one power-supply index; the optional systemPsType column is kept as a dimension."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "sfp_laser_temperature_celsius",
+      "query": "sfp_laser_temperature_celsius{instance_type='access', __$labels__} / 100",
+      "display_name": "SFP Laser Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optical-port laser temperature from RAD-GEN optPrtMonitorLaserTemp. The SNMP Integer32 is hundredths of a degree Celsius; the query divides by 100 so the metric is reported in Celsius. Empty optical-monitor tables produce no rows."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
