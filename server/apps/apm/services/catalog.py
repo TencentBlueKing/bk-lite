@@ -1,10 +1,19 @@
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from django.db import transaction
 from django.utils import timezone
 
-from apps.apm.models import ApmApplication, ApmService, ApmServiceInstance, ApmServiceInstanceOrganization, ApmServiceOrganization
+from apps.apm.models import (
+    ApmApplication,
+    ApmApplicationOrganization,
+    ApmService,
+    ApmServiceInstance,
+    ApmServiceInstanceOrganization,
+    ApmServiceOrganization,
+)
 from apps.apm.services.contracts import CatalogDiscovery, CatalogDiscoveryResult
 from apps.apm.services.identity import normalize_identity
 
@@ -41,127 +50,221 @@ def _organization_ids(values: Sequence[int]) -> tuple[int, ...]:
     return result
 
 
+@dataclass
+class _PreparedDiscovery:
+    original: CatalogDiscovery
+    namespace: str = ""
+    name: str = ""
+    instance_id: str = ""
+    environment: str = ""
+    version: str = ""
+    language: str = ""
+    seen_at: datetime | None = None
+    missing_instance_identity: bool = False
+    error: BaseException | None = None
+    application: ApmApplication | None = None
+    organizations: tuple[int, ...] = ()
+    service: ApmService | None = None
+    instance: ApmServiceInstance | None = None
+
+
+def _prepare_discovery(discovery: CatalogDiscovery) -> _PreparedDiscovery:
+    try:
+        namespace = _validate_identity(discovery.service_namespace, field="service.namespace", max_length=256)
+        name = _validate_identity(discovery.service_name, field="service.name", max_length=256, required=True)
+        instance_id = _validate_identity(discovery.instance_id, field="service.instance.id", max_length=512)
+        environment = _validate_identity(discovery.environment, field="deployment.environment", max_length=256)
+        version = _validate_identity(discovery.version, field="service.version", max_length=256)
+        language = _validate_identity(discovery.language, field="telemetry.sdk.language", max_length=64)
+    except InvalidCatalogIdentity as exc:
+        return _PreparedDiscovery(original=discovery, error=exc)
+    return _PreparedDiscovery(
+        original=discovery,
+        namespace=namespace,
+        name=name,
+        instance_id=instance_id,
+        environment=environment,
+        version=version,
+        language=language,
+        seen_at=discovery.seen_at or timezone.now(),
+        missing_instance_identity=not instance_id,
+    )
+
+
 class DjangoTelemetryCatalogService:
     """目录深模块；身份、继承和首次实例规则集中在此 seam 后。"""
 
-    @transaction.atomic
     def discover(self, discovery: CatalogDiscovery) -> CatalogDiscoveryResult:
-        normalized_namespace = _validate_identity(
-            discovery.service_namespace,
-            field="service.namespace",
-            max_length=256,
-        )
-        normalized_name = _validate_identity(
-            discovery.service_name,
-            field="service.name",
-            max_length=256,
-            required=True,
-        )
-        normalized_instance_id = _validate_identity(
-            discovery.instance_id,
-            field="service.instance.id",
-            max_length=512,
-        )
-        normalized_environment = _validate_identity(
-            discovery.environment,
-            field="deployment.environment",
-            max_length=256,
-        )
-        normalized_version = _validate_identity(
-            discovery.version,
-            field="service.version",
-            max_length=256,
-        )
-        normalized_language = _validate_identity(
-            discovery.language,
-            field="telemetry.sdk.language",
-            max_length=64,
-        )
-        seen_at = discovery.seen_at or timezone.now()
-        application = ApmApplication.objects.select_for_update().get(
-            application_id=normalized_namespace,
-        )
-        missing_instance_identity = not normalized_instance_id
-        application_organizations = tuple(application.organization_links.order_by("organization").values_list("organization", flat=True))
-        if not application_organizations:
-            raise ValueError("应用没有默认组织")
+        outcome = self.discover_many((discovery,))[0]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
-        service, service_created = ApmService.objects.get_or_create(
-            normalized_namespace=normalized_namespace,
-            normalized_name=normalized_name,
-            defaults={
-                "namespace": discovery.service_namespace or "",
-                "application": application,
-                "name": discovery.service_name,
-                "language": normalized_language,
-                "first_seen_at": seen_at,
-                "last_seen_at": seen_at,
-            },
-        )
-        if service_created:
-            ApmServiceOrganization.objects.bulk_create(
-                [ApmServiceOrganization(service=service, organization=organization) for organization in application_organizations]
+    @transaction.atomic
+    def discover_many(self, discoveries: Sequence[CatalogDiscovery]) -> list[CatalogDiscoveryResult | BaseException]:
+        prepared = [_prepare_discovery(item) for item in discoveries]
+        writable = [item for item in prepared if item.error is None]
+        if writable:
+            self._apply_batch(writable)
+        outcomes: list[CatalogDiscoveryResult | BaseException] = []
+        for item in prepared:
+            if item.error is not None:
+                outcomes.append(item.error)
+                continue
+            outcomes.append(
+                CatalogDiscoveryResult(
+                    service=item.service,
+                    instance=item.instance,
+                    missing_instance_identity=item.missing_instance_identity,
+                )
             )
-        elif service.application_id is None:
-            service.application = application
-            service.save(update_fields=("application", "updated_at"))
-        if not service_created and seen_at >= service.last_seen_at:
+        return outcomes
+
+    def _apply_batch(self, items: Sequence[_PreparedDiscovery]) -> None:
+        now = timezone.now()
+        namespaces = {item.namespace for item in items}
+        applications = {
+            application.application_id: application
+            for application in ApmApplication.objects.select_for_update().filter(application_id__in=namespaces).order_by("application_id")
+        }
+        orgs_by_application_pk: dict[UUID, list[int]] = {}
+        for organization, application_pk in (
+            ApmApplicationOrganization.objects.filter(application__in=applications.values())
+            .order_by("organization")
+            .values_list("organization", "application_id")
+        ):
+            orgs_by_application_pk.setdefault(application_pk, []).append(organization)
+
+        writable: list[_PreparedDiscovery] = []
+        for item in items:
+            application = applications.get(item.namespace)
+            if application is None:
+                item.error = ApmApplication.DoesNotExist()
+                continue
+            organizations = tuple(orgs_by_application_pk.get(application.id, ()))
+            if not organizations:
+                raise ValueError("应用没有默认组织")
+            item.application = application
+            item.organizations = organizations
+            writable.append(item)
+        if not writable:
+            return
+
+        service_keys = {(item.namespace, item.name) for item in writable}
+        existing_services = {
+            (service.normalized_namespace, service.normalized_name): service
+            for service in ApmService.objects.select_for_update()
+            .filter(
+                normalized_namespace__in={key[0] for key in service_keys},
+                normalized_name__in={key[1] for key in service_keys},
+            )
+            .order_by("normalized_namespace", "normalized_name")
+        }
+        created_services: dict[tuple[str, str], ApmService] = {}
+        service_orgs: list[ApmServiceOrganization] = []
+        for item in writable:
+            key = (item.namespace, item.name)
+            if key in existing_services or key in created_services:
+                continue
+            service = ApmService(
+                namespace=item.original.service_namespace or "",
+                normalized_namespace=item.namespace,
+                application=item.application,
+                name=item.original.service_name,
+                normalized_name=item.name,
+                language=item.language,
+                first_seen_at=item.seen_at,
+                last_seen_at=item.seen_at,
+                created_at=now,
+                updated_at=now,
+            )
+            created_services[key] = service
+            service_orgs.extend(
+                ApmServiceOrganization(service=service, organization=organization, created_at=now, updated_at=now)
+                for organization in item.organizations
+            )
+        if created_services:
+            ApmService.objects.bulk_create(created_services.values())
+            ApmServiceOrganization.objects.bulk_create(service_orgs)
+
+        services = existing_services | created_services
+        dirty_services: dict[UUID, ApmService] = {}
+        for item in writable:
+            service = services[(item.namespace, item.name)]
+            item.service = service
+            changed = False
+            if service.application_id is None:
+                service.application = item.application
+                changed = True
+            if item.seen_at >= service.last_seen_at:
+                if item.seen_at > service.last_seen_at:
+                    service.last_seen_at = item.seen_at
+                    changed = True
+                if item.language and service.language != item.language:
+                    service.language = item.language
+                    changed = True
+            if changed:
+                service.updated_at = now
+                dirty_services[service.id] = service
+        if dirty_services:
+            ApmService.objects.bulk_update(dirty_services.values(), ["application", "last_seen_at", "language", "updated_at"])
+
+        instance_items = [item for item in writable if not item.missing_instance_identity]
+        existing_instances = {
+            (instance.service_id, instance.normalized_instance_id): instance
+            for instance in ApmServiceInstance.objects.select_for_update()
+            .filter(
+                service_id__in={item.service.id for item in instance_items},
+                normalized_instance_id__in={item.instance_id for item in instance_items},
+            )
+            .order_by("service_id", "normalized_instance_id")
+        } if instance_items else {}
+        created_instances: dict[tuple[UUID, str], ApmServiceInstance] = {}
+        instance_orgs: list[ApmServiceInstanceOrganization] = []
+        for item in instance_items:
+            key = (item.service.id, item.instance_id)
+            if key in existing_instances or key in created_instances:
+                continue
+            instance = ApmServiceInstance(
+                service=item.service,
+                instance_id=item.original.instance_id or "",
+                normalized_instance_id=item.instance_id,
+                environment=item.environment,
+                version=item.version,
+                first_seen_at=item.seen_at,
+                last_seen_at=item.seen_at,
+                created_at=now,
+                updated_at=now,
+            )
+            created_instances[key] = instance
+            instance_orgs.extend(
+                ApmServiceInstanceOrganization(instance=instance, organization=organization, created_at=now, updated_at=now)
+                for organization in item.organizations
+            )
+        if created_instances:
+            ApmServiceInstance.objects.bulk_create(created_instances.values())
+            ApmServiceInstanceOrganization.objects.bulk_create(instance_orgs)
+
+        instances = existing_instances | created_instances
+        dirty_instances: dict[UUID, ApmServiceInstance] = {}
+        for item in instance_items:
+            instance = instances[(item.service.id, item.instance_id)]
+            item.instance = instance
             update_fields: list[str] = []
-            if seen_at > service.last_seen_at:
-                service.last_seen_at = seen_at
-                update_fields.append("last_seen_at")
-            if normalized_language and service.language != normalized_language:
-                service.language = normalized_language
-                update_fields.append("language")
-            if update_fields:
-                service.save(update_fields=(*update_fields, "updated_at"))
-
-        if missing_instance_identity:
-            return CatalogDiscoveryResult(
-                service=service,
-                instance=None,
-                missing_instance_identity=True,
-            )
-
-        instance, instance_created = ApmServiceInstance.objects.get_or_create(
-            service=service,
-            normalized_instance_id=normalized_instance_id,
-            defaults={
-                "instance_id": discovery.instance_id or "",
-                "environment": normalized_environment,
-                "version": normalized_version,
-                "first_seen_at": seen_at,
-                "last_seen_at": seen_at,
-            },
-        )
-
-        if instance_created:
-            ApmServiceInstanceOrganization.objects.bulk_create(
-                [
-                    ApmServiceInstanceOrganization(
-                        instance=instance,
-                        organization=organization,
-                    )
-                    for organization in application_organizations
-                ]
-            )
-        else:
-            update_fields: list[str] = []
-            is_latest_observation = seen_at >= instance.last_seen_at
-            if seen_at > instance.last_seen_at:
-                instance.last_seen_at = seen_at
+            is_latest_observation = item.seen_at >= instance.last_seen_at
+            if item.seen_at > instance.last_seen_at:
+                instance.last_seen_at = item.seen_at
                 update_fields.append("last_seen_at")
             if is_latest_observation:
-                for field, value in (
-                    ("environment", normalized_environment),
-                    ("version", normalized_version),
-                ):
+                for field, value in (("environment", item.environment), ("version", item.version)):
                     if getattr(instance, field) != value:
                         setattr(instance, field, value)
                         update_fields.append(field)
             if update_fields:
-                instance.save(update_fields=(*update_fields, "updated_at"))
-        return CatalogDiscoveryResult(service=service, instance=instance)
+                instance.updated_at = now
+                dirty_instances[instance.id] = instance
+        if dirty_instances:
+            ApmServiceInstance.objects.bulk_update(dirty_instances.values(), ["last_seen_at", "environment", "version", "updated_at"])
 
     @transaction.atomic
     def set_service_organizations(
