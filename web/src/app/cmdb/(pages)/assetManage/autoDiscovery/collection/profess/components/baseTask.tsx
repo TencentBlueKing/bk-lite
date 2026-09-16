@@ -225,12 +225,14 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       return current.every((item, index) => item === next[index]);
     };
 
-    const supportsIpSelection = !singleInstanceOnly && IP_SELECTION_TASK_TYPES.includes(
-      normalizedTaskType
-    );
-    const supportsAssetOnlySelection = ASSET_ONLY_SELECTION_TASK_TYPES.includes(
-      normalizedTaskType
-    );
+    const isSslCerTask = modelId === 'ssl_cer';
+    const supportsIpSelection =
+      !singleInstanceOnly &&
+      !isSslCerTask &&
+      IP_SELECTION_TASK_TYPES.includes(normalizedTaskType);
+    const supportsAssetOnlySelection =
+      ASSET_ONLY_SELECTION_TASK_TYPES.includes(normalizedTaskType) ||
+      isSslCerTask;
 
     const requiresSingleInstanceSelect = singleInstanceOnly
       || SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType);

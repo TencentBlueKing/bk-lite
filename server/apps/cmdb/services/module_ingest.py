@@ -70,6 +70,8 @@ IP_ONLY_INGEST_UPDATE_FIELDS = (
 )
 
 # 系统内置联动 ID：落在模型属性上供图存储/查询，但对用户隐藏（非模型设计字段、非 CRUD）
+# 认领/绑定由 ingest 身份匹配负责，不得进入 is_only：Excel 导入看不到这两列，
+# 否则已绑定实例会因唯一键对不上被当成新增。
 SYSTEM_LINK_ATTR_IDS = frozenset({"node_id", "monitor_id"})
 
 # 与 attr-host 中 str 字段（如 ip_addr）对齐的最小可创建形态；各模型复用
@@ -79,7 +81,7 @@ MODEL_NODE_ID_ATTR = {
     "attr_type": "str",
     "attr_group": "系统联动",
     "editable": False,
-    "is_only": True,
+    "is_only": False,
     "is_required": False,
     "is_system_link": True,
     "option": {
@@ -97,7 +99,7 @@ MODEL_MONITOR_ID_ATTR = {
     "attr_type": "str",
     "attr_group": "系统联动",
     "editable": False,
-    "is_only": True,
+    "is_only": False,
     "is_required": False,
     "is_system_link": True,
     "option": {
@@ -124,6 +126,13 @@ def is_system_link_attr(attr: dict[str, Any] | None) -> bool:
     if attr_id in SYSTEM_LINK_ATTR_IDS:
         return True
     return bool(attr.get("is_system_link"))
+
+
+def is_unique_identity_attr(attr: dict[str, Any] | None) -> bool:
+    """是否参与导入/写入的 is_only 身份匹配。系统联动 ID 始终排除。"""
+    if not isinstance(attr, dict) or is_system_link_attr(attr):
+        return False
+    return bool(attr.get("is_only"))
 
 
 def filter_user_facing_attrs(attrs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -230,9 +239,12 @@ def _ensure_system_link_attr(
     attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
     existing = next((attr for attr in attrs if attr.get("attr_id") == attr_id), None)
     if existing is not None:
-        # 存量属性升级为系统内置形态（editable=False / is_system_link）
+        # 存量属性升级为系统内置形态（editable=False / is_system_link / is_only=False）
         needs_upgrade = (
-            existing.get("editable") is not False or not existing.get("is_system_link") or existing.get("attr_group") != template.get("attr_group")
+            existing.get("editable") is not False
+            or not existing.get("is_system_link")
+            or existing.get("attr_group") != template.get("attr_group")
+            or bool(existing.get("is_only")) != bool(template.get("is_only"))
         )
         if needs_upgrade:
             try:
@@ -241,6 +253,7 @@ def _ensure_system_link_attr(
                     {
                         "editable": False,
                         "is_system_link": True,
+                        "is_only": bool(template.get("is_only")),
                         "attr_group": template.get("attr_group"),
                         "user_prompt": template.get("user_prompt") or patched.get("user_prompt") or "",
                     }

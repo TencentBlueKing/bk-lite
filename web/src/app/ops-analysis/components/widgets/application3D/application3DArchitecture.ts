@@ -18,6 +18,7 @@ export const ARCH_NODE_SIZE: Record<
   { width: number; height: number; depth: number }
 > = {
   system: { width: 0.48, height: 0.76, depth: 0.36 },
+  biz_group: { width: 0.52, height: 0.32, depth: 0.14 },
   application: { width: 0.48, height: 0.36, depth: 0.12 },
   host: { width: 0.32, height: 0.72, depth: 0.26 },
 };
@@ -39,6 +40,7 @@ export const ARCH_STACK_ORIGIN = 1.8;
 export const ARCH_PLANE_Y = {
   host: ARCH_STACK_ORIGIN,
   application: ARCH_STACK_ORIGIN + ARCH_PLANE_GAP,
+  biz_group: ARCH_STACK_ORIGIN + ARCH_PLANE_GAP,
 } as const;
 
 export type Application3DArchitecturePlaneKind = keyof typeof ARCH_PLANE_Y;
@@ -252,13 +254,10 @@ export const ARCH_CAMERA_TARGET_Z = -0.6;
  */
 export const ARCH_CAMERA_FRAME_FILL = 0.70;
 
-export const ARCH_PLANE_ORDER: Application3DArchitecturePlaneKind[] = [
-  'host',
-  'application',
-];
+export const ARCH_PLANE_ORDER = ['host', 'application'] as const satisfies readonly Application3DArchitecturePlaneKind[];
 
 export const ARCH_PLANE_TITLE: Record<
-  Application3DArchitecturePlaneKind,
+  (typeof ARCH_PLANE_ORDER)[number],
   { titleKey: string; titleFallback: string }
 > = {
   host: { titleKey: 'dashboard.application3DKindHost', titleFallback: '主机' },
@@ -414,6 +413,7 @@ export interface Application3DCameraSpherical {
 const kindOrder: Record<Application3DArchitectureKind, number> = {
   host: 0,
   application: 1,
+  biz_group: 1,
   system: 2,
 };
 
@@ -553,6 +553,7 @@ export const layoutApplication3DArchitecture = (
   data: Application3DArchitectureData,
 ): Application3DArchitectureLayout => {
   const nodesById = new Map(data.nodes.map((node) => [node.id, node]));
+  const groups = data.nodes.filter((node) => node.kind === 'biz_group');
   const applications = data.nodes.filter((node) => node.kind === 'application');
   const hosts = data.nodes.filter((node) => node.kind === 'host');
 
@@ -578,6 +579,12 @@ export const layoutApplication3DArchitecture = (
       ...size,
     });
   };
+
+  const groupCells = wrapOnPitch(groups.length, ARCH_GRID_PITCH);
+  groups.forEach((node, index) => {
+    const cell = groupCells[index] ?? { x: 0, z: architectureFrontZ(0) };
+    place(node, cell.x, cell.z - ARCH_GRID_PITCH);
+  });
 
   const appCells = wrapOnPitch(applications.length, ARCH_GRID_PITCH);
   applications.forEach((node, index) => {

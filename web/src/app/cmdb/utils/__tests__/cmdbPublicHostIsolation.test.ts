@@ -79,6 +79,9 @@ describe('CMDB public widget host isolation', () => {
     expect(relationshipsSource).toContain(
       "showNetworkStatusTab && activeTab === 'networkStatusTopology'",
     );
+    expect(relationshipsSource).toContain("value: 'serviceTree'");
+    expect(relationshipsSource).toContain('<ServiceTree');
+    expect(relationshipsSource).toContain("themes.includes('service_tree')");
     expect(relationshipsSource).toContain('normalizeRelationshipTab');
     expect(relationshipsSource).toContain('relationshipGatesSettled');
     expect(relationshipsSource).toContain('<Topo');

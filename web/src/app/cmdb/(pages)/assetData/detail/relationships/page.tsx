@@ -20,6 +20,7 @@ import NetworkTopo from './networkTopo';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
 import ApplicationResourceOverview from './applicationResourceOverview';
+import ServiceTree from './serviceTree';
 import DeviceDetailDrawer from './deviceDetailDrawer';
 import IpamMatrix from '../ipView/ipamMatrix';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
@@ -117,6 +118,9 @@ const Ralationships = () => {
     ...(themes.includes('app_overview')
       ? [{ label: t('Model.applicationResourceOverview'), value: 'appOverview' }]
       : []),
+    ...(themes.includes('service_tree') && modelId === 'system'
+      ? [{ label: t('Model.serviceTree'), value: 'serviceTree' }]
+      : []),
     ...(modelId === 'rack'
       ? [{ label: t('Model.rackElevation'), value: 'rackView' }]
       : []),
@@ -163,6 +167,7 @@ const Ralationships = () => {
     'networkStatusTopology',
     'ipam',
     'appOverview',
+    'serviceTree',
     'rackView',
     'roomView',
   ].includes(activeTab);
@@ -240,6 +245,9 @@ const Ralationships = () => {
       )}
       {activeTab === 'appOverview' && isAllowedRelationshipTab('appOverview', allowedTabs) && (
         <ApplicationResourceOverview modelId={modelId} instUuid={instUuid} fillContainer />
+      )}
+      {activeTab === 'serviceTree' && isAllowedRelationshipTab('serviceTree', allowedTabs) && (
+        <ServiceTree instUuid={instUuid} />
       )}
       {activeTab === 'rackView' && isAllowedRelationshipTab('rackView', allowedTabs) && (
         <div className={relationshipsStyle.scrollCanvas}>

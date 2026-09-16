@@ -17,7 +17,7 @@ import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import {
   areAllRelationshipsExpanded,
   getDefaultExpandedRelationshipKeys,
-  mergeRelationshipAssociations,
+  visibleRelationshipAssociations,
 } from '../../relationshipMenuData';
 import React, {
   useEffect,
@@ -48,10 +48,6 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     const [assoCredentials, setAssoCredentials] = useState<
       CrentialsAssoInstItem[]
     >([]);
-    const [associationDefinitions, setAssociationDefinitions] = useState<any[]>(
-      []
-    );
-    const [definitionModelId, setDefinitionModelId] = useState('');
     const [pageLoading, setPageLoading] = useState<boolean>(false);
     const searchParams = useSearchParams();
     const modelApi = useModelApi();
@@ -67,44 +63,15 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       setSelectedAssoId,
     } = useRelationships();
 
-    const mergedAssociations = useMemo(
-      () => mergeRelationshipAssociations(
-        assoInstances || [],
-        associationDefinitions
-      ),
-      [assoInstances, associationDefinitions]
+    const visibleAssociations = useMemo(
+      () => visibleRelationshipAssociations(assoInstances || []),
+      [assoInstances]
     );
 
     useEffect(() => {
-      setDefinitionModelId('');
-      if (!modelId) {
-        setAssociationDefinitions([]);
-        return;
-      }
-
-      let cancelled = false;
-      modelApi.getModelAssociations(modelId)
-        .then((data) => {
-          if (!cancelled) {
-            setAssociationDefinitions(Array.isArray(data) ? data : []);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) setAssociationDefinitions([]);
-        })
-        .finally(() => {
-          if (!cancelled) setDefinitionModelId(modelId);
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    }, [modelId]);
-
-    useEffect(() => {
-      if (!modelList.length || definitionModelId !== modelId) return;
-      getInitData(mergedAssociations as CrentialsAssoInstItem[]);
-    }, [definitionModelId, mergedAssociations, modelId, modelList]);
+      if (!modelList.length) return;
+      getInitData(visibleAssociations as CrentialsAssoInstItem[]);
+    }, [visibleAssociations, modelId, modelList]);
 
     useEffect(() => {
       onExpandStateChange?.(
@@ -369,15 +336,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
               );
               message.success(t('successfullyDisassociated'));
               const data = await fetchAssoInstances(modelId, instUuid);
-              const updatedAssociations = mergeRelationshipAssociations(
-                data,
-                associationDefinitions
-              );
-              processedData(updatedAssociations);
-              await updateInstAttrList(
-                updatedAssociations,
-                item.model_asst_id
-              );
+              await getInitData(visibleRelationshipAssociations(data));
             } finally {
               resolve(true);
             }
@@ -417,18 +376,12 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
 
     const confirmRelate = async () => {
       const data = await fetchAssoInstances(modelId, instUuid);
-      const updatedAssociations = mergeRelationshipAssociations(
-        data,
-        associationDefinitions
-      );
-      getInitData(updatedAssociations);
+      getInitData(visibleRelationshipAssociations(data));
     };
 
     return (
       <Spin
-        spinning={
-          definitionModelId !== modelId || (!loading && pageLoading)
-        }
+        spinning={!loading && pageLoading}
       >
         <div className={assoListStyle.relationships}>
           {assoCredentials.length ? (
