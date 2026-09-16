@@ -818,6 +818,37 @@ async def test_planner_catalog_prepends_monitor_capability_hint():
     assert "禁止返回空 steps" in prompt
     assert "monitor_list_objects→monitor_list_object_instances" in prompt
     assert "必须规划对应 monitor_* 步骤" in prompt
+    assert "联动规则" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_planner_catalog_prepends_cmdb_monitor_linkage_hint():
+    tools = [
+        _tool("cmdb_search_instances", "查CMDB实例"),
+        _tool("cmdb_get_monitor_ids", "映射监控ID"),
+        _tool("monitor_query_metric_data", "查时序"),
+        _tool("monitor_list_object_instances", "列实例"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(content='{"goal":"查CPU","steps":[{"objective":"映射监控ID","tools":["cmdb_get_monitor_ids"]}]}')
+
+    llm = FakeLLM()
+    planner = ToolExecutionPlanner(llm)
+    plan = await planner.plan("这些主机的CPU使用率情况如何", tools)
+
+    assert plan.steps[0].tools == ["cmdb_get_monitor_ids"]
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "联动规则" in prompt
+    assert "不是同一套" in prompt
+    assert "禁止把 cmdb_search_instances" in prompt
+    assert "cmdb_get_monitor_ids" in prompt
+    assert "monitor_list_object_instances" in prompt
 
 
 def test_parse_tool_execution_plan_payload_accepts_markdown_and_step_list():

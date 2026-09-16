@@ -49,7 +49,13 @@ def monitor_list_instance_metrics(
     )
 
 
-@tool(description=("【主机CPU使用率】第4步：查询指标时序（返回CPU使用率数值）。" "必填monitor_obj_id、metric；用instance_ids指定主机。" "可省略start/end（默认近1小时；秒或毫秒时间戳均可）。" "这是查CPU的正确方式，禁止建议top/htop/SSH。"))
+@tool(
+    description=(
+        "【主机CPU使用率】第4步：查询指标时序（返回CPU使用率数值）。"
+        "必填monitor_obj_id、metric；用监控instance_ids指定主机（可用主机名或IP）。"
+        "禁止CMDB的inst_uuid/_id。可省略start/end（默认近1小时）。禁止建议top/htop/SSH。"
+    )
+)
 def monitor_query_metric_data(
     monitor_obj_id: Optional[str] = None,
     metric: Optional[str] = None,
@@ -84,7 +90,7 @@ def monitor_query_metric_data(
     )
 
 
-@tool(description=("【主机CPU使用率】按 instance_ids 查询主机 CPU/内存/磁盘均值与最高值快照。" "已有 instance_id 时可用本工具快速看资源概况，无需先查指标名。"))
+@tool(description=("【主机CPU使用率】按监控 instance_ids 查询主机 CPU/内存/磁盘均值与最高值快照。" "须用监控 instance_id/主机名/IP，禁止 CMDB 的 inst_uuid/_id。"))
 def monitor_get_host_resource_snapshot(
     instance_ids: Optional[List[str]] = None,
     config: RunnableConfig = None,

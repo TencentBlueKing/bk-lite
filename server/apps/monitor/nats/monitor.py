@@ -58,8 +58,10 @@ from apps.monitor.services.host_dashboard import (
     HostResourceSnapshotService,
     build_host_instance_rows,
     empty_host_snapshot,
+    looks_like_cmdb_instance_locator,
     resolve_instance_storage_ids,
     select_instances_by_ids,
+    unresolved_monitor_instance_message,
     validate_range_metric_type,
 )
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
@@ -851,6 +853,9 @@ def monitor_object_instances(monitor_obj_id: str, *args, **kwargs):
             "created_time": instance.created_time.isoformat() if hasattr(instance, "created_time") and instance.created_time else None,
             "updated_time": instance.updated_time.isoformat() if hasattr(instance, "updated_time") and instance.updated_time else None,
         }
+        cmdb_id = getattr(instance, "cmdb_id", None)
+        if cmdb_id:
+            instance_data["cmdb_id"] = str(cmdb_id)
 
         # 添加权限信息
         if instance.id in inst_permission_map:
@@ -934,7 +939,7 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     authorized_map = {str(instance.id): instance for instance in authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False)}
     instance_ids, unresolved = resolve_instance_storage_ids(authorized_map, instance_ids)
     if unresolved or not instance_ids:
-        return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
+        return {"result": False, "data": [], "message": unresolved_monitor_instance_message(unresolved)}
 
     authorized_instance_ids = set(authorized_map)
 
@@ -1032,7 +1037,7 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
     selected = select_instances_by_ids(authorized_map, [instance_id])
     instance = selected[0] if selected else None
     if not instance:
-        return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
+        return {"result": False, "data": [], "message": unresolved_monitor_instance_message([instance_id])}
 
     metrics = Metric.objects.filter(monitor_object=monitor_obj).select_related("metric_group").order_by("metric_group__sort_order", "sort_order")
     if only_with_data:
@@ -1183,9 +1188,9 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
         }
 
     if instance_ids:
-        storage_ids, _unresolved = resolve_instance_storage_ids(authorized_map, instance_ids)
+        storage_ids, unresolved = resolve_instance_storage_ids(authorized_map, instance_ids)
         if not storage_ids:
-            return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
+            return {"result": False, "data": [], "message": unresolved_monitor_instance_message(unresolved or instance_ids)}
         authorized_instance_ids = set(storage_ids)
     else:
         authorized_instance_ids = set(authorized_map)
@@ -1296,9 +1301,17 @@ def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids)
 def _filter_requested_alert_instances(authorized_instances, instance_ids):
     requested_instance_ids = list(dict.fromkeys(instance_ids))
     if requested_instance_ids:
-        storage_ids, _unresolved = resolve_instance_storage_ids(authorized_instances, requested_instance_ids)
+        storage_ids, unresolved = resolve_instance_storage_ids(authorized_instances, requested_instance_ids)
         if not storage_ids:
-            return None, None, {"result": False, "data": [], "message": "没有权限访问指定的实例"}
+            return (
+                None,
+                None,
+                {
+                    "result": False,
+                    "data": [],
+                    "message": unresolved_monitor_instance_message(unresolved or requested_instance_ids),
+                },
+            )
         return set(storage_ids), storage_ids, None
     if not authorized_instances:
         return (
@@ -1611,6 +1624,14 @@ def get_host_resource_snapshot(*args, **kwargs):
         return error
     selected_instances = select_instances_by_ids(authorized_instances, instance_ids)
     if not selected_instances:
+        _storage_ids, unresolved = resolve_instance_storage_ids(authorized_instances, instance_ids)
+        leftover = unresolved or instance_ids
+        if leftover and all(looks_like_cmdb_instance_locator(item) for item in leftover):
+            return {
+                "result": False,
+                "data": empty_host_snapshot(),
+                "message": unresolved_monitor_instance_message(leftover),
+            }
         return {"result": True, "data": empty_host_snapshot(), "message": ""}
 
     try:

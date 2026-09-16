@@ -9,8 +9,10 @@ from apps.monitor.services.host_dashboard import (
     build_host_instance_rows,
     build_host_resource_snapshot,
     fold_host_range_series,
+    looks_like_cmdb_instance_locator,
     resolve_instance_storage_ids,
     select_instances_by_ids,
+    unresolved_monitor_instance_message,
     validate_range_metric_type,
 )
 from apps.monitor.services.host_resource_top import HostCandidate
@@ -57,6 +59,32 @@ def test_select_instances_by_ids_accepts_name_and_ip():
     assert select_instances_by_ids(authorized, ["10.10.41.149-mysql-3306"]) == [mysql]
     assert select_instances_by_ids(authorized, ["LOCAL"]) == [host]
     assert {item.id for item in select_instances_by_ids(authorized, ["10.10.41.149"])} == {mysql.id, host.id}
+
+
+def test_select_instances_by_ids_accepts_bound_cmdb_id():
+    host = SimpleNamespace(
+        id="('MTVmOTFiYTM5ODZk',)",
+        name="local",
+        ip="10.10.41.149",
+        cmdb_id="63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+    )
+    authorized = {host.id: host}
+
+    assert select_instances_by_ids(authorized, ["63e4a531-b6bb-43cc-9eae-8eb8a09f795e"]) == [host]
+    storage_ids, unresolved = resolve_instance_storage_ids(authorized, ["63e4a531-b6bb-43cc-9eae-8eb8a09f795e"])
+    assert storage_ids == [host.id]
+    assert unresolved == []
+
+
+def test_unresolved_monitor_instance_message_distinguishes_cmdb_locators():
+    from apps.monitor.services.host_dashboard import CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE, DENIED_MONITOR_INSTANCE_MESSAGE
+
+    assert looks_like_cmdb_instance_locator("100000000001")
+    assert looks_like_cmdb_instance_locator("63e4a531-b6bb-43cc-9eae-8eb8a09f795e")
+    assert not looks_like_cmdb_instance_locator("MTVmOTFiYTM5ODZk")
+    assert not looks_like_cmdb_instance_locator("10.11.27.10")
+    assert unresolved_monitor_instance_message(["100000000001", "100000000002"]) == CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE
+    assert unresolved_monitor_instance_message(["MTVmOTFiYTM5ODZk"]) == DENIED_MONITOR_INSTANCE_MESSAGE
 
 
 def test_host_instance_rows_use_display_name_and_sort():

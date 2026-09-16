@@ -211,6 +211,7 @@ class TestMonitorObjectInstancesHandler:
         assert out["data"][0]["permission"] == ["View"]
         assert out["data"][0]["ip"] is None
         assert out["data"][0]["instance_id"] == "h1"
+        assert "cmdb_id" not in out["data"][0]
 
     def test_returns_logical_instance_id_for_tuple_storage_key(self, mocker):
         obj = MonitorObject.objects.create(name="NMIObjLogical", level="base")
@@ -238,6 +239,31 @@ class TestMonitorObjectInstancesHandler:
         assert out["data"][0]["id"] == "('MTVmOTFiYTM5ODZk',)"
         assert out["data"][0]["instance_id"] == "MTVmOTFiYTM5ODZk"
         assert out["data"][0]["ip"] == "10.10.41.149"
+
+    def test_returns_bound_cmdb_id(self, mocker):
+        obj = MonitorObject.objects.create(name="NMIObjCmdb", level="base")
+        MonitorInstance.objects.create(
+            id="('h-cmdb',)",
+            name="local",
+            monitor_object=obj,
+            cmdb_id="63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            is_active=True,
+            is_deleted=False,
+        )
+        mocker.patch(
+            "apps.monitor.nats.monitor.get_permission_rules",
+            return_value={"team": [1], "instance": [{"id": "('h-cmdb',)", "permission": ["View"]}]},
+        )
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+        out = nm.monitor_object_instances(
+            obj.id,
+            user_info={"user": SimpleNamespace(username="u", domain="domain.com"), "team": 1},
+        )
+        assert out["result"] is True
+        assert out["data"][0]["cmdb_id"] == "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 
     def test_returns_resolved_ip_from_model_and_asset_fact(self, mocker):
         obj = MonitorObject.objects.create(name="NMIObjIp", level="base")
@@ -544,6 +570,65 @@ class TestQueryMonitorDataByMetric:
         assert out["result"] is False
         assert out["message"] == "没有权限访问指定的实例"
         vm.assert_not_called()
+
+    def test_cmdb_numeric_instance_id_is_rejected_with_linkage_message(self, mocker):
+        from apps.monitor.services.host_dashboard import CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE
+
+        obj, _metric = self._setup()
+        MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj, is_deleted=False)
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+        vm = mocker.patch("apps.monitor.nats.monitor.Metrics.get_metrics_range")
+        out = nm.query_monitor_data_by_metric(
+            {
+                "monitor_obj_id": obj.id,
+                "metric": "cpu",
+                "start": 1,
+                "end": 2,
+                "instance_ids": ["100000000001", "100000000002"],
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+        assert out["result"] is False
+        assert out["message"] == CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE
+        vm.assert_not_called()
+
+    def test_bound_cmdb_id_is_authorized(self, mocker):
+        obj, _metric = self._setup()
+        MonitorInstance.objects.create(
+            id="('MTVmOTFiYTM5ODZk',)",
+            name="local",
+            monitor_object=obj,
+            cmdb_id="63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            is_deleted=False,
+        )
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+        captured = {}
+
+        def fake_range(query, start, end, step, fill_missing=False):
+            captured["query"] = query
+            return {"data": {"result": [{"metric": {"instance_id": "MTVmOTFiYTM5ODZk"}, "values": [[0, "31"]]}]}}
+
+        mocker.patch("apps.monitor.nats.monitor.Metrics.get_metrics_range", side_effect=fake_range)
+        out = nm.query_monitor_data_by_metric(
+            {
+                "monitor_obj_id": obj.id,
+                "metric": "cpu",
+                "start": 1,
+                "end": 2,
+                "instance_ids": ["63e4a531-b6bb-43cc-9eae-8eb8a09f795e"],
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+        assert out["result"] is True
+        assert "MTVmOTFiYTM5ODZk" in captured["query"]
 
     def test_budget_error_keeps_structured_failure(self, mocker):
         obj, _ = self._setup()

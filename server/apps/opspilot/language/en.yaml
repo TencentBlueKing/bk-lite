@@ -215,27 +215,29 @@ tools:
       [Host CPU] Query BK-Lite monitored objects, instances, metric series, and alerts with caller identity.
       Typical flow: object type → match host name to instance → confirm metric → query series.
       Prefer these tools; do not suggest SSH/top/htop.
+      instance_ids are monitor instance IDs (or host name/IP), not CMDB inst_uuid/_id.
     tools:
       monitor_list_objects:
         description: "[Host CPU] Step 1: list object types and find the host monitor_obj_id."
       monitor_list_object_instances:
-        description: "[Host CPU] Step 2: list instances; match host name to get instance_id."
+        description: "[Host CPU] Step 2: list instances; match host name to get monitor instance_id. Do not use CMDB inst_uuid."
       monitor_list_object_metrics:
         description: "[Host CPU] Step 3: list metric definitions; confirm CPU usage metric name."
       monitor_list_instance_metrics:
         description: "[Host CPU] Optional: confirm whether an instance has CPU metrics."
       monitor_query_metric_data:
-        description: "[Host CPU] Step 4: query metric time series; needs object, metric, optional time range (default last 1h), optional instance_ids."
+        description: "[Host CPU] Step 4: query metric time series; needs object, metric, optional time range (default last 1h). instance_ids must be monitor IDs/name/IP, not CMDB inst_uuid."
       monitor_list_active_alerts:
-        description: "[Host alerts] List current active alerts; filter by object/instance/level. instance_ids accepts instance_id, name, or IP."
+        description: "[Host alerts] List current active alerts; filter by object/instance/level. instance_ids accepts monitor instance_id, name, or IP, not CMDB inst_uuid."
       monitor_query_alert_segments:
         description: "[Host alert history] Query alert segments in a time window."
       monitor_get_host_resource_snapshot:
-        description: "[Host CPU] Query CPU/memory/disk avg and max snapshot by instance_ids."
+        description: "[Host CPU] Query CPU/memory/disk avg and max snapshot by monitor instance_ids; not CMDB inst_uuid."
   cmdb:
     name: CMDB
     description: |
       Query and change BK-Lite CMDB assets with caller identity. Models, instance CRUD, associations, topology, and full-text search. Permissions are enforced server-side.
+      When linking to Monitor: CMDB inst_uuid/_id is not a monitor instance_id; use monitor_id or cmdb_get_monitor_ids.
     tools:
       cmdb_list_models:
         description: List accessible CMDB models.
@@ -244,9 +246,11 @@ tools:
       cmdb_list_model_attrs:
         description: List model attributes.
       cmdb_search_instances:
-        description: Search instances by model with pagination.
+        description: Search instances by model with pagination. Returns inst_uuid and linked monitor_id; do not pass inst_uuid/_id as monitor instance_ids.
       cmdb_get_instance:
-        description: Get an instance by UUID.
+        description: Get an instance by UUID. Use monitor_id for monitor queries; do not pass inst_uuid as instance_ids.
+      cmdb_get_monitor_ids:
+        description: Map CMDB inst_uuids to linked monitor instance_ids (monitor_id).
       cmdb_create_instance:
         description: Create an instance.
       cmdb_update_instance:
