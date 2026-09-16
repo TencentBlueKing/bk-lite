@@ -704,6 +704,8 @@ class InstanceManage(object):
 
     @staticmethod
     def _build_check_attr_map(attrs: list, for_update: bool = False) -> dict:
+        from apps.cmdb.services.module_ingest import is_unique_identity_attr
+
         check_attr_map = {"is_only": {}, "is_required": {}}
         if for_update:
             check_attr_map["editable"] = {}
@@ -711,7 +713,7 @@ class InstanceManage(object):
         for attr in attrs:
             attr_id = attr["attr_id"]
             attr_name = attr["attr_name"]
-            if attr.get("is_only"):
+            if is_unique_identity_attr(attr):
                 check_attr_map["is_only"][attr_id] = attr_name
             if attr.get("is_required"):
                 check_attr_map["is_required"][attr_id] = attr_name
