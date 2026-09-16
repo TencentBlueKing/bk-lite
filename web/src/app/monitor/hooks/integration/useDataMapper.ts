@@ -279,7 +279,9 @@ export class DataMapper {
           : [];
       if (
         pluginTypes.some((type) =>
-          ['qcloud', 'windows_wmi', 'cisco_meraki'].includes(String(type))
+          ['qcloud', 'windows_wmi', 'cisco_meraki', 'aliyun', 'cnware'].includes(
+            String(type)
+          )
         )
       ) {
         return false;

@@ -7,7 +7,7 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 
 BATCH_SIZE = 100
 SNMP_V3_SECRET_KEYS = ("AUTH_PASSWORD", "PRIV_PASSWORD")
-PLAINTEXT_HTTP_PASSWORD_CONFIG_TYPES = frozenset({"qcloud", "windows_wmi", "cisco_meraki", "web"})
+PLAINTEXT_HTTP_PASSWORD_CONFIG_TYPES = frozenset({"qcloud", "windows_wmi", "cisco_meraki", "web", "aliyun", "cnware"})
 PLAINTEXT_HTTP_PASSWORD_COLLECT_TYPES = frozenset({"web"})
 
 
@@ -94,8 +94,8 @@ def urldecode_stored_plaintext_secrets(apps, schema_editor):
     """Decrypt → URL-decode → re-encrypt plaintext-consumer env secrets.
 
     SNMPv3 AUTH/PRIV always. HTTP header / dedicated password fields only for
-    web / qcloud / windows_wmi / cisco_meraki. host / postgres / mongodb PASSWORD
-    keys stay URL-encoded.
+    web / qcloud / windows_wmi / cisco_meraki / aliyun / cnware. host /
+    postgres / mongodb PASSWORD keys stay URL-encoded.
     """
     database_alias = schema_editor.connection.alias
     cryptor = AESCryptor()
