@@ -111,7 +111,7 @@
     {
       "metric_group": "Environment",
       "name": "env_temperature_celsius",
-      "query": "((env_temperature_celsius{instance_type='network_service', __$labels__} / 10) * on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 1)) or (((env_temperature_celsius{instance_type='network_service', __$labels__} / 10 - 32) * 5 / 9) * on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 0)) or (env_temperature_celsius{instance_type='network_service', __$labels__} / 10)",
+      "query": "((env_temperature_celsius{instance_type='network_service', __$labels__} / 10) and on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 1)) or (((env_temperature_celsius{instance_type='network_service', __$labels__} / 10 - 32) * 5 / 9) and on(instance_id) group_left() (snmp_temperature_units{instance_type='network_service'} == 0)) or (env_temperature_celsius{instance_type='network_service', __$labels__} / 10)",
       "display_name": "Environment Temperature",
       "data_type": "Number",
       "unit": "celsius",
