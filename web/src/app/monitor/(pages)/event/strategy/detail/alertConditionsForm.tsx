@@ -210,6 +210,17 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       ''
     );
   }, [metricUnit, unitList]);
+  const recoveryThresholdUnitLabel = useMemo(() => {
+    if (!thresholdUnit || isVacantThresholdUnit(thresholdUnit)) {
+      return '';
+    }
+    const matched = unitList.find((item) => item.unit_id === thresholdUnit);
+    return (
+      resolveMetricDisplayUnit(thresholdUnit, unitList) ||
+      matched?.unit_name ||
+      ''
+    );
+  }, [thresholdUnit, unitList]);
 
   const handleCompareModeChange = (val: string) => {
     onCompareModeChange(val);
@@ -416,60 +427,59 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   </span>
                 }
               >
-                <div className="flex flex-wrap items-center gap-[10px]">
-                  <span>{t('monitor.events.recoveryCondition')}</span>
-                  <Form.Item
-                    name="recovery_condition"
-                    noStyle
-                    rules={[
-                      {
-                        required: false,
-                        message: t('common.required')
-                      }
-                    ]}
-                  >
-                    <InputNumber
-                      className="w-[100px]"
-                      min={1}
-                      precision={0}
-                    />
-                  </Form.Item>
-                  <span>{t('monitor.events.consecutivePeriods')}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-[10px] mt-[10px]">
-                  <span>{t('monitor.events.recoveryThreshold')}</span>
-                  <Select
-                    className="w-[80px]"
-                    allowClear
-                    placeholder={t('monitor.events.recoveryThresholdPlaceholder')}
-                    value={recoveryThreshold?.method || undefined}
-                    onChange={(method) =>
-                      onRecoveryThresholdChange?.({
-                        method: method || '',
-                        value: recoveryThreshold?.value ?? null
-                      })
-                    }
-                  >
-                    {COMPARISON_METHOD.map((item) => (
-                      <Option key={item.value} value={item.value}>
-                        {item.label}
-                      </Option>
-                    ))}
-                  </Select>
+                {t('monitor.events.recoveryCondition')}
+                <Form.Item name="recovery_condition" noStyle>
                   <InputNumber
-                    className="w-[120px]"
-                    placeholder={t(
-                      'monitor.events.recoveryThresholdPlaceholder'
-                    )}
-                    value={recoveryThreshold?.value ?? null}
-                    onChange={(value) =>
-                      onRecoveryThresholdChange?.({
-                        method: recoveryThreshold?.method || '',
-                        value: typeof value === 'number' ? value : null
-                      })
-                    }
+                    className="mx-[10px] w-[100px]"
+                    min={1}
+                    precision={0}
                   />
-                </div>
+                </Form.Item>
+                {t('monitor.events.consecutivePeriods')}
+              </Form.Item>
+              <Form.Item
+                label={
+                  <span className="w-[100px]">
+                    {t('monitor.events.recoveryThreshold')}
+                  </span>
+                }
+              >
+                <InputNumber
+                  className="w-full"
+                  style={{ width: '100%' }}
+                  addonBefore={
+                    <Select
+                      allowClear
+                      value={recoveryThreshold?.method || undefined}
+                      popupMatchSelectWidth={false}
+                      style={{ width: 80 }}
+                      aria-label={t('monitor.events.method')}
+                      onChange={(method) =>
+                        onRecoveryThresholdChange?.({
+                          method: method || '',
+                          value: recoveryThreshold?.value ?? null
+                        })
+                      }
+                    >
+                      {COMPARISON_METHOD.map((item) => (
+                        <Option key={item.value} value={item.value}>
+                          {item.label}
+                        </Option>
+                      ))}
+                    </Select>
+                  }
+                  addonAfter={recoveryThresholdUnitLabel || undefined}
+                  placeholder={t(
+                    'monitor.events.recoveryThresholdPlaceholder'
+                  )}
+                  value={recoveryThreshold?.value ?? null}
+                  onChange={(value) =>
+                    onRecoveryThresholdChange?.({
+                      method: recoveryThreshold?.method || '',
+                      value: typeof value === 'number' ? value : null
+                    })
+                  }
+                />
               </Form.Item>
 
               {/* 无数据告警 */}
