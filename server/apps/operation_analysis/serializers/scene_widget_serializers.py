@@ -76,3 +76,10 @@ class RelatedTopologyRequestSerializer(_Application3DStrictSerializer):
 
     def validate_inst_uuid(self, value):
         return str(value)
+
+
+class Room3DEmbedRequestSerializer(_Application3DStrictSerializer):
+    inst_uuid = serializers.UUIDField()
+
+    def validate_inst_uuid(self, value):
+        return str(value)

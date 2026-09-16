@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveCmdbPublicMenuItems } from '../cmdbPublicMenus';
+import {
+  relationshipTabForPublicMenuKey,
+  resolveCmdbPublicMenuItems,
+} from '../cmdbPublicMenus';
 
 const INST_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -10,11 +13,13 @@ describe('resolveCmdbPublicMenuItems', () => {
       instUuid: INST_UUID,
       modelId: 'host',
       monitorId: 'mon-1',
+      nodeId: '',
       isNetworkDevice: false,
       hasOpsAnalysis: true,
       widgets: {
         'monitor.monitorView': true,
         'monitor.alertList': true,
+        'monitor.monitorPolicy': true,
         'ops-analysis.relatedTopology': true,
         'ops-analysis.networkStatusTopology': true,
         'ops-analysis.application3D': true,
@@ -23,17 +28,20 @@ describe('resolveCmdbPublicMenuItems', () => {
     expect(withMonitor.map((item) => item.key)).toEqual([
       'monitorView',
       'alertList',
+      'monitorPolicy',
     ]);
 
     const unlinked = resolveCmdbPublicMenuItems({
       instUuid: INST_UUID,
       modelId: 'host',
       monitorId: '',
+      nodeId: '',
       isNetworkDevice: false,
       hasOpsAnalysis: true,
       widgets: {
         'monitor.monitorView': true,
         'monitor.alertList': true,
+        'monitor.monitorPolicy': true,
         'ops-analysis.relatedTopology': true,
         'ops-analysis.networkStatusTopology': true,
         'ops-analysis.application3D': true,
@@ -47,6 +55,7 @@ describe('resolveCmdbPublicMenuItems', () => {
       instUuid: INST_UUID,
       modelId: 'host',
       monitorId: 'mon-1',
+      nodeId: '',
       isNetworkDevice: true,
       hasOpsAnalysis: true,
       widgets: {
@@ -65,6 +74,7 @@ describe('resolveCmdbPublicMenuItems', () => {
       instUuid: INST_UUID,
       modelId: 'switch',
       monitorId: '',
+      nodeId: '',
       isNetworkDevice: true,
       hasOpsAnalysis: true,
       widgets: {
@@ -82,6 +92,7 @@ describe('resolveCmdbPublicMenuItems', () => {
       instUuid: INST_UUID,
       modelId: 'system',
       monitorId: '',
+      nodeId: '',
       isNetworkDevice: false,
       hasOpsAnalysis: true,
       widgets: {
@@ -96,6 +107,7 @@ describe('resolveCmdbPublicMenuItems', () => {
       instUuid: INST_UUID,
       modelId: 'application',
       monitorId: '',
+      nodeId: '',
       isNetworkDevice: false,
       hasOpsAnalysis: true,
       widgets: {
@@ -112,6 +124,7 @@ describe('resolveCmdbPublicMenuItems', () => {
         instUuid: '',
         modelId: 'system',
         monitorId: 'mon-1',
+        nodeId: '',
         isNetworkDevice: true,
         hasOpsAnalysis: true,
         widgets: {
@@ -128,6 +141,7 @@ describe('resolveCmdbPublicMenuItems', () => {
         instUuid: INST_UUID,
         modelId: 'system',
         monitorId: 'mon-1',
+        nodeId: '',
         isNetworkDevice: true,
         hasOpsAnalysis: true,
         widgets: {},
@@ -141,14 +155,89 @@ describe('resolveCmdbPublicMenuItems', () => {
         instUuid: INST_UUID,
         modelId: 'host',
         monitorId: 'mon-1',
+        nodeId: 'node-1',
         isNetworkDevice: true,
         hasOpsAnalysis: false,
         widgets: {
           'monitor.monitorView': true,
           'monitor.alertList': true,
+          'monitor.monitorPolicy': true,
+          'node.nodeStatus': true,
           'ops-analysis.networkStatusTopology': true,
           'ops-analysis.application3D': true,
+          'ops-analysis.room3D': true,
         },
+      }).map((item) => item.key),
+    ).toEqual([]);
+  });
+
+  it('shows node status only for host with a direct nodeId', () => {
+    expect(
+      resolveCmdbPublicMenuItems({
+        instUuid: INST_UUID,
+        modelId: 'host',
+        monitorId: '',
+        nodeId: 'node-1',
+        isNetworkDevice: false,
+        hasOpsAnalysis: true,
+        widgets: { 'node.nodeStatus': true },
+      }).map((item) => item.key),
+    ).toEqual(['nodeStatus']);
+
+    expect(
+      resolveCmdbPublicMenuItems({
+        instUuid: INST_UUID,
+        modelId: 'switch',
+        monitorId: '',
+        nodeId: 'node-1',
+        isNetworkDevice: true,
+        hasOpsAnalysis: true,
+        widgets: { 'node.nodeStatus': true },
+      }).map((item) => item.key),
+    ).toEqual([]);
+  });
+
+  it('puts room3D on the server room sidebar and never lets application3D stand in', () => {
+    const items = resolveCmdbPublicMenuItems({
+      instUuid: INST_UUID,
+      modelId: 'server_room',
+      monitorId: '',
+      nodeId: '',
+      isNetworkDevice: false,
+      hasOpsAnalysis: true,
+      widgets: {
+        'ops-analysis.room3D': true,
+        'ops-analysis.application3D': true,
+      },
+    });
+    expect(items.map((item) => item.key)).toEqual(['room3D']);
+    expect(items[0]?.url).toBe('/cmdb/assetData/detail/room3D');
+    expect(relationshipTabForPublicMenuKey('room3D')).toBe('room3D');
+
+    expect(
+      resolveCmdbPublicMenuItems({
+        instUuid: INST_UUID,
+        modelId: 'rack',
+        monitorId: '',
+        nodeId: '',
+        isNetworkDevice: false,
+        hasOpsAnalysis: true,
+        widgets: {
+          'ops-analysis.room3D': true,
+          'ops-analysis.application3D': true,
+        },
+      }).map((item) => item.key),
+    ).toEqual([]);
+
+    expect(
+      resolveCmdbPublicMenuItems({
+        instUuid: INST_UUID,
+        modelId: 'server_room',
+        monitorId: '',
+        nodeId: '',
+        isNetworkDevice: false,
+        hasOpsAnalysis: true,
+        widgets: { 'ops-analysis.application3D': true },
       }).map((item) => item.key),
     ).toEqual([]);
   });

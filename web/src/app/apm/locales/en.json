@@ -18,6 +18,7 @@
       "timeRange": "Time range",
       "refresh": "Refresh",
       "retry": "Retry",
+      "publicWidgetNotFound": "The service does not exist or is no longer valid",
       "reload": "Reload",
       "loadMore": "Load more",
       "close": "Close",

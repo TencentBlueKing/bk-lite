@@ -22,6 +22,9 @@ describe('alarm public widget host isolation', () => {
       expect(source).not.toMatch(/from ['"]@\/app\/ops-analysis/);
       expect(source).not.toMatch(/from ['"]@\/app\/monitor/);
       expect(source).not.toMatch(/from ['"]@\/app\/cmdb/);
+      expect(source).not.toMatch(/from ['"]@\/app\/log/);
+      expect(source).not.toMatch(/from ['"]@\/app\/apm/);
+      expect(source).not.toMatch(/from ['"]@\/app\/node-manager/);
       expect(source).not.toContain('operation_analysis');
     }
   });
@@ -31,12 +34,18 @@ describe('alarm public widget host isolation', () => {
     expect(paneSource).toContain("useAppWidget('monitor.monitorView')");
     expect(paneSource).toContain("useAppWidget('ops-analysis.relatedTopology')");
     expect(paneSource).toContain("useAppWidget('cmdb.baseInfo')");
+    expect(paneSource).toContain("useAppWidget('log.alertRawLog')");
+    expect(paneSource).toContain("useAppWidget('cmdb.assetChange')");
+    expect(paneSource).toContain("useAppWidget('node.nodeStatus')");
+    expect(paneSource).toContain("useAppWidget('apm.serviceOverview')");
+    expect(paneSource).toContain("useAppWidget('apm.callChain')");
     expect(paneSource).toContain("hasAppAccess(clientData, 'ops-analysis')");
     expect(paneSource).toContain('resolveAlarmPublicWidgetVisibility');
     expect(paneSource).toContain('useLazyAppWidget');
     expect(paneSource).toContain('active && Boolean(identifier)');
     expect(paneSource).toContain('useActiveBoundIdentifier');
-    expect(paneSource).toContain('toolbarStart');
+    expect(paneSource).toContain('onEmbedToolbar');
+    expect(paneSource).toContain('objectSwitcher={toolbarStart}');
     expect(paneSource).not.toContain("t('common.refresh')");
     expect(paneSource).not.toContain('ReloadOutlined');
     expect(paneSource).not.toContain('520px');

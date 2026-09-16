@@ -18,13 +18,14 @@ import { useInstanceApi } from '@/app/cmdb/api';
 
 type InstUuidWidget = React.ComponentType<{ instUuid: string }>;
 type MonitorIdWidget = React.ComponentType<{ monitorId: string }>;
+type NodeIdWidget = React.ComponentType<{ nodeId: string }>;
 
 export function CmdbPublicWidgetPage({
   widgetKey,
   identifierProp,
 }: {
   widgetKey: AppWidgetKey;
-  identifierProp: 'instUuid' | 'monitorId';
+  identifierProp: 'instUuid' | 'monitorId' | 'nodeId';
 }) {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
@@ -36,39 +37,53 @@ export function CmdbPublicWidgetPage({
   const getInstanceDetailRef = useRef(getInstanceDetail);
   getInstanceDetailRef.current = getInstanceDetail;
   const [monitorId, setMonitorId] = useState('');
-  const [resolvingMonitorId, setResolvingMonitorId] = useState(
-    identifierProp === 'monitorId',
+  const [nodeId, setNodeId] = useState('');
+  const [resolvingIdentifier, setResolvingIdentifier] = useState(
+    identifierProp === 'monitorId' || identifierProp === 'nodeId',
   );
 
   useEffect(() => {
-    if (identifierProp !== 'monitorId') {
-      setResolvingMonitorId(false);
+    if (identifierProp === 'instUuid') {
+      setResolvingIdentifier(false);
       setMonitorId('');
+      setNodeId('');
       return;
     }
     if (!instUuid) {
-      setResolvingMonitorId(false);
+      setResolvingIdentifier(false);
       setMonitorId('');
+      setNodeId('');
       return;
     }
     let cancelled = false;
-    setResolvingMonitorId(true);
+    setResolvingIdentifier(true);
     getInstanceDetailRef.current(instUuid)
-      .then((detail: { monitor_id?: string }) => {
-        if (!cancelled) setMonitorId(String(detail?.monitor_id || '').trim());
+      .then((detail: { monitor_id?: string; node_id?: string }) => {
+        if (!cancelled) {
+          setMonitorId(String(detail?.monitor_id || '').trim());
+          setNodeId(String(detail?.node_id || '').trim());
+        }
       })
       .catch(() => {
-        if (!cancelled) setMonitorId('');
+        if (!cancelled) {
+          setMonitorId('');
+          setNodeId('');
+        }
       })
       .finally(() => {
-        if (!cancelled) setResolvingMonitorId(false);
+        if (!cancelled) setResolvingIdentifier(false);
       });
     return () => {
       cancelled = true;
     };
   }, [identifierProp, instUuid]);
 
-  const identifier = identifierProp === 'instUuid' ? instUuid : monitorId;
+  const identifier =
+    identifierProp === 'instUuid'
+      ? instUuid
+      : identifierProp === 'monitorId'
+        ? monitorId
+        : nodeId;
   const canUsePublic = canShowCrossModulePublicWidget({
     hostApp: 'cmdb',
     widgetKey,
@@ -80,7 +95,7 @@ export function CmdbPublicWidgetPage({
     active: canUsePublic && Boolean(identifier),
   });
 
-  if (widget.status === 'loading' || resolvingMonitorId) {
+  if (widget.status === 'loading' || resolvingIdentifier) {
     return (
       <div className="flex h-full min-h-[280px] items-center justify-center">
         <Spin />
@@ -108,8 +123,10 @@ export function CmdbPublicWidgetPage({
     <div className="h-full min-h-[280px] min-w-0">
       {identifierProp === 'instUuid' ? (
         <InstUuidMount Widget={Widget as InstUuidWidget} instUuid={identifier} />
-      ) : (
+      ) : identifierProp === 'monitorId' ? (
         <MonitorIdMount Widget={Widget as MonitorIdWidget} monitorId={identifier} />
+      ) : (
+        <NodeIdMount Widget={Widget as NodeIdWidget} nodeId={identifier} />
       )}
     </div>
   );
@@ -133,4 +150,14 @@ function MonitorIdMount({
   monitorId: string;
 }) {
   return <Widget monitorId={monitorId} />;
+}
+
+function NodeIdMount({
+  Widget,
+  nodeId,
+}: {
+  Widget: NodeIdWidget;
+  nodeId: string;
+}) {
+  return <Widget nodeId={nodeId} />;
 }

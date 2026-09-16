@@ -34,7 +34,7 @@ BK-Lite 按已售模块交付后，运维在告警处置和资产排查时仍要
 
 - 延续系统层 `appCapabilities`：提供模块在各自 `capability` 中声明组件并登记目录；使用模块先按售卖 / 模块级访问探测，再按**稳定组件键**检查声明与可加载性。不另建运行时注册表，不把业务组件搬进 shared `src/components`。
 - 授权按售卖模块；组件键解决「模块已购但某组件未声明 / 不可加载」的降级。宿主按键探测，失败与未购买统一不展示入口。
-- 六个稳定声明键（与展示文案解耦）：
+- 稳定声明键（与展示文案解耦）。一期 6 个如下；二期 `specs/changes/public-capability-widgets-phase2/spec.md` 扩至 13 个（新增 `log.alertRawLog`、`cmdb.assetChange`、`monitor.monitorPolicy`、`ops-analysis.room3D`、`node.nodeStatus`、`apm.serviceOverview`、`apm.callChain`），独立复核不得再按冻死 6 键卡交付：
   - `monitor.monitorView`
   - `monitor.alertList`
   - `cmdb.baseInfo`
@@ -58,7 +58,7 @@ BK-Lite 按已售模块交付后，运维在告警处置和资产排查时仍要
 
 ### 告警详情宿主
 
-- Tab 顺序固定：概述 → 事件 → 监控视图 → 关联拓扑 → 资产信息 → 变更记录 → 处理动作。
+- Tab 顺序固定：概述 → 事件 → 告警原始日志 → 监控视图 → 关联拓扑 → 资产信息 → 资产变更 → 节点状态 → 服务概览 → 调用链 → 变更记录 → 处理动作（二期插入的 Tab 有条件才出现，缺则跳过；见 `public-capability-widgets-phase2`）。
 - **告警详情页与抽屉同一套** Tab 序、公共组件、统一对象切换器与懒加载规则（现网两边都有详情壳）。
 - 概述 / 事件 / 变更记录 / 处理动作：内容与交互保持现网，本期只调序并插入公共组件 Tab；变更记录、处理动作仍是告警中心单据 Tab，不是本期新增公开组件。
 - 稳定标识只从告警快照已有字段读取（`monitor_id` / `cmdb_id` 等硬指针）；禁止打开页面后按名称、IP 等反查补齐。

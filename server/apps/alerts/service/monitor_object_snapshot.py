@@ -21,6 +21,7 @@ def resolve_monitor_objects(events: Iterable) -> list[dict]:
         snapshot = {
             "monitor_id": monitor_id,
             "cmdb_id": _normalize(getattr(event, "cmdb_id", None)),
+            "node_id": _normalize(getattr(event, "node_id", None)),
             "resource_type": _normalize(getattr(event, "resource_type", None)),
             "resource_name": _normalize(getattr(event, "resource_name", None)),
         }
@@ -29,7 +30,7 @@ def resolve_monitor_objects(events: Iterable) -> list[dict]:
             objects_by_monitor_id[monitor_id] = snapshot
             objects.append(snapshot)
             continue
-        for field in ("cmdb_id", "resource_type", "resource_name"):
+        for field in ("cmdb_id", "node_id", "resource_type", "resource_name"):
             if existing[field] is None and snapshot[field] is not None:
                 existing[field] = snapshot[field]
     return objects

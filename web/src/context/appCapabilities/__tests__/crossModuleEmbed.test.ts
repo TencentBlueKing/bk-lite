@@ -78,4 +78,42 @@ describe('canShowCrossModulePublicWidget', () => {
       }),
     ).toBe(false);
   });
+
+  it('hides phase-2 cross-module widgets when ops-analysis is not sold', () => {
+    const keys = [
+      'log.alertRawLog',
+      'cmdb.assetChange',
+      'monitor.monitorPolicy',
+      'ops-analysis.room3D',
+      'node.nodeStatus',
+      'apm.serviceOverview',
+      'apm.callChain',
+    ] as const;
+    for (const widgetKey of keys) {
+      expect(
+        canShowCrossModulePublicWidget({
+          hostApp: 'alarm',
+          widgetKey,
+          hasOpsAnalysis: false,
+          providerDeclared: true,
+        }),
+      ).toBe(false);
+    }
+    expect(
+      canShowCrossModulePublicWidget({
+        hostApp: 'monitor',
+        widgetKey: 'cmdb.assetChange',
+        hasOpsAnalysis: false,
+        providerDeclared: true,
+      }),
+    ).toBe(false);
+    expect(
+      canShowCrossModulePublicWidget({
+        hostApp: 'cmdb',
+        widgetKey: 'monitor.monitorPolicy',
+        hasOpsAnalysis: false,
+        providerDeclared: true,
+      }),
+    ).toBe(false);
+  });
 });

@@ -18,6 +18,7 @@ describe('ops-analysis capability', () => {
     expect(capabilitySource).toContain("'ops-analysis.relatedTopology'");
     expect(capabilitySource).toContain("'ops-analysis.networkStatusTopology'");
     expect(capabilitySource).toContain("'ops-analysis.application3D'");
+    expect(capabilitySource).toContain("'ops-analysis.room3D'");
     expect(capabilitySource).toContain(
       "import('@/app/ops-analysis/components/widgets/relatedTopology')",
     );
@@ -26,6 +27,9 @@ describe('ops-analysis capability', () => {
     );
     expect(capabilitySource).toContain(
       "import('@/app/ops-analysis/components/widgets/application3D/embed')",
+    );
+    expect(capabilitySource).toContain(
+      "import('@/app/ops-analysis/components/widgets/room3D/embed')",
     );
     expect(capabilitySource).not.toMatch(
       /import RelatedTopology from ['"]@\/app\/ops-analysis\/components\/widgets\/relatedTopology['"]/,

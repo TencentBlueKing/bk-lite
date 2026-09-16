@@ -10,6 +10,7 @@ def _event(pk, monitor_id, cmdb_id, resource_type, resource_name, **overrides):
         "pk": pk,
         "monitor_id": monitor_id,
         "cmdb_id": cmdb_id,
+        "node_id": None,
         "resource_type": resource_type,
         "resource_name": resource_name,
         "resource_id": monitor_id,
@@ -31,12 +32,14 @@ def test_resolve_monitor_objects_deduplicates_requirement_example():
         {
             "monitor_id": "0001",
             "cmdb_id": "xxxx1",
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "ip1",
         },
         {
             "monitor_id": "0002",
             "cmdb_id": "xxxx2",
+            "node_id": None,
             "resource_type": "Switch",
             "resource_name": "ip2",
         },
@@ -61,6 +64,7 @@ def test_resolve_monitor_objects_keeps_monitor_without_cmdb_link():
         {
             "monitor_id": "monitor-unlinked",
             "cmdb_id": None,
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "unlinked-host",
         }
@@ -77,6 +81,7 @@ def test_resolve_monitor_objects_fills_only_empty_snapshot_slots():
         {
             "monitor_id": "monitor-fill",
             "cmdb_id": "cmdb-fill",
+            "node_id": None,
             "resource_type": "Switch",
             "resource_name": "switch-1",
         }
@@ -93,6 +98,7 @@ def test_resolve_monitor_objects_keeps_first_non_empty_snapshot_values():
         {
             "monitor_id": "monitor-conflict",
             "cmdb_id": "cmdb-first",
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "host-first",
         }
@@ -135,6 +141,7 @@ def test_resolve_monitor_objects_normalizes_monitor_id_whitespace():
         {
             "monitor_id": "monitor-spaced",
             "cmdb_id": "cmdb-1",
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "host-1",
         }
@@ -143,3 +150,20 @@ def test_resolve_monitor_objects_normalizes_monitor_id_whitespace():
 
 def test_resolve_monitor_objects_returns_empty_list_for_empty_input():
     assert resolve_monitor_objects([]) == []
+
+
+def test_resolve_monitor_objects_freezes_node_id_without_backfill():
+    events = [
+        _event(1, "monitor-node", "cmdb-1", "Host", "host-1", node_id="node-1"),
+        _event(2, "monitor-node", "cmdb-1", "Host", "host-1", node_id="node-later"),
+    ]
+
+    assert resolve_monitor_objects(events) == [
+        {
+            "monitor_id": "monitor-node",
+            "cmdb_id": "cmdb-1",
+            "node_id": "node-1",
+            "resource_type": "Host",
+            "resource_name": "host-1",
+        }
+    ]

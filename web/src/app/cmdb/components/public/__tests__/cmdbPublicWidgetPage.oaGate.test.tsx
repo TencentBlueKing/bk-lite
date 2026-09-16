@@ -15,7 +15,10 @@ const widgetState = vi.hoisted(() => ({
 }));
 
 const lazyState = vi.hoisted(() => ({
-  Widget: null as React.ComponentType<{ monitorId: string }> | null,
+  Widget: null as React.ComponentType<{
+    monitorId?: string;
+    nodeId?: string;
+  }> | null,
   loadFailed: false,
   loadCalls: [] as boolean[],
 }));
@@ -56,7 +59,10 @@ vi.mock('@/context/appCapabilities', async () => {
 
 vi.mock('@/app/cmdb/api', () => ({
   useInstanceApi: () => ({
-    getInstanceDetail: async () => ({ monitor_id: 'mon-1' }),
+    getInstanceDetail: async () => ({
+      monitor_id: 'mon-1',
+      node_id: 'node-1',
+    }),
   }),
 }));
 
@@ -91,9 +97,13 @@ describe('CmdbPublicWidgetPage ops-analysis gate', () => {
       { name: 'cmdb' },
       { name: 'ops-analysis' },
     ];
-    lazyState.Widget = ({ monitorId }) => (
-      <div>{`public-monitor:${monitorId}`}</div>
-    );
+    lazyState.Widget = function PublicMonitorWidget({
+      monitorId,
+    }: {
+      monitorId: string;
+    }) {
+      return <div>{`public-monitor:${monitorId}`}</div>;
+    };
     render(
       <CmdbPublicWidgetPage
         widgetKey="monitor.monitorView"
@@ -101,6 +111,41 @@ describe('CmdbPublicWidgetPage ops-analysis gate', () => {
       />,
     );
     expect(await screen.findByText('public-monitor:mon-1')).toBeTruthy();
+    expect(lazyState.loadCalls.at(-1)).toBe(true);
+  });
+
+  it('does not activate node status when ops-analysis is not sold', async () => {
+    clientState.clientData = [{ name: 'node' }, { name: 'cmdb' }];
+    render(
+      <CmdbPublicWidgetPage
+        widgetKey="node.nodeStatus"
+        identifierProp="nodeId"
+      />,
+    );
+    expect(await screen.findByText('common.noData')).toBeTruthy();
+    expect(lazyState.loadCalls.at(-1)).toBe(false);
+  });
+
+  it('activates node status from the host instance node_id when ops-analysis is sold', async () => {
+    clientState.clientData = [
+      { name: 'node' },
+      { name: 'cmdb' },
+      { name: 'ops-analysis' },
+    ];
+    lazyState.Widget = function PublicNodeWidget({
+      nodeId,
+    }: {
+      nodeId: string;
+    }) {
+      return <div>{`public-node:${nodeId}`}</div>;
+    };
+    render(
+      <CmdbPublicWidgetPage
+        widgetKey="node.nodeStatus"
+        identifierProp="nodeId"
+      />,
+    );
+    expect(await screen.findByText('public-node:node-1')).toBeTruthy();
     expect(lazyState.loadCalls.at(-1)).toBe(true);
   });
 });

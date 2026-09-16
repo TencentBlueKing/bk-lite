@@ -56,6 +56,10 @@ import {
   PublicWidgetPane,
   useAlarmPublicWidgets,
 } from '@/app/alarm/components/public-widget-pane';
+import {
+  readAlarmLogAlertId,
+  readAlarmServiceId,
+} from '@/app/alarm/utils/alarmSnapshotObjects';
 const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
   ({ handleAction, readonly = false }, ref) => {
     const STATE_MAP = useStateMap();
@@ -87,6 +91,8 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
       monitorObjects: groupVisible ? formData.monitor_objects : undefined,
       includeActionRecords: true,
       activeTab,
+      logAlertId: groupVisible ? readAlarmLogAlertId(formData) : '',
+      serviceId: groupVisible ? readAlarmServiceId(formData) : '',
     });
     const [objectKey, setObjectKey] = useState('0');
     const currentObject =
@@ -513,6 +519,22 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
               </Spin>
             </div>
           )}
+          {publicWidgets.alertRawLog.visible && (
+            <div
+              className={
+                activeTab === 'alertRawLog'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.alertRawLog.active}
+                loadWidget={publicWidgets.alertRawLog.loadWidget}
+                identifier={readAlarmLogAlertId(formData)}
+                identifierProp="logAlertId"
+              />
+            </div>
+          )}
           {publicWidgets.monitorView.visible && (
             <div
               className={
@@ -561,6 +583,72 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                 identifier={currentObject?.instUuid || ''}
                 identifierProp="instUuid"
                 toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.assetChange.visible && (
+            <div
+              className={
+                activeTab === 'assetChange'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.assetChange.active}
+                loadWidget={publicWidgets.assetChange.loadWidget}
+                identifier={currentObject?.instUuid || ''}
+                identifierProp="instUuid"
+                toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.nodeStatus.visible && (
+            <div
+              className={
+                activeTab === 'nodeStatus'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.nodeStatus.active}
+                loadWidget={publicWidgets.nodeStatus.loadWidget}
+                identifier={currentObject?.nodeId || ''}
+                identifierProp="nodeId"
+                toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.serviceOverview.visible && (
+            <div
+              className={
+                activeTab === 'serviceOverview'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.serviceOverview.active}
+                loadWidget={publicWidgets.serviceOverview.loadWidget}
+                identifier={readAlarmServiceId(formData)}
+                identifierProp="serviceId"
+              />
+            </div>
+          )}
+          {publicWidgets.callChain.visible && (
+            <div
+              className={
+                activeTab === 'callChain'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.callChain.active}
+                loadWidget={publicWidgets.callChain.loadWidget}
+                identifier={readAlarmServiceId(formData)}
+                identifierProp="serviceId"
               />
             </div>
           )}

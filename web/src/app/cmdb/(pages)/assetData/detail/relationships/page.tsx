@@ -16,6 +16,10 @@ import {
   canShowNetworkStatusTopoTab,
   PublicNetworkStatusTopoSlot,
 } from './publicNetworkStatusTopoSlot';
+import {
+  canShowRoom3DTab,
+  PublicRoom3DSlot,
+} from './publicRoom3DSlot';
 import NetworkTopo from './networkTopo';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
@@ -29,7 +33,8 @@ import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { useRelationships } from '@/app/cmdb/context/relationships';
-import { useAppWidget } from '@/context/appCapabilities';
+import { hasAppAccess, useAppWidget } from '@/context/appCapabilities';
+import { useClientData } from '@/context/client';
 import usePermissions from '@/hooks/usePermissions';
 import {
   buildRelationshipTabHref,
@@ -58,13 +63,22 @@ const Ralationships = () => {
   const tabParam: string = searchParams.get('tab') || '';
 
   const { getTopoThemes } = useInstanceApi();
+  const { clientData } = useClientData();
+  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const [themes, setThemes] = useState<string[]>([]);
   const [themesReady, setThemesReady] = useState(false);
   const networkStatus = useAppWidget('ops-analysis.networkStatusTopology');
+  const room3D = useAppWidget('ops-analysis.room3D');
   const showNetworkStatusTab = canShowNetworkStatusTopoTab({
     hasNetworkTheme: themes.includes('network'),
     declared: networkStatus.declared,
     instUuid,
+  });
+  const showRoom3DTab = canShowRoom3DTab({
+    modelId,
+    declared: room3D.declared,
+    instUuid,
+    hasOpsAnalysis,
   });
   // 机柜视图点设备：右侧抽屉展示详情（再从抽屉下钻到实例详情），与机房视图一致
   const [device, setDevice] = useState<RackDevice | null>(null);
@@ -127,12 +141,18 @@ const Ralationships = () => {
     ...(modelId === 'server_room'
       ? [{ label: t('Model.roomLayout'), value: 'roomView' }]
       : []),
+    ...(showRoom3DTab
+      ? [{ label: t('Model.publicRoom3D'), value: 'room3D' }]
+      : []),
   ];
 
   const allowedTabs = segmentedOptions.map((option) => option.value);
   const gatesSettled = relationshipGatesSettled({
     themesReady,
-    widgetStatus: networkStatus.status,
+    widgetStatus:
+      networkStatus.status === 'loading' || room3D.status === 'loading'
+        ? 'loading'
+        : 'ready',
   });
   const { tab: activeTab, shouldRewrite } = normalizeRelationshipTab({
     requestedTab: tabParam || DEFAULT_RELATIONSHIP_TAB,
@@ -170,6 +190,7 @@ const Ralationships = () => {
     'serviceTree',
     'rackView',
     'roomView',
+    'room3D',
   ].includes(activeTab);
 
   return (
@@ -266,6 +287,9 @@ const Ralationships = () => {
         <div className={relationshipsStyle.scrollCanvas}>
           <RoomFloorPlan modelId={modelId} instUuid={instUuid} />
         </div>
+      )}
+      {showRoom3DTab && activeTab === 'room3D' && (
+        <PublicRoom3DSlot instUuid={instUuid} />
       )}
       </div>
       <DeviceDetailDrawer

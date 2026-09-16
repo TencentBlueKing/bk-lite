@@ -47,11 +47,22 @@ import { useUserInfoContext } from '@/context/userInfo';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useAiPageContext } from '@/components/ai-page-context';
 import { buildIncidentDetailPageContext } from './incidentDetail.context';
+import { PublicWidgetPane } from '@/app/alarm/components/public-widget-pane';
+import { listIncidentAssetOptions } from '@/app/alarm/utils/alarmSnapshotObjects';
+import { hasAppAccess, useAppWidget } from '@/context/appCapabilities';
+import { useClientData } from '@/context/client';
+import {
+  canShowIncidentAssetChangeTab,
+  resolveIncidentSelectedAssetUuid,
+} from './incidentPublicAssetChange';
 
 const { TabPane } = Tabs;
 
 const IncidentDetail: React.FC = () => {
   const { t } = useTranslation();
+  const { clientData } = useClientData();
+  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
+  const assetChange = useAppWidget('cmdb.assetChange');
   const { getLogList } = useSettingApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { flatGroups } = useUserInfoContext();
@@ -93,6 +104,32 @@ const IncidentDetail: React.FC = () => {
   const [selectedTeams, setSelectedTeams] = useState<number[]>([]);
   const [preTeams, setPreTeams] = useState<number[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('alert');
+  const [selectedAssetUuid, setSelectedAssetUuid] = useState('');
+
+  const assetOptions = useMemo(
+    () => listIncidentAssetOptions(tableData),
+    [tableData],
+  );
+  const instUuids = useMemo(
+    () => assetOptions.map((item) => item.instUuid),
+    [assetOptions],
+  );
+  const showAssetChange = canShowIncidentAssetChangeTab({
+    hasOpsAnalysis,
+    declared: assetChange.declared,
+    instUuids,
+  });
+  const currentAssetUuid = resolveIncidentSelectedAssetUuid(
+    instUuids,
+    selectedAssetUuid,
+  );
+
+  useEffect(() => {
+    if (activeTab === 'assetChange' && !showAssetChange) {
+      setActiveTab('alert');
+    }
+  }, [activeTab, showAssetChange]);
 
   const alarmAttrList = useMemo(() => [
     {
@@ -659,7 +696,7 @@ const IncidentDetail: React.FC = () => {
           </Descriptions>
         )}
         <div className={`${styles.tabsWrapper} w-full`}>
-          <Tabs defaultActiveKey="alert">
+          <Tabs activeKey={activeTab} onChange={setActiveTab}>
             <TabPane tab={t('alarms.alert')} key="alert">
               <div className={styles.tabContent}>
                 <div className={styles.filterRow}>
@@ -747,6 +784,31 @@ const IncidentDetail: React.FC = () => {
                 )}
               </div>
             </TabPane>
+            {showAssetChange && (
+              <TabPane tab={t('alarms.assetChange')} key="assetChange">
+                <div className={styles.tabContent}>
+                  <PublicWidgetPane
+                    active={activeTab === 'assetChange'}
+                    loadWidget={assetChange.loadWidget}
+                    identifier={currentAssetUuid}
+                    identifierProp="instUuid"
+                    toolbarStart={
+                      instUuids.length > 1 ? (
+                        <Select
+                          className="w-[240px]"
+                          value={currentAssetUuid}
+                          options={assetOptions.map(({ instUuid, label }) => ({
+                            value: instUuid,
+                            label,
+                          }))}
+                          onChange={setSelectedAssetUuid}
+                        />
+                      ) : null
+                    }
+                  />
+                </div>
+              </TabPane>
+            )}
             <TabPane tab={t('incidents.collaboration')} key="collaboration">
               <CollaborationTab
                 incidentDetail={incidentDetail}

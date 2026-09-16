@@ -20,6 +20,7 @@ import {
 } from '../../relationshipViewNavigation';
 import { buildRelationshipMenuSections } from '../../relationshipMenuData';
 import { useCmdbPublicMenuItems } from '@/app/cmdb/hooks/useCmdbPublicMenuItems';
+import { relationshipTabForPublicMenuKey } from '@/app/cmdb/utils/cmdbPublicMenus';
 
 interface SideMenuProps {
   menuItems: MenuItem[];
@@ -112,9 +113,12 @@ const SideMenu: React.FC<SideMenuProps> = ({
     return `${path}?${params.toString()}`;
   };
 
+  const publicShortcutTabs = publicItems
+    .map((item) => relationshipTabForPublicMenuKey(item.key))
+    .filter(Boolean);
   const shortcutTabs = [
     ...shortcuts.map((shortcut) => shortcut.tab),
-    'networkStatusTopology',
+    ...publicShortcutTabs,
   ];
 
   const isActive = (path: string): boolean => {
@@ -240,18 +244,19 @@ const SideMenu: React.FC<SideMenuProps> = ({
           ))}
           {publicItems.map((item) => {
             const relationshipUrl = relItem?.url;
+            const relationshipTab = relationshipTabForPublicMenuKey(item.key);
             const landsOnRelationshipTab =
-              item.key === 'networkStatusTopology' && Boolean(relationshipUrl);
+              Boolean(relationshipTab) && Boolean(relationshipUrl);
             const href =
               landsOnRelationshipTab && relationshipUrl
                 ? buildRelationshipTabHref(
                   relationshipUrl,
                   searchParams,
-                  'networkStatusTopology',
+                  relationshipTab,
                 )
                 : buildUrlWithParams(item.url);
             const active = landsOnRelationshipTab && relationshipUrl
-              ? isActive(relationshipUrl) && currentTab === 'networkStatusTopology'
+              ? isActive(relationshipUrl) && currentTab === relationshipTab
               : isActive(item.url);
             return (
               <li

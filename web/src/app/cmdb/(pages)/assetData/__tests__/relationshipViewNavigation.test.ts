@@ -33,12 +33,15 @@ describe('relationship view navigation', () => {
       'appOverview',
       'rackView',
       'roomView',
+      'room3D',
     ];
 
     expect(isRelationshipMenuActive(true, 'network', shortcuts)).toBe(false);
     expect(
       isRelationshipMenuActive(true, 'networkStatusTopology', shortcuts),
     ).toBe(false);
+    expect(isRelationshipMenuActive(true, 'roomView', shortcuts)).toBe(false);
+    expect(isRelationshipMenuActive(true, 'room3D', shortcuts)).toBe(false);
     expect(isRelationshipMenuActive(true, 'list', shortcuts)).toBe(true);
     expect(isRelationshipMenuActive(true, 'topo', shortcuts)).toBe(true);
     expect(isRelationshipMenuActive(false, 'list', shortcuts)).toBe(false);

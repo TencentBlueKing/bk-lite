@@ -1,10 +1,16 @@
 'use client';
 
-import React, { useState, forwardRef, useImperativeHandle } from 'react';
+import React, {
+  useState,
+  forwardRef,
+  useImperativeHandle,
+  useEffect,
+  useRef,
+} from 'react';
 import { useScreenAwareRouter } from '@/console-layout';
 import { Button, Tabs } from 'antd';
 import OperateDrawer from '@/components/operate-drawer';
-import { ModalRef, TabItem, ChartProps, ObjectItem } from '@/app/monitor/types';
+import { ModalRef, TabItem, ChartProps } from '@/app/monitor/types';
 import { ViewModalProps } from '@/app/monitor/types/view';
 import { useTranslation } from '@/utils/i18n';
 import MonitorView from './monitorView';
@@ -16,30 +22,68 @@ import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
+import { hasAppAccess, useAppWidget } from '@/context/appCapabilities';
+import { useClientData } from '@/context/client';
+import useMonitorApi from '@/app/monitor/api';
+import { ViewModalPublicPane } from '@/app/monitor/components/public/ViewModalPublicPane';
+import {
+  buildViewModalLocalTabs,
+  readViewModalStableIds,
+  resolveViewModalPublicTabs,
+  shouldLookupViewModalStableIds,
+} from '@/app/monitor/utils/viewModalPublicTabs';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
     const { t } = useTranslation();
     const router = useScreenAwareRouter();
+    const { clientData } = useClientData();
+    const { lookupInstance } = useMonitorApi();
+    const lookupInstanceRef = useRef(lookupInstance);
+    lookupInstanceRef.current = lookupInstance;
+    const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
+    const relatedTopology = useAppWidget('ops-analysis.relatedTopology');
+    const baseInfo = useAppWidget('cmdb.baseInfo');
+    const assetChange = useAppWidget('cmdb.assetChange');
+    const nodeStatus = useAppWidget('node.nodeStatus');
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [title, setTitle] = useState<string>('');
     const [viewConfig, setViewConfig] =
       useState<ChartProps>(INIT_VIEW_MODAL_FORM);
-    const tabs: TabItem[] = [
-      {
-        label: t('monitor.views.monitorView'),
-        key: 'monitorView',
-      },
-      {
-        label: t('monitor.views.alertList'),
-        key: 'alertList',
-      },
-      {
-        label: t('monitor.views.monitoringPolicy'),
-        key: 'monitorPolicy',
-      },
-    ];
     const [currentTab, setCurrentTab] = useState<string>('monitorView');
+    const formIds = readViewModalStableIds(viewConfig as Record<string, unknown>);
+    const [lookupIds, setLookupIds] = useState({ instUuid: '', nodeId: '' });
+    const instUuid = formIds.instUuid || lookupIds.instUuid;
+    const nodeId = formIds.nodeId || lookupIds.nodeId;
+    const publicTabs = resolveViewModalPublicTabs({
+      hasOpsAnalysis,
+      instUuid,
+      nodeId,
+      widgets: {
+        'ops-analysis.relatedTopology': relatedTopology.declared,
+        'cmdb.baseInfo': baseInfo.declared,
+        'cmdb.assetChange': assetChange.declared,
+        'node.nodeStatus': nodeStatus.declared,
+      },
+      t,
+    });
+    const localTabs = buildViewModalLocalTabs(t);
+    const tabs: TabItem[] = [
+      ...localTabs,
+      ...publicTabs.map((item) => ({ key: item.key, label: item.label })),
+    ];
+    const identifiers = {
+      relatedTopology: instUuid,
+      baseInfo: instUuid,
+      assetChange: instUuid,
+      nodeStatus: nodeId,
+    };
+    const loaders = {
+      relatedTopology: relatedTopology.loadWidget,
+      baseInfo: baseInfo.loadWidget,
+      assetChange: assetChange.loadWidget,
+      nodeStatus: nodeStatus.loadWidget,
+    };
     const rightSlot = (
       <Button
         type="link"
@@ -50,12 +94,63 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       </Button>
     );
 
+    useEffect(() => {
+      const monitorId = formIds.monitorId;
+      const shouldLookup =
+        groupVisible &&
+        shouldLookupViewModalStableIds({
+          hasOpsAnalysis,
+          monitorId,
+          instUuid: formIds.instUuid,
+          nodeId: formIds.nodeId,
+          widgets: {
+            'ops-analysis.relatedTopology': relatedTopology.declared,
+            'cmdb.baseInfo': baseInfo.declared,
+            'cmdb.assetChange': assetChange.declared,
+            'node.nodeStatus': nodeStatus.declared,
+          },
+        });
+      if (!shouldLookup) {
+        if (!groupVisible) setLookupIds({ instUuid: '', nodeId: '' });
+        return;
+      }
+      let cancelled = false;
+      lookupInstanceRef
+        .current({ instance_id: monitorId })
+        .then((lookup) => {
+          if (cancelled) return;
+          const instance = lookup?.instance as
+            | { cmdb_id?: string; node_id?: string }
+            | undefined;
+          setLookupIds({
+            instUuid: String(instance?.cmdb_id || '').trim(),
+            nodeId: String(instance?.node_id || '').trim(),
+          });
+        })
+        .catch(() => {
+          if (!cancelled) setLookupIds({ instUuid: '', nodeId: '' });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [
+      assetChange.declared,
+      baseInfo.declared,
+      formIds.instUuid,
+      formIds.monitorId,
+      formIds.nodeId,
+      groupVisible,
+      hasOpsAnalysis,
+      nodeStatus.declared,
+      relatedTopology.declared,
+    ]);
+
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form }) => {
-        // 开启弹窗的交互
         setGroupVisible(true);
         setTitle(title);
         setViewConfig(form as ChartProps);
+        setLookupIds({ instUuid: '', nodeId: '' });
       },
     }));
 
@@ -67,6 +162,7 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       setGroupVisible(false);
       setCurrentTab('monitorView');
       setViewConfig(INIT_VIEW_MODAL_FORM);
+      setLookupIds({ instUuid: '', nodeId: '' });
     };
 
     const linkToDetial = () => {
@@ -112,6 +208,12 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
           subTitle={viewConfig.instance_name}
           visible={groupVisible}
           destroyOnHidden
+          classNames={{
+            body: 'flex min-h-0 flex-col overflow-hidden',
+          }}
+          styles={{
+            body: { overflow: 'hidden' },
+          }}
           footer={
             <div>
               <Button onClick={handleCancel}>{t('common.cancel')}</Button>
@@ -120,36 +222,64 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
           onClose={handleCancel}
         >
           <Tabs
+            className="shrink-0"
             activeKey={currentTab}
             items={tabs}
             onChange={changeTab}
             tabBarExtraContent={rightSlot}
           />
-          {currentTab === 'monitorView' ? (
-            <MonitorView
-              monitorObject={monitorObject}
-              monitorName={monitorName}
-              plugins={plugins}
-              form={viewConfig}
-            />
-          ) : currentTab === 'alertList' ? (
-            <MonitorAlarm
-              monitorObject={monitorObject}
-              monitorName={monitorName}
-              plugins={plugins}
-              form={viewConfig}
-              metrics={metrics}
-              objects={objects}
-            />
-          ) : (
-            <MonitorPolicy
-              monitorObject={monitorObject}
-              monitorName={monitorName}
-              plugins={plugins}
-              form={viewConfig}
-              objects={objects}
-            />
-          )}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {currentTab === 'monitorView' ? (
+              <div className="min-h-0 flex-1 overflow-auto">
+                <MonitorView
+                  monitorObject={monitorObject}
+                  monitorName={monitorName}
+                  plugins={plugins}
+                  form={viewConfig}
+                />
+              </div>
+            ) : null}
+            {currentTab === 'alertList' ? (
+              <div className="min-h-0 flex-1 overflow-auto">
+                <MonitorAlarm
+                  monitorObject={monitorObject}
+                  monitorName={monitorName}
+                  plugins={plugins}
+                  form={viewConfig}
+                  metrics={metrics}
+                  objects={objects}
+                />
+              </div>
+            ) : null}
+            {currentTab === 'monitorPolicy' ? (
+              <div className="min-h-0 flex-1 overflow-auto">
+                <MonitorPolicy
+                  monitorObject={monitorObject}
+                  monitorName={monitorName}
+                  plugins={plugins}
+                  form={viewConfig}
+                  objects={objects}
+                />
+              </div>
+            ) : null}
+            {publicTabs.map((item) => (
+              <div
+                key={item.key}
+                className={
+                  currentTab === item.key
+                    ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden'
+                    : 'hidden'
+                }
+              >
+                <ViewModalPublicPane
+                  active={currentTab === item.key}
+                  loadWidget={loaders[item.key]}
+                  identifier={identifiers[item.key]}
+                  identifierProp={item.identifierProp}
+                />
+              </div>
+            ))}
+          </div>
         </OperateDrawer>
       </div>
     );
