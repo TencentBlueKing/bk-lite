@@ -32,9 +32,9 @@ export interface StackedBarPanelProps {
   styles: StackedBarPanelStyles;
 }
 
-const USED = '#2f6bff';
-const REQ = 'rgba(47,107,255,0.35)';
-const FREE = '#e8edf5';
+const USED = 'var(--color-primary, #2f6bff)';
+const REQ = 'color-mix(in srgb, var(--color-primary, #2f6bff) 35%, transparent)';
+const FREE = 'var(--color-fill-2, #e8edf5)';
 const pctOf = (v: number, total: number) => (total > 0 ? Math.min((Math.max(v, 0) / total) * 100, 100) : 0);
 
 const LegendDot = ({ color, text }: { color: string; text: string }) => (

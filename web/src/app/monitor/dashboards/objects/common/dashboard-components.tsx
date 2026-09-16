@@ -216,7 +216,7 @@ export const SummaryStatCard = ({ summaryCard, className, styles }: SummaryStatC
       value={mainValue.value}
       unit={mainValue.unit}
       icon={getIcon(card.icon)}
-      iconStyle={{ background: `${valueColor ?? card.color}1c`, color: valueColor ?? card.color }}
+      iconStyle={{ background: 'var(--color-fill-1)', color: 'var(--color-text-2)' }}
       color={valueColor ?? card.color}
       footer={footerItems.map((item) => (
         <span key={item.label} className={styles.statMetaItem}>
