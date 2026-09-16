@@ -8,7 +8,6 @@ import pytest
 from apps.cmdb.graph.neo4j import Neo4jClient
 from apps.core.exceptions.base_app_exception import BaseAppException
 
-
 # --------------------------------------------------------------------------
 # fake neo4j objects
 # --------------------------------------------------------------------------
@@ -95,6 +94,13 @@ def test_entity_to_dict():
     assert out["_id"] == 1
     assert out["_label"] == "instance"
     assert out["inst_name"] == "h1"
+
+
+def test_entity_to_dict_coerces_legacy_string_cloud():
+    c = _client()
+    node = FakeNode(1, ["instance"], {"inst_name": "h1", "cloud": "1"})
+    out = c.entity_to_dict((node,))
+    assert out["cloud"] == 1
 
 
 def test_entity_to_list():
@@ -189,6 +195,7 @@ def test_format_search_params_injection_value():
 def test_format_search_params_injection_field():
     """非法 field 名（含注入字符）应被 CQLValidator 拒绝。"""
     from apps.core.exceptions.base_app_exception import BaseAppException
+
     c = _client()
     with pytest.raises((BaseAppException, Exception)):
         c.format_search_params([{"field": "name'] RETURN n //", "type": "str=", "value": "v"}])
@@ -235,6 +242,12 @@ def test_check_unique_attr_conflict():
     c = _client()
     with pytest.raises(BaseAppException):
         c.check_unique_attr({"name": "h"}, {"name": "名称"}, [{"name": "h"}])
+
+
+def test_check_unique_attr_cloud_int_matches_legacy_string():
+    c = _client()
+    with pytest.raises(BaseAppException):
+        c.check_unique_attr({"cloud": 1}, {"cloud": "云区域"}, [{"cloud": "1"}])
 
 
 def test_check_required_attr_missing():

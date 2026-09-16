@@ -256,6 +256,109 @@ def test_claim_host_persists_node_id_when_user_path_strips_system_links(mocker):
     assert claimed["monitor_id"] == "('1_os_10.11.27.147',)"
 
 
+def test_update_host_keeps_custom_inst_name_when_ip_cloud_unchanged(mocker):
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 10, "inst_name": "web-prod-01"},
+    )
+    existing = {
+        "_id": 10,
+        "node_id": "n1",
+        "ip_addr": "10.0.0.7",
+        "cloud": 2,
+        "inst_name": "web-prod-01",
+        "organization": [1],
+        "os_type": "1",
+    }
+    desired = {
+        "model_id": "host",
+        "inst_name": "10.0.0.7[华东]",
+        "ip_addr": "10.0.0.7",
+        "organization": [2],
+        "cloud": 2,
+        "os_type": "1",
+        "node_id": "n1",
+    }
+
+    CmdbModuleIngestService._update_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    written = update.call_args.kwargs["update_attr"]
+    assert "inst_name" not in written
+    assert written["organization"] == [2]
+
+
+def test_update_host_refreshes_inst_name_when_ip_or_cloud_changes(mocker):
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 10, "inst_name": "10.0.0.8[华东]"},
+    )
+    existing = {
+        "_id": 10,
+        "node_id": "n1",
+        "ip_addr": "10.0.0.7",
+        "cloud": 2,
+        "inst_name": "web-prod-01",
+        "organization": [1],
+        "os_type": "1",
+    }
+    desired = {
+        "model_id": "host",
+        "inst_name": "10.0.0.8[华东]",
+        "ip_addr": "10.0.0.8",
+        "organization": [1],
+        "cloud": 2,
+        "os_type": "1",
+        "node_id": "n1",
+    }
+
+    CmdbModuleIngestService._update_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    assert update.call_args.kwargs["update_attr"]["inst_name"] == "10.0.0.8[华东]"
+    assert update.call_args.kwargs["update_attr"]["ip_addr"] == "10.0.0.8"
+
+
+def test_claim_host_keeps_custom_inst_name_when_ip_cloud_unchanged(mocker):
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 20, "node_id": "n2", "inst_name": "web-prod-01"},
+    )
+    existing = {
+        "_id": 20,
+        "ip_addr": "1.1.1.2",
+        "cloud": 1,
+        "inst_name": "web-prod-01",
+    }
+    desired = {
+        "inst_name": "1.1.1.2[1]",
+        "ip_addr": "1.1.1.2",
+        "organization": [1],
+        "cloud": 1,
+        "os_type": "1",
+        "node_id": "n2",
+    }
+
+    CmdbModuleIngestService._claim_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    written = update.call_args.kwargs["update_attr"]
+    assert written["node_id"] == "n2"
+    assert "inst_name" not in written
+
+
 def test_update_host_persists_monitor_id_when_user_path_strips_system_links(mocker):
     mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_update",

@@ -76,6 +76,16 @@ assert.deepEqual(buildAttrSearchCondition(attr('tag', 'tag'), ['env:test']), {
   value: ['env:test'],
   accurate: true,
 });
+assert.deepEqual(buildAttrSearchCondition(attr('cloud', 'str'), '1'), {
+  field: 'cloud',
+  type: 'int=',
+  value: 1,
+});
+assert.deepEqual(buildAttrSearchCondition(attr('cloud', 'str'), 2), {
+  field: 'cloud',
+  type: 'int=',
+  value: 2,
+});
 assert.equal(buildAttrSearchCondition(attr('inst_name', 'str'), '   '), null);
 
 const storage = new MemoryStorage();

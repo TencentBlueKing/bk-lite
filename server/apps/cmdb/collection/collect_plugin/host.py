@@ -11,6 +11,7 @@ from apps.cmdb.collection.nic_inventory import is_ingestible_nic, normalize_nic_
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.collection.plugins.base import bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
+from apps.cmdb.services.host_sync_identity import parse_cloud_id
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -141,12 +142,12 @@ class HostCollectMetrics(CollectBase):
         for source in (matched_instance, params, default_instance):
             if not isinstance(source, dict):
                 continue
-            cloud = source.get("cloud")
-            if cloud not in (None, ""):
+            cloud = parse_cloud_id(source.get("cloud"))
+            if cloud is not None:
                 return cloud
-            cloud_id = source.get("cloud_id")
-            if cloud_id not in (None, ""):
-                return cloud_id
+            cloud = parse_cloud_id(source.get("cloud_id"))
+            if cloud is not None:
+                return cloud
 
         return ""
 

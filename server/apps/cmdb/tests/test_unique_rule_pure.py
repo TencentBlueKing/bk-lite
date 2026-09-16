@@ -12,7 +12,6 @@ from apps.cmdb.services import unique_rule as ur
 from apps.cmdb.services.unique_rule import ModelUniqueRule
 from apps.core.exceptions.base_app_exception import BaseAppException
 
-
 # --------------------------------------------------------------------------
 # value helpers
 # --------------------------------------------------------------------------
@@ -46,6 +45,27 @@ def test_build_rule_signature_with_empty_returns_none():
 def test_build_rule_signature_ok():
     sig = ur._build_rule_signature({"a": "1", "b": "2"}, ["a", "b"])
     assert sig == ('"1"', '"2"')
+
+
+def test_build_rule_signature_cloud_int_matches_numeric_string():
+    assert ur._build_rule_signature({"ip_addr": "10.0.0.1", "cloud": 1}, ["ip_addr", "cloud"]) == ur._build_rule_signature(
+        {"ip_addr": "10.0.0.1", "cloud": "1"},
+        ["ip_addr", "cloud"],
+    )
+
+
+def test_collect_conflicts_cloud_int_vs_legacy_string():
+    rules = [ModelUniqueRule(rule_id="r1", order=1, field_ids=["ip_addr", "cloud"])]
+    items = [{"ip_addr": "10.0.0.1", "cloud": 1, "_id": 10}]
+    exist_items = [{"ip_addr": "10.0.0.1", "cloud": "1", "_id": 1, "inst_name": "old"}]
+    conflicts = ur.collect_unique_rule_conflicts(
+        rules,
+        items,
+        exist_items,
+        {"ip_addr": {"attr_name": "IP"}, "cloud": {"attr_name": "云区域"}},
+    )
+    assert len(conflicts) == 1
+    assert conflicts[0].exist_instance_ids == [1]
 
 
 def test_get_attr_name():

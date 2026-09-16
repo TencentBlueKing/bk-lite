@@ -7,7 +7,7 @@ from neo4j import GraphDatabase, Query
 from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
-from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector
+from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal, coerce_cloud_id_properties
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -46,7 +46,7 @@ class Neo4jClient:
 
     def entity_to_dict(self, data: tuple):
         """将使用single查询的结果转换成字典类型"""
-        return dict(_id=data[0].id, _label=list(data[0].labels)[0], **data[0]._properties)
+        return dict(_id=data[0].id, _label=list(data[0].labels)[0], **coerce_cloud_id_properties(dict(data[0]._properties)))
 
     def edge_to_list(self, data: iter, return_entity: bool):
         """将使用fetchall查询的结果转换成列表类型"""
@@ -103,7 +103,7 @@ class Neo4jClient:
 
         for exist_item in exist_items:
             for attr in check_attrs:
-                if exist_item[attr] == item[attr]:
+                if attr_values_equal(attr, exist_item[attr], item[attr]):
                     not_only_attr.add(attr)
 
         if not not_only_attr:
@@ -368,9 +368,7 @@ class Neo4jClient:
                     [{"field": organization_field, "type": "list[]", "value": [organization_id]}],
                     collector=collector,
                 )
-                scoped_params, _ = self.format_search_params(
-                    query_list, param_type="OR", collector=collector
-                )
+                scoped_params, _ = self.format_search_params(query_list, param_type="OR", collector=collector)
                 parts = [part for part in (organization_params, scoped_params) if part]
                 if parts:
                     permission_filters.append(f"({' AND '.join(parts)})")
@@ -581,9 +579,7 @@ class Neo4jClient:
             return []
 
         query = (
-            f"UNWIND $property_values AS row "
-            f"MATCH (n:{validated_label}) WHERE id(n) = row.id "
-            f"SET n.{validated_field} = row.value RETURN n"
+            f"UNWIND $property_values AS row " f"MATCH (n:{validated_label}) WHERE id(n) = row.id " f"SET n.{validated_field} = row.value RETURN n"
         )
         result = self.session.run(query, property_values=validated_property_values)
         return self.entity_to_list(result)
@@ -680,11 +676,8 @@ class Neo4jClient:
             "ID(dev2) AS peer_id, dev2.inst_name AS peer_name, dev2.model_id AS peer_model, "
             "ID(e2) AS rel_id"
         )
-        objs = self.session.run(
-            query, inst_id=int(inst_id), belong=belong_asst_id, connect=connect_asst
-        )
-        keys = ["dev_id", "dev_name", "dev_model", "local_if", "peer_if",
-                "peer_id", "peer_name", "peer_model", "rel_id"]
+        objs = self.session.run(query, inst_id=int(inst_id), belong=belong_asst_id, connect=connect_asst)
+        keys = ["dev_id", "dev_name", "dev_model", "local_if", "peer_if", "peer_id", "peer_name", "peer_model", "rel_id"]
         return [{k: record[k] for k in keys} for record in objs]
 
     def format_topo_lite(self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None):

@@ -136,7 +136,7 @@
 | `reconcile_ipam_task` | :372 | 周期执行 IPAM 与 CMDB 自动对账，调用 `services/ipam_reconcile.run_reconciliation` |
 
 ### 主机联动与节点管理同步【已实现】
-主机资产联动为事件推送：节点管理或监控可将主机状态和关联标识写入 CMDB，CMDB 创建主机后会通知两端并回填其建立的关联；显式推送仅面向监控。联动路径保留组织范围和操作人上下文，且以来源链路抑制回声。节点管理拉同步默认打开，与节点→CMDB 推送共用 `node_id` → ip+cloud 认实体，主机实例名为 `{ip}[{云区域}]`，禁止双建。监控侧规范主键占用时回收同对象行，认领或新建后把 `monitor_id` 写回 CMDB，避免「监控空壳有外联、CMDB 无监控 ID」的单向指针。节点删除或拉同步发现 sidecar 节点已从源侧消失时，只清 host 上的 `node_id`，不删实例。`node_id`/`monitor_id` 对用户不可编辑；内部 `skip_permission_check` 写路径必须仍能写入或清空这两个系统联动字段。产品行为见 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]] 与 `specs/changes/cmdb-node-mgmt-sync-shared-identity/spec.md`。
+主机资产联动为事件推送：节点管理或监控可将主机状态和关联标识写入 CMDB，CMDB 创建主机后会通知两端并回填其建立的关联；显式推送仅面向监控。联动路径保留组织范围和操作人上下文，且以来源链路抑制回声。节点管理拉同步默认打开，与节点→CMDB 推送共用 `node_id` → ip+cloud 认实体，禁止双建。联动新建主机时实例名默认为 `{ip}[{云区域}]`；更新时若 IP 与云区域未变则保留用户自定义实例名，任一变化则刷新为新的 `{ip}[{云区域}]`。该规则同时作用于 CMDB 接收节点管理/监控的 ingest 入口与节点管理拉同步。监控侧规范主键占用时回收同对象行，认领或新建后把 `monitor_id` 写回 CMDB，避免「监控空壳有外联、CMDB 无监控 ID」的单向指针。节点删除或拉同步发现 sidecar 节点已从源侧消失时，只清 host 上的 `node_id`，不删实例。`node_id`/`monitor_id` 对用户不可编辑；内部 `skip_permission_check` 写路径必须仍能写入或清空这两个系统联动字段。产品行为见 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]] 与 `specs/changes/cmdb-node-mgmt-sync-shared-identity/spec.md`。
 
 > 证据来源：server/apps/cmdb/services/module_push.py:43-79，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/host_sync_identity.py，server/apps/cmdb/services/node_mgmt_sync_service.py　|　【已实现】
 

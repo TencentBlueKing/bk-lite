@@ -36,6 +36,7 @@ from apps.cmdb.models.change_record import (
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+from apps.cmdb.services.host_sync_identity import apply_model_cloud_id, heal_legacy_cloud_id
 from apps.cmdb.services.instance_identity import (
     ensure_instance_identity_immutable,
     normalize_inst_uuid,
@@ -925,7 +926,8 @@ class InstanceManage(object):
         schedule_post_actions: bool = True,
     ):
         """创建实例"""
-        instance_info = prepare_new_instance_identity(dict(instance_info))
+        instance_info = apply_model_cloud_id(model_id, dict(instance_info))
+        instance_info = prepare_new_instance_identity(instance_info)
         instance_info.update(model_id=model_id)
         if operation_id:
             instance_info["_cmdb_operation_id"] = operation_id
@@ -1243,6 +1245,8 @@ class InstanceManage(object):
             )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        update_attr = apply_model_cloud_id(inst_info["model_id"], update_attr)
+        update_attr = heal_legacy_cloud_id(inst_info["model_id"], inst_info, update_attr)
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
         if inst_info["model_id"] == "subnet":
@@ -1367,6 +1371,7 @@ class InstanceManage(object):
         )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        update_attr = apply_model_cloud_id(model_info["model_id"], update_attr)
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, model_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
         # 企业版附件/图片字段：校验并规范化（与 instance_create/instance_update 一致）。
@@ -2861,11 +2866,7 @@ class InstanceManage(object):
 
         仅本方法做 host 与虚拟机的 IP 去重；group_inst_count / model_inst_count 保持原语义。
         """
-        from apps.cmdb.constants.license_catalog import (
-            CMDB_LICENSE_MODEL_IDS,
-            CMDB_LICENSE_OS_MODEL_ID,
-            CMDB_LICENSE_VM_MODEL_IDS,
-        )
+        from apps.cmdb.constants.license_catalog import CMDB_LICENSE_MODEL_IDS, CMDB_LICENSE_OS_MODEL_ID, CMDB_LICENSE_VM_MODEL_IDS
 
         other_model_ids = CMDB_LICENSE_MODEL_IDS - CMDB_LICENSE_VM_MODEL_IDS - {CMDB_LICENSE_OS_MODEL_ID}
         counts = dict(
@@ -2902,10 +2903,7 @@ class InstanceManage(object):
     @classmethod
     def _count_license_os_vm_instances(cls, inst_list) -> dict:
         """host 全计；虚拟机 IP 与 host 有交集则不计。不按云区域拆 IP。"""
-        from apps.cmdb.constants.license_catalog import (
-            CMDB_LICENSE_OS_MODEL_ID,
-            CMDB_LICENSE_VM_MODEL_IDS,
-        )
+        from apps.cmdb.constants.license_catalog import CMDB_LICENSE_OS_MODEL_ID, CMDB_LICENSE_VM_MODEL_IDS
 
         host_ips = set()
         host_count = 0
@@ -2932,10 +2930,7 @@ class InstanceManage(object):
 
     @classmethod
     def _query_license_os_vm_instances(cls) -> list:
-        from apps.cmdb.constants.license_catalog import (
-            CMDB_LICENSE_OS_MODEL_ID,
-            CMDB_LICENSE_VM_MODEL_IDS,
-        )
+        from apps.cmdb.constants.license_catalog import CMDB_LICENSE_OS_MODEL_ID, CMDB_LICENSE_VM_MODEL_IDS
 
         model_ids = [CMDB_LICENSE_OS_MODEL_ID, *sorted(CMDB_LICENSE_VM_MODEL_IDS)]
         with GraphClient() as ag:

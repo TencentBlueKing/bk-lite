@@ -25,7 +25,9 @@ from apps.cmdb.services.host_sync_identity import (
     is_unique_conflict,
     node_id_to_write,
     normalize_link_id,
+    parse_cloud_id,
     resolve_host_identity,
+    should_refresh_host_inst_name,
 )
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
@@ -1382,7 +1384,24 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _changed_host_attrs(cls, existing: dict[str, Any], desired: dict[str, Any]) -> dict[str, Any]:
-        return {field: desired.get(field) for field in cls.HOST_SYNC_UPDATE_FIELDS if field in desired and desired.get(field) != existing.get(field)}
+        changes: dict[str, Any] = {}
+        for field in cls.HOST_SYNC_UPDATE_FIELDS:
+            if field not in desired:
+                continue
+            desired_value = desired.get(field)
+            existing_value = existing.get(field)
+            if field == "cloud":
+                desired_parsed = parse_cloud_id(desired_value)
+                existing_parsed = parse_cloud_id(existing_value)
+                if desired_parsed is not None:
+                    if existing_parsed != desired_parsed or existing_value != desired_parsed:
+                        changes[field] = desired_parsed
+                    continue
+            if desired_value != existing_value:
+                changes[field] = desired_value
+        if not should_refresh_host_inst_name(existing, desired):
+            changes.pop("inst_name", None)
+        return changes
 
     @classmethod
     def _host_persistence_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:

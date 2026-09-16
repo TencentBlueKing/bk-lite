@@ -12,6 +12,7 @@ dayjs.extend(customParseFormat);
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue, type SavedFilterItem } from '@/app/cmdb/api/userConfig';
 import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
+import { isCloudRegionAttr, toCloudSelectValue } from '@/app/cmdb/utils/cloudRegion';
 import {
   applyMultiIpPaste,
   collectMultiIpSearchNotices,
@@ -216,6 +217,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
           value: Array.isArray(filter.value) ? filter.value : filter.value ? [filter.value] : [],
         });
       }
+    } else if (isCloudRegionAttr(filter.field)) {
+      form.setFieldsValue({
+        value: toCloudSelectValue(filter.value),
+      });
     } else if (fieldType === 'int') {
       form.setFieldsValue({
         value: typeof filter.value === 'number' ? filter.value : Number(filter.value) || 0,
@@ -279,6 +284,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
         // 兼容旧代码：如果原来是 user[]，保持 user[]
         updatedFilter.value = Array.isArray(values.value) ? values.value : [values.value];
         updatedFilter.type = 'user[]';
+      } else if (isCloudRegionAttr(editingFilter?.field)) {
+        updatedFilter.value = Number(values.value);
+        updatedFilter.type = 'int=';
       } else if (fieldType === 'int') {
         updatedFilter.value = Number(values.value) || 0;
         updatedFilter.type = 'int=';
@@ -396,12 +404,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
     };
 
     // 特殊处理-云区域
-    if (fieldInfo?.attr_id === 'cloud' && proxyOptions.length) {
+    if (isCloudRegionAttr(fieldInfo?.attr_id) && proxyOptions.length) {
       return (
         <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}>
           <Select placeholder={t('FilterBar.pleaseSelect')} allowClear showSearch className="w-full">
             {proxyOptions.map((opt) => (
-              <Select.Option key={opt.proxy_id} value={opt.proxy_id}>
+              <Select.Option key={String(opt.proxy_id)} value={Number(opt.proxy_id)}>
                 {opt.proxy_name}
               </Select.Option>
             ))}

@@ -17,7 +17,7 @@ interface SelectOption<T = string | number> {
 
 export const getFieldType = (field?: AttrFieldType): string | undefined => {
   if (!field) return undefined;
-  return field.attr_id === 'cloud' ? 'cloud' : field.attr_type;
+  return field.attr_id === 'cloud' || field.attr_id === 'cloud_id' ? 'cloud' : field.attr_type;
 };
 
 export const getEnumOptions = (field?: AttrFieldType): SelectOption[] => {
