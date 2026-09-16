@@ -1,6 +1,6 @@
 Access RAD SNMP:
   name: RAD（Telegraf）
-  desc: 面向 RAD 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 164）。
+  desc: 面向 RAD 接入设备的 SNMP 监控模板,可采集电源状态、可选光口激光温度、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 164）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:
@@ -48,6 +48,12 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 接入设备电源模块状态。正常值归一为 1，告警或未知状态归一为 2，表示电源输入、模块或告警灯存在异常风险。
+    psu_status:
+      name: 电源状态
+      desc: 来自 RAD-GEN systemPsStatus 的电源模块状态。原生码为 notApplicable(1)、failed(2)、ok(3)、degraded(4)。每行对应一个电源索引。
+    sfp_laser_temperature_celsius:
+      name: 光模块激光温度
+      desc: 来自 RAD-GEN optPrtMonitorLaserTemp 的光口激光温度，由百分之一摄氏度换算为摄氏度。空的光口监视表不产生数据。持续偏高可能表示散热异常或光模块老化。
     device_fan_state:
       name: 风扇状态
       desc: 接入设备风扇运行状态。正常值归一为 1，异常或未知状态归一为 2，表示散热能力可能下降。

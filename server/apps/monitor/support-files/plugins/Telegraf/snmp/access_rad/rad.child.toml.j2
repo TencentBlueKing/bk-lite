@@ -32,18 +32,28 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # Power-supply table (RAD-GEN systemPsTable, PEN 164).
+    # systemPsStatus ENUM notApplicable(1)/failed(2)/ok(3)/degraded(4) → psu_status.
+    # Optional systemPsType is kept as a dimension.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "psu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.164.6.2.25.1.3"
+        name = "psType"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.164.6.2.25.1.4"
+        name = "status"
+    # Optical-port laser temperature (RAD-GEN optPrtMonitorTable).
+    # Integer32 hundredths °C → query-side /100. Empty table yields no rows.
+    [[inputs.snmp.table]]
+        name = "sfp_laser_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.164.6.2.15.8.1.1.5"
+        name = "celsius"
+    # CPU/mem: no stable private scalar in RAD-GEN this round; do not invent.

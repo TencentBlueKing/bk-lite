@@ -1,7 +1,8 @@
 Access RAD SNMP:
   name: Access RAD SNMP
-  desc: SNMP monitoring template for RAD access device. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 164).
+  desc: SNMP monitoring template for RAD access device. It reports power-supply status,
+    optional optical-port laser temperature, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime (IANA PEN 164).
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -77,6 +78,15 @@ monitor_object_metric:
       desc: Power module status of the access device. Normal state is normalized to
         1 and alarm or unknown states are normalized to 2, indicating possible power
         input, module, or alarm-light risk.
+    psu_status:
+      name: PSU Status
+      desc: Power-supply status from RAD-GEN systemPsStatus. Native codes are notApplicable
+        (1), failed (2), ok (3), and degraded (4). Each row is one power-supply index.
+    sfp_laser_temperature_celsius:
+      name: SFP Laser Temperature
+      desc: Optical-port laser temperature from RAD-GEN optPrtMonitorLaserTemp, converted
+        from hundredths of a degree Celsius. Empty optical-monitor tables are skipped.
+        Persistently high values can indicate airflow issues or a failing optic.
     device_fan_state:
       name: Fan State
       desc: Fan operating state of the access device. Normal state is normalized to
