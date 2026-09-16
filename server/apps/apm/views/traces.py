@@ -110,7 +110,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
                 filter_items=lambda items: self.access.filter_summaries(items, organization_ids),
                 cursor=query.cursor,
                 limit=query.limit,
-                encode_cursor=lambda item: _encode_cursor(item.started_at),
+                encode_cursor=lambda item: _encode_cursor(item.started_at, item.trace_id),
             )
         except ValueError as exc:
             return Response(
