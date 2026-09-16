@@ -10,6 +10,9 @@ vi.mock('@/app/alarm/context/common', () => ({ useCommon: () => ({ levelMeta: {
   event: { list: [{ level_id: 1, level_display_name: '事件严重' }, { level_id: 2, level_display_name: '事件预警' }] },
   alert: { list: [{ level_id: 1, level_display_name: '告警严重' }, { level_id: 2, level_display_name: '告警预警' }] },
 } }) }));
+vi.mock('@/app/alarm/api/integration', () => ({ useSourceApi: () => ({ getAlertSourceOptions: async () =>
+  ['source_name', 'source_names'].flatMap(key => [{id:7,name:`${key}:A`},{id:8,name:`${key}:B,生产`}])
+}) }));
 afterEach(cleanup);
 beforeAll(() => { window.matchMedia = vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }); });
 
@@ -37,7 +40,7 @@ describe('独立业务矩阵：五入口 × 每个字段 × 每种条件', () =>
     expect(Object.fromEntries(ruleFields(scope).map(field => [field.key, [...field.operators]]))).toEqual(contract[scopes[scope]]);
   });
 
-  it.each(cases)('$scope / $key / $operator 控件、条件菜单、修改提交和重开回显', ({ scope, context, key, operator, ops }) => {
+  it.each(cases)('$scope / $key / $operator 控件、条件菜单、修改提交和重开回显', async ({ scope, context, key, operator, ops }) => {
     const multi = setOps.includes(operator);
     const initial = key === 'level' ? ['1'] : multi ? [`${key}:A`] : `${key}:初始正文`;
     const value: MatchRuleProps['value'] = [[{ key, operator, value: initial }]];
@@ -55,6 +58,11 @@ describe('独立业务矩阵：五入口 × 每个字段 × 每种条件', () =>
       fireEvent.mouseDown(screen.getAllByRole('combobox')[2]);
       fireEvent.click(screen.getByText(context === 'event' ? '事件预警' : '告警预警'));
       expectedValue = ['1', '2'];
+    } else if (key === 'source_name' || key === 'source_names') {
+      const input = screen.getByRole('combobox', { name: 'alarmCommon.sourceSelect' });
+      fireEvent.mouseDown(input);
+      fireEvent.click(await screen.findByText(`${key}:B,生产 (ID: 8)`));
+      expectedValue = [`${key}:A`, `${key}:B,生产`];
     } else if (multi) {
       expect(document.querySelectorAll('.ant-select-multiple')).toHaveLength(1);
       const input = screen.getByRole('combobox', { name: 'alarmCommon.multiValueInput' });

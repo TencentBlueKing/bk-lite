@@ -1,0 +1,42 @@
+{
+  "overview": {
+    "title": "概述",
+    "paragraphs": [
+      "Kafka 日志订阅使用节点上的 Vector 消费平台外 Kafka Topic，把日志事件转发到现有 NATS 通道。适用于第三方系统只能写入 Kafka、平台不内置 Kafka 集群的场景。这与「Kafka 日志」采集方式不同：后者读取 Kafka Broker 自身的日志文件。"
+    ]
+  },
+  "features": {
+    "title": "功能特性",
+    "items": [
+      {
+        "icon": "🛰️",
+        "title": "外部 Topic 订阅",
+        "description": "以消费者身份订阅客户 Kafka，不在平台内部部署 Kafka"
+      },
+      {
+        "icon": "🔐",
+        "title": "可选认证",
+        "description": "支持 PLAIN / SCRAM SASL 与 TLS 开关，适配常见加密集群"
+      },
+      {
+        "icon": "🧭",
+        "title": "消费组隔离",
+        "description": "可指定消费组；留空时使用 bk-lite-<实例ID>，避免误占客户现有消费者"
+      },
+      {
+        "icon": "⚡",
+        "title": "接入现有链路",
+        "description": "事件写入 NATS vector 后，检索、提取器和告警沿用原日志主干"
+      }
+    ]
+  },
+  "bestPractices": {
+    "title": "接入注意",
+    "items": [
+      "选择能访问 Kafka advertised.listeners 的已纳管节点",
+      "首次接入默认从最新开始，避免把历史分区全部灌入",
+      "同一消费组绑多个节点会按分区分担；不同消费组会重复消费",
+      "日志正文写入 message，后续可用日志提取器做结构化解析"
+    ]
+  }
+}

@@ -12,6 +12,7 @@ from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, Ma
 from apps.opspilot.services.wiki.embedding_service import index_version, reindex_page_chunks
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
 from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
+from apps.opspilot.services.wiki.material_file_persist import STORAGE_UNAVAILABLE_MESSAGE, MaterialStorageError, persist_new_material
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.material_source_service import MaterialSourceError, source_metadata
 from apps.opspilot.services.wiki.parsed_media_service import _bare_media_locator_spans, rewrite_media_urls_for_display, sign_media_locators
@@ -207,12 +208,22 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
             return JsonResponse({"result": False, "message": str(error)}, status=400)
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        material = serializer.save(
-            source_relative_path=metadata["source_relative_path"],
-            source_identity=metadata["source_identity"],
-            source_folder_path=metadata["source_folder_path"],
-            classification_root=metadata["classification_root"],
-        )
+        try:
+            material = persist_new_material(
+                lambda: serializer.save(
+                    source_relative_path=metadata["source_relative_path"],
+                    source_identity=metadata["source_identity"],
+                    source_folder_path=metadata["source_folder_path"],
+                    classification_root=metadata["classification_root"],
+                )
+            )
+        except MaterialStorageError as error:
+            logger.warning(
+                "wiki material create 对象存储失败 kb=%s error_type=%s",
+                knowledge_base.id,
+                type(error).__name__,
+            )
+            return JsonResponse({"result": False, "message": str(error)}, status=503)
         # 新资料保持 pending；管理员点击「构建」后由统一任务依次解析并构建。
         serializer = self.get_serializer(material)
         log_operation(request, "create", "opspilot", f"新增资料: {material.name}")
@@ -437,7 +448,10 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
     @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=False, url_path="batch_create")
     def batch_create(self, request):
-        """批量创建资料(支持多文件):每条独立处理,返回 items + errors 汇总,失败不影响其他记录创建。
+        """批量创建资料(支持多文件):逐条 for 循环入库,返回 items + errors 汇总。
+
+        单文件业务失败(如磁盘满)隔离后继续;对象存储不可用时立即停止后续文件,
+        避免在 MinIO 已挂时继续空转。整批均因对象存储失败时返回 503,提示用户。
 
         POST 表单字段:
         - knowledge_base: int (必填)
@@ -467,6 +481,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
 
         items = []
         errors = []
+        storage_unavailable = False
         for index, f in enumerate(files):
             try:
                 metadata = source_metadata(
@@ -475,20 +490,36 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     fallback_name=f.name,
                     classification_root_id=classification_root_id,
                 )
-                # 每条记录包在独立 savepoint 中:失败只回滚当前 savepoint,不污染整批事务
-                with transaction.atomic():
-                    material = Material.objects.create(
+
+                def _create(uploaded=f, meta=metadata):
+                    return Material.objects.create(
                         knowledge_base=kb,
-                        name=f.name,
+                        name=uploaded.name,
                         material_type="file",
-                        file=f,
+                        file=uploaded,
                         ocr_enhance=ocr_enhance,
                         status="pending",
-                        source_relative_path=metadata["source_relative_path"],
-                        source_identity=metadata["source_identity"],
-                        source_folder_path=metadata["source_folder_path"],
-                        classification_root=metadata["classification_root"],
+                        source_relative_path=meta["source_relative_path"],
+                        source_identity=meta["source_identity"],
+                        source_folder_path=meta["source_folder_path"],
+                        classification_root=meta["classification_root"],
                     )
+
+                # 每条记录独立事务:对象存储失败回滚当前行,不污染已成功条目。
+                material = persist_new_material(_create)
+            except MaterialStorageError as exc:
+                logger.warning(
+                    "wiki batch_create 对象存储失败 file=%s kb=%s error_type=%s",
+                    f.name,
+                    kb_id,
+                    type(exc).__name__,
+                )
+                error_text = str(exc)
+                if index < len(files) - 1:
+                    error_text = f"{error_text} 后续文件已停止上传。"
+                errors.append({"name": f.name, "error": error_text})
+                storage_unavailable = True
+                break
             except Exception as exc:  # noqa: BLE001 - 批量任务逐条隔离失败
                 logger.exception("wiki batch_create 失败 file=%s kb=%s", f.name, kb_id)
                 errors.append({"name": f.name, "error": str(exc)})
@@ -501,6 +532,15 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
             "opspilot",
             f"批量新增资料: 成功 {len(items)} 条,失败 {len(errors)} 条",
         )
+        if storage_unavailable and not items:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": STORAGE_UNAVAILABLE_MESSAGE,
+                    "data": {"items": items, "errors": errors},
+                },
+                status=503,
+            )
         return JsonResponse(
             {"result": True, "data": {"items": items, "errors": errors}},
             status=201 if items and not errors else 200,

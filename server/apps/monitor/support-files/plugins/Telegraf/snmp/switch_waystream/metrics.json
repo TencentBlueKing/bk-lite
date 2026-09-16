@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_waystream",
   "plugin": "Switch Waystream SNMP",
-  "plugin_desc": "Waystream ASR / FTTH switch SNMP child template (IANA PEN 9303). The verified WAYSTREAM-SMI and WAYSTREAM-RPM-MIB private tree is focused on enterprise identity and RPM/IPTV QoS objects, and no row-filter-free scalar device-health gauges were confirmed in the available state. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Switch SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/switch metric model while this plugin provides the Waystream collect_type, UI and Telegraf child template. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Waystream ASR and FTTH access switches.",
+  "plugin_desc": "Waystream ASR / FTTH switch SNMP collection (IANA PEN 9303). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Device health comes from wsSystem scalars—CPU utilization is 100 minus wsCPUIdleLoad, with a fallback of wsCPUUserLoad plus wsCPUSystemLoad; memory utilization is wsMemoryUsed over wsMemoryTotal after converting kilobytes to bytes, with a fallback of 100 minus wsMemoryPctFree (tenths of a percent divided by 10). Optional chassis temperature comes from the wsTempMeasured table (hundredths of a degree Celsius divided by 100). Fan and power-supply state are not collected. Supported brands/models — Waystream ASR and FTTH access switches.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_waystream'}) by (instance_id)",
   "name": "Switch",
@@ -14,44 +14,76 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "(100 - avg(device_cpu_idle{instance_type='switch', __$labels__}) by (instance_id)) or (avg(device_cpu_user{instance_type='switch', __$labels__}) by (instance_id) + avg(device_cpu_system{instance_type='switch', __$labels__}) by (instance_id))",
+      "display_name": "CPU Utilization",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "percent",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "CPU utilization of the Waystream switch control plane (PEN 9303 wsSystem). Prefer 100 minus wsCPUIdleLoad; if idle is absent, fall back to wsCPUUserLoad plus wsCPUSystemLoad. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "display_name": "Memory Used",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "bytes",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Used system memory of the Waystream switch in bytes (wsMemoryUsed, reported in kilobytes and multiplied by 1024). Helps administrators see absolute memory consumption and identify memory pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "sum(device_memory_total{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total system memory of the Waystream switch in bytes (wsMemoryTotal, reported in kilobytes and multiplied by 1024). Together with used bytes it is the denominator for memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "(sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100) or (100 - avg(device_memory_pct_free{instance_type='switch', __$labels__}) by (instance_id) / 10)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall memory utilization of the Waystream switch. Prefer used / total from wsMemoryUsed and wsMemoryTotal; if those scalars are absent, fall back to 100 minus wsMemoryPctFree after dividing tenths of a percent by 10. High memory usage may indicate memory leaks, oversized tables, or insufficient capacity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__} / 100) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest chassis temperature reading from the optional wsTempMeasured table, in degrees Celsius. The raw object is hundredths of a degree, so the query divides by 100. Models without this table simply omit the metric. Abnormally high temperatures may indicate cooling failure, blocked airflow, or excessive ambient heat."
     },
     {
       "metric_group": "Base",

@@ -1,5 +1,56 @@
 {
   "object": "Transmission",
   "plugin": "Transmission Fibrolan SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Fibrolan传输设备CPU使用率过高",
+      "alert_name": "传输设备${resource_name} CPU 使用率过高",
+      "description": "监控 Fibrolan Falcon 传输设备的 CPU 使用率（FIBROLAN-DEVICE flDeviceCpuUtilization，直接百分比）。持续高于阈值时提示控制平面负载、业务转发压力或异常流量。",
+      "metric_name": "cpu_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Fibrolan传输设备内存使用率过高",
+      "alert_name": "传输设备${resource_name} 内存使用率过高",
+      "description": "监控 Fibrolan Falcon 传输设备的 DRAM 使用率（FIBROLAN-DEVICE flDeviceMemoryUtilization，直接百分比）。持续高于阈值时提示控制面资源紧张或服务异常。",
+      "metric_name": "memory_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

@@ -13,6 +13,7 @@ class PackageVersion(TimeInfo, MaintainerInfo):
     version = models.CharField(max_length=100, verbose_name="包版本号")
     name = models.CharField(max_length=100, verbose_name="包名称")
     description = models.TextField(blank=True, verbose_name="包版本描述")
+    sha256 = models.CharField(max_length=64, blank=True, default="", verbose_name="文件SHA256")
 
     class Meta:
         verbose_name = "包版本信息"

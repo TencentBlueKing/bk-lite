@@ -1,6 +1,6 @@
 Transmission BridgeWave SNMP:
   name: BridgeWave（Telegraf）
-  desc: 面向 BridgeWave 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 BridgeWave 传输设备的 SNMP 监控模板,可采集 机组温度、发射机温度、接收信号电平、可选输入电压、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 6080）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -32,7 +32,16 @@ monitor_object_metric:
       desc: 传输设备的整体内存使用率，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。
     device_temperature_celsius:
       name: 温度
-      desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+      desc: BridgeWave 射频机组温度，单位为摄氏度。SNMP 标量以百分之一摄氏度上报，查询侧除以 100。温度偏高可能表示机箱温升或射频硬件热压力。
+    tx_temperature_celsius:
+      name: 发射机温度
+      desc: BridgeWave 发射机温度，单位为摄氏度。SNMP 标量以百分之一摄氏度上报，查询侧除以 100。温度偏高可能表示射频硬件热压力。
+    rsl:
+      name: 接收信号电平
+      desc: BridgeWave 接收信号电平，单位为 dBm。SNMP 标量为 dBm 整数，不对温度规则做除以 100。数值更负表示微波路径更弱。
+    device_in_voltage:
+      name: 输入电压
+      desc: 可选的 BridgeWave 射频输入电压，按 SNMP 原始整数上报。仅温度对象已确认百分之一换算，因此该值不做除以 100，也不作为共享电源健康指标。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。

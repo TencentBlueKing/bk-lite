@@ -45,6 +45,7 @@ const SSH_TYPE: CredentialTypeItem = {
     { id: 'username', name: '用户名', kind: 'string', required: true },
     { id: 'password', name: '密码', kind: 'secret', required: true, visible_when: { auth_method: 'password' } },
     { id: 'private_key', name: '私钥内容', kind: 'secret', required: true, visible_when: { auth_method: 'key' } },
+    { id: 'passphrase', name: '私钥口令', kind: 'secret', visible_when: { auth_method: 'key' } },
   ],
 };
 

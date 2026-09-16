@@ -71,10 +71,10 @@ def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_wi
 
     assert screen["view_sets"]["items"] == [
         {
-            "h": 1080,
+            "h": 1000,
             "w": 1920,
             "x": 0,
-            "y": 0,
+            "y": 80,
             "id": "builtin-application3d-main",
             "type": "widget",
             "title": "3D应用",
@@ -1053,10 +1053,10 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert application3d_screen.view_sets["decorations"] == {"title": "全景应用墙", "showClock": True, "showTitle": True}
     assert application3d_screen.view_sets["items"] == [
         {
-            "h": 1080,
+            "h": 1000,
             "w": 1920,
             "x": 0,
-            "y": 0,
+            "y": 80,
             "id": "builtin-application3d-main",
             "type": "widget",
             "title": "3D应用",

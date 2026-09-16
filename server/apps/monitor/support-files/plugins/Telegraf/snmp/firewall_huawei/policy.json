@@ -78,6 +78,56 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "Huawei防火墙半连接数过高",
+      "alert_name": "防火墙${resource_name} 半连接数过高",
+      "description": "监控华为 USG 防火墙半连接（未完成握手）会话数，持续偏高通常意味着 SYN 泛洪或不完整握手压力。",
+      "metric_name": "firewall_half_open_sessions",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50000,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 20000,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 5000,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei防火墙SPU CPU使用率过高",
+      "alert_name": "防火墙${resource_name} SPU CPU 使用率过高",
+      "description": "监控华为 USG9500 各 SPU CPU 使用率，当持续高于阈值时触发告警，提示转发板负载过高。无 SPU 的盒式设备无此序列。",
+      "metric_name": "firewall_spu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
       "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_phoenixcontact",
   "plugin": "Switch Phoenix Contact SNMP",
-  "plugin_desc": "Baseline SNMP collection template for Phoenix Contact FL SWITCH industrial Ethernet switches (enterprise PEN 4346). Based on standard MIB-II / IF-MIB, it collects device uptime, 64-bit HC interface traffic, interface RX/TX error and discard rates, interface admin/operational status and bandwidth, and device-wide total traffic roll-ups. The FL SWITCH device temperature, redundant power-supply inputs (P1/P2) and alarm-contact objects live in product-family-specific private MIBs (PEN 4346) shipped inside the firmware package and are not exposed as row-filter-free pollable scalars across the GHS/MM/SMN/SMCS/EP74/2000 ranges, so CPU/memory/temperature/fan/power are N/A and not faked. Applicable to Phoenix Contact FL SWITCH industrial Ethernet switches (FL SWITCH GHS/MM/SMN/SMCS/EP74/2000 families, enterprise PEN 4346).",
+  "plugin_desc": "Phoenix Contact FL SWITCH SNMP collection (IANA PEN 4346). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Proven private device-health objects are redundant power-supply status (flWorkBasicPowerStat) and chassis temperature in degrees Celsius (flWorkFWCtrlActualDeviceTemperature). Optional firmware operational status (flWorkFWInfoOperStatus), firmware health text as a tag, and alarm-contact status (flWorkFWCtrlAlarmContactStatus) are collected when the device returns them. CPU and memory utilization are not collected because no private CPU or memory utilization scalar is published. Supported brands/models — Phoenix Contact FL SWITCH industrial Ethernet switches.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_phoenixcontact'}) by (instance_id)",
   "name": "Switch",
@@ -15,10 +15,64 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
+    "power_status",
+    "device_temperature_celsius",
+    "firmware_oper_status",
+    "alarm_contact_status"
   ],
   "metrics": [
+    {
+      "metric_group": "Hardware Status",
+      "name": "power_status",
+      "query": "max(power_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Power Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"unknown\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"supply1_ok\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"supply2_ok\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"both_ok\",\"id\":5,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Redundant power-supply status of the Phoenix Contact FL SWITCH (flWorkBasicPowerStat). Native codes are unknown (1), supply 1 OK (3), supply 2 OK (4), and both supplies OK (5). A value other than 5 means a lost input or unknown power state."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature of the Phoenix Contact FL SWITCH in degrees Celsius (flWorkFWCtrlActualDeviceTemperature). Abnormally high temperatures may indicate blocked airflow or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "firmware_oper_status",
+      "query": "max(firmware_oper_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Firmware Operational Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"other\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"ok\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"notOk\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Firmware operational state of the Phoenix Contact FL SWITCH (flWorkFWInfoOperStatus). Native codes are other (1), ok (2), and notOk (3). A value other than 2 indicates the firmware is not in normal running mode. The optional health-text string is collected as a tag, not a numeric metric."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "alarm_contact_status",
+      "query": "min(alarm_contact_status{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Alarm Contact Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"open\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"closed\",\"id\":2,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Alarm-contact status of the Phoenix Contact FL SWITCH (flWorkFWCtrlAlarmContactStatus). Native codes are open (1, alarm asserted) and closed (2, no alarm). An open contact means a configured alarm condition is active."
+    },
     {
       "metric_group": "Base",
       "name": "snmp_uptime",
@@ -31,266 +85,6 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
-    },
-    {
-      "metric_group": "Status",
-      "name": "interface_ifAdminStatus",
-      "query": "interface_ifAdminStatus{instance_type='switch', __$labels__}",
-      "display_name": "Interface Admin Status",
-      "data_type": "Enum",
-      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the administrative status of the network interface."
-    },
-    {
-      "metric_group": "Status",
-      "name": "interface_ifOperStatus",
-      "query": "interface_ifOperStatus{instance_type='switch', __$labels__}",
-      "display_name": "Interface Oper Status",
-      "data_type": "Enum",
-      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reflects the actual operational status of the network interface."
-    },
-    {
-      "metric_group": "Bandwidth",
-      "name": "interface_ifSpeed",
-      "query": "interface_ifSpeed{instance_type='switch', __$labels__}",
-      "display_name": "Interface Bandwidth",
-      "data_type": "Number",
-      "unit": "bitps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the maximum data transmission speed supported by the network interface."
-    },
-    {
-      "metric_group": "Packet Error",
-      "name": "interface_ifInErrors",
-      "query": "rate(interface_ifInErrors{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Incoming Errors Rate",
-      "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Packet Error",
-      "name": "interface_ifOutErrors",
-      "query": "rate(interface_ifOutErrors{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Outgoing Errors Rate",
-      "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Packet Loss",
-      "name": "interface_ifInDiscards",
-      "query": "rate(interface_ifInDiscards{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Incoming Discards Rate",
-      "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Packet Loss",
-      "name": "interface_ifOutDiscards",
-      "query": "rate(interface_ifOutDiscards{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Outgoing Discards Rate",
-      "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Packet",
-      "name": "interface_ifInUcastPkts",
-      "query": "rate(interface_ifInUcastPkts{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Incoming Unicast Packets Rate",
-      "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Packet",
-      "name": "interface_ifOutUcastPkts",
-      "query": "rate(interface_ifOutUcastPkts{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Outgoing Unicast Packets Rate",
-      "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifInOctets",
-      "query": "rate(interface_ifInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifOutOctets",
-      "query": "rate(interface_ifOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate (HC)",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate (HC)",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])) by (instance_id)",
-      "display_name": "Device Total Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])) by (instance_id)",
-      "display_name": "Device Total Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
     }
   ]
 }

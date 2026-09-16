@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bluecat",
   "plugin": "NetworkService BlueCat SNMP",
-  "plugin_desc": "BlueCat DDI network-service SNMP collection for appliances under BlueCat PEN 13315. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, and DNS, DHCP and IPAM counters are business or capacity indicators, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "BlueCat DDI SNMP collection for appliances under BlueCat PEN 13315. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds BCN-DNS operational state and successful-query count, plus UCD-SNMP CPU and memory percent per vendor monitoring documentation.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_bluecat'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,64 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "network_service_bluecat_dns_state",
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_bluecat_dns_state",
+      "query": "max(network_service_bluecat_dns_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "BlueCat DNS Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "BCN-DNS operational state. Value 1 is running/healthy; every other value is treated as fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_bluecat_dns_query_success",
+      "query": "rate(network_service_bluecat_dns_query_success{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "BlueCat DNS Successful Queries",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Rate of BCN-DNS queries that resulted in a successful answer over the past five minutes."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_cpu_usage",
+      "query": "100 - avg(device_cpu_idle{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization derived from UCD-SNMP idle percent (100 minus ssCpuIdle) as documented for BlueCat DNS/DHCP servers."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_memory_usage",
+      "query": "avg((device_memory_total{instance_type='network_service', __$labels__} - device_memory_free{instance_type='network_service', __$labels__}) / clamp_min(device_memory_total{instance_type='network_service', __$labels__}, 1) * 100) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization derived from UCD-SNMP memTotalReal and memTotalFree as documented for BlueCat DNS/DHCP servers."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +88,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average inbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCInOctets counter."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +106,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average outbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCOutOctets counter."
     },
     {
       "metric_group": "Base",
@@ -64,7 +119,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }

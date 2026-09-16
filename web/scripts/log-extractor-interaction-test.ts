@@ -14,6 +14,7 @@ import {
   extractorRequiresTargetField,
   extractorTypeLabelKey,
   extractorUsesSingleTargetField,
+  extractorPathFromSearchField,
   flattenExtractorPaths,
   formatExtractorPreviewValue,
   getExtractorConditionSummary,
@@ -35,6 +36,26 @@ assert.deepEqual(
   ),
   ['http', 'http.status', 'http["request.id"]'],
   '属性选择器应生成规范嵌套路径和引用段'
+);
+assert.deepEqual(
+  Array.from(
+    flattenExtractorPaths({
+      '@timestamp': '2026-09-15T02:51:41.979Z',
+      '@metadata': { beat: 'filebeat' }
+    })
+  ),
+  ['@timestamp', '@metadata', '@metadata.beat'],
+  'Filebeat @ 字段应作为普通路径段，而不是预览报普通段无效'
+);
+assert.equal(
+  extractorPathFromSearchField('@metadata.beat'),
+  '@metadata.beat',
+  '搜索页 Filebeat 字段应转成提取器可解析的路径'
+);
+assert.equal(
+  extractorPathFromSearchField('@timestamp'),
+  '@timestamp',
+  '单段 @ 字段应保持为普通路径'
 );
 
 assert.deepEqual(
@@ -492,6 +513,11 @@ assert.match(
   searchPageSource,
   /storeExtractorCreateHandoff\(\{\s*event,\s*source_field\s*\}\)/,
   '搜索页创建提取器应写入可跨新窗口读取的样本和源属性'
+);
+assert.match(
+  searchPageSource,
+  /extractorPathFromSearchField\(sourceField\)/,
+  '搜索页 Filebeat 字段必须编码成提取器路径，不能原样塞扁平字段名'
 );
 assert.match(
   searchPageSource,

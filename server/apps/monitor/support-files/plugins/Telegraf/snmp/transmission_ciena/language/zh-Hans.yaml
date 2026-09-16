@@ -1,6 +1,6 @@
 Transmission Ciena SNMP:
   name: Ciena (Telegraf)
-  desc: 面向 Ciena 传输设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  desc: 面向 Ciena CES/SAOS 传输设备的 SNMP 监控模板，可采集每槽位 CPU 使用率、机箱内存已用量以及接口流量；不绑定 6500 Packet-Optical。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -26,7 +26,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
+      desc: Ciena CES/SAOS 机箱每槽位 CPU 使用率，来自 cienaCesChassisCPUHealthCurrMeasurement（cpu-Usage），以 0-100 百分比直接上报。持续偏高可能表示控制平面负载、转发压力或异常流量。
+    device_memory_used:
+      name: 内存已用
+      desc: Ciena CES/SAOS 机箱内存当前测量值，来自 cienaCesChassisMemoryHealthCurrMeasurement，设备以 KB 上报，展示时换算为字节。该表没有已用/总量配对，因此不推导内存使用率。
     device_memory_usage:
       name: 内存使用率
       desc: 传输设备的整体内存使用率，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。

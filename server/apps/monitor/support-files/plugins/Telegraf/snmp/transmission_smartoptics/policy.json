@@ -1,5 +1,46 @@
 {
   "object": "Transmission",
   "plugin": "Transmission Smartoptics SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Smartoptics传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 Smartoptics DCP/M-Series 光传输设备的环境温度（原始值已按十分之一度还原为摄氏度），当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或设备过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Smartoptics传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇异常",
+      "description": "监控 Smartoptics DCP/M-Series 光传输设备的风扇状态，非正常状态表示散热模块告警，可能导致设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

@@ -13,6 +13,13 @@ import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue, type SavedFilterItem } from '@/app/cmdb/api/userConfig';
 import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 import { isCloudRegionAttr, toCloudSelectValue } from '@/app/cmdb/utils/cloudRegion';
+import {
+  applyMultiIpPaste,
+  collectMultiIpSearchNotices,
+  formatMultiIpInputValue,
+  isMultiIpSearchAttr,
+  resolveMultiIpSearch,
+} from './multiIpSearch';
 
 const { RangePicker } = DatePicker;
 
@@ -104,6 +111,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
     const fieldName = fieldInfo?.attr_name || filter.field;
 
     const getOperatorText = (type: string): string => {
+      if (type === 'str[]') return t('FilterBar.exact');
       if (type.includes('*')) return t('FilterBar.fuzzy');
       if (type.includes('=')) return t('FilterBar.exact');
       return '';
@@ -230,9 +238,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
         value: boolValue,
       });
     } else {
+      const isIpField = isMultiIpSearchAttr(filter.field);
       form.setFieldsValue({
-        value: filter.value,
-        isExact: filter.type.includes('=') && !filter.type.includes('*'),
+        value: isIpField ? formatMultiIpInputValue(filter.value) : filter.value,
+        isExact: filter.type === 'str[]' || (filter.type.includes('=') && !filter.type.includes('*')),
       });
     }
   };
@@ -285,8 +294,24 @@ const FilterBar: React.FC<FilterBarProps> = ({
         updatedFilter.value = Boolean(values.value);
         updatedFilter.type = 'bool=';
       } else if (fieldType === 'str') {
-        updatedFilter.value = String(values.value || '');
-        updatedFilter.type = values.isExact ? 'str=' : 'str*';
+        if (isMultiIpSearchAttr(editingFilter!.field)) {
+          const resolution = resolveMultiIpSearch(
+            editingFilter!.field,
+            values.value,
+            values.isExact || editingFilter?.type === 'str[]',
+          );
+          collectMultiIpSearchNotices(resolution).forEach((notice) => {
+            message.warning(t(notice.id, undefined, notice.values));
+          });
+          if (resolution.action !== 'search') {
+            return;
+          }
+          updatedFilter.type = resolution.condition.type;
+          updatedFilter.value = resolution.condition.value;
+        } else {
+          updatedFilter.value = String(values.value || '');
+          updatedFilter.type = values.isExact ? 'str=' : 'str*';
+        }
       } else if (fieldType === 'tag') {
         updatedFilter.value = Array.isArray(values.value) ? values.value : values.value ? [values.value] : [];
         updatedFilter.type = 'list_any[]';
@@ -365,6 +390,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
     if (!editingFilter) return null;
     const fieldType = inferFieldType(editingFilter);
     const fieldInfo = getFieldInfo(editingFilter.field);
+    const handleMultiIpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      const input = e.currentTarget;
+      const current = input.value || '';
+      const next = applyMultiIpPaste(
+        current,
+        e.clipboardData.getData('text'),
+        input.selectionStart ?? current.length,
+        input.selectionEnd ?? current.length,
+      );
+      form.setFieldsValue({ value: next });
+    };
 
     // 特殊处理-云区域
     if (isCloudRegionAttr(fieldInfo?.attr_id) && proxyOptions.length) {
@@ -490,7 +527,16 @@ const FilterBar: React.FC<FilterBarProps> = ({
               rules={[{ required: true, message: t('FilterBar.pleaseEnterValue') }]}
               className="mb-0! flex-1"
             >
-              <Input placeholder={t('FilterBar.pleaseEnterValue')} allowClear className={styles.filterInput} />
+              <Input
+                placeholder={
+                  isMultiIpSearchAttr(editingFilter.field)
+                    ? t('FilterBar.multiIpPlaceholder')
+                    : t('FilterBar.pleaseEnterValue')
+                }
+                allowClear
+                className={styles.filterInput}
+                onPaste={isMultiIpSearchAttr(editingFilter.field) ? handleMultiIpPaste : undefined}
+              />
             </Form.Item>
             <Form.Item
               name="isExact"

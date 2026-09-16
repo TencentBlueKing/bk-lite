@@ -35,6 +35,7 @@ class Management:
         task_id,
         collect_plugin=None,
         data_cleanup_strategy=None,
+        reconcile_task_assets=False,
     ):
         self.organization = organization
         self.collect_time = collect_time
@@ -42,6 +43,8 @@ class Management:
         self.inst_name = inst_name
         self.model_id = model_id
         self.old_data = old_data
+        self.reconcile_task_assets = reconcile_task_assets
+        self.existing_organizations = {row["_id"]: row.get("organization", []) for row in old_data} if reconcile_task_assets else {}
         self.new_data = new_data
         self.unique_keys = unique_keys
         self.check_attr_map = self.get_check_attr_map()
@@ -105,6 +108,8 @@ class Management:
                 add_list.append(info)
             else:
                 info.update(_id=old_map[key]["_id"])
+                if self.reconcile_task_assets and "inst_uuid" in old_map[key]:
+                    info["inst_uuid"] = old_map[key]["inst_uuid"]
                 if self.has_business_changes(old_map[key], info):
                     update_list.append(info)
                 else:
@@ -128,7 +133,7 @@ class Management:
         if should_delete:
             for key, info in old_map.items():
                 info["model_id"] = self.model_id
-                if key not in new_map:
+                if key not in new_map and (not self.reconcile_task_assets or str(info.get("collect_task")) == str(self.task_id)):
                     delete_list.append(info)
 
         return add_list, update_list, heartbeat_list, delete_list
@@ -221,7 +226,7 @@ class Management:
                 try:
                     instance_info.update(
                         model_id=self.model_id,
-                        organization=self.organization,
+                        organization=self.existing_organizations.get(instance_info["_id"], self.organization),
                         collect_task=self.task_id,
                         auto_collect=True,
                         collect_time=self.collect_time,
@@ -251,7 +256,7 @@ class Management:
             {
                 "_id": instance_info["_id"],
                 "model_id": self.model_id,
-                "organization": self.organization,
+                "organization": self.existing_organizations.get(instance_info["_id"], self.organization),
                 "collect_task": self.task_id,
                 "auto_collect": True,
                 "collect_time": self.collect_time,

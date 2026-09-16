@@ -36,9 +36,10 @@
       "type": "password",
       "required": true,
       "editable": false,
+      "encrypted": true,
       "description": "对应的登录密码",
-      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格；密码只通过该字段下发，不要拼入连接地址或命令行。",
-      "guide_short_en": "Enter the password for the configured login without leading or trailing spaces. Supply it only through this field, never in a connection address or command line.",
+      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格；支持含特殊字符的密码。密码只通过该字段下发，不要拼入连接地址或命令行。",
+      "guide_short_en": "Enter the password for the configured login without leading or trailing spaces. Passwords containing special characters are supported. Supply it only through this field, never in a connection address or command line.",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"

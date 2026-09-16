@@ -219,11 +219,80 @@ tools:
       monitor_list_instance_metrics:
         description: 【主机CPU】可选，确认某实例是否已采集 CPU 等指标。
       monitor_query_metric_data:
-        description: 【主机CPU】第4步，查询指标时序；需对象、metric、时间窗、可选 instance_ids。
+        description: 【主机CPU】第4步，查询指标时序；需对象、metric、可选时间窗（默认近1小时），可选 instance_ids。
       monitor_list_active_alerts:
-        description: 【主机告警】查询当前活跃告警，可按对象/实例/级别过滤。
+        description: 【主机告警】查询当前活跃告警，可按对象/实例/级别过滤；实例可用 instance_id、实例名或 IP。
       monitor_query_alert_segments:
         description: 【主机告警历史】按时间窗查询告警片段。
+      monitor_get_host_resource_snapshot:
+        description: 【主机CPU】按 instance_ids 查询 CPU/内存/磁盘均值与最高值快照。
+  cmdb:
+    name: CMDB
+    description: |
+      用当前用户身份查询和变更 BK-Lite CMDB 资产。支持模型、实例增删改查、关联与拓扑、全文检索。权限由服务端校验。
+    tools:
+      cmdb_list_models:
+        description: 列出有权限的 CMDB 模型。
+      cmdb_get_model_info:
+        description: 按 model_id 获取模型详情。
+      cmdb_list_model_attrs:
+        description: 列出模型属性。
+      cmdb_search_instances:
+        description: 按模型分页查询实例。
+      cmdb_get_instance:
+        description: 按 UUID 获取实例。
+      cmdb_create_instance:
+        description: 创建实例。
+      cmdb_update_instance:
+        description: 更新实例。
+      cmdb_batch_update_instances:
+        description: 批量更新实例。
+      cmdb_delete_instance:
+        description: 删除实例。
+      cmdb_batch_delete_instances:
+        description: 批量删除实例。
+      cmdb_topo_search:
+        description: 查询实例拓扑。
+      cmdb_topo_expand:
+        description: 展开实例拓扑。
+      cmdb_list_model_associations:
+        description: 列出模型关联定义。
+      cmdb_list_instance_associations:
+        description: 列出实例关联。
+      cmdb_list_associated_instances:
+        description: 列出关联实例。
+      cmdb_create_instance_association:
+        description: 创建实例关联。
+      cmdb_delete_instance_association:
+        description: 删除实例关联。
+      cmdb_fulltext_search:
+        description: 全文检索实例。
+      cmdb_fulltext_search_stats:
+        description: 全文检索统计。
+      cmdb_fulltext_search_by_model:
+        description: 按模型全文检索。
+  alerts:
+    name: 告警中心
+    description: |
+      用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不做认领或关闭。
+    tools:
+      alerts_list_alerts:
+        description: 查询告警列表，可按状态/级别/关键词过滤。
+      alerts_get_alert_detail:
+        description: 按 alert_id 查询告警详情。
+      alerts_list_alert_events:
+        description: 查询告警关联事件。
+  log:
+    name: 日志中心
+    description: |
+      用当前用户身份查询日志。先列分组，再用结构化关键词查询；复杂场景可用原生 LogsQL。
+    tools:
+      log_list_groups:
+        description: 列出可访问的日志分组。
+      log_search_structured:
+        description: 按关键词和时间范围查询日志。
+      log_search_raw:
+        description: 使用原生 LogsQL 查询日志。
   attachment_file:
     name: 工作流附件文件
     description: |

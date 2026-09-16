@@ -79,8 +79,11 @@ export const useRouterConfig = () => {
     },
     collectTypes: {
       'Router SNMP General': 'snmp',
+      'Router Cisco SNMP': 'snmp_cisco_router',
       'Router Juniper MX SNMP': 'snmp_juniper_mx',
       'Router Huawei AR SNMP': 'snmp_huawei_ar',
+      'Router Huawei ATN SNMP': 'snmp_huawei_atn',
+      'Router Huawei NE SNMP': 'snmp_huawei_ne',
       'Router Vyatta SNMP': 'snmp_vyatta',
       'Router NetModule SNMP': 'snmp_netmodule',
       'Router MultiTech SNMP': 'snmp_multitech',

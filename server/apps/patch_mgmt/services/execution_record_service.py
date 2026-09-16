@@ -8,7 +8,13 @@
 from collections import defaultdict
 
 from apps.patch_mgmt.constants import GovernanceTaskType
-from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
+from apps.patch_mgmt.models import (
+    BaselineRequirement,
+    GovernanceTask,
+    GovernanceTaskHost,
+    HostBaselineBinding,
+    HostComplianceSnapshot,
+)
 
 
 STATUS_META = {
@@ -37,6 +43,67 @@ def filter_execution_record_roots(queryset):
         parent_task__isnull=True,
         task_type__in=(GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT),
     )
+
+
+def build_host_requirement_projection(target_ids, patch_ids=None) -> dict[int, list[dict]]:
+    """按可见主机批量投影基线要求与每条要求的最新合规快照。
+
+    查询次数有上界，不随主机数线性放大。无绑定主机映射为 []。
+    安装任务传入 patch_ids 时只保留这些补丁对应的要求。
+    """
+    unique_ids = list(dict.fromkeys(int(target_id) for target_id in target_ids))
+    index = {target_id: [] for target_id in unique_ids}
+    if not unique_ids:
+        return index
+
+    bindings = list(
+        HostBaselineBinding.objects.filter(target_id__in=unique_ids).select_related("baseline")
+    )
+    if not bindings:
+        return index
+
+    binding_by_target = {}
+    for binding in bindings:
+        binding_by_target.setdefault(int(binding.target_id), binding)
+
+    req_qs = BaselineRequirement.objects.filter(
+        baseline_id__in={binding.baseline_id for binding in binding_by_target.values()}
+    ).select_related("patch")
+    if patch_ids:
+        req_qs = req_qs.filter(patch_id__in=patch_ids)
+
+    reqs_by_baseline: dict[int, list] = defaultdict(list)
+    for requirement in req_qs:
+        reqs_by_baseline[requirement.baseline_id].append(requirement)
+
+    latest_snapshots = {}
+    for snapshot in (
+        HostComplianceSnapshot.objects.filter(
+            binding_id__in=[binding.id for binding in binding_by_target.values()]
+        ).order_by("-evaluated_at")
+    ):
+        key = (snapshot.binding_id, snapshot.requirement_id)
+        if key not in latest_snapshots:
+            latest_snapshots[key] = snapshot
+
+    for target_id, binding in binding_by_target.items():
+        rows = []
+        for requirement in reqs_by_baseline.get(binding.baseline_id, []):
+            snapshot = latest_snapshots.get((binding.id, requirement.id))
+            rows.append(
+                {
+                    "baseline_name": binding.baseline.name,
+                    "patch_id": requirement.patch_id,
+                    "patch_title": requirement.patch.title,
+                    "condition": requirement.condition,
+                    "satisfied": snapshot.satisfied if snapshot else None,
+                    "status": snapshot.status if snapshot else None,
+                    "reason": snapshot.reason if snapshot else "",
+                    "evidence": snapshot.evidence if snapshot else {},
+                }
+            )
+        index[target_id] = rows
+    return index
 
 
 def _task_chain(root: GovernanceTask) -> list[GovernanceTask]:

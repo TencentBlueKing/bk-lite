@@ -1,7 +1,8 @@
 Transmission Infinera SNMP:
   name: Infinera (Telegraf)
-  desc: SNMP monitoring template for Infinera transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Infinera transmission device. It reports board
+    load averages, memory utilization, per-port inbound traffic rate, per-port outbound
+    traffic rate, and system uptime
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -63,11 +64,45 @@ monitor_object_metric:
       desc: Operational state of each transmission device power supply. A non-normal
         state indicates offline power, missing input, over-temperature, hardware fault,
         or alert condition that should be investigated.
+    load_1m:
+      name: Load Average 1m
+      desc: 1-minute Unix-style load average of each Infinera board. This is a load
+        average, not a 0-100 CPU percent. The dashboard value is the maximum across
+        boards.
+    load_5m:
+      name: Load Average 5m
+      desc: 5-minute Unix-style load average of each Infinera board. This is a load
+        average, not a 0-100 CPU percent. The dashboard value is the maximum across
+        boards.
+    load_15m:
+      name: Load Average 15m
+      desc: 15-minute Unix-style load average of each Infinera board. This is a load
+        average, not a 0-100 CPU percent. The dashboard value is the maximum across
+        boards.
+    memory_usage_percent:
+      name: Memory Usage
+      desc: Memory utilization of each Infinera board, reported directly as a 0-100
+        percentage. The dashboard value is the maximum across boards. Sustained high
+        memory usage may indicate control-plane resource pressure or unstable device
+        services.
+    memory_total:
+      name: Memory Total
+      desc: Optional total board memory reported by LUM-SYSINFO. Some software revisions
+        omit this column. The value is the MIB counter as returned.
+    memory_free:
+      name: Memory Free
+      desc: Optional free board memory reported by LUM-SYSINFO. Some software revisions
+        omit this column. The value is the MIB counter as returned.
+    memory_available:
+      name: Memory Available
+      desc: Optional available board memory reported by LUM-SYSINFO. Some software
+        revisions omit this column. The value is the MIB counter as returned.
 monitor_object_metric_group:
   Transmission:
     Base: Base
     Traffic: Traffic
     CPU: CPU
     Memory: Memory
+    Load: Load
     Temperature: Temperature
     Hardware Status: Hardware Status

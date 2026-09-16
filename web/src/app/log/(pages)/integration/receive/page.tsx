@@ -58,8 +58,8 @@ const Asset = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const commonContext = useCommon();
-  const authList = useRef(commonContext?.authOrganizations || []);
-  const organizationList: Organization[] = authList.current;
+  const organizationList: Organization[] =
+    commonContext?.authOrganizations || [];
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const configRef = useRef<ModalRef>(null);
   const k8sConfigRef = useRef<ModalRef>(null);

@@ -1,6 +1,12 @@
 import pytest
 
-from apps.log.services.log_extractor.semantics import RuleValidationError, execute_rules, normalize_rule
+from apps.log.services.log_extractor.semantics import (
+    RuleValidationError,
+    execute_rules,
+    format_path,
+    normalize_rule,
+    parse_path,
+)
 
 
 @pytest.mark.unit
@@ -282,3 +288,36 @@ def test_conditions_use_action_before_snapshot_with_and_or_semantics():
                 "delete_source": True,
             }
         )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("raw", "segments"),
+    [
+        ("@timestamp", ("@timestamp",)),
+        ("@metadata.beat", ("@metadata", "beat")),
+        ('["@metadata"].beat', ("@metadata", "beat")),
+    ],
+)
+def test_parse_path_accepts_filebeat_at_fields(raw, segments):
+    assert parse_path(raw) == segments
+    assert parse_path(format_path(segments)) == segments
+
+
+@pytest.mark.unit
+def test_copy_preview_reads_restored_filebeat_metadata_path():
+    rule = normalize_rule(
+        {
+            "extractor_type": "copy",
+            "source_field": "@metadata.beat",
+            "target_field": "beat_name",
+            "condition": {},
+            "config": {},
+            "delete_source": False,
+        }
+    )
+
+    result = execute_rules({"@metadata": {"beat": "filebeat"}, "@timestamp": "2026-09-15T02:51:41.979Z"}, [rule])
+
+    assert [item.status for item in result.results] == ["success"]
+    assert result.event["beat_name"] == "filebeat"

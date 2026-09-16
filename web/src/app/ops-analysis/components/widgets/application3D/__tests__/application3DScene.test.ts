@@ -149,9 +149,9 @@ const wallItem: Application3DWallItem = {
   health,
 };
 
-const makeWallItems = (count: number): Application3DWallItem[] =>
+const makeWallItems = (count: number, prefix = 'sys'): Application3DWallItem[] =>
   Array.from({ length: count }, (_, index) => ({
-    id: `sys-${index + 1}`,
+    id: `${prefix}-${index + 1}`,
     name: `系统${index + 1}`,
     health,
   }));
@@ -612,6 +612,137 @@ describe('application3D architecture scene', () => {
     for (let step = 0; step < 12; step += 1) flushFrames(20);
     expect(wallGroup()?.children[0]?.scale.x).toBeCloseTo(twentyFourScale?.x ?? 0, 5);
     expect(wallGroup()?.children[0]?.scale.y).toBeCloseTo(twentyFourScale?.y ?? 0, 5);
+    controller.dispose();
+  });
+
+  it('keeps the 24-card size, camera, and first-cell slot on a short paged last page', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(24), { playIntro: false });
+    flushFrames();
+    const fullFirst = wallGroup()?.children[0];
+    const fullPose = captured.camera?.position.clone();
+    const fullScale = fullFirst?.scale.clone();
+    const fullSlot = fullFirst?.position.clone();
+
+    controller.reconcile(makeWallItems(5), { playIntro: false, layoutCount: 24 });
+    flushFrames();
+    const shortFirst = wallGroup()?.children[0];
+    expect(captured.camera?.position.z).toBeCloseTo(fullPose?.z ?? 0, 5);
+    expect(captured.camera?.position.y).toBeCloseTo(fullPose?.y ?? 0, 5);
+    expect(shortFirst?.scale.x).toBeCloseTo(fullScale?.x ?? 0, 5);
+    expect(shortFirst?.scale.y).toBeCloseTo(fullScale?.y ?? 0, 5);
+    expect(shortFirst?.position.x).toBeCloseTo(fullSlot?.x ?? 0, 5);
+    expect(shortFirst?.position.y).toBeCloseTo(fullSlot?.y ?? 0, 5);
+
+    controller.reconcile(makeWallItems(5), { playIntro: false });
+    flushFrames();
+    expect(captured.camera?.position.z).toBeLessThan(fullPose?.z ?? 0);
+    expect(wallGroup()?.children[0]?.scale.x).toBeGreaterThan(fullScale?.x ?? 0);
+    controller.dispose();
+  });
+
+  it('slides cards in with directional depth offset on pageDirection next and prev', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(6), { playIntro: false });
+    flushFrames();
+    const firstCard = wallGroup()?.children[0];
+    const homeX = firstCard?.position.x ?? 0;
+    const homeZ = firstCard?.position.z ?? 0;
+
+    // Turn to next page -> cards start from right (+X) and deeper (-Z)
+    controller.reconcile(makeWallItems(6, 'page2'), {
+      playIntro: false,
+      pageDirection: 'next',
+    });
+    captured.now += 16;
+    captured.raf.shift()?.(captured.now);
+    const nextFirstCard = wallGroup()?.children[0];
+    expect(nextFirstCard?.position.x).toBeGreaterThan(homeX);
+    expect(nextFirstCard?.position.z).toBeLessThan(homeZ);
+
+    for (let step = 0; step < 25; step += 1) flushFrames(20);
+    expect(nextFirstCard?.position.x).toBeCloseTo(homeX, 3);
+    expect(nextFirstCard?.position.z).toBeCloseTo(homeZ, 3);
+
+    // Turn back to prev page -> cards start from left (-X) and deeper (-Z)
+    controller.reconcile(makeWallItems(6, 'page1'), {
+      playIntro: false,
+      pageDirection: 'prev',
+    });
+    captured.now += 16;
+    captured.raf.shift()?.(captured.now);
+    const prevFirstCard = wallGroup()?.children[0];
+    expect(prevFirstCard?.position.x).toBeLessThan(homeX);
+    expect(prevFirstCard?.position.z).toBeLessThan(homeZ);
+
+    for (let step = 0; step < 25; step += 1) flushFrames(20);
+    expect(prevFirstCard?.position.x).toBeCloseTo(homeX, 3);
+    expect(prevFirstCard?.position.z).toBeCloseTo(homeZ, 3);
+
+    controller.dispose();
+  });
+
+  const cardById = (id: string) =>
+    wallGroup()?.children.find((child) => child.userData.applicationId === id);
+
+  const slotOf = (id: string) => {
+    const card = cardById(id);
+    return { x: card?.position.x ?? Number.NaN, y: card?.position.y ?? Number.NaN };
+  };
+
+  it('keeps layout order equal to reconcile items after residual silent refresh', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    const first = makeWallItems(3);
+    controller.reconcile(first, { playIntro: false });
+    flushFrames();
+    const homeSlots = first.map((item) => slotOf(item.id));
+
+    // Same ids, new order — Map insertion stays first-pass order; slots must follow items.
+    const reordered = [first[2], first[0], first[1]];
+    controller.reconcile(reordered, { playIntro: false });
+    flushFrames();
+
+    expect(slotOf(reordered[0].id).x).toBeCloseTo(homeSlots[0].x, 5);
+    expect(slotOf(reordered[0].id).y).toBeCloseTo(homeSlots[0].y, 5);
+    expect(slotOf(reordered[1].id).x).toBeCloseTo(homeSlots[1].x, 5);
+    expect(slotOf(reordered[1].id).y).toBeCloseTo(homeSlots[1].y, 5);
+    expect(slotOf(reordered[2].id).x).toBeCloseTo(homeSlots[2].x, 5);
+    expect(slotOf(reordered[2].id).y).toBeCloseTo(homeSlots[2].y, 5);
+    controller.dispose();
+  });
+
+  it('fills a short last page from the top-left of the locked 24-card grid', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(24), { playIntro: false });
+    flushFrames();
+    const topLeftSlots = ['sys-1', 'sys-2', 'sys-3', 'sys-4', 'sys-5'].map((id) => slotOf(id));
+
+    const shortPage = makeWallItems(5, 'last');
+    controller.reconcile(shortPage, { playIntro: false, layoutCount: 24 });
+    flushFrames();
+
+    expect(wallGroup()?.children).toHaveLength(5);
+    shortPage.forEach((item, index) => {
+      expect(slotOf(item.id).x).toBeCloseTo(topLeftSlots[index].x, 5);
+      expect(slotOf(item.id).y).toBeCloseTo(topLeftSlots[index].y, 5);
+    });
+    // Remaining 19 slots of the 24-grid stay empty (no card roots beyond the 5).
     controller.dispose();
   });
 });

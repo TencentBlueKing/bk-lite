@@ -416,7 +416,125 @@ describe('application3D wall motion triggers', () => {
     expect(mocks.focus).toHaveBeenCalledWith(null);
     expect(mocks.hideArchitecture).toHaveBeenCalled();
     expect(mocks.reconcile.mock.calls.some((call) => call[1]?.playFilter === true)).toBe(true);
+    expect(mocks.reconcile.mock.calls.every((call) => call[1]?.pageDirection == null)).toBe(true);
     expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playIntro === true)).toBe(false);
+  });
+});
+
+describe('application3D wall paging chrome', () => {
+  const manyItems = Array.from({ length: 50 }, (_, index) => ({
+    ...wallItem,
+    id: `sys-${String(index + 1).padStart(2, '0')}`,
+    name: `系统${String(index + 1).padStart(2, '0')}`,
+  }));
+  const manyWall = {
+    ...wall,
+    items: manyItems,
+    capacity: { actualCount: 50, supportedCount: null },
+  };
+
+  it('reconciles the first 24 sorted cards and shows next plus page label', async () => {
+    mocks.getWall.mockResolvedValue(manyWall);
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+    await waitFor(() => expect(mocks.reconcile).toHaveBeenCalled());
+    const firstPage = mocks.reconcile.mock.calls.at(-1)?.[0] as Application3DWallItem[];
+    expect(firstPage).toHaveLength(24);
+    expect(firstPage[0].id).toBe('sys-01');
+    expect(firstPage[23].id).toBe('sys-24');
+    expect(screen.queryByRole('button', { name: /application3DWallPrevPage/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy();
+    expect(screen.getByText('dashboard.application3DWallPage')).toBeTruthy();
+  });
+
+  it('turns the page with pageDirection motion and hides next on the last page', async () => {
+    mocks.getWall.mockResolvedValue(manyWall);
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy());
+    mocks.reconcile.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    await waitFor(() => expect(mocks.reconcile).toHaveBeenCalled());
+    expect(mocks.focus).toHaveBeenCalledWith(null);
+    expect(mocks.reconcile.mock.calls.some((call) => call[1]?.pageDirection === 'next')).toBe(true);
+    expect(mocks.reconcile.mock.calls.every((call) => call[1]?.playFilter !== true)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /application3DWallNextPage/ })).toBeNull());
+    expect(screen.getByRole('button', { name: /application3DWallPrevPage/ })).toBeTruthy();
+    const lastPage = mocks.reconcile.mock.calls.at(-1)?.[0] as Application3DWallItem[];
+    expect(lastPage.map((item) => item.id)).toEqual(['sys-49', 'sys-50']);
+  });
+
+  it('hides paging chrome while a card is focused', async () => {
+    mocks.getWall.mockResolvedValue(manyWall);
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy());
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(manyItems[0]);
+    });
+    expect(screen.queryByRole('button', { name: /application3DWallNextPage/ })).toBeNull();
+    expect(screen.queryByText('dashboard.application3DWallPage')).toBeNull();
+  });
+
+  it('keeps a read-only page label in edit mode without turn-page wings', async () => {
+    mocks.getWall.mockResolvedValue(manyWall);
+    const view = render(
+      <Application3D refreshKey="0" runtimeActive screenRenderContext={context} />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallPrevPage/ })).toBeTruthy());
+
+    view.rerender(
+      <Application3D refreshKey="0" editMode runtimeActive screenRenderContext={context} />,
+    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: /application3DWallNextPage/ })).toBeNull());
+    expect(screen.queryByRole('button', { name: /application3DWallPrevPage/ })).toBeNull();
+    expect(screen.getByText('dashboard.application3DWallPage')).toBeTruthy();
+    const firstPage = mocks.reconcile.mock.calls.at(-1)?.[0] as Application3DWallItem[];
+    expect(firstPage).toHaveLength(24);
+    expect(firstPage[0].id).toBe('sys-01');
+  });
+
+  it('returns to page 1 when 运行状态 changes and keeps the page on silent refresh', async () => {
+    const filtered = {
+      ...manyWall,
+      filters: [
+        {
+          id: 'system_status',
+          label: '运行状态',
+          type: 'multiple' as const,
+          options: [
+            { value: 'normal', label: '正常' },
+            { value: 'alarming', label: '告警' },
+          ],
+        },
+      ],
+    };
+    mocks.getWall.mockResolvedValue(filtered);
+    render(<Application3D refreshKey="0" runtimeActive screenRenderContext={context} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallPrevPage/ })).toBeTruthy());
+
+    mocks.getWall.mockResolvedValue({
+      ...filtered,
+      appliedFilters: { system_status: ['normal'] },
+    });
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(await screen.findByTitle('正常'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /application3DWallPrevPage/ })).toBeNull());
+    expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallPrevPage/ })).toBeTruthy());
+    mocks.getWall.mockResolvedValue({
+      ...filtered,
+      appliedFilters: { system_status: ['normal'] },
+      refreshedAt: '2026-08-26T00:02:00Z',
+    });
+    fireEvent.click(screen.getByTitle('common.refresh'));
+    await waitFor(() => expect(mocks.getWall).toHaveBeenCalledTimes(3));
+    expect(screen.getByRole('button', { name: /application3DWallPrevPage/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy();
   });
 });
 

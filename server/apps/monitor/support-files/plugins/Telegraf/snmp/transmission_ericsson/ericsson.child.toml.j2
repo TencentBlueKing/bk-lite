@@ -24,7 +24,6 @@
         collect_type = "snmp_ericsson"
         config_type = "ericsson"
         brand = "ericsson"
-
     [[inputs.snmp.field]]
         oid = "1.3.6.1.2.1.1.3.0"
         name = "uptime"
@@ -32,18 +31,10 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
-    [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+    # ---- MINI-LINK/PT 内部温度（摄氏度；读数 0.0 视为 N/A，由指标查询跳过）----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.193.223.2.4.1.1.2.1"
+        name = "device_temperature_celsius"
+        conversion = "float"
+# @bk_include_ifmib_table
+# ---- CPU/内存/风扇/电源：仅绑定 MINI-LINK/PT PEN 193.223 内部温度叶子；不绑定路由器 ENVMON 或其他 Ericsson PEN；未确认稳定 CPU/内存/风扇/电源共享健康对象，不伪造。----

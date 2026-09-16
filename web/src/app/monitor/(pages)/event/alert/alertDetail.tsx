@@ -483,7 +483,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
               </div>
               {/* Content area — fills remaining height */}
               <div
-                className={`flex-1 min-h-0 ${isInformation ? 'overflow-auto' : 'overflow-hidden'}`}
+                className={`flex flex-col flex-1 min-h-0 ${isInformation ? 'overflow-auto' : 'overflow-hidden'}`}
               >
                 {isInformation ? (
                   <Spin className="w-full" spinning={loading}>

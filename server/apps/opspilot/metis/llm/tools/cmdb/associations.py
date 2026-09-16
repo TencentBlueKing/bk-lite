@@ -1,160 +1,79 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.cmdb.services.instance import InstanceManage
-from apps.cmdb.services.model import ModelManage
-from apps.core.logger import cmdb_logger as logger
-from apps.opspilot.metis.llm.tools.cmdb.utils import (
-    _get_user_from_config,
-    _resolve_allow_write,
-    _resolve_team_context,
-    build_permission_map,
-    ensure_instance_permission,
-    ensure_model_permission,
-    ensure_write_allowed,
-    wrap_error,
-    wrap_success,
-)
+from apps.opspilot.metis.llm.tools.cmdb.utils import call_cmdb_params, wrap_error
 
 
-@tool(description="List associations for a model.")
+@tool(description="列出模型关联定义。")
 def cmdb_list_model_associations(
     model_id: str,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not model_id:
-            raise ValueError("model_id is required")
-        user = _get_user_from_config(config)
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
-            raise ValueError("model not found")
-        permissions_map = build_permission_map(
-            user,
-            current_team=resolved_team,
-            include_children=resolved_children,
-            permission_type="model",
-            model_id=model_id,
-        )
-        ensure_model_permission(user, model_info, permissions_map, operator="View")
-        associations = ModelManage.model_association_search(model_id)
-        return wrap_success(associations)
-    except Exception as e:
-        logger.exception("cmdb_list_model_associations failed: %s", e)
-        return wrap_error(str(e))
+    if not model_id:
+        return wrap_error("model_id is required")
+    return call_cmdb_params("search_model_associations", config, model_id=model_id)
 
 
-@tool(description="List associations for an instance.")
+@tool(description="列出某实例的关联（按 model_asst_id 分组）。")
 def cmdb_list_instance_associations(
     model_id: str,
     inst_uuid: str,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not model_id:
-            raise ValueError("model_id is required")
-        user = _get_user_from_config(config)
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
-        if not instance:
-            raise ValueError("instance not found")
-        permissions_map = build_permission_map(
-            user,
-            current_team=resolved_team,
-            include_children=resolved_children,
-            permission_type="instances",
-            model_id=model_id,
-        )
-        ensure_instance_permission(user, instance, permissions_map, operator="View")
-        associations = InstanceManage.instance_association_instance_list_by_uuid(model_id, inst_uuid)
-        return wrap_success(associations)
-    except Exception as e:
-        logger.exception("cmdb_list_instance_associations failed: %s", e)
-        return wrap_error(str(e))
+    if not model_id:
+        return wrap_error("model_id is required")
+    if not inst_uuid:
+        return wrap_error("inst_uuid is required")
+    return call_cmdb_params("search_instance_associations_for_llm", config, model_id=model_id, inst_uuid=inst_uuid)
 
 
-@tool(description="List instances associated with an instance.")
+@tool(description="列出与某实例关联的其它实例。")
 def cmdb_list_associated_instances(
     model_id: str,
     inst_uuid: str,
-    team_id: Optional[int] = None,
-    include_children: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not model_id:
-            raise ValueError("model_id is required")
-        user = _get_user_from_config(config)
-        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
-        if not instance:
-            raise ValueError("instance not found")
-        permissions_map = build_permission_map(
-            user,
-            current_team=resolved_team,
-            include_children=resolved_children,
-            permission_type="instances",
-            model_id=model_id,
-        )
-        ensure_instance_permission(user, instance, permissions_map, operator="View")
-        associations = InstanceManage.instance_association_instance_list_by_uuid(model_id, inst_uuid)
-        return wrap_success(associations)
-    except Exception as e:
-        logger.exception("cmdb_list_associated_instances failed: %s", e)
-        return wrap_error(str(e))
+    if not model_id:
+        return wrap_error("model_id is required")
+    if not inst_uuid:
+        return wrap_error("inst_uuid is required")
+    return call_cmdb_params("search_instance_associations_for_llm", config, model_id=model_id, inst_uuid=inst_uuid)
 
 
-@tool(description="Create an instance association.")
+@tool(description="创建实例关联。data 需含 src_inst_uuid、dst_inst_uuid、model_asst_id。")
 def cmdb_create_instance_association(
     data: Dict[str, Any],
-    allow_write: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        if not isinstance(data, dict):
-            raise ValueError("data must be a dict")
-        user = _get_user_from_config(config)
-        ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        required = ("src_inst_uuid", "dst_inst_uuid", "model_asst_id")
-        if any(not data.get(key) for key in required):
-            raise ValueError("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
-        result = InstanceManage.instance_association_create_by_uuid(
-            src_inst_uuid=data["src_inst_uuid"],
-            dst_inst_uuid=data["dst_inst_uuid"],
-            model_asst_id=data["model_asst_id"],
-            operator=user.username,
-        )
-        return wrap_success(result)
-    except Exception as e:
-        logger.exception("cmdb_create_instance_association failed: %s", e)
-        return wrap_error(str(e))
+    if not isinstance(data, dict):
+        return wrap_error("data must be a dict")
+    required = ("src_inst_uuid", "dst_inst_uuid", "model_asst_id")
+    if any(not data.get(key) for key in required):
+        return wrap_error("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+    return call_cmdb_params(
+        "create_instance_association_for_llm",
+        config,
+        src_inst_uuid=data["src_inst_uuid"],
+        dst_inst_uuid=data["dst_inst_uuid"],
+        model_asst_id=data["model_asst_id"],
+    )
 
 
-@tool(description="Delete an instance association.")
+@tool(description="删除实例关联。")
 def cmdb_delete_instance_association(
     src_inst_uuid: str,
     dst_inst_uuid: str,
     model_asst_id: str,
-    allow_write: Optional[bool] = None,
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    try:
-        user = _get_user_from_config(config)
-        ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        result = InstanceManage.instance_association_delete_by_key(
-            src_inst_uuid=src_inst_uuid,
-            dst_inst_uuid=dst_inst_uuid,
-            model_asst_id=model_asst_id,
-            operator=user.username,
-        )
-        return wrap_success({**result, "deleted": True})
-    except Exception as e:
-        logger.exception("cmdb_delete_instance_association failed: %s", e)
-        return wrap_error(str(e))
+    if not src_inst_uuid or not dst_inst_uuid or not model_asst_id:
+        return wrap_error("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+    return call_cmdb_params(
+        "delete_instance_association_for_llm",
+        config,
+        src_inst_uuid=src_inst_uuid,
+        dst_inst_uuid=dst_inst_uuid,
+        model_asst_id=model_asst_id,
+    )

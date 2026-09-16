@@ -1,6 +1,6 @@
 NetworkService Allot SNMP:
   name: Allot（Telegraf）
-  desc: 面向 Allot 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Allot 网络服务设备的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -33,6 +33,9 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 网络服务设备的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+    device_storage_usage:
+      name: 存储使用率
+      desc: 网络服务设备的存储使用率（设备直接上报的百分比）。
     network_service_dns_service_state:
       name: DNS 服务状态
       desc: DNS 服务运行状态，统一归一为 1=正常、2=异常。

@@ -24,6 +24,7 @@
         collect_type = "snmp_ciena"
         config_type = "ciena"
         brand = "ciena"
+    # ---- System ----
     [[inputs.snmp.field]]
         oid = "1.3.6.1.2.1.1.3.0"
         name = "uptime"
@@ -31,19 +32,23 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Ciena SAOS 传输设备健康(温度/光模块光功率/激光偏置电流)为 per-row 索引表带行级过滤(skip_values) → N/A;
-    # ---- telegraf inputs.snmp 不能做行级过滤，故仅采 IF-MIB 64位 HC 接口流量(ifHCInOctets/ifHCOutOctets)+运行时长可干净采。----
+# @bk_include_ifmib_table
+    # ---- CES/SAOS 机箱 CPU：cienaCesChassisCPUHealthCurrMeasurement，每槽位 cpu-Usage，直接 0-100% ----
+    # OID 1.3.6.1.4.1.1271.2.1.5.1.2.1.4.5.1.4。按槽位走表 → device_cpu_usage。不绑定 6500 Packet-Optical。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "device_cpu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
+        oid = "1.3.6.1.4.1.1271.2.1.5.1.2.1.4.5.1.4"
+        name = "usage"
+    # ---- CES/SAOS 机箱内存：cienaCesChassisMemoryHealthCurrMeasurement，当前值单位 KB ----
+    # OID 1.3.6.1.4.1.1271.2.1.5.1.2.1.4.24.1.4。表内无已用/总量配对，不臆造内存使用率标量。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.1271.2.1.5.1.2.1.4.24.1.4"
+        name = "used"
+# ---- 温度/光模块光功率/激光偏置电流为 per-row 索引表需行级过滤，telegraf inputs.snmp 不能行级过滤 → N/A。----

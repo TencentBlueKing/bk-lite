@@ -1,5 +1,106 @@
 {
   "object": "Transmission",
   "plugin": "Transmission RACOM SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "RACOM传输设备CPU使用率过高",
+      "alert_name": "传输设备${resource_name} CPU 使用率过高",
+      "description": "监控 RACOM RAy3 微波传输设备的 CPU 使用率（useCpu，直接 0-100%），当持续高于阈值时触发告警，提示可能存在无线回传业务处理繁忙、控制平面压力或异常流量。",
+      "metric_name": "cpu_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "RACOM传输设备内存使用率过高",
+      "alert_name": "传输设备${resource_name} 内存使用率过高",
+      "description": "监控 RACOM RAy3 微波传输设备的内存使用率（useMemory，直接 0-100%），当持续高于阈值时触发告警，提示可能存在控制面资源紧张或服务异常。",
+      "metric_name": "memory_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "RACOM传输设备调制解调器温度过高",
+      "alert_name": "传输设备${resource_name} 调制解调器温度过高",
+      "description": "监控 RACOM RAy3 微波传输设备的调制解调器温度（temperatureModem，百分之一摄氏度换算为摄氏度），当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或设备过载。",
+      "metric_name": "modem_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "RACOM传输设备射频温度过高",
+      "alert_name": "传输设备${resource_name} 射频温度过高",
+      "description": "监控 RACOM RAy3 微波传输设备的可选射频模块温度（temperatureRadio，百分之一摄氏度换算为摄氏度）。部分固件不返回该对象；有读数且持续高于阈值时触发告警，提示射频硬件热压力。",
+      "metric_name": "radio_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

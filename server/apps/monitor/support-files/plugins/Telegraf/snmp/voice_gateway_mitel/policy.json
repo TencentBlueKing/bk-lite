@@ -1,5 +1,56 @@
 {
   "object": "VoiceGateway",
   "plugin": "VoiceGateway Mitel SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Mitel语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Mitel MiVoice 5000 的整机 CPU 使用率（UCD-SNMP ssCpuIdle 换算为 100−idle，缺 idle 时用 user+system），当持续高于阈值时触发告警，提示可能存在呼叫处理或控制面负载过高。",
+      "metric_name": "cpu_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Mitel语音网关内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 Mitel MiVoice 5000 的系统内存使用率（UCD-SNMP memTotalReal 与 memAvailReal，按 (总量−空闲)/总量 计算），当超过阈值时触发告警，便于及时发现内存压力。",
+      "metric_name": "memory_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

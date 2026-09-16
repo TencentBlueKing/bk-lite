@@ -32,18 +32,89 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # ---- SFP DDM (portSfpTable) ----
+    # managedSwitch model leaf 5 = es8520-xt (primary). Swap 5 → 8 on every
+    # OID below for es9528 (same .3.2.2 suffix). PEN 1.3.6.1.4.1.2882.
+    # portSfpDdmTempatureCurrent …1.5 → temperature_celsius (DisplayString, parse °C)
+    # portSfpDdmTxPowerCurrent    …1.7 → tx_power
+    # portSfpDdmRxPowerCurrent    …1.9 → rx_power
+    # Optional portSfpDdmStatus   …1.4 used only to skip disabled / empty rows.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "sfp"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.1"
+        name = "portSfpIndex"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.4"
+        name = "ddm_status"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.5"
+        name = "temperature_celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.7"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.9"
+        name = "rx_power"
+# ---- CPU/内存：私有 MIB 无整机 CPU%/内存% 标量 → 不臆造，不采。----
+
+[[processors.starlark]]
+    namepass = ["sfp"]
+    [processors.starlark.tagpass]
+        brand = ["comtrol"]
+    source = '''
+def parse_numeric(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int":
+        return float(raw)
+    if t == "float":
+        return raw
+    text = str(raw).strip()
+    if text == "" or text == "N/A" or text == "n/a" or text == "NA" or text == "na" or text == "--" or text == "-":
+        return None
+    digits = ""
+    started = False
+    sign = ""
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if (c == "-" or c == "+") and not started and digits == "":
+            sign = c
+        elif c >= "0" and c <= "9":
+            digits += c
+            started = True
+        elif c == "." and started:
+            if "." not in digits:
+                digits += c
+        elif started:
+            break
+        i += 1
+    if digits == "" or digits == ".":
+        return None
+    return float(sign + digits)
+
+def apply(metric):
+    status = metric.fields.get("ddm_status")
+    if "ddm_status" in metric.fields:
+        metric.fields.pop("ddm_status")
+    if status == 2 or status == "2":
+        return None
+    kept = 0
+    for key in ("temperature_celsius", "tx_power", "rx_power"):
+        parsed = parse_numeric(metric.fields.get(key))
+        if parsed == None:
+            if key in metric.fields:
+                metric.fields.pop(key)
+        else:
+            metric.fields[key] = parsed
+            kept += 1
+    if kept == 0:
+        return None
+    return metric
+'''

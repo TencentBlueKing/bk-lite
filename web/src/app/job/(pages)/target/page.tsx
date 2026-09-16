@@ -244,22 +244,7 @@ const TargetPage = () => {
   };
 
   const getDriverSelectOptions = () => {
-    if (modalType === 'add') {
-      return [{ label: t('job.driverAnsible'), value: 'ansible' }];
-    }
-
-    const options = [
-      { label: t('job.driverAnsible'), value: 'ansible' },
-      { label: t('job.driverSSH'), value: 'ssh' },
-      { label: 'Sidecar', value: 'sidecar' },
-    ];
-
-    const currentDriver = form.getFieldValue('driver');
-    if (currentDriver && !options.some((option) => option.value === currentDriver)) {
-      return [...options, { label: currentDriver, value: currentDriver }];
-    }
-
-    return options;
+    return [{ label: t('job.driverAnsible'), value: 'ansible' }];
   };
 
   const handleDelete = async (record: Target) => {

@@ -1,6 +1,6 @@
 Firewall Palo Alto SNMP:
   name: Palo Alto（Telegraf）
-  desc: 面向 Palo Alto 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  desc: 面向 Palo Alto 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存用量、会话表与接口速率等主要指标。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -68,7 +68,8 @@ monitor_object_metric:
       desc: 该指标报告防火墙当前空闲的物理内存字节数（Check Point CHECKPOINT-MIB memTotalReal64 减去 memActiveReal64）。空闲内存持续偏低可能意味着内存压力上升。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告防火墙当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+      desc: 该指标报告 Palo Alto 防火墙当前已使用的 RAM 字节数（PAN-COMMON-MIB panhrStorageUsed ×
+        panhrStorageAllocationUnits，仅 RAM 行）。用于评估绝对内存消耗与压力。
     firewall_vpn_encrypted_pps:
       name: VPN 加密包速率
       desc: 该指标报告防火墙 VPN 加密数据包的速率，单位为包每秒（Check Point CHECKPOINT-MIB encpktsPersec）。可用于观察
@@ -83,11 +84,11 @@ monitor_object_metric:
         CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 FortiGate 防火墙整体内存使用率（FORTINET-FORTIGATE-MIB fgSysMemUsage，直接以百分比上报）。内存压力过高时设备可能进入保护模式并丢弃新会话。
+      desc: 该指标报告 Palo Alto 防火墙 RAM 使用率（由 panhrStorageTable 内存行 used/total 计算）。内存压力过高时可能影响会话处理性能。
     device_memory_total:
       name: 内存总容量
-      desc: 该指标报告 FortiGate 防火墙的物理内存总容量（FORTINET-FORTIGATE-MIB fgSysMemCapacity，原始单位
-        KB，已换算为字节）。
+      desc: 该指标报告 Palo Alto 防火墙的 RAM 总容量（PAN-COMMON-MIB panhrStorageSize × panhrStorageAllocationUnits，仅
+        RAM 行，单位字节）。
     firewall_active_sessions:
       name: IPv4 活动会话数
       desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。

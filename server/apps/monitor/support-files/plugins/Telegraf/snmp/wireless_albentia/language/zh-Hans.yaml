@@ -1,6 +1,6 @@
 Wireless Albentia SNMP:
   name: Albentia（Telegraf）
-  desc: 面向 Albentia 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 28087）。
+  desc: 面向 Albentia 无线设备的 SNMP 监控模板,可采集射频温度、可选扇区温度、可选发射功率、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 28087）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -33,6 +33,15 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
+    rf_temperature_celsius:
+      name: 射频温度
+      desc: Albentia 无线设备射频温度（摄氏度）。SNMP Integer32 带两位隐含小数，查询侧除以 100。持续偏高可能表示散热不良或射频硬件热压力。
+    sector_temperature_celsius:
+      name: 扇区温度
+      desc: 设备暴露时的每扇区温度（摄氏度）。SNMP Integer32 带两位隐含小数，查询侧除以 100。空的扇区表不产生数据。
+    tx_power:
+      name: 发射功率
+      desc: 每扇区射频发射功率（dBm），Integer32 直采无缩放。空的射频信息表不产生数据。目标 RSSI 是配置对象，不作为实测 RSSI。
 monitor_object_metric_group:
   Wireless:
     Base: 基础

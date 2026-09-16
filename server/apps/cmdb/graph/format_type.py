@@ -1,3 +1,6 @@
+import os
+
+
 def format_bool(param):
     field = param["field"]
     value = param["value"]
@@ -444,8 +447,14 @@ def format_id_in_params(param, collector):
 
 
 def _membership_list_expr(field: str) -> str:
-    """FalkorDB 的 IN 右侧必须是 List/Null。采集脏数据可能把 tag/enum 存成 String。"""
-    return f"CASE typeof(n.{field}) WHEN 'List' THEN n.{field} ELSE [n.{field}] END"
+    """FalkorDB 的 IN 右侧必须是 List/Null。采集脏数据可能把 tag/enum 存成 String。
+
+    Neo4j 没有 FalkorDB 的 ``typeof()``；organization 等 list 字段按 List 使用。
+    驱动选择与 ``GraphClient._get_driver_type`` 相同：有 ``FALKORDB_HOST`` 才走 FalkorDB。
+    """
+    if os.getenv("FALKORDB_HOST", ""):
+        return f"CASE typeof(n.{field}) WHEN 'List' THEN n.{field} ELSE [n.{field}] END"
+    return f"CASE WHEN n.{field} IS NULL THEN [] ELSE n.{field} END"
 
 
 def format_list_in_params(param, collector):

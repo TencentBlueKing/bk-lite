@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_infoblox",
   "plugin": "NetworkService Infoblox SNMP",
-  "plugin_desc": "Infoblox NIOS 网络服务设备专用 SNMP 采集模板。采 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）+ 运行时长（sysUpTime）。Infoblox NIOS 的 DNS/DHCP 服务统计、节点 CPU/内存为 per-row 索引表 / 服务计数带行级过滤（skip_values），inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Infoblox NIOS 网络服务设备 (DNS/DHCP/IPAM 一体机，企业号 7779) 及其他 IF-MIB 标准网络服务设备。",
+  "plugin_desc": "Infoblox NIOS SNMP collection for appliances under Infoblox PEN 7779. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds IB platform CPU usage percent and memory usage percent. DNS/DHCP service tables are not promoted into shared device-health metrics.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_infoblox'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,28 +14,42 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
+    "device_cpu_usage",
+    "device_memory_usage",
+    "snmp_uptime"
   ],
   "metrics": [
     {
-      "metric_group": "Base",
-      "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
-      "display_name": "System Uptime",
+      "metric_group": "NetworkService",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
       "data_type": "Number",
-      "unit": "s",
+      "unit": "percent",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart (sysUpTime). By monitoring the uptime, network administrators can understand the stability and reliability of the Infoblox NIOS appliance and identify potential reboot or failure issues."
+      "description": "IB platform average CPU usage, reported directly as a percentage."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "IB platform memory usage, reported directly as a percentage."
     },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
       "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [
@@ -47,13 +61,13 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+      "description": "Average inbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCInOctets counter."
     },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
       "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [
@@ -65,7 +79,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+      "description": "Average outbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCOutOctets counter."
     },
     {
       "metric_group": "Traffic",
@@ -78,7 +92,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCInOctets counters."
+      "description": "Total inbound interface bytes per second over five minutes, summed from 64-bit ifHCInOctets."
     },
     {
       "metric_group": "Traffic",
@@ -91,7 +105,20 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCOutOctets counters."
+      "description": "Total outbound interface bytes per second over five minutes, summed from 64-bit ifHCOutOctets."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }

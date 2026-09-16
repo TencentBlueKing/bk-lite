@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_mitel",
   "plugin": "VoiceGateway Mitel SNMP",
-  "plugin_desc": "Mitel voice gateway and PBX SNMP baseline child template. This child template relies on the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Mitel enterprise root and call server MIB families are verified, but stable shared CPU, memory, temperature, fan and power health scalars are not proven in this pass, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "Mitel MiVoice 5000 voice gateway SNMP child template. Host health is collected from UCD-SNMP (enterprise 2021). CPU utilization is 100 minus ssCpuIdle, or ssCpuUser plus ssCpuSystem when idle is absent. Memory utilization is derived from memTotalReal and memAvailReal (kB). Optional memTotalFree is collected when present. Interface traffic stays on the existing IF-MIB 64-bit HC chassis; error counters, ifOperStatus and 32-bit octet counters are not expanded. Mitel call-server call-load leaves are not mixed into this child. Temperature, fan and power remain N/A. Supported brands/models — Mitel MiVoice 5000.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_mitel'}) by (instance_id)",
   "name": "VoiceGateway",
@@ -14,9 +14,89 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "cpu_usage_percent",
+    "memory_usage_percent"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "cpu_usage_percent",
+      "query": "avg(cpu_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id) or (100 - avg(cpu_idle{instance_type='voice_gateway', __$labels__}) by (instance_id)) or (avg(cpu_user{instance_type='voice_gateway', __$labels__}) by (instance_id) + avg(cpu_system{instance_type='voice_gateway', __$labels__}) by (instance_id))",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilization of the Mitel MiVoice 5000 from UCD-SNMP ssCpuIdle (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when idle is absent."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_total",
+      "query": "memory_total{instance_type='voice_gateway', __$labels__}*1024",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total real memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalReal, reported in kB and converted to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_free",
+      "query": "memory_free{instance_type='voice_gateway', __$labels__}*1024",
+      "display_name": "Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available real memory of the Mitel MiVoice 5000 (UCD-SNMP memAvailReal, reported in kB and converted to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_used",
+      "query": "(memory_total{instance_type='voice_gateway', __$labels__} - memory_free{instance_type='voice_gateway', __$labels__})*1024",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used real memory of the Mitel MiVoice 5000, derived as memTotalReal minus memAvailReal and converted from kB to bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_usage_percent",
+      "query": "100 * (memory_total{instance_type='voice_gateway', __$labels__} - memory_free{instance_type='voice_gateway', __$labels__}) / memory_total{instance_type='voice_gateway', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Real memory utilization of the Mitel MiVoice 5000, derived as (memTotalReal - memAvailReal) / memTotalReal * 100."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_total_free",
+      "query": "memory_total_free{instance_type='voice_gateway', __$labels__}*1024",
+      "display_name": "Total Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional total free memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalFree, reported in kB and converted to bytes). Collected when the scalar is present."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

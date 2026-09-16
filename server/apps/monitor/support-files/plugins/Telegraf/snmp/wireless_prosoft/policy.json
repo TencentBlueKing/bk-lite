@@ -1,5 +1,56 @@
 {
   "object": "Wireless",
   "plugin": "Wireless ProSoft Technology SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "ProSoft无线设备链路质量过低",
+      "alert_name": "无线设备${resource_name} 链路质量过低",
+      "description": "监控 ProSoft RadioLinx / RLX2 无线链路质量（0-100 直接百分比），当持续低于阈值时触发告警，提示可能存在射频干扰、天线异常或工业无线跳变差。",
+      "metric_name": "link_quality_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 20,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 30,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "ProSoft无线设备信号强度过低",
+      "alert_name": "无线设备${resource_name} 信号强度过低",
+      "description": "监控 ProSoft RadioLinx / RLX2 接收信号强度（dBm 直采无缩放），当持续低于阈值时触发告警，提示射频跳变弱、丢包或漫游失败风险上升。",
+      "metric_name": "signal_strength_dbm",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": -90,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": -80,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": -70,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

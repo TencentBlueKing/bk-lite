@@ -1,6 +1,6 @@
 export const useMerakiWirelessApConfig = () => {
   return {
-    instance_type: 'cisco_meraki_wireless_ap',
+    instance_type: 'cisco_meraki',
     dashboardDisplay: [
       {
         indexId: 'meraki_wireless_ap_upstream_loss_percent',
@@ -35,7 +35,7 @@ export const useMerakiWirelessApConfig = () => {
     ],
     groupIds: {},
     collectTypes: {
-      'Cisco Meraki Wireless AP': 'http'
+      'Cisco Meraki': 'http'
     }
   };
 };

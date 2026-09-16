@@ -1,5 +1,31 @@
 {
   "object": "Transmission",
   "plugin": "Transmission Infinera SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Infinera传输设备内存使用率过高",
+      "alert_name": "传输设备${resource_name} 内存使用率过高",
+      "description": "监控 Infinera 传输设备各单板内存使用率（sysinfoBoardMemoryUsageMemPercent，取最高单板），当持续高于阈值时触发告警，提示控制面资源紧张或服务异常。",
+      "metric_name": "memory_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

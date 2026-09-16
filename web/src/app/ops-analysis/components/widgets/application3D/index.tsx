@@ -22,6 +22,11 @@ import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWid
 import type { Application3DSceneController } from './application3DScene';
 import Application3DDetail from './application3DDetail';
 import {
+  paginateApplication3DWallItems,
+  resolveApplication3DWallLayoutCount,
+  sortApplication3DWallItems,
+} from './application3DWallPaging';
+import {
   formatArchitectureHostAlarmCount,
   formatArchitectureHostIp,
   formatArchitectureHostOs,
@@ -112,12 +117,13 @@ export default function Application3D({
   const [architectureLoading, setArchitectureLoading] = useState(false);
   const [architectureError, setArchitectureError] = useState('');
   const [architectureHost, setArchitectureHost] = useState<ArchitectureHostSelection | null>(null);
+  const [wallPage, setWallPage] = useState(1);
   const architectureOpenRef = useRef(false);
   const allowedOnSurface =
     Boolean(instUuid) ||
     isSceneWidgetAllowedOnSurface('application3D', surface) ||
     screenRenderContext?.enabled === true;
-  const wallMotionRef = useRef<'intro' | 'filter' | 'none'>('intro');
+  const wallMotionRef = useRef<'intro' | 'filter' | 'page-next' | 'page-prev' | 'none'>('intro');
   const wallRef = useRef(wall);
   const selectedRef = useRef(selected);
   const detailOpenRef = useRef(detailOpen);
@@ -125,6 +131,20 @@ export default function Application3D({
   selectedRef.current = selected;
   detailOpenRef.current = detailOpen;
   architectureOpenRef.current = architectureOpen;
+  const sortedWallItems = useMemo(
+    () => sortApplication3DWallItems(wall?.items ?? []),
+    [wall],
+  );
+  const pagedWall = useMemo(
+    () => paginateApplication3DWallItems(sortedWallItems, editMode ? 1 : wallPage),
+    [editMode, sortedWallItems, wallPage],
+  );
+  const pagedWallRef = useRef(pagedWall);
+  pagedWallRef.current = pagedWall;
+
+  useEffect(() => {
+    if (pagedWall.page !== wallPage) setWallPage(pagedWall.page);
+  }, [pagedWall.page, wallPage]);
 
   const onRawDataRef = useRef(onRawData);
   onRawDataRef.current = onRawData;
@@ -180,11 +200,19 @@ export default function Application3D({
       resizeSceneRef.current = () => controller.resize();
       if (wallRef.current) {
         const motion = wallMotionRef.current;
-        controller.reconcile(wallRef.current.items, {
+        const page = pagedWallRef.current;
+        const pageDirection =
+          motion === 'page-next' ? 'next' : motion === 'page-prev' ? 'prev' : undefined;
+        controller.reconcile(page.pageItems, {
           playIntro: motion === 'intro',
           playFilter: motion === 'filter',
+          pageDirection,
+          layoutCount: resolveApplication3DWallLayoutCount(
+            page.pageItems.length,
+            page.totalPages,
+          ),
         });
-        if (wallRef.current.items.length > 0 && motion !== 'none') {
+        if (page.pageItems.length > 0 && motion !== 'none') {
           wallMotionRef.current = 'none';
         }
       }
@@ -220,20 +248,33 @@ export default function Application3D({
     const controller = controllerRef.current;
     if (!controller) return;
     const motion = wallMotionRef.current;
-    controller.reconcile(wall?.items ?? [], {
+    const pageDirection =
+      motion === 'page-next' ? 'next' : motion === 'page-prev' ? 'prev' : undefined;
+    controller.reconcile(pagedWall.pageItems, {
       playIntro: motion === 'intro',
       playFilter: motion === 'filter',
+      pageDirection,
+      layoutCount: resolveApplication3DWallLayoutCount(
+        pagedWall.pageItems.length,
+        pagedWall.totalPages,
+      ),
     });
-    if ((wall?.items.length ?? 0) > 0 && motion !== 'none') {
+    if (pagedWall.pageItems.length > 0 && motion !== 'none') {
       wallMotionRef.current = 'none';
     }
-  }, [wall]);
+  }, [pagedWall, wall]);
 
   useEffect(() => {
     const controller = controllerRef.current;
-    const items = wallRef.current?.items;
-    if (!controller || !items?.length) return;
-    controller.reconcile(items, { forceRepaint: true });
+    const page = pagedWallRef.current;
+    if (!controller || !page.pageItems.length) return;
+    controller.reconcile(page.pageItems, {
+      forceRepaint: true,
+      layoutCount: resolveApplication3DWallLayoutCount(
+        page.pageItems.length,
+        page.totalPages,
+      ),
+    });
   }, [t]);
 
   // Screen fitScale is a CSS transform; ResizeObserver content-box does not change.
@@ -282,6 +323,7 @@ export default function Application3D({
       const result = await getWall(filters, abortController.signal, instUuid);
       if (!mountedRef.current || generation !== wallGenerationRef.current) return;
       setWall(result);
+      if (!silent) setWallPage(1);
       setAppliedFilters(result.appliedFilters || filters);
       if (
         selectedRef.current &&
@@ -340,6 +382,13 @@ export default function Application3D({
     clearSelection();
     wallMotionRef.current = 'filter';
     void fetchWall(next);
+  };
+
+  const goToWallPage = (nextPage: number) => {
+    if (nextPage === wallPage || nextPage < 1 || nextPage > pagedWall.totalPages) return;
+    clearSelection();
+    wallMotionRef.current = nextPage > wallPage ? 'page-next' : 'page-prev';
+    setWallPage(nextPage);
   };
 
   const loadDetail = useCallback(async (item: Application3DWallItem) => {
@@ -584,6 +633,11 @@ export default function Application3D({
     [appliedFilters, filterDefinitions],
   );
 
+  const showWallPageChrome = pagedWall.totalPages > 1;
+  const wallPageInteractive = !editMode && !selected && !detailOpen && !architectureOpen;
+  const showWallPageWings = showWallPageChrome && wallPageInteractive;
+  const showWallPageLabel = showWallPageChrome && (editMode || wallPageInteractive);
+
   return (
     <div className="relative h-full min-h-48 w-full overflow-hidden bg-[var(--screen-canvas-bg,#0c2138)] text-[var(--color-application3d-text)]">
       <div
@@ -658,6 +712,59 @@ export default function Application3D({
             </Button>
           )}
         />
+      )}
+      {showWallPageWings && pagedWall.hasPrev && (
+        <button
+          type="button"
+          className="app3d-wall-page-wing app3d-wall-page-wing--prev"
+          aria-label={t('dashboard.application3DWallPrevPage', '上一页')}
+          onClick={() => goToWallPage(pagedWall.page - 1)}
+        >
+          <svg
+            className="app3d-wall-page-wing__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+      )}
+      {showWallPageWings && pagedWall.hasNext && (
+        <button
+          type="button"
+          className="app3d-wall-page-wing app3d-wall-page-wing--next"
+          aria-label={t('dashboard.application3DWallNextPage', '下一页')}
+          onClick={() => goToWallPage(pagedWall.page + 1)}
+        >
+          <svg
+            className="app3d-wall-page-wing__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      )}
+      {showWallPageLabel && (
+        <div className="app3d-wall-page-indicator" aria-live="polite">
+          <span className="app3d-wall-page-indicator-dot" aria-hidden="true" />
+          <span>
+            {t('dashboard.application3DWallPage', '{page} / {total} 页', {
+              page: pagedWall.page,
+              total: pagedWall.totalPages,
+            })}
+          </span>
+        </div>
       )}
       {!editMode && selected && !detailOpen && (
         <div className="app3d-focus-actions pointer-events-none absolute bottom-6 left-0 right-0 z-20 flex justify-center">

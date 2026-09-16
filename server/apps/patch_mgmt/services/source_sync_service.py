@@ -164,6 +164,7 @@ class SourceSyncService:
         source: PatchSource,
         reachable: bool,
         checked_at=None,
+        revision=None,
     ) -> None:
         """记录源连通性探测结果（由 Celery 任务完成后回调）。
 
@@ -171,14 +172,18 @@ class SourceSyncService:
             source: 补丁源实例。
             reachable: True → CONNECTED；False → FAILED。
             checked_at: 探测完成时间；None 取 timezone.now()。
+            revision: 探测开始时的配置版本；与当前版本不一致则不写回。
         """
         status = ConnectivityStatus.CONNECTED if reachable else ConnectivityStatus.FAILED
-        PatchSourceService.update_connectivity(
-            source, status, checked_at=checked_at or timezone.now()
+        written = PatchSourceService.update_connectivity(
+            source, status, checked_at=checked_at or timezone.now(), revision=revision
         )
         logger.info(
-            "SourceSyncService: connectivity result recorded source_id=%s reachable=%s",
-            source.pk, reachable,
+            "SourceSyncService: connectivity result recorded source_id=%s reachable=%s written=%s revision=%s",
+            source.pk,
+            reachable,
+            written,
+            revision,
         )
 
     @classmethod

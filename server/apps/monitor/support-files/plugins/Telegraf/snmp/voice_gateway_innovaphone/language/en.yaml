@@ -1,7 +1,8 @@
 VoiceGateway Innovaphone SNMP:
   name: Innovaphone (Telegraf)
-  desc: SNMP monitoring template for Innovaphone voice gateway. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Innovaphone voice gateway. It reports active B
+    channels, configured B channels, calls since boot, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime (IANA PEN 6666).
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:
@@ -46,9 +47,23 @@ monitor_object_metric:
       name: PSU State
       desc: Voice gateway power-source state normalized so 1 means healthy and 2 means
         fault.
+    active_b_channels:
+      name: Active B Channels
+      desc: Number of currently active ISDN B channels on this L3 instance
+        (l3NumBchanActive). Dimension l3Label is the ISDN L3 instance name. This
+        is call occupancy, not host health.
+    configured_b_channels:
+      name: Configured B Channels
+      desc: Number of B channels configured on this ISDN L3 instance (l3NumBchan).
+        Compared with active B channels it shows remaining channel headroom.
+    calls_since_boot:
+      name: Calls Since Boot
+      desc: Accumulated call count on this ISDN L3 instance since the last boot
+        (l3CallsBoot).
 monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Voice: Voice

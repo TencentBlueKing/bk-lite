@@ -19,6 +19,8 @@ class MonitorPlugin(TimeInfo, MaintainerInfo):
     description = models.TextField(blank=True, verbose_name="插件描述")
     status_query = models.TextField(blank=True, verbose_name="状态查询语句(PromQL)")
     is_pre = models.BooleanField(default=True, verbose_name="是否内置")
+    pack_version = models.CharField(max_length=100, blank=True, default="", verbose_name="导入的探针包版本")
+    pack_content_sha256 = models.CharField(max_length=64, blank=True, default="", verbose_name="导入包内容哈希")
 
     class Meta:
         verbose_name = "监控插件"

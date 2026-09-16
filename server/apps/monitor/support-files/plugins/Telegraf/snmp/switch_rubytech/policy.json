@@ -1,5 +1,31 @@
 {
   "object": "Switch",
   "plugin": "Switch RubyTech SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "RubyTech交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 RubyTech 交换机控制平面 CPU 使用率（按 sysObjectID 型号分支选择 FGS2924R / ES2226，不混用）。当持续高于阈值时触发告警，提示可能存在控制平面过载或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

@@ -34,9 +34,13 @@
         is_tag = true
     # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
         name = "interface"
         inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
@@ -64,10 +68,10 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22610.2.4.1.2.1.0"
+        oid = "1.3.6.1.4.1.22610.2.4.1.2.1"
         name = "total"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22610.2.4.1.2.2.0"
+        oid = "1.3.6.1.4.1.22610.2.4.1.2.2"
         name = "used"
 # ---- 连接数/温度/风扇/电源：A10 axSysTotalCurrentConnections 未在 LibreNMS 源中确认数字 OID(snmprec 未含)→连接 N/A 待现网核验;----
 # ---- 温度在 axSysHardware 传感器表按名混合(行级)→温度/风扇/电源 N/A。仅 CPU/内存/接口干净可采。----

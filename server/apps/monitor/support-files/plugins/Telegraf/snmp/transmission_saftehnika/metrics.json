@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_saftehnika",
   "plugin": "Transmission SAF Tehnika SNMP",
-  "plugin_desc": "SAF Tehnika microwave transmission SNMP child template (enterprise PEN 19011). The verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific row-filter-free device-health gauges are confirmed for radio signal, link state, temperature, optical or radio power. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Transmission SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate traffic while this plugin provides the SAF Tehnika collect_type, UI and Telegraf child template. Supported brands/models — SAF Tehnika microwave and packet radio transmission devices.",
+  "plugin_desc": "SAF Tehnika Integra microwave transmission SNMP child template (IANA PEN 7571). Select the Integra-B or Integra-W product branch when deploying so only that branch's system scalars are polled. Integra-B and Integra-W OID trees must not be mixed. Private health objects are CPU usage (100 minus idle tenths of percent), memory usage (100 minus free tenths of percent), and CPU temperature in degrees Celsius after dividing tenths by 10. Interface traffic comes from the shared IF-MIB floor. Fan and power-supply state are not collected. Supported brands/models - SAF Tehnika Integra-B and Integra-W microwave transmission devices.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_saftehnika'}) by (instance_id)",
   "name": "Transmission",
@@ -14,9 +14,51 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "cpu_usage_percent",
+    "memory_usage_percent",
+    "cpu_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "cpu_usage_percent",
+      "query": "avg(100 - cpu_usage_idle{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the SAF Tehnika Integra platform as a 0-100 percentage. The device reports idle in tenths of a percent, so usage is 100 minus idle divided by 10."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_usage_percent",
+      "query": "avg(100 - memory_usage_free{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the SAF Tehnika Integra platform as a 0-100 percentage. The device reports free memory in tenths of a percent, so usage is 100 minus free divided by 10."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "cpu_temperature_celsius",
+      "query": "avg(cpu_temperature_celsius{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "display_name": "CPU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU temperature of the SAF Tehnika Integra platform in degrees Celsius. The SNMP scalar reports tenths of a degree, so the query divides the raw value by 10."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

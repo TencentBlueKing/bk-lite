@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ligowave",
   "plugin": "Wireless LigoWave SNMP",
-  "plugin_desc": "LigoWave wireless AP and backhaul SNMP child template for devices under enterprise PEN 32750. The confirmed MIB set exposes wireless interface and remote-node telemetry such as signal, noise, SNR, Tx power and byte counters, but this production pass has no stable row-filter-free CPU, memory, temperature, fan or power-supply health OID to promote into shared device health. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the LigoWave collect_type, UI and Telegraf child template.",
+  "plugin_desc": "LigoWave wireless AP and backhaul SNMP child template for devices under enterprise PEN 32750 (LIGO-RADIO3-DRV). Interface traffic is supplied by the shared Wireless SNMP IF-MIB floor. Proven private telemetry is ligoRdo3StatsTable RF stats indexed by ifIndex and endpoint — antenna-0 receive signal, noise, SNR, optional extra antenna signal columns, and optional transmit power. CPU, memory, temperature, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — LigoWave wireless access points and backhaul radios.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_ligowave'}) by (instance_id)",
   "name": "Wireless",
@@ -14,9 +14,121 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "rx_signal_level_0",
+    "rx_noise",
+    "rx_snr_0",
+    "tx_power"
   ],
   "metrics": [
+    {
+      "metric_group": "Radio",
+      "name": "rx_signal_level_0",
+      "query": "rx_signal_level_0{instance_type='wireless', __$labels__}",
+      "display_name": "Antenna 0 RSSI",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex and endpoint)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Radio3 antenna-0 last receive signal level from ligoRdo3RxLastSigLevel0 under PEN 32750 ligoRdo3StatsTable. Indexed by ifIndex and endpoint. Integer32 with no scaling. A dropping RSSI is an early sign of path fade, antenna misalignment or radio degradation."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "rx_noise",
+      "query": "rx_noise{instance_type='wireless', __$labels__}",
+      "display_name": "Receive Noise",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex and endpoint)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Radio3 receive noise from ligoRdo3RxNoise under PEN 32750 ligoRdo3StatsTable. Indexed by ifIndex and endpoint. Integer32 with no scaling. Rising noise reduces SNR and link margin."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "rx_snr_0",
+      "query": "rx_snr_0{instance_type='wireless', __$labels__}",
+      "display_name": "Antenna 0 SNR",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex and endpoint)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Radio3 antenna-0 last signal-to-noise ratio from ligoRdo3RxLastSnr0 under PEN 32750 ligoRdo3StatsTable. Indexed by ifIndex and endpoint. Integer32 with no scaling. A dropping SNR is an early sign of path fade or interference."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "tx_power",
+      "query": "tx_power{instance_type='wireless', __$labels__}",
+      "display_name": "Transmit Power",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex and endpoint)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional Radio3 transmit power from ligoRdo3TxPower under PEN 32750 ligoRdo3StatsTable. Indexed by ifIndex and endpoint. Gauge32 with no scaling. Missing rows on some firmware revisions are skipped. Unexpectedly low transmit power can indicate radio mute, hardware fault or configuration change."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "rx_signal_level_1",
+      "query": "rx_signal_level_1{instance_type='wireless', __$labels__}",
+      "display_name": "Antenna 1 RSSI",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex and endpoint)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional Radio3 antenna-1 last receive signal level from ligoRdo3RxLastSigLevel1 under PEN 32750 ligoRdo3StatsTable. Indexed by ifIndex and endpoint. Integer32 with no scaling. Missing antenna columns are skipped."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "rx_signal_level_2",
+      "query": "rx_signal_level_2{instance_type='wireless', __$labels__}",
+      "display_name": "Antenna 2 RSSI",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex and endpoint)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional Radio3 antenna-2 last receive signal level from ligoRdo3RxLastSigLevel2 under PEN 32750 ligoRdo3StatsTable. Indexed by ifIndex and endpoint. Integer32 with no scaling. Missing antenna columns are skipped."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

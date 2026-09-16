@@ -7,8 +7,8 @@
       "groups": "All conditions within a group must match (AND). Any matching group is sufficient (OR).",
       "textInput": "Enter one text value. Titles and content do not support value tags or regular expressions.",
       "levelInput": "Select one or more severities. Matches the current event or alert severity.",
-      "eventSourceInput": "Enter complete source names and press Enter to add each name. Multiple names are supported.",
-      "alertSourceInput": "Enter complete source names. Matches distinct current names from related events, excluding recovery events.",
+      "eventSourceInput": "Select one or more alert sources. Search by name, ID or integration identifier; matching uses complete names.",
+      "alertSourceInput": "Select multiple alert sources and search by name, ID or integration identifier. Matches distinct current names from related events, excluding recovery events.",
       "eventMonitorInput": "Enter one or more monitoring sources. Compares complete values against the current event's source.",
       "alertMonitorInput": "Enter one or more monitoring sources. Compares against the alert's aggregated source set.",
       "identityInput": "Enter complete type or instance identifiers and press Enter to add candidates. 001 and 1 are different.",
@@ -81,6 +81,8 @@
       "source_names": "Alert source"
     },
     "legacyRule": "Legacy field",
+    "sourceSelect": "Select alert sources",
+    "sourceOptionsRetry": "Unable to load alert sources. Click to retry",
     "multiValueInput": "Match values",
     "multiValuePlaceholder": "Type and press Enter to add values",
     "multiValueInvalid": "Enter 1–50 values, up to 256 characters each",
@@ -301,9 +303,6 @@
     "source": "Source",
     "activeAlarms": "Active Alarms",
     "historicalAlarms": "Historical Alarms",
-    "capability": {
-      "alarmTrend": "Alert Trend"
-    },
     "event": "Events",
     "distributionMap": "Distribution Map",
     "activeAlarmsMapTips": "Display the distribution map of all active alarms.",
