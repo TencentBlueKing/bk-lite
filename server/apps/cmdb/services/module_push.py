@@ -8,10 +8,9 @@ from typing import Any
 from apps.cmdb.constants.monitor_link import CMDB_MONITOR_SYNC_MODEL_IDS
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import cmdb_link_identity, optional_inst_uuid
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
-from apps.core.utils.current_team_scope import resolve_current_team_data_scope
-from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, IngestEnvelope
+from apps.core.utils.current_team_scope import build_request_push_actor_scope
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, IngestEnvelope, ingest_auth_kwargs
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -22,15 +21,7 @@ TARGET_NODE = "node_mgmt"
 
 def build_cmdb_push_actor_scope(request) -> dict[str, Any]:
     """从请求鉴权上下文构造跨模块推送 actor_scope。"""
-    operator = getattr(getattr(request, "user", None), "username", "") or ""
-    try:
-        scope = resolve_current_team_data_scope(request)
-        return {
-            "allowed_org_ids": list(scope.data_team_ids),
-            "operator": scope.username or operator,
-        }
-    except BaseAppException:
-        return {"allowed_org_ids": [], "operator": operator}
+    return build_request_push_actor_scope(request)
 
 
 def causation_id_for(source_module: str, source_id: str, target: str) -> str:
@@ -58,8 +49,9 @@ class CmdbToMonitorPushService:
 
         node_id = cls._normalize_optional_str(instance.get("node_id"))
         envelope = cls._build_envelope(instance, cmdb_id=cmdb_id, aliases=aliases, node_id=node_id)
-        allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
-        operator = actor_scope.get("operator") or ""
+        auth = ingest_auth_kwargs(actor_scope)
+        allowed_org_ids = auth["allowed_org_ids"]
+        operator = auth["operator"]
 
         logger.info(
             "[CmdbToMonitorPush] push cmdb_id=%s node_id=%s",
@@ -68,8 +60,7 @@ class CmdbToMonitorPushService:
         )
         result = Monitor().ingest_from_source(
             **envelope,
-            allowed_org_ids=allowed_org_ids,
-            operator=operator,
+            **auth,
         )
         if not isinstance(result, dict):
             result = {"id": result}
@@ -157,8 +148,7 @@ class CmdbToMonitorPushService:
         # 特权路径：打开 allow_credential_create；公开 push_instance 不传此字段。
         payload = {
             **envelope,
-            "allowed_org_ids": allowed_org_ids,
-            "operator": operator,
+            **ingest_auth_kwargs(actor_scope),
             "allow_credential_create": True,
         }
         if actor_context is not None:
@@ -558,8 +548,7 @@ class CmdbToMonitorPushService:
             "occurred_at": occurred_at,
             "raw": raw,
             "link_ids": link_ids,
-            "allowed_org_ids": list(actor_scope.get("allowed_org_ids") or []),
-            "operator": actor_scope.get("operator") or "",
+            **ingest_auth_kwargs(actor_scope),
         }
 
         try:

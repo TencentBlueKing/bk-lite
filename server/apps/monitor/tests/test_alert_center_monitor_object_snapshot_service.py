@@ -32,6 +32,7 @@ def test_monitor_alert_center_payload_contains_monitor_and_cmdb_identity(monkeyp
         name="ip1",
         monitor_object=monitor_object,
         cmdb_id="550e8400-e29b-41d4-a716-446655440000",
+        node_id="node-0001",
     )
     alert = MonitorAlert.objects.create(
         policy_id=7,
@@ -74,12 +75,14 @@ def test_monitor_alert_center_payload_contains_monitor_and_cmdb_identity(monkeyp
     assert {
         "monitor_id": payload.get("monitor_id"),
         "cmdb_id": payload.get("cmdb_id"),
+        "node_id": payload.get("node_id"),
         "resource_id": payload.get("resource_id"),
         "resource_type": payload.get("resource_type"),
         "resource_name": payload.get("resource_name"),
     } == {
         "monitor_id": "0001",
         "cmdb_id": "550e8400-e29b-41d4-a716-446655440000",
+        "node_id": "node-0001",
         "resource_id": "0001",
         "resource_type": "Host",
         "resource_name": "ip1",
@@ -387,6 +390,7 @@ def test_legacy_and_outbox_payloads_share_monitor_identity(monkeypatch):
     identity_fields = [
         "monitor_id",
         "cmdb_id",
+        "node_id",
         "resource_id",
         "resource_type",
         "resource_name",

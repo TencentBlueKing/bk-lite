@@ -2,15 +2,22 @@ import pytest
 
 
 def _kb():
-    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.tests.wiki.factories import WikiFactory
 
-    return WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    return WikiFactory().bootstrapped_knowledge_base()
 
 
 def _page(kb, title, body):
     from apps.opspilot.services.wiki.page_service import create_manual_page
 
     return create_manual_page(kb, page_type="concept", title=title, body=body, created_by="u")
+
+
+def _store_embedding(page, vector):
+    version = page.current_version
+    version.embedding = list(vector)
+    version.save(update_fields=["embedding"])
+    return page
 
 
 def test_cosine():
@@ -25,10 +32,8 @@ def test_cosine():
 def test_rrf_fuse_rewards_consensus():
     from apps.opspilot.services.wiki.embedding_service import rrf_fuse
 
-    # B 在两路都靠前 → 融合第一
     fused = rrf_fuse([["A", "B", "C"], ["B", "C", "A"]])
     assert fused[0] == "B"
-    # top_k 截断
     assert len(rrf_fuse([["A", "B", "C"]], top_k=2)) == 2
 
 
@@ -37,24 +42,14 @@ def test_hybrid_search_semantic_rerank():
     from apps.opspilot.services.wiki.retrieval_service import hybrid_search
 
     kb = _kb()
-    _page(kb, "重启服务", "使用 systemctl restart 重启")
-    p2 = _page(kb, "重启流程", "重启前先摘流量再重启")
+    _store_embedding(_page(kb, "重启服务", "使用 systemctl restart 重启"), [0.0, 1.0])
+    p2 = _store_embedding(_page(kb, "重启流程", "重启前先摘流量再重启"), [1.0, 0.0])
 
-    def stub(texts):
-        out = []
-        for t in texts:
-            if "流量" in t:
-                out.append([1.0, 0.0])
-            elif "systemctl" in t:
-                out.append([0.0, 1.0])
-            else:
-                out.append([0.9, 0.1])  # query → 语义偏向"流量"页
-        return out
-
-    results = hybrid_search(kb, "重启", embed_fn=stub)
-    assert results and results[0]["id"] == p2.id  # 语义重排把 p2 顶到前面
+    results = hybrid_search(kb, "重启", embed_fn=lambda texts: [[0.9, 0.1] for _ in texts])
+    assert results and results[0]["id"] == p2.id
     explanation = results[0]["explanation"]
-    assert explanation["matched_by"] == ["keyword", "vector"]
+    assert "vector" in explanation["matched_by"]
+    assert "generation_index" in explanation["matched_by"] or "keyword" in explanation["matched_by"]
     assert explanation["semantic_rank"] == 1
     assert explanation["vector_score"] > 0
 
@@ -66,9 +61,9 @@ def test_hybrid_search_falls_back_to_keyword_without_embeddings():
     kb = _kb()
     _page(kb, "重启服务", "systemctl restart 重启")
 
-    results = hybrid_search(kb, "重启", embed_fn=lambda texts: [])  # 嵌入不可用
+    results = hybrid_search(kb, "重启", embed_fn=lambda texts: pytest.fail("no stored vectors should skip embedding"))
     assert len(results) == 1 and results[0]["kind"] == "page"
-    assert results[0]["explanation"]["matched_by"] == ["keyword"]
+    assert "vector" not in results[0]["explanation"]["matched_by"]
 
 
 @pytest.mark.django_db
@@ -78,3 +73,39 @@ def test_hybrid_search_empty_without_keyword_candidates():
     kb = _kb()
 
     assert hybrid_search(kb, "不存在的内容", embed_fn=lambda texts: pytest.fail("no candidates should skip embedding")) == []
+
+
+@pytest.mark.django_db
+def test_hybrid_search_recalls_page_missing_from_keyword_pool():
+    from apps.opspilot.services.wiki.retrieval_service import hybrid_search, search
+
+    kb = _kb()
+    _page(kb, "打印机驱动安装", "安装打印机驱动需要管理员权限。")
+    expected = _store_embedding(
+        _page(kb, "会议室预定失败或按钮灰色处理", "日期超出可选范围时预定提交控件会变成不可用。"),
+        [1.0, 0.0],
+    )
+
+    query = "想约个房间开会那个键点不动"
+    assert all(item["id"] != expected.id for item in search(kb, query, top_k=20))
+
+    results = hybrid_search(kb, query, embed_fn=lambda texts: [[1.0, 0.0] for _ in texts])
+    assert results
+    assert results[0]["id"] == expected.id
+    assert results[0]["explanation"]["matched_by"] == ["vector"]
+    assert results[0]["explanation"]["semantic_rank"] == 1
+
+
+@pytest.mark.django_db
+def test_hybrid_search_vector_respects_directory_scope():
+    from apps.opspilot.services.wiki.retrieval_service import hybrid_search
+
+    kb = _kb()
+    page = _store_embedding(_page(kb, "会议室预定失败或按钮灰色处理", "确定按钮变灰"), [1.0, 0.0])
+    results = hybrid_search(
+        kb,
+        "想约个房间开会确定键点不动",
+        embed_fn=lambda texts: [[1.0, 0.0] for _ in texts],
+        directory_id=page.directory_id,
+    )
+    assert results and results[0]["id"] == page.id

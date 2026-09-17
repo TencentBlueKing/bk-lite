@@ -110,7 +110,7 @@
         name = "state"
 
 # ---- 枚举归一：Extreme 电源 extremePowerSupplyStatus → 统一 1=normal/2=abnormal（偏离1即异常）----
-# 待现网核验：仅作用于本品牌(tagpass brand=extreme)。presentOK(2)→1；其余(1 notPresent/3 presentNotOK/4 presentPowerOff)→2。
+# 待现网核验：仅作用于本品牌(tagpass brand=extreme)。presentOK(2)/notPresent(1 空槽)→1；其余(3 presentNotOK/4 presentPowerOff)→2。
 # 风扇 extremeFanOperational 已 1=normal，无需在此处理。
 [[processors.enum]]
     [processors.enum.tagpass]
@@ -120,4 +120,5 @@
         dest = "device_psu_state"
         default = 2
         [processors.enum.mapping.value_mappings]
+            "1" = 1
             "2" = 1

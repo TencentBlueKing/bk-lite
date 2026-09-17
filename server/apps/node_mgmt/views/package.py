@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.logger import node_logger as logger
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.constants.package import PackageConstants
@@ -15,6 +16,16 @@ from apps.node_mgmt.services.collector_release.service import CollectorReleaseSe
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.package_permission import require_package_write_permission
 from config.drf.pagination import CustomPageNumberPagination
+
+
+def _build_actor_context_optional(request):
+    try:
+        from apps.monitor.views.node_mgmt import _build_actor_context
+
+        return _build_actor_context(request)
+    except Exception:
+        logger.exception("event=collect_config_stale_count_failed failed_stage=actor_context error_type=count_error")
+        return None
 
 
 class PackageMgmtView(
@@ -143,7 +154,7 @@ class PackageMgmtView(
         if not token:
             return WebUtils.response_error(error_message="缺少 preview token")
         try:
-            result = CollectorReleaseService.apply(token, confirms)
+            result = CollectorReleaseService.apply(token, confirms, actor_context=_build_actor_context_optional(request))
         except ValidationAppException as exc:
             return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
         except BaseAppException as exc:
@@ -165,7 +176,10 @@ class PackageMgmtView(
         if not collector:
             return WebUtils.response_error(error_message="缺少 collector")
         try:
-            result = CollectorReleaseService.restore_builtin(collector)
+            result = CollectorReleaseService.restore_builtin(
+                collector,
+                actor_context=_build_actor_context_optional(request),
+            )
         except BaseAppException as exc:
             return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
         return WebUtils.response_success(result)

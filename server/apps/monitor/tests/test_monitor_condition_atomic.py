@@ -30,9 +30,21 @@ def _fail_organization_bulk_create(mocker):
     )
 
 
+def _grant_search_view(user):
+    existing = getattr(user, "permission", None)
+    current = set()
+    if isinstance(existing, dict):
+        current = set(existing.get("monitor") or [])
+    elif isinstance(existing, set):
+        current = set(existing)
+    current.add("search-View")
+    user.permission = {"monitor": current}
+
+
 def _call_condition_view(http_method, path, user, data=None, **kwargs):
     request = getattr(APIRequestFactory(), http_method)(path, data=data or {}, format="json")
     request.COOKIES["current_team"] = "1"
+    _grant_search_view(user)
     force_authenticate(request, user=user)
     action = {"post": "create", "put": "update", "patch": "partial_update", "delete": "destroy"}[http_method]
     view = MonitorConditionViewSet.as_view({http_method: action})

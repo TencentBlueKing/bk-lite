@@ -64,6 +64,7 @@ class AlertModelSerializer(AuthSerializer):
     notify_status = serializers.SerializerMethodField()
     notify_total = serializers.SerializerMethodField()
     notify_records = serializers.SerializerMethodField()
+    log_alert_id = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -90,6 +91,7 @@ class AlertModelSerializer(AuthSerializer):
             "closed_at": {"read_only": True},
             "monitor_objects": {"read_only": True},
             "push_source_ids": {"read_only": True},
+            "log_alert_id": {"read_only": True},
             # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }
@@ -282,3 +284,14 @@ class AlertModelSerializer(AuthSerializer):
 
     def get_notify_records(self, obj):
         return self.alert_notify_records_map.get(obj.alert_id, [])
+
+    @staticmethod
+    def get_log_alert_id(obj):
+        labels = getattr(obj, "labels", None) or {}
+        if not isinstance(labels, dict):
+            return None
+        value = labels.get("log_alert_id")
+        if value in (None, ""):
+            return None
+        normalized = str(value).strip()
+        return normalized or None

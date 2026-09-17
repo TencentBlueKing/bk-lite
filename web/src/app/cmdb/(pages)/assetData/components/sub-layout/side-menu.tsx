@@ -5,17 +5,20 @@ import Link from 'next/link';
 import Icon from '@/components/icon';
 import sideMenuStyle from './index.module.scss';
 import { useInstanceApi } from '@/app/cmdb/api';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   ArrowLeftOutlined, ApartmentOutlined, AppstoreOutlined, HddOutlined,
 } from '@ant-design/icons';
 import { MenuItem } from '@/types/index';
 import { useTranslation } from '@/utils/i18n';
+import { useRelationships } from '@/app/cmdb/context/relationships';
 import {
   buildRelationshipTabHref,
   DEFAULT_RELATIONSHIP_TAB,
   isRelationshipMenuActive,
 } from '../../relationshipViewNavigation';
+import { buildRelationshipMenuSections } from '../../relationshipMenuData';
 import { useCmdbPublicMenuItems } from '@/app/cmdb/hooks/useCmdbPublicMenuItems';
 
 interface SideMenuProps {
@@ -42,6 +45,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
   const searchParams = useSearchParams();
   const router = useRouter();
   const modelId = searchParams.get('model_id');
+  const { setSelectedAssoId, assoInstances, assoTypes } = useRelationships();
 
   // 左侧快捷入口：网络拓扑 / 应用拓扑 / 机房视图 / 机柜视图，直达关联关系页对应子视图（缩短操作路径）
   const { getTopoThemes } = useInstanceApi();
@@ -90,15 +94,25 @@ const SideMenu: React.FC<SideMenuProps> = ({
     router.push(`${relItem.url}?${params.toString()}`);
   };
 
+  const handleItemClick = (modelAsstId: string, item: MenuItem) => {
+    if (!isActive(item.url) || currentTab !== DEFAULT_RELATIONSHIP_TAB) {
+      router.push(
+        buildRelationshipTabHref(
+          item.url,
+          searchParams,
+          DEFAULT_RELATIONSHIP_TAB
+        )
+      );
+    }
+    setSelectedAssoId(modelAsstId);
+  };
+
   const buildUrlWithParams = (path: string) => {
     const params = new URLSearchParams(searchParams);
     return `${path}?${params.toString()}`;
   };
 
-  const shortcutTabs = [
-    ...shortcuts.map((shortcut) => shortcut.tab),
-    'networkStatusTopology',
-  ];
+  const shortcutTabs = shortcuts.map((shortcut) => shortcut.tab);
 
   const isActive = (path: string): boolean => {
     if (pathname === null) return false;
@@ -122,6 +136,15 @@ const SideMenu: React.FC<SideMenuProps> = ({
     items.splice(relationIndex, 0, ipViewItem);
     return items;
   }, [menuItems]);
+
+  const relationData = useMemo(
+    () => buildRelationshipMenuSections({
+      instances: assoInstances || [],
+      assoTypes,
+      modelId: modelId || '',
+    }),
+    [assoInstances, assoTypes, modelId]
+  );
 
   return (
     <aside
@@ -178,38 +201,54 @@ const SideMenu: React.FC<SideMenuProps> = ({
                   {item.title}
                 </Link>
               </li>
+              {item.name === ASSET_NAME && !!relationData.length && (
+                <div
+                  className={`ml-4 mt-2 mb-2 pb-1 border-b border-[var(--color-border-2)] ${sideMenuStyle.relationList}`}
+                >
+                  {relationData.map((section, index) => (
+                    <div key={section.title + index} className="mb-2">
+                      <div className="text-gray-400 text-xs mb-2">
+                        {section.title}
+                      </div>
+                      <div className="ml-3">
+                        {section.children.map((subItem) => (
+                          <div
+                            key={subItem.model_asst_id}
+                            className="flex justify-between items-center p-1 cursor-pointer hover:bg-gray-100 rounded-md"
+                            onClick={() =>
+                              handleItemClick(subItem.model_asst_id, item)
+                            }
+                          >
+                            <EllipsisWithTooltip
+                              text={subItem.text}
+                              className="w-[100px] overflow-hidden text-ellipsis whitespace-nowrap"
+                            />
+                            <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">
+                              {subItem.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </React.Fragment>
           ))}
-          {publicItems.map((item) => {
-            const relationshipUrl = relItem?.url;
-            const landsOnRelationshipTab =
-              item.key === 'networkStatusTopology' && Boolean(relationshipUrl);
-            const href =
-              landsOnRelationshipTab && relationshipUrl
-                ? buildRelationshipTabHref(
-                  relationshipUrl,
-                  searchParams,
-                  'networkStatusTopology',
-                )
-                : buildUrlWithParams(item.url);
-            const active = landsOnRelationshipTab && relationshipUrl
-              ? isActive(relationshipUrl) && currentTab === 'networkStatusTopology'
-              : isActive(item.url);
-            return (
-              <li
-                key={item.key}
-                className={`rounded-md mb-1 ${active ? sideMenuStyle.active : ''}`}
+          {publicItems.map((item) => (
+            <li
+              key={item.key}
+              className={`rounded-md mb-1 ${isActive(item.url) ? sideMenuStyle.active : ''}`}
+            >
+              <Link
+                href={buildUrlWithParams(item.url)}
+                className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
               >
-                <Link
-                  href={href}
-                  className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
-                >
-                  <ApartmentOutlined className="text-base pr-1.5" />
-                  {t(item.titleKey)}
-                </Link>
-              </li>
-            );
-          })}
+                <ApartmentOutlined className="text-base pr-1.5" />
+                {t(item.titleKey)}
+              </Link>
+            </li>
+          ))}
         </ul>
         {showProgress && <>{taskProgressComponent}</>}
         {showBackButton && (

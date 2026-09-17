@@ -1,5 +1,4 @@
 export { hasAppAccess, listAuthorizedCapabilityApps } from './access';
-export { canShowCrossModulePublicWidget } from './crossModuleEmbed';
 export { default as AppSlot } from './AppSlot';
 export {
   APP_CAPABILITY_LOADERS,

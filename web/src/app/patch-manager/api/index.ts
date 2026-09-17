@@ -267,6 +267,9 @@ const usePatchManagerApi = () => {
   const removeBaselineRequirements = async (id: number, requirementIds: number[]): Promise<void> =>
     del(`${BASE}/baseline/${id}/requirements/`, { data: { requirement_ids: requirementIds } });
 
+  const saveBaseline = async (id: number | undefined, data: Record<string, any>): Promise<any> =>
+    id == null ? post(`${BASE}/baseline/save/`, data) : put(`${BASE}/baseline/${id}/save/`, data);
+
   const bindHostsToBaseline = async (id: number, targetIds: number[]): Promise<any> =>
     post(`${BASE}/baseline/${id}/bind_hosts/`, { target_ids: targetIds });
 
@@ -411,6 +414,7 @@ const usePatchManagerApi = () => {
     getBaselineRequirements,
     addBaselineRequirements,
     removeBaselineRequirements,
+    saveBaseline,
     bindHostsToBaseline,
     getBaselineHosts,
     assessBaseline,

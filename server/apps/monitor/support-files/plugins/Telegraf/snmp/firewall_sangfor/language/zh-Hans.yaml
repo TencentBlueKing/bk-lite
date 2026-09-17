@@ -1,6 +1,6 @@
 Firewall Sangfor SNMP:
-  name: 深信服 NGAF（Telegraf）
-  desc: 面向 Sangfor 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  name: 深信服 NGAF/AF8（Telegraf）
+  desc: 面向 Sangfor NGAF/AF8 防火墙的 SNMP 监控模板,可采集运行时长、CPU/内存/磁盘使用率、会话速率与容量、光模块温度与光功率、NAT 端口使用率等主要指标（IANA PEN 35047）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -16,6 +16,27 @@ monitor_object_metric:
     device_disk_usage:
       name: 磁盘使用率
       desc: 该指标报告防火墙的磁盘空间使用率，0~100 直接百分比。磁盘将满会阻碍日志记录与配置变更，并可能导致设备不稳定。
+    device_disk_size:
+      name: 磁盘容量
+      desc: 该指标报告防火墙文件系统容量，由设备上报的 MB 换算为字节。
+    device_disk_used:
+      name: 磁盘已用量
+      desc: 该指标报告防火墙文件系统已用空间，由设备上报的 MB 换算为字节。
+    firewall_new_sessions_per_sec:
+      name: 每秒新建会话数
+      desc: 该指标报告防火墙当前每秒新建会话数（设备已按每秒上报）。持续飙升可能意味着连接洪泛。
+    firewall_nat_tcp_port_usage:
+      name: NAT TCP 源端口使用率
+      desc: 该指标报告防火墙 NAT4 TCP 源端口使用率，按 NAT 规则以 0~100 百分比上报。接近 100% 时新建 TCP 转换可能失败。
+    firewall_nat_udp_port_usage:
+      name: NAT UDP 源端口使用率
+      desc: 该指标报告防火墙 NAT4 UDP 源端口使用率，按 NAT 规则以 0~100 百分比上报。接近 100% 时新建 UDP 转换可能失败。
+    device_optical_rx_power:
+      name: SFP 接收光功率
+      desc: 该指标报告光模块（SFP/SFP+）接收光功率读数。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常，可能导致丢包或链路中断。
+    device_optical_tx_power:
+      name: SFP 发送光功率
+      desc: 该指标报告光模块（SFP/SFP+）发送光功率读数。发送功率异常可能意味着光模块老化或故障。
     device_web_users:
       name: 已登录 Web 用户数
       desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。

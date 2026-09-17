@@ -48,7 +48,7 @@ def test_ensure_host_node_id_attr_creates_when_missing(mocker):
     assert attr_info["attr_id"] == "node_id"
     assert attr_info["editable"] is False
     assert attr_info["is_system_link"] is True
-    assert attr_info["is_only"] is True
+    assert attr_info["is_only"] is False
     assert attr_info["is_required"] is False
 
 
@@ -81,6 +81,47 @@ def test_ensure_host_node_id_attr_upgrades_legacy_editable(mocker):
     patched = update.call_args.args[1]
     assert patched["editable"] is False
     assert patched["is_system_link"] is True
+    assert patched["is_only"] is False
+
+
+def test_ensure_host_node_id_attr_clears_legacy_unique_flag(mocker):
+    mocker.patch(
+        "apps.cmdb.services.model.ModelManage.search_model_info",
+        return_value={
+            "_id": 1,
+            "model_id": "host",
+            "attrs": json.dumps(
+                [
+                    {
+                        "attr_id": "node_id",
+                        "attr_name": "节点ID",
+                        "editable": False,
+                        "is_only": True,
+                        "is_system_link": True,
+                        "attr_group": "系统联动",
+                    }
+                ]
+            ),
+        },
+    )
+    create = mocker.patch("apps.cmdb.services.model.ModelManage.create_model_attr")
+    update = mocker.patch("apps.cmdb.services.model.ModelManage.update_model_attr")
+
+    ready = ensure_host_node_id_attr(username="tester")
+
+    assert ready is True
+    create.assert_not_called()
+    update.assert_called_once()
+    assert update.call_args.args[1]["is_only"] is False
+
+
+def test_is_unique_identity_attr_skips_system_link_ids():
+    from apps.cmdb.services.module_ingest import is_unique_identity_attr
+
+    assert is_unique_identity_attr({"attr_id": "inst_name", "is_only": True}) is True
+    assert is_unique_identity_attr({"attr_id": "node_id", "is_only": True}) is False
+    assert is_unique_identity_attr({"attr_id": "monitor_id", "is_only": True, "is_system_link": True}) is False
+    assert is_unique_identity_attr({"attr_id": "serial", "is_only": False}) is False
 
 
 def test_filter_and_strip_system_link_helpers():

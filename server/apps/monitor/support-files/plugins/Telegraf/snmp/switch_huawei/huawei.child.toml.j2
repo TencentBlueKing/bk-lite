@@ -92,8 +92,24 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
         name = "celsius"
-    # ---- Huawei Fans (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanState) ----
+    # ---- Huawei Entity voltage (HUAWEI-ENTITY-EXTENT-MIB hwEntityVoltage, per entity) ----
+    # hwEntityVoltage ...1.1.13 Integer32 RO，线侧 mV；metrics 查询 /1000 → V。
+    # descr 取 ENTITY-MIB entPhysicalName，与 CPU/Mem/Temp 同 entPhysicalIndex。
+    # 与光模块 hwEntityOpticalVoltage (...3.1.6) 不同，二者可并存。
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.13"
+        name = "volts"
+    # ---- Huawei Fans (HUAWEI-ENTITY-EXTENT-MIB hwFanStatusTable) ----
     # hwEntityFanState ...10.1.7 线侧 INTEGER 仅 normal(1)/abnormal(2)，不是 Cisco 六段枚举。
+    # hwEntityFanSpeed ...10.1.5 Integer32，单位为满速百分比，不是 RPM。
+    # hwEntityFanPresent ...10.1.6 present(1)/absent(2)，用于过滤空槽。
     # descr 取风扇槽位 hwEntityFanSlot ...10.1.1。偏离 1 即异常。
     [[inputs.snmp.table]]
         name = "device_fan"
@@ -105,11 +121,21 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
-    # ---- Huawei PSU (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrState / hwEntityPwrPresent) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.5"
+        name = "speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.6"
+        name = "present"
+    # ---- Huawei PSU (HUAWEI-ENTITY-EXTENT-MIB hwPwrStatusTable) ----
     # hwEntityPwrState ...18.1.6 线侧 INTEGER：supply(1)/notSupply(2)/sleep(3)/unknown(4)。
     # sleep(3) 是冗余电源休眠，不是故障；策略不得把 >1 当成异常。
     # hwEntityPwrPresent ...18.1.5：present(1)/absent(2)（与风扇在位同向，不是 0/1）。
     # descr 取电源槽位 hwEntityPwrSlot ...18.1.1。
+    # hwEntityPwrCurrent ...18.1.7 Integer32，单位毫安 (mA)，不是安培。
+    # hwEntityPwrVoltage ...18.1.8 Integer32，单位毫伏 (mV)，不是伏特。
+    # hwEntityPwrPower ...18.1.10 Integer32，单位瓦特 (W)，为电源模块额定功率，不是整机瞬时功耗。
+    # 电参查询侧仅保留 present(1) 行。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -123,6 +149,67 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.5"
         name = "present"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.7"
+        name = "current_mA"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.8"
+        name = "voltage_mV"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.10"
+        name = "rated_power_watts"
+    # ---- Chassis used/total power (hwDevicePowerInfoUsedPower / TotalPower, watts) ----
+    [[inputs.snmp.table]]
+        name = "device_power"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.2"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.1"
+        name = "total"
+    # ---- Entity board power (hwEntityBoardPower, watts) ----
+    # hwEntityBoardPower ...1.1.24 Integer32 RO，单位瓦特；descr=entPhysicalName。
+    # 与 ENERGYMNGT 板卡毫瓦指标 device_board_*_mw 并存，勿混单位。
+    [[inputs.snmp.table]]
+        name = "device_entity"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.24"
+        name = "board_power"
+    # ---- Chassis/board energy (hwCurrentPower / hwBoardCurrentPower, milliwatts) ----
+    # 与 hwDevicePowerInfo*（瓦特）并存，线侧为毫瓦，展示可 ÷1000 为瓦特。
+    # hwCurrentPower ...6.157.1.6 / hwAveragePower ...1.3 / hwRatedPower ...1.4
+    # 板卡表 hwBoardName ...2.1.1.3 / hwBoardCurrentPower ...2.1.1.4 / hwBoardRatedPower ...2.1.1.5
+    [[inputs.snmp.table]]
+        name = "device_energy"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.1.6"
+        name = "current_power_mw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.1.3"
+        name = "average_power_mw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.1.4"
+        name = "rated_power_mw"
+    [[inputs.snmp.table]]
+        name = "device_board"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.2.1.1.3"
+        name = "hwBoardName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.2.1.1.4"
+        name = "current_power_mw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.2.1.1.5"
+        name = "rated_power_mw"
     # ---- Huawei SFP optical DDM (HUAWEI-ENTITY-EXTENT-MIB hwOpticalModuleInfoTable) ----
     # RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9。
     # TEMP=hwEntityOpticalTemperature ...3.1.5（°C）/ VOLT=hwEntityOpticalVoltage ...3.1.6（mV）/

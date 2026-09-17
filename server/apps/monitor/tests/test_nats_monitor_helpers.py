@@ -441,3 +441,62 @@ class TestSearchAndDeleteMonitorPolicy:
         assert out["result"] is False
         assert out["message"] == "策略不存在"
         assert MonitorPolicy.objects.filter(id=policy.id).exists()
+
+
+class TestResolveMonitorIngestAllowedOrgIds:
+    def test_without_user_info_keeps_payload(self):
+        out = nm._resolve_monitor_ingest_allowed_org_ids({"allowed_org_ids": [1, 2]})
+        assert set(out) == {1, 2}
+
+    def test_empty_user_info_keeps_payload(self):
+        out = nm._resolve_monitor_ingest_allowed_org_ids({"allowed_org_ids": [3], "user_info": {}})
+        assert set(out) == {3}
+
+    def test_intersects_server_scope(self, monkeypatch):
+        monkeypatch.setattr(
+            nm,
+            "_get_nats_actor_scope",
+            lambda user_info: (None, 1, False, frozenset({1, 2}), False, None),
+        )
+        out = nm._resolve_monitor_ingest_allowed_org_ids(
+            {
+                "allowed_org_ids": [2, 9],
+                "user_info": {"user": "alice", "domain": "domain.com", "team": 1, "include_children": False},
+            }
+        )
+        assert set(out) == {2}
+
+    def test_empty_intersection_rejects(self, monkeypatch):
+        monkeypatch.setattr(
+            nm,
+            "_get_nats_actor_scope",
+            lambda user_info: (None, 1, False, frozenset({1}), False, None),
+        )
+        with pytest.raises(ValueError, match="不在授权范围内"):
+            nm._resolve_monitor_ingest_allowed_org_ids(
+                {
+                    "allowed_org_ids": [9],
+                    "user_info": {"user": "alice", "domain": "domain.com", "team": 1, "include_children": False},
+                }
+            )
+
+    def test_invalid_user_info_rejects(self, monkeypatch):
+        monkeypatch.setattr(
+            nm,
+            "_get_nats_actor_scope",
+            lambda user_info: (
+                None,
+                None,
+                None,
+                None,
+                None,
+                {"result": False, "data": {}, "message": "缺少用户或组织信息"},
+            ),
+        )
+        with pytest.raises(ValueError, match="缺少用户或组织信息"):
+            nm._resolve_monitor_ingest_allowed_org_ids(
+                {
+                    "allowed_org_ids": [1],
+                    "user_info": {"team": 1},
+                }
+            )

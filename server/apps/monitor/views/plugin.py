@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
@@ -13,6 +14,7 @@ from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.plugin import MonitorPluginListSerializer, MonitorPluginSerializer
 from apps.monitor.services.aliyun_regions import AliyunRegionService
+from apps.monitor.services.collect_config_update import CollectConfigUpdateService
 from apps.monitor.services.custom_snmp_plugin import CustomSnmpPluginService
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.plugin_guide import PluginGuideService
@@ -197,6 +199,26 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         parent_obj_by_id = self._build_parent_obj_by_id(plugins)
         return self._enrich_plugin_results(results, lan, parent_obj_by_id)
 
+    def _attach_stale_counts(self, results, request):
+        if not results:
+            return results
+        try:
+            plugin_ids = [row.get("id") for row in results if row.get("id") is not None]
+            plugins = list(MonitorPlugin._default_manager.filter(id__in=plugin_ids).prefetch_related("monitor_object"))
+            CollectConfigUpdateService.annotate_plugin_stale_counts(
+                plugins,
+                results,
+                _build_actor_context(request),
+            )
+        except Exception:
+            logger.exception(
+                "event=collect_config_stale_count_failed plugin_count=%s failed_stage=list_enrich error_type=count_error",
+                len(results),
+            )
+            for row in results:
+                row.setdefault("stale_instance_count", 0)
+        return results
+
     def list(self, request, *args, **kwargs):
         queryset = self._filter_visible_entry_plugins(self.filter_queryset(self.get_queryset())).order_by("id")
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
@@ -219,7 +241,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             count = queryset.count()
             start = (page - 1) * page_size
             end = start + page_size
-            items = self._serialize_and_enrich(queryset[start:end], lan)
+            items = self._attach_stale_counts(self._serialize_and_enrich(queryset[start:end], lan), request)
             return WebUtils.response_success({"count": count, "items": items})
 
         if kw:
@@ -231,7 +253,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             results = [r for r in results if any(kw in (r.get(f) or "").lower() for f in self.KEYWORD_FIELDS)]
 
         if not use_pagination:
-            return WebUtils.response_success(results)
+            return WebUtils.response_success(self._attach_stale_counts(results, request))
 
         page, page_size = parse_page_params(
             request.query_params,
@@ -244,7 +266,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         count = len(results)
         start = (page - 1) * page_size
         end = start + page_size
-        return WebUtils.response_success({"count": count, "items": results[start:end]})
+        return WebUtils.response_success({"count": count, "items": self._attach_stale_counts(results[start:end], request)})
 
     @HasPermission("integration_list-Setting")
     def destroy(self, request, *args, **kwargs):
@@ -300,7 +322,10 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
 
         # 与组件库的导入/恢复用同一套判定，避免只有监控侧权限的人撤销别人的导入。
         require_collector_pack_write(request)
-        result = CollectorReleaseService.restore_builtin(plugin.name)
+        result = CollectorReleaseService.restore_builtin(
+            plugin.name,
+            actor_context=_build_actor_context(request),
+        )
         return WebUtils.response_success(result)
 
     @action(methods=["get"], detail=False, url_path="export/(?P<pk>[^/.]+)")

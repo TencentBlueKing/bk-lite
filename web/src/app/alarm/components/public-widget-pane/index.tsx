@@ -4,53 +4,66 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Select, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CompactEmptyState from '@/components/compact-empty-state';
-import { useClientData } from '@/context/client';
-import {
-  hasAppAccess,
-  useAppWidget,
-  useLazyAppWidget,
-} from '@/context/appCapabilities';
+import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 import type { MonitorObjectSnapshot } from '@/app/alarm/types/alarms';
 import {
   alarmHasAnyInstUuid,
   alarmHasAnyMonitorId,
+  alarmHasAnyNodeId,
   listAlarmSnapshotObjects,
   type AlarmSnapshotObject,
 } from '@/app/alarm/utils/alarmSnapshotObjects';
 import { buildAlarmDetailPublicTabs } from '@/app/alarm/utils/alarmDetailPublicTabs';
 import { resolveAlarmPublicWidgetVisibility } from '@/app/alarm/utils/alarmPublicWidgetVisibility';
 
+type IdentifierProp =
+  | 'instUuid'
+  | 'monitorId'
+  | 'logAlertId'
+  | 'nodeId'
+  | 'serviceId';
+
 type InstUuidWidget = React.ComponentType<{
   instUuid: string;
   onHeaderAction?: (action: React.ReactNode) => void;
+  onEmbedToolbar?: (toolbar: React.ReactNode) => void;
+  objectSwitcher?: React.ReactNode;
 }>;
-type MonitorIdWidget = React.ComponentType<{ monitorId: string; metricKey?: string }>;
+type IdentifierWidget = React.ComponentType<Record<string, string>>;
 
 export function useAlarmPublicWidgets(options: {
   monitorObjects?: MonitorObjectSnapshot[];
   includeActionRecords: boolean;
   activeTab: string;
+  logAlertId?: string;
+  serviceId?: string;
 }) {
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
+  const alertRawLog = useAppWidget('log.alertRawLog');
   const monitorView = useAppWidget('monitor.monitorView');
   const relatedTopology = useAppWidget('ops-analysis.relatedTopology');
   const assetInfo = useAppWidget('cmdb.baseInfo');
+  const assetChange = useAppWidget('cmdb.assetChange');
+  const nodeStatus = useAppWidget('node.nodeStatus');
+  const serviceOverview = useAppWidget('apm.serviceOverview');
+  const callChain = useAppWidget('apm.callChain');
   const objects = useMemo(
     () => listAlarmSnapshotObjects(options.monitorObjects),
     [options.monitorObjects],
   );
-  const {
-    monitorView: showMonitorView,
-    relatedTopology: showRelatedTopology,
-    assetInfo: showAssetInfo,
-  } = resolveAlarmPublicWidgetVisibility({
-    hasOpsAnalysis,
+  const visibility = resolveAlarmPublicWidgetVisibility({
+    alertRawLogDeclared: alertRawLog.declared,
     monitorViewDeclared: monitorView.declared,
     relatedTopologyDeclared: relatedTopology.declared,
     assetInfoDeclared: assetInfo.declared,
+    assetChangeDeclared: assetChange.declared,
+    nodeStatusDeclared: nodeStatus.declared,
+    serviceOverviewDeclared: serviceOverview.declared,
+    callChainDeclared: callChain.declared,
+    hasLogAlertId: Boolean(options.logAlertId),
     hasMonitorId: alarmHasAnyMonitorId(options.monitorObjects),
     hasInstUuid: alarmHasAnyInstUuid(options.monitorObjects),
+    hasNodeId: alarmHasAnyNodeId(options.monitorObjects),
+    hasServiceId: Boolean(options.serviceId),
   });
 
   const { t } = useTranslation();
@@ -58,37 +71,62 @@ export function useAlarmPublicWidgets(options: {
     () =>
       buildAlarmDetailPublicTabs(t, {
         includeActionRecords: options.includeActionRecords,
-        monitorView: showMonitorView,
-        relatedTopology: showRelatedTopology,
-        assetInfo: showAssetInfo,
+        ...visibility,
       }),
-    [
-      options.includeActionRecords,
-      showAssetInfo,
-      showMonitorView,
-      showRelatedTopology,
-      t,
-    ],
+    [options.includeActionRecords, t, visibility],
   );
+
+  const showObjectSwitcher =
+    objects.length > 1 &&
+    (visibility.monitorView ||
+      visibility.relatedTopology ||
+      visibility.assetInfo ||
+      visibility.assetChange ||
+      visibility.nodeStatus);
 
   return {
     objects,
     tabs,
-    showObjectSwitcher: objects.length > 1 && (showMonitorView || showRelatedTopology || showAssetInfo),
+    showObjectSwitcher,
+    alertRawLog: {
+      visible: visibility.alertRawLog,
+      loadWidget: alertRawLog.loadWidget,
+      active: options.activeTab === 'alertRawLog',
+    },
     monitorView: {
-      visible: showMonitorView,
+      visible: visibility.monitorView,
       loadWidget: monitorView.loadWidget,
       active: options.activeTab === 'monitorView',
     },
     relatedTopology: {
-      visible: showRelatedTopology,
+      visible: visibility.relatedTopology,
       loadWidget: relatedTopology.loadWidget,
       active: options.activeTab === 'relatedTopology',
     },
     assetInfo: {
-      visible: showAssetInfo,
+      visible: visibility.assetInfo,
       loadWidget: assetInfo.loadWidget,
       active: options.activeTab === 'assetInfo',
+    },
+    assetChange: {
+      visible: visibility.assetChange,
+      loadWidget: assetChange.loadWidget,
+      active: options.activeTab === 'assetChange',
+    },
+    nodeStatus: {
+      visible: visibility.nodeStatus,
+      loadWidget: nodeStatus.loadWidget,
+      active: options.activeTab === 'nodeStatus',
+    },
+    serviceOverview: {
+      visible: visibility.serviceOverview,
+      loadWidget: serviceOverview.loadWidget,
+      active: options.activeTab === 'serviceOverview',
+    },
+    callChain: {
+      visible: visibility.callChain,
+      loadWidget: callChain.loadWidget,
+      active: options.activeTab === 'callChain',
     },
   };
 }
@@ -134,17 +172,23 @@ export function PublicWidgetPane({
   identifier,
   identifierProp,
   toolbarStart,
+  startedAt,
+  endedAt,
 }: {
   active: boolean;
   loadWidget: (() => Promise<{ default: unknown }>) | null;
   identifier: string;
-  identifierProp: 'instUuid' | 'monitorId';
+  identifierProp: IdentifierProp;
   toolbarStart?: React.ReactNode;
+  /** 可选 live 查询窗（目前仅 APM 两键消费；其它键忽略）。 */
+  startedAt?: string;
+  endedAt?: string;
 }) {
   const { t } = useTranslation();
   const boundIdentifier = useActiveBoundIdentifier(identifier, active);
   const [loadEpoch, setLoadEpoch] = useState(0);
   const [headerAction, setHeaderAction] = useState<React.ReactNode>(null);
+  const [embedToolbar, setEmbedToolbar] = useState<React.ReactNode>(null);
   const { Widget, loadFailed } = useLazyAppWidget({
     loadWidget,
     active: active && Boolean(identifier),
@@ -153,11 +197,13 @@ export function PublicWidgetPane({
 
   useEffect(() => {
     setHeaderAction(null);
+    setEmbedToolbar(null);
   }, [boundIdentifier]);
 
   const missingIdentifier = (active && !identifier) || !boundIdentifier;
   const hasContent = Boolean(Widget) && !loadFailed && !missingIdentifier;
-  const showToolbar = Boolean(toolbarStart) || Boolean(headerAction);
+  const showHostToolbar =
+    !embedToolbar && (Boolean(toolbarStart) || Boolean(headerAction));
 
   let body: React.ReactNode;
   if (missingIdentifier) {
@@ -180,21 +226,31 @@ export function PublicWidgetPane({
         Widget={Widget as InstUuidWidget}
         instUuid={boundIdentifier}
         onHeaderAction={setHeaderAction}
+        onEmbedToolbar={setEmbedToolbar}
+        objectSwitcher={toolbarStart}
       />
     );
   } else {
+    const start = String(startedAt || '').trim();
+    const end = String(endedAt || '').trim();
     body = (
-      <MonitorIdMount
-        key={boundIdentifier}
-        Widget={Widget as MonitorIdWidget}
-        monitorId={boundIdentifier}
+      <IdentifierMount
+        // 窗后到时必须 remount：懒加载 Widget 若先以缺窗挂载，会打出 now−1h 请求。
+        key={`${boundIdentifier}|${start}|${end}`}
+        Widget={Widget as IdentifierWidget}
+        identifierProp={identifierProp}
+        identifier={boundIdentifier}
+        startedAt={startedAt}
+        endedAt={endedAt}
       />
     );
   }
 
   return (
     <div className="flex h-full min-h-[280px] min-w-0 flex-1 flex-col gap-4">
-      {showToolbar ? (
+      {embedToolbar ? (
+        <div className="w-full shrink-0">{embedToolbar}</div>
+      ) : showHostToolbar ? (
         <div className="flex shrink-0 items-center justify-between gap-3">
           <div className="min-w-0 flex-1">{toolbarStart}</div>
           {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
@@ -217,20 +273,45 @@ function InstUuidMount({
   Widget,
   instUuid,
   onHeaderAction,
+  onEmbedToolbar,
+  objectSwitcher,
 }: {
   Widget: InstUuidWidget;
   instUuid: string;
   onHeaderAction?: (action: React.ReactNode) => void;
+  onEmbedToolbar?: (toolbar: React.ReactNode) => void;
+  objectSwitcher?: React.ReactNode;
 }) {
-  return <Widget instUuid={instUuid} onHeaderAction={onHeaderAction} />;
+  return (
+    <Widget
+      instUuid={instUuid}
+      onHeaderAction={onHeaderAction}
+      onEmbedToolbar={onEmbedToolbar}
+      objectSwitcher={objectSwitcher}
+    />
+  );
 }
 
-function MonitorIdMount({
+function IdentifierMount({
   Widget,
-  monitorId,
+  identifierProp,
+  identifier,
+  startedAt,
+  endedAt,
 }: {
-  Widget: MonitorIdWidget;
-  monitorId: string;
+  Widget: IdentifierWidget;
+  identifierProp: Exclude<IdentifierProp, 'instUuid'>;
+  identifier: string;
+  startedAt?: string;
+  endedAt?: string;
 }) {
-  return <Widget monitorId={monitorId} />;
+  const props: Record<string, string> = { [identifierProp]: identifier };
+  const start = String(startedAt || '').trim();
+  const end = String(endedAt || '').trim();
+  // 必须两者都有才下发：与 resolvePublicWidgetQueryWindow 契约一致，避免只传一侧仍回落 now−1h。
+  if (start && end) {
+    props.startedAt = start;
+    props.endedAt = end;
+  }
+  return <Widget {...props} />;
 }

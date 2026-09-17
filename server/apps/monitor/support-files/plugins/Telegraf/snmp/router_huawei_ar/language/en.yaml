@@ -1,9 +1,11 @@
 Router Huawei AR SNMP:
   name: Huawei AR (Telegraf)
   desc: SNMP monitoring template for Huawei AR routers (sysObjectID family 1.3.6.1.4.1.2011.2.224).
-    It reports system uptime, CPU utilization, memory utilization, and built-in IF-MIB
-    interface traffic. Supported models include AR8140-12G10XG, AR720/AR730, AR6710-L50T2X4,
-    AR5710-H8T2TS1, AR8700-8, AR5510/AR6510 and AR6500-10.
+    It reports system uptime, CPU/memory, entity voltage (mV converted to volts), board
+    power (watts), chassis used/total power in watts, fan speed (percent of full speed),
+    optical-module DDM, chassis and board energy in milliwatts (divide by 1000 for watts),
+    and built-in IF-MIB interface traffic. Supported models include AR8140-12G10XG,
+    AR720/AR730, AR6710-L50T2X4, AR5710-H8T2TS1, AR8700-8, AR5510/AR6510 and AR6500-10.
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -14,14 +16,94 @@ monitor_object_metric:
       name: Device Temperature
       desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
         high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_voltage_volts:
+      name: Input Voltage
+      desc: Per-entity input voltage of the Huawei AR router (hwEntityVoltage). The
+        device reports millivolts; the query divides by 1000 to display volts. Dimension
+        descr is entPhysicalName. Distinct from optical-module voltage device_optical_voltage
+        (hwEntityOpticalVoltage). Values outside the rated range may indicate unstable
+        power and hardware risk.
+    device_entity_board_power:
+      name: Board Power
+      desc: Board power consumption of each Huawei AR entity (hwEntityBoardPower),
+        in watts. Dimension descr is entPhysicalName. Unexpected rise can indicate
+        a failing board, abnormal traffic load, or a cooling problem that increases
+        power draw.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each cooling fan (enum). A non-normal state indicates
         a cooling fault that can quickly lead to overheating.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Fan speed as a percentage of full speed (hwEntityFanSpeed). Shares the
+        hwFanStatusTable index with fan state. Persistently high speed can indicate
+        thermal compensation; a drop toward 0% with a healthy state may still mean
+        a stalled rotor.
+    device_optical_rx_power:
+      name: SFP RX Power
+      desc: Per-module optical receive power in dBm (device reports µW; query converts
+        with 10*log10(µW/1000), drops <=0 and the 2147483647 invalid sentinel). Dimension descr is entPhysicalName. Abnormally
+        low Rx power may indicate link attenuation, dirty fiber, or a faulty peer transmitter.
+    device_optical_tx_power:
+      name: SFP TX Power
+      desc: Per-module optical transmit power in dBm (device reports µW; query converts
+        with 10*log10(µW/1000), drops <=0 and the 2147483647 invalid sentinel). Dimension descr is entPhysicalName. Abnormally
+        low Tx power usually indicates an aging or failing local optical module rather
+        than fiber attenuation alone.
+    device_optical_temperature:
+      name: Optical Module Temperature
+      desc: Temperature of each optical module (hwEntityOpticalTemperature), in degrees
+        Celsius. The 2147483647 invalid sentinel is dropped. High module temperature accelerates laser aging and can precede optical
+        power failure.
+    device_optical_bias:
+      name: Optical Module Bias
+      desc: Laser bias current of each optical module (hwEntityOpticalBiasCurrent),
+        in microamperes (µA). The 2147483647 invalid sentinel is dropped.
+        Drift away from the normal range is an early sign of a failing transmitter.
+    device_optical_voltage:
+      name: Optical Module Voltage
+      desc: Supply voltage of each optical module (hwEntityOpticalVoltage). The device
+        reports millivolts; the query divides by 1000 to display volts and drops 2147483647.
+        Distinct from per-entity device_voltage_volts (hwEntityVoltage). Out-of-range
+        voltage can cause unstable optics.
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
+    device_energy_current_power_mw:
+      name: Chassis Current Energy (mW)
+      desc: Instantaneous chassis energy (hwCurrentPower), in milliwatts. Divide by
+        1000 to display watts.
+    device_energy_average_power_mw:
+      name: Chassis Average Energy (mW)
+      desc: Period-average chassis energy (hwAveragePower), in milliwatts. Divide by
+        1000 to display watts.
+    device_energy_rated_power_mw:
+      name: Chassis Rated Energy (mW)
+      desc: Rated chassis energy (hwRatedPower), in milliwatts. Divide by 1000 to
+        display watts.
+    device_board_current_power_mw:
+      name: Board Current Energy (mW)
+      desc: Instantaneous energy of each board (hwBoardCurrentPower), in milliwatts.
+        Divide by 1000 to display watts. Dimension hwBoardName is the board name.
+        Empty board names and invalid sentinel -1 are dropped. Distinct from
+        device_entity_board_power (hwEntityBoardPower, watts).
+    device_board_rated_power_mw:
+      name: Board Rated Energy (mW)
+      desc: Rated energy of each board (hwBoardRatedPower), in milliwatts. Divide by
+        1000 to display watts. Dimension hwBoardName is the board name. Empty board
+        names and invalid sentinel -1 are dropped. Distinct from device_entity_board_power
+        (hwEntityBoardPower, watts).
+    device_power_used:
+      name: Chassis Used Power
+      desc: Chassis-level used power (hwDevicePowerInfoUsedPower), in watts. Rising
+        used power against a stable total budget indicates growing load or a hardware
+        inefficiency. Distinct from device_energy_*_mw milliwatt energy gauges.
+    device_power_total:
+      name: Chassis Total Power
+      desc: Chassis-level total power capacity (hwDevicePowerInfoTotalPower), in watts.
+        Used as the denominator when judging how close the chassis is to its power
+        budget. Distinct from device_energy_*_mw milliwatt energy gauges.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB

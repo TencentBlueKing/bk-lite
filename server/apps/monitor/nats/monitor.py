@@ -2541,8 +2541,7 @@ def get_monitor_instance_alert_ranking(user_info=None, ranking="most_alerts", li
     return {"result": True, "data": rows[:limit], "message": ""}
 
 
-def _resolve_monitor_ingest_allowed_org_ids(params):
-    """解析跨模块 ingest 的组织授权范围；不得从 raw.organization 反推。"""
+def _claimed_monitor_ingest_org_ids(params):
     if "allowed_org_ids" in (params or {}):
         return _normalize_organization_ids(params.get("allowed_org_ids"))
 
@@ -2558,6 +2557,26 @@ def _resolve_monitor_ingest_allowed_org_ids(params):
             return _normalize_organization_ids([team] if not isinstance(team, (list, tuple)) else team)
 
     raise ValueError("authorization scope is required for monitor ingest")
+
+
+def _resolve_monitor_ingest_allowed_org_ids(params):
+    """解析跨模块 ingest 的组织授权范围；不得从 raw.organization 反推。
+
+    无 user_info 时保持旧语义，信任报文 allowed_org_ids。
+    有 user_info 时按服务端身份重算范围并与报文取交集。
+    """
+    claimed = _claimed_monitor_ingest_org_ids(params)
+    user_info = (params or {}).get("user_info")
+    if not isinstance(user_info, dict) or not user_info:
+        return claimed
+
+    _user, _team, _include_children, scope_ids, _is_superuser, error = _get_nats_actor_scope(user_info)
+    if error:
+        raise ValueError(error.get("message") or "authorization scope is required for monitor ingest")
+    intersection = claimed & scope_ids
+    if not intersection:
+        raise ValueError("allowed_org_ids 不在授权范围内")
+    return intersection
 
 
 @nats_client.register
@@ -2577,6 +2596,7 @@ def monitor_ingest_from_source(params):
 
     params 为 IngestEnvelope 扩展字段，另需授权上下文之一：
       allowed_org_ids / service_scope.allowed_org_ids / user_info.team
+    同时带 user_info 时，服务端按身份重算组织并与报文取交集。
 
     NATS 方法名带 monitor_ 前缀，避免与 CMDB.ingest_from_source 冲突。
     """

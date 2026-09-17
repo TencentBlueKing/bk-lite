@@ -354,6 +354,24 @@ def test_inst_list_update(fake_graph, monkeypatch):
     assert add_r[0]["success"] is True
 
 
+def test_get_check_attr_map_excludes_system_link_ids(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.utils.Import.build_unique_rule_context",
+        lambda mid: type("Ctx", (), {"unique_rules": [], "attrs_by_id": {}})(),
+    )
+    obj = _make(
+        [
+            {"attr_id": "inst_name", "attr_name": "实例名", "attr_type": "str", "is_only": True, "is_required": True, "editable": True},
+            {"attr_id": "node_id", "attr_name": "节点ID", "attr_type": "str", "is_only": True, "editable": False},
+            {"attr_id": "monitor_id", "attr_name": "监控实例ID", "attr_type": "str", "is_only": True, "editable": False},
+        ]
+    )
+    out = obj.get_check_attr_map()
+    assert out["is_only"] == {"inst_name": "实例名"}
+    assert "node_id" not in out["is_only"]
+    assert "monitor_id" not in out["is_only"]
+
+
 # --------------------------------------------------------------------------
 # get_model_asso_map / add_asso_data 输入空
 # --------------------------------------------------------------------------

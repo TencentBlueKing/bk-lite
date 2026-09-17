@@ -63,6 +63,7 @@ class Event(models.Model):
     item = models.CharField(max_length=128, null=True, blank=True, db_index=True, help_text="事件指标")
     monitor_id = models.CharField(max_length=100, null=True, blank=True, help_text="监控实例ID快照")
     cmdb_id = models.CharField(max_length=100, null=True, blank=True, help_text="CMDB实例ID快照")
+    node_id = models.CharField(max_length=100, null=True, blank=True, help_text="节点ID快照")
     resource_id = models.CharField(max_length=100, null=True, blank=True, db_index=True, help_text="资源唯一ID")
     resource_type = models.CharField(max_length=100, null=True, blank=True, help_text="资源类型")
     resource_name = models.CharField(max_length=128, null=True, blank=True, help_text="资源名称")

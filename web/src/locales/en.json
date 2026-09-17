@@ -220,6 +220,9 @@
     "sessionExpiredDescription": "Please verify your identity again to continue on this page.",
     "reloginSuccess": "Signed in again. Please resubmit any operation that previously failed.",
     "portalSlogan": "AI-Native Lightweight O&M Platform",
+    "minute": "minute",
+    "second": "second",
+    "hour": "hour",
     "day": "Day(s)"
   },
   "userInfo": {

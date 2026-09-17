@@ -15,6 +15,26 @@ class CollectConfig(TimeInfo, MaintainerInfo):
     config_type = models.CharField(max_length=50, verbose_name="配置类型")
     file_type = models.CharField(max_length=50, verbose_name="文件类型")
     is_child = models.BooleanField(default=True, verbose_name="是否子配置")
+    applied_content_sha256 = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="已应用插件内容指纹",
+    )
+    applied_rendered_sha256 = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="上次模板渲染内容哈希",
+    )
+    applied_pack_version = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="已应用的探针包版本",
+    )
+    content_hand_edited = models.BooleanField(default=False, verbose_name="采集配置已被手改")
 
     class Meta:
         verbose_name = "采集配置"

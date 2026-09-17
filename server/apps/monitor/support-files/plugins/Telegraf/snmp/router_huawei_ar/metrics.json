@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei_ar",
   "plugin": "Router Huawei AR SNMP",
-  "plugin_desc": "Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP). Device identity is recognized from sysObjectID under 1.3.6.1.4.1.2011.2.224 (hwAR), including AR8140-12G10XG, AR8140-T-12G10XG, AR720, AR730, AR6710-L50T2X4, AR6710-L26T2X4, AR6710-L8T3TS1X2, AR5710-H8T2TS1, AR8700-8, AR6510, AR5510 and AR6500-10. Interface traffic uses the built-in IF-MIB (including 64-bit HC counters) and is not expanded in this template. Device health continues to use HUAWEI-ENTITY-EXTENT-MIB CPU and memory utilization, both reported as percentages.",
+  "plugin_desc": "Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP). Device identity is recognized from sysObjectID under 1.3.6.1.4.1.2011.2.224 (hwAR), including AR8140-12G10XG, AR8140-T-12G10XG, AR720, AR730, AR6710-L50T2X4, AR6710-L26T2X4, AR6710-L8T3TS1X2, AR5710-H8T2TS1, AR8700-8, AR6510, AR5510 and AR6500-10. Interface traffic uses the built-in IF-MIB (including 64-bit HC counters) and is not expanded in this template. Device health uses HUAWEI-ENTITY-EXTENT-MIB CPU/memory (percent), entity voltage (millivolts converted to volts), board power (watts), chassis used/total power in watts, fan speed (percent of full speed), and optical-module DDM (Rx/Tx power converted µW→dBm, temperature, module voltage, laser bias). Chassis and board energy uses HUAWEI-ENERGYMNGT-MIB milliwatt gauges (divide by 1000 for watts).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_huawei_ar'}) by (instance_id)",
   "name": "Router",
@@ -17,6 +17,11 @@
     "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage",
+    "device_voltage_volts",
+    "device_fan_speed",
+    "device_optical_rx_power",
+    "device_optical_tx_power",
+    "device_energy_current_power_mw",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -90,6 +95,42 @@
     },
     {
       "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "device_voltage_volts{instance_type='router', __$labels__} / 1000",
+      "display_name": "Input Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity input voltage of the Huawei AR router (HUAWEI-ENTITY-EXTENT-MIB hwEntityVoltage). The device reports millivolts; the query divides by 1000 to display volts. Dimension descr is entPhysicalName, sharing hwEntityStateTable with CPU/memory/temperature. Distinct from optical-module voltage device_optical_voltage (hwEntityOpticalVoltage). Values outside the rated range may indicate unstable power and hardware risk."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_entity_board_power",
+      "query": "device_entity_board_power{instance_type='router', __$labels__}",
+      "display_name": "Board Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board power consumption of each Huawei AR entity (HUAWEI-ENTITY-EXTENT-MIB hwEntityBoardPower), in watts. Dimension descr is entPhysicalName. Some AR SKUs omit this leaf and the table stays empty. Unexpected rise can indicate a failing board, abnormal traffic load, or a cooling problem that increases power draw."
+    },
+    {
+      "metric_group": "Hardware Status",
       "name": "device_fan_state",
       "query": "device_fan_state{instance_type='router', __$labels__}",
       "display_name": "Fan State",
@@ -108,6 +149,114 @@
     },
     {
       "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='router', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan speed of each Huawei AR cooling fan (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanSpeed), reported as a percentage of full speed. Shares the hwFanStatusTable index with device_fan_state. Persistently high speed can indicate thermal compensation; a drop toward 0% with a healthy state may still mean a stalled rotor."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_rx_power",
+      "query": "10 * log10(device_optical_rx_power{instance_type='router', __$labels__} / 1000) and (device_optical_rx_power{instance_type='router', __$labels__} > 0) and (device_optical_rx_power{instance_type='router', __$labels__} != 2147483647)",
+      "display_name": "SFP RX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-module SFP/optical receive power in dBm (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalRxPower). AR routers report µW on the wire (MIB text often says dBm). Telegraf stores raw µW and this query converts with 10*log10(µW/1000), dropping <=0 and the 2147483647 invalid sentinel. Dimension descr is entPhysicalName. A dropping RX level is an early sign of fiber attenuation, dirty optics, or a failing peer transmitter."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_tx_power",
+      "query": "10 * log10(device_optical_tx_power{instance_type='router', __$labels__} / 1000) and (device_optical_tx_power{instance_type='router', __$labels__} > 0) and (device_optical_tx_power{instance_type='router', __$labels__} != 2147483647)",
+      "display_name": "SFP TX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-module SFP/optical transmit power in dBm (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalTxPower). AR routers report µW on the wire (MIB text often says dBm). Telegraf stores raw µW and this query converts with 10*log10(µW/1000), dropping <=0 and the 2147483647 invalid sentinel. Dimension descr is entPhysicalName. An abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_temperature",
+      "query": "device_optical_temperature{instance_type='router', __$labels__} and (device_optical_temperature{instance_type='router', __$labels__} != 2147483647)",
+      "display_name": "Optical Module Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each Huawei AR optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalTemperature), in degrees Celsius. The query drops the 2147483647 invalid sentinel. Dimension descr is entPhysicalName. High module temperature accelerates laser aging and can precede optical power failure."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_bias",
+      "query": "device_optical_bias{instance_type='router', __$labels__} and (device_optical_bias{instance_type='router', __$labels__} != 2147483647)",
+      "display_name": "Optical Module Bias",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Laser bias current of each Huawei AR optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalBiasCurrent), in microamperes (µA) as reported on the wire. The query drops the 2147483647 invalid sentinel. Dimension descr is entPhysicalName. Drift away from the normal range is an early sign of a failing transmitter."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_voltage",
+      "query": "device_optical_voltage{instance_type='router', __$labels__} / 1000 and (device_optical_voltage{instance_type='router', __$labels__} != 2147483647)",
+      "display_name": "Optical Module Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Supply voltage of each Huawei AR optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalVoltage). The device reports millivolts; the query divides by 1000 to display volts and drops the 2147483647 invalid sentinel. Dimension descr is entPhysicalName. Distinct from per-entity device_voltage_volts (hwEntityVoltage). Out-of-range voltage can cause unstable optics."
+    },
+    {
+      "metric_group": "Hardware Status",
       "name": "device_psu_state",
       "query": "device_psu_state{instance_type='router', __$labels__}",
       "display_name": "PSU State",
@@ -123,6 +272,107 @@
         "instance_id"
       ],
       "description": "This metric reports the power-supply state of the Huawei AR router, normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across supplies so any failed PSU surfaces."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_energy_current_power_mw",
+      "query": "device_energy_current_power_mw{instance_type='router', __$labels__}",
+      "display_name": "Chassis Current Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous chassis energy of the Huawei AR router (hwCurrentPower), in milliwatts (mW). Divide by 1000 to display watts."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_energy_average_power_mw",
+      "query": "device_energy_average_power_mw{instance_type='router', __$labels__}",
+      "display_name": "Chassis Average Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Period-average chassis energy of the Huawei AR router (hwAveragePower), in milliwatts (mW). Divide by 1000 to display watts."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_energy_rated_power_mw",
+      "query": "device_energy_rated_power_mw{instance_type='router', __$labels__}",
+      "display_name": "Chassis Rated Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Rated chassis energy of the Huawei AR router (hwRatedPower), in milliwatts (mW). Divide by 1000 to display watts."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_board_current_power_mw",
+      "query": "device_board_current_power_mw{instance_type='router', hwBoardName!='', __$labels__} >= 0",
+      "display_name": "Board Current Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "hwBoardName",
+          "description": "Board name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous energy of each Huawei AR board (hwBoardCurrentPower), in milliwatts (mW). Divide by 1000 to display watts. Dimension hwBoardName is the board name. Rows with empty board name or invalid sentinel -1 are dropped. Distinct from device_entity_board_power (hwEntityBoardPower, watts)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_board_rated_power_mw",
+      "query": "device_board_rated_power_mw{instance_type='router', hwBoardName!='', __$labels__} >= 0",
+      "display_name": "Board Rated Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "hwBoardName",
+          "description": "Board name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Rated energy of each Huawei AR board (hwBoardRatedPower), in milliwatts (mW). Divide by 1000 to display watts. Dimension hwBoardName is the board name. Rows with empty board name or invalid sentinel -1 are dropped. Distinct from device_entity_board_power (hwEntityBoardPower, watts)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_power_used",
+      "query": "device_power_used{instance_type='router', __$labels__}",
+      "display_name": "Chassis Used Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis-level used power of the Huawei AR router (hwDevicePowerInfoUsedPower), in watts. Rising used power against a stable total budget indicates growing load or a hardware inefficiency. Distinct from device_energy_*_mw milliwatt energy gauges."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_power_total",
+      "query": "device_power_total{instance_type='router', __$labels__}",
+      "display_name": "Chassis Total Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis-level total power capacity of the Huawei AR router (hwDevicePowerInfoTotalPower), in watts. Used as the denominator when judging how close the chassis is to its power budget. Distinct from device_energy_*_mw milliwatt energy gauges."
     },
     {
       "metric_group": "Status",

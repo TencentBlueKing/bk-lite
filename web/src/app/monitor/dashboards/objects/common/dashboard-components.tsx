@@ -213,7 +213,7 @@ export const SummaryStatCard = ({ summaryCard, className, styles }: SummaryStatC
   return (
     <StatCard
       title={<TitleWithGuide title={card.title} items={card.guide} styles={styles} />}
-      value={mainValue.value}
+      value={typeof mainValue.value === 'string' ? dt(mainValue.value) : mainValue.value}
       unit={mainValue.unit}
       icon={getIcon(card.icon)}
       iconStyle={{ background: `${valueColor ?? card.color}1c`, color: valueColor ?? card.color }}

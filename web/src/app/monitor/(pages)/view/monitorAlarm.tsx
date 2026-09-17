@@ -32,6 +32,7 @@ const Alert: React.FC<ViewModalProps> = ({
   objects = [],
   form = INIT_VIEW_MODAL_FORM,
   readOnly = false,
+  fillContainer = false,
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorAlert, patchMonitorAlert } = useMonitorApi();
@@ -295,7 +296,7 @@ const Alert: React.FC<ViewModalProps> = ({
   };
 
   return (
-    <div className="w-full">
+    <div className={fillContainer ? 'flex h-full min-h-0 w-full flex-col' : 'w-full'}>
       <Segmented
         className="mb-[16px]"
         value={activeTab}
@@ -328,15 +329,17 @@ const Alert: React.FC<ViewModalProps> = ({
           onRefresh={onRefresh}
         />
       </div>
-      <CustomTable
-        scroll={{ y: 'calc(100vh - 420px)', x: 890 }}
-        columns={columns}
-        dataSource={tableData}
-        pagination={pagination}
-        loading={tableLoading}
-        rowKey="id"
-        onChange={handleTableChange}
-      />
+      <div className={fillContainer ? 'min-h-0 flex-1' : ''}>
+        <CustomTable
+          scroll={fillContainer ? { x: 890 } : { y: 'calc(100vh - 420px)', x: 890 }}
+          columns={columns}
+          dataSource={tableData}
+          pagination={pagination}
+          loading={tableLoading}
+          rowKey="id"
+          onChange={handleTableChange}
+        />
+      </div>
       <AlertDetail
         ref={detailRef}
         metrics={metrics}

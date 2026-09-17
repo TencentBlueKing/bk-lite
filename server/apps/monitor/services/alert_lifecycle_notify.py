@@ -585,6 +585,7 @@ class AlertLifecycleNotifier:
         return {
             instance.id: {
                 "cmdb_id": instance.cmdb_id,
+                "node_id": instance.node_id,
                 "resource_type": instance.monitor_object.name,
             }
             for instance in MonitorInstance.objects.select_related("monitor_object").filter(id__in=instance_ids)
@@ -636,6 +637,7 @@ class AlertLifecycleNotifier:
             "end_time": end_time,
             "monitor_id": alert.monitor_instance_id,
             "cmdb_id": monitor_identity.get("cmdb_id"),
+            "node_id": monitor_identity.get("node_id"),
             "resource_id": alert.monitor_instance_id,
             "resource_type": monitor_identity.get("resource_type") or getattr(policy_monitor_object, "name", ""),
             "resource_name": getattr(alert, "monitor_instance_name", ""),

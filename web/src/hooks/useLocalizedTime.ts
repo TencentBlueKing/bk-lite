@@ -10,10 +10,12 @@ dayjs.extend(timezone);
 export const useLocalizedTime = () => {
   const { data: session } = useSession();
 
-  const currentTimezone = (session?.user as any)?.timezone
-    || (session as any)?.timezone
-    || (session as any)?.zoneinfo
-    || getStoredTimezone();
+  const timeZone = normalizeTimezone(
+    (session?.user as any)?.timezone
+      || (session as any)?.timezone
+      || (session as any)?.zoneinfo
+      || getStoredTimezone(),
+  );
 
   const convertToLocalizedTime = (
     isoString: string,
@@ -23,12 +25,8 @@ export const useLocalizedTime = () => {
       return '';
     }
 
-    if (!currentTimezone) {
-      return dayjs(isoString).format(format);
-    }
-
     try {
-      const date = dayjs(isoString).tz(normalizeTimezone(currentTimezone));
+      const date = dayjs(isoString).tz(timeZone);
       return date.format(format);
     } catch {
       return dayjs(isoString).format(format);
@@ -37,5 +35,6 @@ export const useLocalizedTime = () => {
 
   return {
     convertToLocalizedTime,
+    timeZone,
   };
 };

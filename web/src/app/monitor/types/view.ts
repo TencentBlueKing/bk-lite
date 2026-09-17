@@ -27,6 +27,8 @@ export interface ViewModalProps {
   objects?: ObjectItem[];
   preferredMetricKey?: string;
   readOnly?: boolean;
+  // 嵌入宿主时按容器实测高度铺满，替代主场的 100vh 偏移量。
+  fillContainer?: boolean;
 }
 
 export interface ViewListProps {

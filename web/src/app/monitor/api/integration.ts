@@ -151,6 +151,16 @@ const useIntegrationApi = () => {
       restoreBuiltinPlugin: async (id: React.Key) => {
         return await post(`/monitor/api/monitor_plugin/${String(id)}/restore_builtin/`);
       },
+      updateCollectTemplateConfigs: async (data: {
+        instance_ids: React.Key[];
+        monitor_plugin_id?: React.Key;
+        discard_hand_edited?: boolean;
+      }) => {
+        return await post(
+          '/monitor/api/node_mgmt/update_collect_template_configs/',
+          data
+        );
+      },
       getUiTemplateByParams: async (params: {
         collector: string;
         collect_type: string;
@@ -183,6 +193,8 @@ const useIntegrationApi = () => {
           name?: string;
           vm_params?: Record<string, string | string[]>;
           unassigned?: boolean;
+          need_update?: boolean;
+          monitor_plugin_id?: React.Key;
         } = {},
         config?: AxiosRequestConfig
       ) => {

@@ -1,6 +1,6 @@
 # 华为交换机 SNMP 接入指南
 
-本插件用于监控华为园区、框式与 CloudEngine 交换机的设备健康：实体 CPU/内存/温度/风扇、电源、光模块 DDM、堆叠/CSS，以及启用后的 M-LAG 成员心跳与成员口状态。接入后仍作为现有交换机对象，无需为 S12700H、S16700 等机型新建监控对象。
+本插件用于监控华为园区、框式与 CloudEngine 交换机的设备健康：实体 CPU/内存/温度/电压（毫伏换算为伏特）、风扇（状态、在位、满速百分比转速）、整机已用/总功耗与实体单板功耗（瓦特）、整机与板卡能耗（毫瓦）、电源（在位、供电状态、毫安电流、毫伏电压、模块额定瓦特）、光模块 DDM、堆叠/CSS，以及启用后的 M-LAG 成员心跳与成员口状态。接入后仍作为现有交换机对象，无需为 S12700H、S16700 等机型新建监控对象。
 
 ## 支持机型
 
@@ -17,7 +17,7 @@ S12700H 与 S16700 为 V600 代框式机型，仍走本插件与交换机对象�
 - 选定节点能够访问目标设备的 SNMP 端口（默认 `161/UDP`）。
 - 设备已启用 SNMPv2c 或 SNMPv3，并授权只读访问。
 - 建议使用 SNMPv3（认证+加密）。若使用 v2c，团体名仅填写在页面专用字段中。
-- 只读视图应授权标准 IF-MIB，以及 `1.3.6.1.4.1.2011.5.25.31`（实体健康、电源、光模块 DDM）、`1.3.6.1.4.1.2011.5.25.183`（堆叠对象 `183.1` 与 CSS 对象 `183.3`）和 `1.3.6.1.4.1.2011.5.25.178.8`（M-LAG 成员口与心跳）。
+- 只读视图应授权标准 IF-MIB，以及 `1.3.6.1.4.1.2011.5.25.31`（实体健康含电压与单板功耗、风扇转速/在位、整机功耗、电源在位/状态/电参、光模块 DDM）、`1.3.6.1.4.1.2011.6.157`（整机与板卡能耗，毫瓦）、`1.3.6.1.4.1.2011.5.25.183`（堆叠对象 `183.1` 与 CSS 对象 `183.3`）和 `1.3.6.1.4.1.2011.5.25.178.8`（M-LAG 成员口与心跳）。
 
 ## 接入步骤
 
@@ -60,7 +60,12 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 
 - `snmp_uptime` 持续增长。
 - `device_cpu_usage`、`device_memory_usage` 有实体维度读数。
-- `device_psu_state` 能看到已在位电源模块（`hwEntityPwrState`：供电/未供电/休眠/未知）。空槽位看 `device_psu_present`。
+- `device_voltage_volts` 按实体报告输入电压（`hwEntityVoltage`，毫伏换算为伏特；维度 `descr` 为 `entPhysicalName`）。与光模块 `device_optical_voltage`（`hwEntityOpticalVoltage`）不同。
+- `device_fan_state` 能看到各风扇状态（`hwEntityFanState`：正常/异常）。`device_fan_speed` 为已在位风扇的满速百分比；空槽位看 `device_fan_present`。
+- `device_power_used` / `device_power_total` 报告整机已用与总功耗（瓦特，`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`）。
+- `device_entity_board_power` 按实体报告单板功耗（瓦特，`hwEntityBoardPower`；维度 `descr` 为 `entPhysicalName`）。与 ENERGYMNGT 毫瓦序列 `device_board_current_power_mw` / `device_board_rated_power_mw` 单位不同。
+- `device_energy_current_power_mw` / `device_energy_average_power_mw` / `device_energy_rated_power_mw` 报告整机能耗（毫瓦，`hwCurrentPower` / `hwAveragePower` / `hwRatedPower`；展示可 ÷1000 为瓦特）。板卡序列为 `device_board_current_power_mw` / `device_board_rated_power_mw`，维度 `hwBoardName`。
+- `device_psu_state` 能看到已在位电源模块（`hwEntityPwrState`：供电/未供电/休眠/未知）。空槽位看 `device_psu_present`。已在位模块同时报告 `device_psu_current_mA`（毫安）、`device_psu_voltage_mV`（毫伏）和 `device_psu_rated_power_watts`（模块额定瓦特，不是整机瞬时功耗）。
 - 有光模块时，`device_optical_rx_power` / `device_optical_tx_power`（µW 换算为 dBm）以及温度（°C）、电压（mV→V）、偏置电流（µA）有读数。无效哨兵 `2147483647` 会被丢弃。
 - 启用 iStack 或 CE 堆叠时，`device_stack_member_role`（`hwMemberStackRole`）和 `device_stack_port_state`（`hwStackPortStatus`，up=1/down=2）有数据。
 - 启用 CSS（S12700/S12700H/S9700 类）时，`device_css_member_role`（`hwCssMemberRole`）和 `device_css_port_state`（`hwCssPortOperStatus`，down=0/up=1）有数据。
@@ -74,11 +79,15 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 
 ### 没有电源或仅有收/发光功率、没有完整 DDM
 
-请确认视图包含 `hwEntityPwrState` / `hwEntityPwrPresent` 以及 `hwOpticalModuleInfoTable`。空槽位和无模块不会产生序列。
+请确认视图包含 `hwEntityPwrState` / `hwEntityPwrPresent` / `hwEntityPwrCurrent` / `hwEntityPwrVoltage` / `hwEntityPwrPower` 以及 `hwOpticalModuleInfoTable`。空槽位和无模块不会产生序列。电源电流单位为毫安，电压单位为毫伏。
 
 ### 没有堆叠、CSS 或 M-LAG 指标
 
 堆叠/CSS/M-LAG 未启用、设备为独立框，或视图未授权对应对象。iStack/CE 使用 `183.1.20` / `183.1.21`；CSS 使用 `183.3.2` / `183.3.4`；M-LAG 使用 `178.8.1.4` / `178.8.1.5`。`183.1.4`/`183.1.5`/`183.1.6`/`183.1.22` 以及 M-LAG 一致性检查是标量或 trap，不是成员/端口/链路表。这不代表整机采集失败。
+
+### 没有毫瓦能耗指标
+
+请确认视图包含 `1.3.6.1.4.1.2011.6.157`。这些序列单位是毫瓦，与 `device_power_used` / `device_power_total`（瓦特）并存。缺少能耗表不代表瓦特整机功耗采集失败。
 
 ### 高速口流量为 0 或不准
 

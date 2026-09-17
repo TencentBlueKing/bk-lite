@@ -98,6 +98,10 @@ const useLogEventApi = () => {
     });
   };
 
+  const getAlertSnapshots = async (alertId: React.Key) => {
+    return await get(`/log/alert/snapshots/${String(alertId)}/`);
+  };
+
   const getLogAlertStats = async (
     params: LogAlertParams = {},
     config?: AxiosRequestConfig
@@ -123,6 +127,7 @@ const useLogEventApi = () => {
     geEventList,
     getEventRaw,
     getEventRawData,
+    getAlertSnapshots,
   };
 };
 

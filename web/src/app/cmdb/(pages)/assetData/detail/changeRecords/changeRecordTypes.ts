@@ -24,6 +24,23 @@ export interface ChangeRecordAttributeSnapshot {
   attributes?: Record<string, ChangeRecordSnapshotAttribute>;
 }
 
+export interface ChangeRecord {
+  id: number | string;
+  inst_uuid?: string;
+  inst_id?: number;
+  model_id: string;
+  label: string;
+  type: string;
+  scenario: string;
+  operator: string;
+  created_at: string;
+  model_object?: string;
+  message?: string;
+  before_data?: Record<string, unknown>;
+  after_data?: Record<string, unknown>;
+  attribute_snapshot?: ChangeRecordAttributeSnapshot;
+}
+
 export interface ChangeRecordDiffSource {
   label: string;
   before_data?: Record<string, unknown>;

@@ -54,6 +54,9 @@
 - **订阅执行**：报告订阅在一个计划时点或一次手工测试请求下产生的独立生成与投递尝试，是状态、失败和输入快照的审计边界。_Avoid_：发送记录、调度任务。
 - **Stargazer**：`agents/stargazer/` 中的云资源与外部资源采集代理。
 - **CMDB 实例 UUID（`inst_uuid`）**：CMDB 资产实例的不可变业务身份（UUIDv4）；跨模块与前后端定位实例只用它。图节点内部 `_id` 仅同进程工作集。_Avoid_：把 Telegraf 标签 `cmdb_{task_id}`（采集任务身份）当成实例 UUID。详见 `docs/adr/0005-use-uuid-as-cmdb-instance-identity.md`。
+- **服务树**：CMDB 中以应用系统为根的组织挂载结构：应用系统 → 可选业务分组 → 应用；主机挂在应用上且可属于多个应用。_Avoid_：应用拓扑、业务拓扑、把 APM 服务当成树上的节点。
+- **业务分组**：服务树上介于应用系统与应用之间、可嵌套的组织节点；它不是应用，也不是主机挂载点。_Avoid_：集群、模块、应用系统。
+- **应用拓扑**：CMDB 中从中心实例按关联跳数展开的五带资源依赖图。_Avoid_：服务树。
 - **Capability contract**：`specs/capabilities/<capability>.md` 中长期有效的业务、验收、架构和运行约束。
 - **Change spec**：`specs/changes/<feature>/spec.md` 中跨会话的变更意图、实现决定和测试接缝。
 - **Ticket**：仅在 change 超出一个上下文窗口时创建的可独立验证纵向切片。

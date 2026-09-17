@@ -1,7 +1,8 @@
 Firewall Sangfor SNMP:
-  name: Sangfor NGAF (Telegraf)
-  desc: SNMP monitoring template for Sangfor firewall. It reports system uptime, CPU
-    utilization, memory utilization, and other key metrics
+  name: Sangfor NGAF/AF8 (Telegraf)
+  desc: SNMP monitoring template for Sangfor NGAF/AF8 firewall. It reports system
+    uptime, CPU/memory/disk utilization, session rate and capacity, SFP optics,
+    NAT port usage, and other key metrics (IANA PEN 35047)
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -21,6 +22,32 @@ monitor_object_metric:
       desc: Disk-space utilization of the firewall reported directly as a 0-100 percentage.
         A nearly full disk can prevent logging and configuration changes and may destabilize
         the device.
+    device_disk_size:
+      name: Disk Size
+      desc: Filesystem size of the firewall, converted from megabytes to bytes.
+    device_disk_used:
+      name: Disk Used
+      desc: Used filesystem space of the firewall, converted from megabytes to bytes.
+    firewall_new_sessions_per_sec:
+      name: New Sessions Per Second
+      desc: Current new-session establishment rate of the firewall, already reported
+        as sessions per second. A sustained spike can indicate a connection flood.
+    firewall_nat_tcp_port_usage:
+      name: NAT TCP Source Port Usage
+      desc: NAT4 TCP source-port utilization of the firewall as a 0-100 percentage
+        per NAT rule. Approaching 100% means new TCP translations may fail.
+    firewall_nat_udp_port_usage:
+      name: NAT UDP Source Port Usage
+      desc: NAT4 UDP source-port utilization of the firewall as a 0-100 percentage
+        per NAT rule. Approaching 100% means new UDP translations may fail.
+    device_optical_rx_power:
+      name: SFP RX Power
+      desc: Optical receive power reading of the SFP/SFP+ module. Abnormally low Rx
+        power may indicate link attenuation, dirty fiber, or a faulty peer transmitter.
+    device_optical_tx_power:
+      name: SFP TX Power
+      desc: Optical transmit power reading of the SFP/SFP+ module. Abnormal Tx power
+        may indicate an aging or failing optical module.
     device_web_users:
       name: Signed-In Web Users
       desc: Number of currently signed-in web users on the gateway. Tracking the active
