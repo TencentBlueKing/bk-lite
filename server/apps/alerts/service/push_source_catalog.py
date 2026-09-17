@@ -1,5 +1,6 @@
 """按组织观测实际上游出现过的监控源 ID，供规则勾选与列表筛选。"""
 
+import math
 from datetime import timedelta
 
 from django.core.cache import cache
@@ -53,6 +54,21 @@ class MemoryCatalogStore:
         self._values[key] = value
         return True
 
+    def delete(self, key):
+        self._values.pop(key, None)
+        self._zsets.pop(key, None)
+
+    def zremrangebyscore(self, key, min_score, max_score):
+        members = self._zsets.get(key)
+        if not members:
+            return 0
+        lo = _as_score_bound(min_score)
+        hi = _as_score_bound(max_score)
+        removed = [member for member, score in members.items() if lo <= score <= hi]
+        for member in removed:
+            del members[member]
+        return len(removed)
+
 
 class RedisCatalogStore:
     def __init__(self, redis):
@@ -83,6 +99,12 @@ class RedisCatalogStore:
 
     def add(self, key, value, timeout=None):
         return bool(self._redis.set(key, value, nx=True, ex=timeout))
+
+    def delete(self, key):
+        return self._redis.delete(key)
+
+    def zremrangebyscore(self, key, min_score, max_score):
+        return self._redis.zremrangebyscore(key, min_score, max_score)
 
 
 class DjangoCacheCatalogStore:
@@ -121,6 +143,21 @@ class DjangoCacheCatalogStore:
 
     def add(self, key, value, timeout=None):
         return self._cache.add(key, value, timeout=timeout)
+
+    def delete(self, key):
+        return self._cache.delete(key)
+
+    def zremrangebyscore(self, key, min_score, max_score):
+        members = dict(self._cache.get(key) or {})
+        if not members:
+            return 0
+        lo = _as_score_bound(min_score)
+        hi = _as_score_bound(max_score)
+        kept = {member: score for member, score in members.items() if not (lo <= score <= hi)}
+        removed = len(members) - len(kept)
+        if removed:
+            self._cache.set(key, kept, timeout=None)
+        return removed
 
 
 class PushSourceCatalog:
@@ -174,13 +211,26 @@ class PushSourceCatalog:
             acquired = True
         if not acquired:
             return {}
-        mapping = self._snapshot_mapping(team_id)
-        if len(mapping) > self.MAX_MEMBERS:
-            mapping = dict(sorted(mapping.items(), key=lambda item: (-item[1], item[0]))[: self.MAX_MEMBERS])
-        if mapping:
-            self.store.zadd(self.KEY.format(team_id=team_id), mapping)
-        self.store.set(self.READY_KEY.format(team_id=team_id), 1)
-        return mapping
+        mapping = {}
+        try:
+            mapping = self._snapshot_mapping(team_id)
+            if len(mapping) > self.MAX_MEMBERS:
+                mapping = dict(sorted(mapping.items(), key=lambda item: (-item[1], item[0]))[: self.MAX_MEMBERS])
+            key = self.KEY.format(team_id=team_id)
+            try:
+                if mapping:
+                    self.store.zadd(key, mapping)
+                self._trim_stale(key, self._now())
+                self._keep_newest_members(key)
+                self.store.set(self.READY_KEY.format(team_id=team_id), 1)
+            except Exception:
+                return mapping
+            return mapping
+        finally:
+            try:
+                self.store.delete(lock_key)
+            except Exception:
+                pass
 
     def _observe_team(self, team_id, source_ids, now):
         pending = []
@@ -192,6 +242,7 @@ class PushSourceCatalog:
         if not pending:
             return
         key = self.KEY.format(team_id=team_id)
+        self._trim_stale(key, now)
         size = self.store.zcard(key) or 0
         mapping = {}
         rejected = 0
@@ -224,7 +275,13 @@ class PushSourceCatalog:
         key = self.KEY.format(team_id=team_id)
         try:
             if self.store.get(self.READY_KEY.format(team_id=team_id)) != 1:
-                self.rebuild_for_team(team_id)
+                mapping = self.rebuild_for_team(team_id) or {}
+                rows = self.store.zrevrange(key, 0, -1, withscores=True) or []
+                if rows:
+                    return rows
+                if mapping:
+                    return list(mapping.items())
+                return []
             return self.store.zrevrange(key, 0, -1, withscores=True) or []
         except Exception:
             mapping = {}
@@ -245,8 +302,8 @@ class PushSourceCatalog:
 
     def _snapshot_mapping(self, team_id):
         cutoff = timezone.now() - timedelta(seconds=self.STALE_SECONDS)
-        qs = apply_team_scope_with_group_ids(Alert.objects.all(), [team_id])
-        qs = qs.filter(Q(last_event_time__gte=cutoff) | Q(last_event_time__isnull=True, updated_at__gte=cutoff))
+        qs = Alert.objects.filter(Q(last_event_time__gte=cutoff) | Q(last_event_time__isnull=True, updated_at__gte=cutoff))
+        qs = apply_team_scope_with_group_ids(qs, [team_id])
         mapping = {}
         for alert in qs.only("push_source_ids", "last_event_time", "updated_at").iterator():
             moment = alert.last_event_time or alert.updated_at
@@ -258,6 +315,19 @@ class PushSourceCatalog:
                 if current is None or score > current:
                     mapping[source_id] = score
         return mapping
+
+    def _trim_stale(self, key, now):
+        cutoff = now - self.STALE_SECONDS
+        self.store.zremrangebyscore(key, float("-inf"), math.nextafter(float(cutoff), float("-inf")))
+
+    def _keep_newest_members(self, key):
+        size = self.store.zcard(key) or 0
+        if size <= self.MAX_MEMBERS:
+            return
+        kept = self.store.zrevrange(key, 0, self.MAX_MEMBERS - 1, withscores=True)
+        self.store.delete(key)
+        if kept:
+            self.store.zadd(key, {member: score for member, score in kept})
 
     def _record_throttle(self, team_id, mapping, now):
         stale_before = now - self.min_interval
@@ -337,3 +407,11 @@ def _decode_stored_value(value):
         if str(number) == value:
             return number
     return value
+
+
+def _as_score_bound(value):
+    if value in ("-inf", b"-inf"):
+        return float("-inf")
+    if value in ("+inf", "inf", b"+inf", b"inf"):
+        return float("inf")
+    return float(value)

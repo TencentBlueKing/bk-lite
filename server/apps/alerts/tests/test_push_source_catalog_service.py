@@ -217,6 +217,76 @@ def test_list_rebuilds_once_under_lock():
     assert cat.store.get("alerts:push_source_ids:ready:v1:9") == 1
 
 
+def test_rebuild_releases_lock_when_snapshot_mapping_fails():
+    cat = catalog()
+    calls = {"n": 0}
+
+    def boom(_team_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("mapping failed")
+        return {"prod": 1_700_000_000}
+
+    cat._snapshot_mapping = boom
+    with pytest.raises(RuntimeError):
+        cat.rebuild_for_team(1)
+    lock_key = cat.LOCK_KEY.format(team_id=1)
+    assert cat.store.get(lock_key) is None
+    assert cat.store.add(lock_key, 1) is True
+    cat.store.delete(lock_key)
+    assert cat.rebuild_for_team(1) == {"prod": 1_700_000_000}
+    assert calls["n"] == 2
+    assert cat.store.get(lock_key) is None
+    assert cat.store.get(cat.READY_KEY.format(team_id=1)) == 1
+
+
+def test_rebuild_returns_mapping_when_zadd_fails():
+    mapping_result = {"fresh": 1_700_000_000}
+
+    class BoomZadd(MemoryCatalogStore):
+        def zadd(self, key, mapping):
+            raise RuntimeError("zadd failed")
+
+    cat = PushSourceCatalog(store=BoomZadd(), now=lambda: 1_700_000_000, min_interval=0)
+    cat._snapshot_mapping = lambda _team_id: dict(mapping_result)
+    result = cat.rebuild_for_team(1)
+    assert result == mapping_result
+    assert cat.store.get(cat.READY_KEY.format(team_id=1)) != 1
+    assert cat.store.get(cat.LOCK_KEY.format(team_id=1)) is None
+    assert cat.list_for_teams([1]) == ["fresh"]
+
+
+@pytest.mark.django_db
+def test_snapshot_filters_time_window_before_team_scope(monkeypatch):
+    captured = {}
+    original = catalog_mod.apply_team_scope_with_group_ids
+
+    def capture(qs, team_ids):
+        captured["sql"] = str(qs.query.where)
+        return original(qs, team_ids)
+
+    monkeypatch.setattr(catalog_mod, "apply_team_scope_with_group_ids", capture)
+    cat = catalog()
+    cat.rebuild_for_team(1)
+    where_sql = captured["sql"].lower()
+    assert "last_event_time" in where_sql
+    assert "updated_at" in where_sql
+
+
+def test_observe_accepts_fresh_id_after_stale_set_is_full():
+    now = 1_700_000_000
+    cat = PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: now, min_interval=0)
+    stale_score = now - PushSourceCatalog.STALE_SECONDS - 1
+    cat.store.zadd(
+        "alerts:push_source_ids:v1:1",
+        {f"old{i}": stale_score for i in range(PushSourceCatalog.MAX_MEMBERS)},
+    )
+    cat.store.set("alerts:push_source_ids:ready:v1:1", 1)
+    cat.observe([1], ["fresh"])
+    members = cat.list_for_teams([1])
+    assert "fresh" in members
+
+
 def test_list_rebuild_failure_logs_type_without_payload(caplog, capsys):
     sentinel = "snapshot-secret-payload"
     source_sentinel = "prod-secret-id"
