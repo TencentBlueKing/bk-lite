@@ -11,7 +11,7 @@ import fieldOperatorContract from '../../../../../../specs/changes/alert-rule-ty
 const api = vi.hoisted(() => ({
   getChannelList: vi.fn(), getNotificationTemplateOptions: vi.fn(),
   createAssignment: vi.fn(), updateAssignment: vi.fn(), createShield: vi.fn(), updateShield: vi.fn(),
-  getAlertSourceOptions: vi.fn(),
+  getAlertSourceOptions: vi.fn(), getPushSourceIdOptions: vi.fn(),
   createCorrelationRule: vi.fn(), updateCorrelationRule: vi.fn(), createEnrichment: vi.fn(), updateEnrichment: vi.fn(),
   createActionRule: vi.fn(), updateActionRule: vi.fn(), getActionJobScripts: vi.fn(), getActionJobScript: vi.fn(),
 }));
@@ -41,6 +41,7 @@ beforeEach(() => {
   api.getChannelList.mockResolvedValue([{ id: 1, name: '邮件', channel_type: 'email' }]);
   api.getNotificationTemplateOptions.mockResolvedValue([]);
   api.getAlertSourceOptions.mockResolvedValue([]);
+  api.getPushSourceIdOptions.mockResolvedValue([]);
   api.getActionJobScripts.mockResolvedValue([{id:1,name:'脚本'}]);
   api.getActionJobScript.mockResolvedValue({id:1,params:[]});
   for (const save of [api.createCorrelationRule,api.updateCorrelationRule,api.createEnrichment,api.updateEnrichment,api.createActionRule,api.updateActionRule]) save.mockResolvedValue({});
@@ -93,6 +94,11 @@ describe('五个正式配置页面的类型化保存', () => {
       fireEvent.mouseDown(input);
       fireEvent.click(await screen.findByText(`${key}:B,生产 (ID: 8)`));
       fireEvent.keyDown(input, { key: 'Escape', keyCode: 27 });
+      expectedValue = [`${key}:A`, `${key}:B,生产`];
+    } else if (key === 'push_source_id' || key === 'push_source_ids') {
+      const input = await screen.findByRole('combobox', { name: 'alarmCommon.pushSourceInput' });
+      fireEvent.change(input, { target: { value: `${key}:B,生产` } });
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 });
       expectedValue = [`${key}:A`, `${key}:B,生产`];
     } else if (multi) {
       const input = await screen.findByRole('combobox', { name: 'alarmCommon.multiValueInput' });
@@ -154,7 +160,7 @@ describe('五个正式配置页面的类型化保存', () => {
     const condition={key:'push_source_ids',operator:'all_of',value:['a','b']};
     const props={open:true,currentRow:{...structuredClone(row),...extra,...(edit?{id:42}:{}),match_rules:[[condition]]},onClose:vi.fn(),onSuccess:vi.fn()};
     render(React.createElement(Component as React.ComponentType<typeof props>,props));
-    const input=await screen.findByRole('combobox',{name:'alarmCommon.multiValueInput'});
+    const input=await screen.findByRole('combobox',{name:'alarmCommon.pushSourceInput'});
     fireEvent.change(input,{target:{value:'001'}});fireEvent.keyDown(input,{key:'Enter',keyCode:13});fireEvent.keyUp(input,{key:'Enter',keyCode:13});
     fireEvent.click(screen.getByRole('button',{name:submit}));
     const save=edit?update:create;
