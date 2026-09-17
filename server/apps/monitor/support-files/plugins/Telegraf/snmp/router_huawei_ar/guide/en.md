@@ -56,7 +56,7 @@ Root `1.3.6.1.4.1.2011.2.224`. Leaf numbers below are the product identity used 
 | 384 | AR5510-L5T |
 | 385 | AR6500-10 |
 
-Other leaves under the same root remain AR-series devices. The model dictionary is unchanged and this plugin does not create a new AR monitor object. Fan speed (percent of full speed) and optical-module DDM are collected on the existing plugin.
+Other leaves under the same root remain AR-series devices. The model dictionary is unchanged and this plugin does not create a new AR monitor object. Entity voltage (mV→V) and board power (watts) are collected on the existing plugin.
 
 ## Form fields
 
@@ -79,8 +79,9 @@ Wait for at least one collection interval, then confirm the instance appears and
 
 - `snmp_uptime` keeps increasing.
 - `device_cpu_usage` and `device_memory_usage` have readings.
+- Entity health shows `device_voltage_volts` (mV converted to V) and, when the leaf exists, `device_entity_board_power` (watts). These share `hwEntityStateTable` with CPU/memory/temperature and are distinct from optical-module voltage.
 - Fan-equipped models show `device_fan_state` / `device_fan_speed` (percent of full speed).
-- Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` (µW converted to dBm) plus temperature (°C), voltage (mV→V), and bias (µA) when modules are present. Invalid sentinel `2147483647` is dropped.
+- Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` (µW converted to dBm) plus temperature (°C), module voltage (mV→V), and bias (µA) when modules are present. Invalid sentinel `2147483647` is dropped.
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on in-service ports.
 
 Interface traffic uses the built-in IF-MIB table (`ifTable` / `ifXTable`). This template does not expand IF objects such as extra `ifHC*` or `ifOperStatus` leaves.
