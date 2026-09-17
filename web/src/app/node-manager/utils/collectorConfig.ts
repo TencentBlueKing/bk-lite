@@ -140,6 +140,42 @@ export function listNodeHostedCollectors(record?: {
   );
 }
 
+export function listNodeUpgradeableCollectors(record?: {
+  versions?: Array<{
+    component_type?: unknown;
+    component_id?: unknown;
+    latest_version?: unknown;
+    upgradeable?: unknown;
+  }>;
+  status?: { collectors?: unknown; collectors_install?: unknown };
+  [key: string]: any;
+} | null): Array<{ componentId: string; name: string; latestVersion: string }> {
+  const hosted = listNodeHostedCollectors(record);
+  const hostedById = new Map(
+    hosted.map((item) => [String(item.collector_id), item])
+  );
+  const seen = new Set<string>();
+  const result: Array<{
+    componentId: string;
+    name: string;
+    latestVersion: string;
+  }> = [];
+  for (const version of record?.versions || []) {
+    if (String(version.component_type || '') !== 'collector') continue;
+    if (!version.upgradeable) continue;
+    const componentId = String(version.component_id || '').trim();
+    if (!componentId || seen.has(componentId)) continue;
+    seen.add(componentId);
+    const matched = hostedById.get(componentId);
+    result.push({
+      componentId,
+      name: collectorDisplayName(matched) || componentId,
+      latestVersion: String(version.latest_version || '--')
+    });
+  }
+  return result;
+}
+
 export function filterCollectorsForOperationType<
   T extends {
     collector_id?: unknown;

@@ -55,7 +55,13 @@ import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
-import { listNodeHostedCollectors, parseCollectorQueryNames, isSameCollectorName, collectorDisplayName } from '@/app/node-manager/utils/collectorConfig';
+import {
+  listNodeHostedCollectors,
+  listNodeUpgradeableCollectors,
+  parseCollectorQueryNames,
+  isSameCollectorName,
+  collectorDisplayName
+} from '@/app/node-manager/utils/collectorConfig';
 import { MODULE_OBJECT_QUERY_PARAM } from '@/app/monitor/utils/monitorObjectQuery';
 import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 const { confirm } = Modal;
@@ -568,17 +574,34 @@ const Node = () => {
               );
             }
           );
+          const upgradeableCollectors = listNodeUpgradeableCollectors(record);
+          const upgradeableIds = new Set(
+            upgradeableCollectors.map((item) => item.componentId)
+          );
+          const upgradeableTags = upgradeableCollectors.map((item) => (
+            <Tag
+              key={`up-${item.componentId}`}
+              color="processing"
+              className="cursor-pointer py-1 px-2"
+              onClick={() =>
+                handleCollectorTagClick(record, allCollectors, item.name)
+              }
+            >
+              {item.name}
+              {` · ${t('node-manager.cloudregion.node.collectorUpgradeable', '', {
+                version: item.latestVersion
+              })}`}
+            </Tag>
+          ));
           const focusTags = packCollectorNamesRef.current
             .map((collectorName) => {
               const matched = allCollectors.find((collector: any) =>
                 isSameCollectorName(collector, collectorName)
               );
               if (!matched) return null;
-              const versionInfo = (record.versions || []).find(
-                (item: TableDataItem) =>
-                  item.component_type === 'collector' &&
-                  String(item.component_id) === String(matched.collector_id)
-              );
+              if (upgradeableIds.has(String(matched.collector_id))) {
+                return null;
+              }
               return (
                 <Tag
                   key={`pack-${collectorName}`}
@@ -589,22 +612,23 @@ const Node = () => {
                   }
                 >
                   {collectorDisplayName(matched) || collectorName}
-                  {versionInfo?.upgradeable
-                    ? ` · ${t('node-manager.cloudregion.node.collectorUpgradeable', '', {
-                      version: versionInfo?.latest_version || '--'
-                    })}`
-                    : ''}
                 </Tag>
               );
             })
             .filter(Boolean);
-          return statusTags.length > 0 || focusTags.length > 0 ? (
+          if (
+            statusTags.length === 0 &&
+            upgradeableTags.length === 0 &&
+            focusTags.length === 0
+          ) {
+            return <span>--</span>;
+          }
+          return (
             <div className="flex flex-nowrap gap-1">
+              {upgradeableTags}
               {focusTags}
               {statusTags}
             </div>
-          ) : (
-            <span>--</span>
           );
         }
       }
