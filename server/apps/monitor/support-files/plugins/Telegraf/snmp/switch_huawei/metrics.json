@@ -101,7 +101,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "query": "device_fan_state{instance_type='switch', __$labels__} and (device_fan_present{instance_type='switch', __$labels__} == 1)",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -114,7 +114,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Huawei cooling fan (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanState). Huawei reports a binary state where 1 means normal and 2 means abnormal; any value other than normal indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+      "description": "Operational state of each installed Huawei switch cooling fan (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanState). On-wire INTEGER is normal(1)/abnormal(2). The query keeps only present(1) rows so empty slots are not treated as faults. Dimension descr is hwEntityFanSlot."
     },
     {
       "metric_group": "Hardware Status",
