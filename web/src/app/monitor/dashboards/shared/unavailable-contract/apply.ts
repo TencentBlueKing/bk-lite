@@ -28,11 +28,13 @@ export function overlayMetricWithContract<T extends { name: string; query: strin
   const contract = findUnavailableContract(collectType, metric.name);
   if (!contract) {
     // 拆除静态硬编码残留：未命中契约不得保留哨兵魔法数。
-    if (metric.unavailableSentinels?.length || metric.unavailableLabel) {
-      const { unavailableSentinels: _s, unavailableLabel: _l, ...rest } = metric;
-      return rest as T;
+    if (!metric.unavailableSentinels?.length && !metric.unavailableLabel) {
+      return metric;
     }
-    return metric;
+    const rest = { ...metric };
+    delete rest.unavailableSentinels;
+    delete rest.unavailableLabel;
+    return rest;
   }
   return {
     ...metric,
