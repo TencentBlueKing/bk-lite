@@ -448,3 +448,51 @@ def _delete_media_by_prefix(prefix: str) -> dict:
         else:
             skipped += 1
     return {"prefix": prefix, "deleted": deleted, "skipped": skipped}
+
+
+_IMPORT_STAGING_RE = re.compile(r"^wiki/import-staging/(\d+)/([a-f0-9]{64})\.zip$")
+
+
+def import_archive_locator(knowledge_base_id, digest) -> str:
+    kb_id = int(knowledge_base_id)
+    hex_digest = str(digest or "").strip().lower()
+    if kb_id <= 0 or not re.fullmatch(r"[a-f0-9]{64}", hex_digest):
+        raise ValueError("invalid import archive identity")
+    return f"wiki/import-staging/{kb_id}/{hex_digest}.zip"
+
+
+def _safe_import_archive_locator(locator, *, knowledge_base_id=None) -> str | None:
+    path = (locator or "").strip().replace("\\", "/")
+    match = _IMPORT_STAGING_RE.fullmatch(path)
+    if match is None:
+        return None
+    if knowledge_base_id is not None and int(match.group(1)) != int(knowledge_base_id):
+        return None
+    return path
+
+
+def save_import_archive_bytes(knowledge_base_id, digest, data: bytes) -> str:
+    path = import_archive_locator(knowledge_base_id, digest)
+    if not _MEDIA_STORAGE.exists(path):
+        _MEDIA_STORAGE.save(path, ContentFile(data))
+    return path
+
+
+def read_import_archive_bytes(locator, *, knowledge_base_id) -> bytes:
+    path = _safe_import_archive_locator(locator, knowledge_base_id=knowledge_base_id)
+    if not path:
+        raise FileNotFoundError(locator)
+    with _MEDIA_STORAGE.open(path, "rb") as handle:
+        return handle.read()
+
+
+def delete_import_archive(locator, *, knowledge_base_id) -> bool:
+    path = _safe_import_archive_locator(locator, knowledge_base_id=knowledge_base_id)
+    if not path:
+        return False
+    try:
+        _MEDIA_STORAGE.delete(path)
+        return True
+    except Exception:
+        logger.exception("wiki import archive 删除失败 locator=%s", path)
+        return False

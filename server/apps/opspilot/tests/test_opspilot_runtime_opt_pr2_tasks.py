@@ -38,6 +38,8 @@ EXPECTED_TASK_NAMES = {
     "wiki_process_kb_material_builds_task": "apps.opspilot.tasks.wiki_process_kb_material_builds_task",
     "wiki_batch_ingest_materials_task": "apps.opspilot.tasks.wiki_batch_ingest_materials_task",
     "wiki_retry_markdown_import_task": "apps.opspilot.tasks.wiki_retry_markdown_import_task",
+    "wiki_execute_markdown_import_task": "apps.opspilot.tasks.wiki_execute_markdown_import_task",
+    "wiki_enrich_markdown_import_search_task": "apps.opspilot.tasks.wiki_enrich_markdown_import_search_task",
     "wiki_refresh_web_materials_task": "apps.opspilot.tasks.wiki_refresh_web_materials_task",
 }
 
@@ -69,6 +71,8 @@ EXPECTED_QUEUES = {
     "wiki_process_kb_material_builds_task": "opspilot_wiki",
     "wiki_batch_ingest_materials_task": "opspilot_wiki",
     "wiki_retry_markdown_import_task": "opspilot_wiki",
+    "wiki_execute_markdown_import_task": "opspilot_wiki",
+    "wiki_enrich_markdown_import_search_task": "opspilot_wiki",
     "wiki_refresh_web_materials_task": "opspilot_maintenance",
 }
 

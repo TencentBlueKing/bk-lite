@@ -10,7 +10,7 @@ def test_dynamic_snippet_default_window_is_long():
     assert len(snippet) > 300
 
 
-def test_fallback_answer_mentions_no_model():
+def test_fallback_answer_includes_title_and_snippet():
     from apps.opspilot.services.wiki.retrieval_service import _fallback_answer
 
     text = _fallback_answer([{"title": "重启服务", "snippet": "systemctl restart nginx"}])
@@ -47,6 +47,24 @@ def test_qa_max_output_tokens_default_is_4000(monkeypatch):
     assert config.qa_max_output_tokens == 4000
 
 
+def test_qa_retrieval_mode_uses_hybrid_when_embed_provider_configured():
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki.retrieval_service import _qa_retrieval_mode, default_retrieval_mode
+
+    assert _qa_retrieval_mode(SimpleNamespace(embed_provider_id=3)) == "hybrid"
+    assert _qa_retrieval_mode(SimpleNamespace(embed_provider_id=None)) == "keyword"
+    assert _qa_retrieval_mode(SimpleNamespace(embed_provider_id=3), "keyword") == "keyword"
+    assert _qa_retrieval_mode(SimpleNamespace(embed_provider_id=None), "hybrid") == "hybrid"
+    assert default_retrieval_mode(SimpleNamespace(embed_provider_id=3)) == "hybrid"
+
+
+def _kb():
+    from apps.opspilot.tests.wiki.factories import WikiFactory
+
+    return WikiFactory().bootstrapped_knowledge_base()
+
+
 def _seed(kb):
     from apps.opspilot.models import Material
     from apps.opspilot.services.wiki.page_service import create_manual_page
@@ -58,10 +76,9 @@ def _seed(kb):
 
 @pytest.mark.django_db
 def test_search_ranks_relevant_pages():
-    from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.retrieval_service import search
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
     _seed(kb)
     results = search(kb, "重启 服务")
     assert results, "should find results"
@@ -71,33 +88,91 @@ def test_search_ranks_relevant_pages():
 
 
 @pytest.mark.django_db
-def test_search_returns_keyword_explanation():
-    from apps.opspilot.models import WikiKnowledgeBase
+def test_search_hits_body_only_page_and_keeps_title_ahead():
+    from apps.opspilot.models import WikiGenerationIndexEntry
+    from apps.opspilot.services.wiki.generation_navigation_service import BODY_INDEX_SEP
+    from apps.opspilot.services.wiki.page_service import create_manual_page
     from apps.opspilot.services.wiki.retrieval_service import search
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
+    body_page = create_manual_page(
+        kb,
+        page_type="concept",
+        title="办公网络常见问题",
+        body="梯子连不上时请改用华为VPN客户端拨号。",
+        created_by="u",
+    )
+    title_page = create_manual_page(
+        kb,
+        page_type="concept",
+        title="嘉为公司用户VPN使用手册",
+        body="安装步骤见下文。",
+        created_by="u",
+    )
+    kb.refresh_from_db()
+    entry = WikiGenerationIndexEntry.objects.get(generation_id=kb.active_generation_id, page_id=body_page.id)
+    assert BODY_INDEX_SEP in entry.search_text
+    assert "梯子连不上" in entry.search_text
+
+    body_hits = search(kb, "梯子连不上", top_k=20)
+    assert body_hits
+    assert any(item["id"] == body_page.id for item in body_hits)
+
+    title_hits = search(kb, "嘉为公司用户VPN使用手册", top_k=20)
+    assert title_hits[0]["id"] == title_page.id
+
+
+@pytest.mark.django_db
+def test_search_legacy_index_without_body_marker_still_scores_page_body():
+    from apps.opspilot.models import WikiGenerationIndexEntry
+    from apps.opspilot.services.wiki.generation_navigation_service import BODY_INDEX_SEP
+    from apps.opspilot.services.wiki.page_service import create_manual_page
+    from apps.opspilot.services.wiki.retrieval_service import search
+
+    kb = _kb()
+    page = create_manual_page(
+        kb,
+        page_type="concept",
+        title="办公网络常见问题",
+        body="梯子连不上时请改用华为VPN客户端拨号。",
+        created_by="u",
+    )
+    kb.refresh_from_db()
+    entry = WikiGenerationIndexEntry.objects.get(generation_id=kb.active_generation_id, page_id=page.id)
+    nav, _sep, _body = entry.search_text.partition(BODY_INDEX_SEP)
+    entry.search_text = nav
+    entry.save(update_fields=["search_text"])
+    hits = search(kb, "梯子连不上", top_k=20)
+    assert hits
+    assert any(item["id"] == page.id for item in hits)
+
+
+@pytest.mark.django_db
+def test_search_returns_keyword_explanation():
+    from apps.opspilot.services.wiki.retrieval_service import search
+
+    kb = _kb()
     _seed(kb)
 
     results = search(kb, "重启 服务")
 
     assert results
     explanation = results[0]["explanation"]
-    assert explanation["matched_by"] == ["keyword"]
+    assert explanation["matched_by"] == ["generation_index"]
     assert explanation["keyword_score"] == results[0]["score"]
     assert "重启" in explanation["matched_terms"]
 
 
 @pytest.mark.django_db
 def test_answer_without_model_falls_back_with_citations():
-    from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.retrieval_service import answer
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
     _seed(kb)
     out = answer(kb, "如何重启服务", llm_model_id=None)
     assert out["citations"], "should cite something"
     assert "systemctl" in out["answer"] or "重启" in out["answer"]
-    assert out["citations"][0]["explanation"]["matched_by"] == ["keyword"]
+    assert out["citations"][0]["explanation"]["matched_by"] == ["generation_index"]
     assert out["mode"] == "fallback"
     assert out["warning_code"] == "wiki_answer_fallback"
     assert "未使用模型" in out["answer"]
@@ -106,38 +181,92 @@ def test_answer_without_model_falls_back_with_citations():
 
 @pytest.mark.django_db
 def test_answer_with_missing_model_falls_back_with_explanation():
-    from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.retrieval_service import answer
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
     _seed(kb)
 
     out = answer(kb, "如何重启服务", llm_model_id=999999)
 
     assert out["citations"]
-    assert out["citations"][0]["explanation"]["matched_by"] == ["keyword"]
+    assert out["citations"][0]["explanation"]["matched_by"] == ["generation_index"]
     assert "重启" in out["answer"]
     assert out["mode"] == "fallback"
 
 
 @pytest.mark.django_db
 def test_answer_empty_kb():
-    from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.retrieval_service import answer
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
     out = answer(kb, "anything", llm_model_id=None)
     assert out["citations"] == []
     assert out["mode"] == "empty"
 
 
 @pytest.mark.django_db
+def test_answer_uses_hybrid_when_embed_provider_configured():
+    from apps.opspilot.models import EmbedProvider
+    from apps.opspilot.services.wiki.page_service import create_manual_page
+    from apps.opspilot.services.wiki.retrieval_service import answer
+
+    kb = _kb()
+    provider = EmbedProvider.objects.create(name="embed", model="embed-model")
+    kb.embed_provider = provider
+    kb.save(update_fields=["embed_provider"])
+    restart = create_manual_page(
+        kb,
+        page_type="concept",
+        title="重启服务",
+        body="使用 systemctl restart nginx 重启服务。",
+        created_by="u",
+    )
+    flow = create_manual_page(
+        kb,
+        page_type="concept",
+        title="重启流程",
+        body="重启前先摘流量再重启。",
+        created_by="u",
+    )
+    restart.current_version.embedding = [0.0, 1.0]
+    restart.current_version.save(update_fields=["embedding"])
+    flow.current_version.embedding = [1.0, 0.0]
+    flow.current_version.save(update_fields=["embedding"])
+
+    out = answer(kb, "重启", llm_model_id=None, embed_fn=lambda texts: [[0.9, 0.1] for _ in texts])
+    assert out["citations"]
+    assert "vector" in (out["citations"][0].get("explanation") or {}).get("matched_by", [])
+    assert out["citations"][0]["title"] == "重启流程"
+
+
+@pytest.mark.django_db
+def test_answer_keeps_keyword_when_retrieval_mode_forced():
+    from apps.opspilot.models import EmbedProvider
+    from apps.opspilot.services.wiki.retrieval_service import answer
+
+    kb = _kb()
+    provider = EmbedProvider.objects.create(name="embed", model="embed-model")
+    kb.embed_provider = provider
+    kb.save(update_fields=["embed_provider"])
+    _seed(kb)
+
+    out = answer(
+        kb,
+        "如何重启服务",
+        llm_model_id=None,
+        retrieval_mode="keyword",
+        embed_fn=lambda texts: pytest.fail("forced keyword should skip embedding"),
+    )
+    assert out["citations"]
+    assert "vector" not in (out["citations"][0].get("explanation") or {}).get("matched_by", [])
+
+
+@pytest.mark.django_db
 def test_search_snippet_window_covers_long_body():
-    from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.page_service import create_manual_page
     from apps.opspilot.services.wiki.retrieval_service import search
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
     body = ("前言段落。" * 80) + "使用 systemctl restart nginx 重启服务。" + ("尾部说明。" * 80)
     create_manual_page(kb, page_type="concept", title="重启服务", body=body, created_by="u")
     results = search(kb, "systemctl restart")
@@ -149,10 +278,9 @@ def test_search_snippet_window_covers_long_body():
 
 @pytest.mark.django_db
 def test_stream_answer_fallback_events():
-    from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.retrieval_service import stream_answer
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
     _seed(kb)
     events = list(stream_answer(kb, "如何重启服务", llm_model_id=None))
     kinds = [event["event"] for event in events]
@@ -167,10 +295,9 @@ def test_stream_answer_fallback_events():
 @pytest.mark.django_db
 def test_stream_answer_llm_deltas(monkeypatch):
     from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-    from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.retrieval_service import stream_answer
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = _kb()
     _seed(kb)
 
     class FakeLLM:
@@ -178,9 +305,13 @@ def test_stream_answer_llm_deltas(monkeypatch):
         openai_api_key = "k"
         model_name = "fake"
 
+    class FakeQuerySet:
+        def get(self, **_kwargs):
+            return FakeLLM()
+
     monkeypatch.setattr(
-        "apps.opspilot.services.wiki.retrieval_service.LLMModel.objects.get",
-        lambda **_kwargs: FakeLLM(),
+        "apps.opspilot.services.wiki.retrieval_service.LLMModel.objects.select_related",
+        lambda *_args, **_kwargs: FakeQuerySet(),
     )
 
     def fake_stream(_request, _messages):
@@ -208,9 +339,7 @@ def test_stream_answer_llm_deltas(monkeypatch):
 @pytest.mark.django_db
 class TestRetrievalViews:
     def test_search_and_qa_endpoints(self, api_client):
-        from apps.opspilot.models import WikiKnowledgeBase
-
-        kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+        kb = _kb()
         _seed(kb)
         s = api_client.post(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/search/", {"query": "重启 服务"}, format="json")
         assert s.status_code == 200, s.content
@@ -222,10 +351,39 @@ class TestRetrievalViews:
         assert payload["citations"]
         assert payload["mode"] == "fallback"
 
-    def test_qa_stream_endpoint(self, api_client):
-        from apps.opspilot.models import WikiKnowledgeBase
+    def test_search_endpoint_uses_hybrid_when_embed_configured(self, api_client, monkeypatch):
+        from apps.opspilot.models import EmbedProvider
+        from apps.opspilot.services.wiki import retrieval_service as retrieval_mod
+        from apps.opspilot.services.wiki.page_service import create_manual_page
 
-        kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+        kb = _kb()
+        provider = EmbedProvider.objects.create(name="embed", model="embed-model")
+        kb.embed_provider = provider
+        kb.save(update_fields=["embed_provider"])
+        restart = create_manual_page(kb, page_type="concept", title="重启服务", body="使用 systemctl restart nginx 重启服务。", created_by="u")
+        flow = create_manual_page(kb, page_type="concept", title="重启流程", body="重启前先摘流量再重启。", created_by="u")
+        restart.current_version.embedding = [0.0, 1.0]
+        restart.current_version.save(update_fields=["embedding"])
+        flow.current_version.embedding = [1.0, 0.0]
+        flow.current_version.save(update_fields=["embedding"])
+
+        def stub(texts, _provider=None):
+            return [[0.9, 0.1] for _ in texts]
+
+        monkeypatch.setattr(retrieval_mod, "embed_texts_cached", stub)
+        response = api_client.post(
+            f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/search/",
+            {"query": "重启"},
+            format="json",
+        )
+        assert response.status_code == 200, response.content
+        payload = response.json()["data"]
+        assert payload
+        assert payload[0]["title"] == "重启流程"
+        assert "vector" in (payload[0].get("explanation") or {}).get("matched_by", [])
+
+    def test_qa_stream_endpoint(self, api_client):
+        kb = _kb()
         _seed(kb)
         response = api_client.post(
             f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/qa_stream/",
@@ -242,7 +400,47 @@ class TestRetrievalViews:
         assert "未使用模型" in body
 
 
-def test_policy_intent_prefers_policy_over_handbook():
+def test_index_score_prefers_term_coverage_over_repeated_tokens():
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki.retrieval_service import _index_score, _tokenize
+
+    query = "服务器分区扩容"
+    terms = _tokenize(query)
+    n_docs = 20
+    df = {term: 1 for term in terms}
+    df["服务"] = 18
+    df["务器"] = 16
+    spam = SimpleNamespace(
+        title="IT资源使用与运维管理规范",
+        aliases=["服务", "服务器"],
+        tags=["服务"],
+        headings=["服务"] * 12,
+        keywords=["服务"] * 32,
+        entities=[],
+        summary="服务服务服务",
+        page_type="Policy",
+        normalized_title="it资源使用与运维管理规范",
+        search_text="",
+    )
+    target = SimpleNamespace(
+        title="腾讯云虚拟机手动扩容磁盘",
+        aliases=["磁盘扩容", "分区扩大"],
+        tags=[],
+        headings=["扩容分区"],
+        keywords=["分区", "扩容", "数据盘"],
+        entities=[],
+        summary="数据盘空间不足时扩容分区",
+        page_type="How-to",
+        normalized_title="腾讯云虚拟机手动扩容磁盘",
+        search_text="",
+    )
+    spam_score, _ = _index_score(spam, terms, query, idf=df, n_docs=n_docs)
+    target_score, _ = _index_score(target, terms, query, idf=df, n_docs=n_docs)
+    assert target_score > spam_score
+
+
+def test_index_score_prefers_docs_covering_query_terms():
     from types import SimpleNamespace
 
     from apps.opspilot.services.wiki.retrieval_service import _index_score, _tokenize
@@ -410,6 +608,23 @@ def test_is_relevant_hit_drops_generic_single_term():
     assert _is_relevant_hit(hit) is False
 
 
+def test_is_relevant_hit_relative_peak_does_not_keep_generic_only():
+    from apps.opspilot.services.wiki.retrieval_service import _is_relevant_hit
+
+    hit = {
+        "kind": "page",
+        "id": 1,
+        "title": "产品介绍",
+        "score": 8,
+        "explanation": {
+            "matched_by": ["keyword"],
+            "matched_terms": ["知识"],
+            "exact_title_or_alias": False,
+        },
+    }
+    assert _is_relevant_hit(hit, top_score=8) is False
+
+
 def test_is_relevant_hit_keeps_exact_title_despite_generic_term():
     from apps.opspilot.services.wiki.retrieval_service import _is_relevant_hit
 
@@ -436,6 +651,24 @@ def test_is_relevant_hit_keeps_strong_score_without_terms():
         "title": "x",
         "score": 120,
         "explanation": {"matched_by": ["keyword"], "matched_terms": []},
+    }
+    assert _is_relevant_hit(hit) is True
+
+
+def test_is_relevant_hit_keeps_vector_recall_without_keyword_terms():
+    from apps.opspilot.services.wiki.retrieval_service import _is_relevant_hit
+
+    hit = {
+        "kind": "page",
+        "id": 1,
+        "title": "会议室预定失败或按钮灰色处理",
+        "score": 0.69,
+        "explanation": {
+            "matched_by": ["vector"],
+            "matched_terms": [],
+            "semantic_rank": 1,
+            "vector_score": 0.69,
+        },
     }
     assert _is_relevant_hit(hit) is True
 

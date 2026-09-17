@@ -167,6 +167,19 @@ def test_new_material_call_budget_uses_derived_per_call_cap_not_16k():
     assert budget.max_context_tokens_per_call == 190_000
 
 
+def test_new_alias_enrich_call_budget_uses_dedicated_caps():
+    from apps.opspilot.services.wiki.wiki_budget_service import load_wiki_budget_config, new_alias_enrich_call_budget
+
+    load_wiki_budget_config(force_reload=True)
+    budget = new_alias_enrich_call_budget(window_tokens=200_000)
+    assert budget.max_calls == 256
+    assert budget.soft_total_tokens == 400000
+    assert budget.scope == "wiki_alias_enrich"
+    assert budget.max_context_tokens_per_call == 190_000
+    assert budget.config_snapshot["alias_enrich_max_llm_calls"] == 256
+    assert budget.config_snapshot["alias_enrich_max_total_tokens"] == 400000
+
+
 @pytest.mark.django_db
 def test_invoke_llm_attaches_derived_window_and_rejects_oversized_prompt(monkeypatch):
     from apps.opspilot.models import LLMModel
@@ -658,6 +671,11 @@ def test_material_build_publishes_partial_when_map_chunk_skipped(monkeypatch, wi
     )
     monkeypatch.setattr(generation_material_build_service, "enrich_generation_pages_wikilinks", lambda *args, **kwargs: {})
     monkeypatch.setattr(
+        generation_material_build_service,
+        "enrich_generation_colloquial_aliases_safely",
+        lambda *args, **kwargs: {"status": "skipped", "updated": 0, "llm_called": False},
+    )
+    monkeypatch.setattr(
         "apps.opspilot.services.wiki.generation_navigation_service.enhance_generation_overviews",
         lambda *args, **kwargs: {"status": "skipped", "updated": 0, "llm_called": False},
     )
@@ -684,3 +702,108 @@ def test_material_build_publishes_partial_when_map_chunk_skipped(monkeypatch, wi
     assert published.checkpoint["skipped_count"] == 1
     assert published.checkpoint["skipped_map_stages"] == ["material_map_1"]
     assert material.status == "built"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_material_build_does_not_attach_unrelated_same_title_to_old_page(monkeypatch, wiki_factory):
+    from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, MaterialVersion
+    from apps.opspilot.services.wiki import generation_material_build_service
+    from apps.opspilot.services.wiki.build_generation_service import freeze_generation_identity
+    from apps.opspilot.services.wiki.build_service import MaterialPageGeneration
+    from apps.opspilot.services.wiki.conflict_candidate_routing_service import ConflictRoutingResult
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    old_page = wiki_factory.page(
+        knowledge_base=knowledge_base,
+        title="应用与菜单管理",
+        body="# 应用与菜单管理\n\n用于配置系统应用入口、菜单层级和权限绑定。",
+        contribution="ai",
+    )
+    material = wiki_factory.material(
+        knowledge_base=knowledge_base,
+        name="节点管理-功能清单-2026-08-24.docx",
+        source_identity="file:node-list.docx",
+        content_hash="d" * 64,
+        status="done",
+        text_content="节点管理功能清单，第一章为云区域管理。",
+    )
+    version = MaterialVersion.objects.create(material=material, content_hash=material.content_hash)
+    material.current_version = version
+    material.save(update_fields=["current_version", "updated_at"])
+    knowledge_base.refresh_from_db()
+    task_identity = freeze_generation_identity(knowledge_base, [material])
+    build = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="material",
+        operator="admin",
+        stage="generating",
+        status="running",
+    )
+    incoming_body = "# 云区域管理\n\n云区域是节点管理模块的分区单元，用于纳管节点。"
+
+    monkeypatch.setattr(
+        generation_material_build_service,
+        "load_parsed_markdown",
+        lambda _material: material.text_content,
+    )
+    monkeypatch.setattr(
+        generation_material_build_service,
+        "generate_material_pages_with_budget",
+        lambda *args, **kwargs: MaterialPageGeneration(
+            pages=[
+                {
+                    "page_type": "concept",
+                    "title": "应用与菜单管理",
+                    "tags": [],
+                    "body": incoming_body,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        generation_material_build_service,
+        "route_material_conflicts",
+        lambda *args, **kwargs: ConflictRoutingResult(
+            comparisons={
+                0: {
+                    "old_page_id": old_page.pk,
+                    "same_subject": False,
+                    "relation": "unrelated",
+                    "reason": "title_match_different_subject",
+                }
+            },
+            compact_candidate_count=1,
+            evidence_page_ids=(old_page.pk,),
+            old_evidence_tokens=20,
+            overflow_count=0,
+            llm_called=False,
+            unresolved_incoming_indexes=(),
+        ),
+    )
+    monkeypatch.setattr(generation_material_build_service, "enrich_generation_pages_wikilinks", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        generation_material_build_service,
+        "enrich_generation_colloquial_aliases_safely",
+        lambda *args, **kwargs: {"status": "skipped", "updated": 0, "llm_called": False},
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_navigation_service.enhance_generation_overviews",
+        lambda *args, **kwargs: {"status": "skipped", "updated": 0, "llm_called": False},
+    )
+
+    generation_material_build_service.build_material_with_generation(
+        material,
+        build,
+        llm_model_id=1,
+        operator="admin",
+        frozen_identity=task_identity,
+    )
+
+    old_page.refresh_from_db()
+    assert old_page.current_version.body.startswith("# 应用与菜单管理")
+    assert CheckItem.objects.filter(knowledge_base=knowledge_base, related__pages__contains=[old_page.id]).count() == 0
+    new_page = KnowledgePage.objects.exclude(pk=old_page.pk).get(knowledge_base=knowledge_base, page_type="concept")
+    assert new_page.title != old_page.title
+    assert "云区域管理" in new_page.current_version.body

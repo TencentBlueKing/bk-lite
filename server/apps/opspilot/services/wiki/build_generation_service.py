@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from django.db import transaction
 from django.db.models import Max
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import BuildRecord, KnowledgePage, PageEvidence, PageVersion, WikiGeneration, WikiKnowledgeBase
+from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.generation_relation_service import rebuild_generation_relations
 from apps.opspilot.services.wiki.generation_service import (
     activate_generation,
@@ -341,6 +343,7 @@ def stage_ai_page(
             "contribution": "ai",
             "update_method": update_method,
             "updated_by": operator or "",
+            **({"aliases": list(navigation_metadata.get("aliases") or [])} if "aliases" in navigation_metadata else {}),
         },
     )
     if created:
@@ -389,6 +392,7 @@ def finalize_build_generation(
     evidence_records=None,
     pre_activation_hook=None,
     activation_hook=None,
+    run_embedding_index=True,
 ):
     """Materialize derived relations, validate, and atomically activate."""
 
@@ -432,6 +436,23 @@ def finalize_build_generation(
                 "outcome": result.outcome,
             },
         )
+    if not run_embedding_index:
+        return result, relation_result
+    page_ids = [item.get("page_id") for item in page_actions or [] if item.get("page_id")]
+    if page_ids:
+        try:
+            candidate = WikiGeneration.objects.select_related("knowledge_base").get(pk=context.candidate_generation_id)
+            cascade(
+                candidate.knowledge_base,
+                page_ids,
+                "build",
+                stages=["page_embedding", "chunk_embedding"],
+            )
+        except Exception:
+            logger.exception(
+                "wiki embedding index after generation activate failed generation_id=%s",
+                context.candidate_generation_id,
+            )
     return result, relation_result
 
 

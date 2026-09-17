@@ -20,6 +20,7 @@ from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvide
 from apps.opspilot.services.llm_context_budget import derive_llm_working_budget, window_tokens_for_model_id, working_budget_for_model
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
+from apps.opspilot.services.wiki.colloquial_alias_service import COLLOQUIAL_ALIAS_CONTRACT, ground_aliases, seed_aliases_from_tags
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.text_utils import split_text_by_estimated_tokens, split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
@@ -80,6 +81,10 @@ _FACT_PRESERVATION_RULES = (
     "若需提示时效性，应先完整写出原事实，再另起一句说明时效未在资料中确认。\n"
     "3. “信息缺口”仅用于资料确实未给出的信息；不得用缺口描述替代已存在的原值。\n"
 )
+_TITLE_SCOPE_RULES = (
+    "标题必须来自当前资料中的章节或对象名；" "现有页面清单只用于当前资料确实在讲同一对象时复用。" "不得套用现有页面清单中当前资料未出现的标题；" "若现有标题未在当前资料正文中出现，existing_page_id 必须为 null，并改用资料内章节名。\n"
+)
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+)$", re.MULTILINE)
 _CONTACT_LABEL_RE = re.compile(
     r"(?P<label>联系人|联系电话|电话|手机|内线|分机|邮箱|E-?mail|Email)\s*[:：]?\s*"
     r"(?P<value>.+?)"
@@ -434,6 +439,7 @@ def _generation_page_contract(structure_revision, source_metadata=None):
         "正文使用清晰 Markdown 标题，并在关系明确时用 [[目标页面标题]] 建立链接。",
         "不同主体的事实、版本、适用范围和限定条件必须分开，不得把相似名称合并成同一事实。",
         _FACT_PRESERVATION_RULES.strip(),
+        COLLOQUIAL_ALIAS_CONTRACT,
     ]
     for page_type in page_types:
         lines.append(f"- {page_type}: {_page_type_body_guidance(page_type)}")
@@ -448,6 +454,23 @@ def _normalize_text_list(value, limit):
     if not isinstance(value, list):
         return []
     return list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))[:limit]
+
+
+def _ground_page_aliases(page, *, extra_keep=None):
+    tags = page.get("tags") or []
+    keep = [*seed_aliases_from_tags(tags)]
+    for item in extra_keep or []:
+        text = str(item or "").strip()
+        if text and text not in keep:
+            keep.append(text)
+    page["aliases"] = ground_aliases(
+        [*keep, *(page.get("aliases") or [])],
+        title=page.get("title") or "",
+        tags=tags,
+        body=page.get("body") or "",
+        always_keep=keep,
+    )
+    return page
 
 
 def _normalize_contact_token(value):
@@ -764,6 +787,8 @@ def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=N
         raise BuildOutputInvalid("build_output_empty_pages: 资料未生成任何有效知识页面")
     if "source" not in allowed_page_types or not source_metadata:
         finalized = _merge_pages(normalized, kb=kb)
+        for page in finalized:
+            _ground_page_aliases(page)
         return ensure_contact_facts_preserved(source_text, finalized)
 
     source_title = str(source_metadata.get("source_title") or "").strip()
@@ -835,6 +860,10 @@ def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=N
     if not source_pages:
         source_pages = [_fallback_source_page(other_pages, effective_source_metadata, structure_revision)]
     finalized = [*other_pages, *_merge_pages(source_pages, kb=kb)]
+    display_name = source_metadata.get("display_name")
+    for page in finalized:
+        extra = [display_name] if page.get("page_type") == "source" else None
+        _ground_page_aliases(page, extra_keep=extra)
     return ensure_contact_facts_preserved(source_text, finalized)
 
 
@@ -882,7 +911,8 @@ def _llm_generate_pages(
             f"{_JSON_ONLY_OUTPUT_RULES}"
             'JSON 字段约定：{"pages": [{"page_type":"...","title":"...","tags":["..."],'
             '"body":"markdown","existing_page_id":123或null,"directory_key":"稳定目录 key",'
-            '"directory_confidence":0.0,"directory_reason":"简短原因"}]}。\n'
+            '"directory_confidence":0.0,"directory_reason":"简短原因",'
+            '"summary":"不超过800字符","keywords":[],"entities":[],"aliases":[]}]}。\n'
             "page_type 必须来自固定 Structure Schema 的 page_types；"
             '无可提取内容时输出 {"pages":[]}。\n'
             "directory_key 只能来自同一固定 Structure Schema 的 directories，"
@@ -896,6 +926,7 @@ def _llm_generate_pages(
             "例如 CMDB 与 配置平台 使用 配置平台,JOB 与 作业平台 使用 作业平台,不要分别建页。\n"
             "页面正文应使用 [[目标页面标题]] 引用相关页面,便于后续关系图谱建边。\n"
             f"{_FACT_PRESERVATION_RULES}"
+            f"{_TITLE_SCOPE_RULES}"
             "注意:这是同一份资料的分块处理,如果当前片段补充了已有主题,可以输出同名页面,"
             "系统会合并同名页面内容。\n\n"
             f"# Purpose\n{kb.purpose_md}"
@@ -964,7 +995,9 @@ def _bounded_generation_prompt(
         "directory_key 只能来自同一 Schema 的 directories，不得猜测不存在的 key。"
         "页面正文必须非空；summary、keywords、entities、aliases 只用于导航召回，"
         "必须来自本资料，不得补造事实。\n"
+        f"{COLLOQUIAL_ALIAS_CONTRACT}\n"
         f"{_FACT_PRESERVATION_RULES}\n"
+        f"{_TITLE_SCOPE_RULES}"
         f"# Purpose\n{kb.purpose_md}\n\n"
         f"# Fixed Structure Schema\n{directory_context}\n\n"
         f"# Current Material\n{source_context or '{}'}\n\n"
