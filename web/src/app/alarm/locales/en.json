@@ -451,6 +451,7 @@
     "timeRange": "Time Range",
     "node": "Node",
     "pushSourceId": "Monitoring source",
+    "pushSourceStats": "Monitoring source stats",
     "receiverUrl": "Receiver URL",
     "method": "Method",
     "headers": "Headers",

@@ -451,6 +451,7 @@
     "timeRange": "时间范围",
     "node": "节点",
     "pushSourceId": "监控源",
+    "pushSourceStats": "监控源统计",
     "receiverUrl": "接收地址",
     "method": "请求方法",
     "headers": "请求头",

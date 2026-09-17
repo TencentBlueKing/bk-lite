@@ -64,7 +64,7 @@ const PushSourceSearchValue = ({
       style={{ width: 250 }}
       maxCount={PUSH_SOURCE_MAX}
       maxLength={256}
-      maxTagCount="responsive"
+      maxTagCount={2}
       optionFilterProp="label"
       aria-label={t('alarmCommon.pushSourceSelect')}
       placeholder={t('alarmCommon.all')}
@@ -87,15 +87,22 @@ const PushSourceSearchValue = ({
   );
 };
 
-const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList }) => {
+const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList, condition }) => {
   const [searchAttr, setSearchAttr] = useState<string>('');
   const [searchValue, setSearchValue] = useState<any>('');
 
   useEffect(() => {
+    if (condition?.field) {
+      setSearchAttr(condition.field);
+      setSearchValue(
+        condition.value ?? (condition.type === 'push_source' ? [] : ''),
+      );
+      return;
+    }
     if (attrList.length) {
       setSearchAttr(attrList[0].attr_id);
     }
-  }, [attrList.length]);
+  }, [attrList.length, condition]);
 
   const onSearchValueChange = (value: any) => {
     setSearchValue(value);

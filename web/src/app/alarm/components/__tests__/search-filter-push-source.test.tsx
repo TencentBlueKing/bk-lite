@@ -2,7 +2,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import SearchFilter from '../searchFilter';
-import { buildIntegrationEventSearchParams } from '../../(pages)/integration/detail/integrationEventListRequest';
+import { buildIntegrationEventSearchParams, buildMonitorSourceFilter, selectedMonitorSourceIds } from '../../(pages)/integration/detail/integrationEventListRequest';
 
 const api = vi.hoisted(() => ({ getPushSourceIdOptions: vi.fn() }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -76,4 +76,26 @@ it('空选择不带监控源筛选参数，多选发 JSON 数组', () => {
       value: ['k8s', 'k8s-bk-lite-k3s'],
     })
   ).toEqual({ push_source_ids: JSON.stringify(['k8s', 'k8s-bk-lite-k3s']) });
+});
+
+it('点击统计项生成对应监控源筛选条件', () => {
+  expect(buildMonitorSourceFilter('k8s-bk-lite-k3s')).toEqual({
+    field: 'push_source_id',
+    type: 'push_source',
+    value: ['k8s-bk-lite-k3s'],
+  });
+  expect(selectedMonitorSourceIds(buildMonitorSourceFilter('k8s-bk-lite-k3s'))).toEqual(['k8s-bk-lite-k3s']);
+  expect(selectedMonitorSourceIds({ field: 'title', type: 'str', value: 'CPU' })).toEqual([]);
+});
+
+it('外部条件切到监控源筛选', async () => {
+  render(
+    <SearchFilter
+      attrList={attrList}
+      onSearch={vi.fn()}
+      condition={{ field: 'push_source_id', type: 'push_source', value: ['k8s-bk-lite-k3s'] }}
+    />
+  );
+  expect(await screen.findByRole('combobox', { name: 'alarmCommon.pushSourceSelect' })).toBeTruthy();
+  expect(screen.getByTitle('监控源')).toBeTruthy();
 });

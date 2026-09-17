@@ -20,6 +20,9 @@ export const useSourceApi = () => {
   const getPushSourceIdOptions = async (): Promise<string[]> =>
     get('/alerts/api/push_source_ids/options/');
 
+  const getPushSourceStats = async (id: number | string): Promise<{ id: string; count: number }[]> =>
+    get(`/alerts/api/alert_source/${id}/push_source_stats/`);
+
   const getAlertSourcesDetail = async (id: number | string): Promise<SourceItem> =>
     get(`/alerts/api/alert_source/${id}`);
 
@@ -68,6 +71,7 @@ export const useSourceApi = () => {
     getAlertSources,
     getAlertSourceOptions,
     getPushSourceIdOptions,
+    getPushSourceStats,
     getAlertSourcesDetail,
     getAlertSourceIntegrationGuide,
     getAlertSourceIntegrationMaterial,

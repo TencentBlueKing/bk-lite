@@ -440,6 +440,7 @@ export interface SearchFilterCondition {
 }
 export interface SearchFilterProps {
   onSearch: (condition: SearchFilterCondition, rawValue?: any) => void;
+  condition?: SearchFilterCondition | null;
   attrList: Array<{
     attr_id: string;
     attr_name: string;

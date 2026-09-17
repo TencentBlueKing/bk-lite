@@ -2,6 +2,19 @@ import type { SearchFilterCondition } from '@/app/alarm/types/alarms';
 import { normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
 import type { LatestRequestGuard } from '@/context/latestRequestGuard';
 
+export function buildMonitorSourceFilter(id: string): SearchFilterCondition {
+  return { field: 'push_source_id', type: 'push_source', value: [id] };
+}
+
+export function selectedMonitorSourceIds(
+  condition: SearchFilterCondition | { field: string; type?: string; value?: unknown } | null | undefined,
+): string[] {
+  if (!condition || (condition.field !== 'push_source_id' && condition.type !== 'push_source')) return [];
+  const raw = condition.value;
+  if (Array.isArray(raw)) return raw.filter((item): item is string => typeof item === 'string');
+  return typeof raw === 'string' && raw ? [raw] : [];
+}
+
 export function buildIntegrationEventSearchParams(
   condition: SearchFilterCondition | { field: string; type?: string; value?: unknown } | null | undefined,
 ): Record<string, string> {
