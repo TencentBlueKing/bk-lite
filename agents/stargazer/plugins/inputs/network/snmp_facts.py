@@ -96,7 +96,9 @@ class SnmpFacts:
         self.version = kwargs.get("version")
         self.community = kwargs.get("community")
         self.username = kwargs.get("username")
-        self.level = kwargs.get("level")
+        self.level = {"noauthnopriv": "noAuthNoPriv", "authnopriv": "authNoPriv", "authpriv": "authPriv"}.get(
+            str(kwargs.get("level") or "").lower(), kwargs.get("level")
+        )
         self.integrity = kwargs.get("integrity")
         self.privacy = kwargs.get("privacy")
         self.authkey = kwargs.get("authkey")
@@ -127,10 +129,14 @@ class SnmpFacts:
         if self.version == "v3":
             if not self.username:
                 raise ValueError("Username is required for SNMP version 3.")
-            if self.level == "authPriv" and not self.privacy:
-                raise ValueError("Privacy algorithm is required for authPriv level.")
-            if len(self.authkey) < 8 or len(self.privkey) < 8:
-                raise ValueError("authkey and privkey must be at least 8 characters long.")
+            if self.level not in {"noAuthNoPriv", "authNoPriv", "authPriv"}:
+                raise ValueError("Invalid SNMP security level.")
+            if self.level in {"authNoPriv", "authPriv"}:
+                if self.integrity not in {"sha", "md5"} or len(self.authkey or "") < 8:
+                    raise ValueError("Authentication algorithm and an authkey of at least 8 characters are required.")
+            if self.level == "authPriv":
+                if self.privacy not in {"aes", "des"} or len(self.privkey or "") < 8:
+                    raise ValueError("Privacy algorithm and a privkey of at least 8 characters are required.")
         if not (1 <= self.snmp_port <= 65535):
             raise ValueError("Invalid SNMP port. Must be between 1 and 65535.")
 
@@ -140,6 +146,8 @@ class SnmpFacts:
         """
         if self.version in ["v2", "v2c"]:
             return CommunityData(self.community)
+        elif self.level == "noAuthNoPriv":
+            return UsmUserData(self.username)
         elif self.level == "authNoPriv":
             return UsmUserData(
                 self.username,

@@ -81,6 +81,20 @@ _CHANGE_TREND_MAX_SPAN_SECONDS = {
 _RPC_TRANSPORT_KEYS = {"_timeout", "_raw"}
 
 
+@nats_client.register
+def cmdb_count_credential_refs(credential_ids):
+    """供系统管理删除/变更凭据前查询 CMDB 任务引用数。"""
+    if not isinstance(credential_ids, list) or len(credential_ids) > 100 or any(not isinstance(value, str) or not value for value in credential_ids):
+        return {"result": False, "message": "invalid"}
+    counts = {
+        credential_id: CollectModels.objects.filter(
+            credential__contains=[{"credential_source": "vault", "vault_credential_id": credential_id}]
+        ).count()
+        for credential_id in dict.fromkeys(credential_ids)
+    }
+    return {"result": True, "data": {"counts": counts}}
+
+
 def _accept_legacy_rpc_kwargs(func):
     """迁移期同时接收 params envelope 与旧版顶层 RPC kwargs。"""
 

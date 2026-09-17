@@ -171,6 +171,8 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
         >
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="ipmi"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
               editMode={Boolean(editId)}

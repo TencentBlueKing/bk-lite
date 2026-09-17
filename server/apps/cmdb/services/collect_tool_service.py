@@ -4,13 +4,12 @@
 import re
 import uuid
 
-from django.conf import settings
 from django.core.cache import cache
 from rest_framework.exceptions import ValidationError
 
 from apps.cmdb.models.collect_model import CollectModels
-from apps.rpc.stargazer import Stargazer
 from apps.core.utils.team_utils import get_current_team
+from apps.rpc.stargazer import Stargazer
 
 MASKED_PASSWORD = "••••••"
 
@@ -190,14 +189,35 @@ class CollectToolService:
             raise ValidationError(f"解析接入点失败: {e}")
 
     @staticmethod
-    def inject_credentials(payload: dict, instance: CollectModels) -> dict:
+    def inject_credentials(payload: dict, instance: CollectModels, actor_context=None) -> dict:
         """
         若 payload 中密码字段为 MASKED_PASSWORD 且 task_id 有效：
         从 CollectModels(id=task_id).decrypt_credentials 取对应字段明文并替换。
         """
-        decrypted = instance.decrypt_credentials or {}
         credential = payload.get("credential", {})
         protocol = payload.get("protocol")
+
+        if credential.get("credential_source") == "vault":
+            from types import SimpleNamespace
+
+            from apps.cmdb.services.collect_vault_resolver import resolve_task_credential_pool
+
+            if not actor_context:
+                raise ValidationError("已有凭据需要当前操作者上下文")
+            candidate = dict(credential)
+            candidate["vault_actor_context"] = actor_context
+            debug_task = SimpleNamespace(
+                model_id="network" if protocol == "snmp" else "physcial_server",
+                driver_type="protocol",
+                params={"collection_protocol": protocol},
+                decrypt_credentials=[candidate],
+            )
+            payload["credential"] = resolve_task_credential_pool(debug_task)[0]
+            return payload
+
+        decrypted = instance.decrypt_credentials or {}
+        if isinstance(decrypted, list):
+            decrypted = decrypted[0] if decrypted else {}
 
         if protocol == "snmp":
             password_fields = SNMP_PASSWORD_FIELDS
@@ -306,6 +326,19 @@ class CollectToolService:
     @staticmethod
     def run_debug_task(debug_id: str, payload: dict, service_name: str, timeout: int) -> dict:
         CollectToolService.save_debug_state(debug_id, "running")
+        actor_context = payload.pop("vault_actor_context", None)
+        if payload.get("credential", {}).get("credential_source") == "vault":
+            try:
+                payload = CollectToolService.inject_credentials(payload, None, actor_context=actor_context)
+            except Exception:
+                result = CollectToolService.build_error_result(
+                    debug_id=debug_id,
+                    payload=payload,
+                    stage="param",
+                    summary="无法使用已有凭据，请确认凭据仍可访问且认证字段完整",
+                )
+                CollectToolService.save_debug_state(debug_id, "error", result)
+                return result
         result = CollectToolService.execute_debug(
             payload=payload,
             service_name=service_name,

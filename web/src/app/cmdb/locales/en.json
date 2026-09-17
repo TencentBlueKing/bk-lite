@@ -600,6 +600,8 @@
         "noOptions": "No options"
     },
     "Collection": {
+    "namespace": "Namespace",
+    "bucket": "Bucket",
         "cycleDeprecated": "The functions of scheduled execution and one-time execution have been taken offline. Please adjust the configuration to periodic execution.",
         "fullTitle": "Fully Collection",
         "fullMessage": "You can automatically collect configuration information and associated information of different objects by creating collection tasks.",
@@ -655,7 +657,12 @@
         "ipRangeOrderInvalid": "Start IP must not be greater than End IP",
         "ipRangeTooLarge": "IP range must not exceed a /21 network (2048 addresses max)",
         "ipRangeCycleHint": "This IP range covers many addresses and may take longer to finish. Please evaluate whether a longer collection interval is needed.",
-        "hostCredentialOptionalTip": "Host credentials (SSH / WMI) are optional. Leave them empty to collect via Agent. Username and password can both be blank.",
+        "hostCredentialOptionalTip": "JOB collection can omit login credentials only when the target host has an available Agent. Otherwise, provide a remote login username and password. Select a credential when using Existing credentials.",
+        "legacyNetworkCredentialTip": "This task retains its existing platform account credential.",
+        "networkSshPasswordTip": "Only SSH password credentials are supported for SSH or Telnet login. Enter the privilege password below.",
+        "legacyJobCredentialTip": "This task still uses its existing username/password credential.",
+        "switchToSshCredential": "Switch to SSH credential",
+        "deviceJobCredentialTip": "This plugin runs collection commands on the device over SSH. Enter a device username and password or select an existing credential. Set the port in this task.",
         "chooseIp": "Choose IP",
         "chooseAsset": "Choose Asset",
         "chooseHost": "Choose Host",
@@ -991,6 +998,8 @@
         "creator": "Creator",
         "credentialPoolTip": "Configure up to 3 credentials. The system tries them in order and reuses the first match.",
         "credentialPool": {
+            "useManual": "Enter manually",
+            "useExisting": "Use existing credential",
             "configured": "configured",
             "keepOne": "Keep at least one credential",
             "remove": "Remove credential",
@@ -1025,6 +1034,11 @@
             "invalidPort": "Enter a valid port from 1 to 65535"
         },
         "platformApiTask": {
+            "tenantId": "Tenant ID",
+            "userDomainName": "User domain",
+            "projectId": "Project ID",
+            "clientId": "Application ID",
+            "clientSecret": "Client secret",
             "tlsWarning": "Disabling certificate verification increases man-in-the-middle risk. Use it only temporarily for self-signed certificates on a trusted network."
         },
         "RedfishTask": {
@@ -1122,8 +1136,8 @@
                 "enablePassword": "Enable password"
             },
             "fields": {
-                "sshAccount": "Optional. Operating-system username on the target host. Leave empty to collect via Agent; when filled, it must be allowed to run read-only collection commands.",
-                "sshPassword": "Optional. Login password for the operating-system account above; may be left blank.",
+                "sshAccount": "Login username for the target device or host, with permission to run collection commands. See the instructions for whether this execution mode permits an empty value.",
+                "sshPassword": "Password for the login account above. Required for remote login collection.",
                 "transportProtocol": "Choose SSH (default, TCP/22) or Telnet (TCP/23). Telnet sends credentials in cleartext and is insecure; use it only when the device exposes Telnet only.",
                 "sshPort": "CLI service port on the target device. SSH defaults to 22 and Telnet defaults to 23. Change it for a non-standard port.",
                 "databaseAccount": "A database username that can sign in and read configuration or metadata.",
@@ -1134,9 +1148,9 @@
                 "snmpCommunity": "Used only by V2/V2C. Enter the read-only community configured on the device.",
                 "snmpUsername": "Used only by V3. Enter the SNMP V3 security username configured on the device.",
                 "snmpSecurityLevel": "One of noAuthNoPriv, authNoPriv, or authPriv. It must match the device user configuration.",
-                "snmpAuthAlgorithm": "Used by authNoPriv/authPriv. It must match the authentication algorithm configured for the device user.",
+                "snmpAuthAlgorithm": "Authentication algorithm",
                 "snmpAuthPassword": "Used by authNoPriv/authPriv. Enter the authentication password for the SNMP V3 user.",
-                "snmpPrivacyAlgorithm": "Used only by authPriv. It must match the privacy algorithm configured for the device user.",
+                "snmpPrivacyAlgorithm": "Privacy algorithm",
                 "snmpPrivacyKey": "Used only by authPriv. Enter the privacy key for the SNMP V3 user.",
                 "snmpPort": "The UDP port listened to by the device SNMP agent.",
                 "influxProtocol": "The protocol used by the InfluxDB HTTP API. HTTPS is recommended for production.",
@@ -1194,6 +1208,11 @@
                 "aws": "AWS SDK / API",
                 "genericCloud": "Cloud SDK / API",
                 "httpsApi": "HTTPS API",
+                "sapHana": "SAP HANA SQL",
+                "iris": "IRIS SuperServer",
+                "couchbase": "Couchbase",
+                "tongrds": "TongRDS",
+                "httpApi": "HTTP / HTTPS API",
                 "winrm": "WinRM (HTTPS / HTTP)",
                 "macosSsh": "SSH",
                 "winsphereApi": "WinSphere HTTPS API",
@@ -1223,7 +1242,8 @@
                 "networkDeviceAccount": "Network-device CLI account"
             },
             "instruction": {
-                "ssh": "Credentials are optional; leave them empty to collect via Agent. When filled, use an account that can sign in over SSH (Linux) or WMI (Windows) and run read-only collection commands.",
+                "ssh": "JOB collection can omit login credentials only when the target host has an available Agent. Otherwise, provide a remote login account. Leaving credentials blank does not install or connect an Agent. Select a credential when using Existing credentials.",
+                "deviceSsh": "Connect to the device over SSH and run collection commands. Enter the device username and password or select an existing credential. Set the port in the task.",
                 "database": "Use a database account that can connect to the target instance and read configuration or metadata.",
                 "snmp": "For V2/V2C, enter the community string. For V3 authNoPriv, enter the username, authentication password, and hash algorithm. For authPriv, also enter the privacy algorithm and key.",
                 "influxdb": "Without a token, only basic identification is collected. Providing one enables full runtime configuration collection. An Operator Token has instance-wide administrative privileges; use it with care.",
@@ -1234,6 +1254,7 @@
                 "genericCloud": "Enter the provider API credentials and prefer a read-only or least-privilege policy.",
                 "fusionInsight": "Enter a username and password that can access the FusionInsight Manager REST API. Authentication uses HTTP Basic.",
                 "oceanStor": "Enter a username and password that can sign in to the DeviceManager REST API. Prefer a read-only or least-privilege account.",
+                "httpApi": "Use the platform username and password. Set the API scheme and port in the collection task.",
                 "platformApi": "Enter a username and password that can access the target platform management HTTPS API. Prefer a read-only account and enable certificate verification.",
                 "winrm": "Enter an account that can connect to the target Windows host over WinRM and read system information. Prefer HTTPS with certificate validation enabled.",
                 "macosSsh": "Enter an account that can connect to the target macOS host over SSH and run read-only collection commands. Password and PEM private-key authentication are supported.",

@@ -159,10 +159,7 @@ def _types_locked_by_key(*keys: str) -> dict[str, CredentialType]:
     wanted = sorted({key for key in keys if key})
     if not wanted:
         return {}
-    return {
-        row.key: row
-        for row in CredentialType.objects.select_for_update().filter(key__in=wanted)
-    }
+    return {row.key: row for row in CredentialType.objects.select_for_update().filter(key__in=wanted)}
 
 
 def _builtin_seed_key(preferred_key: str) -> str | None:
@@ -421,11 +418,7 @@ def update_credential(credential_id, payload=None, actor=None, **values):
         schema_ids = type_field_ids(credential.type.fields)
         # Keys dropped from the type schema (e.g. SSH port) are discarded on save.
         # Call sites must store connection params on the task, not the credential.
-        old_fields = {
-            key: value
-            for key, value in deepcopy(credential.fields or {}).items()
-            if key in schema_ids
-        }
+        old_fields = {key: value for key, value in deepcopy(credential.fields or {}).items() if key in schema_ids}
         incoming = data.get("fields")
         merged = deepcopy(old_fields)
         if incoming is not None:
@@ -443,11 +436,17 @@ def update_credential(credential_id, payload=None, actor=None, **values):
         for field in credential.type.fields:
             if field.get("kind") == "secret" and field["id"] not in incoming_values:
                 persisted.pop(field["id"], None)
-        credential.fields = _drop_passphrase_after_key_rotation(
+        effective_fields = _drop_passphrase_after_key_rotation(
             credential.type.fields,
             persisted,
             encrypt_instance_fields(credential.type.fields, persisted, old_fields),
         )
+        try:
+            # 留空保留旧秘密后，再按新认证模式检查必填；只验证存在性，无需解密存量值。
+            validate_instance_fields(type_fields=credential.type.fields, values=effective_fields, require_secrets=True)
+        except SchemaError as exc:
+            raise CredentialServiceError("invalid", str(exc)) from exc
+        credential.fields = effective_fields
         if "name" in data:
             if not isinstance(data["name"], str) or not data["name"]:
                 raise CredentialServiceError("invalid")

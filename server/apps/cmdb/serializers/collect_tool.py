@@ -79,6 +79,11 @@ class CollectToolExecuteSerializer(serializers.Serializer):
 
         # Validate credential
         credential = data.get("credential", {})
+        if credential.get("credential_source") == "vault":
+            credential_id = credential.get("vault_credential_id")
+            if not isinstance(credential_id, str) or not credential_id.strip():
+                raise serializers.ValidationError({"credential": "请选择已有凭据"})
+            return data
         if protocol == "snmp":
             cred_serializer = SnmpCredentialSerializer(data=credential)
             cred_serializer.is_valid(raise_exception=True)

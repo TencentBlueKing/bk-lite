@@ -350,6 +350,39 @@ class CollectModelService(object):
         def without_masked_secrets(item):
             return {key: value for key, value in item.items() if not (key in encrypted_fields and value == API_SECRET_MASK)}
 
+        def merge_credential(old_item, new_item):
+            source = new_item.get("credential_source") or "inline"
+            old_source = old_item.get("credential_source") or "inline"
+            if source == "vault":
+                # 引用模式只接收本次表单的动态字段和仓库 ID，不继承旧手填认证字段。
+                managed_fields = CollectCredentialPoolService.vault_managed_fields(new_item)
+                merged = {key: value for key, value in without_masked_secrets(new_item).items() if key not in managed_fields}
+                if getattr(instance, "model_id", "") == "network_config_file":
+                    # 特权密码属于当前任务候选，换选登录凭据时仍按掩码保留。
+                    if (
+                        new_item.get("vault_type_key") in {"platform_api", "ssh"}
+                        and new_item.get("enable_password") == API_SECRET_MASK
+                        and old_source == "vault"
+                    ):
+                        merged["enable_password"] = old_item.get("enable_password", "")
+                else:
+                    merged.pop("enable_password", None)
+                return merged
+            if old_source == "vault":
+                # 从仓库切回一次性认证必须重填认证值；旧引用绝不参与新候选合并。
+                secret_fields = {"password", "private_key", "accessSecret", "access_secret", "secret_key", "token", "community", "authkey"}
+                if not any(new_item.get(field) not in (None, "", API_SECRET_MASK) for field in secret_fields) and not (
+                    str(new_item.get("version") or "").lower() == "v3"
+                    and str(new_item.get("level") or "").lower() == "noauthnopriv"
+                    and new_item.get("username")
+                ):
+                    raise BaseAppException("切换为一次性认证后请重新填写认证字段！")
+                return without_masked_secrets(new_item)
+            merged = dict(old_item)
+            merged.pop("vault_credential_id", None)
+            merged.update(without_masked_secrets(new_item))
+            return merged
+
         # 云任务编辑页提交的是单个凭据对象，库里已是凭据池时按单项池合并，避免冲掉密钥。
         if isinstance(credential, dict) and isinstance(old_credential, list):
             credential = [credential]
@@ -371,7 +404,7 @@ class CollectModelService(object):
                     merged = dict(old_pool_map.get(credential_id) or primary_old)
                 else:
                     merged = dict(old_pool_map.get(credential_id) or {})
-                merged.update(without_masked_secrets(item))
+                merged = merge_credential(merged, item)
                 merged_pool.append(merged)
             data["credential"] = merged_pool
             return
@@ -380,8 +413,7 @@ class CollectModelService(object):
             old_credential = {}
         if not isinstance(credential, dict):
             raise BaseAppException("采集凭据格式错误！")
-        old_credential.update(without_masked_secrets(credential))
-        data["credential"] = old_credential
+        data["credential"] = merge_credential(old_credential, credential)
 
     @classmethod
     def schedule_first_collection_if_needed(
@@ -482,7 +514,7 @@ class CollectModelService(object):
             reconcile_network_collection_configs(instance, delete=True)
             logger.debug("[CollectTask] Network 双通道删除完成 task_id=%s", instance.id)
             return
-        node = NodeParamsFactory.get_node_params(instance)
+        node = NodeParamsFactory.get_node_params(instance, resolve_credentials=False)
         node_params = node.main(operator="delete")
         logger.debug("[CollectTask] 删除节点参数 task_id=%s", instance.id)
         node_mgmt = NodeMgmt()
@@ -495,11 +527,30 @@ class CollectModelService(object):
             return payload
         return request.data
 
+    @staticmethod
+    def _bind_vault_credentials(request, pool, old_pool=(), *, force_rebind=False):
+        """绑定操作者范围由服务端写入；浏览器提交的身份字段不可信。"""
+        old_by_id = {item.get("credential_id"): item for item in old_pool if isinstance(item, dict)}
+        for item in pool:
+            if item.get("credential_source") != "vault":
+                item.pop("vault_actor_context", None)
+                continue
+            old = old_by_id.get(item.get("credential_id")) or {}
+            if not force_rebind and old.get("credential_source") == "vault" and old.get("vault_credential_id") == item.get("vault_credential_id"):
+                item["vault_actor_context"] = old.get("vault_actor_context") or {}
+            else:
+                item["vault_actor_context"] = {
+                    "username": request.user.username,
+                    "domain": request.user.domain,
+                    "current_team": get_current_team_from_request(request),
+                }
+
     @classmethod
     def create(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
         create_data, is_interval, scan_cycle = cls.format_params(cls._request_payload(request, payload))
         if create_data.get("credential"):
             create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
+            cls._bind_vault_credentials(request, create_data["credential"])
             create_data["credential"] = CollectCredentialPoolService.assign_versions([], create_data["credential"])
             CollectCredentialPoolService.validate_pool_shape(create_data["credential"], max_size=credential_pool_max_size)
         cls.enrich_host_cloud_snapshot_payload(create_data)
@@ -633,6 +684,12 @@ class CollectModelService(object):
         if update_data.get("credential"):
             old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
             new_pool = CollectCredentialPoolService.normalize_pool(update_data["credential"])
+            cls._bind_vault_credentials(
+                request,
+                new_pool,
+                old_pool,
+                force_rebind=set(update_data.get("team") or []) != set(instance.team or []),
+            )
             new_pool = CollectCredentialPoolService.assign_versions(old_pool, new_pool)
             CollectCredentialPoolService.validate_pool_shape(new_pool, max_size=credential_pool_max_size)
             update_data["credential"] = new_pool

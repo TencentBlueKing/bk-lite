@@ -5,7 +5,7 @@ from copy import deepcopy
 BUILTIN_TYPES = {
     "ssh": {
         "name": "SSH",
-        "categories": ["host"],
+        "categories": ["host", "network", "database", "middleware"],
         "fields": [
             {"id": "auth_method", "name": "认证方式", "kind": "enum", "values": ["password", "key"], "required": True},
             {"id": "username", "name": "用户名", "kind": "string", "required": True},
@@ -57,7 +57,7 @@ BUILTIN_TYPES = {
     },
     "snmp": {
         "name": "SNMP",
-        "categories": ["network"],
+        "categories": ["network", "storage"],
         "fields": [
             {"id": "version", "name": "SNMP 版本", "kind": "enum", "values": ["v2", "v2c", "v3"], "required": True},
             {
@@ -122,15 +122,15 @@ BUILTIN_TYPES = {
     },
     "sql": {
         "name": "用户名密码",
-        "categories": ["database", "middleware"],
+        "categories": ["host", "database", "middleware", "network"],
         "fields": [
             {"id": "username", "name": "用户名", "kind": "string", "required": True},
             {"id": "password", "name": "密码", "kind": "secret", "required": True},
         ],
     },
     "cloud": {
-        "name": "云平台 AK/SK",
-        "categories": ["cloud"],
+        "name": "AK/SK",
+        "categories": ["cloud", "storage"],
         "fields": [
             {"id": "access_key", "name": "Access Key (AK)", "kind": "string", "required": True},
             {"id": "secret_key", "name": "Secret Key (SK)", "kind": "secret", "required": True},
@@ -154,17 +154,10 @@ BUILTIN_TYPES = {
     },
     "platform_api": {
         "name": "HTTPS 平台账户",
-        "categories": ["cloud", "storage"],
+        "categories": ["cloud", "storage", "network"],
         "fields": [
             {"id": "username", "name": "用户名", "kind": "string", "required": True},
             {"id": "password", "name": "密码", "kind": "secret", "required": True},
-            {"id": "port", "name": "端口", "kind": "number"},
-            {
-                "id": "verify_tls",
-                "name": "校验 TLS 证书",
-                "kind": "enum",
-                "values": ["true", "false"],
-            },
         ],
     },
     "network_cli": {

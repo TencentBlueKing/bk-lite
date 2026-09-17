@@ -88,6 +88,7 @@ const CREDENTIAL_TASK_COMPONENTS: Partial<Record<
   influxdb: InfluxdbTask,
   cloud: CloudTask,
   platform_api: PlatformApiTask,
+  redfish: RedfishTask,
   winrm: PCTask,
   macos_ssh: PCTask,
 };

@@ -21,8 +21,7 @@ class SSHNodeParamsMixin:
             # 脚本执行上限由 agent 侧硬编码（默认 60s）；表单 timeout 仅作单对象采集预算。
         }
         if self.credential:
-            _password = self._password_env_name()
-            credential_data["password"] = "${" + _password + "}"
+            credential_data.update(self._auth_payload(self.credential))
             credential_data["port"] = self.credential.get("port", 22)
             credential_data["username"] = self.credential.get("username", self.credential.get("user", ""))
             if self.credential.get("credential_id"):
@@ -35,9 +34,9 @@ class SSHNodeParamsMixin:
         env = {}
         if self.has_multiple_credentials:
             for index, credential in enumerate(self.credential_pool or []):
-                env[self._password_env_name(index)] = credential.get("password", "")
+                env.update(self._auth_env(credential, index))
         else:
-            env[self._password_env_name()] = self.credential.get("password", "")
+            env.update(self._auth_env(self.credential))
         return env
 
     def build_credentials_pool(self):
@@ -47,16 +46,40 @@ class SSHNodeParamsMixin:
         for index, credential in enumerate(self.credential_pool or []):
             item = {
                 "node_id": self.instance.access_point[0]["id"],
-                "password": "${" + self._password_env_name(index) + "}",
                 "port": credential.get("port", 22),
                 "username": credential.get("username", credential.get("user", "")),
             }
+            item.update(self._auth_payload(credential, index))
             if credential.get("credential_id"):
                 item["credential_id"] = credential.get("credential_id")
             pool.append(item)
         return pool
 
+    def _auth_payload(self, credential, index=None):
+        if credential.get("private_key"):
+            payload = {"private_key": "${" + self._private_key_env_name(index) + "}"}
+            if credential.get("passphrase"):
+                payload["passphrase"] = "${" + self._passphrase_env_name(index) + "}"
+            return payload
+        return {"password": "${" + self._password_env_name(index) + "}"}
+
+    def _auth_env(self, credential, index=None):
+        if credential.get("private_key"):
+            env = {self._private_key_env_name(index): credential["private_key"]}
+            if credential.get("passphrase"):
+                env[self._passphrase_env_name(index)] = credential["passphrase"]
+            return env
+        return {self._password_env_name(index): credential.get("password", "")}
+
     def _password_env_name(self, index=None):
         if index is None:
             return "PASSWORD_password_{end_start}".format(end_start=self._instance_id)
         return "PASSWORD_password_{end_start}_{index}".format(end_start=self._instance_id, index=index)
+
+    def _private_key_env_name(self, index=None):
+        suffix = "" if index is None else f"_{index}"
+        return f"PRIVATEKEY_private_key_{self._instance_id}{suffix}"
+
+    def _passphrase_env_name(self, index=None):
+        suffix = "" if index is None else f"_{index}"
+        return f"PASSPHRASE_passphrase_{self._instance_id}{suffix}"

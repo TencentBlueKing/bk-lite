@@ -53,6 +53,9 @@ export interface CollectTaskMessage {
 
 export interface CredentialPoolItem {
   credential_id?: string;
+  credential_source?: 'inline' | 'vault';
+  vault_credential_id?: string;
+  vault_type_key?: string;
   _client_id?: string;
   username?: string;
   user?: string;
@@ -129,6 +132,9 @@ export interface TreeNode {
   credential_tip_key?: string;
   encrypted_fields?: string[];
   credential_schema?: CredentialSchema;
+  credential_category?: string | null;
+  credential_binding?: string | null;
+  credential_type_keys?: string[];
   tag?: string[];
   desc?: string;
   children?: TreeNode[];
@@ -151,6 +157,9 @@ export interface ModelItem {
   credential_tip_key?: string;
   encrypted_fields?: string[];
   credential_schema?: CredentialSchema;
+  credential_category?: string | null;
+  credential_binding?: string | null;
+  credential_type_keys?: string[];
   tag?: string[];
   desc?: string;
   tabItems?: TreeNode[];
