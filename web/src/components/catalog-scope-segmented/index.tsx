@@ -63,4 +63,3 @@ const CatalogScopeSegmented = ({
 
 export default CatalogScopeSegmented;
 export { CatalogScopeSegmented };
-export type { CatalogScopeSegmentedProps };
