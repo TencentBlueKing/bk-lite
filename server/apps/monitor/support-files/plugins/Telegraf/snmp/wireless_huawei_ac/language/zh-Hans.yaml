@@ -1,6 +1,6 @@
 Wireless Huawei AC SNMP:
   name: 华为 WLAN AC（Telegraf）
-  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、AP/终端数量、射频占用和上联流量等主要指标。
+  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、AP 环境/CPU/NP 温度、AP/终端数量、射频占用和上联流量等主要指标。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -111,6 +111,15 @@ monitor_object_metric:
     wlan_ap_temperature:
       name: AP 温度
       desc: 各接入点温度（hwWlanApTemperature），单位为摄氏度。
+    wlan_ap_environment_temperature:
+      name: AP 环境温度
+      desc: 各接入点环境温度（hwWlanApEnvironmentTemperature），单位为摄氏度。255 表示未上报，采集与查询会丢弃该值。
+    wlan_ap_cpu_temperature:
+      name: AP CPU 温度
+      desc: 各接入点 CPU 温度（hwWlanApCpuTemperature），单位为摄氏度。255 表示未上报，采集与查询会丢弃该值。
+    wlan_ap_np_temperature:
+      name: AP NP 温度
+      desc: 各接入点网络处理器温度（hwWlanApNpTemperature），单位为摄氏度。255 表示未上报，采集与查询会丢弃该值。
     wlan_ap_online_user_num:
       name: AP 在线用户数
       desc: 各接入点当前在线用户数量（hwWlanApOnlineUserNum）。
