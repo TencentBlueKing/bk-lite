@@ -3,6 +3,7 @@ Switch Huawei SNMP:
   desc: SNMP monitoring for Huawei campus, chassis, and CloudEngine switches. It
     reports per-entity CPU, memory, temperature, and fan health (state, presence,
     and speed as a percent of full speed); chassis used/total power in watts;
+    chassis and board energy in milliwatts (divide by 1000 for watts);
     power-supply presence and operating state; optical-module DDM (receive/transmit
     power, temperature, voltage, and laser bias); stack/CSS member and port
     health; and, when M-LAG is enabled, M-LAG port state and member heartbeat.
@@ -209,6 +210,29 @@ monitor_object_metric:
       desc: Chassis-level total power capacity (hwDevicePowerInfoTotalPower), in watts.
         Used as the denominator when judging how close the chassis is to its power
         budget.
+    device_energy_current_power_mw:
+      name: Chassis Current Energy (mW)
+      desc: Instantaneous chassis energy (hwCurrentPower), in milliwatts. Divide by
+        1000 to display watts. Distinct from device_power_used, which is chassis used
+        power in watts from hwDevicePowerInfoUsedPower.
+    device_energy_average_power_mw:
+      name: Chassis Average Energy (mW)
+      desc: Period-average chassis energy (hwAveragePower), in milliwatts. Divide by
+        1000 to display watts. Distinct from device_power_used (watts).
+    device_energy_rated_power_mw:
+      name: Chassis Rated Energy (mW)
+      desc: Rated chassis energy (hwRatedPower), in milliwatts. Divide by 1000 to
+        display watts. Distinct from device_power_total, which is chassis total power
+        in watts from hwDevicePowerInfoTotalPower.
+    device_board_current_power_mw:
+      name: Board Current Energy (mW)
+      desc: Instantaneous energy of each board (hwBoardCurrentPower), in milliwatts.
+        Divide by 1000 to display watts. Dimension hwBoardName is the board name.
+        Distinct from chassis watts metrics device_power_used / device_power_total.
+    device_board_rated_power_mw:
+      name: Board Rated Energy (mW)
+      desc: Rated energy of each board (hwBoardRatedPower), in milliwatts. Divide by
+        1000 to display watts. Dimension hwBoardName is the board name.
     device_stack_member_role:
       name: Stack Member Role
       desc: Role of each iStack or CloudEngine stack member (hwMemberStackRole).

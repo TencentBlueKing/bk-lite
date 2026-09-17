@@ -1,6 +1,6 @@
 # Huawei Switch SNMP Guide
 
-This plugin monitors Huawei campus, chassis, and CloudEngine switch health: per-entity CPU, memory, temperature, and fans (state, presence, and speed as a percent of full speed); chassis used/total power; power supplies; optical-module DDM; stack/CSS; and, when enabled, M-LAG member heartbeat and member-port state. Access stays on the existing Switch object; S12700H and S16700 do not need a new monitor object.
+This plugin monitors Huawei campus, chassis, and CloudEngine switch health: per-entity CPU, memory, temperature, and fans (state, presence, and speed as a percent of full speed); chassis used/total power in watts; chassis and board energy in milliwatts; power supplies; optical-module DDM; stack/CSS; and, when enabled, M-LAG member heartbeat and member-port state. Access stays on the existing Switch object; S12700H and S16700 do not need a new monitor object.
 
 ## Supported models
 
@@ -17,7 +17,7 @@ S12700H and S16700 are V600-generation chassis and still use this plugin and Swi
 - The selected node can reach the device SNMP port (default `161/UDP`).
 - SNMPv2c or SNMPv3 is enabled with read-only access.
 - SNMPv3 with auth and privacy is recommended. For v2c, enter the community only in the dedicated form field.
-- The read-only view should authorize standard IF-MIB plus `1.3.6.1.4.1.2011.5.25.31` (entity health, fan speed/presence, chassis power, PSU, optical DDM), `1.3.6.1.4.1.2011.5.25.183` (stack object `183.1` and CSS object `183.3`), and `1.3.6.1.4.1.2011.5.25.178.8` (M-LAG member ports and heartbeat).
+- The read-only view should authorize standard IF-MIB plus `1.3.6.1.4.1.2011.5.25.31` (entity health, fan speed/presence, chassis power, PSU, optical DDM), `1.3.6.1.4.1.2011.6.157` (chassis and board energy in milliwatts), `1.3.6.1.4.1.2011.5.25.183` (stack object `183.1` and CSS object `183.3`), and `1.3.6.1.4.1.2011.5.25.178.8` (M-LAG member ports and heartbeat).
 
 ## Setup steps
 
@@ -62,6 +62,7 @@ Wait for at least one collection interval, then confirm the instance appears and
 - `device_cpu_usage` and `device_memory_usage` have per-entity readings.
 - `device_fan_state` reports each cooling fan (`hwEntityFanState`: normal/abnormal). `device_fan_speed` is a percent of full speed on present fans; empty slots show on `device_fan_present`.
 - `device_power_used` / `device_power_total` report chassis used and total power in watts (`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`).
+- `device_energy_current_power_mw` / `device_energy_average_power_mw` / `device_energy_rated_power_mw` report chassis energy in milliwatts (`hwCurrentPower` / `hwAveragePower` / `hwRatedPower`; divide by 1000 for watts). Board series use `device_board_current_power_mw` / `device_board_rated_power_mw` with dimension `hwBoardName`.
 - `device_psu_state` reports each installed power supply (`hwEntityPwrState`: supply/notSupply/sleep/unknown). Empty slots show on `device_psu_present`.
 - Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` (µW converted to dBm) plus temperature (°C), voltage (mV→V), and bias (µA) when modules are present. Invalid sentinel `2147483647` is dropped.
 - When iStack or CE stacking is enabled, `device_stack_member_role` (`hwMemberStackRole`) and `device_stack_port_state` (`hwStackPortStatus` up=1/down=2) are populated.
@@ -81,6 +82,10 @@ Confirm the view includes `hwEntityPwrState` / `hwEntityPwrPresent` and `hwOptic
 ### No stack, CSS, or M-LAG metrics
 
 Stack/CSS/M-LAG is disabled, the device is standalone, or the view does not authorize the matching objects. iStack/CE uses `183.1.20` / `183.1.21`; CSS uses `183.3.2` / `183.3.4`; M-LAG uses `178.8.1.4` / `178.8.1.5`. Objects under `183.1.4`/`183.1.5`/`183.1.6`/`183.1.22` and M-LAG consistency checks are scalars or traps, not member/port/link tables. This does not mean whole-device collection failed.
+
+### No milliwatt energy metrics
+
+Confirm the view includes `1.3.6.1.4.1.2011.6.157`. These series are milliwatts and coexist with `device_power_used` / `device_power_total` (watts). Missing energy tables do not mean watts chassis power failed.
 
 ### High-speed traffic is zero or wrong
 
