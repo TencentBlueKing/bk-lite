@@ -1,7 +1,8 @@
 Wireless EnGenius SNMP:
   name: EnGenius (Telegraf)
   desc: SNMP monitoring template for EnGenius wireless device. It reports system uptime,
-    per-port inbound traffic rate, and per-port outbound traffic rate
+    CPU utilization, memory utilization, per-port inbound traffic rate, and per-port
+    outbound traffic rate (IANA PEN 14125)
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
