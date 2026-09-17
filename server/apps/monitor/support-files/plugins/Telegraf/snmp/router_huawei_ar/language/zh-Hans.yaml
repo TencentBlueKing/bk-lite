@@ -1,6 +1,6 @@
 Router Huawei AR SNMP:
   name: Huawei AR（Telegraf）
-  desc: 面向 Huawei AR 路由器的 SNMP 监控模板（sysObjectID 家族 1.3.6.1.4.1.2011.2.224）。可采集运行时长、CPU/内存、实体电压（毫伏换算为伏特）、单板功耗（瓦特）、风扇转速（满速百分比）与光模块 DDM；接口流量走内置 IF-MIB，不扩展 IF。覆盖 AR8140-12G10XG、AR720/AR730、AR6710-L50T2X4、AR5710-H8T2TS1、AR8700-8、AR5510/AR6510、AR6500-10 等机型。
+  desc: 面向 Huawei AR 路由器的 SNMP 监控模板（sysObjectID 家族 1.3.6.1.4.1.2011.2.224）。可采集运行时长、CPU/内存、实体电压（毫伏换算为伏特）、单板功耗（瓦特）、风扇转速（满速百分比）、光模块 DDM、整机与板卡能耗（毫瓦，展示可 ÷1000 为瓦特）；接口流量走内置 IF-MIB，不扩展 IF。覆盖 AR8140-12G10XG、AR720/AR730、AR6710-L50T2X4、AR5710-H8T2TS1、AR8700-8、AR5510/AR6510、AR6500-10 等机型。
 monitor_object:
   Router: 路由器
 monitor_object_type:
@@ -40,6 +40,21 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
+    device_energy_current_power_mw:
+      name: 整机瞬时能耗（毫瓦）
+      desc: 该指标报告整机瞬时能耗（hwCurrentPower），单位毫瓦。展示可 ÷1000 为瓦特。
+    device_energy_average_power_mw:
+      name: 整机平均能耗（毫瓦）
+      desc: 该指标报告整机周期平均能耗（hwAveragePower），单位毫瓦。展示可 ÷1000 为瓦特。
+    device_energy_rated_power_mw:
+      name: 整机额定能耗（毫瓦）
+      desc: 该指标报告整机额定能耗（hwRatedPower），单位毫瓦。展示可 ÷1000 为瓦特。
+    device_board_current_power_mw:
+      name: 板卡瞬时能耗（毫瓦）
+      desc: 该指标按板卡报告瞬时能耗（hwBoardCurrentPower），单位毫瓦。展示可 ÷1000 为瓦特。维度 hwBoardName 为板卡名称。空板卡名与无效哨兵 -1 会被丢弃。与 device_entity_board_power（hwEntityBoardPower，瓦特）并存，勿混单位。
+    device_board_rated_power_mw:
+      name: 板卡额定能耗（毫瓦）
+      desc: 该指标按板卡报告额定能耗（hwBoardRatedPower），单位毫瓦。展示可 ÷1000 为瓦特。维度 hwBoardName 为板卡名称。空板卡名与无效哨兵 -1 会被丢弃。与 device_entity_board_power（hwEntityBoardPower，瓦特）并存，勿混单位。
     device_memory_total:
       name: 内存总量
       desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。
