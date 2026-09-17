@@ -1,6 +1,6 @@
 # 华为交换机 SNMP 接入指南
 
-本插件用于监控华为园区、框式与 CloudEngine 交换机的设备健康：实体 CPU/内存/温度/风扇、电源、光模块 DDM、堆叠/CSS，以及启用后的 M-LAG 成员心跳与成员口状态。接入后仍作为现有交换机对象，无需为 S12700H、S16700 等机型新建监控对象。
+本插件用于监控华为园区、框式与 CloudEngine 交换机的设备健康：实体 CPU/内存/温度/风扇（状态、在位、满速百分比转速）、整机已用/总功耗、电源、光模块 DDM、堆叠/CSS，以及启用后的 M-LAG 成员心跳与成员口状态。接入后仍作为现有交换机对象，无需为 S12700H、S16700 等机型新建监控对象。
 
 ## 支持机型
 
@@ -17,7 +17,7 @@ S12700H 与 S16700 为 V600 代框式机型，仍走本插件与交换机对象�
 - 选定节点能够访问目标设备的 SNMP 端口（默认 `161/UDP`）。
 - 设备已启用 SNMPv2c 或 SNMPv3，并授权只读访问。
 - 建议使用 SNMPv3（认证+加密）。若使用 v2c，团体名仅填写在页面专用字段中。
-- 只读视图应授权标准 IF-MIB，以及 `1.3.6.1.4.1.2011.5.25.31`（实体健康、电源、光模块 DDM）、`1.3.6.1.4.1.2011.5.25.183`（堆叠对象 `183.1` 与 CSS 对象 `183.3`）和 `1.3.6.1.4.1.2011.5.25.178.8`（M-LAG 成员口与心跳）。
+- 只读视图应授权标准 IF-MIB，以及 `1.3.6.1.4.1.2011.5.25.31`（实体健康、风扇转速/在位、整机功耗、电源、光模块 DDM）、`1.3.6.1.4.1.2011.5.25.183`（堆叠对象 `183.1` 与 CSS 对象 `183.3`）和 `1.3.6.1.4.1.2011.5.25.178.8`（M-LAG 成员口与心跳）。
 
 ## 接入步骤
 
@@ -60,6 +60,8 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 
 - `snmp_uptime` 持续增长。
 - `device_cpu_usage`、`device_memory_usage` 有实体维度读数。
+- `device_fan_state` 能看到各风扇状态（`hwEntityFanState`：正常/异常）。`device_fan_speed` 为已在位风扇的满速百分比；空槽位看 `device_fan_present`。
+- `device_power_used` / `device_power_total` 报告整机已用与总功耗（瓦特，`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`）。
 - `device_psu_state` 能看到已在位电源模块（`hwEntityPwrState`：供电/未供电/休眠/未知）。空槽位看 `device_psu_present`。
 - 有光模块时，`device_optical_rx_power` / `device_optical_tx_power`（µW 换算为 dBm）以及温度（°C）、电压（mV→V）、偏置电流（µA）有读数。无效哨兵 `2147483647` 会被丢弃。
 - 启用 iStack 或 CE 堆叠时，`device_stack_member_role`（`hwMemberStackRole`）和 `device_stack_port_state`（`hwStackPortStatus`，up=1/down=2）有数据。
