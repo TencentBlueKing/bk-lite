@@ -52,8 +52,13 @@ vi.mock('@/components/permission', () => ({
     <span className={className}>{children}</span>
   ),
 }));
+const userInfo = {
+  flatGroups: [{ id: 10, name: 'Default' }],
+  isSuperUser: false,
+  loading: false,
+};
 vi.mock('@/context/userInfo', () => ({
-  useUserInfoContext: () => ({ flatGroups: [{ id: 10, name: 'Default' }] }),
+  useUserInfoContext: () => userInfo,
 }));
 
 const application = {
@@ -81,6 +86,7 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }));
+  userInfo.isSuperUser = false;
   api.getApplications.mockResolvedValue([application]);
 });
 
@@ -149,5 +155,25 @@ describe('APM 应用管理', () => {
 
     await waitFor(() => expect(api.deleteApplication).toHaveBeenCalledWith('application-a'));
     await waitFor(() => expect(api.getApplications).toHaveBeenCalledTimes(2));
+  });
+
+  it('普通用户不展示未归属筛选', async () => {
+    renderWithApmIntl(<ApmApplicationsPage />);
+    await screen.findByText('演示应用');
+    expect(screen.queryByRole('radio', { name: '未归属' })).toBeNull();
+    expect(api.getApplications).not.toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({ unassigned: true }),
+    }));
+  });
+
+  it('超级用户打开未归属后只请求零组织应用', async () => {
+    userInfo.isSuperUser = true;
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmApplicationsPage />);
+    await screen.findByText('演示应用');
+
+    await user.click(screen.getByRole('radio', { name: '未归属' }).closest('label')!);
+
+    await waitFor(() => expect(api.getApplications).toHaveBeenCalledWith({ params: { unassigned: true } }));
   });
 });

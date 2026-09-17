@@ -14,10 +14,10 @@ import {
   Modal,
   Tooltip,
   Tag,
-  Dropdown,
-  Switch
+  Dropdown
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
@@ -50,7 +50,6 @@ import CollectorDetailDrawer from './collectorDetail';
 import EditNode from './editNode';
 import BatchEditOrganizations from './batchEditOrganizations';
 import { useCommon } from '@/app/node-manager/context/common';
-import { useUserInfoContext } from '@/context/userInfo';
 import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
@@ -72,7 +71,6 @@ const Node = () => {
   const statusMap = useTelegrafMap();
   const fieldConfigs = useFieldConfigs();
   const commonContext = useCommon();
-  const { isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const name = searchParams.get('name') || '';
   const notDeployed = searchParams.get('not_deployed');
@@ -623,25 +621,18 @@ const Node = () => {
               <div className="overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                   <div className="mr-[8px] flex min-w-0 items-center gap-3">
+                  <CatalogScopeSegmented
+                    unassignedOnly={unassignedOnly}
+                    onChange={(checked) => {
+                      setUnassignedOnly(checked);
+                      setSelectedRowKeys([]);
+                      setPagination((prev) => ({ ...prev, current: 1 }));
+                    }}
+                  />
                   <SearchCombination
                     fieldConfigs={fieldConfigs}
                     onChange={handleSearchChange}
                   />
-                  {isSuperUser && !userInfoLoading ? (
-                    <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
-                      <Switch
-                        size="small"
-                        checked={unassignedOnly}
-                        aria-label={t('common.unassigned')}
-                        onChange={(checked) => {
-                          setUnassignedOnly(checked);
-                          setSelectedRowKeys([]);
-                          setPagination((prev) => ({ ...prev, current: 1 }));
-                        }}
-                      />
-                      {t('common.unassigned')}
-                    </label>
-                  ) : null}
                   </div>
                   <div className="flex">
                     <PermissionWrapper

@@ -25,10 +25,10 @@ import {
   Segmented,
   Select,
   Space,
-  Switch,
   Tag,
   Typography,
 } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import FilterToolbar from '@/components/filter-toolbar';
 import Permission from '@/components/permission';
 import dayjs from 'dayjs';
@@ -105,7 +105,7 @@ export default function ApmServicesPage() {
     setServiceOrganizations,
     isLoading: authLoading,
   } = useApmApi();
-  const { flatGroups, isSuperUser, loading: userInfoLoading } = useUserInfoContext();
+  const { flatGroups } = useUserInfoContext();
   const [services, setServices] = useState<ApmService[]>([]);
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [slos, setSlos] = useState<ApmSlo[]>([]);
@@ -502,6 +502,13 @@ export default function ApmServicesPage() {
           onChange={setPerspective}
         />
       </div>
+      <CatalogScopeSegmented
+        unassignedOnly={unassignedOnly}
+        onChange={(checked) => {
+          setUnassignedOnly(checked);
+          setSelectedRowKeys([]);
+        }}
+      />
       <Input
         allowClear
         aria-label={t('apm.services.search', '按应用或服务名称搜索')}
@@ -511,20 +518,6 @@ export default function ApmServicesPage() {
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
       />
-      {isSuperUser && !userInfoLoading ? (
-        <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
-          <Switch
-            size="small"
-            checked={unassignedOnly}
-            aria-label={t('common.unassigned')}
-            onChange={(checked) => {
-              setUnassignedOnly(checked);
-              setSelectedRowKeys([]);
-            }}
-          />
-          {t('common.unassigned')}
-        </label>
-      ) : null}
       <Select
         allowClear
         aria-label={t('apm.services.filterEnvironment', '按环境筛选')}

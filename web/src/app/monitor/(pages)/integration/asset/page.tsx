@@ -7,10 +7,10 @@ import {
   Dropdown,
   Popconfirm,
   Space,
-  Switch,
   Tooltip,
   Modal
 } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -38,7 +38,6 @@ import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { DownOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
-import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
   showGroupName,
@@ -87,7 +86,6 @@ const Asset = () => {
     useIntegrationApi();
   const { getInstanceQueryParams } = useViewApi();
   const { t } = useTranslation();
-  const { isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
   const searchparams = useSearchParams();
@@ -802,6 +800,14 @@ const Asset = () => {
         <div className={assetStyle.table}>
           <div className={assetStyle.search}>
             <div className="flex min-w-0 items-center gap-3">
+            <CatalogScopeSegmented
+              unassignedOnly={unassignedOnly}
+              onChange={(checked) => {
+                setUnassignedOnly(checked);
+                setSelectedRowKeys([]);
+                setPagination((prev) => ({ ...prev, current: 1 }));
+              }}
+            />
             <Input
               allowClear
               className="w-full max-w-[320px] min-w-0"
@@ -811,21 +817,6 @@ const Asset = () => {
               onPressEnter={() => getAssetInsts(objectId)}
               onClear={clearText}
             ></Input>
-            {isSuperUser && !userInfoLoading ? (
-              <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
-                <Switch
-                  size="small"
-                  checked={unassignedOnly}
-                  aria-label={t('common.unassigned')}
-                  onChange={(checked) => {
-                    setUnassignedOnly(checked);
-                    setSelectedRowKeys([]);
-                    setPagination((prev) => ({ ...prev, current: 1 }));
-                  }}
-                />
-                {t('common.unassigned')}
-              </label>
-            ) : null}
             </div>
             <div className="flex shrink-0">
               <Button

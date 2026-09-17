@@ -7,9 +7,9 @@ import {
   Dropdown,
   Popconfirm,
   Space,
-  Switch,
   Modal
 } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
 import useLogApi from '@/app/log/api/integration';
 import { useTranslation } from '@/utils/i18n';
@@ -26,7 +26,6 @@ import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { DownOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/log/context/common';
-import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/log/hooks/integration/common/other';
 import { showGroupName } from '@/app/log/utils/common';
 import EditConfig from './updateConfig';
@@ -57,7 +56,6 @@ const Asset = () => {
     getLogExtractors
   } = useLogApi();
   const { t } = useTranslation();
-  const { isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const router = useRouter();
   const searchParams = useSearchParams();
   const commonContext = useCommon();
@@ -583,6 +581,14 @@ const Asset = () => {
       <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
         <div className="flex justify-between items-center mb-[10px]">
           <div className="flex items-center gap-3">
+          <CatalogScopeSegmented
+            unassignedOnly={unassignedOnly}
+            onChange={(checked) => {
+              setUnassignedOnly(checked);
+              setSelectedRowKeys([]);
+              setPagination((prev) => ({ ...prev, current: 1 }));
+            }}
+          />
           <Input
             allowClear
             className="w-[320px]"
@@ -592,21 +598,6 @@ const Asset = () => {
             onPressEnter={() => getAssetInsts()}
             onClear={clearText}
           ></Input>
-          {isSuperUser && !userInfoLoading ? (
-            <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
-              <Switch
-                size="small"
-                checked={unassignedOnly}
-                aria-label={t('common.unassigned')}
-                onChange={(checked) => {
-                  setUnassignedOnly(checked);
-                  setSelectedRowKeys([]);
-                  setPagination((prev) => ({ ...prev, current: 1 }));
-                }}
-              />
-              {t('common.unassigned')}
-            </label>
-          ) : null}
           </div>
           <div className="flex">
             <Dropdown

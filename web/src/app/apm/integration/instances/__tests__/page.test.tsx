@@ -144,7 +144,7 @@ describe('APM 接入实例目录', () => {
   it('普通用户不展示未归属开关', async () => {
     renderPage();
     await screen.findByText('pod-a');
-    expect(screen.queryByRole('switch', { name: '未归属' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '未归属' })).toBeNull();
     expect(api.getInstancePage).not.toHaveBeenCalledWith(expect.objectContaining({ unassigned: true }));
   });
 
@@ -154,7 +154,7 @@ describe('APM 接入实例目录', () => {
     renderPage();
     await screen.findByText('pod-a');
 
-    await user.click(screen.getByRole('switch', { name: '未归属' }));
+    await user.click(screen.getByRole('radio', { name: '未归属' }).closest('label')!);
 
     await waitFor(() => expect(api.getInstancePage).toHaveBeenCalledWith(expect.objectContaining({
       unassigned: true,
