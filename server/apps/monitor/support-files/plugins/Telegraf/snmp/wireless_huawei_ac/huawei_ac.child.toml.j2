@@ -137,6 +137,16 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.6.139.13.3.3.1.43"
         name = "temperature"
+    # Per-AP environment/CPU/NP temperatures (Integer32 C). 255 means not reported.
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.139.13.3.3.1.82"
+        name = "environment_temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.139.13.3.3.1.83"
+        name = "cpu_temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.139.13.3.3.1.84"
+        name = "np_temperature"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.6.139.13.3.3.1.44"
         name = "online_user_num"
@@ -171,3 +181,16 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.6.139.16.1.1.2.42"
         name = "max"
+
+[[processors.starlark]]
+    namepass = ["wlan_ap"]
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_huawei_ac"]
+    source = '''
+def apply(metric):
+    for field in ["environment_temperature", "cpu_temperature", "np_temperature"]:
+        value = metric.fields.get(field)
+        if value == 255 or value == 255.0 or value == "255":
+            metric.fields.pop(field)
+    return metric
+'''

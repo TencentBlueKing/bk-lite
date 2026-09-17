@@ -1,7 +1,7 @@
 Wireless Huawei AC SNMP:
   name: Huawei WLAN AC (Telegraf)
   desc: SNMP monitoring template for Huawei WLAN AC. It reports entity CPU, memory, temperature,
-    AP and station counts, radio utilization, and uplink traffic.
+    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, and uplink traffic.
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
@@ -151,6 +151,21 @@ monitor_object_metric:
       name: AP Temperature
       desc: Temperature of each managed AP (hwWlanApTemperature), in degrees Celsius. High
         values on indoor or outdoor APs indicate cooling or ambient issues.
+    wlan_ap_environment_temperature:
+      name: AP Environment Temperature
+      desc: Environment temperature of each managed AP (hwWlanApEnvironmentTemperature), in
+        degrees Celsius. Value 255 means not reported and is dropped. Persistently high ambient
+        readings can indicate cabinet or outdoor enclosure heat.
+    wlan_ap_cpu_temperature:
+      name: AP CPU Temperature
+      desc: CPU temperature of each managed AP (hwWlanApCpuTemperature), in degrees Celsius.
+        Value 255 means not reported and is dropped. High CPU-die temperature with modest
+        client load can indicate cooling failure.
+    wlan_ap_np_temperature:
+      name: AP NP Temperature
+      desc: Network processor temperature of each managed AP (hwWlanApNpTemperature), in
+        degrees Celsius. Value 255 means not reported and is dropped. High NP temperature
+        can precede radio or forwarding instability.
     wlan_ap_online_user_num:
       name: AP Online User Count
       desc: Online user count of each managed AP (hwWlanApOnlineUserNum). Combined with radio
