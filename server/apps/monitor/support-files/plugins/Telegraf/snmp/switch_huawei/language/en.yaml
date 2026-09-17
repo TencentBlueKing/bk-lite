@@ -4,7 +4,8 @@ Switch Huawei SNMP:
     reports per-entity CPU, memory, temperature, and fan health (state, presence,
     and speed as a percent of full speed); chassis used/total power in watts;
     chassis and board energy in milliwatts (divide by 1000 for watts);
-    power-supply presence and operating state; optical-module DDM (receive/transmit
+    power-supply presence, operating state, current in milliamperes, voltage in
+    millivolts, and module rated power in watts; optical-module DDM (receive/transmit
     power, temperature, voltage, and laser bias); stack/CSS member and port
     health; and, when M-LAG is enabled, M-LAG port state and member heartbeat.
     Supported models include
@@ -188,6 +189,22 @@ monitor_object_metric:
       name: Power Supply Present
       desc: Presence of each power supply (hwEntityPwrPresent). On-wire values are
         present(1) and absent(2). Absent means the slot is empty or the module was pulled.
+    device_psu_current_mA:
+      name: PSU Current
+      desc: Output current of each installed power supply (hwEntityPwrCurrent), in
+        milliamperes (mA) as reported on the wire, not amperes. Empty slots are
+        dropped via present(1). Divide by 1000 to read amperes. Dimension descr is
+        hwEntityPwrSlot.
+    device_psu_voltage_mV:
+      name: PSU Voltage
+      desc: Output voltage of each installed power supply (hwEntityPwrVoltage), in
+        millivolts (mV) as reported on the wire, not volts. Empty slots are dropped
+        via present(1). Divide by 1000 to read volts. Dimension descr is hwEntityPwrSlot.
+    device_psu_rated_power_watts:
+      name: PSU Rated Power
+      desc: Rated power of each installed power-supply module (hwEntityPwrPower), in
+        watts. This is the module nameplate rating, not chassis instantaneous used
+        power. Empty slots are dropped via present(1). Dimension descr is hwEntityPwrSlot.
     device_fan_speed:
       name: Fan Speed
       desc: Fan speed of each installed cooling fan as a percentage of full speed
