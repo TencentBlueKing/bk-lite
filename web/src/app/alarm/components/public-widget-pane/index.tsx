@@ -172,12 +172,17 @@ export function PublicWidgetPane({
   identifier,
   identifierProp,
   toolbarStart,
+  startedAt,
+  endedAt,
 }: {
   active: boolean;
   loadWidget: (() => Promise<{ default: unknown }>) | null;
   identifier: string;
   identifierProp: IdentifierProp;
   toolbarStart?: React.ReactNode;
+  /** 可选 live 查询窗（目前仅 APM 两键消费；其它键忽略）。 */
+  startedAt?: string;
+  endedAt?: string;
 }) {
   const { t } = useTranslation();
   const boundIdentifier = useActiveBoundIdentifier(identifier, active);
@@ -226,12 +231,17 @@ export function PublicWidgetPane({
       />
     );
   } else {
+    const start = String(startedAt || '').trim();
+    const end = String(endedAt || '').trim();
     body = (
       <IdentifierMount
-        key={boundIdentifier}
+        // 窗后到时必须 remount：懒加载 Widget 若先以缺窗挂载，会打出 now−1h 请求。
+        key={`${boundIdentifier}|${start}|${end}`}
         Widget={Widget as IdentifierWidget}
         identifierProp={identifierProp}
         identifier={boundIdentifier}
+        startedAt={startedAt}
+        endedAt={endedAt}
       />
     );
   }
@@ -286,10 +296,22 @@ function IdentifierMount({
   Widget,
   identifierProp,
   identifier,
+  startedAt,
+  endedAt,
 }: {
   Widget: IdentifierWidget;
   identifierProp: Exclude<IdentifierProp, 'instUuid'>;
   identifier: string;
+  startedAt?: string;
+  endedAt?: string;
 }) {
-  return <Widget {...{ [identifierProp]: identifier }} />;
+  const props: Record<string, string> = { [identifierProp]: identifier };
+  const start = String(startedAt || '').trim();
+  const end = String(endedAt || '').trim();
+  // 必须两者都有才下发：与 resolvePublicWidgetQueryWindow 契约一致，避免只传一侧仍回落 now−1h。
+  if (start && end) {
+    props.startedAt = start;
+    props.endedAt = end;
+  }
+  return <Widget {...props} />;
 }

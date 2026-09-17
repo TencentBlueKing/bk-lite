@@ -60,13 +60,14 @@ import {
   readAlarmLogAlertId,
   readAlarmServiceId,
 } from '@/app/alarm/utils/alarmSnapshotObjects';
+import { buildAlarmApmReplayWindow } from '@/app/alarm/utils/alarmApmReplayWindow';
 const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
   ({ handleAction, readonly = false }, ref) => {
     const STATE_MAP = useStateMap();
     const notifiedState = useNotifiedStateMap();
     const { levelList, levelMap } = useCommon();
     const { t } = useTranslation();
-    const { convertToLocalizedTime } = useLocalizedTime();
+    const { convertToLocalizedTime, timeZone } = useLocalizedTime();
     const { getEventList } = useAlarmApi();
     const { getLogList } = useSettingApi();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
@@ -98,6 +99,27 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
     const currentObject =
       publicWidgets.objects.find((item) => item.key === objectKey) ||
       publicWidgets.objects[0];
+    const apmReplayWindow = useMemo(
+      () =>
+        buildAlarmApmReplayWindow(
+          groupVisible
+            ? {
+              first_event_time: formData.first_event_time,
+              last_event_time: formData.last_event_time,
+              created_at: formData.created_at,
+            }
+            : undefined,
+          new Date(),
+          timeZone,
+        ),
+      [
+        groupVisible,
+        formData.first_event_time,
+        formData.last_event_time,
+        formData.created_at,
+        timeZone,
+      ],
+    );
     const tabList: TabItem[] = publicWidgets.tabs;
     const renderObjectSwitcher = () =>
       publicWidgets.showObjectSwitcher ? (
@@ -185,9 +207,10 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
       }) => {
         eventRequestIdRef.current += 1;
         setEventList([]);
-        setGroupVisible(true);
-        setTitle(title);
+        // formData 先于 visible：避免并发撕裂下先开窗却无锚点时间。
         setFormData(form);
+        setTitle(title);
+        setGroupVisible(true);
         setActiveTab(defaultTab);
         setPagination((prev) => ({ ...prev, current: 1, total: 0 }));
         prefetchEvents(form?.id);
@@ -363,6 +386,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
         open={groupVisible}
         width={820}
         onClose={handleCancel}
+        destroyOnClose
         maskClosable={false}
         footer={
           <div>
@@ -629,10 +653,13 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
               }
             >
               <PublicWidgetPane
+                key={`svc-overview-${formData.id}-${apmReplayWindow?.startedAt || ''}-${apmReplayWindow?.endedAt || ''}`}
                 active={publicWidgets.serviceOverview.active}
                 loadWidget={publicWidgets.serviceOverview.loadWidget}
                 identifier={readAlarmServiceId(formData)}
                 identifierProp="serviceId"
+                startedAt={apmReplayWindow?.startedAt}
+                endedAt={apmReplayWindow?.endedAt}
               />
             </div>
           )}
@@ -645,10 +672,13 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
               }
             >
               <PublicWidgetPane
+                key={`call-chain-${formData.id}-${apmReplayWindow?.startedAt || ''}-${apmReplayWindow?.endedAt || ''}`}
                 active={publicWidgets.callChain.active}
                 loadWidget={publicWidgets.callChain.loadWidget}
                 identifier={readAlarmServiceId(formData)}
                 identifierProp="serviceId"
+                startedAt={apmReplayWindow?.startedAt}
+                endedAt={apmReplayWindow?.endedAt}
               />
             </div>
           )}
