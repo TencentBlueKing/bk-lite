@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei",
   "plugin": "Switch Huawei SNMP",
-  "plugin_desc": "SNMP monitoring for Huawei campus, chassis, and CloudEngine switches. It reports per-entity CPU, memory, temperature, and fan health (state, presence, and speed as a percent of full speed); chassis used/total power in watts; chassis and board energy in milliwatts (divide by 1000 for watts); power-supply presence and operating state; optical-module DDM (receive/transmit power, temperature, voltage, and laser bias); stack/CSS member and port health; and, when M-LAG is enabled, M-LAG port state and member heartbeat. Supported models include S5700, S6700, S7700, S8700, S9300, S9700, S12700, S12700E, S12700H, S16700, and CloudEngine CE SKUs such as CE6881 and CE5881. S12700H and S16700 are V600-generation chassis and use this same plugin and Switch object.",
+  "plugin_desc": "SNMP monitoring for Huawei campus, chassis, and CloudEngine switches. It reports per-entity CPU, memory, temperature, and fan health (state, presence, and speed as a percent of full speed); chassis used/total power in watts; chassis and board energy in milliwatts (divide by 1000 for watts); power-supply presence, operating state, current in milliamperes, voltage in millivolts, and module rated power in watts; optical-module DDM (receive/transmit power, temperature, voltage, and laser bias); stack/CSS member and port health; and, when M-LAG is enabled, M-LAG port state and member heartbeat. Supported models include S5700, S6700, S7700, S8700, S9300, S9700, S12700, S12700E, S12700H, S16700, and CloudEngine CE SKUs such as CE6881 and CE5881. S12700H and S16700 are V600-generation chassis and use this same plugin and Switch object.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_huawei'}) by (instance_id)",
   "name": "Switch",
@@ -168,6 +168,60 @@
         "instance_id"
       ],
       "description": "Presence of each Huawei switch power supply (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrPresent). On-wire INTEGER is present(1)/absent(2), not 0/1. Absent means the slot is empty or the module was pulled. Dimension descr is hwEntityPwrSlot."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_current_mA",
+      "query": "device_psu_current_mA{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
+      "display_name": "PSU Current",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Power supply description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Output current of each installed Huawei switch power supply (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrCurrent), in milliamperes (mA) as reported on the wire, not amperes. Shares hwPwrStatusTable with device_psu_state; the query keeps only present(1) rows so empty slots are dropped. Dimension descr is hwEntityPwrSlot. Divide by 1000 to read amperes. A sudden drop toward 0 mA on a present, supplying module can indicate a failing PSU or lost load path."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_voltage_mV",
+      "query": "device_psu_voltage_mV{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
+      "display_name": "PSU Voltage",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Power supply description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Output voltage of each installed Huawei switch power supply (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrVoltage), in millivolts (mV) as reported on the wire, not volts. Shares hwPwrStatusTable with device_psu_state; the query keeps only present(1) rows so empty slots are dropped. Dimension descr is hwEntityPwrSlot. Divide by 1000 to read volts. Values far from the module's expected rail indicate unstable supply and hardware risk."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_rated_power_watts",
+      "query": "device_psu_rated_power_watts{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
+      "display_name": "PSU Rated Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Power supply description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Rated power of each installed Huawei switch power-supply module (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrPower), in watts. This is the module nameplate rating, not chassis instantaneous used power (device_power_used). Shares hwPwrStatusTable with device_psu_state; the query keeps only present(1) rows. Dimension descr is hwEntityPwrSlot. Summing present modules gives the installed PSU budget."
     },
     {
       "metric_group": "Hardware Status",
