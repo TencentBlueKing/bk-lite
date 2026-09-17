@@ -85,6 +85,8 @@
     "sourceOptionsRetry": "告警源加载失败，点击重试",
     "pushSourceSelect": "选择监控源",
     "pushSourceInput": "输入监控源",
+    "pushSourceCustomPlaceholder": "自定义监控源，回车添加",
+    "pushSourceCustomHint": "这是自定义监控源输入框。目录里没有的监控源可在此输入，回车添加。",
     "pushSourceEmpty": "暂无已识别监控源",
     "pushSourceOptionsRetry": "监控源加载失败，点击重试",
     "multiValueInput": "匹配值",

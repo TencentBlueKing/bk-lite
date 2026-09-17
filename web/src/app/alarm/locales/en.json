@@ -85,6 +85,8 @@
     "sourceOptionsRetry": "Unable to load alert sources. Click to retry",
     "pushSourceSelect": "Select monitoring sources",
     "pushSourceInput": "Enter monitoring sources",
+    "pushSourceCustomPlaceholder": "Custom source, press Enter",
+    "pushSourceCustomHint": "This box is for custom monitoring sources. Enter a value that is not in the list, then press Enter.",
     "pushSourceEmpty": "No recognized monitoring sources",
     "pushSourceOptionsRetry": "Unable to load monitoring sources. Click to retry",
     "multiValueInput": "Match values",
