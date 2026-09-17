@@ -65,6 +65,44 @@ export function asCollectorStatusList(
   return Array.isArray(collectors) ? collectors : [];
 }
 
+export function collectorDisplayName(collector?: {
+  name?: unknown;
+  collector_name?: unknown;
+  collector?: unknown;
+} | null): string {
+  return String(
+    collector?.collector_name || collector?.name || collector?.collector || ''
+  ).trim();
+}
+
+export function parseCollectorQueryNames(value?: string | null): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const part of String(value || '').split(',')) {
+    const name = part.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
+export function isSameCollectorName(
+  collector: {
+    name?: unknown;
+    collector_name?: unknown;
+    collector?: unknown;
+  },
+  names: string | string[]
+): boolean {
+  const current = collectorDisplayName(collector).toLowerCase();
+  if (!current) return false;
+  const targets = Array.isArray(names) ? names : parseCollectorQueryNames(names);
+  return targets.some((name) => name.toLowerCase() === current);
+}
+
 export function isExecutorCollector(collector: {
   collector_id?: unknown;
   id?: unknown;

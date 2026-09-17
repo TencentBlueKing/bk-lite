@@ -34,6 +34,7 @@ import {
   isPluginConfigurable,
   isSameTemplatePlugin,
 } from './templateConfigDrawerLogic';
+import { comparePackVersions } from '@/app/monitor/utils/collectNeedUpdate';
 
 const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
@@ -53,6 +54,25 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     const [showTemplateList, setShowTemplateList] = useState<boolean>(true);
     const [instanceId, setInstanceId] = useState<number | string>('');
     const [objId, setObjId] = useState<React.Key>('');
+
+    const getPackVersionText = (plugin?: PluginItem | null) => {
+      const applied = String(plugin?.applied_pack_version || '').trim();
+      if (applied) return applied;
+      if (plugin?.need_update) {
+        return t('monitor.integrations.unknownAppliedPack');
+      }
+      const latest = String(
+        plugin?.latest_pack_version || plugin?.pack_version || ''
+      ).trim();
+      return latest || t('monitor.integrations.builtinPack');
+    };
+
+    const getLatestPackVersionText = (plugin?: PluginItem | null) => {
+      const latest = String(
+        plugin?.latest_pack_version || plugin?.pack_version || ''
+      ).trim();
+      return latest || t('monitor.integrations.builtinPack');
+    };
 
     const fetchConfigList = async (params?: {
       plugin?: PluginItem;
@@ -404,6 +424,9 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
                                         ? t('monitor.integrations.manualAccess')
                                         : t('monitor.integrations.autoAccess')}
                                     </Tag>
+                                    <Tag className="text-xs ml-[6px] m-0">
+                                      {getPackVersionText(plugin)}
+                                    </Tag>
                                   </div>
                                 </div>
                                 <RightOutlined className="text-xs" />
@@ -423,7 +446,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
               {selectedPlugin && (
                 <div className="space-y-4">
                   {/* 标题和标签 */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm text-[var(--color-text-2)]">
                       {selectedPlugin.collector
                         ? `${selectedPlugin.name || '--'}（${
@@ -445,6 +468,32 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
                         ? t('monitor.integrations.manualAccess')
                         : t('monitor.integrations.autoAccess')}
                     </Tag>
+                    <Tag>{getPackVersionText(selectedPlugin)}</Tag>
+                    {selectedPlugin.need_update ? (
+                      <Tag color="warning">
+                        {(() => {
+                          const version = getLatestPackVersionText(selectedPlugin);
+                          const direction = comparePackVersions(
+                            getPackVersionText(selectedPlugin) ===
+                              t('monitor.integrations.unknownAppliedPack')
+                              ? ''
+                              : getPackVersionText(selectedPlugin),
+                            String(
+                              selectedPlugin.latest_pack_version ||
+                                selectedPlugin.pack_version ||
+                                ''
+                            ).trim()
+                          );
+                          const key =
+                            direction === 'downgrade'
+                              ? 'monitor.integrations.needUpdateToVersionDowngrade'
+                              : direction === 'align'
+                                ? 'monitor.integrations.needUpdateToVersionAlign'
+                                : 'monitor.integrations.needUpdateToVersion';
+                          return t(key, '', { version });
+                        })()}
+                      </Tag>
+                    ) : null}
                   </div>
 
                   {/* 上报状态 */}
@@ -464,6 +513,10 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
                       {selectedPlugin.time
                         ? convertToLocalizedTime(selectedPlugin.time)
                         : '--'}
+                    </div>
+                    <div className="text-xs text-[var(--color-text-3)] mt-1">
+                      {t('monitor.integrations.packVersion')}：
+                      {getPackVersionText(selectedPlugin)}
                     </div>
                   </div>
 

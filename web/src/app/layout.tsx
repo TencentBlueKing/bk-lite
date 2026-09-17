@@ -32,6 +32,7 @@ import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBran
 import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/metadata';
 import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/shared/utils';
 import '@/styles/globals.css';
+import '@/utils/antdConfig';
 import WithSideMenuLayout from '@/components/sub-layout';
 import { isPathCoveredByMenus, shouldRenderSecondLayerMenu } from '@/utils/menuHelpers';
 import {

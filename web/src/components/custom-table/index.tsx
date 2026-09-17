@@ -76,7 +76,6 @@ const CustomTable = <T extends object>({
   const [filters, setFilters] = useState<Record<string, FilterValue | null>>({});
   const [sorter, setSorter] = useState<SorterResult<T> | SorterResult<T>[]>({});
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
-  const [columns, setColumns] = useState<any[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [containerWidth, setContainerWidth] = useState<number | undefined>(undefined);
   const scrollY = scroll?.y;
@@ -135,11 +134,6 @@ const CustomTable = <T extends object>({
     };
   }, [scrollY, hasPagination, size]);
 
-  useEffect(() => {
-    const initialColumns = renderColumns();
-    setColumns(initialColumns);
-  }, [TableProps.columns, rowDraggable]);
-
   const enhanceColumnRender = (column: any) => {
     if (column.render) return column;
 
@@ -160,32 +154,33 @@ const CustomTable = <T extends object>({
     };
   };
 
-  const renderColumns = useCallback(() => {
+  const handleDragStart = (index: number) => () => {
+    setDraggedIndex(index);
+    onRowDragStart?.(index);
+  };
+
+  const columns = useMemo((): any[] => {
     let cols = TableProps.columns || [];
-
-    cols = cols.map(col => enhanceColumnRender(col));
-
-    if (rowDraggable) {
-      return [
-        {
-          key: 'sort',
-          align: 'center',
-          width: 30,
-          title: '',
-          dataIndex: 'sort',
-          render: (_: any, __: T, index: number) => (
-            <HolderOutlined
-              className="font-[800] text-[16px] mr-[6px] cursor-move"
-              draggable
-              onDragStart={handleDragStart(index)}
-            />
-          ),
-        },
-        ...cols,
-      ];
-    }
-    return cols;
-  }, [TableProps.columns, rowDraggable]);
+    cols = cols.map((col) => enhanceColumnRender(col));
+    if (!rowDraggable) return cols;
+    return [
+      {
+        key: 'sort',
+        align: 'center',
+        width: 30,
+        title: '',
+        dataIndex: 'sort',
+        render: (_: any, __: T, index: number) => (
+          <HolderOutlined
+            className="font-[800] text-[16px] mr-[6px] cursor-move"
+            draggable
+            onDragStart={handleDragStart(index)}
+          />
+        ),
+      },
+      ...cols,
+    ];
+  }, [TableProps.columns, rowDraggable, onRowDragStart]);
 
   // 处理列宽拖拽
   const handleColumnResize = (colKey: string) => (newWidth: number) => {
@@ -243,11 +238,6 @@ const CustomTable = <T extends object>({
   const resetDragState = () => {
     setDraggedIndex(null);
     setHoveredIndex(null);
-  };
-
-  const handleDragStart = (index: number) => () => {
-    setDraggedIndex(index);
-    onRowDragStart?.(index);
   };
 
   const handleDragEnd = () => {
