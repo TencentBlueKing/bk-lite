@@ -326,8 +326,6 @@ const Asset = () => {
                     packVersionText={packVersionText}
                     collectMode={plugin.collect_mode}
                     collectorNodes={plugin.collector_nodes}
-                    needUpdate={Boolean(plugin.need_update)}
-                    needUpdateText={needUpdateHint}
                   />
                 );
 
@@ -442,7 +440,7 @@ const Asset = () => {
         title: t('common.action'),
         key: 'action',
         dataIndex: 'action',
-        width: 240,
+        width: 280,
         fixed: 'right',
         render: (_, record) => {
           const canOperate = Array.isArray(record.permission)
@@ -458,13 +456,6 @@ const Asset = () => {
             });
           }
           if (canOperate) {
-            moreItems.push({
-              key: 'configure',
-              label: t('monitor.integrations.configure'),
-              permission: 'Edit',
-              onClick: () =>
-                openTemplateDrawer(record, { showTemplateList: true })
-            });
             moreItems.push({
               key: 'remove',
               label: t('common.remove'),
@@ -495,6 +486,20 @@ const Asset = () => {
                   onClick={() => openInstanceModal(record, 'edit')}
                 >
                   {t('common.edit')}
+                </Button>
+              </Permission>
+              <Permission
+                requiredPermissions={['Edit']}
+                instPermissions={record.permission}
+              >
+                <Button
+                  type="link"
+                  className="ml-[10px]"
+                  onClick={() =>
+                    openTemplateDrawer(record, { showTemplateList: true })
+                  }
+                >
+                  {t('monitor.integrations.configure')}
                 </Button>
               </Permission>
               {record.can_update ? (
@@ -1099,60 +1104,42 @@ const Asset = () => {
       title: t('monitor.integrations.updateCollectConfigConfirmTitle'),
       width: 480,
       content: (
-        <div className="space-y-3">
-          <div className="text-[var(--color-text-2)] leading-6">
-            {t('monitor.integrations.updateCollectConfigConfirmTip')}
-          </div>
-          <div className="max-h-[280px] space-y-3 overflow-y-auto">
-            {upgradeItems.map((item, index) => {
-              const detailRows = [
-                {
-                  label: t('monitor.integrations.instanceName'),
-                  value: item.instanceName
-                },
-                {
-                  label: t(
-                    'monitor.integrations.updateCollectConfigConfirmProbeName'
-                  ),
-                  value: item.probeName
-                },
-                {
-                  label: t(
-                    'monitor.integrations.updateCollectConfigConfirmCurrentVersion'
-                  ),
-                  value: item.currentVersion
-                },
-                {
-                  label: hasMixedDirection
-                    ? getTargetVersionLabel(item.direction)
-                    : getTargetVersionLabel(
-                      upgradeItems[0]?.direction || 'upgrade'
-                    ),
-                  value: item.targetVersion
-                }
-              ];
-              return (
-                <div
-                  key={`${item.instanceName}-${item.probeName}-${index}`}
-                  className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2"
-                >
-                  {detailRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex gap-3 py-1 text-sm leading-5"
-                    >
-                      <span className="w-[108px] shrink-0 text-[var(--color-text-3)]">
-                        {row.label}
-                      </span>
-                      <span className="min-w-0 break-all text-[var(--color-text-1)]">
-                        {row.value}
-                      </span>
-                    </div>
-                  ))}
+        <div className="max-h-[280px] space-y-3 overflow-y-auto">
+          {upgradeItems.map((item, index) => {
+            const targetLabel = hasMixedDirection
+              ? getTargetVersionLabel(item.direction)
+              : getTargetVersionLabel(upgradeItems[0]?.direction || 'upgrade');
+            return (
+              <div
+                key={`${item.instanceName}-${item.probeName}-${index}`}
+                className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-sm leading-6"
+              >
+                {upgradeItems.length > 1 ? (
+                  <div className="mb-1 text-[var(--color-text-2)]">
+                    {item.instanceName}
+                    {item.probeName ? ` · ${item.probeName}` : ''}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[var(--color-text-3)]">
+                    {t(
+                      'monitor.integrations.updateCollectConfigConfirmCurrentVersion'
+                    )}
+                  </span>
+                  <span className="text-[var(--color-text-1)]">
+                    {item.currentVersion}
+                  </span>
+                  <span className="text-[var(--color-text-3)]">→</span>
+                  <span className="text-[var(--color-text-3)]">
+                    {targetLabel}
+                  </span>
+                  <Tag className="m-0" color="warning">
+                    {item.targetVersion}
+                  </Tag>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       ),
       centered: true,
