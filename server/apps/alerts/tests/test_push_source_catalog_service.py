@@ -1,7 +1,9 @@
 import logging
+from types import SimpleNamespace
 
 import pytest
 
+from apps.alerts.service import push_source_catalog as catalog_mod
 from apps.alerts.service.push_source_catalog import MemoryCatalogStore, PushSourceCatalog
 
 pytestmark = [pytest.mark.unit]
@@ -102,3 +104,18 @@ def test_observe_store_error_logs_type_without_payload(caplog, capsys):
     blob = repr(record.args) + logging.Formatter().format(record) + caplog.text + output.out + output.err
     assert sentinel not in blob
     assert source_sentinel not in blob
+
+
+def test_default_store_uses_django_redis_cache_client(monkeypatch):
+    fake_client = object()
+    backend = SimpleNamespace(_cache=SimpleNamespace(get_client=lambda key, write: fake_client))
+    monkeypatch.setattr(catalog_mod, "cache", backend)
+    store = catalog_mod._build_default_store()
+    assert isinstance(store, catalog_mod.RedisCatalogStore)
+    assert store._redis is fake_client
+
+
+def test_default_store_falls_back_when_redis_client_missing(monkeypatch):
+    monkeypatch.setattr(catalog_mod, "cache", SimpleNamespace())
+    store = catalog_mod._build_default_store()
+    assert isinstance(store, catalog_mod.DjangoCacheCatalogStore)

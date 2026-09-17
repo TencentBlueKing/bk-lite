@@ -214,11 +214,12 @@ def _unix_now():
 
 def _build_default_store():
     try:
-        from django_redis import get_redis_connection
-
-        return RedisCatalogStore(get_redis_connection("default"))
+        client = cache._cache.get_client(None, write=True)
     except Exception:
         return DjangoCacheCatalogStore()
+    if client is None:
+        return DjangoCacheCatalogStore()
+    return RedisCatalogStore(client)
 
 
 def _normalize_team_ids(team_ids):
