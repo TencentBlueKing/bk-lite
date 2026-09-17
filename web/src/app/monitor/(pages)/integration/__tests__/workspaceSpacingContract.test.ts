@@ -39,6 +39,22 @@ describe('monitor integration workspace spacing contract', () => {
     expect(source).toMatch(/margin-bottom:\s*16px;/);
   });
 
+  it('keeps portal overlays out of the workspace flex gap', () => {
+    const overlaySources = [
+      read(root, 'asset/editInstance.tsx'),
+      read(root, 'asset/templateConfigDrawer.tsx'),
+      read(root, 'group/ruleModal.tsx'),
+      read(root, 'group/deleteRuleModal.tsx'),
+      read(root, 'list/importModal.tsx'),
+    ];
+    overlaySources.forEach((source) => {
+      expect(source).not.toMatch(/return \(\s*<div>\s*</);
+    });
+    expect(read(root, 'asset/page.tsx')).toMatch(
+      /<>\s*\{modalContextHolder\}\s*<div className=\{assetStyle\.asset\}>/,
+    );
+  });
+
   it('keeps TreeWorkspaceShell defaults aligned with the four pages', () => {
     const source = read(
       webSrc,
