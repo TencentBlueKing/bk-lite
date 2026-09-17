@@ -53,8 +53,6 @@
         "upgradeableBadge": "UP",
         "pendingUpdateCollectors": "待更新",
         "justImportedCollector": "刚导入",
-        "currentCollectorVersion": "当前",
-        "updatableCollectorVersion": "可更新",
         "node": "节点",
         "sidecarVersionDes": "请选择当前操作系统和 CPU 架构（{architecture}）对应的控制器版本。",
         "ruleinputinfo": "请输入你的IP地址!",

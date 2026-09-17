@@ -23,7 +23,6 @@ import {
   filterCollectorsForOperationType,
   groupCollectorsForOperationSelect,
   listCollectorUpdateHints,
-  matchCollectorUpdateHint,
   mergeCatalogCollectorUpdateHints,
   promotePendingCollectorOptions,
   type CollectorOperationSelectGroup,
@@ -129,19 +128,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       return configList.filter((item) => item.collector_id === collector);
     }, [collector]);
 
-    const selectedCollectorHint = useMemo(() => {
-      const selectedCollector = collectorlist.find(
-        (collectorItem: TableDataItem) => collectorItem.id === collector
-      );
-      return matchCollectorUpdateHint(
-        {
-          value: String(collector || ''),
-          label: String(selectedCollector?.name || '')
-        },
-        updateHints
-      );
-    }, [collector, collectorlist, updateHints]);
-
     const selectedCollectorOption = useMemo(
       () =>
         options
@@ -152,31 +138,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
 
     const packageVersionOptions = useMemo(
       () =>
-        packageList.map((item) => {
-          const version = String(item.version || '');
-          let updateTag: string | undefined;
-          if (
-            selectedCollectorHint?.latestVersion &&
-            version === String(selectedCollectorHint.latestVersion)
-          ) {
-            updateTag = t(
-              'node-manager.cloudregion.node.updatableCollectorVersion'
-            );
-          } else if (
-            selectedCollectorHint?.currentVersion &&
-            version === String(selectedCollectorHint.currentVersion)
-          ) {
-            updateTag = t(
-              'node-manager.cloudregion.node.currentCollectorVersion'
-            );
-          }
-          return {
-            value: item.id,
-            label: version,
-            updateTag
-          };
-        }),
-      [packageList, selectedCollectorHint, t]
+        packageList.map((item) => ({
+          value: item.id,
+          label: String(item.version || '')
+        })),
+      [packageList]
     );
 
     const initTypeOptions = (
@@ -646,26 +612,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                 }
                 options={packageVersionOptions}
                 optionFilterProp="label"
-                optionRender={(option) => (
-                  <UpdateOptionLabel
-                    name={String(option.data?.label ?? option.label ?? '')}
-                    updateTag={getOptionUpdateTag(option.data)}
-                  />
-                )}
-                labelRender={(props) => {
-                  const selected = packageVersionOptions.find(
-                    (option) =>
-                      String(option.value) === String(props.value ?? '')
-                  );
-                  return (
-                    <UpdateOptionLabel
-                      name={
-                        selected?.label || String(props.label ?? props.value ?? '')
-                      }
-                      updateTag={selected?.updateTag}
-                    />
-                  );
-                }}
               />
             </Form.Item>
           )}

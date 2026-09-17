@@ -53,8 +53,6 @@
         "upgradeableBadge": "UP",
         "pendingUpdateCollectors": "Pending update",
         "justImportedCollector": "Just imported",
-        "currentCollectorVersion": "Current",
-        "updatableCollectorVersion": "Updatable",
         "node": "Node",
         "sidecarVersionDes": "Please select the Controller version for the selected operating system and CPU architecture ({architecture}).",
         "ruleinputinfo": "Please input your IP address!",
