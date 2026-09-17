@@ -1,6 +1,6 @@
 # 华为 AR 路由器 SNMP 接入指南
 
-本插件使用 Telegraf `inputs.snmp`，从选定节点采集 Huawei AR 系列路由器的设备健康与接口流量。
+本插件使用 Telegraf `inputs.snmp`，从选定节点采集 Huawei AR 系列路由器的设备健康、实体电压、单板瓦特功耗、整机/板卡毫瓦能耗与接口流量。
 
 ## 前置要求
 
@@ -56,7 +56,7 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 | 384 | AR5510-L5T |
 | 385 | AR6500-10 |
 
-同一根下的其他叶子仍属 AR 系列。型号字典保持不变，不新建 AR 监控对象。本插件在既有健康指标上增加实体电压（毫伏换算为伏特）与单板功耗（瓦特）。
+同一根下的其他叶子仍属 AR 系列。型号字典保持不变，不新建 AR 监控对象。本插件在既有健康指标上增加实体电压（毫伏换算为伏特）、单板功耗（瓦特）与整机/板卡能耗（毫瓦）。
 
 ## 页面字段说明
 
@@ -82,6 +82,7 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 - 实体健康指标 `device_voltage_volts`（毫伏换算为伏特）有读数；支持该叶子的机型上 `device_entity_board_power`（瓦特）有读数。二者与 CPU/内存/温度同属 `hwEntityStateTable`，与光模块电压不同。
 - 有风扇的机型上 `device_fan_state` / `device_fan_speed`（满速百分比）有读数。
 - 有光模块时，`device_optical_rx_power` / `device_optical_tx_power`（µW 换算为 dBm）以及温度（°C）、模块电压（mV→V）、偏置电流（µA）有读数。无效哨兵 `2147483647` 会被丢弃。
+- `device_energy_current_power_mw` / `device_energy_average_power_mw` / `device_energy_rated_power_mw` 报告整机能耗（毫瓦，`hwCurrentPower` / `hwAveragePower` / `hwRatedPower`；展示可 ÷1000 为瓦特）。板卡序列为 `device_board_current_power_mw` / `device_board_rated_power_mw`，维度 `hwBoardName`；空名称与 `-1` 会被丢弃。与 `device_entity_board_power`（瓦特）并存，勿混单位。
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` 在业务口上有速率。
 
 接口流量走内置 IF-MIB（`ifTable` / `ifXTable`）。本模板不扩展 IF，不额外采集 `ifHC*` 或 `ifOperStatus` 叶子。
@@ -91,6 +92,10 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 ### 只有 uptime 和接口，没有 CPU/内存
 
 设备 SNMP 视图可能未授权实体健康对象。请确认只读视图包含 `1.3.6.1.4.1.2011.5.25.31`。
+
+### 没有毫瓦能耗指标
+
+请确认视图包含 `1.3.6.1.4.1.2011.6.157`。这些序列单位是毫瓦，与 `device_entity_board_power`（瓦特）并存。缺少能耗表不代表实体电压、单板功耗、CPU/内存或 IF-MIB 采集失败。
 
 ### 高速口流量为 0 或不准
 

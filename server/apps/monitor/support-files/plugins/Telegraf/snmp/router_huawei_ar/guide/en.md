@@ -1,6 +1,6 @@
 # Huawei AR Router SNMP Guide
 
-This plugin uses Telegraf `inputs.snmp` on the selected node to collect Huawei AR-series router health and interface traffic.
+This plugin uses Telegraf `inputs.snmp` on the selected node to collect Huawei AR-series router health, entity voltage, board power in watts, milliwatt chassis/board energy, and interface traffic.
 
 ## Prerequisites
 
@@ -56,7 +56,7 @@ Root `1.3.6.1.4.1.2011.2.224`. Leaf numbers below are the product identity used 
 | 384 | AR5510-L5T |
 | 385 | AR6500-10 |
 
-Other leaves under the same root remain AR-series devices. The model dictionary is unchanged and this plugin does not create a new AR monitor object. Entity voltage (mV→V) and board power (watts) are collected on the existing plugin.
+Other leaves under the same root remain AR-series devices. The model dictionary is unchanged and this plugin does not create a new AR monitor object. Entity voltage (mV→V), board power (watts), and chassis/board energy in milliwatts are collected on the existing plugin.
 
 ## Form fields
 
@@ -82,6 +82,7 @@ Wait for at least one collection interval, then confirm the instance appears and
 - Entity health shows `device_voltage_volts` (mV converted to V) and, when the leaf exists, `device_entity_board_power` (watts). These share `hwEntityStateTable` with CPU/memory/temperature and are distinct from optical-module voltage.
 - Fan-equipped models show `device_fan_state` / `device_fan_speed` (percent of full speed).
 - Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` (µW converted to dBm) plus temperature (°C), module voltage (mV→V), and bias (µA) when modules are present. Invalid sentinel `2147483647` is dropped.
+- `device_energy_current_power_mw` / `device_energy_average_power_mw` / `device_energy_rated_power_mw` report chassis energy in milliwatts (`hwCurrentPower` / `hwAveragePower` / `hwRatedPower`; divide by 1000 for watts). Board series use `device_board_current_power_mw` / `device_board_rated_power_mw` with dimension `hwBoardName`; empty names and `-1` are dropped. Distinct from `device_entity_board_power` (watts).
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on in-service ports.
 
 Interface traffic uses the built-in IF-MIB table (`ifTable` / `ifXTable`). This template does not expand IF objects such as extra `ifHC*` or `ifOperStatus` leaves.
@@ -91,6 +92,10 @@ Interface traffic uses the built-in IF-MIB table (`ifTable` / `ifXTable`). This 
 ### Only uptime and interfaces, no CPU or memory
 
 The SNMP view may not authorize entity-health objects. Confirm the read-only view includes `1.3.6.1.4.1.2011.5.25.31`.
+
+### No milliwatt energy metrics
+
+Confirm the view includes `1.3.6.1.4.1.2011.6.157`. These series are milliwatts and coexist with `device_entity_board_power` (watts). Missing energy tables do not mean entity voltage, board power, CPU/memory, or IF-MIB collection failed.
 
 ### High-speed traffic is zero or wrong
 
