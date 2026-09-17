@@ -212,3 +212,54 @@ def test_superuser_can_operate_unassigned_instance(mocker, monkeypatch):
     )
 
     assert _ensure_operate_instances(_request(is_superuser=True), [ghost.id]) == [ghost.id]
+
+
+class _FakeInstanceSearch:
+    def __init__(self, monitor_obj, data, qs, locale, visible_organization_ids):
+        self.ids = list(qs.values_list("id", flat=True))
+
+    def search(self):
+        return {"count": len(self.ids), "results": [{"instance_id": instance_id} for instance_id in self.ids]}
+
+    def search_by_primary_object(self):
+        return self.search()
+
+
+def test_superuser_unassigned_search_reads_post_body(monkeypatch):
+    obj = _object()
+    assigned = MonitorInstance.objects.create(id="('assigned-s',)", name="assigned", monitor_object=obj)
+    ghost = MonitorInstance.objects.create(id="('ghost-s',)", name="ghost", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=assigned, organization=1)
+    monkeypatch.setattr(monitor_instance_view, "InstanceSearch", _FakeInstanceSearch)
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "resolve_current_team_data_scope",
+        lambda request: _scope(is_superuser=True),
+    )
+
+    response = MonitorInstanceViewSet().monitor_instance_search(
+        _request(is_superuser=True, data={"unassigned": True, "page": 1, "page_size": 20}),
+        str(obj.id),
+    )
+
+    assert _ids(response) == [ghost.id]
+
+
+def test_superuser_unassigned_primary_object_list_reads_post_body(monkeypatch):
+    obj = _object()
+    assigned = MonitorInstance.objects.create(id="('assigned-p',)", name="assigned", monitor_object=obj)
+    ghost = MonitorInstance.objects.create(id="('ghost-p',)", name="ghost", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=assigned, organization=1)
+    monkeypatch.setattr(monitor_instance_view, "InstanceSearch", _FakeInstanceSearch)
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "resolve_current_team_data_scope",
+        lambda request: _scope(is_superuser=True),
+    )
+
+    response = MonitorInstanceViewSet().list_by_primary_object(
+        _request(is_superuser=True, data={"unassigned": True, "page": 1, "page_size": 20}),
+        str(obj.id),
+    )
+
+    assert _ids(response) == [ghost.id]
