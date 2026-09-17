@@ -25,7 +25,7 @@ from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.alerts.utils.util import decode_team_secret, split_list
 
 INTEGRATION_SECRET_PLACEHOLDER = "{{TEAM_SECRET}}"
-MONITOR_IDENTITY_FIELDS = {"monitor_id", "cmdb_id"}
+MONITOR_IDENTITY_FIELDS = {"monitor_id", "cmdb_id", "node_id"}
 
 
 class InvalidMonitorIdentity(ValueError):

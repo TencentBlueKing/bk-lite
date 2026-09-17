@@ -16,11 +16,15 @@ describe('monitor capability', () => {
     expect(APP_CAPABILITY_LOADERS.monitor).toBeTypeOf('function');
     expect(capabilitySource).toContain("'monitor.monitorView'");
     expect(capabilitySource).toContain("'monitor.alertList'");
+    expect(capabilitySource).toContain("'monitor.monitorPolicy'");
     expect(capabilitySource).toContain(
       "import('@/app/monitor/components/public/MonitorViewWidget')",
     );
     expect(capabilitySource).toContain(
       "import('@/app/monitor/components/public/AlertListWidget')",
+    );
+    expect(capabilitySource).toContain(
+      "import('@/app/monitor/components/public/MonitorPolicyWidget')",
     );
     expect(capabilitySource).not.toMatch(
       /import MonitorViewWidget from ['"]@\/app\/monitor\/components\/public\/MonitorViewWidget['"]/,

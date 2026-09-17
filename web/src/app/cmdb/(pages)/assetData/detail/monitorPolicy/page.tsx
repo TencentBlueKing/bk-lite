@@ -5,8 +5,8 @@ import { CmdbPublicWidgetPage } from '@/app/cmdb/components/public/CmdbPublicWid
 export default function Page() {
   return (
     <CmdbPublicWidgetPage
-      widgetKey="ops-analysis.application3D"
-      identifierProp="instUuid"
+      widgetKey="monitor.monitorPolicy"
+      identifierProp="monitorId"
     />
   );
 }

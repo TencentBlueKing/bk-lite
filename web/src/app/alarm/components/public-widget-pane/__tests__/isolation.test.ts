@@ -22,6 +22,9 @@ describe('alarm public widget host isolation', () => {
       expect(source).not.toMatch(/from ['"]@\/app\/ops-analysis/);
       expect(source).not.toMatch(/from ['"]@\/app\/monitor/);
       expect(source).not.toMatch(/from ['"]@\/app\/cmdb/);
+      expect(source).not.toMatch(/from ['"]@\/app\/log/);
+      expect(source).not.toMatch(/from ['"]@\/app\/apm/);
+      expect(source).not.toMatch(/from ['"]@\/app\/node-manager/);
       expect(source).not.toContain('operation_analysis');
     }
   });
@@ -31,15 +34,37 @@ describe('alarm public widget host isolation', () => {
     expect(paneSource).toContain("useAppWidget('monitor.monitorView')");
     expect(paneSource).toContain("useAppWidget('ops-analysis.relatedTopology')");
     expect(paneSource).toContain("useAppWidget('cmdb.baseInfo')");
-    expect(paneSource).toContain("hasAppAccess(clientData, 'ops-analysis')");
+    expect(paneSource).toContain("useAppWidget('log.alertRawLog')");
+    expect(paneSource).toContain("useAppWidget('cmdb.assetChange')");
+    expect(paneSource).toContain("useAppWidget('node.nodeStatus')");
+    expect(paneSource).toContain("useAppWidget('apm.serviceOverview')");
+    expect(paneSource).toContain("useAppWidget('apm.callChain')");
+    expect(paneSource).toContain('startedAt?: string');
+    expect(paneSource).toContain('endedAt?: string');
+    // 公开 Tab 的售卖门只由 declared 表达，宿主不再自判「已购运营分析」。
+    expect(paneSource).not.toContain('hasAppAccess');
     expect(paneSource).toContain('resolveAlarmPublicWidgetVisibility');
     expect(paneSource).toContain('useLazyAppWidget');
     expect(paneSource).toContain('active && Boolean(identifier)');
     expect(paneSource).toContain('useActiveBoundIdentifier');
-    expect(paneSource).toContain('toolbarStart');
+    expect(paneSource).toContain('onEmbedToolbar');
+    expect(paneSource).toContain('objectSwitcher={toolbarStart}');
     expect(paneSource).not.toContain("t('common.refresh')");
     expect(paneSource).not.toContain('ReloadOutlined');
     expect(paneSource).not.toContain('520px');
+  });
+
+  it('passes the same alarm APM replay window to both APM tabs on page and drawer', () => {
+    const pageSource = readSource(
+      '../../../(pages)/alarms/components/alarmDetail.tsx',
+    );
+    const drawerSource = readSource('../../alarm-detail-drawer/index.tsx');
+    for (const source of [pageSource, drawerSource]) {
+      expect(source).toContain('buildAlarmApmReplayWindow');
+      expect(source).toContain('timeZone');
+      expect(source).toContain('startedAt={apmReplayWindow?.startedAt}');
+      expect(source).toContain('endedAt={apmReplayWindow?.endedAt}');
+    }
   });
 
   it('keeps object switching on the detail shell, not inside a public tab', () => {

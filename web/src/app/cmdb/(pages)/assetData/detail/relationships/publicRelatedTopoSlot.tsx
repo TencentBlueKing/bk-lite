@@ -14,6 +14,7 @@ export function PublicRelatedTopoSlot({
   instUuid: string;
   fallback: React.ReactNode;
 }) {
+  // 未购运营分析时目录探测不到 `ops-analysis.relatedTopology`，declared 即为 false。
   const widget = useAppWidget('ops-analysis.relatedTopology');
   const resolvedInstUuid = resolveCmdbInstUuid(instUuid) || '';
   const canUsePublic = widget.declared && Boolean(resolvedInstUuid);

@@ -132,12 +132,14 @@ def test_create_alert_persists_all_monitor_objects():
         {
             "monitor_id": "0001",
             "cmdb_id": "xxxx1",
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "ip1",
         },
         {
             "monitor_id": "0002",
             "cmdb_id": "xxxx2",
+            "node_id": None,
             "resource_type": "Switch",
             "resource_name": "ip2",
         },
@@ -185,12 +187,14 @@ def test_update_alert_recomputes_monitor_objects_from_all_related_created_events
         {
             "monitor_id": "monitor-1",
             "cmdb_id": "cmdb-1",
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "host-1",
         },
         {
             "monitor_id": "monitor-2",
             "cmdb_id": "cmdb-2",
+            "node_id": None,
             "resource_type": "Switch",
             "resource_name": "switch-1",
         },
@@ -231,6 +235,7 @@ def test_update_alert_fills_empty_monitor_object_slots_without_overwrite():
         {
             "monitor_id": "monitor-fill",
             "cmdb_id": "cmdb-fill",
+            "node_id": None,
             "resource_type": "Switch",
             "resource_name": "switch-fill",
         }
@@ -279,6 +284,7 @@ def test_recovery_event_does_not_extend_monitor_object_snapshot():
         {
             "monitor_id": "monitor-created",
             "cmdb_id": "cmdb-created",
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "host-created",
         }
@@ -419,6 +425,7 @@ def test_instant_alert_contains_single_monitor_object_snapshot(settings):
         {
             "monitor_id": "instant-monitor",
             "cmdb_id": "instant-cmdb",
+            "node_id": None,
             "resource_type": "Host",
             "resource_name": "instant-host",
         }

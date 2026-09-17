@@ -1239,6 +1239,8 @@ def test_lookup_monitor_instance_finds_tuple_pk_from_scalar_id(db, monkeypatch):
         "instance_name": "web-1",
         "instance_id_values": ["app3d-demo-host-01"],
         "instance_id_keys": ["instance_id"],
+        "cmdb_id": "",
+        "node_id": "",
     }
 
 
