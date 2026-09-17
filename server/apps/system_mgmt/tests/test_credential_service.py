@@ -1,4 +1,5 @@
 import logging
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -68,7 +69,7 @@ def test_seed_builtin_types_is_idempotent_and_authoritative():
     assert seeded.categories == BUILTIN_TYPES["sql"]["categories"]
     assert seeded.fields == BUILTIN_TYPES["sql"]["fields"]
     assert seeded.name == "用户名密码"
-    assert seeded.categories == ["database", "middleware"]
+    assert seeded.categories == ["host", "database", "middleware", "network"]
     assert CredentialType.objects.filter(is_builtin=True).count() == len(builtin_type_payloads())
     assert set(BUILTIN_TYPES) == {
         "ssh",
@@ -85,7 +86,7 @@ def test_seed_builtin_types_is_idempotent_and_authoritative():
         "oauth_client",
         "gateway_secret",
     }
-    assert CredentialType.objects.get(key="platform_api").categories == ["cloud", "storage"]
+    assert CredentialType.objects.get(key="platform_api").categories == ["cloud", "storage", "network"]
     assert CredentialType.objects.get(key="network_cli").categories == ["network"]
     assert CredentialType.objects.get(key="token").categories == ["database", "other"]
     assert CredentialType.objects.get(key="oauth_client").categories == ["cloud"]
@@ -100,8 +101,7 @@ def test_seed_builtin_types_is_idempotent_and_authoritative():
     assert CredentialType.objects.get(key="redfish").categories == ["host"]
     assert set(redfish_fields) == {"username", "password"}
     platform_fields = {field["id"]: field for field in CredentialType.objects.get(key="platform_api").fields}
-    assert platform_fields["port"].get("required") is not True
-    assert platform_fields["verify_tls"].get("required") is not True
+    assert set(platform_fields) == {"username", "password"}
 
 
 def test_list_types_orders_builtin_first_then_by_creation():
@@ -115,6 +115,107 @@ def test_list_types_orders_builtin_first_then_by_creation():
     assert keys == builtin_keys + custom_keys
     assert builtin_keys[0] == next(iter(BUILTIN_TYPES))
     assert custom_keys.index("zzz_custom") < custom_keys.index("aaa_custom")
+
+
+def _stale_snmp_algorithm_fields(fields):
+    stale = deepcopy(fields)
+    for field in stale:
+        if field["id"] == "auth_protocol":
+            field["values"] = ["MD5", "SHA"]
+            field.pop("aliases", None)
+            field.pop("default", None)
+        if field["id"] == "priv_protocol":
+            field["values"] = ["DES", "AES"]
+            field.pop("aliases", None)
+            field.pop("default", None)
+    return stale
+
+
+def test_list_types_serves_code_owned_snmp_algorithms_when_db_is_stale():
+    seed_builtin_types()
+    row = CredentialType.objects.get(key="snmp")
+    row.fields = _stale_snmp_algorithm_fields(row.fields)
+    row.save(update_fields=["fields"])
+
+    listed = next(item for item in list_types() if item["key"] == "snmp")
+    auth = next(field for field in listed["fields"] if field["id"] == "auth_protocol")
+    priv = next(field for field in listed["fields"] if field["id"] == "priv_protocol")
+    assert auth["values"] == ["SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512", "MD5"]
+    assert auth["aliases"] == {"SHA": "SHA-1"}
+    assert priv["values"] == ["AES-128", "AES-256", "DES"]
+    assert priv["aliases"] == {"AES": "AES-128"}
+    from apps.system_mgmt.serializers.credential_serializer import CredentialTypeSerializer
+
+    retrieved = CredentialTypeSerializer(row).data
+    assert next(field for field in retrieved["fields"] if field["id"] == "auth_protocol")["values"] == auth["values"]
+    row.refresh_from_db()
+    assert next(field for field in row.fields if field["id"] == "auth_protocol")["values"] == ["MD5", "SHA"]
+
+
+def test_create_and_resolve_snmp_sha256_when_db_enum_is_stale():
+    seed_builtin_types()
+    row = CredentialType.objects.get(key="snmp")
+    row.fields = _stale_snmp_algorithm_fields(row.fields)
+    row.save(update_fields=["fields"])
+    owner = group("snmp-stale-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {
+            "name": "SNMP",
+            "type": "snmp",
+            "group_id": owner.id,
+            "fields": {
+                "version": "v3",
+                "security_level": "authPriv",
+                "username": "ops",
+                "auth_protocol": "SHA-256",
+                "auth_password": "fixture-auth",
+                "priv_protocol": "AES-256",
+                "priv_password": "fixture-priv",
+            },
+        },
+        caller,
+    )
+    public = get_credential(created.credential_id, owner.id, actor=caller)
+    resolved = resolve_credential(created.credential_id, owner.id, caller)
+    assert public["fields"]["auth_protocol"] == "SHA-256"
+    assert public["fields"]["priv_protocol"] == "AES-256"
+    assert resolved["fields"]["auth_protocol"] == "SHA-256"
+    assert resolved["fields"]["priv_protocol"] == "AES-256"
+    assert resolved["fields"]["auth_password"] == "fixture-auth"
+    assert resolved["fields"]["priv_password"] == "fixture-priv"
+
+
+def test_public_snmp_canonicalizes_legacy_sha_when_type_fields_are_stale():
+    seed_builtin_types()
+    owner = group("snmp-alias-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {
+            "name": "SNMP",
+            "type": "snmp",
+            "group_id": owner.id,
+            "fields": {
+                "version": "v3",
+                "security_level": "authNoPriv",
+                "username": "ops",
+                "auth_protocol": "SHA",
+                "auth_password": "fixture-auth",
+            },
+        },
+        caller,
+    )
+    row = Credential.objects.get(credential_id=created.credential_id)
+    row.fields["auth_protocol"] = "SHA"
+    row.save(update_fields=["fields"])
+    snmp_type = row.type
+    snmp_type.fields = _stale_snmp_algorithm_fields(snmp_type.fields)
+    snmp_type.save(update_fields=["fields"])
+
+    public = get_credential(created.credential_id, owner.id, actor=caller)
+    resolved = resolve_credential(created.credential_id, owner.id, caller)
+    assert public["fields"]["auth_protocol"] == "SHA-1"
+    assert resolved["fields"]["auth_protocol"] == "SHA-1"
 
 
 def test_builtin_type_is_immutable_but_custom_type_is_editable():
@@ -183,6 +284,121 @@ def test_update_preserves_blank_secret_and_rejects_type_change():
     with pytest.raises(CredentialServiceError) as exc:
         update_credential(created.credential_id, {"type": "ssh"}, actor(owner.id, owner.id))
     assert exc.value.code == "immutable"
+
+
+@pytest.mark.parametrize("private_key_fields", [{}, {"private_key": ""}])
+def test_update_ssh_auth_method_requires_new_mode_secret(private_key_fields):
+    seed_builtin_types()
+    owner = group("ssh-switch-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {
+            "name": "SSH",
+            "type": "ssh",
+            "group_id": owner.id,
+            "fields": {"auth_method": "password", "username": "ops", "password": "fixture-password"},
+        },
+        caller,
+    )
+    before = resolve_credential(created.credential_id, owner.id, caller)
+
+    with pytest.raises(CredentialServiceError, match="private_key.*required") as exc:
+        update_credential(created.credential_id, {"fields": {"auth_method": "key", **private_key_fields}}, caller)
+
+    assert exc.value.code == "invalid"
+    assert resolve_credential(created.credential_id, owner.id, caller) == before
+
+
+@pytest.mark.parametrize(
+    ("security_fields", "missing_field"),
+    [
+        ({"security_level": "authNoPriv", "auth_protocol": "SHA"}, "auth_password"),
+        ({"security_level": "authNoPriv", "auth_protocol": "SHA", "auth_password": ""}, "auth_password"),
+        ({"security_level": "authPriv", "auth_protocol": "SHA", "priv_protocol": "AES"}, "auth_password"),
+        (
+            {"security_level": "authPriv", "auth_protocol": "SHA", "priv_protocol": "AES", "auth_password": "fixture-auth"},
+            "priv_password",
+        ),
+        (
+            {
+                "security_level": "authPriv",
+                "auth_protocol": "SHA",
+                "priv_protocol": "AES",
+                "auth_password": "fixture-auth",
+                "priv_password": "",
+            },
+            "priv_password",
+        ),
+    ],
+)
+def test_update_snmp_security_level_requires_new_mode_secrets(security_fields, missing_field):
+    seed_builtin_types()
+    owner = group("snmp-switch-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {
+            "name": "SNMP",
+            "type": "snmp",
+            "group_id": owner.id,
+            "fields": {"version": "v3", "security_level": "noAuthNoPriv", "username": "ops"},
+        },
+        caller,
+    )
+    before = resolve_credential(created.credential_id, owner.id, caller)
+
+    with pytest.raises(CredentialServiceError, match=f"{missing_field}.*required") as exc:
+        update_credential(created.credential_id, {"fields": security_fields}, caller)
+
+    assert exc.value.code == "invalid"
+    assert resolve_credential(created.credential_id, owner.id, caller) == before
+
+
+def test_update_snmp_security_level_reuses_existing_auth_secret_and_accepts_new_priv_secret():
+    seed_builtin_types()
+    owner = group("snmp-upgrade-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {
+            "name": "SNMP",
+            "type": "snmp",
+            "group_id": owner.id,
+            "fields": {
+                "version": "v3",
+                "security_level": "authNoPriv",
+                "username": "ops",
+                "auth_protocol": "SHA",
+                "auth_password": "fixture-auth",
+            },
+        },
+        caller,
+    )
+    update_credential(
+        created.credential_id,
+        {"fields": {"security_level": "authPriv", "auth_password": "", "priv_protocol": "AES", "priv_password": "fixture-priv"}},
+        caller,
+    )
+    update_credential(created.credential_id, {"fields": {"auth_password": "", "priv_password": ""}}, caller)
+
+    resolved = resolve_credential(created.credential_id, owner.id, caller)
+    assert resolved["fields"]["security_level"] == "authPriv"
+    assert resolved["fields"]["auth_password"] == "fixture-auth"
+    assert resolved["fields"]["priv_password"] == "fixture-priv"
+
+
+def test_update_ssh_auth_method_accepts_new_secret_and_preserves_it_on_blank_edit():
+    seed_builtin_types()
+    owner = group("ssh-key-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {"name": "SSH", "type": "ssh", "group_id": owner.id, "fields": {"auth_method": "key", "username": "ops", "private_key": "fixture-key"}},
+        caller,
+    )
+    with pytest.raises(CredentialServiceError, match="password.*required"):
+        update_credential(created.credential_id, {"fields": {"auth_method": "password", "password": ""}}, caller)
+
+    update_credential(created.credential_id, {"fields": {"auth_method": "password", "password": "fixture-password"}}, caller)
+    update_credential(created.credential_id, {"fields": {"password": ""}}, caller)
+    assert resolve_credential(created.credential_id, owner.id, caller)["fields"]["password"] == "fixture-password"
 
 
 def test_owner_scope_direction_filtering_and_forbidden_resolution():
@@ -431,12 +647,8 @@ def test_page_credentials_skips_ref_inquiry(monkeypatch):
     assert calls == []
 
 
-FALLBACK_TEMPLATE = (
-    "event=credential_builtin_key_fallback preferred_key=%s seed_key=%s failed_stage=%s error_type=%s"
-)
-SKIP_TEMPLATE = (
-    "event=credential_builtin_key_skipped preferred_key=%s fallback_key=%s failed_stage=%s error_type=%s"
-)
+FALLBACK_TEMPLATE = "event=credential_builtin_key_fallback preferred_key=%s seed_key=%s failed_stage=%s error_type=%s"
+SKIP_TEMPLATE = "event=credential_builtin_key_skipped preferred_key=%s fallback_key=%s failed_stage=%s error_type=%s"
 
 
 def _records_for(caplog, template):
@@ -656,7 +868,7 @@ def test_seed_does_not_promote_custom_type_when_resolved_seed_key_is_occupied(mo
     assert sentinel not in caplog.text
 
 
-def test_platform_api_create_omits_port_and_update_keeps_stored_connection_fields():
+def test_platform_api_update_drops_connection_fields_but_preserves_password():
     seed_builtin_types()
     owner = group("platform-owner")
     created = create_credential(
@@ -671,14 +883,28 @@ def test_platform_api_create_omits_port_and_update_keeps_stored_connection_field
     row = Credential.objects.get(credential_id=created.credential_id)
     assert "port" not in row.fields
     assert "verify_tls" not in row.fields
+    legacy_type = row.type
+    legacy_type.fields += [
+        {"id": "port", "name": "端口", "kind": "number"},
+        {"id": "verify_tls", "name": "校验 TLS 证书", "kind": "enum", "values": ["true", "false"]},
+    ]
+    legacy_type.save(update_fields=["fields"])
     row.fields["port"] = 8088
     row.fields["verify_tls"] = "true"
     row.save(update_fields=["fields"])
+    encrypted_password = row.fields["password"]
+    seed_builtin_types()
+    legacy_type.refresh_from_db()
+    row.refresh_from_db()
+    assert {field["id"] for field in legacy_type.fields} == {"username", "password"}
+    # Refreshing type definitions does not rewrite existing credentials.
+    assert row.fields["port"] == 8088
+    assert row.fields["password"] == encrypted_password
     updated = update_credential(
         created.credential_id,
         {"fields": {"username": "admin", "password": ""}},
         actor(owner.id, owner.id),
     )
     kept = Credential.objects.get(credential_id=updated.credential_id)
-    assert kept.fields["port"] == 8088
-    assert kept.fields["verify_tls"] == "true"
+    assert set(kept.fields) == {"username", "password"}
+    assert kept.fields["password"] == encrypted_password

@@ -254,6 +254,20 @@ def test_winsphere_serializer_rejects_invalid_contract(credential):
     assert "credential" in serializer.errors
 
 
+def test_winsphere_inline_source_marker_preserves_contract_validation():
+    serializer = _serializer(
+        {
+            "credential_source": "inline",
+            "user": "reader",
+            "password": "secret",
+            "https_port": 443,
+            "verify_tls": False,
+        }
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["credential"][0]["credential_source"] == "inline"
+
+
 def test_winsphere_update_preserves_existing_encrypted_password():
     instance = SimpleNamespace(
         model_id="winsphere",

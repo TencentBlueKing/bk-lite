@@ -8,6 +8,47 @@ class CollectCredentialPoolService:
     """负责凭据池 normalize、校验、diff 和回滚压平。"""
 
     MAX_POOL_SIZE = 3
+    VAULT_CORE_FIELDS = {
+        "username",
+        "user",
+        "password",
+        "auth_method",
+        "authType",
+        "private_key",
+        "passphrase",
+        "access_key",
+        "secret_key",
+        "accessKey",
+        "accessSecret",
+        "access_secret",
+        "secret_id",
+        "client_id",
+        "client_secret",
+        "tenant_id",
+        "token",
+        "community",
+        "security_level",
+        "level",
+        "auth_protocol",
+        "auth_password",
+        "priv_protocol",
+        "priv_password",
+        "integrity",
+        "authkey",
+        "privacy",
+        "privkey",
+        "enable_password",
+        "user_domain_name",
+        "extra",
+        "secret",
+    }
+
+    @classmethod
+    def vault_managed_fields(cls, item):
+        # SSH 和平台账户均不管理特权密码，由采集任务加密保存。
+        if item.get("vault_type_key") in {"platform_api", "ssh"}:
+            return cls.VAULT_CORE_FIELDS - {"enable_password"}
+        return cls.VAULT_CORE_FIELDS
 
     @classmethod
     def normalize_pool(cls, raw_credential):
@@ -27,6 +68,22 @@ class CollectCredentialPoolService:
             if not isinstance(item, dict):
                 raise BaseAppException("采集凭据格式错误！")
             normalized_item = copy.deepcopy(item)
+            source = normalized_item.get("credential_source") or "inline"
+            if source not in {"inline", "vault"}:
+                raise BaseAppException("采集凭据来源错误！")
+            if source == "vault":
+                if not isinstance(normalized_item.get("vault_credential_id"), str) or not normalized_item["vault_credential_id"].strip():
+                    raise BaseAppException("请选择已有凭据！")
+                normalized_item["credential_source"] = "vault"
+                for field in cls.vault_managed_fields(normalized_item):
+                    normalized_item.pop(field, None)
+                if normalized_item.get("vault_type_key") == "snmp" or "snmp_port" in normalized_item:
+                    normalized_item.pop("version", None)
+            elif normalized_item.get("vault_credential_id"):
+                raise BaseAppException("一次性认证不能引用已有凭据！")
+            else:
+                normalized_item.pop("vault_type_key", None)
+                normalized_item.pop("vault_actor_context", None)
             normalized_item.setdefault("credential_id", cls._new_credential_id())
             normalized_item.setdefault("credential_version", 1)
             normalized_pool.append(normalized_item)
@@ -42,6 +99,14 @@ class CollectCredentialPoolService:
         for item in pool:
             if not isinstance(item, dict):
                 raise BaseAppException("采集凭据格式错误！")
+        if any(item.get("credential_source") == "vault" for item in pool):
+            # 仓库候选只保存引用和动态字段；不同来源不能用旧的同字段集合规则比较。
+            for index, item in enumerate(pool):
+                if item.get("credential_source") == "vault" and not item.get("vault_credential_id"):
+                    raise BaseAppException(f"第 {index + 1} 组凭据缺少已有凭据 ID！")
+                if item.get("credential_source") != "vault" and item.get("version"):
+                    cls._validate_snmp_credential(item, index)
+            return
 
         # 仅 SNMP：凭据自带 version 字段（SSH/数据库/云等均不含），按各自版本校验必填项，
         # 允许 v2/v2c/v3 在同一任务内混用；其他采集类型维持原"字段结构一致"约束不变。

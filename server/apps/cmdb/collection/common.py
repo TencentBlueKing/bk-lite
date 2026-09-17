@@ -66,6 +66,12 @@ class Management:
             if attr.get("editable", True):
                 check_attr_map["editable"][attr["attr_id"]] = attr["attr_name"]
 
+        if self.reconcile_task_assets and self.model_id == "vmware_vc":
+            # 内部来源标记随根实例保留，换任务后仍可定位原根；不作为用户模型字段暴露。
+            from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope
+
+            check_attr_map["editable"][VmwareCollectionScope.SOURCE_FIELD] = "vCenter 采集来源"
+
         return check_attr_map
 
     @staticmethod

@@ -3,6 +3,83 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.mark.parametrize("ssl", [True, False])
+def test_vmware_vault_uses_task_connection_settings_not_legacy_vault_fields(monkeypatch, ssl):
+    from apps.cmdb.node_configs.cloud.vmware import VmwareNodeParams
+
+    monkeypatch.setattr("apps.cmdb.services.collect_vault_resolver.actual_builtin_type_keys", lambda binding: ["platform_api"])
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_vault_resolver.SystemMgmt.resolve_credential",
+        lambda self, actor, credential_id: {
+            "result": True,
+            "data": {
+                "type": "platform_api",
+                "fields": {"username": "vc-user", "password": "vault-secret", "port": 9443, "verify_tls": str(not ssl).lower()},
+            },
+        },
+    )
+    instance = SimpleNamespace(
+        id=110,
+        model_id="vmware_vc",
+        driver_type="protocol",
+        params={},
+        timeout=60,
+        decrypt_credentials=[
+            {
+                "credential_source": "vault",
+                "vault_credential_id": "crd-vc-1",
+                "vault_actor_context": {"username": "operator", "domain": "example.com", "current_team": 3},
+                "port": 8443,
+                "ssl": ssl,
+            }
+        ],
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "192.0.2.8"}],
+        ip_range="",
+    )
+    node = VmwareNodeParams(instance)
+    assert node.set_credential() == {
+        "username": "vc-user",
+        "password": "${PASSWORD_password_cmdb_110}",
+        "port": 8443,
+        "ssl": str(ssl).lower(),
+    }
+    assert node.env_config() == {"PASSWORD_password_cmdb_110": "vault-secret"}
+    assert "verify_tls" not in node.credential
+    assert "vault-secret" not in str(node.custom_headers())
+
+
+def test_mysql_node_params_resolves_vault_id_and_converts_sql_user_at_build(monkeypatch):
+    from apps.cmdb.node_configs.databases.mysql import MysqlNodeParams
+
+    monkeypatch.setattr("apps.cmdb.services.collect_vault_resolver.actual_builtin_type_keys", lambda binding: ["sql"])
+    calls = []
+
+    def resolve(self, actor, credential_id):
+        calls.append((actor, credential_id))
+        return {"result": True, "data": {"type": "sql", "fields": {"username": "dbuser", "password": "current-secret"}}}
+
+    monkeypatch.setattr("apps.cmdb.services.collect_vault_resolver.SystemMgmt.resolve_credential", resolve)
+    actor = {"username": "operator", "domain": "example.com", "current_team": 3}
+    instance = SimpleNamespace(
+        id=109,
+        model_id="mysql",
+        driver_type="protocol",
+        params={},
+        timeout=60,
+        decrypt_credentials=[{"credential_source": "vault", "vault_credential_id": "crd-sql-1", "vault_actor_context": actor, "port": 3307}],
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "192.0.2.8"}],
+        ip_range="",
+    )
+    node = MysqlNodeParams(instance)
+    assert calls == [(actor, "crd-sql-1")]
+    assert node.set_credential()["port"] == 3307
+    assert node.env_config()["PASSWORD_password_cmdb_109"] == "current-secret"
+    assert "current-secret" not in str(node.custom_headers())
+    assert "crd-sql-1" not in str(node.custom_headers())
+
+
 def test_base_node_params_uses_primary_credential_from_pool_for_node_push():
     from apps.cmdb.node_configs.ssh.host import HostNodeParams
 
@@ -72,6 +149,34 @@ def test_base_node_params_pushes_credentials_pool_to_stargazer_headers():
     assert headers["cmdbcredential_1_password"] == "${PASSWORD_password_cmdb_92_1}"
     assert "PASSWORD_password_cmdb_92" not in node.env_config()
     assert node.env_config()["PASSWORD_password_cmdb_92_1"] == "second-secret"
+
+
+def test_ssh_node_params_supports_private_key_and_password_candidates_without_header_secret():
+    from apps.cmdb.node_configs.ssh.host import HostNodeParams
+
+    instance = SimpleNamespace(
+        id=93,
+        model_id="host",
+        driver_type="job",
+        decrypt_credentials=[
+            {"credential_id": "cred-key", "username": "key-user", "private_key": "secret-key-data", "passphrase": "secret-passphrase", "port": 22},
+            {"credential_id": "cred-pass", "username": "pass-user", "password": "secret-password", "port": 22},
+        ],
+        params={},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "192.0.2.1"}],
+        ip_range="",
+    )
+    node = HostNodeParams(instance)
+    headers = node.custom_headers()
+    env = node.env_config()
+    assert headers["cmdbcredential_0_private_key"] == "${PRIVATEKEY_private_key_cmdb_93_0}"
+    assert headers["cmdbcredential_0_passphrase"] == "${PASSPHRASE_passphrase_cmdb_93_0}"
+    assert headers["cmdbcredential_1_password"] == "${PASSWORD_password_cmdb_93_1}"
+    assert env["PRIVATEKEY_private_key_cmdb_93_0"] == "secret-key-data"
+    assert env["PASSWORD_password_cmdb_93_1"] == "secret-password"
+    assert all(secret not in str(headers) for secret in ("secret-key-data", "secret-passphrase", "secret-password"))
 
 
 def test_network_node_params_pushes_snmp_timeout_and_retry_settings():

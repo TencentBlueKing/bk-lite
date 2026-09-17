@@ -178,15 +178,25 @@ const PCTask: React.FC<PCTaskFormProps> = ({
       return;
     }
     const firstCredential = (values.credentialPool || [])[0] || {};
+    if (firstCredential.credential_source === 'vault' && !firstCredential.vault_credential_id) {
+      message.warning('请选择已有凭据');
+      return;
+    }
     const payload: Record<string, any> = {
       os_type: values.osType,
       host,
       access_point_id: values.accessPointId,
       credential: {
-        username: firstCredential.username,
-        password: firstCredential.password,
-        private_key: firstCredential.private_key,
-        passphrase: firstCredential.passphrase,
+        ...(firstCredential.credential_source === 'vault' ? {
+          credential_source: 'vault',
+          vault_credential_id: firstCredential.vault_credential_id,
+          vault_type_key: firstCredential.vault_type_key,
+        } : {
+          username: firstCredential.username,
+          password: firstCredential.password,
+          private_key: firstCredential.private_key,
+          passphrase: firstCredential.passphrase,
+        }),
         port: firstCredential.port,
       },
     };
@@ -252,6 +262,8 @@ const PCTask: React.FC<PCTaskFormProps> = ({
           </Form.Item>
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys?.filter((key) => osType === 'windows' ? key === 'winrm' : key === 'ssh')}
               credentialShape={getPCCredentialShape(osType)}
               editMode={Boolean(editId)}
               credentialHelp={buildPCCredentialHelp(osType, t)}

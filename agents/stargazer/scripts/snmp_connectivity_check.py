@@ -140,32 +140,21 @@ def local_route_probe(host: str, port: int) -> tuple[bool, str]:
 async def _snmp_get(host: str, port: int, timeout: float, retries: int, credential: dict):
     """按生产 SnmpFacts 的认证/传输参数，GET 同一个 sysName.0 OID。"""
     from core.infra.snmp_engine_pool import shared_snmp_engine
+    from core.infra.snmp_usm import v3_usm_kwargs
     from plugins.inputs.network import snmp_facts
 
     if credential["version"] in {"v2", "v2c"}:
         auth = snmp_facts.CommunityData(credential["community"])
-    elif credential["level"] == "authNoPriv":
-        auth = snmp_facts.UsmUserData(
-            credential["username"],
-            authKey=credential["authkey"],
-            authProtocol={
-                "sha": snmp_facts.usmHMACSHAAuthProtocol,
-                "md5": snmp_facts.usmHMACMD5AuthProtocol,
-            }[credential["integrity"]],
-        )
     else:
         auth = snmp_facts.UsmUserData(
             credential["username"],
-            authKey=credential["authkey"],
-            privKey=credential["privkey"],
-            authProtocol={
-                "sha": snmp_facts.usmHMACSHAAuthProtocol,
-                "md5": snmp_facts.usmHMACMD5AuthProtocol,
-            }[credential["integrity"]],
-            privProtocol={
-                "aes": snmp_facts.usmAesCfb128Protocol,
-                "des": snmp_facts.usmDESPrivProtocol,
-            }[credential["privacy"]],
+            **v3_usm_kwargs(
+                level=credential["level"],
+                integrity=credential.get("integrity"),
+                privacy=credential.get("privacy"),
+                authkey=credential.get("authkey"),
+                privkey=credential.get("privkey"),
+            ),
         )
     target = snmp_facts.UdpTransportTarget((host, port), timeout=timeout, retries=retries)
     async with shared_snmp_engine(auth, target=(host, port)) as engine:
@@ -287,8 +276,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--username", help="v3 username")
     parser.add_argument("--username-env", help="保存 v3 username 的环境变量名")
     parser.add_argument("--level", choices=("authNoPriv", "authPriv"), default="authNoPriv")
-    parser.add_argument("--integrity", choices=("sha", "md5"), default="sha")
-    parser.add_argument("--privacy", choices=("aes", "des"), default="aes")
+    parser.add_argument("--integrity", choices=("sha", "sha224", "sha256", "sha384", "sha512", "md5"), default="sha")
+    parser.add_argument("--privacy", choices=("aes", "aes256", "des"), default="aes")
     parser.add_argument("--auth-key", help="v3 auth key（更推荐 --auth-key-env）")
     parser.add_argument("--auth-key-env", help="保存 v3 auth key 的环境变量名")
     parser.add_argument("--priv-key", help="v3 privacy key（更推荐 --priv-key-env）")

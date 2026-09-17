@@ -2,9 +2,9 @@ from copy import deepcopy
 
 from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.constants.constants import COLLECT_OBJ_TREE
-from apps.cmdb.services.collect_credential_contract import (
-    get_collect_credential_contract,
-)
+from apps.cmdb.services.collect_credential_contract import get_collect_credential_contract
+from apps.cmdb.services.collect_vault_binding import actual_builtin_type_keys, binding_for_collect_object
+from apps.system_mgmt.models import CredentialType
 
 HOST_COLLECT_OBJECTS_MERGED_TO_HOST = {"aix", "hpux", "domestic_linux"}
 
@@ -37,7 +37,7 @@ def _should_skip_enterprise_child(category_id, model_id):
     return category_id == "host_manage" and model_id in HOST_COLLECT_OBJECTS_MERGED_TO_HOST
 
 
-def get_collect_obj_tree():
+def get_collect_obj_tree(*, with_credential_types=False):
     tree = deepcopy(COLLECT_OBJ_TREE)
     enterprise_tree = _get_enterprise_collect_obj_tree()
 
@@ -64,8 +64,24 @@ def get_collect_obj_tree():
                 continue
             existing_children.append(child)
 
+    builtin_rows = list(CredentialType.objects.filter(is_builtin=True)) if with_credential_types else []
     for category in tree:
         for child in category.get("children", []):
+            if with_credential_types:
+                binding = binding_for_collect_object(
+                    child.get("id"),
+                    model_id=child.get("model_id"),
+                    driver_type=child.get("type"),
+                    protocol=child.get("credential_protocol"),
+                )
+                child["credential_category"] = binding.split("/", 1)[0] if binding else None
+                child["credential_binding"] = binding
+                if child.get("model_id") == "pc":
+                    child["credential_type_keys"] = actual_builtin_type_keys("host/winrm", builtin_rows) + actual_builtin_type_keys(
+                        "host/ssh", builtin_rows
+                    )
+                else:
+                    child["credential_type_keys"] = actual_builtin_type_keys(binding, builtin_rows)
             contract = get_collect_credential_contract(child.get("model_id"))
             if not contract:
                 continue

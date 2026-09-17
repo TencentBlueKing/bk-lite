@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import type { MenuItem } from '@/types';
 import type {
   CredentialCreatePayload,
   CredentialItem,
@@ -14,6 +15,23 @@ function asList<T>(data: T[] | { items?: T[] } | undefined): T[] {
 
 export const useCredentialPickerApi = () => {
   const { get, post } = useApiClient();
+
+  async function getCredentialPermissions(): Promise<string[]> {
+    // 选择器可在 CMDB 等应用中使用，当前应用的菜单上下文不包含系统管理授权。
+    try {
+      const menus = await get<MenuItem[]>('/core/api/get_user_menus/', {
+        params: { name: 'system-manager' },
+      });
+      const operations = (items: MenuItem[]): string[] => items.flatMap((item) => [
+        ...(item.name === 'credential' ? item.operation || [] : []),
+        ...operations(item.children || []),
+      ]);
+      return operations(menus || []);
+    } catch {
+      // 权限不可确认时保持禁用，不影响已有凭据的选择。
+      return [];
+    }
+  }
 
   async function listSelectableCredentials(params: {
     category?: string;
@@ -40,6 +58,7 @@ export const useCredentialPickerApi = () => {
   }
 
   return {
+    getCredentialPermissions,
     listSelectableCredentials,
     listSelectableTypes,
     createCredential,

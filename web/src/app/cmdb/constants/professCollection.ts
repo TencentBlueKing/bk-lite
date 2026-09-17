@@ -301,6 +301,21 @@ export const SNMP_FORM_INITIAL_VALUES = {
   cleanupDays: 3,
 };
 
+export const SNMP_INTEGRITY_OPTIONS = [
+  { value: 'sha', label: 'SHA-1' },
+  { value: 'sha224', label: 'SHA-224' },
+  { value: 'sha256', label: 'SHA-256' },
+  { value: 'sha384', label: 'SHA-384' },
+  { value: 'sha512', label: 'SHA-512' },
+  { value: 'md5', label: 'MD5' },
+] as const;
+
+export const SNMP_PRIVACY_OPTIONS = [
+  { value: 'aes', label: 'AES-128' },
+  { value: 'aes256', label: 'AES-256' },
+  { value: 'des', label: 'DES' },
+] as const;
+
 export const SQL_FORM_INITIAL_VALUES = {
   instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,

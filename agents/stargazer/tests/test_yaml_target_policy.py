@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from core.collection.request_builder import build_collection_request
 from core.collection.yaml_target_policy import apply_executor_target_policy, apply_yaml_target_policy, apply_yaml_target_policy_async
+from core.plugin.source_resolver import PluginSourceResolver
 from core.plugin.yaml_reader import ExecutorConfig, PluginYamlReader
 
 
 @pytest.fixture
 def reader():
-    return PluginYamlReader(plugins_base_dir="plugins/inputs")
+    root = Path(__file__).resolve().parents[3]
+    plugins = root / "agents/stargazer/plugins/inputs"
+    resolver = PluginSourceResolver(oss_plugins_base_dir=plugins, enterprise_root=root / "enterprise/agents/stargazer/enterprise")
+    return PluginYamlReader(plugins_base_dir=str(plugins), resolver=resolver)
 
 
 def test_host_yaml_policy_overrides_builder_guess(reader):
@@ -42,6 +48,23 @@ def test_network_yaml_policy_is_snmp(reader):
     assert enriched.params["preflight_kind"] == "snmp"
     assert enriched.params["target_policy_mode"] == "snmp"
     assert int(enriched.params["port"]) == 161
+
+
+@pytest.mark.parametrize(
+    "model_id,port,kind,mode",
+    [("f5", 2161, "snmp", "snmp"), ("ambari", 18080, "tcp", "tcp"), ("macrosan", 2161, "snmp", "snmp")],
+)
+def test_legacy_enterprise_policy_matches_credential_channel_and_keeps_form_port(reader, model_id, port, kind, mode):
+    request = build_collection_request(
+        task_id=f"yaml-{model_id}",
+        params={"model_id": model_id, "executor_type": "protocol", "host": "192.0.2.1", "port": port},
+    )
+
+    enriched = apply_yaml_target_policy(request, reader=reader)
+
+    assert enriched.params["preflight_kind"] == kind
+    assert enriched.params["target_policy_mode"] == mode
+    assert enriched.params["port"] == port
 
 
 def test_final_fallback_executor_policy_overrides_initial_enterprise_policy():

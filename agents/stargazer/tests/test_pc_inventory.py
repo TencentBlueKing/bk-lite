@@ -94,12 +94,13 @@ async def test_macos_rejects_non_builtin_script_before_ssh_execution(
 
 
 @pytest.mark.asyncio
-async def test_windows_routes_to_winrm(pc_inventory, monkeypatch):
+@pytest.mark.parametrize("requested_timeout", [120, 9999])
+async def test_windows_routes_to_winrm(pc_inventory, monkeypatch, requested_timeout):
     payload = _load_fixture("windows_complete.json")
     mock_ansible = AsyncMock(return_value={"success": True, "result": [{"host": "10.0.0.8", "stdout": json.dumps(payload)}]})
     monkeypatch.setattr(pc_inventory, "ansible_adhoc", mock_ansible)
 
-    result = await pc_inventory.PCInventoryCollector(_windows_params()).list_all_resources()
+    result = await pc_inventory.PCInventoryCollector(_windows_params(execute_timeout=requested_timeout)).list_all_resources()
 
     kwargs = mock_ansible.await_args.kwargs
     assert kwargs["module"] == "win_shell"
@@ -107,6 +108,7 @@ async def test_windows_routes_to_winrm(pc_inventory, monkeypatch):
     assert kwargs["host_credentials"][0]["port"] == 5986
     assert kwargs["host_credentials"][0]["winrm_scheme"] == "https"
     assert kwargs["host_credentials"][0]["winrm_transport"] == "ntlm"
+    assert kwargs["execute_timeout"] == 120
     assert result["success"] is True
     pc_row = result["result"]["pc"][0]
     assert pc_row["inst_name"].startswith("WIN-")

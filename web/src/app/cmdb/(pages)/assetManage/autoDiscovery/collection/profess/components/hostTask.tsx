@@ -181,17 +181,21 @@ const HostTask: React.FC<HostTaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
-          <Alert
+          {modelItem.type === 'job' && <Alert
             type="info"
             showIcon
             className={`${styles.formFieldHint} mb-4`}
-            message={t('Collection.hostCredentialOptionalTip')}
-          />
+            message={t(['brocade_fc', 'cisco_fc'].includes(modelId)
+              ? 'Collection.deviceJobCredentialTip'
+              : 'Collection.hostCredentialOptionalTip')}
+          />}
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="ssh"
               editMode={Boolean(editId)}
-              credentialHelp={resolveCredentialHelp(modelItem, t)}
+              credentialHelp={modelItem.type === 'job' ? resolveCredentialHelp(modelItem, t) : undefined}
             />
           </Form.Item>
         </BaseTaskForm>

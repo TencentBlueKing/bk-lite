@@ -738,7 +738,7 @@ def test_collect_task_names_distinguishes_physical_server_protocol_plugins(super
 
 @pytest.mark.django_db
 def test_tree_returns_obj_tree(superuser, monkeypatch):
-    monkeypatch.setattr("apps.cmdb.views.collect.get_collect_obj_tree", lambda: [{"id": "a"}])
+    monkeypatch.setattr("apps.cmdb.views.collect.get_collect_obj_tree", lambda **kwargs: [{"id": "a"}])
     request = _req("get", superuser)
     resp = CollectModelViewSet.as_view({"get": "tree"})(request)
     assert _body(resp)["data"] == [{"id": "a"}]

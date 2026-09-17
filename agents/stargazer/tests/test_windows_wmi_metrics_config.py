@@ -2,12 +2,8 @@
 import json
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
-WINDOWS_WMI_METRICS = (
-    REPO_ROOT
-    / "server/apps/monitor/support-files/plugins/Telegraf/http/windows_wmi/metrics.json"
-)
+WINDOWS_WMI_METRICS = REPO_ROOT / "server/apps/monitor/support-files/plugins/Telegraf/http/windows_wmi/metrics.json"
 
 
 def _load_metrics_by_name():
@@ -34,10 +30,8 @@ def test_windows_wmi_metrics_expose_telegraf_aligned_network_rates():
         metric = metrics[metric_name]
         assert metric["metric_group"] == "Network"
         assert metric["unit"] == unit
-        assert metric["dimensions"] == ["interface"]
-        assert metric["query"] == (
-            f'rate({source_metric}{{instance_type="os", config_type="windows_wmi", __$labels__}}[5m])'
-        )
+        assert metric["dimensions"] == [{"name": "interface"}]
+        assert metric["query"] == (f'rate({source_metric}{{instance_type="os", config_type="windows_wmi", __$labels__}}[5m])')
 
 
 def test_windows_wmi_metrics_expose_common_host_metric_groups():
