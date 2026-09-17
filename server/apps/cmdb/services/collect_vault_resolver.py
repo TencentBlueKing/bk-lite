@@ -3,6 +3,7 @@
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_vault_binding import actual_builtin_type_keys, binding_for_collect_object
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.snmp_usm import normalize_integrity, normalize_privacy
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES
 from apps.system_mgmt.services.credential_schema import SchemaError, validate_instance_fields
@@ -21,9 +22,9 @@ def _convert_auth_fields(binding, fields, model_id=None):
             "community": fields.get("community", ""),
             "username": fields.get("username", ""),
             "level": level,
-            "integrity": str(fields.get("auth_protocol") or "").lower(),
+            "integrity": normalize_integrity(fields.get("auth_protocol")) or str(fields.get("auth_protocol") or "").lower(),
             "authkey": fields.get("auth_password", ""),
-            "privacy": str(fields.get("priv_protocol") or "").lower(),
+            "privacy": normalize_privacy(fields.get("priv_protocol")) or str(fields.get("priv_protocol") or "").lower(),
             "privkey": fields.get("priv_password", ""),
         }
     if key == "cloud":

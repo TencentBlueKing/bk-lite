@@ -1,4 +1,5 @@
 import logging
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -114,6 +115,107 @@ def test_list_types_orders_builtin_first_then_by_creation():
     assert keys == builtin_keys + custom_keys
     assert builtin_keys[0] == next(iter(BUILTIN_TYPES))
     assert custom_keys.index("zzz_custom") < custom_keys.index("aaa_custom")
+
+
+def _stale_snmp_algorithm_fields(fields):
+    stale = deepcopy(fields)
+    for field in stale:
+        if field["id"] == "auth_protocol":
+            field["values"] = ["MD5", "SHA"]
+            field.pop("aliases", None)
+            field.pop("default", None)
+        if field["id"] == "priv_protocol":
+            field["values"] = ["DES", "AES"]
+            field.pop("aliases", None)
+            field.pop("default", None)
+    return stale
+
+
+def test_list_types_serves_code_owned_snmp_algorithms_when_db_is_stale():
+    seed_builtin_types()
+    row = CredentialType.objects.get(key="snmp")
+    row.fields = _stale_snmp_algorithm_fields(row.fields)
+    row.save(update_fields=["fields"])
+
+    listed = next(item for item in list_types() if item["key"] == "snmp")
+    auth = next(field for field in listed["fields"] if field["id"] == "auth_protocol")
+    priv = next(field for field in listed["fields"] if field["id"] == "priv_protocol")
+    assert auth["values"] == ["SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512", "MD5"]
+    assert auth["aliases"] == {"SHA": "SHA-1"}
+    assert priv["values"] == ["AES-128", "AES-256", "DES"]
+    assert priv["aliases"] == {"AES": "AES-128"}
+    from apps.system_mgmt.serializers.credential_serializer import CredentialTypeSerializer
+
+    retrieved = CredentialTypeSerializer(row).data
+    assert next(field for field in retrieved["fields"] if field["id"] == "auth_protocol")["values"] == auth["values"]
+    row.refresh_from_db()
+    assert next(field for field in row.fields if field["id"] == "auth_protocol")["values"] == ["MD5", "SHA"]
+
+
+def test_create_and_resolve_snmp_sha256_when_db_enum_is_stale():
+    seed_builtin_types()
+    row = CredentialType.objects.get(key="snmp")
+    row.fields = _stale_snmp_algorithm_fields(row.fields)
+    row.save(update_fields=["fields"])
+    owner = group("snmp-stale-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {
+            "name": "SNMP",
+            "type": "snmp",
+            "group_id": owner.id,
+            "fields": {
+                "version": "v3",
+                "security_level": "authPriv",
+                "username": "ops",
+                "auth_protocol": "SHA-256",
+                "auth_password": "fixture-auth",
+                "priv_protocol": "AES-256",
+                "priv_password": "fixture-priv",
+            },
+        },
+        caller,
+    )
+    public = get_credential(created.credential_id, owner.id, actor=caller)
+    resolved = resolve_credential(created.credential_id, owner.id, caller)
+    assert public["fields"]["auth_protocol"] == "SHA-256"
+    assert public["fields"]["priv_protocol"] == "AES-256"
+    assert resolved["fields"]["auth_protocol"] == "SHA-256"
+    assert resolved["fields"]["priv_protocol"] == "AES-256"
+    assert resolved["fields"]["auth_password"] == "fixture-auth"
+    assert resolved["fields"]["priv_password"] == "fixture-priv"
+
+
+def test_public_snmp_canonicalizes_legacy_sha_when_type_fields_are_stale():
+    seed_builtin_types()
+    owner = group("snmp-alias-owner")
+    caller = actor(owner.id)
+    created = create_credential(
+        {
+            "name": "SNMP",
+            "type": "snmp",
+            "group_id": owner.id,
+            "fields": {
+                "version": "v3",
+                "security_level": "authNoPriv",
+                "username": "ops",
+                "auth_protocol": "SHA",
+                "auth_password": "fixture-auth",
+            },
+        },
+        caller,
+    )
+    row = Credential.objects.get(credential_id=created.credential_id)
+    row.fields["auth_protocol"] = "SHA"
+    row.save(update_fields=["fields"])
+    snmp_type = row.type
+    snmp_type.fields = _stale_snmp_algorithm_fields(snmp_type.fields)
+    snmp_type.save(update_fields=["fields"])
+
+    public = get_credential(created.credential_id, owner.id, actor=caller)
+    resolved = resolve_credential(created.credential_id, owner.id, caller)
+    assert public["fields"]["auth_protocol"] == "SHA-1"
+    assert resolved["fields"]["auth_protocol"] == "SHA-1"
 
 
 def test_builtin_type_is_immutable_but_custom_type_is_editable():

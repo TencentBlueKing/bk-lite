@@ -308,6 +308,14 @@ def test_snmp_v3_conditional_required_and_v2c_ignores_leftover_level():
     community_field = next(field for field in snmp if field["id"] == "community")
     assert version_field["values"] == ["v2", "v2c", "v3"]
     assert community_field["visible_when"] == {"version": {"op": "ne", "value": "v3"}}
+    auth_protocol = next(field for field in snmp if field["id"] == "auth_protocol")
+    priv_protocol = next(field for field in snmp if field["id"] == "priv_protocol")
+    assert auth_protocol["values"] == ["SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512", "MD5"]
+    assert auth_protocol["aliases"] == {"SHA": "SHA-1"}
+    assert auth_protocol["default"] == "SHA-1"
+    assert priv_protocol["values"] == ["AES-128", "AES-256", "DES"]
+    assert priv_protocol["aliases"] == {"AES": "AES-128"}
+    assert priv_protocol["default"] == "AES-128"
 
     v2 = validate_instance_fields(
         type_fields=snmp,
@@ -362,4 +370,81 @@ def test_snmp_v3_conditional_required_and_v2c_ignores_leftover_level():
         },
         require_secrets=True,
     )
-    assert auth_priv["priv_protocol"] == "AES"
+    assert auth_priv["auth_protocol"] == "SHA-1"
+    assert auth_priv["priv_protocol"] == "AES-128"
+
+
+def test_enum_aliases_canonicalize_and_reject_invalid_maps():
+    fields = [
+        {
+            "id": "auth_protocol",
+            "kind": "enum",
+            "values": ["SHA-1", "SHA-256"],
+            "aliases": {"SHA": "SHA-1"},
+        }
+    ]
+    assert validate_instance_fields(
+        type_fields=fields,
+        values={"auth_protocol": "SHA"},
+        require_secrets=False,
+    ) == {"auth_protocol": "SHA-1"}
+
+    with pytest.raises(SchemaError, match="aliases must point"):
+        validate_type_fields([{"id": "auth_protocol", "kind": "enum", "values": ["SHA-1"], "aliases": {"SHA": "SHA-256"}}])
+
+
+def test_effective_type_fields_uses_code_owned_builtin_snmp_even_when_db_copy_is_stale():
+    from types import SimpleNamespace
+
+    from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES, effective_type_fields
+
+    stale = SimpleNamespace(
+        is_builtin=True,
+        key="snmp",
+        fields=[{"id": "auth_protocol", "kind": "enum", "values": ["MD5", "SHA"]}],
+    )
+    fields = effective_type_fields(stale)
+    auth = next(field for field in fields if field["id"] == "auth_protocol")
+    priv = next(field for field in fields if field["id"] == "priv_protocol")
+    expected = {field["id"]: field for field in BUILTIN_TYPES["snmp"]["fields"]}
+    assert auth["values"] == expected["auth_protocol"]["values"]
+    assert auth["aliases"] == expected["auth_protocol"]["aliases"]
+    assert priv["values"] == expected["priv_protocol"]["values"]
+    assert priv["aliases"] == expected["priv_protocol"]["aliases"]
+    fields[0]["values"] = ["mutated"]
+    assert BUILTIN_TYPES["snmp"]["fields"][0]["values"] != ["mutated"]
+
+    custom = SimpleNamespace(is_builtin=False, key="custom", fields=[{"id": "token", "kind": "secret"}])
+    assert effective_type_fields(custom) == [{"id": "token", "kind": "secret"}]
+
+
+def test_effective_type_fields_resolves_builtin_seed_fallback_keys():
+    from types import SimpleNamespace
+
+    from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES, effective_type_fields
+
+    fallback = SimpleNamespace(is_builtin=True, key="openstack_account", fields=[])
+    fields = effective_type_fields(fallback)
+    assert [field["id"] for field in fields] == [field["id"] for field in BUILTIN_TYPES["openstack"]["fields"]]
+
+
+def test_public_type_overlays_stale_builtin_snmp_fields():
+    from types import SimpleNamespace
+
+    from apps.system_mgmt.services.credential_service import _public_type
+
+    listed = _public_type(
+        SimpleNamespace(
+            key="snmp",
+            name="SNMP",
+            is_builtin=True,
+            categories=["network"],
+            fields=[{"id": "auth_protocol", "kind": "enum", "values": ["MD5", "SHA"]}],
+            credential_count=1,
+        )
+    )
+    auth = next(field for field in listed["fields"] if field["id"] == "auth_protocol")
+    priv = next(field for field in listed["fields"] if field["id"] == "priv_protocol")
+    assert auth["values"] == ["SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512", "MD5"]
+    assert "SHA-256" in auth["values"]
+    assert priv["values"] == ["AES-128", "AES-256", "DES"]

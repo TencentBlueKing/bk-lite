@@ -86,7 +86,9 @@ BUILTIN_TYPES = {
                 "id": "auth_protocol",
                 "name": "认证算法",
                 "kind": "enum",
-                "values": ["MD5", "SHA"],
+                "values": ["SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512", "MD5"],
+                "aliases": {"SHA": "SHA-1"},
+                "default": "SHA-1",
                 "required": True,
                 "visible_when": {
                     "version": "v3",
@@ -107,7 +109,9 @@ BUILTIN_TYPES = {
                 "id": "priv_protocol",
                 "name": "加密算法",
                 "kind": "enum",
-                "values": ["DES", "AES"],
+                "values": ["AES-128", "AES-256", "DES"],
+                "aliases": {"AES": "AES-128"},
+                "default": "AES-128",
                 "required": True,
                 "visible_when": {"version": "v3", "security_level": "authPriv"},
             },
@@ -200,7 +204,38 @@ BUILTIN_TYPES = {
 # mutable references to the definitions.
 BUILTIN_TYPE_SEEDS = BUILTIN_TYPES
 
+# Preferred key → historical seed key when the preferred name is already occupied.
+BUILTIN_KEY_FALLBACKS = {
+    "openstack": "openstack_account",
+    "redfish": "redfish_bmc",
+}
+
 
 def builtin_type_payloads():
     """Return deep-copied seed payloads for built-in types."""
     return {key: deepcopy(value) for key, value in BUILTIN_TYPES.items()}
+
+
+def builtin_fields_for_key(type_key: str):
+    """Return code-owned fields for a built-in type, including seed fallback keys."""
+    definition = BUILTIN_TYPES.get(type_key)
+    if definition is None:
+        preferred = next((key for key, fallback in BUILTIN_KEY_FALLBACKS.items() if fallback == type_key), None)
+        definition = BUILTIN_TYPES.get(preferred) if preferred else None
+    if definition is None:
+        return None
+    return deepcopy(definition["fields"])
+
+
+def effective_type_fields(credential_type):
+    """Schema used to list, validate, encrypt and decrypt a credential type.
+
+    Built-in types are owned by code. Serving and validating from the live
+    definition keeps credential management aligned after algorithm expansions
+    even when `seed_builtin_types()` has not rewritten the database row yet.
+    """
+    if getattr(credential_type, "is_builtin", False):
+        fields = builtin_fields_for_key(getattr(credential_type, "key", "") or "")
+        if fields is not None:
+            return fields
+    return deepcopy(getattr(credential_type, "fields", None) or [])

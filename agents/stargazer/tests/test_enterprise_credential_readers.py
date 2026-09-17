@@ -97,6 +97,28 @@ def test_snmp_v3_fields_match_vault_keys(collector_class, model_id, level, auth,
     assert bool(security.privKey) == bool(privacy)
 
 
+@pytest.mark.parametrize("model_id", SNMP)
+def test_snmp_configuration_collectors_map_sha256_and_aes256(collector_class, model_id):
+    from core.infra.snmp_usm import integrity_protocol, privacy_protocol
+
+    obj = collector_class(model_id)(
+        {
+            "host": "192.0.2.10",
+            "version": "v3",
+            "username": "audit-user",
+            "level": "authpriv",
+            "integrity": "SHA-256",
+            "privacy": "AES-256",
+            "authkey": "auth-key-123",
+            "privkey": "priv-key-123",
+            "snmp_port": 1161,
+        }
+    )
+    security = obj._get_snmp_auth()
+    assert security.authProtocol == integrity_protocol("sha256")
+    assert security.privProtocol == privacy_protocol("aes256")
+
+
 def test_tdsql_uses_native_connection_kwargs(collector_class, monkeypatch):
     from plugins.inputs.tdsql import tdsql_info
 

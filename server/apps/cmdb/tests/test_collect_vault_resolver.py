@@ -339,6 +339,19 @@ def test_type_directory_rejects_builtin_row_without_required_auth_fields():
             },
             {"version": "v3", "level": "authpriv", "integrity": "sha", "authkey": "vault-secret", "privacy": "aes", "privkey": "priv-secret"},
         ),
+        (
+            "network/snmp",
+            {
+                "version": "v3",
+                "security_level": "authPriv",
+                "username": "snmp",
+                "auth_protocol": "SHA-256",
+                "auth_password": "vault-secret",
+                "priv_protocol": "AES-256",
+                "priv_password": "priv-secret",
+            },
+            {"version": "v3", "level": "authpriv", "integrity": "sha256", "authkey": "vault-secret", "privacy": "aes256", "privkey": "priv-secret"},
+        ),
         ("database/token", {"token": "vault-secret"}, {"token": "vault-secret"}),
     ],
 )

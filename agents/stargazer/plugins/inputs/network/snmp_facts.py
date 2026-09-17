@@ -8,22 +8,9 @@ import socket
 import time
 
 from core.infra.snmp_engine_pool import shared_snmp_engine
+from core.infra.snmp_usm import integrity_protocol, normalize_integrity, normalize_privacy, normalize_security_level, privacy_protocol, v3_usm_kwargs
 from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
-from pysnmp.hlapi.asyncio import (
-    CommunityData,
-    ContextData,
-    ObjectIdentity,
-    ObjectType,
-    UdpTransportTarget,
-    UsmUserData,
-    bulkCmd,
-    getCmd,
-    nextCmd,
-    usmAesCfb128Protocol,
-    usmDESPrivProtocol,
-    usmHMACMD5AuthProtocol,
-    usmHMACSHAAuthProtocol,
-)
+from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, UdpTransportTarget, UsmUserData, bulkCmd, getCmd, nextCmd
 from pysnmp.proto.rfc1902 import Null
 from pysnmp.proto.rfc1905 import EndOfMibView, endOfMibView
 from sanic.log import logger
@@ -96,9 +83,7 @@ class SnmpFacts:
         self.version = kwargs.get("version")
         self.community = kwargs.get("community")
         self.username = kwargs.get("username")
-        self.level = {"noauthnopriv": "noAuthNoPriv", "authnopriv": "authNoPriv", "authpriv": "authPriv"}.get(
-            str(kwargs.get("level") or "").lower(), kwargs.get("level")
-        )
+        self.level = normalize_security_level(kwargs.get("level"))
         self.integrity = kwargs.get("integrity")
         self.privacy = kwargs.get("privacy")
         self.authkey = kwargs.get("authkey")
@@ -132,11 +117,15 @@ class SnmpFacts:
             if self.level not in {"noAuthNoPriv", "authNoPriv", "authPriv"}:
                 raise ValueError("Invalid SNMP security level.")
             if self.level in {"authNoPriv", "authPriv"}:
-                if self.integrity not in {"sha", "md5"} or len(self.authkey or "") < 8:
+                canonical_integrity = normalize_integrity(self.integrity)
+                if canonical_integrity is None or len(self.authkey or "") < 8:
                     raise ValueError("Authentication algorithm and an authkey of at least 8 characters are required.")
+                self.integrity = canonical_integrity
             if self.level == "authPriv":
-                if self.privacy not in {"aes", "des"} or len(self.privkey or "") < 8:
+                canonical_privacy = normalize_privacy(self.privacy)
+                if canonical_privacy is None or len(self.privkey or "") < 8:
                     raise ValueError("Privacy algorithm and a privkey of at least 8 characters are required.")
+                self.privacy = canonical_privacy
         if not (1 <= self.snmp_port <= 65535):
             raise ValueError("Invalid SNMP port. Must be between 1 and 65535.")
 
@@ -146,42 +135,28 @@ class SnmpFacts:
         """
         if self.version in ["v2", "v2c"]:
             return CommunityData(self.community)
-        elif self.level == "noAuthNoPriv":
-            return UsmUserData(self.username)
-        elif self.level == "authNoPriv":
-            return UsmUserData(
-                self.username,
-                authKey=self.authkey,
-                authProtocol=self._get_integrity_proto(),
-            )
-        else:
-            return UsmUserData(
-                self.username,
-                authKey=self.authkey,
-                privKey=self.privkey,
-                authProtocol=self._get_integrity_proto(),
-                privProtocol=self._get_privacy_proto(),
-            )
+        return UsmUserData(
+            self.username,
+            **v3_usm_kwargs(
+                level=self.level,
+                integrity=self.integrity,
+                privacy=self.privacy,
+                authkey=self.authkey,
+                privkey=self.privkey,
+            ),
+        )
 
     def _get_integrity_proto(self):
         """
         获取 SNMP v3 的认证协议。
         """
-        if self.integrity == "sha":
-            return usmHMACSHAAuthProtocol
-        elif self.integrity == "md5":
-            return usmHMACMD5AuthProtocol
-        return None
+        return integrity_protocol(self.integrity)
 
     def _get_privacy_proto(self):
         """
         获取 SNMP v3 的隐私协议。
         """
-        if self.privacy == "aes":
-            return usmAesCfb128Protocol
-        elif self.privacy == "des":
-            return usmDESPrivProtocol
-        return None
+        return privacy_protocol(self.privacy)
 
     def _transport_target(self, timeout=None, retries=None):
         return UdpTransportTarget(

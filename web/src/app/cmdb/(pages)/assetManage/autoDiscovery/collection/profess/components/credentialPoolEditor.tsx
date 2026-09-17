@@ -40,6 +40,8 @@ import SortableItem from '@/app/cmdb/components/sortable-item';
 import {
   MAX_CREDENTIAL_POOL_SIZE,
   PASSWORD_PLACEHOLDER,
+  SNMP_INTEGRITY_OPTIONS,
+  SNMP_PRIVACY_OPTIONS,
 } from '@/app/cmdb/constants/professCollection';
 import {
   CredentialPoolItem,
@@ -786,18 +788,20 @@ function renderCredentialFields({
               />
             </InputRow>
             <InputRow label={t('Collection.SNMPTask.hashAlgorithm', '哈希算法')}>
-              <Select value={item.integrity || 'sha'} onChange={(nextValue) => updateItem(index, { integrity: nextValue })}>
-                <Select.Option value="sha">SHA</Select.Option>
-                <Select.Option value="md5">MD5</Select.Option>
-              </Select>
+              <Select
+                value={item.integrity || 'sha'}
+                options={[...SNMP_INTEGRITY_OPTIONS]}
+                onChange={(nextValue) => updateItem(index, { integrity: nextValue })}
+              />
             </InputRow>
             {level === 'authPriv' && (
               <>
                 <InputRow label={t('Collection.SNMPTask.encryptAlgorithm', '加密算法')}>
-                  <Select value={item.privacy || 'aes'} onChange={(nextValue) => updateItem(index, { privacy: nextValue })}>
-                    <Select.Option value="aes">AES</Select.Option>
-                    <Select.Option value="des">DES</Select.Option>
-                  </Select>
+                  <Select
+                    value={item.privacy || 'aes'}
+                    options={[...SNMP_PRIVACY_OPTIONS]}
+                    onChange={(nextValue) => updateItem(index, { privacy: nextValue })}
+                  />
                 </InputRow>
                 <InputRow label={t('Collection.SNMPTask.encryptKey', '加密密钥')}>
                   <SecretInput

@@ -90,9 +90,9 @@ const SNMP_FIELDS = [
     defaultValue: 'authNoPriv',
     recommendedValue: 'authPriv',
   },
-  { key: 'snmpAuthAlgorithm', defaultValue: 'SHA' },
+  { key: 'snmpAuthAlgorithm', defaultValue: 'SHA-1' },
   { key: 'snmpAuthPassword' },
-  { key: 'snmpPrivacyAlgorithm', defaultValue: 'AES' },
+  { key: 'snmpPrivacyAlgorithm', defaultValue: 'AES-128' },
   { key: 'snmpPrivacyKey' },
   { key: 'snmpPort', defaultValue: '161' },
 ] as const;
