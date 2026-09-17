@@ -127,8 +127,6 @@
 
 [[processors.starlark]]
     namepass = ["device_cpu", "device_memory", "firewall"]
-    [processors.starlark.tagpass]
-        brand = ["sangfor"]
     source = '''
 def apply(metric):
     pairs = [("usage", "usage_legacy"), ("current_connections", "current_connections_legacy")]
@@ -141,3 +139,5 @@ def apply(metric):
             metric.fields.pop(legacy)
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["sangfor"]

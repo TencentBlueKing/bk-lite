@@ -86,8 +86,6 @@
 
 [[processors.starlark]]
     namepass = ["device_cpu", "device_memory"]
-    [processors.starlark.tagpass]
-        brand = ["proxim"]
     source = '''
 def parse_percent(raw):
     if raw == None:
@@ -106,3 +104,5 @@ def apply(metric):
     metric.fields["usage"] = parsed
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["proxim"]
