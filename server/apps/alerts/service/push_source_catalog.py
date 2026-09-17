@@ -58,6 +58,17 @@ class MemoryCatalogStore:
         self._values.pop(key, None)
         self._zsets.pop(key, None)
 
+    def zrem(self, key, *members):
+        stored = self._zsets.get(key)
+        if not stored:
+            return 0
+        removed = 0
+        for member in members:
+            if member in stored:
+                del stored[member]
+                removed += 1
+        return removed
+
     def zremrangebyscore(self, key, min_score, max_score):
         members = self._zsets.get(key)
         if not members:
@@ -103,6 +114,11 @@ class RedisCatalogStore:
     def delete(self, key):
         return self._redis.delete(key)
 
+    def zrem(self, key, *members):
+        if not members:
+            return 0
+        return self._redis.zrem(key, *members)
+
     def zremrangebyscore(self, key, min_score, max_score):
         return self._redis.zremrangebyscore(key, min_score, max_score)
 
@@ -146,6 +162,19 @@ class DjangoCacheCatalogStore:
 
     def delete(self, key):
         return self._cache.delete(key)
+
+    def zrem(self, key, *members):
+        stored = dict(self._cache.get(key) or {})
+        if not stored:
+            return 0
+        removed = 0
+        for member in members:
+            if member in stored:
+                del stored[member]
+                removed += 1
+        if removed:
+            self._cache.set(key, stored, timeout=None)
+        return removed
 
     def zremrangebyscore(self, key, min_score, max_score):
         members = dict(self._cache.get(key) or {})
@@ -321,13 +350,11 @@ class PushSourceCatalog:
         self.store.zremrangebyscore(key, float("-inf"), math.nextafter(float(cutoff), float("-inf")))
 
     def _keep_newest_members(self, key):
-        size = self.store.zcard(key) or 0
-        if size <= self.MAX_MEMBERS:
-            return
-        kept = self.store.zrevrange(key, 0, self.MAX_MEMBERS - 1, withscores=True)
-        self.store.delete(key)
-        if kept:
-            self.store.zadd(key, {member: score for member, score in kept})
+        while (self.store.zcard(key) or 0) > self.MAX_MEMBERS:
+            overflow = self.store.zrevrange(key, self.MAX_MEMBERS, -1)
+            if not overflow:
+                return
+            self.store.zrem(key, *overflow)
 
     def _record_throttle(self, team_id, mapping, now):
         stale_before = now - self.min_interval

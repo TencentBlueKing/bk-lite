@@ -209,6 +209,31 @@ def test_rebuild_merges_and_does_not_clobber_live_observe():
 
 
 @pytest.mark.django_db
+def test_keep_newest_does_not_clobber_observe_during_rebuild():
+    now = 1_700_000_000
+    extra = "oldest-extra"
+    concurrent_score = now + 10_000
+
+    class ConcurrentDuringKeep(MemoryCatalogStore):
+        def zrevrange(self, key, start, end, withscores=False):
+            result = super().zrevrange(key, start, end, withscores=withscores)
+            if self.zcard(key) > PushSourceCatalog.MAX_MEMBERS:
+                self.zadd(key, {"concurrent": concurrent_score})
+            return result
+
+    cat = PushSourceCatalog(store=ConcurrentDuringKeep(), now=lambda: now, min_interval=0)
+    key = cat.KEY.format(team_id=1)
+    seeded = {f"s{i}": now - i for i in range(PushSourceCatalog.MAX_MEMBERS)}
+    seeded[extra] = now - PushSourceCatalog.MAX_MEMBERS - 1
+    cat.store.zadd(key, seeded)
+    cat.rebuild_for_team(1)
+    members = cat.list_for_teams([1])
+    assert "concurrent" in members
+    assert extra not in members
+    assert len(members) == PushSourceCatalog.MAX_MEMBERS
+
+
+@pytest.mark.django_db
 def test_list_rebuilds_once_under_lock():
     cat = PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: 1, min_interval=0)
     first = cat.list_for_teams([9])
