@@ -32,6 +32,7 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import normalize_inst_uuid
 from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance, validate_commands, validate_network_config_instance
 from apps.cmdb.services.pc_collect_policy import validate_pc_collect_task
+from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope, VmwareScopeError
 from apps.cmdb.services.winsphere_endpoint import normalize_winsphere_management_address
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
@@ -648,6 +649,17 @@ class CollectModelSerializer(AuthSerializer):
             self._validate_hwcloud_credential(attrs)
         elif model_id in {"fusioninsight", "storage", "sangforhci"}:
             self._validate_platform_api_credential(attrs)
+
+        if model_id == "vmware_vc":
+            target = {
+                field: self._get_attr_or_instance_value(attrs, field) for field in ("model_id", "instances", "access_point", "credential", "params")
+            }
+            target["id"] = self.instance.pk if self.instance is not None else None
+            try:
+                source = VmwareCollectionScope.validate_task(target)
+            except VmwareScopeError as err:
+                raise serializers.ValidationError({"instances": str(err)}) from err
+            attrs["params"] = {**self._get_effective_params(attrs), "vmware_source_key": source}
 
         if model_id == "winsphere":
             self._normalize_winsphere_instances(attrs)

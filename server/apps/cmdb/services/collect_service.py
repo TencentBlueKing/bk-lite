@@ -23,6 +23,7 @@ from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
 from apps.cmdb.services.collection_offset_policy import restore_owned_offsets
 from apps.cmdb.services.collection_offset_service import CollectionOffsetService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
@@ -505,7 +506,7 @@ class CollectModelService(object):
 
         restore_owned_offsets(create_data)
         # 偏移与任务一起提交；外部配置仍在提交后下发。
-        with transaction.atomic(), CollectionOffsetService.serialize(create_data):
+        with transaction.atomic(), VmwareCollectionScope.serialize_save(create_data), CollectionOffsetService.serialize(create_data):
             serializer = view_self.get_serializer(data=create_data)
             serializer.is_valid(raise_exception=True)
             view_self.perform_create(serializer)
@@ -612,7 +613,11 @@ class CollectModelService(object):
     def update(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
         initial = view_self.get_object()
         source = cls._request_payload(request, payload)
-        with transaction.atomic(), CollectionOffsetService.serialize(initial, data=source):
+        with (
+            transaction.atomic(),
+            VmwareCollectionScope.serialize_save(initial, data=source),
+            CollectionOffsetService.serialize(initial, data=source),
+        ):
             return cls._update_under_lock(request, view_self, payload, credential_pool_max_size=credential_pool_max_size)
 
     @classmethod
