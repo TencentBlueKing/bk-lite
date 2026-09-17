@@ -1,5 +1,10 @@
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
+from apps.core.utils.current_team_scope import (
+    assert_unassigned_catalog_access,
+    is_persisted_superuser,
+    missing_organization_q,
+)
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.virtual_organizations import authorized_virtual_organization_ids
@@ -46,6 +51,17 @@ def filter_current_organization(queryset: QuerySet, request, relation: str) -> Q
     if not organization_ids:
         return queryset.none()
     return queryset.filter(**{f"{relation}__organization__in": organization_ids}).distinct()
+
+
+def scope_catalog_queryset(queryset: QuerySet, request, relation: str, related_model, *, fk_name: str, for_list: bool) -> QuerySet:
+    if for_list:
+        if assert_unassigned_catalog_access(request):
+            return queryset.filter(missing_organization_q(related_model, fk_name=fk_name)).distinct()
+        return filter_current_organization(queryset, request, relation)
+    scoped = filter_current_organization(queryset, request, relation)
+    if not is_persisted_superuser(getattr(request, "user", None)):
+        return scoped
+    return queryset.filter(Q(pk__in=scoped.values("pk")) | missing_organization_q(related_model, fk_name=fk_name)).distinct()
 
 
 def validate_assignable_organizations(request, organization_ids: list[int]) -> None:

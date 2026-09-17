@@ -19,11 +19,11 @@ from apps.opspilot.models import (
     WikiKnowledgeBase,
     WikiStructureRevision,
 )
+from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki import decision_service
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
-from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
 
 
@@ -340,6 +340,7 @@ def _propose_update_generation(
         stage_ai_page,
     )
     from apps.opspilot.services.wiki.build_service import _canonical_title, _invoke_llm
+    from apps.opspilot.services.wiki.colloquial_alias_service import enrich_generation_colloquial_aliases_safely
     from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
     from apps.opspilot.services.wiki.generation_wikilink_enrichment_service import apply_generation_wikilink_trace, enrich_generation_pages_wikilinks
     from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
@@ -541,6 +542,14 @@ def _propose_update_generation(
         apply_generation_wikilink_trace(
             source_trace["page_actions"],
             enrichment_results,
+        )
+        source_trace["colloquial_aliases"] = enrich_generation_colloquial_aliases_safely(
+            context.candidate_generation_id,
+            enrichment_page_ids,
+            llm_model_id=llm_model_id,
+            invoke_llm=_invoke_llm,
+            budget=budget,
+            llm_when="if_empty",
         )
 
         published_build = None

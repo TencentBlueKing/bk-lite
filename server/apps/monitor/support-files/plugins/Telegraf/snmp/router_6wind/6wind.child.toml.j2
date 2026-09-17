@@ -97,8 +97,6 @@
 
 [[processors.starlark]]
     namepass = ["device_cpu"]
-    [processors.starlark.tagpass]
-        brand = ["6wind"]
     source = '''
 def apply(metric):
     idle = metric.fields.get("idle")
@@ -110,11 +108,11 @@ def apply(metric):
         metric.fields["usage"] = user + system
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["6wind"]
 
 [[processors.starlark]]
     namepass = ["device_memory_hr"]
-    [processors.starlark.tagpass]
-        brand = ["6wind"]
     source = '''
 def apply(metric):
     storage_type = metric.tags.get("storage_type", "")
@@ -134,3 +132,5 @@ def apply(metric):
         metric.fields["free"] = (size - used) * units
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["6wind"]

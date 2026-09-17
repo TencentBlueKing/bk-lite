@@ -6,7 +6,7 @@
 from collections import defaultdict
 
 from apps.opspilot.models import BuildRecord, PageChunk
-from apps.opspilot.services.wiki.embedding_service import chunk_markdown
+from apps.opspilot.services.wiki.generation_navigation_service import page_version_summary
 
 _INDEX_STAGE_KEYS = ("page_embedding", "chunk_embedding")
 _INDEX_REBUILD_TRIGGERS = {"kb_reindex", "material_reindex", "page_reindex"}
@@ -89,16 +89,16 @@ def page_index_detail(page, failure_lookup=None, *, page_version=_UNSPECIFIED_PA
         return detail
 
     current_version = page.current_version if page_version is _UNSPECIFIED_PAGE_VERSION else page_version
-    body = (current_version.body if current_version else "") or ""
+    summary = page_version_summary(current_version).strip() if current_version else ""
     if not current_version:
         page_status = _not_indexed(reason="no_current_version")
         chunk_status = _not_indexed(reason="no_current_version", indexed_chunks=0, expected_chunks=0)
-    elif not body.strip():
-        page_status = _skipped("empty_body")
-        chunk_status = {**_skipped("empty_body"), "indexed_chunks": 0, "expected_chunks": 0}
+    elif not summary:
+        page_status = _skipped("empty_summary")
+        chunk_status = {**_skipped("empty_summary"), "indexed_chunks": 0, "expected_chunks": 0}
     else:
         page_status = _indexed() if current_version.embedding else _not_indexed()
-        expected_chunks = len(chunk_markdown(body))
+        expected_chunks = 1
         chunks = PageChunk.objects.filter(page=page, version=current_version).only("embedding")
         indexed_chunks = sum(1 for chunk in chunks if chunk.embedding)
         chunk_status = (

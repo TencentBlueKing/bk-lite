@@ -1,5 +1,6 @@
 import React from 'react';
 import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
@@ -20,7 +21,9 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
 vi.mock('@/components/permission', () => ({ default: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock('@/context/userInfo', () => ({ useUserInfoContext: () => ({ flatGroups: [] }) }));
+const userInfo = { flatGroups: [] as Array<{ id: number; name: string }>, isSuperUser: false };
+
+vi.mock('@/context/userInfo', () => ({ useUserInfoContext: () => userInfo }));
 
 const activeInstance = {
   id: 'instance-a',
@@ -58,6 +61,7 @@ beforeEach(() => {
   ]);
   api.getHealth.mockResolvedValue({ catalog_reconcile: { status: 'ok' } });
   api.getInstancePage.mockResolvedValue({ count: 1, items: [activeInstance] });
+  userInfo.isSuperUser = false;
 });
 
 afterEach(() => {
@@ -101,7 +105,7 @@ describe('APM 接入实例目录', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['', '', '', '112px', '112px', '168px', '168px', '96px', '160px', '96px']);
+    expect(columnWidths).toEqual(['', '', '', '132px', '132px', '168px', '168px', '100px', '160px', '96px']);
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       '实例 ID',
       '服务',
@@ -135,5 +139,26 @@ describe('APM 接入实例目录', () => {
     expect(screen.queryByText('已归档')).toBeNull();
     expect(api.getInstancePage).not.toHaveBeenCalledWith(expect.objectContaining({ include_archived: expect.anything() }));
     expect(screen.queryByRole('button', { name: /归档|恢复/ })).toBeNull();
+  });
+
+  it('普通用户不展示未归属开关', async () => {
+    renderPage();
+    await screen.findByText('pod-a');
+    expect(screen.queryByRole('button', { name: /未归属/ })).toBeNull();
+    expect(api.getInstancePage).not.toHaveBeenCalledWith(expect.objectContaining({ unassigned: true }));
+  });
+
+  it('超级用户打开未归属后请求零组织实例', async () => {
+    userInfo.isSuperUser = true;
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('pod-a');
+
+    await user.click(screen.getByRole('button', { name: /未归属/ }));
+
+    await waitFor(() => expect(api.getInstancePage).toHaveBeenCalledWith(expect.objectContaining({
+      unassigned: true,
+      page: 1,
+    })));
   });
 });

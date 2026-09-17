@@ -205,6 +205,8 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
 
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="config_file"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
               editMode={Boolean(editId)}

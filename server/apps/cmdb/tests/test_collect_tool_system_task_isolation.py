@@ -101,6 +101,39 @@ def test_collect_tool_masked_execute_cannot_restore_node_mgmt_system_task_creden
 
 
 @pytest.mark.django_db
+def test_collect_tool_vault_execute_queues_reference_without_page_secrets(superuser, monkeypatch, mocker):
+    monkeypatch.setattr("apps.cmdb.views.collect_tool.get_current_team_from_request", lambda request: 1)
+    mocker.patch("apps.cmdb.views.collect_tool.CollectToolService.resolve_access_point", return_value="default_stargazer")
+    enqueue = mocker.patch("apps.cmdb.views.collect_tool.CollectToolService.enqueue_debug_task")
+    request = APIRequestFactory().post(
+        "/collect_tool/execute/",
+        {
+            "protocol": "snmp",
+            "action": "test_connection",
+            "access_point_id": "node-1",
+            "target": "10.0.0.1",
+            "port": 161,
+            "credential": {
+                "credential_source": "vault",
+                "vault_credential_id": "crd-1",
+                "community": "page-secret",
+                "authkey": "page-secret",
+                "vault_actor_context": {"username": "forged"},
+            },
+        },
+        format="json",
+    )
+    force_authenticate(request, user=superuser)
+    response = CollectToolViewSet.as_view({"post": "execute"})(request)
+    assert response.status_code == 200
+    assert _body(response)["data"]["status"] == "pending"
+    queued = enqueue.call_args.args[1]
+    assert queued["credential"] == {"credential_source": "vault", "vault_credential_id": "crd-1"}
+    assert queued["vault_actor_context"] == {"username": superuser.username, "domain": superuser.domain, "current_team": 1}
+    assert "page-secret" not in str(queued)
+
+
+@pytest.mark.django_db
 def test_config_file_receive_result_cannot_mutate_node_mgmt_system_task(superuser, system_task):
     request = APIRequestFactory().post(
         "/config-file/receive_result/",

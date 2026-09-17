@@ -64,8 +64,6 @@
 
 [[processors.starlark]]
     namepass = ["snmp"]
-    [processors.starlark.tagpass]
-        brand = ["barracuda"]
     source = '''
 def apply(metric):
     metric.fields["device_temperature_celsius"] = max(
@@ -78,3 +76,5 @@ def apply(metric):
     )
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["barracuda"]

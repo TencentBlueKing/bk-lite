@@ -6,7 +6,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 
 from apps.cmdb.serializers.collect_tool import CollectToolExecuteSerializer, CollectToolPrefillRequestSerializer, CollectToolResultRequestSerializer
+from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_tool_service import MASKED_PASSWORD, CollectToolService
+from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -58,9 +60,10 @@ class CollectToolViewSet(AuthViewSet):
         else:
             masked_fields = {"password"}
 
+        has_vault = credential.get("credential_source") == "vault"
         has_masked = any(credential.get(f) == MASKED_PASSWORD for f in masked_fields)
-        if has_masked:
-            if not task_id:
+        if has_vault or has_masked:
+            if has_masked and not has_vault and not task_id:
                 debug_id = CollectToolService.create_debug_id()
                 result = CollectToolService.build_error_result(
                     debug_id=debug_id,
@@ -71,8 +74,25 @@ class CollectToolViewSet(AuthViewSet):
                 CollectToolService.save_debug_state(debug_id, "error", result)
                 return WebUtils.response_success(CollectToolService.build_submit_response(debug_id, "error", result))
             try:
-                instance = CollectToolService.get_accessible_task(request, task_id, operator="Operator")
-                payload = CollectToolService.inject_credentials(payload, instance)
+                instance = CollectToolService.get_accessible_task(request, task_id, operator="Operator") if task_id else None
+                actor_context = (
+                    {
+                        "username": request.user.username,
+                        "domain": request.user.domain,
+                        "current_team": get_current_team_from_request(request),
+                    }
+                    if has_vault
+                    else None
+                )
+                if has_vault:
+                    payload["credential"] = {
+                        key: value
+                        for key, value in credential.items()
+                        if key not in CollectCredentialPoolService.VAULT_CORE_FIELDS | {"vault_actor_context"}
+                    }
+                    payload["vault_actor_context"] = actor_context
+                else:
+                    payload = CollectToolService.inject_credentials(payload, instance)
             except ValidationError as e:
                 logger.warning(
                     "collect tool credential restore blocked, task_id=%s, user=%s, error=%s",

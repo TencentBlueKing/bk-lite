@@ -152,6 +152,8 @@ const RedfishTask: React.FC<RedfishTaskFormProps> = ({
         >
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="redfish"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
               editMode={Boolean(editId)}

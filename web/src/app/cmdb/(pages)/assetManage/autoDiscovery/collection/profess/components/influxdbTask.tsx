@@ -125,7 +125,9 @@ const InfluxdbTask: React.FC<InfluxdbTaskProps> = ({
         new Error(
           invalidField === 'scheme'
             ? t('Collection.influxdbTask.invalidScheme', '请选择 HTTP 或 HTTPS')
-            : t('Collection.influxdbTask.invalidPort', '请输入 1–65535 的有效端口'),
+            : invalidField === 'vault_credential_id'
+              ? '请选择已有凭据'
+              : t('Collection.influxdbTask.invalidPort', '请输入 1–65535 的有效端口'),
         ),
       );
     }
@@ -155,6 +157,8 @@ const InfluxdbTask: React.FC<InfluxdbTaskProps> = ({
             validateTrigger={[]}
           >
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="influxdb"
               editMode={Boolean(editId)}
               maxCount={1}

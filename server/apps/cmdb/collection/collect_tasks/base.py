@@ -125,6 +125,7 @@ class BaseCollect(object):
             data_cleanup_strategy=self.task.data_cleanup_strategy,
             plugin_kwargs=self.plugin_kwargs,
             reconcile_task_assets=True,
+            task=self.task,
         )
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)

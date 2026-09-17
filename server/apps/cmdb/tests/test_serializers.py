@@ -3,19 +3,8 @@
 对照 specs/capabilities/legacy-prd-cmdb-自动发现.md：采集协议凭据校验、字段分组增改批量校验。
 """
 
-import pytest
-
-from apps.cmdb.serializers.collect_tool import (
-    CollectToolExecuteSerializer,
-    IpmiCredentialSerializer,
-    SnmpCredentialSerializer,
-)
-from apps.cmdb.serializers.field_group import (
-    BatchUpdateAttrGroupSerializer,
-    FieldGroupCreateSerializer,
-    FieldGroupMoveSerializer,
-)
-
+from apps.cmdb.serializers.collect_tool import CollectToolExecuteSerializer, IpmiCredentialSerializer, SnmpCredentialSerializer
+from apps.cmdb.serializers.field_group import BatchUpdateAttrGroupSerializer, FieldGroupCreateSerializer, FieldGroupMoveSerializer
 
 # --------------------------------------------------------------------------
 # SnmpCredentialSerializer
@@ -38,18 +27,80 @@ def test_snmp_v3_requires_fields():
 
 
 def test_snmp_v3_authpriv_full():
-    s = SnmpCredentialSerializer(data={
-        "version": "v3", "username": "u", "level": "authPriv",
-        "integrity": "sha", "authkey": "ak", "privacy": "aes", "privkey": "pk",
-    })
+    s = SnmpCredentialSerializer(
+        data={
+            "version": "v3",
+            "username": "u",
+            "level": "authPriv",
+            "integrity": "sha",
+            "authkey": "ak",
+            "privacy": "aes",
+            "privkey": "pk",
+        }
+    )
     assert s.is_valid(), s.errors
+    assert s.validated_data["integrity"] == "sha"
+    assert s.validated_data["privacy"] == "aes"
+
+
+def test_snmp_v3_accepts_sha256_and_aes256_and_legacy_aliases():
+    modern = SnmpCredentialSerializer(
+        data={
+            "version": "v3",
+            "username": "u",
+            "level": "authPriv",
+            "integrity": "sha256",
+            "authkey": "ak",
+            "privacy": "aes256",
+            "privkey": "pk",
+        }
+    )
+    assert modern.is_valid(), modern.errors
+    assert modern.validated_data["integrity"] == "sha256"
+    assert modern.validated_data["privacy"] == "aes256"
+
+    aliased = SnmpCredentialSerializer(
+        data={
+            "version": "v3",
+            "username": "u",
+            "level": "authPriv",
+            "integrity": "SHA-1",
+            "authkey": "ak",
+            "privacy": "AES-128",
+            "privkey": "pk",
+        }
+    )
+    assert aliased.is_valid(), aliased.errors
+    assert aliased.validated_data["integrity"] == "sha"
+    assert aliased.validated_data["privacy"] == "aes"
+
+
+def test_snmp_v3_rejects_unknown_algorithms():
+    s = SnmpCredentialSerializer(
+        data={
+            "version": "v3",
+            "username": "u",
+            "level": "authPriv",
+            "integrity": "blake2",
+            "authkey": "ak",
+            "privacy": "aes",
+            "privkey": "pk",
+        }
+    )
+    assert not s.is_valid()
 
 
 def test_snmp_v3_authpriv_missing_privkey():
-    s = SnmpCredentialSerializer(data={
-        "version": "v3", "username": "u", "level": "authPriv",
-        "integrity": "sha", "authkey": "ak", "privacy": "aes",
-    })
+    s = SnmpCredentialSerializer(
+        data={
+            "version": "v3",
+            "username": "u",
+            "level": "authPriv",
+            "integrity": "sha",
+            "authkey": "ak",
+            "privacy": "aes",
+        }
+    )
     assert not s.is_valid()
 
 
@@ -112,10 +163,13 @@ def test_collect_tool_execute_get_oid_ok():
 
 
 def test_collect_tool_execute_ipmi():
-    s = CollectToolExecuteSerializer(data=_exec_data(
-        protocol="ipmi", action="ipmi_collect",
-        credential={"username": "admin", "password": "p"},
-    ))
+    s = CollectToolExecuteSerializer(
+        data=_exec_data(
+            protocol="ipmi",
+            action="ipmi_collect",
+            credential={"username": "admin", "password": "p"},
+        )
+    )
     assert s.is_valid(), s.errors
 
 

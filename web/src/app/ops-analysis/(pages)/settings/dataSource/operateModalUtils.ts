@@ -2,13 +2,16 @@ import { v4 as uuidv4 } from "uuid";
 import {
   DataSourcePreviewResult,
   DataSourceSourceType,
+  DatasourceItem,
   ParamItem,
   ResponseFieldDefinition,
 } from "@/app/ops-analysis/types/dataSource";
 import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 import {
+  ensurePrometheusQueryRequired,
   isBindableDataSourceParamType,
 } from "@/app/ops-analysis/utils/dataSourceParamContract";
+import { migrateParamItemsFromStringList } from "@/app/ops-analysis/utils/stringParamMultipleMigrate";
 
 export const SOURCE_TYPE_NATS: DataSourceSourceType = "nats";
 export const SOURCE_TYPE_MYSQL: DataSourceSourceType = "mysql";
@@ -728,5 +731,240 @@ export function buildBuiltinGroupsPayload(groups: unknown): { groups: number[] }
     groups: Array.isArray(groups)
       ? groups.filter((id) => Number.isInteger(id) && id > 0)
       : [],
+  };
+}
+
+export interface DatasourceSourceFlags {
+  isNatsSource: boolean;
+  isRestApiSource: boolean;
+  isPrometheusSource: boolean;
+  isDatabaseSource: boolean;
+  isExcelSource: boolean;
+  supportsTransform: boolean;
+  supportsSharedConnection: boolean;
+}
+
+export function getDatasourceSourceFlags(
+  sourceType: DataSourceSourceType,
+): DatasourceSourceFlags {
+  const isNatsSource = sourceType === SOURCE_TYPE_NATS;
+  const isRestApiSource = sourceType === SOURCE_TYPE_REST_API;
+  const isPrometheusSource = sourceType === SOURCE_TYPE_PROMETHEUS;
+  const isDatabaseSource =
+    sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL;
+  const isExcelSource = sourceType === SOURCE_TYPE_EXCEL;
+  return {
+    isNatsSource,
+    isRestApiSource,
+    isPrometheusSource,
+    isDatabaseSource,
+    isExcelSource,
+    supportsTransform: isRestApiSource || isExcelSource,
+    supportsSharedConnection: isDatabaseSource || isRestApiSource,
+  };
+}
+
+export function canSaveExcelWithoutNewFile(options: {
+  isEdit: boolean;
+  hasLegacyImported: boolean;
+  excelStatus?: string;
+  hasSavedSource?: boolean;
+}): boolean {
+  if (!options.isEdit) {
+    return false;
+  }
+  return (
+    options.hasLegacyImported ||
+    options.excelStatus === "ready" ||
+    options.excelStatus === "processing" ||
+    options.excelStatus === "update_failed_using_previous" ||
+    (options.excelStatus === "failed" && Boolean(options.hasSavedSource))
+  );
+}
+
+export type DatasourcePreviewFieldName = string | (string | number)[];
+
+export function getPreviewFieldNames(options: {
+  sourceType: DataSourceSourceType;
+  useSharedConnection: boolean;
+  prometheusQueryType?: string;
+}): DatasourcePreviewFieldName[] {
+  const { sourceType, useSharedConnection, prometheusQueryType } = options;
+  if (sourceType === SOURCE_TYPE_REST_API) {
+    if (useSharedConnection) {
+      return ["source_type", "connection", ["connection_config", "method"]];
+    }
+    return [
+      "source_type",
+      ["connection_config", "url"],
+      ["connection_config", "method"],
+    ];
+  }
+  if (sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL) {
+    if (useSharedConnection) {
+      return ["source_type", "connection"];
+    }
+    return [
+      "source_type",
+      ["connection_config", "host"],
+      ["connection_config", "port"],
+      ["connection_config", "database"],
+      ["connection_config", "username"],
+      ["connection_config", "password"],
+    ];
+  }
+  if (sourceType === SOURCE_TYPE_PROMETHEUS) {
+    const fieldNames: DatasourcePreviewFieldName[] = [
+      "source_type",
+      ["connection_config", "url"],
+      ["query_config", "query"],
+      ["query_config", "query_type"],
+    ];
+    if (prometheusQueryType === "range") {
+      fieldNames.push(["query_config", "time_range"]);
+      fieldNames.push(["query_config", "step"]);
+    }
+    return fieldNames;
+  }
+  return ["source_type"];
+}
+
+export interface HydratedDatasourceFormState {
+  formValues: Record<string, unknown>;
+  params: ParamItem[];
+  schemaFields: SchemaField[];
+  excelPreview: DataSourcePreviewResult | null;
+}
+
+export function buildHydratedDatasourceFormState(
+  row: DatasourceItem | undefined,
+  options?: {
+    selectedGroupId?: string | number;
+    createId?: () => string;
+  },
+): HydratedDatasourceFormState {
+  const createId = options?.createId || uuidv4;
+
+  if (!row) {
+    return {
+      formValues: {
+        source_type: SOURCE_TYPE_NATS,
+        connection_mode: "connection",
+        connection_config: {
+          method: "GET",
+          timeout: 10,
+        },
+        query_config: {},
+        transform_config: createDefaultTransformConfig(),
+        ...(options?.selectedGroupId
+          ? { groups: [options.selectedGroupId] }
+          : {}),
+      },
+      params: [],
+      schemaFields: [],
+      excelPreview: null,
+    };
+  }
+
+  const connectionConfig = row.connection_config || {};
+  const queryConfig = row.query_config || {};
+  const rowSourceType = row.source_type || SOURCE_TYPE_NATS;
+  const hasConnection = !!(row.connection || row.connection_id);
+  const prometheusConnectionConfig = { ...connectionConfig };
+  if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
+    if (prometheusConnectionConfig.password) {
+      prometheusConnectionConfig.password = PASSWORD_PLACEHOLDER;
+    }
+    if (prometheusConnectionConfig.token) {
+      prometheusConnectionConfig.token = PASSWORD_PLACEHOLDER;
+    }
+  }
+
+  const formValues: Record<string, unknown> = {
+    ...row,
+    source_type: rowSourceType,
+    connection_mode: hasConnection ? "connection" : "inline",
+    connection: row.connection || row.connection_id || undefined,
+    connection_overrides: row.connection_overrides || {},
+    namespaces: row.namespaces || [],
+    groups: row.groups || [],
+    chart_type:
+      rowSourceType === SOURCE_TYPE_NATS
+        ? row.chart_type || []
+        : rowSourceType === SOURCE_TYPE_PROMETHEUS
+          ? row.chart_type?.length
+            ? row.chart_type
+            : [...PROMETHEUS_DEFAULT_CHART_TYPES]
+          : [TABLE_CHART_TYPE],
+    connection_config: {
+      ...prometheusConnectionConfig,
+      headersText: formatJsonText(connectionConfig.headers),
+      password: connectionConfig.password
+        ? PASSWORD_PLACEHOLDER
+        : connectionConfig.password,
+    },
+    query_config: {
+      ...queryConfig,
+      paramsText: formatJsonText(queryConfig.params),
+      bodyText: formatJsonText(queryConfig.body),
+      ...(rowSourceType === SOURCE_TYPE_PROMETHEUS
+        ? {
+          time_range: prometheusTimeRangeToMinutes(queryConfig.time_range),
+          max_series: queryConfig.max_series ?? 20,
+        }
+        : {}),
+    },
+    transform_config: createDefaultTransformConfig(row.transform_config),
+  };
+
+  let excelPreview: DataSourcePreviewResult | null = null;
+  if (
+    row.source_type === SOURCE_TYPE_EXCEL &&
+    Array.isArray(queryConfig.imported_items)
+  ) {
+    excelPreview = {
+      items: queryConfig.imported_items,
+      count:
+        Number(queryConfig.imported_count) ||
+        queryConfig.imported_items.length,
+      fields: Array.isArray(queryConfig.imported_fields)
+        ? queryConfig.imported_fields
+        : [],
+    };
+  }
+
+  const schemaFields = Array.isArray(row.field_schema)
+    ? row.field_schema.map((field) => ({
+      ...field,
+      id: createId(),
+    }))
+    : [];
+
+  const hasValidParams =
+    row.params && Array.isArray(row.params) && row.params.length > 0;
+  let params: ParamItem[] = [];
+  if (hasValidParams) {
+    const restoredParams = migrateParamItemsFromStringList(row.params).params.map(
+      (param) => ({
+        ...param,
+        type: param.type || "string",
+        filterType:
+          param.filterType || (param.type === "timeRange" ? "filter" : "fixed"),
+        id: param.id || createId(),
+      }),
+    );
+    params =
+      rowSourceType === SOURCE_TYPE_PROMETHEUS
+        ? ensurePrometheusQueryRequired(restoredParams)
+        : restoredParams;
+  } else if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
+    params = createPrometheusDefaultParams();
+  }
+
+  return {
+    formValues,
+    params,
+    schemaFields,
+    excelPreview,
   };
 }

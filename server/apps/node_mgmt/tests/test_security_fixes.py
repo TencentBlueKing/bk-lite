@@ -287,9 +287,10 @@ def test_issue_2878_sync_groups_incremental_remove():
 
 
 @pytest.mark.django_db
-def test_issue_2878_sync_groups_empty_removes_all():
+def test_issue_2878_sync_groups_empty_keeps_existing():
     """
-    Issue #2878: Verify sync_groups with empty list removes all organizations.
+    Empty expected groups mean this heartbeat did not report organizations.
+    Keep the existing associations instead of wiping them.
     """
     cloud_region = CloudRegion.objects.create(
         name="test-region-sync-empty",
@@ -319,8 +320,8 @@ def test_issue_2878_sync_groups_empty_removes_all():
     # Sync with empty list
     Sidecar.sync_groups(node.id, [])
 
-    orgs = list(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
-    assert orgs == []
+    orgs = set(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
+    assert orgs == {1, 2}
 
 
 @pytest.mark.django_db

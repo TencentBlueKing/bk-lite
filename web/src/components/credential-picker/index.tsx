@@ -1,17 +1,17 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button, Form, Select, Tooltip } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import Cookies from 'js-cookie';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
-import usePermissions from '@/hooks/usePermissions';
 import { CREDENTIAL_CATEGORIES, CREDENTIAL_MENU_PATH } from './types';
 import type { CredentialItem, CredentialTypeItem } from './types';
 import { useCredentialPickerApi } from './api';
 import { CredentialQuickCreateForm, inferredCategory } from './quick-create';
 import { normalizeCredentialFieldValues } from './normalizeFields';
+import { buildCredentialVaultUrl } from './vaultLocate';
 
 export { CREDENTIAL_MENU_PATH, CREDENTIAL_CATEGORIES };
 export type { CredentialItem, CredentialTypeItem, CredentialFieldSchema } from './types';
@@ -67,7 +67,7 @@ export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
         showSearch
         optionFilterProp="label"
         loading={loading}
-        value={value}
+        value={options.some((option) => option.value === value) ? value : undefined}
         {...(dropdownOpen === undefined ? {} : { open: dropdownOpen })}
         getPopupContainer={(node) => node.parentElement || document.body}
         placeholder={placeholder || t('system.credential.selectPlaceholder')}
@@ -101,19 +101,23 @@ export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
 export interface CredentialPickerProps {
   category?: string;
   type?: string;
+  /** 限定 SSH 使用方支持的认证方式，同时约束快捷创建。 */
+  sshAuthMethod?: 'password' | 'key';
   value?: string;
   onChange?: (credentialId: string | undefined) => void;
+  onNamesResolved?: (credentials: { credential_id: string; name: string }[]) => void;
 }
 
-const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, value, onChange }) => {
+const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, sshAuthMethod, value, onChange, onNamesResolved }) => {
   const { t } = useTranslation();
-  const { hasPermission } = usePermissions(CREDENTIAL_MENU_PATH);
-  const canAdd = hasPermission(['Add']);
-  const canView = hasPermission(['View']);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const canAdd = permissions.includes('Add');
+  const canView = permissions.includes('View');
   const {
     listSelectableCredentials,
     listSelectableTypes,
     createCredential,
+    getCredentialPermissions,
   } = useCredentialPickerApi();
   const [form] = Form.useForm();
   const [items, setItems] = useState<CredentialItem[]>([]);
@@ -128,13 +132,17 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, val
 
   const load = async () => {
     setLoading(true);
+    setPermissions([]);
     try {
-      const [nextItems, nextTypes] = await Promise.all([
+      const [nextItems, nextTypes, nextPermissions] = await Promise.all([
         listSelectableCredentials({ category, type }),
         listSelectableTypes(category ? { category } : undefined),
+        getCredentialPermissions(),
       ]);
       setItems(nextItems);
       setTypes(nextTypes);
+      setPermissions(nextPermissions);
+      onNamesResolved?.(nextItems.map(({ credential_id, name }) => ({ credential_id, name })));
     } finally {
       setLoading(false);
     }
@@ -144,14 +152,9 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, val
     void load();
   }, [category, type]);
 
-  const typeNameByKey = useMemo(
-    () => Object.fromEntries(types.map((item) => [item.key, item.name])),
-    [types],
-  );
-
-  const options = items.map((item) => ({
+  const options = items.filter((item) => !sshAuthMethod || item.type !== 'ssh' || item.fields.auth_method === sshAuthMethod).map((item) => ({
     value: item.credential_id,
-    label: `${item.name} - ${typeNameByKey[item.type] || item.type} (${item.credential_id})`,
+    label: item.name,
   }));
 
   const openCreate = () => {
@@ -164,7 +167,7 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, val
       category: nextCategory,
       type: nextType,
       group_id: Number(Cookies.get('current_team')),
-      fields: {},
+      fields: nextType === 'ssh' && sshAuthMethod ? { auth_method: sshAuthMethod } : {},
     });
     setModalOpen(true);
   };
@@ -201,7 +204,7 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, val
         onChange={onChange}
         onRefresh={() => void load()}
         onAdd={openCreate}
-        onOpenVault={() => window.open(CREDENTIAL_MENU_PATH, '_blank')}
+        onOpenVault={() => window.open(buildCredentialVaultUrl(category, type), '_blank')}
       />
       <OperateModal
         title={t('system.credential.quickCreateTitle')}
@@ -215,7 +218,12 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, val
       >
           <CredentialQuickCreateForm
             form={form}
-            types={types}
+            types={sshAuthMethod ? types.map((item) => item.key === 'ssh' ? {
+              ...item,
+              fields: item.fields.map((field) => field.id === 'auth_method'
+                ? { ...field, values: [sshAuthMethod], default: sshAuthMethod }
+                : field),
+            } : item) : types}
             hideOrganization
             lockedCategory={lockedCategory}
             lockedType={lockedType}

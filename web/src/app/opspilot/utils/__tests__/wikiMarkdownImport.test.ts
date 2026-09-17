@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   formatMarkdownImportGovernanceError,
   initialCreateDirectoriesFromFolders,
+  isBackgroundMarkdownImport,
   markdownImportAccept,
   markdownImportFilePattern,
   markdownImportGovernanceErrorView,
   okfSkippedReasonLabel,
+  unwrapMarkdownImportExecuteResult,
 } from "../wikiMarkdownImport";
 
 describe("wikiMarkdownImport", () => {
@@ -103,5 +105,47 @@ describe("markdownImportGovernanceErrorView", () => {
         details: { skipped: [{ path: "wiki/a.md", reason: "type_missing" }] },
       }).description,
     ).toBe("请补非空 type。");
+  });
+});
+
+describe("unwrapMarkdownImportExecuteResult", () => {
+  it("peels nested result/data envelopes from the execute payload", () => {
+    expect(
+      unwrapMarkdownImportExecuteResult({
+        result: true,
+        data: {
+          async: true,
+          accepted: true,
+          queued: true,
+          status: "running",
+          stage: "queued",
+          build_record_id: 12,
+        },
+      }),
+    ).toEqual({
+      async: true,
+      accepted: true,
+      queued: true,
+      status: "running",
+      stage: "queued",
+      build_record_id: 12,
+    });
+  });
+
+  it("treats queued execute payloads as background import", () => {
+    expect(
+      isBackgroundMarkdownImport(
+        unwrapMarkdownImportExecuteResult({
+          result: true,
+          data: { accepted: true, build_record_id: 8, status: "running" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isBackgroundMarkdownImport({
+        generation_id: 3,
+        counts: { created: 2, updated: 1, candidate: 0 },
+      }),
+    ).toBe(false);
   });
 });

@@ -24,34 +24,23 @@ def _build_snmp_auth(credential: dict):
     根据 SNMP version / level 构建 pysnmp CommunityData 或 UsmUserData。
     复用现有 SnmpFacts._get_snmp_auth() 逻辑。
     """
+    from core.infra.snmp_usm import v3_usm_kwargs
     from pysnmp.entity.rfc3413.oneliner import cmdgen
-    from pysnmp.hlapi import usmAesCfb128Protocol, usmDESPrivProtocol, usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol
 
     version = credential.get("version", "v2c")
     if version in ("v2", "v2c"):
         return cmdgen.CommunityData(credential.get("community", "public"))
 
-    # v3
-    username = credential.get("username", "")
-    authkey = credential.get("authkey", "")
-    privkey = credential.get("privkey", "")
-    integrity = credential.get("integrity", "sha")
-    privacy = credential.get("privacy", "aes")
-    level = credential.get("level", "authNoPriv")
-
-    auth_proto = usmHMACSHAAuthProtocol if integrity == "sha" else usmHMACMD5AuthProtocol
-    priv_proto = usmAesCfb128Protocol if privacy == "aes" else usmDESPrivProtocol
-
-    if level == "authNoPriv":
-        return cmdgen.UsmUserData(username, authKey=authkey, authProtocol=auth_proto)
-    else:
-        return cmdgen.UsmUserData(
-            username,
-            authKey=authkey,
-            privKey=privkey,
-            authProtocol=auth_proto,
-            privProtocol=priv_proto,
-        )
+    return cmdgen.UsmUserData(
+        credential.get("username", ""),
+        **v3_usm_kwargs(
+            level=credential.get("level", "authNoPriv"),
+            integrity=credential.get("integrity", "sha"),
+            privacy=credential.get("privacy", "aes"),
+            authkey=credential.get("authkey", ""),
+            privkey=credential.get("privkey", ""),
+        ),
+    )
 
 
 def _format_var_binds(var_binds) -> str:

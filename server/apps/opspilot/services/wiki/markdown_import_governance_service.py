@@ -16,6 +16,7 @@ from pathlib import PurePosixPath
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, PageVersion, WikiGeneration, WikiImportPreflight, WikiKnowledgeBase
 from apps.opspilot.services.wiki.build_generation_service import (
     begin_build_generation,
@@ -23,8 +24,12 @@ from apps.opspilot.services.wiki.build_generation_service import (
     finalize_build_generation,
     stage_ai_page,
 )
+from apps.opspilot.services.wiki.build_service import _invoke_llm
+from apps.opspilot.services.wiki.cascade_service import cascade
+from apps.opspilot.services.wiki.colloquial_alias_service import enrich_generation_colloquial_aliases_safely
 from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
 from apps.opspilot.services.wiki.markdown_import_service import parse_markdown_document
+from apps.opspilot.services.wiki.material_build_queue_service import kb_has_user_build_in_progress
 from apps.opspilot.services.wiki.okf_import_service import (
     OkfParseError,
     bound_okf_image_missing,
@@ -37,7 +42,12 @@ from apps.opspilot.services.wiki.okf_import_service import (
     read_okf_version,
     strip_bundle_root,
 )
-from apps.opspilot.services.wiki.parsed_media_service import collect_page_media_locators, delete_media_locator, save_page_media_bytes
+from apps.opspilot.services.wiki.parsed_media_service import (
+    collect_page_media_locators,
+    delete_media_locator,
+    save_import_archive_bytes,
+    save_page_media_bytes,
+)
 from apps.opspilot.services.wiki.structure_service import (
     UNCLASSIFIED_DIRECTORY_KEY,
     StructureServiceError,
@@ -46,6 +56,7 @@ from apps.opspilot.services.wiki.structure_service import (
     save_structure,
 )
 from apps.opspilot.services.wiki.title_service import InvalidWikiTitle, canonical_title, title_identity_key, validate_display_title
+from apps.opspilot.services.wiki.wiki_budget_service import new_alias_enrich_call_budget
 
 NATIVE_ARCHIVE_FORMAT = "opspilot-wiki-native-v1"
 MAX_ARCHIVE_BYTES = 200 * 1024 * 1024
@@ -1237,6 +1248,50 @@ def _complete_import_build(record, *, counts, affected_page_ids, generation_id, 
     )
 
 
+def _bind_import_build(knowledge_base, inspected, *, operator="", existing_build_record_id=None):
+    inputs = {
+        "archive_sha256": inspected.archive_sha256,
+        "archive_kind": inspected.archive_kind,
+    }
+    if not existing_build_record_id:
+        return BuildRecord.objects.create(
+            knowledge_base=knowledge_base,
+            trigger="markdown_import",
+            operator=operator or "",
+            inputs=inputs,
+            stage="generating",
+            status="running",
+        )
+    with transaction.atomic():
+        build = (
+            BuildRecord.objects.select_for_update()
+            .filter(
+                pk=existing_build_record_id,
+                knowledge_base_id=knowledge_base.pk,
+                trigger="markdown_import",
+            )
+            .first()
+        )
+        if build is None:
+            raise MarkdownImportGovernanceError(
+                "markdown_import_build_missing",
+                "导入任务记录不存在",
+                status_code=409,
+            )
+        if build.status in _TERMINAL_BUILD_STATUSES:
+            raise MarkdownImportGovernanceError(
+                "markdown_import_build_terminal",
+                "导入任务已结束",
+                status_code=409,
+            )
+        build.operator = operator or build.operator
+        build.inputs = {**(build.inputs or {}), **inputs}
+        build.stage = "generating"
+        build.status = "running"
+        build.save(update_fields=["operator", "inputs", "stage", "status", "updated_at"])
+        return build
+
+
 def _execute_generation_import(
     knowledge_base,
     inspected,
@@ -1245,15 +1300,14 @@ def _execute_generation_import(
     operator="",
     preflight_record_id=None,
     completion_build_record_id=None,
+    existing_build_record_id=None,
     archive_content=None,
 ):
-    build = BuildRecord.objects.create(
-        knowledge_base=knowledge_base,
-        trigger="markdown_import",
-        operator=operator or "",
-        inputs={"archive_sha256": inspected.archive_sha256, "archive_kind": inspected.archive_kind},
-        stage="generating",
-        status="running",
+    build = _bind_import_build(
+        knowledge_base,
+        inspected,
+        operator=operator,
+        existing_build_record_id=existing_build_record_id,
     )
     context = begin_build_generation(
         knowledge_base,
@@ -1379,6 +1433,7 @@ def _execute_generation_import(
             page_actions=page_actions,
             directory_trace=directory_trace,
             activation_hook=activation_hook,
+            run_embedding_index=False,
         )
         return dict(result_payload)
     except Exception as error:
@@ -1390,6 +1445,56 @@ def _execute_generation_import(
         )
         _release_preflight_after_failure(preflight_record_id)
         raise
+
+
+def _import_search_page_ids(result):
+    return [int(row["page_id"]) for row in (result or {}).get("pages") or [] if row.get("page_id")]
+
+
+def run_markdown_import_search_enrichment(knowledge_base_id, generation_id, page_ids):
+    """Fill colloquial aliases and embeddings after imported pages are already visible."""
+
+    page_ids = [int(page_id) for page_id in page_ids or [] if page_id]
+    knowledge_base = WikiKnowledgeBase.objects.filter(pk=knowledge_base_id).first()
+    if knowledge_base is None or not generation_id or not page_ids:
+        logger.debug(
+            "wiki markdown import search enrich skipped knowledge_base=%s generation_id=%s",
+            knowledge_base_id,
+            generation_id,
+        )
+        return {"status": "skipped", "updated": 0, "llm_called": False}
+    aliases = enrich_generation_colloquial_aliases_safely(
+        generation_id,
+        page_ids,
+        llm_model_id=knowledge_base.llm_model_id,
+        invoke_llm=_invoke_llm,
+        budget=new_alias_enrich_call_budget(),
+        llm_when="always",
+        inplace=True,
+    )
+    try:
+        cascade(
+            knowledge_base,
+            page_ids,
+            "build",
+            stages=["page_embedding", "chunk_embedding"],
+        )
+    except Exception:
+        logger.exception(
+            "wiki embedding index after generation activate failed generation_id=%s",
+            generation_id,
+        )
+    return aliases
+
+
+def _maybe_run_markdown_import_search_enrichment(knowledge_base, result, *, deferred):
+    if deferred or not result:
+        return result
+    generation_id = result.get("generation_id")
+    page_ids = _import_search_page_ids(result)
+    if generation_id and page_ids:
+        run_markdown_import_search_enrichment(knowledge_base.pk, generation_id, page_ids)
+    return result
 
 
 def _claim_preflight(knowledge_base, token, inspected, actor, preview):
@@ -1435,6 +1540,128 @@ def _claim_preflight(knowledge_base, token, inspected, actor, preview):
         return record, current
 
 
+def _accepted_import_payload(build):
+    return {
+        "async": True,
+        "accepted": True,
+        "queued": True,
+        "status": build.status,
+        "stage": build.stage,
+        "build_record_id": build.pk,
+    }
+
+
+def _token_hash(token):
+    return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+
+
+def _validate_preflight_for_enqueue(record, knowledge_base, *, actor, archive_sha256):
+    if record is None or record.knowledge_base_id != knowledge_base.pk:
+        raise MarkdownImportGovernanceError("preflight_token_invalid", "导入预检 token 无效", status_code=409)
+    if record.actor != str(actor or "")[:150] or record.archive_sha256 != archive_sha256:
+        raise MarkdownImportGovernanceError("preflight_binding_mismatch", "导入归档或操作者与预检不一致", status_code=409)
+
+
+def enqueue_markdown_import(
+    knowledge_base,
+    token,
+    content,
+    *,
+    filename="",
+    actor="",
+):
+    if not isinstance(content, (bytes, bytearray)):
+        raise MarkdownImportGovernanceError("archive_content_invalid", "导入内容必须为 bytes")
+    content = bytes(content)
+    if not content:
+        raise MarkdownImportGovernanceError(
+            "archive_empty",
+            "导入归档为空",
+            details={"max_bytes": MAX_ARCHIVE_BYTES, "actual_bytes": 0},
+        )
+    if len(content) > MAX_ARCHIVE_BYTES:
+        raise MarkdownImportGovernanceError(
+            "archive_size_exceeded",
+            f"ZIP 超过大小限制（上限 {MAX_ARCHIVE_BYTES // (1024 * 1024)}MB）",
+            details={"max_bytes": MAX_ARCHIVE_BYTES, "actual_bytes": len(content)},
+        )
+    token_hash = _token_hash(token)
+    archive_sha256 = hashlib.sha256(content).hexdigest()
+    probe = WikiImportPreflight.objects.filter(token_hash=token_hash, knowledge_base=knowledge_base).first()
+    _validate_preflight_for_enqueue(probe, knowledge_base, actor=actor, archive_sha256=archive_sha256)
+    replay = _preflight_execution_result(probe)
+    if replay is not None:
+        return dict(replay), None
+
+    locator = save_import_archive_bytes(knowledge_base.pk, archive_sha256, content)
+    with transaction.atomic():
+        current = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
+        record = WikiImportPreflight.objects.select_for_update().filter(token_hash=token_hash).first()
+        _validate_preflight_for_enqueue(record, current, actor=actor, archive_sha256=archive_sha256)
+        replay = _preflight_execution_result(record)
+        if replay is not None:
+            return dict(replay), None
+        if record.status != "active":
+            raise MarkdownImportGovernanceError("preflight_token_consumed", "导入预检 token 已使用", status_code=409)
+
+        execution = (record.preview or {}).get(_EXECUTION_PREVIEW_KEY)
+        if isinstance(execution, dict) and execution.get("status") == "running":
+            existing = BuildRecord.objects.filter(
+                pk=execution.get("build_record_id"),
+                knowledge_base_id=current.pk,
+                trigger="markdown_import",
+            ).first()
+            if existing is not None and existing.status == "running":
+                return _accepted_import_payload(existing), None
+
+        if record.expires_at <= timezone.now():
+            raise MarkdownImportGovernanceError("preflight_token_expired", "导入预检 token 已过期", status_code=409)
+
+        if kb_has_user_build_in_progress(current.pk):
+            raise MarkdownImportGovernanceError(
+                "knowledge_base_build_in_progress",
+                "知识库存在运行中的构建任务,请等待完成后再操作",
+                status_code=400,
+                retryable=True,
+            )
+
+        build = BuildRecord.objects.create(
+            knowledge_base=current,
+            trigger="markdown_import",
+            operator=actor or "",
+            inputs={
+                "archive_sha256": archive_sha256,
+                "archive_locator": locator,
+                "filename": str(filename or "")[:255],
+                "preflight_id": record.pk,
+            },
+            stage="queued",
+            status="running",
+        )
+        record.preview = {
+            **(record.preview or {}),
+            _EXECUTION_PREVIEW_KEY: {
+                "status": "running",
+                "build_record_id": build.pk,
+                "archive_locator": locator,
+                "filename": str(filename or "")[:255],
+                "queued_at": timezone.now().isoformat(),
+            },
+        }
+        record.save(update_fields=["preview", "updated_at"])
+        logger.info(
+            "wiki markdown import accepted knowledge_base=%s build_record=%s archive_bytes=%s",
+            current.pk,
+            build.pk,
+            len(content),
+        )
+        return _accepted_import_payload(build), {
+            "build_record_id": build.pk,
+            "archive_locator": locator,
+            "filename": str(filename or ""),
+        }
+
+
 def execute_markdown_import(
     knowledge_base,
     token,
@@ -1443,6 +1670,8 @@ def execute_markdown_import(
     filename="",
     actor="",
     completion_build_record_id=None,
+    existing_build_record_id=None,
+    defer_search_enrichment=False,
 ):
     probe = WikiImportPreflight.objects.filter(
         token_hash=hashlib.sha256(str(token or "").encode("utf-8")).hexdigest(),
@@ -1571,6 +1800,7 @@ def execute_markdown_import(
                 operator=actor,
                 preflight_record_id=record.pk,
                 completion_build_record_id=completion_build_record_id,
+                existing_build_record_id=existing_build_record_id,
                 archive_content=content,
             )
             if _restore_structure_requested(record.options):
@@ -1587,7 +1817,11 @@ def execute_markdown_import(
                     "governance_generation": (structure_result["active_generation"] if structure_result is not None else None),
                 }
             _store_preflight_execution_result(record.pk, result)
-            return result
+        return _maybe_run_markdown_import_search_enrichment(
+            current,
+            result,
+            deferred=defer_search_enrichment,
+        )
 
     _record, current = _claim_preflight(
         current,
@@ -1596,21 +1830,29 @@ def execute_markdown_import(
         actor,
         preview,
     )
-    return _execute_generation_import(
+    result = _execute_generation_import(
         current,
         inspected,
         preview,
         operator=actor,
         preflight_record_id=_record.pk,
         completion_build_record_id=completion_build_record_id,
+        existing_build_record_id=existing_build_record_id,
         archive_content=content,
+    )
+    return _maybe_run_markdown_import_search_enrichment(
+        current,
+        result,
+        deferred=defer_search_enrichment,
     )
 
 
 __all__ = [
     "MarkdownImportGovernanceError",
     "build_import_preview",
+    "enqueue_markdown_import",
     "execute_markdown_import",
     "inspect_markdown_archive",
     "preflight_markdown_import",
+    "run_markdown_import_search_enrichment",
 ]

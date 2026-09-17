@@ -26,6 +26,7 @@ import GroupTreeSelect from "@/components/group-tree-select";
 import MarkdownRenderer from "@/components/markdown";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
 import { LlmModel } from "@/app/opspilot/types/skill";
+import { Model } from "@/app/opspilot/types/provider";
 import { WikiKnowledgeBase } from "@/app/opspilot/types/wiki";
 import {
   getModelOptionText,
@@ -134,12 +135,14 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     fetchKnowledgeBase,
     updateKnowledgeBase,
     fetchLlmModels,
+    fetchEmbedProviders,
     fetchBuildRecords,
     reindexKnowledgeBase,
     rebuildKnowledgeBase,
     deleteKnowledgeBase,
   } = useWikiApi();
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
+  const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -165,20 +168,23 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [kb, models] = await Promise.all([
+      const [kb, models, embeds] = await Promise.all([
         fetchKnowledgeBase(kbId),
         fetchLlmModels().catch(() => []),
+        fetchEmbedProviders().catch(() => []),
       ]);
       kbRef.current = kb;
       setPurposePreview(kb.purpose_md || "");
       setSchemaPreview(kb.schema_md || "");
       setPurposeEditing(false);
       setLlmModels(models || []);
+      setEmbedProviders(embeds || []);
       await refreshRunningBuildState();
       form.setFieldsValue({
         name: kb.name,
         introduction: kb.introduction,
         llm_model: kb.llm_model,
+        embed_provider: kb.embed_provider,
         vision_model: kb.vision_model,
         team: kb.team,
         purpose_md: kb.purpose_md,
@@ -241,7 +247,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         name: v.name,
         introduction: v.introduction,
         llm_model: v.llm_model,
-        embed_provider: prev?.embed_provider,
+        embed_provider: v.embed_provider ?? null,
         vision_model: v.vision_model,
         team: v.team,
         purpose_md: purposeMd,
@@ -324,6 +330,23 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             placeholder={t("wiki.llmModelPlaceholder")}
             optionFilterProp="title"
             options={llmModels.map((m) => ({
+              value: m.id,
+              label: renderModelOptionLabel(m),
+              title: getModelOptionText(m),
+              disabled: !m.enabled,
+            }))}
+          />
+        </Form.Item>
+        <Form.Item
+          label={t("wiki.embedProvider")}
+          name="embed_provider"
+          tooltip={t("wiki.embedProviderTip")}
+        >
+          <Select
+            allowClear
+            placeholder={t("wiki.embedProviderPlaceholder")}
+            optionFilterProp="title"
+            options={embedProviders.map((m) => ({
               value: m.id,
               label: renderModelOptionLabel(m),
               title: getModelOptionText(m),

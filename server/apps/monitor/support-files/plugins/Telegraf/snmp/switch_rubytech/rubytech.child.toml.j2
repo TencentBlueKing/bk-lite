@@ -60,8 +60,6 @@
 
 [[processors.starlark]]
     namepass = ["cpu_fgs2924r", "cpu_es2226"]
-    [processors.starlark.tagpass]
-        brand = ["rubytech"]
     source = '''
 def parse_percent(raw):
     if raw == None:
@@ -129,3 +127,5 @@ def apply(metric):
     metric.fields["usage_percent"] = value
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["rubytech"]
