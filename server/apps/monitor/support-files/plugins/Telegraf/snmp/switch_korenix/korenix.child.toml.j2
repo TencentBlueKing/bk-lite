@@ -83,8 +83,6 @@
 
 [[processors.starlark]]
     namepass = ["sfp"]
-    [processors.starlark.tagpass]
-        brand = ["korenix"]
     source = '''
 def parse_numeric(raw):
     if raw == None:
@@ -137,3 +135,5 @@ def apply(metric):
         return None
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["korenix"]

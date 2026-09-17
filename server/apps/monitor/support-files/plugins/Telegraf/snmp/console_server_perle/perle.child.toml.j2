@@ -46,8 +46,6 @@
 
 [[processors.starlark]]
     namepass = ["temperature"]
-    [processors.starlark.tagpass]
-        brand = ["perle"]
     source = '''
 def parse_celsius(raw):
     if raw == None:
@@ -93,3 +91,5 @@ def apply(metric):
     metric.fields["celsius"] = parsed
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["perle"]

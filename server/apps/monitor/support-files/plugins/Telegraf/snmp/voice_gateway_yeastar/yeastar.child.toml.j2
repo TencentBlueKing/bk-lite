@@ -90,8 +90,6 @@
 
 [[processors.starlark]]
     namepass = ["cpu", "memory", "local_storage"]
-    [processors.starlark.tagpass]
-        brand = ["yeastar"]
     source = '''
 def parse_percent(raw):
     if raw == None:
@@ -110,6 +108,8 @@ def apply(metric):
     metric.fields["usage_percent"] = parsed
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["yeastar"]
 
 [[processors.enum]]
     namepass = ["asterisk"]

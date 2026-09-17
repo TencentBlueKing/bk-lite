@@ -82,8 +82,6 @@
 
 [[processors.starlark]]
     namepass = ["cpu"]
-    [processors.starlark.tagpass]
-        brand = ["mitel"]
     source = '''
 def apply(metric):
     idle = metric.fields.get("idle")
@@ -95,3 +93,5 @@ def apply(metric):
         metric.fields["usage_percent"] = user + system
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["mitel"]

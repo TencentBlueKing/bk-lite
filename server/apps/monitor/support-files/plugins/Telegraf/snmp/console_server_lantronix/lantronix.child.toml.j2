@@ -108,8 +108,6 @@
 
 [[processors.starlark]]
     namepass = ["snmp"]
-    [processors.starlark.tagpass]
-        brand = ["lantronix"]
     source = '''
 def apply(metric):
     temp = metric.fields.get("device_temperature_celsius")
@@ -123,3 +121,5 @@ def apply(metric):
         metric.fields["device_psu_state"] = max(states)
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["lantronix"]

@@ -64,8 +64,6 @@
 
 [[processors.starlark]]
     namepass = ["device_cpu", "device_memory"]
-    [processors.starlark.tagpass]
-        brand = ["asterfusion"]
     source = '''
 def parse_percent(raw):
     if raw == None:
@@ -84,11 +82,11 @@ def apply(metric):
     metric.fields["usage"] = parsed
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["asterfusion"]
 
 [[processors.starlark]]
     namepass = ["device_temperature"]
-    [processors.starlark.tagpass]
-        brand = ["asterfusion"]
     source = '''
 def parse_number(raw):
     if raw == None:
@@ -113,3 +111,5 @@ def apply(metric):
     metric.fields["celsius"] = max(vals)
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["asterfusion"]
