@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
@@ -11,6 +11,7 @@ import {
   Switch,
   Tag
 } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -37,8 +38,9 @@ import {
 } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { DownOutlined, PlusOutlined } from '@ant-design/icons';
+import { DownOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
   showGroupName,
@@ -118,10 +120,13 @@ const Asset = () => {
     pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
+  const { isSuperUser } = useUserInfoContext();
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [unassignedCount, setUnassignedCount] = useState<number | undefined>(undefined);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
     urlObjId ? toMonitorIdString(urlObjId) : ''
@@ -377,7 +382,11 @@ const Asset = () => {
         render: (_, { organization }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-            text={showGroupName(organization, organizationList)}
+            text={
+              organization?.length
+                ? showGroupName(organization, organizationList)
+                : t('common.unassigned')
+            }
           />
         )
       },
@@ -621,17 +630,38 @@ const Asset = () => {
     };
   }, []);
 
+  const fetchUnassignedCount = useCallback(async (currentObjId: React.Key) => {
+    if (!isSuperUser || !currentObjId) {
+      setUnassignedCount(0);
+      return;
+    }
+    try {
+      const data = await getInstanceListByPrimaryObject({
+        id: String(currentObjId),
+        page: 1,
+        page_size: 1,
+        unassigned: true,
+      });
+      setUnassignedCount(data?.count || 0);
+    } catch {
+      setUnassignedCount(0);
+    }
+  }, [isSuperUser, getInstanceListByPrimaryObject]);
+
   useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
+      void fetchUnassignedCount(objectId);
+    } else {
+      setUnassignedCount(0);
     }
-  }, [objectId]);
+  }, [objectId, fetchUnassignedCount, isSuperUser]);
 
   useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
     }
-  }, [pagination.current, pagination.pageSize]);
+  }, [pagination.current, pagination.pageSize, unassignedOnly]);
 
   useEffect(() => {
     if (objectId) {
@@ -691,6 +721,7 @@ const Asset = () => {
     pagination.current,
     pagination.pageSize,
     searchText,
+    unassignedOnly,
     needUpdateOnly,
     stalePluginId
   ]);
@@ -785,6 +816,7 @@ const Asset = () => {
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
         id: String(objectId),
+        ...(unassignedOnly ? { unassigned: true } : {}),
         ...(selectedIps.length
           ? { vm_params: { [ASSET_IP_FACT]: selectedIps.join(',') } }
           : {}),
@@ -802,10 +834,14 @@ const Asset = () => {
       });
       if (currentRequestId !== assetRequestIdRef.current) return;
       setTableData(data?.results || []);
+      const totalCount = data?.count || 0;
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: data?.count || 0
+        total: totalCount
       }));
+      if (unassignedOnly) {
+        setUnassignedCount(totalCount);
+      }
     } finally {
       if (currentRequestId === assetRequestIdRef.current) {
         setTableLoading(false);
@@ -1268,6 +1304,12 @@ const Asset = () => {
     }
   };
 
+  const handleCatalogScopeChange = (checked: boolean) => {
+    setUnassignedOnly(checked);
+    setSelectedRowKeys([]);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
   return (
     <>
       {modalContextHolder}
@@ -1292,9 +1334,9 @@ const Asset = () => {
               onChange={(e) => setSearchText(e.target.value)}
               onPressEnter={() => getAssetInsts(objectId)}
               onClear={clearText}
-            ></Input>
-            <div className="flex shrink-0 items-center">
-              <label className="mr-[8px] inline-flex items-center gap-[6px] text-[var(--color-text-2)]">
+            />
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex h-8 items-center gap-1.5 text-[var(--color-text-2)]">
                 <Switch
                   size="small"
                   checked={needUpdateOnly}
@@ -1302,32 +1344,39 @@ const Asset = () => {
                 />
                 {t('monitor.integrations.needUpdateFilter')}
               </label>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                className="mr-[8px]"
-                onClick={goToIntegration}
-              >
-                {t('monitor.integrations.access')}
-              </Button>
-              <Dropdown
-                className="mr-[8px]"
-                overlayClassName="customMenu"
-                menu={assetMenuProps}
-                disabled={enableOperateAsset}
-              >
-                <Button>
-                  <Space>
-                    {t('common.action')}
-                    <DownOutlined />
-                  </Space>
+              <div className="flex items-center gap-2">
+                <CatalogScopeSegmented
+                  unassignedOnly={unassignedOnly}
+                  onChange={handleCatalogScopeChange}
+                  count={unassignedCount}
+                  resourceName={t('common.instance', '监控实例')}
+                />
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={goToIntegration}
+                >
+                  {t('monitor.integrations.access')}
                 </Button>
-              </Dropdown>
-              <TimeSelector
-                onlyRefresh
-                onFrequenceChange={onFrequenceChange}
-                onRefresh={onRefresh}
-              />
+                <Dropdown
+                  overlayClassName="customMenu"
+                  menu={assetMenuProps}
+                  disabled={enableOperateAsset}
+                >
+                  <Button>
+                    <Space>
+                      {t('common.action')}
+                      <DownOutlined />
+                    </Space>
+                  </Button>
+                </Dropdown>
+                <TimeSelector
+                  onlyRefresh
+                  className="[&>div]:!ml-0"
+                  onFrequenceChange={onFrequenceChange}
+                  onRefresh={onRefresh}
+                />
+              </div>
             </div>
           </div>
           <div className="min-h-0 min-w-0 flex-1">
@@ -1355,15 +1404,24 @@ const Asset = () => {
                   </CompactEmptyState>
                 ) : undefined
               }}
-            ></CustomTable>
+            />
           </div>
         </div>
       </div>
-      <EditConfig ref={configRef} onSuccess={() => getAssetInsts(objectId)} />
+      <EditConfig
+        ref={configRef}
+        onSuccess={() => {
+          getAssetInsts(objectId);
+          if (objectId) void fetchUnassignedCount(objectId);
+        }}
+      />
       <EditInstance
         ref={instanceRef}
         organizationList={organizationList}
-        onSuccess={() => getAssetInsts(objectId)}
+        onSuccess={() => {
+          getAssetInsts(objectId);
+          if (objectId) void fetchUnassignedCount(objectId);
+        }}
       />
       <TemplateConfigDrawer
         ref={templateDrawerRef}

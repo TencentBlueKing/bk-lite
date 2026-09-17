@@ -281,7 +281,7 @@ export default function ServiceCatalogTable({
         ? value.map((id) => (
           <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
         ))
-        : <Typography.Text type="secondary">—</Typography.Text>,
+        : t('common.unassigned'),
     },
     {
       title: t('apm.common.operation', '操作'),

@@ -311,10 +311,8 @@ class Sidecar:
         :param expected_groups: List of organization IDs the node should belong to
         """
         if not expected_groups:
-            # No groups expected - remove all associations
-            removed_count, _ = NodeOrganization.objects.filter(node_id=node_id).delete()
-            if removed_count > 0:
-                logger.info("Removed all %d organization associations for node %s", removed_count, node_id)
+            # Empty report means this heartbeat did not include organizations.
+            # Keep existing associations instead of wiping the last org.
             return
 
         expected_set = set(expected_groups)

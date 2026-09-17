@@ -116,6 +116,7 @@ const useIntegrationApi = () => {
       page?: number;
       page_size?: number;
       name?: string;
+      unassigned?: boolean;
     },
     config?: AxiosRequestConfig
   ) => {

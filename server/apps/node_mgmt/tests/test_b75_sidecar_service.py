@@ -339,10 +339,11 @@ def test_sync_groups_adds_and_removes(node):
 
 
 @pytest.mark.django_db
-def test_sync_groups_empty_removes_all(node):
+def test_sync_groups_empty_keeps_existing(node):
     NodeOrganization.objects.create(node=node, organization=1)
     Sidecar.sync_groups(node.id, [])
-    assert NodeOrganization.objects.filter(node_id=node.id).count() == 0
+    orgs = set(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
+    assert orgs == {1}
 
 
 # --------------------------------------------------------------------------- #
