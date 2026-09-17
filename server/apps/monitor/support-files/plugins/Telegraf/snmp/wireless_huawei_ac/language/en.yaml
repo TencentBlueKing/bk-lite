@@ -2,7 +2,8 @@ Wireless Huawei AC SNMP:
   name: Huawei WLAN AC (Telegraf)
   desc: SNMP monitoring template for Huawei WLAN AC. It reports entity CPU, memory, temperature,
     chassis used/total power in watts, fan speed as a percent of full speed, fan state,
-    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, and uplink traffic.
+    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, uplink traffic,
+    and optical module DDM.
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
@@ -50,6 +51,34 @@ monitor_object_metric:
         and serial number, sharing hwFanStatusTable with fan state. Invalid samples (-1 or
         empty) are dropped. An empty fan table is expected on fanless SKUs. Persistently
         high speed can indicate thermal compensation.
+    optical_temp_c:
+      name: Optical Module Temperature
+      desc: Temperature of each optical module (hwEntityOpticalTemperature), in degrees
+        Celsius. The 2147483647 invalid sentinel is dropped. Dimension descr is entPhysicalName.
+        High module temperature accelerates laser aging and can precede optical power failure.
+    optical_voltage_mV:
+      name: Optical Module Voltage
+      desc: Supply voltage of each optical module (hwEntityOpticalVoltage). The device
+        reports millivolts; the query divides by 1000 to display volts and drops 2147483647.
+        Dimension descr is entPhysicalName. Out-of-range voltage can cause unstable optics.
+    optical_bias_uA:
+      name: Optical Module Bias
+      desc: Laser bias current of each optical module (hwEntityOpticalBiasCurrent),
+        in microamperes (µA). The 2147483647 invalid sentinel is dropped. Dimension descr
+        is entPhysicalName. Drift away from the normal range is an early sign of a failing
+        transmitter.
+    optical_rx_dbm:
+      name: Optical RX Power
+      desc: Per-module optical receive power in dBm (device reports dBm×100; query
+        divides by 100 and drops the 2147483647 invalid sentinel). Negative dBm is valid.
+        Dimension descr is entPhysicalName. Abnormally low Rx power may indicate link
+        attenuation, dirty fiber, or a faulty peer transmitter.
+    optical_tx_dbm:
+      name: Optical TX Power
+      desc: Per-module optical transmit power in dBm (device reports dBm×100; query
+        divides by 100 and drops the 2147483647 invalid sentinel). Negative dBm is valid.
+        Dimension descr is entPhysicalName. Abnormally low Tx power usually indicates an
+        aging or failing local optical module rather than fiber attenuation alone.
     interface_ifOperStatus:
       name: Interface Oper Status
       desc: Actual operational status of each WLAN AC uplink or service interface.

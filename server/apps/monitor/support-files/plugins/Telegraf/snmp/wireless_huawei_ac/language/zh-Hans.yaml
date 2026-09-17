@@ -1,6 +1,6 @@
 Wireless Huawei AC SNMP:
   name: 华为 WLAN AC（Telegraf）
-  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、机箱已用/总功耗（瓦特）、风扇转速（满速百分比）与风扇状态、AP 环境/CPU/NP 温度、AP/终端数量、射频占用和上联流量等主要指标。无风扇机型风扇表可为空。
+  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、机箱已用/总功耗（瓦特）、风扇转速（满速百分比）与风扇状态、AP 环境/CPU/NP 温度、AP/终端数量、射频占用、上联流量和光模块 DDM 等主要指标。无风扇机型风扇表可为空。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -33,6 +33,21 @@ monitor_object_metric:
     device_fan_speed_pct:
       name: 风扇转速
       desc: 各冷却风扇转速（hwEntityFanSpeed），单位为满速百分比。维度为风扇槽位与序列号，与风扇状态同属 hwFanStatusTable。无效值（-1 / 空）会被丢弃。无风扇机型风扇表可为空。转速持续偏高可能表示热补偿。
+    optical_temp_c:
+      name: 光模块温度
+      desc: 该指标按光模块报告温度（hwEntityOpticalTemperature，摄氏度；无效哨兵 2147483647 丢弃），维度 descr 为 entPhysicalName。模块温度过高会加速激光器老化，并可能先于光功率异常出现。
+    optical_voltage_mV:
+      name: 光模块电压
+      desc: 该指标按光模块报告供电电压（hwEntityOpticalVoltage；原始毫伏，查询侧除以 1000 显示为伏特，无效哨兵 2147483647 丢弃），维度 descr 为 entPhysicalName。电压越限会导致光模块工作不稳定。
+    optical_bias_uA:
+      name: 光模块偏置电流
+      desc: 该指标按光模块报告激光器偏置电流（hwEntityOpticalBiasCurrent，线侧单位 µA；无效哨兵 2147483647 丢弃），维度 descr 为 entPhysicalName。偏离正常范围通常是发送端老化或故障的早期信号。
+    optical_rx_dbm:
+      name: 光模块接收功率
+      desc: 该指标按光模块报告接收光功率（dBm；原始值为 dBm×100，查询侧除以 100 换算，无效哨兵 2147483647 丢弃；负 dBm 为有效读数），维度 descr 为 entPhysicalName。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常。
+    optical_tx_dbm:
+      name: 光模块发送功率
+      desc: 该指标按光模块报告发送光功率（dBm；原始值为 dBm×100，查询侧除以 100 换算，无效哨兵 2147483647 丢弃；负 dBm 为有效读数），维度 descr 为 entPhysicalName。发送功率异常偏低通常意味着本端光模块老化或故障，而非单纯光纤光衰。
     interface_ifOperStatus:
       name: 运行状态
       desc: 无线控制器上联或业务接口的实际运行状态。
