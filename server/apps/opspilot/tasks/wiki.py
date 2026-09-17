@@ -871,8 +871,8 @@ def wiki_retry_markdown_import_task(
 def wiki_execute_markdown_import_task(
     kb_id,
     build_record_id,
-    preflight_token,
-    archive_locator,
+    preflight_token=None,
+    archive_locator=None,
     filename="",
     operator="",
 ):
@@ -883,7 +883,12 @@ def wiki_execute_markdown_import_task(
 
     knowledge_base = WikiKnowledgeBase.objects.filter(pk=kb_id).first()
     build = BuildRecord.objects.filter(pk=build_record_id, knowledge_base_id=kb_id, trigger="markdown_import").first()
-    preflight_id = (build.inputs or {}).get("preflight_id") if build is not None else None
+    inputs = build.inputs or {} if build is not None else {}
+    preflight_id = inputs.get("preflight_id")
+    archive_locator = inputs.get("archive_locator") or archive_locator
+    filename = inputs.get("filename") or filename
+    stored_task_id = str(inputs.get("celery_task_id") or "")
+    current_task_id = str(getattr(getattr(wiki_execute_markdown_import_task, "request", None), "id", None) or "")
     if knowledge_base is None or build is None:
         logger.error(
             "wiki markdown import missing target knowledge_base=%s build_record=%s",
@@ -898,9 +903,16 @@ def wiki_execute_markdown_import_task(
             "code": "knowledge_base_not_found",
             "retryable": False,
         }
+    if stored_task_id and current_task_id and stored_task_id != current_task_id:
+        logger.info(
+            "wiki markdown import skipped stale celery task knowledge_base=%s build_record=%s",
+            kb_id,
+            build_record_id,
+        )
+        return {"status": "skipped", "code": "stale_celery_task"}
     if build.status in {"success", "partial"}:
         return {"status": "success", "build_record_id": build.pk}
-    if not str(preflight_token or "").strip():
+    if not preflight_id and not str(preflight_token or "").strip():
         _fail_wiki_task_build(
             build,
             "markdown_import_preflight_identity_incomplete",
@@ -950,12 +962,13 @@ def wiki_execute_markdown_import_task(
     try:
         result = execute_markdown_import(
             knowledge_base,
-            preflight_token,
+            "" if preflight_id else preflight_token,
             content,
             filename=filename,
             actor=operator,
             existing_build_record_id=build_record_id,
             defer_search_enrichment=True,
+            preflight_id=preflight_id,
         )
     except Exception as error:
         logger.exception(

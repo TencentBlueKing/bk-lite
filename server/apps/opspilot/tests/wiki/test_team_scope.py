@@ -114,6 +114,14 @@ def test_wiki_lists_and_details_are_limited_to_intersecting_teams(api_client, te
 
 
 @pytest.mark.django_db
+def test_export_okf_rejects_cross_team_knowledge_base(api_client, team_scoped_objects):
+    response = api_client.get(
+        f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{team_scoped_objects['foreign_kb'].id}/export_okf/",
+    )
+    assert response.status_code == 403, response.content
+
+
+@pytest.mark.django_db
 def test_check_mutation_actions_reject_cross_team_items(api_client, team_scoped_objects):
     foreign_check = team_scoped_objects["foreign_check"]
     endpoints = [

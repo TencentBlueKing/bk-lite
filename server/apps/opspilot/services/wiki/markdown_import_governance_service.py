@@ -7,6 +7,7 @@ import re
 import secrets
 import stat
 import unicodedata
+import uuid
 import zipfile
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
@@ -1497,11 +1498,14 @@ def _maybe_run_markdown_import_search_enrichment(knowledge_base, result, *, defe
     return result
 
 
-def _claim_preflight(knowledge_base, token, inspected, actor, preview):
+def _claim_preflight(knowledge_base, token, inspected, actor, preview, *, preflight_id=None):
     token_hash = hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
     with transaction.atomic():
         current = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
-        record = WikiImportPreflight.objects.select_for_update().filter(token_hash=token_hash).first()
+        if preflight_id:
+            record = WikiImportPreflight.objects.select_for_update().filter(pk=preflight_id, knowledge_base=current).first()
+        else:
+            record = WikiImportPreflight.objects.select_for_update().filter(token_hash=token_hash).first()
         if record is None or record.knowledge_base_id != knowledge_base.pk:
             raise MarkdownImportGovernanceError("preflight_token_invalid", "导入预检 token 无效", status_code=409)
         if record.status != "active":
@@ -1538,6 +1542,102 @@ def _claim_preflight(knowledge_base, token, inspected, actor, preview):
         }
         record.save(update_fields=["preview", "status", "consumed_at", "updated_at"])
         return record, current
+
+
+_CELERY_TASK_ID_KEY = "celery_task_id"
+
+
+def markdown_import_celery_task_is_live(task_id) -> bool:
+    """Whether the recorded Celery task is still queued or running.
+
+    Empty id means delay() never happened. Inspect failure is treated as not live
+    so enqueue/rebuild can reclaim; workers fence on the persisted task id.
+    """
+    task_id = str(task_id or "").strip()
+    if not task_id:
+        return False
+    try:
+        from celery import current_app
+
+        inspect = current_app.control.inspect(timeout=1)
+        if inspect is None:
+            return False
+        for query in (inspect.active, inspect.reserved, inspect.scheduled):
+            try:
+                workers = query()
+            except Exception:
+                continue
+            for tasks in (workers or {}).values():
+                for item in tasks or []:
+                    if not isinstance(item, dict):
+                        continue
+                    request = item.get("request") if isinstance(item.get("request"), dict) else {}
+                    item_id = item.get("id") or request.get("id")
+                    if item_id == task_id:
+                        return True
+    except Exception as error:
+        logger.warning(
+            "wiki markdown import celery inspect failed failed_stage=%s error_type=%s",
+            "inspect_celery_task",
+            type(error).__name__,
+        )
+        return False
+    return False
+
+
+def _new_markdown_import_celery_task_id() -> str:
+    return str(uuid.uuid4())
+
+
+def _markdown_import_dispatch(build):
+    inputs = build.inputs or {}
+    return {
+        "build_record_id": build.pk,
+        "archive_locator": inputs.get("archive_locator") or "",
+        "filename": inputs.get("filename") or "",
+        "celery_task_id": inputs.get(_CELERY_TASK_ID_KEY) or "",
+        "preflight_id": inputs.get("preflight_id"),
+    }
+
+
+def _rotate_markdown_import_celery_task_id(build):
+    inputs = dict(build.inputs or {})
+    inputs[_CELERY_TASK_ID_KEY] = _new_markdown_import_celery_task_id()
+    build.inputs = inputs
+    build.save(update_fields=["inputs", "updated_at"])
+    return build
+
+
+def reclaim_stale_markdown_import_builds(kb_id) -> int:
+    """Fail running markdown_import records whose Celery task is gone.
+
+    Caller must already hold the knowledge-base row lock. Lazy-imports the wiki
+    task helper so this module does not import tasks.wiki at load time.
+    """
+    from apps.opspilot.tasks.wiki import _fail_wiki_task_build
+
+    closed = 0
+    running = (
+        BuildRecord.objects.select_for_update()
+        .filter(
+            knowledge_base_id=kb_id,
+            trigger="markdown_import",
+            status="running",
+        )
+        .order_by("id")
+    )
+    for build in running:
+        if markdown_import_celery_task_is_live((build.inputs or {}).get(_CELERY_TASK_ID_KEY)):
+            continue
+        _fail_wiki_task_build(
+            build,
+            "markdown_import_stale",
+            "导入任务已丢失，已释放",
+            retryable=True,
+        )
+        _release_preflight_after_failure((build.inputs or {}).get("preflight_id"))
+        closed += 1
+    return closed
 
 
 def _accepted_import_payload(build):
@@ -1606,17 +1706,25 @@ def enqueue_markdown_import(
 
         execution = (record.preview or {}).get(_EXECUTION_PREVIEW_KEY)
         if isinstance(execution, dict) and execution.get("status") == "running":
-            existing = BuildRecord.objects.filter(
-                pk=execution.get("build_record_id"),
-                knowledge_base_id=current.pk,
-                trigger="markdown_import",
-            ).first()
+            existing = (
+                BuildRecord.objects.select_for_update()
+                .filter(
+                    pk=execution.get("build_record_id"),
+                    knowledge_base_id=current.pk,
+                    trigger="markdown_import",
+                )
+                .first()
+            )
             if existing is not None and existing.status == "running":
-                return _accepted_import_payload(existing), None
+                if markdown_import_celery_task_is_live((existing.inputs or {}).get(_CELERY_TASK_ID_KEY)):
+                    return _accepted_import_payload(existing), None
+                _rotate_markdown_import_celery_task_id(existing)
+                return _accepted_import_payload(existing), _markdown_import_dispatch(existing)
 
         if record.expires_at <= timezone.now():
             raise MarkdownImportGovernanceError("preflight_token_expired", "导入预检 token 已过期", status_code=409)
 
+        reclaim_stale_markdown_import_builds(current.pk)
         if kb_has_user_build_in_progress(current.pk):
             raise MarkdownImportGovernanceError(
                 "knowledge_base_build_in_progress",
@@ -1634,6 +1742,7 @@ def enqueue_markdown_import(
                 "archive_locator": locator,
                 "filename": str(filename or "")[:255],
                 "preflight_id": record.pk,
+                _CELERY_TASK_ID_KEY: _new_markdown_import_celery_task_id(),
             },
             stage="queued",
             status="running",
@@ -1655,11 +1764,7 @@ def enqueue_markdown_import(
             build.pk,
             len(content),
         )
-        return _accepted_import_payload(build), {
-            "build_record_id": build.pk,
-            "archive_locator": locator,
-            "filename": str(filename or ""),
-        }
+        return _accepted_import_payload(build), _markdown_import_dispatch(build)
 
 
 def execute_markdown_import(
@@ -1672,11 +1777,15 @@ def execute_markdown_import(
     completion_build_record_id=None,
     existing_build_record_id=None,
     defer_search_enrichment=False,
+    preflight_id=None,
 ):
-    probe = WikiImportPreflight.objects.filter(
-        token_hash=hashlib.sha256(str(token or "").encode("utf-8")).hexdigest(),
-        knowledge_base=knowledge_base,
-    ).first()
+    if preflight_id:
+        probe = WikiImportPreflight.objects.filter(pk=preflight_id, knowledge_base=knowledge_base).first()
+    else:
+        probe = WikiImportPreflight.objects.filter(
+            token_hash=hashlib.sha256(str(token or "").encode("utf-8")).hexdigest(),
+            knowledge_base=knowledge_base,
+        ).first()
     if probe is None:
         raise MarkdownImportGovernanceError("preflight_token_invalid", "导入预检 token 无效", status_code=409)
     inspected = inspect_markdown_archive(
@@ -1702,6 +1811,7 @@ def execute_markdown_import(
                 inspected,
                 actor,
                 preview,
+                preflight_id=probe.pk,
             )
             structure_result = None
             folder_plan = None
@@ -1829,6 +1939,7 @@ def execute_markdown_import(
         inspected,
         actor,
         preview,
+        preflight_id=probe.pk,
     )
     result = _execute_generation_import(
         current,
@@ -1853,6 +1964,8 @@ __all__ = [
     "enqueue_markdown_import",
     "execute_markdown_import",
     "inspect_markdown_archive",
+    "markdown_import_celery_task_is_live",
     "preflight_markdown_import",
+    "reclaim_stale_markdown_import_builds",
     "run_markdown_import_search_enrichment",
 ]
