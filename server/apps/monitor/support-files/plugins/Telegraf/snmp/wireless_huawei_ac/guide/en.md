@@ -54,6 +54,7 @@ Wait for at least one collection interval, then confirm the instance appears and
 - Fan-equipped models show `device_fan_state` / `device_fan_speed_pct` (percent of full speed), indexed by fan slot and serial number. Fanless SKUs may return an empty fan table.
 - `wlan_cur_joint_ap_num` and `wlan_cur_assoc_sta_num` roughly match the site.
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on the uplink.
+- Optical DDM series (`optical_temp_c`, `optical_voltage_mV`, `optical_bias_uA`, `optical_rx_dbm`, `optical_tx_dbm`) appear when transceivers are present.
 
 ## Troubleshooting
 
@@ -84,3 +85,7 @@ Confirm collection uses 64-bit `ifHCInOctets` / `ifHCOutOctets`. This template c
 ### Global wireless speed unit
 
 `wlan_global_up_speed` / `wlan_global_down_speed` (`hwWlanGlobalUpSpeed` / `hwWlanGlobalDownSpeed`) are collected in Kbps as defined by the MIB. The platform unit is `kbitps`; there is no conversion to bit/s.
+
+### No optical DDM series
+
+Empty `hwOpticalModuleInfoTable` is expected when the chassis has no optical modules. Invalid readings `2147483647` are dropped. Rx/Tx power is stored as dBm×100; the query divides by 100 to display dBm. Voltage is millivolts and the query divides by 1000 to display volts.

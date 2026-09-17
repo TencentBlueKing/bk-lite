@@ -103,6 +103,35 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
+    # ---- Optical DDM (hwOpticalModuleInfoTable, index=entPhysicalIndex) ----
+    # TEMP=hwEntityOpticalTemperature ...3.1.5 (°C)
+    # VOLT=hwEntityOpticalVoltage ...3.1.6 (mV; query /1000 → V)
+    # BIAS=hwEntityOpticalBiasCurrent ...3.1.7 (µA)
+    # RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9
+    # Raw Rx/Tx is dBm×100; query /100 → dBm. Drop invalid sentinel 2147483647.
+    # descr=entPhysicalName. Empty table is expected when no optical modules are present.
+    [[inputs.snmp.table]]
+        name = "optical"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.5"
+        name = "temp_c"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.6"
+        name = "voltage_mV"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.7"
+        name = "bias_uA"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8"
+        name = "rx_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9"
+        name = "tx_dbm"
     # ---- WLAN AC global scalars ----
     [[inputs.snmp.table]]
         name = "wlan"
@@ -244,6 +273,19 @@ def apply(metric):
     return metric
 '''
 
+[[processors.starlark]]
+    namepass = ["optical"]
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_huawei_ac"]
+    source = '''
+def apply(metric):
+    sentinel = 2147483647
+    for field in ["temp_c", "voltage_mV", "bias_uA", "rx_dbm", "tx_dbm"]:
+        value = metric.fields.get(field)
+        if value == sentinel or value == 2147483647.0 or value == "2147483647":
+            metric.fields.pop(field)
+    return metric
+'''
 [[processors.enum]]
     namepass = ["device_fan"]
     [processors.enum.tagpass]
