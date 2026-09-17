@@ -119,3 +119,29 @@ def test_default_store_falls_back_when_redis_client_missing(monkeypatch):
     monkeypatch.setattr(catalog_mod, "cache", SimpleNamespace())
     store = catalog_mod._build_default_store()
     assert isinstance(store, catalog_mod.DjangoCacheCatalogStore)
+
+
+def test_redis_store_get_normalizes_ready_flag_bytes():
+    class FakeRedis:
+        def __init__(self):
+            self.values = {}
+
+        def set(self, key, value, nx=False, ex=None):
+            self.values[key] = str(value).encode()
+            return True
+
+        def get(self, key):
+            return self.values.get(key)
+
+    store = catalog_mod.RedisCatalogStore(FakeRedis())
+    store.set("alerts:push_source_ids:ready:v1:1", 1)
+    assert store.get("alerts:push_source_ids:ready:v1:1") == 1
+    assert store.get("missing") is None
+
+
+def test_cap_does_not_throttle_rejected_members():
+    cat = catalog()
+    cat.observe([1], [f"s{i}" for i in range(PushSourceCatalog.MAX_MEMBERS)])
+    cat.observe([1], ["overflow", "s0"])
+    assert (1, "overflow") not in cat._throttle
+    assert (1, "s0") in cat._throttle

@@ -68,7 +68,7 @@ class RedisCatalogStore:
         return self._redis.zscore(key, member)
 
     def get(self, key):
-        return self._redis.get(key)
+        return _decode_stored_value(self._redis.get(key))
 
     def set(self, key, value, timeout=None):
         if timeout is None:
@@ -195,7 +195,12 @@ class PushSourceCatalog:
                 size,
                 rejected,
             )
-        for source_id in pending:
+        self._record_throttle(team_id, mapping, now)
+
+    def _record_throttle(self, team_id, mapping, now):
+        stale_before = now - self.min_interval
+        self._throttle = {key: seen for key, seen in self._throttle.items() if seen >= stale_before}
+        for source_id in mapping:
             self._throttle[(team_id, source_id)] = now
 
 
@@ -255,3 +260,18 @@ def _decode_member(member):
     if isinstance(member, bytes):
         return member.decode()
     return member
+
+
+def _decode_stored_value(value):
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode()
+    if isinstance(value, str):
+        try:
+            number = int(value)
+        except ValueError:
+            return value
+        if str(number) == value:
+            return number
+    return value
