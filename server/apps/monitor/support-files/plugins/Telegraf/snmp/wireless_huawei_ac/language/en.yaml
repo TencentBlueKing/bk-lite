@@ -1,6 +1,7 @@
 Wireless Huawei AC SNMP:
   name: Huawei WLAN AC (Telegraf)
   desc: SNMP monitoring template for Huawei WLAN AC. It reports entity CPU, memory, temperature,
+    chassis used/total power in watts, fan speed as a percent of full speed, fan state,
     per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, and uplink traffic.
 monitor_object:
   Wireless: Wireless
@@ -28,6 +29,27 @@ monitor_object_metric:
       desc: Temperature reading of each Huawei WLAN AC hardware sensor (hwEntityTemperature),
         in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked
         airflow, or excessive ambient heat.
+    device_power_used:
+      name: Chassis Used Power
+      desc: Chassis-level used power (hwDevicePowerInfoUsedPower), in watts. Invalid
+        samples (-1 or empty) are dropped. Rising used power against a stable total
+        budget indicates growing load or a hardware inefficiency.
+    device_power_total:
+      name: Chassis Total Power
+      desc: Chassis-level total power capacity (hwDevicePowerInfoTotalPower), in watts.
+        Invalid samples (-1 or empty) are dropped. Used as the denominator when judging
+        how close the chassis is to its power budget.
+    device_fan_state:
+      name: Fan State
+      desc: Operational state of each cooling fan (hwEntityFanState), normal(1)/abnormal(2).
+        Indexed by fan slot and serial number. An empty fan table is expected on fanless
+        SKUs. A non-normal state indicates a cooling fault.
+    device_fan_speed_pct:
+      name: Fan Speed
+      desc: Fan speed as a percentage of full speed (hwEntityFanSpeed). Indexed by fan slot
+        and serial number, sharing hwFanStatusTable with fan state. Invalid samples (-1 or
+        empty) are dropped. An empty fan table is expected on fanless SKUs. Persistently
+        high speed can indicate thermal compensation.
     interface_ifOperStatus:
       name: Interface Oper Status
       desc: Actual operational status of each WLAN AC uplink or service interface.
@@ -203,6 +225,7 @@ monitor_object_metric_group:
     CPU: CPU
     Memory: Memory
     Temperature: Temperature
+    Hardware Status: Hardware Status
     Status: Status
     Bandwidth: Bandwidth
     Packet Error: Packet Error

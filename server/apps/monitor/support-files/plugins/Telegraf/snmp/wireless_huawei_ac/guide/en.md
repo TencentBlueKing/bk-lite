@@ -50,6 +50,8 @@ Wait for at least one collection interval, then confirm the instance appears and
 
 - `snmp_uptime` keeps increasing.
 - `device_cpu_usage` and `device_memory_usage` have entity-dimension readings.
+- Chassis power shows `device_power_used` / `device_power_total` in watts (`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`). Invalid samples (`-1` or empty) are dropped.
+- Fan-equipped models show `device_fan_state` / `device_fan_speed_pct` (percent of full speed), indexed by fan slot and serial number. Fanless SKUs may return an empty fan table.
 - `wlan_cur_joint_ap_num` and `wlan_cur_assoc_sta_num` roughly match the site.
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on the uplink.
 
@@ -58,6 +60,14 @@ Wait for at least one collection interval, then confirm the instance appears and
 ### Only uptime and interfaces, no CPU or memory
 
 The SNMP view may not authorize entity health objects. Confirm the read-only view includes `1.3.6.1.4.1.2011.5.25.31`.
+
+### No chassis used/total power metrics
+
+Confirm the view includes `1.3.6.1.4.1.2011.5.25.31.3`. These scalars are watts (`device_power_used` / `device_power_total`). Missing chassis power does not mean entity CPU/memory or IF-MIB collection failed.
+
+### No fan speed or fan state
+
+An empty `hwFanStatusTable` is expected on fanless SKUs and is not a collection failure. On fan-equipped models, confirm the view includes `1.3.6.1.4.1.2011.5.25.31.1.1.10`. Fan speed is a percent of full speed (`device_fan_speed_pct`), not RPM. Invalid samples (`-1` or empty) are dropped.
 
 ### No AP, station, or radio data
 
