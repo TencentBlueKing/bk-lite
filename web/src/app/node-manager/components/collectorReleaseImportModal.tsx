@@ -7,6 +7,7 @@ import {
   Checkbox,
   Modal,
   Result,
+  Space,
   Tag,
   Tooltip,
   Upload,
@@ -20,6 +21,7 @@ import { HandledRequestError } from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
 import { useScreenAwareRouter } from '@/console-layout';
 import { MODULE_OBJECT_QUERY_PARAM } from '@/app/monitor/utils/monitorObjectQuery';
+import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 
 interface PackIssue {
   code: string;
@@ -48,6 +50,9 @@ interface ImportResult {
   artifacts?: Array<{ os: string; arch: string; action: string }>;
   message?: string;
   monitor_object_id?: number | string | null;
+  plugin_id?: number | string | null;
+  stale_instance_count?: number;
+  first_fingerprint?: boolean;
 }
 
 interface PackPreviewItem {
@@ -70,6 +75,7 @@ const PACK_ARCH_COL_WIDTH = 184;
 const PACK_STATUS_COL_WIDTH = 108;
 
 const INTEGRATION_LIST_PATH = '/monitor/integration/list';
+const NODE_PATH = '/node-manager/cloudregion/node';
 
 export const buildCollectorReleaseIntegrationListUrl = (
   items: Array<{ applied?: Pick<ImportResult, 'ok' | 'monitor_object_id'> | null }>
@@ -87,6 +93,117 @@ export const buildCollectorReleaseIntegrationListUrl = (
   }
   return `${INTEGRATION_LIST_PATH}?${MODULE_OBJECT_QUERY_PARAM}=${encodeURIComponent(String(objectId))}`;
 };
+
+export const buildCollectorReleaseNodeUrl = (
+  items: Array<{
+    applied?: Pick<
+      ImportResult,
+      'ok' | 'collector' | 'monitor_object_id' | 'plugin_id'
+    > | null;
+  }>
+): string => {
+  const params = new URLSearchParams();
+  const collectors: string[] = [];
+  const seen = new Set<string>();
+  let objectId: string | number | null = null;
+  let pluginId: string | number | null = null;
+  for (const item of items || []) {
+    const applied = item.applied;
+    if (!applied?.ok) continue;
+    const collector = String(applied.collector || '').trim();
+    if (collector && !seen.has(collector.toLowerCase())) {
+      seen.add(collector.toLowerCase());
+      collectors.push(collector);
+    }
+    if (
+      objectId == null &&
+      applied.monitor_object_id != null &&
+      String(applied.monitor_object_id).trim() !== ''
+    ) {
+      objectId = applied.monitor_object_id;
+    }
+    if (
+      pluginId == null &&
+      applied.plugin_id != null &&
+      String(applied.plugin_id).trim() !== ''
+    ) {
+      pluginId = applied.plugin_id;
+    }
+  }
+  if (collectors.length) {
+    params.set('collector', collectors.join(','));
+  }
+  if (objectId != null) {
+    params.set(MODULE_OBJECT_QUERY_PARAM, String(objectId));
+  }
+  if (pluginId != null) {
+    params.set('plugin_id', String(pluginId));
+  }
+  const query = params.toString();
+  return query ? `${NODE_PATH}?${query}` : NODE_PATH;
+};
+
+export const buildCollectorReleaseStaleAssetUrl = (
+  items: Array<{ applied?: Pick<ImportResult, 'ok' | 'monitor_object_id' | 'plugin_id' | 'stale_instance_count'> | null }>
+): string => {
+  const applied = items
+    .map((item) => item.applied)
+    .find((item) => item?.ok && (item.stale_instance_count || 0) > 0);
+  return buildCollectNeedUpdateAssetUrl({
+    monitorObjectId: applied?.monitor_object_id,
+    pluginId: applied?.plugin_id,
+    needUpdate: true
+  });
+};
+
+const listStaleAssetTargets = (
+  items: Array<{
+    applied?: Pick<
+      ImportResult,
+      'ok' | 'monitor_object_id' | 'plugin_id' | 'stale_instance_count' | 'collector' | 'version'
+    > | null;
+  }>
+) => {
+  const seen = new Set<string>();
+  const targets: Array<{
+    key: string;
+    monitorObjectId: string;
+    pluginId?: string | number | null;
+    staleCount: number;
+    label: string;
+  }> = [];
+  for (const item of items || []) {
+    const applied = item.applied;
+    if (!applied?.ok || !(Number(applied.stale_instance_count) > 0)) continue;
+    if (applied.monitor_object_id == null || String(applied.monitor_object_id).trim() === '') {
+      continue;
+    }
+    const objectId = String(applied.monitor_object_id);
+    const pluginId =
+      applied.plugin_id != null && String(applied.plugin_id).trim() !== ''
+        ? applied.plugin_id
+        : null;
+    const key = `${objectId}:${pluginId ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push({
+      key,
+      monitorObjectId: objectId,
+      pluginId,
+      staleCount: Number(applied.stale_instance_count) || 0,
+      label: [applied.collector, applied.version].filter(Boolean).join(' ') || objectId
+    });
+  }
+  return targets;
+};
+
+const sumStaleInstanceCount = (
+  items: Array<{ applied?: Pick<ImportResult, 'ok' | 'stale_instance_count'> | null }>
+) =>
+  (items || []).reduce((total, item) => {
+    if (!item.applied?.ok) return total;
+    return total + (Number(item.applied.stale_instance_count) || 0);
+  }, 0);
 
 const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
 
@@ -108,6 +225,21 @@ const isItemReady = (item: PackPreviewItem) => {
     !item.preview.has_errors &&
     required.every((code) => item.confirms.includes(code))
   );
+};
+
+const warningCodesForItem = (item: PackPreviewItem): string[] => {
+  if (item.preview.has_errors) return [];
+  const fromRequires = item.preview.requires_confirm || [];
+  if (fromRequires.length) return fromRequires;
+  return (item.preview.issues || [])
+    .filter((issue) => issue.level === 'warning')
+    .map((issue) => issue.code)
+    .filter(Boolean);
+};
+
+const isItemFullyConfirmed = (item: PackPreviewItem) => {
+  const required = warningCodesForItem(item);
+  return required.length > 0 && required.every((code) => item.confirms.includes(code));
 };
 
 const CollectorReleaseImportModal = ({
@@ -145,6 +277,32 @@ const CollectorReleaseImportModal = ({
   const readyItems = useMemo(
     () => (items || []).filter((item) => isItemReady(item) && !item.applied && !item.applyFailed),
     [items]
+  );
+
+  const confirmableItems = useMemo(
+    () =>
+      (items || []).filter(
+        (item) =>
+          !item.applied &&
+          !item.applyFailed &&
+          !item.preview.has_errors &&
+          warningCodesForItem(item).length > 0
+      ),
+    [items]
+  );
+
+  const allWarningsConfirmed = useMemo(
+    () =>
+      confirmableItems.length > 0 &&
+      confirmableItems.every((item) => isItemFullyConfirmed(item)),
+    [confirmableItems]
+  );
+
+  const someWarningsConfirmed = useMemo(
+    () =>
+      confirmableItems.some((item) => isItemFullyConfirmed(item)) &&
+      !allWarningsConfirmed,
+    [confirmableItems, allWarningsConfirmed]
   );
 
   // 预览会在服务端暂存整包，放弃时主动释放，不必等服务端的回收窗口。
@@ -362,6 +520,19 @@ const CollectorReleaseImportModal = ({
     );
   };
 
+  const toggleConfirmAllWarnings = (checked: boolean) => {
+    setItems((current) =>
+      (current || []).map((item) => {
+        if (item.applied || item.applyFailed || item.preview.has_errors) {
+          return item;
+        }
+        const required = warningCodesForItem(item);
+        if (!required.length) return item;
+        return { ...item, confirms: checked ? required : [] };
+      })
+    );
+  };
+
   const renderIssueLines = (issueItems: PackIssue[]) => {
     if (issueItems.length === 1) {
       const item = issueItems[0];
@@ -566,30 +737,37 @@ const CollectorReleaseImportModal = ({
           />
         ) : null}
         {warnings.length > 0 && !item.preview.has_errors ? (
-          <div>
-            <div className="mb-1 text-sm text-[var(--color-text-1)]">
-              {t('node-manager.packetManage.confirmRequired')}
-            </div>
-            <Checkbox.Group
-              className="flex flex-col gap-2"
-              disabled={readonly}
-              value={item.confirms}
-              onChange={(values) => updateConfirms(item.key, values as string[])}
-              options={warnings.map((issue) => ({
-                label: (
-                  <span className="whitespace-normal text-sm leading-normal">
-                    {issue.message}
-                    {issue.hint ? (
-                      <span className="mt-1 block text-sm text-[var(--color-text-3)]">
-                        {issue.hint}
-                      </span>
-                    ) : null}
-                  </span>
-                ),
-                value: issue.code
-              }))}
-            />
-          </div>
+          <Alert
+            type="warning"
+            showIcon
+            className="!rounded-xl"
+            message={
+              <span className="font-medium text-[var(--color-warning)]">
+                {t('node-manager.packetManage.confirmRequired')}
+              </span>
+            }
+            description={
+              <Checkbox.Group
+                className="mt-1 flex w-full flex-col gap-2"
+                disabled={readonly}
+                value={item.confirms}
+                onChange={(values) => updateConfirms(item.key, values as string[])}
+                options={warnings.map((issue) => ({
+                  label: (
+                    <span className="whitespace-normal text-sm leading-relaxed text-[var(--color-text-1)]">
+                      <span className="font-medium">{issue.message}</span>
+                      {issue.hint ? (
+                        <span className="mt-1 block text-[var(--color-text-3)]">
+                          {issue.hint}
+                        </span>
+                      ) : null}
+                    </span>
+                  ),
+                  value: issue.code
+                }))}
+              />
+            }
+          />
         ) : null}
       </div>
     );
@@ -601,6 +779,8 @@ const CollectorReleaseImportModal = ({
     const skipped = (items || []).filter(
       (item) => !item.applied?.ok && !item.applyFailed
     );
+    const staleCount = sumStaleInstanceCount(items || []);
+    const staleTargets = listStaleAssetTargets(items || []);
     const title =
       imported.length && !failed.length && !skipped.length
         ? t('node-manager.packetManage.importSummarySuccess', '', {
@@ -613,11 +793,39 @@ const CollectorReleaseImportModal = ({
             skipped: skipped.length
           })
           : t('node-manager.packetManage.importSummaryFailed');
+    const staleHint =
+      staleCount > 0 ? (
+        <div className="space-y-1 text-base leading-relaxed text-[var(--color-text-1)]">
+          <div>
+            {t('node-manager.packetManage.successStalePrefix')}
+            <span className="mx-1 inline-block min-w-[1.25em] text-center text-2xl font-semibold tabular-nums text-[var(--color-warning,#d48806)]">
+              {staleCount}
+            </span>
+            {t('node-manager.packetManage.successStaleSuffix')}
+          </div>
+          {staleTargets.length > 1 ? (
+            <div className="text-sm text-[var(--color-text-3)]">
+              {t('node-manager.packetManage.successStaleObjectsHint')}
+            </div>
+          ) : null}
+        </div>
+      ) : null;
     return (
       <Result
         status={imported.length ? (failed.length ? 'warning' : 'success') : 'error'}
         title={title}
-        subTitle={t('node-manager.packetManage.successNeedSave')}
+        subTitle={
+          <div className="space-y-2">
+            {staleHint}
+            <div className="text-sm text-[var(--color-text-3)]">
+              {t(
+                staleCount > 0
+                  ? 'node-manager.packetManage.successNeedUpgrade'
+                  : 'node-manager.packetManage.successNeedSave'
+              )}
+            </div>
+          </div>
+        }
         extra={renderPackList(
           (items || []).map((item) => {
             const status = item.applied?.ok
@@ -678,25 +886,88 @@ const CollectorReleaseImportModal = ({
           <>
             <Button onClick={handleClose}>{t('common.close')}</Button>
             {(items || []).some((item) => item.applied?.ok) ? (
-              <>
-                <Button
-                  onClick={() => {
-                    handleClose();
-                    router.push(buildCollectorReleaseIntegrationListUrl(items || []));
-                  }}
-                >
-                  {t('node-manager.packetManage.goToIntegration')}
-                </Button>
-                <Button
-                  type="primary"
-                  onClick={() => {
-                    handleClose();
-                    router.push('/node-manager/cloudregion/node');
-                  }}
-                >
-                  {t('node-manager.packetManage.goToNode')}
-                </Button>
-              </>
+              sumStaleInstanceCount(items || []) > 0 ? (
+                (() => {
+                  const staleTargets = listStaleAssetTargets(items || []);
+                  const goToNodeButton = (
+                    <Button
+                      onClick={() => {
+                        handleClose();
+                        router.push(buildCollectorReleaseNodeUrl(items || []));
+                      }}
+                    >
+                      {t('node-manager.packetManage.goToNode')}
+                    </Button>
+                  );
+                  if (staleTargets.length <= 1) {
+                    return (
+                      <>
+                        {goToNodeButton}
+                        <Button
+                          type="primary"
+                          onClick={() => {
+                            handleClose();
+                            router.push(
+                              buildCollectorReleaseStaleAssetUrl(items || [])
+                            );
+                          }}
+                        >
+                          {t('node-manager.packetManage.goToStaleAssets')}
+                        </Button>
+                      </>
+                    );
+                  }
+                  return (
+                    <Space wrap>
+                      {goToNodeButton}
+                      {staleTargets.map((target) => (
+                        <Button
+                          key={target.key}
+                          type="primary"
+                          onClick={() => {
+                            handleClose();
+                            router.push(
+                              buildCollectNeedUpdateAssetUrl({
+                                monitorObjectId: target.monitorObjectId,
+                                pluginId: target.pluginId,
+                                needUpdate: true
+                              })
+                            );
+                          }}
+                        >
+                          {t(
+                            'node-manager.packetManage.goToStaleAssetsForObject',
+                            '',
+                            { id: target.label || target.monitorObjectId }
+                          )}
+                        </Button>
+                      ))}
+                    </Space>
+                  );
+                })()
+              ) : (
+                <>
+                  <Button
+                    onClick={() => {
+                      handleClose();
+                      router.push(
+                        buildCollectorReleaseIntegrationListUrl(items || [])
+                      );
+                    }}
+                  >
+                    {t('node-manager.packetManage.goToIntegration')}
+                  </Button>
+                  <Button
+                    type="primary"
+                    onClick={() => {
+                      handleClose();
+                      router.push(buildCollectorReleaseNodeUrl(items || []));
+                    }}
+                  >
+                    {t('node-manager.packetManage.goToNode')}
+                  </Button>
+                </>
+              )
             ) : null}
           </>
         ) : (
@@ -778,23 +1049,46 @@ const CollectorReleaseImportModal = ({
               ) : null}
             </>
           ) : (
-            renderPackList(
-              items.map((item) => (
-                <li
-                  key={item.key}
-                  className="rounded-xl border border-[var(--color-border-1)] px-4 py-3"
-                >
-                  {renderPackRow(
-                    item.preview.pack?.collector,
-                    item.preview.pack?.version,
-                    item.preview.pack?.artifacts,
-                    item.file.name,
-                    renderItemIssues(item, false)
-                  )}
-                </li>
-              )),
-              'max-h-[480px]'
-            )
+            <div className="flex flex-col gap-3">
+              {confirmableItems.length > 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-4 py-2">
+                  <Checkbox
+                    checked={allWarningsConfirmed}
+                    indeterminate={someWarningsConfirmed}
+                    disabled={loading}
+                    onChange={(event) =>
+                      toggleConfirmAllWarnings(event.target.checked)
+                    }
+                  >
+                    <span className="font-medium text-[var(--color-warning,#d48806)]">
+                      {t('node-manager.packetManage.confirmAllWarnings', '', {
+                        count: confirmableItems.length
+                      })}
+                    </span>
+                  </Checkbox>
+                  <span className="shrink-0 text-sm text-[var(--color-text-3)]">
+                    {t('node-manager.packetManage.confirmAllWarningsHint')}
+                  </span>
+                </div>
+              ) : null}
+              {renderPackList(
+                items.map((item) => (
+                  <li
+                    key={item.key}
+                    className="rounded-xl border border-[var(--color-border-1)] px-4 py-3"
+                  >
+                    {renderPackRow(
+                      item.preview.pack?.collector,
+                      item.preview.pack?.version,
+                      item.preview.pack?.artifacts,
+                      item.file.name,
+                      renderItemIssues(item, false)
+                    )}
+                  </li>
+                )),
+                'max-h-[480px]'
+              )}
+            </div>
           )}
         </div>
       )}

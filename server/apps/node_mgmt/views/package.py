@@ -17,6 +17,15 @@ from apps.node_mgmt.utils.package_permission import require_package_write_permis
 from config.drf.pagination import CustomPageNumberPagination
 
 
+def _build_actor_context_optional(request):
+    try:
+        from apps.monitor.views.node_mgmt import _build_actor_context
+
+        return _build_actor_context(request)
+    except Exception:
+        return None
+
+
 class PackageMgmtView(
     mixins.CreateModelMixin,
     mixins.DestroyModelMixin,
@@ -143,7 +152,7 @@ class PackageMgmtView(
         if not token:
             return WebUtils.response_error(error_message="缺少 preview token")
         try:
-            result = CollectorReleaseService.apply(token, confirms)
+            result = CollectorReleaseService.apply(token, confirms, actor_context=_build_actor_context_optional(request))
         except ValidationAppException as exc:
             return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
         except BaseAppException as exc:
@@ -165,7 +174,10 @@ class PackageMgmtView(
         if not collector:
             return WebUtils.response_error(error_message="缺少 collector")
         try:
-            result = CollectorReleaseService.restore_builtin(collector)
+            result = CollectorReleaseService.restore_builtin(
+                collector,
+                actor_context=_build_actor_context_optional(request),
+            )
         except BaseAppException as exc:
             return WebUtils.response_error(response_data=exc.data or {}, error_message=exc.message)
         return WebUtils.response_success(result)
