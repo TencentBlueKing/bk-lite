@@ -1335,15 +1335,8 @@ const Asset = () => {
               onPressEnter={() => getAssetInsts(objectId)}
               onClear={clearText}
             />
-            <div className="flex shrink-0 items-center">
-              <CatalogScopeSegmented
-                unassignedOnly={unassignedOnly}
-                onChange={handleCatalogScopeChange}
-                count={unassignedCount}
-                resourceName={t('common.instance', '监控实例')}
-                className="mr-[8px]"
-              />
-              <label className="mr-[8px] inline-flex items-center gap-[6px] text-[var(--color-text-2)]">
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex h-8 items-center gap-1.5 text-[var(--color-text-2)]">
                 <Switch
                   size="small"
                   checked={needUpdateOnly}
@@ -1351,32 +1344,39 @@ const Asset = () => {
                 />
                 {t('monitor.integrations.needUpdateFilter')}
               </label>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                className="mr-[8px]"
-                onClick={goToIntegration}
-              >
-                {t('monitor.integrations.access')}
-              </Button>
-              <Dropdown
-                className="mr-[8px]"
-                overlayClassName="customMenu"
-                menu={assetMenuProps}
-                disabled={enableOperateAsset}
-              >
-                <Button>
-                  <Space>
-                    {t('common.action')}
-                    <DownOutlined />
-                  </Space>
+              <div className="flex items-center gap-2">
+                <CatalogScopeSegmented
+                  unassignedOnly={unassignedOnly}
+                  onChange={handleCatalogScopeChange}
+                  count={unassignedCount}
+                  resourceName={t('common.instance', '监控实例')}
+                />
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={goToIntegration}
+                >
+                  {t('monitor.integrations.access')}
                 </Button>
-              </Dropdown>
-              <TimeSelector
-                onlyRefresh
-                onFrequenceChange={onFrequenceChange}
-                onRefresh={onRefresh}
-              />
+                <Dropdown
+                  overlayClassName="customMenu"
+                  menu={assetMenuProps}
+                  disabled={enableOperateAsset}
+                >
+                  <Button>
+                    <Space>
+                      {t('common.action')}
+                      <DownOutlined />
+                    </Space>
+                  </Button>
+                </Dropdown>
+                <TimeSelector
+                  onlyRefresh
+                  className="[&>div]:!ml-0"
+                  onFrequenceChange={onFrequenceChange}
+                  onRefresh={onRefresh}
+                />
+              </div>
             </div>
           </div>
           <div className="min-h-0 min-w-0 flex-1">

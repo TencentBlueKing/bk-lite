@@ -2,7 +2,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { Input, Button, Select, message } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
-import { useUserInfoContext } from '@/context/userInfo';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
@@ -90,7 +89,6 @@ const ViewList: React.FC<ViewListProps> = ({
     key: string;
     order: 'ascend' | 'descend';
   } | null>(null);
-  const { isSuperUser } = useUserInfoContext();
   const [searchText, setSearchText] = useState<string>('');
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -983,6 +981,7 @@ const ViewList: React.FC<ViewListProps> = ({
           />
           <TimeSelector
             onlyRefresh
+            className="[&>div]:!ml-0"
             onFrequenceChange={onFrequenceChange}
             onRefresh={updatePage}
           />
