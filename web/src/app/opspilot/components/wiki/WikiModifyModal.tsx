@@ -10,6 +10,7 @@ import {
   WikiKnowledgeBase,
 } from "@/app/opspilot/types/wiki";
 import { LlmModel } from "@/app/opspilot/types/skill";
+import { Model } from "@/app/opspilot/types/provider";
 import {
   getModelOptionText,
   renderModelOptionLabel,
@@ -41,9 +42,11 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels } = useWikiApi();
+  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels, fetchEmbedProviders } =
+    useWikiApi();
   const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
+  const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const isEditing = Boolean(initialValues?.id);
 
@@ -51,6 +54,9 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
     if (!visible) return;
     fetchLlmModels()
       .then((models) => setLlmModels(models || []))
+      .catch(() => undefined);
+    fetchEmbedProviders()
+      .then((models) => setEmbedProviders(models || []))
       .catch(() => undefined);
     if (!isEditing) {
       fetchTemplates()
@@ -75,6 +81,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
             introduction: full.introduction,
             team: full.team,
             llm_model: full.llm_model,
+            embed_provider: full.embed_provider,
             vision_model: full.vision_model,
           });
         })
@@ -97,7 +104,10 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
 
   const handleOk = async () => {
     const values = await form.validateFields();
-    const submitValues = { ...values };
+    const submitValues = {
+      ...values,
+      embed_provider: values.embed_provider ?? null,
+    };
     if (isEditing) {
       delete submitValues.template_key;
       delete submitValues.purpose_md;
@@ -167,6 +177,23 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
             placeholder={t("wiki.llmModelPlaceholder")}
             optionFilterProp="title"
             options={llmModels.map((m) => ({
+              value: m.id,
+              label: renderModelOptionLabel(m),
+              title: getModelOptionText(m),
+              disabled: !m.enabled,
+            }))}
+          />
+        </Form.Item>
+        <Form.Item
+          label={t("wiki.embedProvider")}
+          name="embed_provider"
+          tooltip={t("wiki.embedProviderTip")}
+        >
+          <Select
+            allowClear
+            placeholder={t("wiki.embedProviderPlaceholder")}
+            optionFilterProp="title"
+            options={embedProviders.map((m) => ({
               value: m.id,
               label: renderModelOptionLabel(m),
               title: getModelOptionText(m),

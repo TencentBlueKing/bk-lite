@@ -39,6 +39,7 @@ from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_
 from apps.opspilot.services.wiki.rebuild_service import create_rebuild_record, running_build_record
 from apps.opspilot.services.wiki.relation_service import list_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
+from apps.opspilot.services.wiki.retrieval_service import default_retrieval_mode
 from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.retrieval_service import stream_answer as wiki_stream_answer
@@ -499,14 +500,26 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         kb = self.get_object()
         params = request.data if request.method == "POST" else request.GET
         query = params.get("query", "")
+        top_k = _int_param(params, "top_k", 5, minimum=1)
+        directory_id = _optional_int_param(params, "directory_id")
+        include_descendants = _bool_param(params, "include_descendants")
         try:
-            results = wiki_search(
-                kb,
-                query or "",
-                top_k=_int_param(params, "top_k", 5, minimum=1),
-                directory_id=_optional_int_param(params, "directory_id"),
-                include_descendants=_bool_param(params, "include_descendants"),
-            )
+            if default_retrieval_mode(kb) == "hybrid":
+                results = wiki_hybrid_search(
+                    kb,
+                    query or "",
+                    top_k=top_k,
+                    directory_id=directory_id,
+                    include_descendants=include_descendants,
+                )
+            else:
+                results = wiki_search(
+                    kb,
+                    query or "",
+                    top_k=top_k,
+                    directory_id=directory_id,
+                    include_descendants=include_descendants,
+                )
         except ActiveGenerationReadError as error:
             return _governance_error(error, status=409)
         return JsonResponse({"result": True, "data": results})
@@ -581,6 +594,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                 kb,
                 request.data.get("query", ""),
                 llm_model_id=kb.llm_model_id,
+                retrieval_mode=request.data.get("retrieval_mode"),
             )
         except (WikiBudgetExceeded, ActiveGenerationReadError) as error:
             return _governance_error(error, status=422)
@@ -596,6 +610,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         """检索测试流式回答:SSE meta/delta/done/error。"""
         kb = self.get_object()
         query = request.data.get("query", "")
+        retrieval_mode = request.data.get("retrieval_mode")
 
         def event_stream():
             try:
@@ -603,6 +618,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                     kb,
                     query,
                     llm_model_id=kb.llm_model_id,
+                    retrieval_mode=retrieval_mode,
                 ):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except (WikiBudgetExceeded, ActiveGenerationReadError) as error:
