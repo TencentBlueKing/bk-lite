@@ -410,22 +410,11 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
 
   return (
     <div className="w-full h-[calc(100vh-216px)]">
-      <div className="flex justify-between flex-wrap">
-        <div className="flex items-center mb-[20px] gap-3">
-          <CatalogScopeSegmented
-            unassignedOnly={unassignedOnly}
-            onChange={(checked) => {
-              setUnassignedOnly(checked);
-              setChartData([]);
-              setPagination((prev: Pagination) => ({
-                ...prev,
-                current: 1
-              }));
-            }}
-          />
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-y-3">
+        <div className="flex items-center gap-3">
           {isPod && (
             <>
-              <span className="text-[14px] mr-[10px]">
+              <span className="text-sm">
                 {t('monitor.views.filterOptions')}
               </span>
               <Select
@@ -445,9 +434,20 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
             </>
           )}
         </div>
-        <div className="flex items-center mb-[20px]">
-          <div className="mr-[8px]">
-            <span className="text-[14px] mr-[10px]">
+        <div className="ml-auto flex items-center gap-2">
+          <CatalogScopeSegmented
+            unassignedOnly={unassignedOnly}
+            onChange={(checked) => {
+              setUnassignedOnly(checked);
+              setChartData([]);
+              setPagination((prev: Pagination) => ({
+                ...prev,
+                current: 1
+              }));
+            }}
+          />
+          <div className="flex items-center">
+            <span className="mr-2.5 text-sm">
               {t('monitor.views.displayIndicators')}
             </span>
             <Select
@@ -467,7 +467,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
               ))}
             </Select>
             <EditOutlined
-              className="ml-[10px] cursor-pointer"
+              className="ml-2.5 cursor-pointer"
               onClick={openHiveModal}
             />
           </div>

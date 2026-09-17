@@ -502,13 +502,6 @@ export default function ApmServicesPage() {
           onChange={setPerspective}
         />
       </div>
-      <CatalogScopeSegmented
-        unassignedOnly={unassignedOnly}
-        onChange={(checked) => {
-          setUnassignedOnly(checked);
-          setSelectedRowKeys([]);
-        }}
-      />
       <Input
         allowClear
         aria-label={t('apm.services.search', '按应用或服务名称搜索')}
@@ -597,6 +590,13 @@ export default function ApmServicesPage() {
             </Dropdown>
           </Permission>
         ) : null}
+        <CatalogScopeSegmented
+          unassignedOnly={unassignedOnly}
+          onChange={(checked) => {
+            setUnassignedOnly(checked);
+            setSelectedRowKeys([]);
+          }}
+        />
         {perspective === 'service' ? (
           <Button
             icon={<InboxOutlined aria-hidden="true" />}

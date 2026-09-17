@@ -619,22 +619,23 @@ const Node = () => {
           {showNodeTable && (
             <div className={`${nodeStyle.node} w-full h-full`}>
               <div className="overflow-hidden">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="mr-[8px] flex min-w-0 items-center gap-3">
-                  <CatalogScopeSegmented
-                    unassignedOnly={unassignedOnly}
-                    onChange={(checked) => {
-                      setUnassignedOnly(checked);
-                      setSelectedRowKeys([]);
-                      setPagination((prev) => ({ ...prev, current: 1 }));
-                    }}
-                  />
-                  <SearchCombination
-                    fieldConfigs={fieldConfigs}
-                    onChange={handleSearchChange}
-                  />
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="mr-2 flex min-w-0 items-center gap-2">
+                    <SearchCombination
+                      fieldConfigs={fieldConfigs}
+                      onChange={handleSearchChange}
+                    />
                   </div>
-                  <div className="flex">
+                  <div className="flex items-center">
+                    <CatalogScopeSegmented
+                      unassignedOnly={unassignedOnly}
+                      onChange={(checked) => {
+                        setUnassignedOnly(checked);
+                        setSelectedRowKeys([]);
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                      }}
+                      className="mr-[8px]"
+                    />
                     <PermissionWrapper
                       requiredPermissions={['InstallController']}
                     >

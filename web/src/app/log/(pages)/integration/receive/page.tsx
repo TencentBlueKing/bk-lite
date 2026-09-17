@@ -579,27 +579,28 @@ const Asset = () => {
         style={{ width: 236, height: 'calc(100vh - 146px)' }}
       />
       <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
-        <div className="flex justify-between items-center mb-[10px]">
-          <div className="flex items-center gap-3">
-          <CatalogScopeSegmented
-            unassignedOnly={unassignedOnly}
-            onChange={(checked) => {
-              setUnassignedOnly(checked);
-              setSelectedRowKeys([]);
-              setPagination((prev) => ({ ...prev, current: 1 }));
-            }}
-          />
-          <Input
-            allowClear
-            className="w-[320px]"
-            placeholder={t('common.searchPlaceHolder')}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onPressEnter={() => getAssetInsts()}
-            onClear={clearText}
-          ></Input>
+        <div className="mb-[10px] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Input
+              allowClear
+              className="w-[320px]"
+              placeholder={t('common.searchPlaceHolder')}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onPressEnter={() => getAssetInsts()}
+              onClear={clearText}
+            />
           </div>
-          <div className="flex">
+          <div className="flex items-center">
+            <CatalogScopeSegmented
+              unassignedOnly={unassignedOnly}
+              onChange={(checked) => {
+                setUnassignedOnly(checked);
+                setSelectedRowKeys([]);
+                setPagination((prev) => ({ ...prev, current: 1 }));
+              }}
+              className="mr-[8px]"
+            />
             <Dropdown
               className="mr-[8px]"
               overlayClassName="customMenu"

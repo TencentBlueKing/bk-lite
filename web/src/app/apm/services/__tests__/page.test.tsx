@@ -588,7 +588,7 @@ describe('APM 服务目录未归属筛选', () => {
   it('普通用户不展示未归属开关', async () => {
     renderWithApmIntl(<ApmServicesPage />);
     await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
-    expect(screen.queryByRole('radio', { name: '未归属' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /未归属/ })).toBeNull();
     expect(api.getServices).toHaveBeenCalledWith({ include_archived: true });
   });
 
@@ -598,7 +598,7 @@ describe('APM 服务目录未归属筛选', () => {
     renderWithApmIntl(<ApmServicesPage />);
     await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
 
-    await user.click(screen.getByRole('radio', { name: '未归属' }).closest('label')!);
+    await user.click(screen.getByRole('button', { name: /未归属/ }));
 
     await waitFor(() => expect(api.getServices).toHaveBeenCalledWith({
       include_archived: true,

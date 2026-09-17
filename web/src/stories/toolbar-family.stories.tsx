@@ -44,6 +44,7 @@ const CatalogScopeStoryControl = () => {
     <CatalogScopeSegmented
       unassignedOnly={unassignedOnly}
       onChange={setUnassignedOnly}
+      count={3}
     />
   );
 };
@@ -59,13 +60,13 @@ const FamilyOverview = () => {
           <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-2)] p-4">
             <ToolbarSplitShell
               leading={(
-                <UserInfoContext.Provider value={SUPERUSER_STUB}>
-                  <CatalogScopeStoryControl />
-                </UserInfoContext.Provider>
+                <Input.Search allowClear className="w-60" placeholder="Search knowledge source" />
               )}
               trailing={(
                 <>
-                  <Input.Search allowClear className="w-60" placeholder="Search knowledge source" />
+                  <UserInfoContext.Provider value={SUPERUSER_STUB}>
+                    <CatalogScopeStoryControl />
+                  </UserInfoContext.Provider>
                   <Button icon={<ReloadOutlined />} />
                   <Button type="primary" icon={<PlusOutlined />}>
                     Add source

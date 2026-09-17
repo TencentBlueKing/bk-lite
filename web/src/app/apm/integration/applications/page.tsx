@@ -199,17 +199,19 @@ export default function ApmApplicationsPage() {
       <ApmSurface>
         <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <CatalogScopeSegmented
-              unassignedOnly={unassignedOnly}
-              onChange={(checked) => {
-                setUnassignedOnly(checked);
-                setPage(1);
-              }}
-            />
             <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder={t('apm.applications.searchPlaceholder', '搜索应用 ID / 名称')} value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
-            <Permission className="ml-auto" requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-              <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>{t('apm.applications.create', '创建应用')}</Button>
-            </Permission>
+            <div className="ml-auto flex items-center gap-2">
+              <CatalogScopeSegmented
+                unassignedOnly={unassignedOnly}
+                onChange={(checked) => {
+                  setUnassignedOnly(checked);
+                  setPage(1);
+                }}
+              />
+              <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
+                <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>{t('apm.applications.create', '创建应用')}</Button>
+              </Permission>
+            </div>
           </FilterToolbar>
           {state === 'ready' ? (
             <ApmDataTable

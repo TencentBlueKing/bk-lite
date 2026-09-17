@@ -1,7 +1,8 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { Input, Button, Select, message } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
+import { useUserInfoContext } from '@/context/userInfo';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
@@ -89,6 +90,7 @@ const ViewList: React.FC<ViewListProps> = ({
     key: string;
     order: 'ascend' | 'descend';
   } | null>(null);
+  const { isSuperUser } = useUserInfoContext();
   const [searchText, setSearchText] = useState<string>('');
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -917,21 +919,11 @@ const ViewList: React.FC<ViewListProps> = ({
 
   return (
     <div className="w-full">
-      <div className="flex justify-between mb-[10px]">
-        <div className="flex items-center gap-3">
-          <CatalogScopeSegmented
-            unassignedOnly={unassignedOnly}
-            onChange={(checked) => {
-              setUnassignedOnly(checked);
-              setPagination((prev) => ({
-                ...prev,
-                current: 1
-              }));
-            }}
-          />
+      <div className="mb-[10px] flex justify-between">
+        <div className="flex items-center gap-2">
           {showTopFilterBar && (
-            <div className="flex items-center flex-wrap gap-y-[8px]">
-              <span className="text-[14px] mr-[10px]">
+            <div className="flex flex-wrap items-center gap-y-2">
+              <span className="mr-2.5 text-sm">
                 {t('monitor.views.filterOptions')}
               </span>
               {showTab && isPod && (
@@ -970,19 +962,31 @@ const ViewList: React.FC<ViewListProps> = ({
           )}
           <Input
             allowClear
-            className={`w-[240px] ${showTopFilterBar ? 'ml-[8px]' : ''}`}
+            className={`w-[240px] ${showTopFilterBar ? 'ml-2' : ''}`}
             placeholder={t('common.searchPlaceHolder')}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             onPressEnter={onRefresh}
             onClear={clearText}
-          ></Input>
+          />
         </div>
-        <TimeSelector
-          onlyRefresh
-          onFrequenceChange={onFrequenceChange}
-          onRefresh={updatePage}
-        />
+        <div className="flex items-center gap-2">
+          <CatalogScopeSegmented
+            unassignedOnly={unassignedOnly}
+            onChange={(checked) => {
+              setUnassignedOnly(checked);
+              setPagination((prev) => ({
+                ...prev,
+                current: 1
+              }));
+            }}
+          />
+          <TimeSelector
+            onlyRefresh
+            onFrequenceChange={onFrequenceChange}
+            onRefresh={updatePage}
+          />
+        </div>
       </div>
       <CustomTable
         scroll={{

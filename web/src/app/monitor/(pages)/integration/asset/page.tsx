@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
@@ -8,7 +8,8 @@ import {
   Popconfirm,
   Space,
   Tooltip,
-  Modal
+  Modal,
+  Select
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
@@ -36,8 +37,9 @@ import {
 } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { DownOutlined, PlusOutlined } from '@ant-design/icons';
+import { DownOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
   showGroupName,
@@ -110,11 +112,13 @@ const Asset = () => {
     pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
+  const { isSuperUser } = useUserInfoContext();
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [unassignedCount, setUnassignedCount] = useState<number | undefined>(undefined);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
     urlObjId ? toMonitorIdString(urlObjId) : ''
@@ -453,11 +457,32 @@ const Asset = () => {
     };
   }, []);
 
+  const fetchUnassignedCount = useCallback(async (currentObjId: React.Key) => {
+    if (!isSuperUser || !currentObjId) {
+      setUnassignedCount(0);
+      return;
+    }
+    try {
+      const data = await getInstanceListByPrimaryObject({
+        id: String(currentObjId),
+        page: 1,
+        page_size: 1,
+        unassigned: true,
+      });
+      setUnassignedCount(data?.count || 0);
+    } catch {
+      setUnassignedCount(0);
+    }
+  }, [isSuperUser, getInstanceListByPrimaryObject]);
+
   useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
+      void fetchUnassignedCount(objectId);
+    } else {
+      setUnassignedCount(0);
     }
-  }, [objectId]);
+  }, [objectId, fetchUnassignedCount, isSuperUser]);
 
   useEffect(() => {
     if (objectId) {
@@ -619,10 +644,14 @@ const Asset = () => {
       });
       if (currentRequestId !== assetRequestIdRef.current) return;
       setTableData(data?.results || []);
+      const totalCount = data?.count || 0;
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: data?.count || 0
+        total: totalCount
       }));
+      if (unassignedOnly) {
+        setUnassignedCount(totalCount);
+      }
     } finally {
       if (currentRequestId === assetRequestIdRef.current) {
         setTableLoading(false);
@@ -784,6 +813,12 @@ const Asset = () => {
     }
   };
 
+  const handleCatalogScopeChange = (checked: boolean) => {
+    setUnassignedOnly(checked);
+    setSelectedRowKeys([]);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
   return (
     <div className={assetStyle.asset}>
       {modalContextHolder}
@@ -799,54 +834,53 @@ const Asset = () => {
       </ResizableSidebar>
         <div className={assetStyle.table}>
           <div className={assetStyle.search}>
-            <div className="flex min-w-0 items-center gap-3">
-            <CatalogScopeSegmented
-              unassignedOnly={unassignedOnly}
-              onChange={(checked) => {
-                setUnassignedOnly(checked);
-                setSelectedRowKeys([]);
-                setPagination((prev) => ({ ...prev, current: 1 }));
-              }}
-            />
-            <Input
-              allowClear
-              className="w-full max-w-[320px] min-w-0"
-              placeholder={t('common.searchPlaceHolder')}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onPressEnter={() => getAssetInsts(objectId)}
-              onClear={clearText}
-            ></Input>
+            <div className="flex min-w-0 items-center gap-2">
+              <Input
+                allowClear
+                className="w-80"
+                placeholder={t('common.searchPlaceHolder')}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onPressEnter={() => getAssetInsts(objectId)}
+                onClear={clearText}
+              />
             </div>
             <div className="flex shrink-0">
+              <CatalogScopeSegmented
+                unassignedOnly={unassignedOnly}
+                onChange={handleCatalogScopeChange}
+                count={unassignedCount}
+                resourceName={t('common.instance', '监控实例')}
+                className="mr-[8px]"
+              />
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 className="mr-[8px]"
                 onClick={goToIntegration}
               >
-              {t('monitor.integrations.access')}
-            </Button>
-            <Dropdown
-              className="mr-[8px]"
-              overlayClassName="customMenu"
-              menu={assetMenuProps}
-              disabled={enableOperateAsset}
-            >
-              <Button>
-                <Space>
-                  {t('common.action')}
-                  <DownOutlined />
-                </Space>
+                {t('monitor.integrations.access')}
               </Button>
-            </Dropdown>
-            <TimeSelector
-              onlyRefresh
-              onFrequenceChange={onFrequenceChange}
-              onRefresh={onRefresh}
-            />
+              <Dropdown
+                className="mr-[8px]"
+                overlayClassName="customMenu"
+                menu={assetMenuProps}
+                disabled={enableOperateAsset}
+              >
+                <Button>
+                  <Space>
+                    {t('common.action')}
+                    <DownOutlined />
+                  </Space>
+                </Button>
+              </Dropdown>
+              <TimeSelector
+                onlyRefresh
+                onFrequenceChange={onFrequenceChange}
+                onRefresh={onRefresh}
+              />
+            </div>
           </div>
-        </div>
         <div className="min-h-0 min-w-0 flex-1">
           <CustomTable
             key={String(objectId || 'asset-table')}
@@ -861,11 +895,20 @@ const Asset = () => {
           ></CustomTable>
         </div>
       </div>
-      <EditConfig ref={configRef} onSuccess={() => getAssetInsts(objectId)} />
+      <EditConfig
+        ref={configRef}
+        onSuccess={() => {
+          getAssetInsts(objectId);
+          if (objectId) void fetchUnassignedCount(objectId);
+        }}
+      />
       <EditInstance
         ref={instanceRef}
         organizationList={organizationList}
-        onSuccess={() => getAssetInsts(objectId)}
+        onSuccess={() => {
+          getAssetInsts(objectId);
+          if (objectId) void fetchUnassignedCount(objectId);
+        }}
       />
       <TemplateConfigDrawer ref={templateDrawerRef} onSuccess={() => {}} />
     </div>

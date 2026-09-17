@@ -103,7 +103,7 @@ describe('APM 应用管理', () => {
     expect(screen.queryByText('共 1 个应用')).toBeNull();
 
     const createButton = screen.getByRole('button', { name: '创建应用' });
-    expect(createButton.parentElement?.classList.contains('ml-auto')).toBe(true);
+    expect(createButton.closest('.ml-auto')).not.toBeNull();
   });
 
   it('直接展示高频行操作并固定在表格右侧', async () => {
@@ -160,7 +160,7 @@ describe('APM 应用管理', () => {
   it('普通用户不展示未归属筛选', async () => {
     renderWithApmIntl(<ApmApplicationsPage />);
     await screen.findByText('演示应用');
-    expect(screen.queryByRole('radio', { name: '未归属' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /未归属/ })).toBeNull();
     expect(api.getApplications).not.toHaveBeenCalledWith(expect.objectContaining({
       params: expect.objectContaining({ unassigned: true }),
     }));
@@ -172,7 +172,7 @@ describe('APM 应用管理', () => {
     renderWithApmIntl(<ApmApplicationsPage />);
     await screen.findByText('演示应用');
 
-    await user.click(screen.getByRole('radio', { name: '未归属' }).closest('label')!);
+    await user.click(screen.getByRole('button', { name: /未归属/ }));
 
     await waitFor(() => expect(api.getApplications).toHaveBeenCalledWith({ params: { unassigned: true } }));
   });

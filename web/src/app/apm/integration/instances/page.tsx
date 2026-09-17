@@ -228,13 +228,6 @@ export default function ApmIntegrationInstancesPage() {
       <ApmSurface>
         <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <CatalogScopeSegmented
-              unassignedOnly={unassignedOnly}
-              onChange={(checked) => {
-                setUnassignedOnly(checked);
-                setPage(1);
-              }}
-            />
             <Input.Search
               allowClear
               aria-label={t('apm.instances.searchAria', '按服务、应用或实例 ID 搜索')}
@@ -293,6 +286,13 @@ export default function ApmIntegrationInstancesPage() {
             <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
               {t('apm.instances.connectedCount', '已接入 {count} 个实例', { count: total })}
             </Typography.Text>
+            <CatalogScopeSegmented
+              unassignedOnly={unassignedOnly}
+              onChange={(checked) => {
+                setUnassignedOnly(checked);
+                setPage(1);
+              }}
+            />
             <Radio.Group
               aria-label={t('apm.instances.reportRange', '接入上报时间范围')}
               buttonStyle="solid"
