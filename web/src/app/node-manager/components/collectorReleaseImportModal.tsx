@@ -207,6 +207,14 @@ const isItemFullyConfirmed = (item: PackPreviewItem) => {
   return required.length > 0 && required.every((code) => item.confirms.includes(code));
 };
 
+const PLUGIN_REPLACE_CODES = new Set(['PLUGIN_OVERWRITE', 'PLUGIN_DOWNGRADE']);
+
+const isPluginReplaceIssue = (issue: PackIssue) =>
+  issue.level === 'warning' && PLUGIN_REPLACE_CODES.has(issue.code);
+
+const itemHasPluginReplaceWarning = (item: PackPreviewItem) =>
+  (item.preview.issues || []).some(isPluginReplaceIssue);
+
 const CollectorReleaseImportModal = ({
   open,
   onClose,
@@ -678,6 +686,70 @@ const CollectorReleaseImportModal = ({
     </div>
   );
 
+  const formatWarningConfirmLabel = (issue: PackIssue) => {
+    const current = String(issue.details?.current || '').trim();
+    const incoming = String(issue.details?.incoming || '').trim();
+    const version = String(issue.details?.version || '').trim();
+    if (issue.code === 'PLUGIN_DOWNGRADE' && current && incoming) {
+      return t('node-manager.packetManage.replacePackVersionDowngrade', '', {
+        current,
+        incoming
+      });
+    }
+    if (issue.code === 'PLUGIN_OVERWRITE' && current && incoming) {
+      return t('node-manager.packetManage.replacePackVersion', '', {
+        current,
+        incoming
+      });
+    }
+    if (issue.code === 'PLUGIN_OVERWRITE' && version) {
+      return t('node-manager.packetManage.replacePackSameVersion', '', {
+        version
+      });
+    }
+    return issue.message;
+  };
+
+  const renderVersionMark = (version: string) => (
+    <span className="font-semibold tabular-nums text-[var(--color-text-1)]">
+      {version}
+    </span>
+  );
+
+  const renderPluginReplaceLabel = (issue: PackIssue) => {
+    const current = String(issue.details?.current || '').trim();
+    const incoming = String(issue.details?.incoming || '').trim();
+    const version = String(issue.details?.version || '').trim();
+    const body =
+      current && incoming ? (
+        <>
+          <span>{t('node-manager.packetManage.replacePackFrom')}</span>
+          {renderVersionMark(current)}
+          <span aria-hidden="true">→</span>
+          <span>{t('node-manager.packetManage.replacePackTo')}</span>
+          {renderVersionMark(incoming)}
+          {issue.code === 'PLUGIN_DOWNGRADE' ? (
+            <span>（{t('node-manager.packetManage.replacePackDowngradeMark')}）</span>
+          ) : null}
+        </>
+      ) : version ? (
+        <>
+          <span>
+            {t('node-manager.packetManage.replacePackSameVersionPrefix')}
+          </span>
+          {renderVersionMark(version)}
+        </>
+      ) : (
+        formatWarningConfirmLabel(issue)
+      );
+
+    return (
+      <span className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-[var(--ant-color-warning-border)] bg-[var(--ant-color-warning-bg)] px-2 py-0.5 text-sm leading-5 text-[var(--color-text-2)]">
+        {body}
+      </span>
+    );
+  };
+
   const renderItemIssues = (item: PackPreviewItem, readonly: boolean) => {
     const issues = item.preview.issues || [];
     const errors = issues.filter((issue) => issue.level === 'error');
@@ -724,36 +796,25 @@ const CollectorReleaseImportModal = ({
           />
         ) : null}
         {warnings.length > 0 && !item.preview.has_errors ? (
-          <Alert
-            type="warning"
-            showIcon
-            className="!rounded-xl"
-            message={
-              <span className="font-medium text-[var(--color-warning)]">
-                {t('node-manager.packetManage.confirmRequired')}
-              </span>
-            }
-            description={
-              <Checkbox.Group
-                className="mt-1 flex w-full flex-col gap-2"
-                disabled={readonly}
-                value={item.confirms}
-                onChange={(values) => updateConfirms(item.key, values as string[])}
-                options={warnings.map((issue) => ({
-                  label: (
-                    <span className="whitespace-normal text-sm leading-relaxed text-[var(--color-text-1)]">
-                      <span className="font-medium">{issue.message}</span>
-                      {issue.hint ? (
-                        <span className="mt-1 block text-[var(--color-text-3)]">
-                          {issue.hint}
-                        </span>
-                      ) : null}
+          <Checkbox.Group
+            className="flex w-full flex-col gap-1"
+            disabled={readonly}
+            value={item.confirms}
+            onChange={(values) => updateConfirms(item.key, values as string[])}
+            options={warnings.map((issue) => ({
+              label: (
+                <span className="inline-flex max-w-full items-center whitespace-normal">
+                  {isPluginReplaceIssue(issue) ? (
+                    renderPluginReplaceLabel(issue)
+                  ) : (
+                    <span className="text-sm leading-relaxed text-[var(--color-text-1)]">
+                      {formatWarningConfirmLabel(issue)}
                     </span>
-                  ),
-                  value: issue.code
-                }))}
-              />
-            }
+                  )}
+                </span>
+              ),
+              value: issue.code
+            }))}
           />
         ) : null}
       </div>
@@ -820,13 +881,11 @@ const CollectorReleaseImportModal = ({
         subTitle={
           <div className="space-y-2">
             {staleHint}
-            <div className="text-sm text-[var(--color-text-3)]">
-              {t(
-                staleCount > 0
-                  ? 'node-manager.packetManage.successNeedUpgrade'
-                  : 'node-manager.packetManage.successNeedSave'
-              )}
-            </div>
+            {staleCount > 0 ? null : (
+              <div className="text-sm text-[var(--color-text-3)]">
+                {t('node-manager.packetManage.successNeedSave')}
+              </div>
+            )}
             {programHint}
           </div>
         }
@@ -996,25 +1055,42 @@ const CollectorReleaseImportModal = ({
           ) : (
             <div className="flex flex-col gap-3">
               {confirmableItems.length > 0 ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-4 py-2">
-                  <Checkbox
-                    checked={allWarningsConfirmed}
-                    indeterminate={someWarningsConfirmed}
-                    disabled={loading}
-                    onChange={(event) =>
-                      toggleConfirmAllWarnings(event.target.checked)
-                    }
-                  >
-                    <span className="font-medium text-[var(--color-warning,#d48806)]">
-                      {t('node-manager.packetManage.confirmAllWarnings', '', {
-                        count: confirmableItems.length
-                      })}
-                    </span>
-                  </Checkbox>
-                  <span className="shrink-0 text-sm text-[var(--color-text-3)]">
-                    {t('node-manager.packetManage.confirmAllWarningsHint')}
-                  </span>
-                </div>
+                <Alert
+                  type="warning"
+                  showIcon
+                  className="!rounded-xl"
+                  message={
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <Checkbox
+                        checked={allWarningsConfirmed}
+                        indeterminate={someWarningsConfirmed}
+                        disabled={loading}
+                        onChange={(event) =>
+                          toggleConfirmAllWarnings(event.target.checked)
+                        }
+                      >
+                        <span className="font-medium">
+                          {t('node-manager.packetManage.confirmAllWarnings', '', {
+                            count: confirmableItems.length
+                          })}
+                        </span>
+                      </Checkbox>
+                      <span className="shrink-0 text-sm font-normal text-[var(--color-text-3)]">
+                        {t('node-manager.packetManage.confirmAllWarningsHint')}
+                      </span>
+                    </div>
+                  }
+                  description={
+                    confirmableItems.some(itemHasPluginReplaceWarning) ? (
+                      <div className="space-y-1 text-sm leading-relaxed">
+                        <div>{t('node-manager.packetManage.confirmSharedPolicy')}</div>
+                        <div className="text-[var(--color-text-3)]">
+                          {t('node-manager.packetManage.confirmSharedHint')}
+                        </div>
+                      </div>
+                    ) : undefined
+                  }
+                />
               ) : null}
               {renderPackList(
                 items.map((item) => (

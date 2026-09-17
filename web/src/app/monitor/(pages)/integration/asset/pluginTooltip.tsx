@@ -16,8 +16,6 @@ interface PluginTooltipContentProps {
   packVersionText: string;
   collectMode?: string;
   collectorNodes?: CollectorNode[];
-  needUpdate?: boolean;
-  needUpdateText?: string;
 }
 
 interface PluginTooltipTriggerProps {
@@ -53,9 +51,7 @@ const PluginTooltipContent = ({
   packVersionLabel,
   packVersionText,
   collectMode,
-  collectorNodes,
-  needUpdate,
-  needUpdateText
+  collectorNodes
 }: PluginTooltipContentProps) => {
   const formattedNodes = formatCollectorNodes(collectMode, collectorNodes);
 
@@ -76,7 +72,6 @@ const PluginTooltipContent = ({
           <span>{notAssociatedText}</span>
         )}
       </div>
-      {needUpdate && needUpdateText ? <div>{needUpdateText}</div> : null}
     </div>
   );
 };

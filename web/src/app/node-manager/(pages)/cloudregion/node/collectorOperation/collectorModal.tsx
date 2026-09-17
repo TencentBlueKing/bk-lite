@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   useMemo
 } from 'react';
-import { Form, Select, message, Button, Popconfirm, Radio } from 'antd';
+import { Form, Select, message, Button, Popconfirm, Radio, Tag } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -19,10 +19,41 @@ import { useCommon } from '@/app/node-manager/context/common';
 import { buildCollectorOperationListParams } from '@/app/node-manager/utils/nodeOperation';
 import {
   EXECUTOR_TYPE_TAG,
+  asCollectorCatalogList,
   filterCollectorsForOperationType,
   groupCollectorsForOperationSelect,
-  type CollectorOperationSelectGroup
+  listCollectorUpdateHints,
+  matchCollectorUpdateHint,
+  mergeCatalogCollectorUpdateHints,
+  promotePendingCollectorOptions,
+  type CollectorOperationSelectGroup,
+  type CollectorUpdateHint
 } from '@/app/node-manager/utils/collectorConfig';
+
+const getOptionUpdateTag = (data: unknown) => {
+  if (!data || typeof data !== 'object' || !('updateTag' in data)) {
+    return undefined;
+  }
+  const updateTag = (data as { updateTag?: unknown }).updateTag;
+  return typeof updateTag === 'string' && updateTag ? updateTag : undefined;
+};
+
+const UpdateOptionLabel = ({
+  name,
+  updateTag
+}: {
+  name: string;
+  updateTag?: string;
+}) => (
+  <span className="inline-flex max-w-full items-center gap-1">
+    <span className="min-w-0 truncate">{name}</span>
+    {updateTag ? (
+      <Tag className="m-0" color="warning">
+        {updateTag}
+      </Tag>
+    ) : null}
+  </span>
+);
 
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
@@ -56,16 +87,40 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [options, setOptions] = useState<CollectorOperationSelectGroup[]>([]);
     const [typeOptions, setTypeOptions] = useState<any[]>([]);
     const [selectedType, setSelectedType] = useState<string>('');
+    const [updateHints, setUpdateHints] = useState<CollectorUpdateHint[]>([]);
+    const [selectedNodes, setSelectedNodes] = useState<TableDataItem[]>([]);
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ type, ids, selectedsystem, selectedArchitecture }) => {
+      showModal: ({
+        type,
+        ids,
+        selectedsystem,
+        selectedArchitecture,
+        updateHints: nextHints,
+        focusCollectorNames,
+        selectedNodes: nextNodes
+      }) => {
+        const hints =
+          nextHints ||
+          listCollectorUpdateHints(
+            (nextNodes as TableDataItem[]) || [],
+            focusCollectorNames || []
+          );
         setCollectorVisible(true);
         setType(type);
         setSystem(selectedsystem as string);
         const arch = (selectedArchitecture as string) || '';
         setCpuArchitecture(arch);
         setNodeIds(ids || []);
-        initTypeOptions(selectedsystem || '', arch, type);
+        setSelectedNodes((nextNodes as TableDataItem[]) || []);
+        setUpdateHints(hints);
+        initTypeOptions(
+          selectedsystem || '',
+          arch,
+          type,
+          hints,
+          (nextNodes as TableDataItem[]) || []
+        );
         type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
       }
     }));
@@ -74,10 +129,62 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       return configList.filter((item) => item.collector_id === collector);
     }, [collector]);
 
+    const selectedCollectorHint = useMemo(() => {
+      const selectedCollector = collectorlist.find(
+        (collectorItem: TableDataItem) => collectorItem.id === collector
+      );
+      return matchCollectorUpdateHint(
+        {
+          value: String(collector || ''),
+          label: String(selectedCollector?.name || '')
+        },
+        updateHints
+      );
+    }, [collector, collectorlist, updateHints]);
+
+    const selectedCollectorOption = useMemo(
+      () =>
+        options
+          .flatMap((group) => group.options)
+          .find((option) => String(option.value) === String(collector || '')),
+      [collector, options]
+    );
+
+    const packageVersionOptions = useMemo(
+      () =>
+        packageList.map((item) => {
+          const version = String(item.version || '');
+          let updateTag: string | undefined;
+          if (
+            selectedCollectorHint?.latestVersion &&
+            version === String(selectedCollectorHint.latestVersion)
+          ) {
+            updateTag = t(
+              'node-manager.cloudregion.node.updatableCollectorVersion'
+            );
+          } else if (
+            selectedCollectorHint?.currentVersion &&
+            version === String(selectedCollectorHint.currentVersion)
+          ) {
+            updateTag = t(
+              'node-manager.cloudregion.node.currentCollectorVersion'
+            );
+          }
+          return {
+            value: item.id,
+            label: version,
+            updateTag
+          };
+        }),
+      [packageList, selectedCollectorHint, t]
+    );
+
     const initTypeOptions = (
       selectedsystem: string,
       arch?: string,
-      operationType?: string
+      operationType?: string,
+      hints?: CollectorUpdateHint[],
+      nodes?: TableDataItem[]
     ) => {
       if (nodeStateEnum?.tag) {
         const tagData = nodeStateEnum.tag;
@@ -93,20 +200,39 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         const defaultType = apps.length > 0 ? apps[0].value : '';
         setSelectedType(defaultType);
         if (defaultType) {
-          getCollectors(selectedsystem, defaultType, arch, operationType);
+          getCollectors(
+            selectedsystem,
+            defaultType,
+            arch,
+            operationType,
+            hints,
+            nodes
+          );
         }
       }
+    };
+
+    const pendingSelectLabels = {
+      updatable: (version: string) =>
+        t('node-manager.cloudregion.node.collectorUpgradeable', '', {
+          version
+        }),
+      imported: t('node-manager.cloudregion.node.justImportedCollector')
     };
 
     const getCollectors = async (
       selectedsystem: string,
       typeTag?: string,
       arch?: string,
-      operationType?: string
+      operationType?: string,
+      hints?: CollectorUpdateHint[],
+      nodes?: TableDataItem[]
     ) => {
       setCollectorLoading(true);
       const currentType = typeTag || selectedType;
       const currentArch = arch !== undefined ? arch : cpuArchitecture;
+      const currentHints = hints || updateHints;
+      const currentNodes = nodes || selectedNodes;
       try {
         const params = buildCollectorOperationListParams({
           operatingSystem: selectedsystem,
@@ -114,26 +240,60 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           typeTag: currentType
         });
         const data = await getCollectorlist(params);
+        const catalog = asCollectorCatalogList(data);
         const visibleCollectors =
           currentType === EXECUTOR_TYPE_TAG
-            ? filterCollectorsForOperationType(data || [], currentType)
-            : data || [];
+            ? filterCollectorsForOperationType(catalog, currentType)
+            : catalog;
         const currentOperation = operationType || type;
-        setOptions(
-          groupCollectorsForOperationSelect(
-            visibleCollectors,
-            getCollectorLabelKey,
-            currentOperation === 'installCollector'
-              ? {
-                requirePackage: true,
-                missingPackageHint: t(
-                  'node-manager.cloudregion.node.missingCollectorPackage'
-                )
-              }
-              : undefined
-          )
+        const nextHints = mergeCatalogCollectorUpdateHints(
+          currentHints,
+          visibleCollectors,
+          currentNodes
         );
+        setUpdateHints(nextHints);
+        const grouped = groupCollectorsForOperationSelect(
+          visibleCollectors,
+          getCollectorLabelKey,
+          currentOperation === 'installCollector'
+            ? {
+              requirePackage: true,
+              missingPackageHint: t(
+                'node-manager.cloudregion.node.missingCollectorPackage'
+              )
+            }
+            : undefined
+        );
+        const nextOptions =
+          currentOperation === 'installCollector'
+            ? promotePendingCollectorOptions(
+              grouped,
+              nextHints,
+              t('node-manager.cloudregion.node.pendingUpdateCollectors'),
+              pendingSelectLabels
+            )
+            : grouped;
+        setOptions(nextOptions);
         setCollectorlist(visibleCollectors);
+        if (currentOperation === 'installCollector') {
+          const pendingGroup = nextOptions.find(
+            (group) =>
+              group.title ===
+              t('node-manager.cloudregion.node.pendingUpdateCollectors')
+          );
+          const nextCollector = pendingGroup?.options.find(
+            (option) => !option.disabled
+          )?.value;
+          if (nextCollector) {
+            collectorFormRef.current?.setFieldsValue({
+              collector: nextCollector
+            });
+            void handleCollectorChange(
+              String(nextCollector),
+              visibleCollectors
+            );
+          }
+        }
       } finally {
         setCollectorLoading(false);
       }
@@ -160,6 +320,8 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       setTypeOptions([]);
       setOptions([]);
       setCollectorlist([]);
+      setUpdateHints([]);
+      setSelectedNodes([]);
       collectorFormRef.current?.resetFields();
     };
 
@@ -285,7 +447,10 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       }
     };
 
-    const handleCollectorChange = async (option: string) => {
+    const handleCollectorChange = async (
+      option: string,
+      collectors: TableDataItem[] = collectorlist
+    ) => {
       const id = option;
       setCollector(id);
       setPackageList([]);
@@ -293,7 +458,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         version: null,
         configuration: null
       });
-      const object = collectorlist.find(
+      const object = collectors.find(
         (item: TableDataItem) => item.id === id
       )?.name;
       if (type === 'installCollector' && id) {
@@ -335,7 +500,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         version: null,
         configuration: null
       });
-      getCollectors(system, value);
+      getCollectors(system, value, undefined, type, updateHints, selectedNodes);
     };
 
     return (
@@ -412,7 +577,25 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
               allowClear
               loading={collectorLoading}
               options={options}
-              onChange={handleCollectorChange}
+              optionFilterProp="label"
+              optionRender={(option) => (
+                <UpdateOptionLabel
+                  name={String(option.data?.label ?? option.label ?? '')}
+                  updateTag={getOptionUpdateTag(option.data)}
+                />
+              )}
+              labelRender={(props) => (
+                <UpdateOptionLabel
+                  name={
+                    selectedCollectorOption?.label ||
+                    String(props.label ?? props.value ?? '')
+                  }
+                  updateTag={selectedCollectorOption?.updateTag}
+                />
+              )}
+              onChange={(value) =>
+                handleCollectorChange(value ? String(value) : '')
+              }
             ></Select>
           </Form.Item>
           {type === 'startCollector' &&
@@ -461,15 +644,28 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                     ? t('node-manager.cloudregion.node.missingCollectorPackage')
                     : t('common.selectMsg')
                 }
-                options={packageList.map((item) => ({
-                  value: item.id,
-                  label: item.version
-                }))}
-                filterOption={(input, option) =>
-                  (option?.label || '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
+                options={packageVersionOptions}
+                optionFilterProp="label"
+                optionRender={(option) => (
+                  <UpdateOptionLabel
+                    name={String(option.data?.label ?? option.label ?? '')}
+                    updateTag={getOptionUpdateTag(option.data)}
+                  />
+                )}
+                labelRender={(props) => {
+                  const selected = packageVersionOptions.find(
+                    (option) =>
+                      String(option.value) === String(props.value ?? '')
+                  );
+                  return (
+                    <UpdateOptionLabel
+                      name={
+                        selected?.label || String(props.label ?? props.value ?? '')
+                      }
+                      updateTag={selected?.updateTag}
+                    />
+                  );
+                }}
               />
             </Form.Item>
           )}

@@ -58,6 +58,7 @@ import {
 import {
   listNodeHostedCollectors,
   listNodeUpgradeableCollectors,
+  listCollectorUpdateHints,
   parseCollectorQueryNames,
   isSameCollectorName,
   collectorDisplayName
@@ -294,7 +295,13 @@ const Node = () => {
       type: e.key,
       ids: selectedRowKeys as string[],
       selectedsystem: selection.operatingSystem,
-      selectedArchitecture: selection.cpuArchitecture
+      selectedArchitecture: selection.cpuArchitecture,
+      updateHints: listCollectorUpdateHints(
+        selectedNodes,
+        packCollectorNamesRef.current
+      ),
+      focusCollectorNames: packCollectorNamesRef.current,
+      selectedNodes
     });
   };
 
@@ -612,6 +619,7 @@ const Node = () => {
                   }
                 >
                   {collectorDisplayName(matched) || collectorName}
+                  {` · ${t('node-manager.cloudregion.node.justImportedCollector')}`}
                 </Tag>
               );
             })

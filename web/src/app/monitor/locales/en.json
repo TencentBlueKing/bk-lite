@@ -764,7 +764,7 @@
       "restoreBuiltinConfirm": "Restore this plugin and collector parameters from the product built-in files. The imported pack version will be cleared. This returns to built-in content and does not undo the last import. To go back to a previous pack, re-import that zip. Historical binaries stay in the library.",
       "restoreBuiltinSuccess": "Built-in restored",
       "restoreBuiltinStaleHint": "{count} instance(s) can align collection configs to the current built-in content. Update collection configs.",
-      "staleInstanceHint": "{count} instance(s) can align collection configs to the current probe pack. Click to update collection configs.",
+      "staleInstanceHint": "{count} instance(s) can upgrade to {version}.",
       "needUpdateEmpty": "No upgradeable collection configs for this object. Turn off Upgradeable to see all instances.",
       "needUpdateEmptyAction": "Show all instances",
       "goToStaleAssets": "Update collection configs",
