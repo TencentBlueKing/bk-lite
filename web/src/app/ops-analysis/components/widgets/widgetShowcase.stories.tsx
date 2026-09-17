@@ -581,7 +581,7 @@ const Showcase = () => (
             loading={false}
             dataSource={{
               field_schema: [
-                { key: 'source_name', title: '告警源', value_type: 'string' },
+                { key: 'source_name', title: '集成源', value_type: 'string' },
                 { key: 'event_count', title: '事件数', value_type: 'number' },
               ],
             } as any}

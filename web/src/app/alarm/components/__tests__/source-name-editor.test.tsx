@@ -17,7 +17,7 @@ beforeEach(() => {
   ]);
 });
 
-it.each(['correlation','shield','enrichment','assignment','action'] as const)('%s 告警源下拉多选并按名称保存、回显', async scope => {
+it.each(['correlation','shield','enrichment','assignment','action'] as const)('%s 集成源下拉多选并按名称保存、回显', async scope => {
   const key = ['assignment','action'].includes(scope) ? 'source_names' : 'source_name';
   const onChange = vi.fn();
   const view = render(<MatchRule scope={scope} value={[[{key,operator:'any_of',value:['平台A']}]]} onChange={onChange} />);
@@ -53,7 +53,7 @@ it.each(['生产', '8', 'platform-b'])('支持搜索名称、ID、接入标识�
   expect(screen.queryByText('平台A (ID: 7, 9)')).toBeNull();
 });
 
-it('不允许输入不存在的告警源；保留旧规则中已删除或改名的值', async () => {
+it('不允许输入不存在的集成源；保留旧规则中已删除或改名的值', async () => {
   const onChange = vi.fn();
   render(<MatchRule scope="assignment" value={[[{key:'source_names',operator:'any_of',value:['旧名称']}]]} onChange={onChange} />);
   expect(screen.getByText('旧名称')).toBeTruthy();

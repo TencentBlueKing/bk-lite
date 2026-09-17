@@ -49,7 +49,7 @@ Redis 在读时不可用：本次请求直接返回该次重建结果，不让�
 
 ## 读接口与页面
 
-`GET .../api/push_source_ids/options/`，权限对齐告警源 options（五个规则入口 + 告警查看）。按当前组织（及子组织并集）返回去重字符串列表，近到远。
+`GET .../api/push_source_ids/options/`，权限对齐集成源 options（五个规则入口 + 告警查看）。按当前组织（及子组织并集）返回去重字符串列表，近到远。
 
 五个规则入口的监控源取值改为两通道，写入同一条件的字符串数组，现有操作符与保存上限不变（最多 50 项、每项 256 字符）：
 
@@ -67,7 +67,7 @@ Alert 列表筛选是对快照做成员 IN（`any_of`），不是 JOIN Event，�
 | Alert | `push_source_ids`，JSON 字符串数组 | 快照 `any_of`：`push_source_ids ∩ 名单 ≠ ∅`。实现复用现有监控源集合匹配（有界批次物化主键与快照），与分派规则同一套语义。 |
 | Event | 同名同形状 | `push_source_id__in` 该名单（Event 仍是一对一单值，没有快照列） |
 
-与告警源 `source_names` 相同：不用逗号拼接。单元素也发数组。现有 Event 的单值 `push_source_id` 精确过滤保留，互不影响。
+与集成源 `source_names` 相同：不用逗号拼接。单元素也发数组。现有 Event 的单值 `push_source_id` 精确过滤保留，互不影响。
 
 一条告警快照里有多个监控源时，任一在名单中即入选。空名单或不传参数不筛选。空快照 / 空 `push_source_id` 不命中。未回填快照的历史告警在 Alert 列表上不命中，即使关联 Event 上已有单值。
 

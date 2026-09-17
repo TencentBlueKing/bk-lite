@@ -28,7 +28,7 @@ beforeEach(() => {
   ]);
 });
 
-it('告警源与级别状态一样勾选集成源名称', async () => {
+it('集成源与级别状态一样勾选集成源名称', async () => {
   const onFilterChange = vi.fn();
   render(
     <AlarmFilters

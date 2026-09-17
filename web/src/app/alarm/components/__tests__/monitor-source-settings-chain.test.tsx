@@ -168,7 +168,7 @@ describe('五个正式配置页面的类型化保存', () => {
     expect(save.mock.calls[0][edit?1:0].match_rules).toEqual([[{...condition,value:['a','b','001']}]]);
   });
 
-  it.each(allCases.flatMap(item => [false,true].map(edit=>({...item,edit}))))('$name 告警源多名称新增/编辑提交，编辑=$edit', async ({name,Component,create,update,submit,extra,edit}) => {
+  it.each(allCases.flatMap(item => [false,true].map(edit=>({...item,edit}))))('$name 集成源多名称新增/编辑提交，编辑=$edit', async ({name,Component,create,update,submit,extra,edit}) => {
     const key=['分派','处理'].includes(name)?'source_names':'source_name';
     const condition={key,operator:'any_of',value:['平台A']};
     const newEnrichment=name==='丰富'&&!edit;

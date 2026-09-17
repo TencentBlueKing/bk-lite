@@ -25,8 +25,8 @@ export const RULE_FIELDS = [
   {
     "key": "source_name",
     "label": {
-      "zh": "告警源",
-      "en": "Alert source name"
+      "zh": "集成源",
+      "en": "Integration source"
     },
     "contexts": [
       "event"
@@ -44,8 +44,8 @@ export const RULE_FIELDS = [
   {
     "key": "source_names",
     "label": {
-      "zh": "告警源",
-      "en": "Alert source"
+      "zh": "集成源",
+      "en": "Integration source"
     },
     "contexts": [
       "alert"

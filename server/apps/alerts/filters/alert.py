@@ -30,8 +30,8 @@ class AlertModelFilter(FilterSet):
     my_alert = CharFilter(method="filter_my_alert", label="我的告警")
     level = CharFilter(method="filter_level", label="告警级别")
     status = CharFilter(method="filter_status", label="告警状态")
-    source_name = CharFilter(method="filter_source_name", label="告警源")
-    source_names = CharFilter(method="filter_source_names", label="告警源名称集合")
+    source_name = CharFilter(method="filter_source_name", label="集成源")
+    source_names = CharFilter(method="filter_source_names", label="集成源名称集合")
     push_source_ids = CharFilter(method="filter_push_source_ids", label="监控源")
     created_at_after = CharFilter(field_name="created_at", lookup_expr="gte", label="创建时间（起始）")
     created_at_before = CharFilter(field_name="created_at", lookup_expr="lte", label="创建时间（结束）")
@@ -114,7 +114,7 @@ class AlertModelFilter(FilterSet):
         return qs
 
     def filter_source_name(self, qs, field_name, value):
-        """支持多选的告警源过滤"""
+        """支持多选的集成源过滤"""
         if value:
             # 支持逗号分隔的多个值
             source_names = [source.strip() for source in value.split(",")]
@@ -129,7 +129,7 @@ class AlertModelFilter(FilterSet):
         try:
             names = json.loads(value)
         except (ValueError, TypeError) as error:
-            raise ValidationError({"source_names": "告警源须为 JSON 名称数组"}) from error
+            raise ValidationError({"source_names": "集成源须为 JSON 名称数组"}) from error
         rules = [[{"key": "source_names", "operator": "any_of", "value": names}]]
         validate_rules_for_serializer(rules, "assignment")
         return qs.filter(rules_q(rules, "assignment"))

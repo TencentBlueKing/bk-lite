@@ -1,4 +1,4 @@
-"""Alert 告警源名称：从非恢复关联事件读取，不持久化第二份来源事实。"""
+"""Alert 集成源名称：从非恢复关联事件读取，不持久化第二份来源事实。"""
 from functools import reduce
 from operator import and_
 
@@ -37,4 +37,4 @@ def source_names_q(operator, names):
         return Q(Exists(members)) & ~Q(Exists(selected))
     if operator == "all_of":
         return reduce(and_, (Q(Exists(members.filter(event__source__name=name))) for name in set(names)))
-    raise ValueError("无效的告警源操作符")
+    raise ValueError("无效的集成源操作符")

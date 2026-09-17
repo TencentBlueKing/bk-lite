@@ -30,7 +30,7 @@ export const defaultAlarmBreadcrumbMenus: AlarmBreadcrumbMenus = {
       url: '/alarm/integration',
       children: [
         {
-          title: '告警源详情',
+          title: '集成源详情',
           url: '/alarm/integration/detail',
         },
       ],
@@ -86,7 +86,7 @@ export const defaultAlarmBreadcrumbMenus: AlarmBreadcrumbMenus = {
       url: '/alarm/integration',
       children: [
         {
-          title: 'Source Detail',
+          title: 'Integration Source Detail',
           url: '/alarm/integration/detail',
         },
       ],
