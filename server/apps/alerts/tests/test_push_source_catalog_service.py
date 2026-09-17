@@ -1,8 +1,11 @@
 import logging
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from django.utils import timezone
 
+from apps.alerts.models import Alert
 from apps.alerts.service import push_source_catalog as catalog_mod
 from apps.alerts.service.push_source_catalog import MemoryCatalogStore, PushSourceCatalog
 
@@ -59,6 +62,7 @@ def test_list_omits_scores_older_than_stale_window():
         "alerts:push_source_ids:v1:1",
         {"fresh": now, "stale": now - PushSourceCatalog.STALE_SECONDS - 1},
     )
+    cat.store.set("alerts:push_source_ids:ready:v1:1", 1)
     assert cat.list_for_teams([1]) == ["fresh"]
 
 
@@ -145,3 +149,74 @@ def test_cap_does_not_throttle_rejected_members():
     cat.observe([1], ["overflow", "s0"])
     assert (1, "overflow") not in cat._throttle
     assert (1, "s0") in cat._throttle
+
+
+@pytest.mark.django_db
+def test_rebuild_loads_snapshot_and_marks_ready_even_when_empty():
+    now = timezone.now()
+    Alert.objects.create(
+        alert_id="A1", fingerprint="f1", title="t", content="", level="1", team=[1], push_source_ids=["prod", "001"], last_event_time=now
+    )
+    Alert.objects.create(alert_id="A2", fingerprint="f2", title="t", content="", level="1", team=[2], push_source_ids=["other"], last_event_time=now)
+    Alert.objects.create(
+        alert_id="old",
+        fingerprint="f3",
+        title="t",
+        content="",
+        level="1",
+        team=[1],
+        push_source_ids=["stale"],
+        last_event_time=now - timedelta(days=91),
+    )
+    Alert.objects.create(alert_id="empty", fingerprint="f4", title="t", content="", level="1", team=[3], push_source_ids=[], last_event_time=now)
+    cat = PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: int(now.timestamp()), min_interval=0)
+    assert cat.list_for_teams([1]) == ["001", "prod"]
+    assert "stale" not in cat.list_for_teams([1])
+    assert cat.list_for_teams([3]) == []
+    assert cat.store.get("alerts:push_source_ids:ready:v1:1") == 1
+    assert cat.store.get("alerts:push_source_ids:ready:v1:3") == 1
+
+
+@pytest.mark.django_db
+def test_rebuild_merges_and_does_not_clobber_live_observe():
+    now = timezone.now()
+    Alert.objects.create(alert_id="A1", fingerprint="f1", title="t", content="", level="1", team=[1], push_source_ids=["prod"], last_event_time=now)
+    cat = PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: int(now.timestamp()) + 50, min_interval=0)
+    cat.observe([1], ["live"])
+    cat.rebuild_for_team(1)
+    assert set(cat.list_for_teams([1])) >= {"prod", "live"}
+
+
+@pytest.mark.django_db
+def test_list_rebuilds_once_under_lock():
+    cat = PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: 1, min_interval=0)
+    first = cat.list_for_teams([9])
+    second = cat.list_for_teams([9])
+    assert first == second == []
+    assert cat.store.get("alerts:push_source_ids:ready:v1:9") == 1
+
+
+def test_list_rebuild_failure_logs_type_without_payload(caplog, capsys):
+    sentinel = "snapshot-secret-payload"
+    source_sentinel = "prod-secret-id"
+    cat = PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: 1, min_interval=0)
+    cat.store.zadd("alerts:push_source_ids:v1:1", {source_sentinel: 1})
+
+    def boom(_team_id):
+        raise RuntimeError(sentinel)
+
+    cat.rebuild_for_team = boom
+    with caplog.at_level(logging.WARNING, logger="alert"):
+        assert cat.list_for_teams([1]) == [source_sentinel]
+    records = [record for record in caplog.records if record.name == "alert"]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.WARNING
+    assert record.msg == "push source catalog rebuild failed: team_id=%s error_type=%s"
+    assert record.args == (1, "RuntimeError")
+    assert record.getMessage() == "push source catalog rebuild failed: team_id=1 error_type=RuntimeError"
+    assert record.exc_info is None
+    output = capsys.readouterr()
+    blob = repr(record.args) + logging.Formatter().format(record) + caplog.text + output.out + output.err
+    assert sentinel not in blob
+    assert source_sentinel not in blob

@@ -1,7 +1,13 @@
 """按组织观测实际上游出现过的监控源 ID，供规则勾选与列表筛选。"""
 
-from django.core.cache import cache
+from datetime import timedelta
 
+from django.core.cache import cache
+from django.db.models import Q
+from django.utils import timezone
+
+from apps.alerts.models import Alert
+from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 
 _default_catalog = None
@@ -120,8 +126,10 @@ class DjangoCacheCatalogStore:
 class PushSourceCatalog:
     KEY = "alerts:push_source_ids:v1:{team_id}"
     READY_KEY = "alerts:push_source_ids:ready:v1:{team_id}"
+    LOCK_KEY = "alerts:push_source_ids:rebuild:v1:{team_id}"
     MAX_MEMBERS = 2000
     STALE_SECONDS = 90 * 24 * 3600
+    REBUILD_LOCK_TIMEOUT = 30
 
     def __init__(self, store=None, now=None, min_interval=60):
         self.store = store if store is not None else _build_default_store()
@@ -150,14 +158,29 @@ class PushSourceCatalog:
         cutoff = now - self.STALE_SECONDS
         best = {}
         for team_id in _normalize_team_ids(team_ids):
-            rows = self.store.zrevrange(self.KEY.format(team_id=team_id), 0, -1, withscores=True) or []
-            for member, score in rows:
+            for member, score in self._rows_for_team(team_id):
                 if score < cutoff:
                     continue
                 current = best.get(member)
                 if current is None or score > current:
                     best[member] = score
         return [member for member, _ in sorted(best.items(), key=lambda item: (-item[1], item[0]))]
+
+    def rebuild_for_team(self, team_id):
+        lock_key = self.LOCK_KEY.format(team_id=team_id)
+        try:
+            acquired = bool(self.store.add(lock_key, 1, timeout=self.REBUILD_LOCK_TIMEOUT))
+        except Exception:
+            acquired = True
+        if not acquired:
+            return {}
+        mapping = self._snapshot_mapping(team_id)
+        if len(mapping) > self.MAX_MEMBERS:
+            mapping = dict(sorted(mapping.items(), key=lambda item: (-item[1], item[0]))[: self.MAX_MEMBERS])
+        if mapping:
+            self.store.zadd(self.KEY.format(team_id=team_id), mapping)
+        self.store.set(self.READY_KEY.format(team_id=team_id), 1)
+        return mapping
 
     def _observe_team(self, team_id, source_ids, now):
         pending = []
@@ -196,6 +219,46 @@ class PushSourceCatalog:
                 rejected,
             )
         self._record_throttle(team_id, mapping, now)
+        self.store.set(self.READY_KEY.format(team_id=team_id), 1)
+
+    def _rows_for_team(self, team_id):
+        key = self.KEY.format(team_id=team_id)
+        try:
+            if self.store.get(self.READY_KEY.format(team_id=team_id)) != 1:
+                self.rebuild_for_team(team_id)
+            return self.store.zrevrange(key, 0, -1, withscores=True) or []
+        except Exception:
+            mapping = {}
+            try:
+                mapping = self.rebuild_for_team(team_id) or {}
+            except Exception as exc:
+                logger.warning(
+                    "push source catalog rebuild failed: team_id=%s error_type=%s",
+                    team_id,
+                    type(exc).__name__,
+                )
+            if mapping:
+                return list(mapping.items())
+            try:
+                return self.store.zrevrange(key, 0, -1, withscores=True) or []
+            except Exception:
+                return []
+
+    def _snapshot_mapping(self, team_id):
+        cutoff = timezone.now() - timedelta(seconds=self.STALE_SECONDS)
+        qs = apply_team_scope_with_group_ids(Alert.objects.all(), [team_id])
+        qs = qs.filter(Q(last_event_time__gte=cutoff) | Q(last_event_time__isnull=True, updated_at__gte=cutoff))
+        mapping = {}
+        for alert in qs.only("push_source_ids", "last_event_time", "updated_at").iterator():
+            moment = alert.last_event_time or alert.updated_at
+            if moment is None:
+                continue
+            score = int(moment.timestamp())
+            for source_id in _normalize_source_ids(alert.push_source_ids or []):
+                current = mapping.get(source_id)
+                if current is None or score > current:
+                    mapping[source_id] = score
+        return mapping
 
     def _record_throttle(self, team_id, mapping, now):
         stale_before = now - self.min_interval
