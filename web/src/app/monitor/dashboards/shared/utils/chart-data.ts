@@ -6,6 +6,31 @@ export const getLatestChartValue = (data: ChartData[]) => {
   return typeof latestValue === 'number' ? latestValue : 0;
 };
 
+/** 指标最新值命中不可用哨兵（如 H3C 温度 65535）时，返回展示文案；否则 null。 */
+export const resolveUnavailableSentinelLabel = (
+  value: number,
+  sentinels?: number[],
+  label = '无传感器'
+): string | null => {
+  if (!sentinels?.length || !Number.isFinite(value)) return null;
+  return sentinels.includes(value) ? label : null;
+};
+
+/** 去掉整点取值均为不可用哨兵的时序点，避免趋势图画成 65535 直线。 */
+export const stripUnavailableSentinelPoints = (
+  data: ChartData[],
+  sentinels?: number[]
+): ChartData[] => {
+  if (!sentinels?.length || !data.length) return data;
+  return data.filter((point) => {
+    const values = Object.entries(point)
+      .filter(([key, value]) => /^value\d+$/.test(key) && typeof value === 'number' && Number.isFinite(value))
+      .map(([, value]) => value as number);
+    if (!values.length) return false;
+    return values.some((value) => !sentinels.includes(value));
+  });
+};
+
 export const getChartPointSeriesTotal = (point?: ChartData) => {
   if (!point) return 0;
   return Object.entries(point).reduce((sum, [key, value]) => {
