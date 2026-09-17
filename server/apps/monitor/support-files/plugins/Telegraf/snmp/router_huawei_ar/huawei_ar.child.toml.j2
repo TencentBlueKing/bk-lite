@@ -26,7 +26,7 @@
         brand = "huawei_ar"
     # ---- sysObjectID model dictionary (huaweiProducts.ar = 1.3.6.1.4.1.2011.2.224) ----
     # Identity only. Interface traffic uses built-in IF-MIB; do not expand IF here.
-    # Device health adds entity voltage (mV→V) and board power (watts); milliwatt energy is a separate ENERGY table.
+    # Device health adds entity voltage (mV→V), board power (watts), and chassis DevicePowerInfo (watts); milliwatt energy is a separate ENERGY table.
     # 340 AR8140-12G10XG
     # 341 AR8140-T-12G10XG
     # 349 AR720
@@ -207,6 +207,20 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.6.157.2.1.1.5"
         name = "rated_power_mw"
+    # ---- Chassis used/total power (hwDevicePowerInfoUsedPower / TotalPower, watts) ----
+    # hwDevicePowerInfoUsedPower  1.3.6.1.4.1.2011.5.25.31.3.2
+    # hwDevicePowerInfoTotalPower ...5.25.31.3.1
+    # Integer32; wire unit is watts. Metric names device_power_used / device_power_total.
+    # Distinct from device_energy_*_mw milliwatt energy gauges.
+    [[inputs.snmp.table]]
+        name = "device_power"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.2"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.1"
+        name = "total"
 # ---- BGP 邻居走 BGP4-MIB bgpPeerTable(per-peer walk,需聚合计数)→本轮 N/A,后续可补 BGP peer 数。----
 
 [[processors.enum]]
