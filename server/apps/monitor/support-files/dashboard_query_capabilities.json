@@ -2426,13 +2426,6 @@
       "template": "rate(sqlserver_performance_value{counter=\"Number of Deadlocks/sec\", __$labels__}[__$window__])"
     },
     {
-      "id": "dashboard:v1:6188de37",
-      "object_names": [
-        "Router"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
-    },
-    {
       "id": "dashboard:v1:619c6393",
       "object_names": [
         "Process"
@@ -4049,15 +4042,6 @@
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
-      "id": "dashboard:v1:aa39e9d2",
-      "object_names": [
-        "Loadbalance",
-        "Router",
-        "Switch"
-      ],
-      "template": "max(device_temperature_celsius{__$labels__}) by (instance_id)"
-    },
-    {
       "id": "dashboard:v1:aa57f8ad",
       "object_names": [
         "Switch"
@@ -4091,6 +4075,13 @@
         "Host"
       ],
       "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:aed37e56",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:af0b870f",
@@ -4574,6 +4565,15 @@
         "MSSQL"
       ],
       "template": "sqlserver_schedulers_runnable_tasks_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c3bee604",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_temperature_celsius{__$labels__} != 65535) by (instance_id) or max(device_temperature_celsius{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:c48e0e04",

@@ -1,4 +1,8 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
+import {
+  DEVICE_TEMPERATURE_CHART_GUIDE,
+  DEVICE_TEMPERATURE_KPI_GUIDE
+} from '../common/device-temperature-guide';
 
 export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'switch',
@@ -54,10 +58,12 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'device_temperature_celsius',
       display_name: '最高温度',
-      description: '设备各温度传感器读数中的最高值（摄氏度），用于一眼判断散热风险。',
+      description: '设备各温度传感器读数中的最高值（摄氏度）。查询先取非 65535 有效读数；若仅剩厂商「无传感器」哨兵则保留 65535，由仪表盘显示「无传感器」，与「--」（无数据）区分。',
       unit: 'celsius',
-      query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
-      color: '#f5222d'
+      query: 'max(device_temperature_celsius{__$labels__} != 65535) by (instance_id) or max(device_temperature_celsius{__$labels__}) by (instance_id)',
+      color: '#f5222d',
+      unavailableSentinels: [65535],
+      unavailableLabel: '无传感器'
     },
     {
       name: 'device_fan_state',
@@ -197,7 +203,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'health',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '最高温度', detail: '所有传感器中的最高温度。异常升高可能是风扇故障或散热不良。' }]
+      guide: DEVICE_TEMPERATURE_KPI_GUIDE
     },
     {
       title: '入向总流量',
@@ -242,7 +248,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '温度趋势',
       subtitle: '最高传感器温度',
       metric: 'device_temperature_celsius',
-      guide: [{ label: '温度', detail: '设备最高传感器温度随时间变化，持续上升需关注散热。' }],
+      guide: DEVICE_TEMPERATURE_CHART_GUIDE,
       series: [
         { metric: 'device_temperature_celsius', label: '最高温度', color: '#f5222d', unit: 'celsius' }
       ]

@@ -20,6 +20,8 @@ import {
   buildSearchParams,
   getLatestChartValue,
   mergeChartSeries,
+  resolveUnavailableSentinelLabel,
+  stripUnavailableSentinelPoints,
   buildPreviousPeriodTimeValues,
   freezeTimeValues,
   getPeriodCompare,
@@ -61,6 +63,13 @@ export interface SimpleMetricConfig {
   query: string;
   color: string;
   dimensions?: Dimension[];
+  /**
+   * 厂商「不支持/无传感器」哨兵（如 H3C hh3cEntityExtTemperature=65535）。
+   * 查询侧可用 `max(x != 65535) or max(x)` 保留哨兵以便识别；展示侧命中后显示 unavailableLabel，与「--」(无数据)区分。
+   */
+  unavailableSentinels?: number[];
+  /** 命中 unavailableSentinels 时的主值文案，默认「无传感器」。 */
+  unavailableLabel?: string;
 }
 
 export interface MetricSeries extends SimpleMetricConfig {
@@ -756,24 +765,33 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       })
       .map((card) => {
         const hasData = hasMetricData(card.metric);
-        const healthResult = card.formatter === 'enumHealth' && !card.enumMap && hasData
-          ? formatClusterHealth(getLatest(card.metric))
+        const metricConfig = metricMap[card.metric] || config.metrics.find((metric) => metric.name === card.metric);
+        const latest = hasData ? getLatest(card.metric) : NaN;
+        const unavailableLabel = resolveUnavailableSentinelLabel(
+          latest,
+          metricConfig?.unavailableSentinels,
+          metricConfig?.unavailableLabel
+        );
+        const healthResult = card.formatter === 'enumHealth' && !card.enumMap && hasData && !unavailableLabel
+          ? formatClusterHealth(latest)
           : null;
-        const enumResult = card.enumMap && hasData
-          ? formatMappedEnum(getLatest(card.metric), card.enumMap)
+        const enumResult = card.enumMap && hasData && !unavailableLabel
+          ? formatMappedEnum(latest, card.enumMap)
           : null;
 
-        const mainValue = !hasData
-          ? { value: card.emptyValue || '--', unit: '' }
-          : card.formatter === 'duration'
-            ? { value: formatDuration(getLatest(card.metric)), unit: '' }
-            : card.formatter === 'samplingRate'
-              ? formatSamplingRate(getLatest(card.metric))
-              : healthResult
-                ? { value: healthResult.value, unit: healthResult.unit }
-                : enumResult
-                  ? { value: enumResult.value, unit: enumResult.unit }
-                  : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
+        const mainValue = unavailableLabel
+          ? { value: unavailableLabel, unit: '' }
+          : !hasData
+            ? { value: card.emptyValue || '--', unit: '' }
+            : card.formatter === 'duration'
+              ? { value: formatDuration(latest), unit: '' }
+              : card.formatter === 'samplingRate'
+                ? formatSamplingRate(latest)
+                : healthResult
+                  ? { value: healthResult.value, unit: healthResult.unit }
+                  : enumResult
+                    ? { value: enumResult.value, unit: enumResult.unit }
+                    : formatMetricValue(latest, card.unit || metricMap[card.metric]?.unit || 'none');
 
         const uptimeState = card.isUptimeCard
           ? !hasData
@@ -785,22 +803,30 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
         // 枚举卡失配时趋势线无语义（连续浮点冒充 0/1），清空避免误导。
         const enumUnresolved = Boolean(card.enumMap && hasData && enumResult?.value === '未知');
+        const hideNumericExtras = Boolean(unavailableLabel) || enumUnresolved;
 
         return {
-          card: enumUnresolved ? { ...card, hideTrend: true } : card,
+          card: hideNumericExtras ? { ...card, hideTrend: true } : card,
           mainValue,
-          valueColor: enumResult?.color || healthResult?.color || (!hasData && card.emptyValue ? '#8c95a8' : undefined),
+          valueColor: unavailableLabel
+            ? '#8c95a8'
+            : enumResult?.color || healthResult?.color || (!hasData && card.emptyValue ? '#8c95a8' : undefined),
           // 无数据时 getLatest 会退化成 0，若仍算环比会误显示「较上一周期 0.0%」。
-          compare: card.compare && hasData
-            ? getPeriodCompare(getLatest(card.metric), getLatestChartValue(previousMetricMap[card.metric]?.viewData || []))
+          compare: card.compare && hasData && !unavailableLabel
+            ? getPeriodCompare(latest, getLatestChartValue(previousMetricMap[card.metric]?.viewData || []))
             : null,
           footerItems: (card.footer || []).map((field) => ({ label: field.label, value: formatField(field) })),
-          trendData: enumUnresolved ? [] : (metricMap[card.metric]?.viewData || []),
+          trendData: hideNumericExtras
+            ? []
+            : stripUnavailableSentinelPoints(
+              metricMap[card.metric]?.viewData || [],
+              metricConfig?.unavailableSentinels
+            ),
           noDataType: getNoDataType(card.metric),
           uptimeState
         };
       })
-  ), [config.summaryCards, formatField, getLatest, getNoDataType, hasMetricData, metricMap, previousMetricMap]);
+  ), [config.summaryCards, config.metrics, formatField, getLatest, getNoDataType, hasMetricData, metricMap, previousMetricMap]);
 
   const formatDimensionLegendLabel = (
     details: Array<{ name: string; label: string; value: string }> | undefined
@@ -820,8 +846,13 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
   const chartPanels = useMemo<PreparedChartPanel[]>(() => (
     config.charts.map((chart) => {
+      const metricSentinels = (metricName: string) =>
+        (metricMap[metricName] || config.metrics.find((metric) => metric.name === metricName))?.unavailableSentinels;
       if (chart.keepDimensionSeries) {
-        const viewData = metricMap[chart.metric]?.viewData || [];
+        const viewData = stripUnavailableSentinelPoints(
+          metricMap[chart.metric]?.viewData || [],
+          metricSentinels(chart.metric)
+        );
         const latest = viewData[viewData.length - 1];
         const valueKeys = valueKeysFromChartData(latest);
         const legends = valueKeys.length
@@ -852,7 +883,14 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       }
       return {
         chart,
-        data: mergeChartSeries(chart.series.map((item) => ({ key: item.metric, label: item.label, data: metricMap[item.metric]?.viewData || [] }))),
+        data: mergeChartSeries(chart.series.map((item) => ({
+          key: item.metric,
+          label: item.label,
+          data: stripUnavailableSentinelPoints(
+            metricMap[item.metric]?.viewData || [],
+            metricSentinels(item.metric)
+          )
+        }))),
         metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
         unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
         legends: chart.series.map((item, index) => ({ label: item.label, color: item.color, primary: index === 0 })),
