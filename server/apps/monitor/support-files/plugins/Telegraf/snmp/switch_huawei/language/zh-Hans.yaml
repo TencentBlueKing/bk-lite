@@ -1,6 +1,6 @@
 Switch Huawei SNMP:
   name: 华为（Telegraf）
-  desc: 面向华为园区、框式与 CloudEngine 交换机的 SNMP 监控。采集实体 CPU、内存、温度与风扇健康，电源在位与供电状态，光模块 DDM（收/发光功率、温度、电压、偏置电流），堆叠/CSS 成员与端口健康；启用 M-LAG 时采集成员心跳与 M-LAG 口状态。支持 S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S12700H/S16700 以及 CloudEngine CE 系列（如 CE6881/CE5881）。S12700H 与 S16700 为 V600 代框式机型，仍使用本插件与交换机对象。
+  desc: 面向华为园区、框式与 CloudEngine 交换机的 SNMP 监控。采集实体 CPU、内存、温度与风扇健康（状态、在位、满速百分比转速），整机已用/总功耗（瓦特），电源在位与供电状态，光模块 DDM（收/发光功率、温度、电压、偏置电流），堆叠/CSS 成员与端口健康；启用 M-LAG 时采集成员心跳与 M-LAG 口状态。支持 S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S12700H/S16700 以及 CloudEngine CE 系列（如 CE6881/CE5881）。S12700H 与 S16700 为 V600 代框式机型，仍使用本插件与交换机对象。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -102,6 +102,18 @@ monitor_object_metric:
     device_psu_present:
       name: 电源在位
       desc: 该指标表示各电源模块是否在位（hwEntityPwrPresent）。线侧为 present(1)/absent(2)，不是 0/1。不在位表示槽位空置或模块被拔出。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标报告已在位散热风扇相对满速的转速百分比（hwEntityFanSpeed）。与风扇状态共用 hwFanStatusTable，维度 descr 为 hwEntityFanSlot；空槽通过 present(1) 过滤。转速持续偏高可能是在为高温补偿；状态正常但转速接近 0% 仍可能意味着卡转。
+    device_fan_present:
+      name: 风扇在位
+      desc: 该指标表示各散热风扇是否在位（hwEntityFanPresent）。线侧为 present(1)/absent(2)，不是 0/1。不在位表示槽位空置或风扇框被拔出。
+    device_power_used:
+      name: 整机已用功耗
+      desc: 该指标报告整机已用功耗（hwDevicePowerInfoUsedPower，瓦特）。在总功耗预算稳定时持续上升，说明负载增加或硬件效率下降。
+    device_power_total:
+      name: 整机总功耗
+      desc: 该指标报告整机总功耗容量（hwDevicePowerInfoTotalPower，瓦特）。用于判断整机是否接近供电预算上限。
     device_stack_member_role:
       name: 堆叠成员角色
       desc: 该指标表示 iStack/CE 堆叠各成员角色（hwMemberStackRole）。线侧为 master(1)/standby(2)/slave(3)；角色意外变化表示发生主备倒换或成员加入/离开。
@@ -120,9 +132,6 @@ monitor_object_metric:
     device_mlag_member_heartbeat:
       name: M-LAG 成员心跳
       desc: 该指标表示本端 M-LAG 成员心跳（hwLocalHeartBeatState）。线侧为 ok(1)/lost(2)。lost 表示双活控制通道中断。一致性检查为 trap，不轮询。
-    device_fan_speed:
-      name: 风扇转速
-      desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
       desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。

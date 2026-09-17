@@ -1,6 +1,6 @@
 # Huawei Switch SNMP Guide
 
-This plugin monitors Huawei campus, chassis, and CloudEngine switch health: per-entity CPU, memory, temperature, and fans; power supplies; optical-module DDM; stack/CSS; and, when enabled, M-LAG member heartbeat and member-port state. Access stays on the existing Switch object; S12700H and S16700 do not need a new monitor object.
+This plugin monitors Huawei campus, chassis, and CloudEngine switch health: per-entity CPU, memory, temperature, and fans (state, presence, and speed as a percent of full speed); chassis used/total power; power supplies; optical-module DDM; stack/CSS; and, when enabled, M-LAG member heartbeat and member-port state. Access stays on the existing Switch object; S12700H and S16700 do not need a new monitor object.
 
 ## Supported models
 
@@ -17,7 +17,7 @@ S12700H and S16700 are V600-generation chassis and still use this plugin and Swi
 - The selected node can reach the device SNMP port (default `161/UDP`).
 - SNMPv2c or SNMPv3 is enabled with read-only access.
 - SNMPv3 with auth and privacy is recommended. For v2c, enter the community only in the dedicated form field.
-- The read-only view should authorize standard IF-MIB plus `1.3.6.1.4.1.2011.5.25.31` (entity health, PSU, optical DDM), `1.3.6.1.4.1.2011.5.25.183` (stack object `183.1` and CSS object `183.3`), and `1.3.6.1.4.1.2011.5.25.178.8` (M-LAG member ports and heartbeat).
+- The read-only view should authorize standard IF-MIB plus `1.3.6.1.4.1.2011.5.25.31` (entity health, fan speed/presence, chassis power, PSU, optical DDM), `1.3.6.1.4.1.2011.5.25.183` (stack object `183.1` and CSS object `183.3`), and `1.3.6.1.4.1.2011.5.25.178.8` (M-LAG member ports and heartbeat).
 
 ## Setup steps
 
@@ -60,6 +60,8 @@ Wait for at least one collection interval, then confirm the instance appears and
 
 - `snmp_uptime` keeps increasing.
 - `device_cpu_usage` and `device_memory_usage` have per-entity readings.
+- `device_fan_state` reports each cooling fan (`hwEntityFanState`: normal/abnormal). `device_fan_speed` is a percent of full speed on present fans; empty slots show on `device_fan_present`.
+- `device_power_used` / `device_power_total` report chassis used and total power in watts (`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`).
 - `device_psu_state` reports each installed power supply (`hwEntityPwrState`: supply/notSupply/sleep/unknown). Empty slots show on `device_psu_present`.
 - Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` (µW converted to dBm) plus temperature (°C), voltage (mV→V), and bias (µA) when modules are present. Invalid sentinel `2147483647` is dropped.
 - When iStack or CE stacking is enabled, `device_stack_member_role` (`hwMemberStackRole`) and `device_stack_port_state` (`hwStackPortStatus` up=1/down=2) are populated.

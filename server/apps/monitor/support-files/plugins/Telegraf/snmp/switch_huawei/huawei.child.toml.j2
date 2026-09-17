@@ -92,8 +92,10 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
         name = "celsius"
-    # ---- Huawei Fans (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanState) ----
+    # ---- Huawei Fans (HUAWEI-ENTITY-EXTENT-MIB hwFanStatusTable) ----
     # hwEntityFanState ...10.1.7 线侧 INTEGER 仅 normal(1)/abnormal(2)，不是 Cisco 六段枚举。
+    # hwEntityFanSpeed ...10.1.5 Integer32，单位为满速百分比，不是 RPM。
+    # hwEntityFanPresent ...10.1.6 present(1)/absent(2)，用于过滤空槽。
     # descr 取风扇槽位 hwEntityFanSlot ...10.1.1。偏离 1 即异常。
     [[inputs.snmp.table]]
         name = "device_fan"
@@ -105,6 +107,12 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.5"
+        name = "speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.6"
+        name = "present"
     # ---- Huawei PSU (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrState / hwEntityPwrPresent) ----
     # hwEntityPwrState ...18.1.6 线侧 INTEGER：supply(1)/notSupply(2)/sleep(3)/unknown(4)。
     # sleep(3) 是冗余电源休眠，不是故障；策略不得把 >1 当成异常。
@@ -123,6 +131,16 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.18.1.5"
         name = "present"
+    # ---- Chassis used/total power (hwDevicePowerInfoUsedPower / TotalPower, watts) ----
+    [[inputs.snmp.table]]
+        name = "device_power"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.2"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.1"
+        name = "total"
     # ---- Huawei SFP optical DDM (HUAWEI-ENTITY-EXTENT-MIB hwOpticalModuleInfoTable) ----
     # RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9。
     # TEMP=hwEntityOpticalTemperature ...3.1.5（°C）/ VOLT=hwEntityOpticalVoltage ...3.1.6（mV）/
