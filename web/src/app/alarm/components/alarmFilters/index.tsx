@@ -7,6 +7,7 @@ import { useTranslation } from '@/utils/i18n';
 import { FiltersConfig } from '@/app/alarm/types/alarms';
 import { useCommon } from '@/app/alarm/context/common';
 import { normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
+import PushSourceSelect from '@/app/alarm/(pages)/settings/components/pushSourceSelect';
 
 interface Props {
   filters: FiltersConfig;
@@ -107,6 +108,27 @@ const AlarmFilters: React.FC<Props> = ({
             </Collapse>
           </div>
         )}
+        <div className={alertStyle.item}>
+          <Collapse
+            title={
+              <div className={alertStyle.header}>
+                <span>{t('alarmCommon.ruleFields.push_source_ids')}</span>
+                <ClearOutlined
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearFilters('push_source_ids');
+                  }}
+                  className={alertStyle.clearIcon}
+                />
+              </div>
+            }
+          >
+            <PushSourceSelect
+              value={filters.push_source_ids}
+              onChange={(values) => onFilterChange(values, 'push_source_ids')}
+            />
+          </Collapse>
+        </div>
       </div>
     </div>
   );

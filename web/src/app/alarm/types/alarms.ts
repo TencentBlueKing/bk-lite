@@ -195,6 +195,7 @@ export interface FiltersConfig {
   level: string[];
   state: string[];
   alarm_source: string[];
+  push_source_ids: string[];
 }
 export interface ThresholdField {
   level: string;
