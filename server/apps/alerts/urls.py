@@ -20,6 +20,7 @@ from apps.alerts.views import (
     K8sOpenAPIViewSet,
     LevelModelViewSet,
     NotificationTemplateViewSet,
+    PushSourceIdViewSet,
     SystemLogModelViewSet,
     SystemSettingModelViewSet,
     receiver_data,
@@ -30,6 +31,7 @@ from apps.alerts.views.action import ActionCallbackView, ActionExecutionViewSet,
 
 router = routers.DefaultRouter()
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
+router.register(r"api/push_source_ids", PushSourceIdViewSet, basename="push_source_ids")
 router.register(r"api/alerts", AlertModelViewSet, basename="alerts")
 router.register(r"api/events", EventModelViewSet, basename="events")
 router.register(r"api/level", LevelModelViewSet, basename="level")
