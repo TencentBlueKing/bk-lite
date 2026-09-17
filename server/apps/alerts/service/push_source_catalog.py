@@ -350,10 +350,11 @@ class PushSourceCatalog:
         self.store.zremrangebyscore(key, float("-inf"), math.nextafter(float(cutoff), float("-inf")))
 
     def _keep_newest_members(self, key):
-        while (self.store.zcard(key) or 0) > self.MAX_MEMBERS:
-            overflow = self.store.zrevrange(key, self.MAX_MEMBERS, -1)
-            if not overflow:
-                return
+        size = self.store.zcard(key) or 0
+        if size <= self.MAX_MEMBERS:
+            return
+        overflow = self.store.zrevrange(key, self.MAX_MEMBERS, -1)
+        if overflow:
             self.store.zrem(key, *overflow)
 
     def _record_throttle(self, team_id, mapping, now):

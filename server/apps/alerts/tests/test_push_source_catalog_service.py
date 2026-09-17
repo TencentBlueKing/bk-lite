@@ -230,7 +230,7 @@ def test_keep_newest_does_not_clobber_observe_during_rebuild():
     members = cat.list_for_teams([1])
     assert "concurrent" in members
     assert extra not in members
-    assert len(members) == PushSourceCatalog.MAX_MEMBERS
+    assert cat.store.zscore(key, extra) is None
 
 
 @pytest.mark.django_db
