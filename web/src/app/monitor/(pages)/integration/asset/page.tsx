@@ -7,6 +7,7 @@ import {
   Dropdown,
   Popconfirm,
   Space,
+  Switch,
   Tooltip,
   Modal
 } from 'antd';
@@ -37,6 +38,7 @@ import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { DownOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
   showGroupName,
@@ -85,6 +87,7 @@ const Asset = () => {
     useIntegrationApi();
   const { getInstanceQueryParams } = useViewApi();
   const { t } = useTranslation();
+  const { isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const commonContext = useCommon();
   const { convertToLocalizedTime } = useLocalizedTime();
   const searchparams = useSearchParams();
@@ -113,6 +116,7 @@ const Asset = () => {
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
     urlObjId ? toMonitorIdString(urlObjId) : ''
@@ -262,7 +266,11 @@ const Asset = () => {
         render: (_, { organization }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-            text={showGroupName(organization, organizationList)}
+            text={
+              organization?.length
+                ? showGroupName(organization, organizationList)
+                : t('common.unassigned')
+            }
           />
         )
       },
@@ -457,7 +465,7 @@ const Asset = () => {
     if (objectId) {
       getAssetInsts(objectId);
     }
-  }, [pagination.current, pagination.pageSize]);
+  }, [pagination.current, pagination.pageSize, unassignedOnly]);
 
   useEffect(() => {
     if (objectId) {
@@ -510,7 +518,8 @@ const Asset = () => {
     objectId,
     pagination.current,
     pagination.pageSize,
-    searchText
+    searchText,
+    unassignedOnly
   ]);
 
   const onRefresh = () => {
@@ -602,6 +611,7 @@ const Asset = () => {
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
         id: String(objectId),
+        ...(unassignedOnly ? { unassigned: true } : {}),
         ...(selectedIps.length
           ? { vm_params: { [ASSET_IP_FACT]: selectedIps.join(',') } }
           : {})
@@ -791,6 +801,7 @@ const Asset = () => {
       </ResizableSidebar>
         <div className={assetStyle.table}>
           <div className={assetStyle.search}>
+            <div className="flex min-w-0 items-center gap-3">
             <Input
               allowClear
               className="w-full max-w-[320px] min-w-0"
@@ -800,6 +811,22 @@ const Asset = () => {
               onPressEnter={() => getAssetInsts(objectId)}
               onClear={clearText}
             ></Input>
+            {isSuperUser && !userInfoLoading ? (
+              <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
+                <Switch
+                  size="small"
+                  checked={unassignedOnly}
+                  aria-label={t('common.unassigned')}
+                  onChange={(checked) => {
+                    setUnassignedOnly(checked);
+                    setSelectedRowKeys([]);
+                    setPagination((prev) => ({ ...prev, current: 1 }));
+                  }}
+                />
+                {t('common.unassigned')}
+              </label>
+            ) : null}
+            </div>
             <div className="flex shrink-0">
               <Button
                 type="primary"

@@ -40,8 +40,13 @@ vi.mock('next/link', () => ({
   }) => <a href={href} {...rest}>{children}</a>,
 }));
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
+const userInfo = {
+  flatGroups: [{ id: 1, name: 'Default' }],
+  isSuperUser: false,
+};
+
 vi.mock('@/context/userInfo', () => ({
-  useUserInfoContext: () => ({ flatGroups: [{ id: 1, name: 'Default' }] }),
+  useUserInfoContext: () => userInfo,
 }));
 vi.mock('@/components/permission', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -200,6 +205,7 @@ beforeEach(() => {
       updated_by: 'admin',
     },
   ]);
+  userInfo.isSuperUser = false;
 });
 
 afterEach(() => {
@@ -575,5 +581,29 @@ describe('APM 服务目录告警按服务身份归并', () => {
 
     await user.click(screen.getByRole('radio', { name: '服务' }).closest('label')!);
     expect(await screen.findByRole('link', { name: /bklite-server 有 1 个活跃告警/ })).not.toBeNull();
+  });
+});
+
+describe('APM 服务目录未归属筛选', () => {
+  it('普通用户不展示未归属开关', async () => {
+    renderWithApmIntl(<ApmServicesPage />);
+    await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
+    expect(screen.queryByRole('switch', { name: '未归属' })).toBeNull();
+    expect(api.getServices).toHaveBeenCalledWith({ include_archived: true });
+  });
+
+  it('超级用户打开未归属后只请求零组织目录', async () => {
+    userInfo.isSuperUser = true;
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServicesPage />);
+    await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
+
+    await user.click(screen.getByRole('switch', { name: '未归属' }));
+
+    await waitFor(() => expect(api.getServices).toHaveBeenCalledWith({
+      include_archived: true,
+      unassigned: true,
+    }));
+    expect(api.getApplications).toHaveBeenCalledWith({ params: { unassigned: true } });
   });
 });

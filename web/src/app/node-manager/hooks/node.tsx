@@ -57,7 +57,11 @@ const useColumns = ({
         render: (_, { organization }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-            text={showGroupNames(organization)}
+            text={
+              organization?.length
+                ? showGroupNames(organization)
+                : t('common.unassigned')
+            }
           />
         )
       },

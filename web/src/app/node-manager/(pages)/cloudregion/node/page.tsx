@@ -14,7 +14,8 @@ import {
   Modal,
   Tooltip,
   Tag,
-  Dropdown
+  Dropdown,
+  Switch
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -49,6 +50,7 @@ import CollectorDetailDrawer from './collectorDetail';
 import EditNode from './editNode';
 import BatchEditOrganizations from './batchEditOrganizations';
 import { useCommon } from '@/app/node-manager/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
 import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
@@ -70,6 +72,7 @@ const Node = () => {
   const statusMap = useTelegrafMap();
   const fieldConfigs = useFieldConfigs();
   const commonContext = useCommon();
+  const { isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const name = searchParams.get('name') || '';
   const notDeployed = searchParams.get('not_deployed');
@@ -96,6 +99,7 @@ const Node = () => {
   >();
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -217,7 +221,7 @@ const Node = () => {
 
   useEffect(() => {
     if (!isLoading) getNodes(searchFilters);
-  }, [pagination.current, pagination.pageSize]);
+  }, [pagination.current, pagination.pageSize, unassignedOnly]);
 
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'uninstallController') {
@@ -312,7 +316,8 @@ const Node = () => {
       const params: any = {
         cloud_region_id: cloudId,
         page: pagination.current,
-        page_size: pagination.pageSize
+        page_size: pagination.pageSize,
+        ...(unassignedOnly ? { unassigned: true } : {})
       };
 
       if (filters && Object.keys(filters).length > 0) {
@@ -617,11 +622,27 @@ const Node = () => {
             <div className={`${nodeStyle.node} w-full h-full`}>
               <div className="overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
+                  <div className="mr-[8px] flex min-w-0 items-center gap-3">
                   <SearchCombination
                     fieldConfigs={fieldConfigs}
                     onChange={handleSearchChange}
-                    className="mr-[8px]"
                   />
+                  {isSuperUser && !userInfoLoading ? (
+                    <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
+                      <Switch
+                        size="small"
+                        checked={unassignedOnly}
+                        aria-label={t('common.unassigned')}
+                        onChange={(checked) => {
+                          setUnassignedOnly(checked);
+                          setSelectedRowKeys([]);
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                      />
+                      {t('common.unassigned')}
+                    </label>
+                  ) : null}
+                  </div>
                   <div className="flex">
                     <PermissionWrapper
                       requiredPermissions={['InstallController']}

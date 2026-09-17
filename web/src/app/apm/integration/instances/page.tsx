@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { SearchOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
+import { Alert, Button, Input, message, Radio, Select, Switch, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
@@ -43,7 +43,7 @@ export default function ApmIntegrationInstancesPage() {
     setInstanceOrganizations,
     isLoading: authLoading,
   } = useApmApi();
-  const { flatGroups } = useUserInfoContext();
+  const { flatGroups, isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const [instances, setInstances] = useState<ApmServiceInstance[]>([]);
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [total, setTotal] = useState(0);
@@ -58,6 +58,7 @@ export default function ApmIntegrationInstancesPage() {
   const [pageSize, setPageSize] = useState(20);
   const [state, setState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [organizationInstance, setOrganizationInstance] = useState<ApmServiceInstance | null>(null);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
 
@@ -83,6 +84,7 @@ export default function ApmIntegrationInstancesPage() {
         started_at: startedAt?.toISOString(),
         ended_at: startedAt ? endedAt.toISOString() : undefined,
         keyword: appliedKeyword.trim() || undefined,
+        ...(unassignedOnly ? { unassigned: true } : {}),
       }),
       getApplications(),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
@@ -114,6 +116,7 @@ export default function ApmIntegrationInstancesPage() {
     refreshKey,
     status,
     timeRange,
+    unassignedOnly,
   ]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
@@ -189,7 +192,7 @@ export default function ApmIntegrationInstancesPage() {
       render: (value: number[]) => (
         <EllipsisWithTooltip
           className="truncate text-xs"
-          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : t('apm.instances.unassigned', '未分配')}
+          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : t('common.unassigned')}
         />
       ),
     },
@@ -243,6 +246,20 @@ export default function ApmIntegrationInstancesPage() {
                 setPage(1);
               }}
             />
+            {isSuperUser && !userInfoLoading ? (
+              <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
+                <Switch
+                  size="small"
+                  checked={unassignedOnly}
+                  aria-label={t('common.unassigned')}
+                  onChange={(checked) => {
+                    setUnassignedOnly(checked);
+                    setPage(1);
+                  }}
+                />
+                {t('common.unassigned')}
+              </label>
+            ) : null}
             <Select
               className="w-40"
               aria-label={t('apm.instances.filterApplication', '按应用筛选')}
@@ -326,6 +343,7 @@ export default function ApmIntegrationInstancesPage() {
                 setEnvironment('');
                 setStatus('active');
                 setTimeRange('1d');
+                setUnassignedOnly(false);
                 setPage(1);
               }}>{t('apm.common.clearFilters', '清除筛选')}</Button>}
             />

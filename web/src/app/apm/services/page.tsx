@@ -25,6 +25,7 @@ import {
   Segmented,
   Select,
   Space,
+  Switch,
   Tag,
   Typography,
 } from 'antd';
@@ -104,7 +105,7 @@ export default function ApmServicesPage() {
     setServiceOrganizations,
     isLoading: authLoading,
   } = useApmApi();
-  const { flatGroups } = useUserInfoContext();
+  const { flatGroups, isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const [services, setServices] = useState<ApmService[]>([]);
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [slos, setSlos] = useState<ApmSlo[]>([]);
@@ -136,6 +137,7 @@ export default function ApmServicesPage() {
   const [metricRefreshKey, setMetricRefreshKey] = useState(0);
   const [state, setState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [organizationTargets, setOrganizationTargets] = useState<ApmService[]>([]);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -180,8 +182,11 @@ export default function ApmServicesPage() {
     let active = true;
     setState('loading');
     Promise.all([
-      getApplications(),
-      getServices({ include_archived: true }),
+      getApplications(unassignedOnly ? { params: { unassigned: true } } : {}),
+      getServices({
+        include_archived: true,
+        ...(unassignedOnly ? { unassigned: true } : {}),
+      }),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
       getSlos().catch(() => [] as ApmSlo[]),
       getEvents({ limit: 100 }).catch(() => [] as ApmEvent[]),
@@ -204,7 +209,7 @@ export default function ApmServicesPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getApplications, getEvents, getHealth, getServices, getSlos, refreshKey]);
+  }, [authLoading, getApplications, getEvents, getHealth, getServices, getSlos, refreshKey, unassignedOnly]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
     if (!organizationTargets.length) return;
@@ -506,6 +511,20 @@ export default function ApmServicesPage() {
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
       />
+      {isSuperUser && !userInfoLoading ? (
+        <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
+          <Switch
+            size="small"
+            checked={unassignedOnly}
+            aria-label={t('common.unassigned')}
+            onChange={(checked) => {
+              setUnassignedOnly(checked);
+              setSelectedRowKeys([]);
+            }}
+          />
+          {t('common.unassigned')}
+        </label>
+      ) : null}
       <Select
         allowClear
         aria-label={t('apm.services.filterEnvironment', '按环境筛选')}

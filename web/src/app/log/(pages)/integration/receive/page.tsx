@@ -7,6 +7,7 @@ import {
   Dropdown,
   Popconfirm,
   Space,
+  Switch,
   Modal
 } from 'antd';
 import useApiClient from '@/utils/request';
@@ -25,6 +26,7 @@ import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { DownOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/log/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/log/hooks/integration/common/other';
 import { showGroupName } from '@/app/log/utils/common';
 import EditConfig from './updateConfig';
@@ -55,6 +57,7 @@ const Asset = () => {
     getLogExtractors
   } = useLogApi();
   const { t } = useTranslation();
+  const { isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const router = useRouter();
   const searchParams = useSearchParams();
   const commonContext = useCommon();
@@ -77,6 +80,7 @@ const Asset = () => {
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -126,7 +130,11 @@ const Asset = () => {
       render: (_, { organization }) => (
         <EllipsisWithTooltip
           className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-          text={showGroupName(organization, organizationList)}
+          text={
+            organization?.length
+              ? showGroupName(organization, organizationList)
+              : t('common.unassigned')
+          }
         />
       )
     },
@@ -227,7 +235,7 @@ const Asset = () => {
     if (!isLoading) {
       getAssetInsts();
     }
-  }, [pagination.current, pagination.pageSize, objectId]);
+  }, [pagination.current, pagination.pageSize, objectId, unassignedOnly]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -258,7 +266,8 @@ const Asset = () => {
     pagination.current,
     pagination.pageSize,
     searchText,
-    objectId
+    objectId,
+    unassignedOnly
   ]);
 
   useEffect(() => {
@@ -497,7 +506,8 @@ const Asset = () => {
         page: pagination.current,
         page_size: pagination.pageSize,
         collect_type_id: objectId === 'all' ? '' : String(objectId),
-        name: type === 'clear' ? '' : searchText
+        name: type === 'clear' ? '' : searchText,
+        ...(unassignedOnly ? { unassigned: true } : {})
       };
       const data = await getInstanceList(params, {
         signal: abortController.signal
@@ -572,6 +582,7 @@ const Asset = () => {
       />
       <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
         <div className="flex justify-between items-center mb-[10px]">
+          <div className="flex items-center gap-3">
           <Input
             allowClear
             className="w-[320px]"
@@ -581,6 +592,22 @@ const Asset = () => {
             onPressEnter={() => getAssetInsts()}
             onClear={clearText}
           ></Input>
+          {isSuperUser && !userInfoLoading ? (
+            <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-1)]">
+              <Switch
+                size="small"
+                checked={unassignedOnly}
+                aria-label={t('common.unassigned')}
+                onChange={(checked) => {
+                  setUnassignedOnly(checked);
+                  setSelectedRowKeys([]);
+                  setPagination((prev) => ({ ...prev, current: 1 }));
+                }}
+              />
+              {t('common.unassigned')}
+            </label>
+          ) : null}
+          </div>
           <div className="flex">
             <Dropdown
               className="mr-[8px]"

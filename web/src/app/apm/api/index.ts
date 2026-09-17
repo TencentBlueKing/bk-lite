@@ -52,13 +52,14 @@ interface InstanceQuery {
   keyword?: string;
   page?: number;
   page_size?: number;
+  unassigned?: boolean;
 }
 
 const useApmApi = () => {
   const { del, get, patch, post, put, isLoading } = useApiClient();
 
   const getServices = useCallback(
-    (params: { environment?: string; include_archived?: boolean } = {}) =>
+    (params: { environment?: string; include_archived?: boolean; unassigned?: boolean } = {}) =>
       get<ApmService[]>('/apm/services/', { params }),
     [get]
   );
