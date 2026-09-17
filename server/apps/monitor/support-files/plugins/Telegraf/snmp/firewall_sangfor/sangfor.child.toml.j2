@@ -70,8 +70,8 @@
         oid = "1.3.6.1.4.1.35047.1.27.2.0"
         name = "max_sessions"
     # ---- Disk usage table INDEX diskIndex；tag sfFilesystemName。磁盘温度对象不采集。----
+    # 不设私有表根：采集节点通常无 Sangfor MIB，表级 oid 会触发 snmptable「Was that a table?」并阻断整路 SNMP 初始化。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.35047.1.5.1"
         name = "device_disk"
         inherit_tags = ["source"]
         index_as_tag = true
@@ -89,8 +89,8 @@
         oid = "1.3.6.1.4.1.35047.1.5.1.8"
         name = "used"
     # ---- SFP optics table：温度 / 发送光功率 / 接收光功率，tag sfSFPIfName。CPU 温度对象不采集。----
+    # 同 disk：只 walk 列 OID，避免表根 snmptable 依赖私有 MIB。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.35047.1.60.1"
         name = "device"
         inherit_tags = ["source"]
         index_as_tag = true
@@ -108,8 +108,8 @@
         oid = "1.3.6.1.4.1.35047.1.60.1.14"
         name = "optical_rx_power"
     # ---- NAT4 source-port usage；tag sfNat4Name。----
+    # 同 disk：只 walk 列 OID，避免表根 snmptable 依赖私有 MIB。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.35047.1.63.1.1"
         name = "firewall_nat"
         inherit_tags = ["source"]
         index_as_tag = true
