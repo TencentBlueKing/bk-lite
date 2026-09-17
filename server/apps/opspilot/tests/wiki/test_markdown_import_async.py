@@ -9,9 +9,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.opspilot.models import BuildRecord, KnowledgePage, WikiGeneration, WikiImportPreflight, WikiKnowledgeBase
 from apps.opspilot.services.wiki.markdown_import_governance_service import (
     MarkdownImportGovernanceError,
+    _bind_import_build,
     enqueue_markdown_import,
     execute_markdown_import,
+    markdown_import_celery_task_is_live,
+    persist_markdown_import_celery_task_id,
     preflight_markdown_import,
+    reclaim_stale_markdown_import_builds,
 )
 from apps.opspilot.services.wiki.parsed_media_service import delete_import_archive, read_import_archive_bytes, save_import_archive_bytes
 from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
@@ -64,15 +68,7 @@ def _zip(entries):
     return buffer.getvalue()
 
 
-def _mark_import_task_live(monkeypatch, live=True):
-    monkeypatch.setattr(
-        "apps.opspilot.services.wiki.markdown_import_governance_service.markdown_import_celery_task_is_live",
-        lambda task_id: bool(live and task_id),
-    )
-
-
-def test_enqueue_markdown_import_does_not_write_pages(wiki_factory, import_storage, monkeypatch):
-    _mark_import_task_live(monkeypatch, live=True)
+def test_enqueue_markdown_import_does_not_write_pages(wiki_factory, import_storage):
     knowledge_base = _ready_kb(wiki_factory)
     content = "# 异步导入\n\n正文。".encode("utf-8")
     preflight = preflight_markdown_import(
@@ -100,9 +96,10 @@ def test_enqueue_markdown_import_does_not_write_pages(wiki_factory, import_stora
     assert build.trigger == "markdown_import"
     assert build.status == "running"
     assert build.stage == "queued"
-    assert build.inputs["celery_task_id"] == dispatch["celery_task_id"]
+    assert not (build.inputs or {}).get("celery_task_id")
     assert dispatch["archive_locator"] in import_storage.files
 
+    assert persist_markdown_import_celery_task_id(build.pk, dispatch["celery_task_id"]) is True
     again, again_dispatch = enqueue_markdown_import(
         knowledge_base,
         preflight["token"],
@@ -112,6 +109,8 @@ def test_enqueue_markdown_import_does_not_write_pages(wiki_factory, import_stora
     )
     assert again["build_record_id"] == payload["build_record_id"]
     assert again_dispatch is None
+    build.refresh_from_db()
+    assert build.inputs["celery_task_id"] == dispatch["celery_task_id"]
 
 
 def test_import_archive_staging_is_scoped_to_knowledge_base(import_storage):
@@ -182,7 +181,6 @@ def test_import_markdown_execute_endpoint_enqueues_without_writing_pages(
             calls.append({"args": args, "kwargs": kwargs or {}, "task_id": task_id})
 
     monkeypatch.setattr(tasks, "wiki_execute_markdown_import_task", Task)
-    _mark_import_task_live(monkeypatch, live=True)
 
     preflight = api_client.post(
         f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{knowledge_base.id}/import_markdown_preflight/",
@@ -216,6 +214,8 @@ def test_import_markdown_execute_endpoint_enqueues_without_writing_pages(
     assert "preflight_token" not in calls[0]["kwargs"]
     assert calls[0]["args"] in (None, ())
     assert calls[0]["task_id"]
+    build = BuildRecord.objects.get(pk=data["build_record_id"])
+    assert build.inputs["celery_task_id"] == calls[0]["task_id"]
     assert WikiImportPreflight.objects.get(knowledge_base=knowledge_base).status == "active"
 
     repeat = api_client.post(
@@ -274,10 +274,7 @@ def test_enqueue_redelivers_when_delay_never_happened(wiki_factory, import_stora
         actor="admin",
     )
     build = BuildRecord.objects.get(pk=payload["build_record_id"])
-    inputs = dict(build.inputs or {})
-    inputs.pop("celery_task_id", None)
-    build.inputs = inputs
-    build.save(update_fields=["inputs", "updated_at"])
+    assert not (build.inputs or {}).get("celery_task_id")
 
     again, again_dispatch = enqueue_markdown_import(
         knowledge_base,
@@ -292,46 +289,60 @@ def test_enqueue_redelivers_when_delay_never_happened(wiki_factory, import_stora
     assert again_dispatch["celery_task_id"] != dispatch["celery_task_id"]
     build.refresh_from_db()
     assert build.status == "running"
-    assert build.inputs["celery_task_id"] == again_dispatch["celery_task_id"]
+    assert not (build.inputs or {}).get("celery_task_id")
 
 
-def test_enqueue_redelivers_when_worker_lost(wiki_factory, import_storage, monkeypatch):
-    _mark_import_task_live(monkeypatch, live=False)
+def test_enqueue_does_not_redeliver_recorded_celery_task_id(wiki_factory, import_storage, monkeypatch):
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 丢失任务\n\n正文。".encode("utf-8")
+    content = "# 已投递\n\n正文。".encode("utf-8")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="lost.md",
+        filename="recorded.md",
         actor="admin",
     )
     payload, first_dispatch = enqueue_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="lost.md",
+        filename="recorded.md",
         actor="admin",
     )
+    assert persist_markdown_import_celery_task_id(payload["build_record_id"], first_dispatch["celery_task_id"])
+
+    class BoomInspect:
+        def __init__(self, *args, **kwargs):
+            raise TimeoutError("inspect timeout")
+
+        def active(self):
+            return None
+
+        def reserved(self):
+            return None
+
+        def scheduled(self):
+            return None
+
+    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: BoomInspect())
+
     again, again_dispatch = enqueue_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="lost.md",
+        filename="recorded.md",
         actor="admin",
     )
     assert again["build_record_id"] == payload["build_record_id"]
-    assert again_dispatch is not None
-    assert again_dispatch["celery_task_id"] != first_dispatch["celery_task_id"]
+    assert again_dispatch is None
     build = BuildRecord.objects.get(pk=payload["build_record_id"])
     assert build.status == "running"
-    assert build.inputs["celery_task_id"] == again_dispatch["celery_task_id"]
+    assert build.inputs["celery_task_id"] == first_dispatch["celery_task_id"]
 
 
 def test_rebuild_rejects_live_markdown_import(wiki_factory, api_client, monkeypatch):
     from apps.opspilot import tasks
     from apps.opspilot.models import BuildRecord
 
-    _mark_import_task_live(monkeypatch, live=True)
     knowledge_base = _ready_kb(wiki_factory)
     BuildRecord.objects.create(
         knowledge_base=knowledge_base,
@@ -361,14 +372,13 @@ def test_rebuild_reclaims_stale_markdown_import(wiki_factory, api_client, monkey
     from apps.opspilot import tasks
     from apps.opspilot.models import BuildRecord
 
-    _mark_import_task_live(monkeypatch, live=False)
     knowledge_base = _ready_kb(wiki_factory)
     stale = BuildRecord.objects.create(
         knowledge_base=knowledge_base,
         trigger="markdown_import",
         status="running",
         stage="queued",
-        inputs={"celery_task_id": "lost-import-task"},
+        inputs={"preflight_id": None},
     )
     calls = []
 
@@ -387,6 +397,7 @@ def test_rebuild_reclaims_stale_markdown_import(wiki_factory, api_client, monkey
     stale.refresh_from_db()
     assert stale.status == "failed"
     assert "markdown_import_stale" in stale.errors[0]
+    assert stale.inputs.get("celery_task_id")
     assert len(calls) == 1
     assert BuildRecord.objects.filter(knowledge_base=knowledge_base, trigger="rebuild", status="running").exists()
 
@@ -428,6 +439,197 @@ def test_execute_task_skips_stale_celery_identity(wiki_factory, import_storage):
     assert result == {"status": "skipped", "code": "stale_celery_task"}
     build.refresh_from_db()
     assert build.status == "running"
+    assert not KnowledgePage.objects.filter(knowledge_base=knowledge_base).exists()
+
+
+def _boom_inspect(monkeypatch, *, inspect_factory):
+    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: inspect_factory())
+
+
+def test_recorded_celery_task_id_is_live_when_inspect_fails_or_returns_none(monkeypatch):
+    class TimeoutInspect:
+        def __init__(self, *args, **kwargs):
+            raise TimeoutError("inspect timeout")
+
+    class NoneInspect:
+        def active(self):
+            return None
+
+        def reserved(self):
+            return None
+
+        def scheduled(self):
+            return None
+
+    _boom_inspect(monkeypatch, inspect_factory=TimeoutInspect)
+    assert markdown_import_celery_task_is_live("recorded-task") is True
+    assert markdown_import_celery_task_is_live("") is False
+    assert markdown_import_celery_task_is_live(None) is False
+
+    _boom_inspect(monkeypatch, inspect_factory=lambda: None)
+    assert markdown_import_celery_task_is_live("recorded-task") is True
+
+    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: NoneInspect())
+    assert markdown_import_celery_task_is_live("recorded-task") is True
+
+
+def test_reclaim_does_not_close_recorded_id_when_inspect_fails(wiki_factory, monkeypatch):
+    knowledge_base = _ready_kb(wiki_factory)
+    build = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="markdown_import",
+        status="running",
+        stage="queued",
+        inputs={"celery_task_id": "recorded-import-task"},
+    )
+
+    class TimeoutInspect:
+        def __init__(self, *args, **kwargs):
+            raise TimeoutError("inspect timeout")
+
+    _boom_inspect(monkeypatch, inspect_factory=TimeoutInspect)
+    assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 0
+    build.refresh_from_db()
+    assert build.status == "running"
+    assert build.inputs["celery_task_id"] == "recorded-import-task"
+
+    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: None)
+    assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 0
+    build.refresh_from_db()
+    assert build.status == "running"
+
+
+def test_reclaim_then_old_worker_skips(wiki_factory, import_storage):
+    from django.db import transaction
+
+    from apps.opspilot.tasks.wiki import wiki_execute_markdown_import_task
+
+    knowledge_base = _ready_kb(wiki_factory)
+    content = "# 回收工人\n\n正文。".encode("utf-8")
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="reclaim-worker.md",
+        actor="admin",
+    )
+    payload, dispatch = enqueue_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="reclaim-worker.md",
+        actor="admin",
+    )
+    build = BuildRecord.objects.get(pk=payload["build_record_id"])
+    assert not (build.inputs or {}).get("celery_task_id")
+
+    with transaction.atomic():
+        WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
+        assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 1
+
+    build.refresh_from_db()
+    fencing_token = build.inputs["celery_task_id"]
+    assert fencing_token
+    assert fencing_token != dispatch["celery_task_id"]
+    assert build.status == "failed"
+
+    wiki_execute_markdown_import_task.push_request(id=dispatch["celery_task_id"])
+    try:
+        result = wiki_execute_markdown_import_task.run(
+            knowledge_base.id,
+            build.pk,
+            operator="admin",
+        )
+    finally:
+        wiki_execute_markdown_import_task.pop_request()
+
+    assert result == {"status": "skipped", "code": "stale_celery_task"}
+    build.refresh_from_db()
+    assert build.status == "failed"
+    assert build.inputs["celery_task_id"] == fencing_token
+    assert not KnowledgePage.objects.filter(knowledge_base=knowledge_base).exists()
+
+
+def test_bind_import_build_does_not_revive_failed(wiki_factory):
+    knowledge_base = _ready_kb(wiki_factory)
+    build = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="markdown_import",
+        status="failed",
+        stage="failed",
+        inputs={"archive_sha256": "abc", "archive_kind": "md"},
+    )
+
+    class Inspected:
+        archive_sha256 = "abc"
+        archive_kind = "md"
+
+    with pytest.raises(MarkdownImportGovernanceError) as captured:
+        _bind_import_build(knowledge_base, Inspected(), existing_build_record_id=build.pk)
+    assert captured.value.code == "markdown_import_build_terminal"
+    build.refresh_from_db()
+    assert build.status == "failed"
+
+
+def test_complete_import_build_does_not_overwrite_failed(wiki_factory):
+    from apps.opspilot.services.wiki.markdown_import_governance_service import _complete_import_build
+
+    knowledge_base = _ready_kb(wiki_factory)
+    build = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="markdown_import",
+        status="failed",
+        stage="failed",
+        progress=100,
+    )
+    _complete_import_build(
+        build,
+        counts={"created": 1},
+        affected_page_ids=[1],
+        generation_id=1,
+        relation_result={},
+        import_build_id=build.pk,
+    )
+    build.refresh_from_db()
+    assert build.status == "failed"
+    assert build.stage == "failed"
+
+
+def test_execute_task_skips_failed_build(wiki_factory, import_storage):
+    from apps.opspilot.tasks.wiki import wiki_execute_markdown_import_task
+
+    knowledge_base = _ready_kb(wiki_factory)
+    content = "# 失败不可复活\n\n正文。".encode("utf-8")
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="failed-bind.md",
+        actor="admin",
+    )
+    payload, dispatch = enqueue_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="failed-bind.md",
+        actor="admin",
+    )
+    build = BuildRecord.objects.get(pk=payload["build_record_id"])
+    build.status = "failed"
+    build.stage = "failed"
+    build.save(update_fields=["status", "stage", "updated_at"])
+
+    wiki_execute_markdown_import_task.push_request(id=dispatch["celery_task_id"])
+    try:
+        result = wiki_execute_markdown_import_task.run(
+            knowledge_base.id,
+            build.pk,
+            operator="admin",
+        )
+    finally:
+        wiki_execute_markdown_import_task.pop_request()
+
+    assert result == {"status": "skipped", "code": "markdown_import_build_terminal"}
+    build.refresh_from_db()
+    assert build.status == "failed"
     assert not KnowledgePage.objects.filter(knowledge_base=knowledge_base).exists()
 
 

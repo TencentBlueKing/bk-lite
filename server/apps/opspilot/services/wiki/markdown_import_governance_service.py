@@ -1177,7 +1177,7 @@ def _create_import_body_candidate(page, document, build, generation, operator, i
 
 
 _EXECUTION_PREVIEW_KEY = "_execution"
-_TERMINAL_BUILD_STATUSES = frozenset(("success", "partial"))
+_TERMINAL_BUILD_STATUSES = frozenset(("success", "partial", "failed"))
 
 
 def _preflight_execution_result(record):
@@ -1548,54 +1548,26 @@ _CELERY_TASK_ID_KEY = "celery_task_id"
 
 
 def markdown_import_celery_task_is_live(task_id) -> bool:
-    """Whether the recorded Celery task is still queued or running.
+    """Fail-closed liveness: a recorded Celery task id is always treated live.
 
-    Empty id means delay() never happened. Inspect failure is treated as not live
-    so enqueue/rebuild can reclaim; workers fence on the persisted task id.
+    Empty id means apply_async never succeeded (or was never persisted). Inspect
+    is not consulted: broker-queued but unreserved tasks are invisible to it, and
+    inspect timeout/None must not look dead. Workers fence on the persisted id.
     """
-    task_id = str(task_id or "").strip()
-    if not task_id:
-        return False
-    try:
-        from celery import current_app
-
-        inspect = current_app.control.inspect(timeout=1)
-        if inspect is None:
-            return False
-        for query in (inspect.active, inspect.reserved, inspect.scheduled):
-            try:
-                workers = query()
-            except Exception:
-                continue
-            for tasks in (workers or {}).values():
-                for item in tasks or []:
-                    if not isinstance(item, dict):
-                        continue
-                    request = item.get("request") if isinstance(item.get("request"), dict) else {}
-                    item_id = item.get("id") or request.get("id")
-                    if item_id == task_id:
-                        return True
-    except Exception as error:
-        logger.warning(
-            "wiki markdown import celery inspect failed failed_stage=%s error_type=%s",
-            "inspect_celery_task",
-            type(error).__name__,
-        )
-        return False
-    return False
+    return bool(str(task_id or "").strip())
 
 
 def _new_markdown_import_celery_task_id() -> str:
     return str(uuid.uuid4())
 
 
-def _markdown_import_dispatch(build):
+def _markdown_import_dispatch(build, *, celery_task_id=None):
     inputs = build.inputs or {}
     return {
         "build_record_id": build.pk,
         "archive_locator": inputs.get("archive_locator") or "",
         "filename": inputs.get("filename") or "",
-        "celery_task_id": inputs.get(_CELERY_TASK_ID_KEY) or "",
+        "celery_task_id": str(celery_task_id or inputs.get(_CELERY_TASK_ID_KEY) or _new_markdown_import_celery_task_id()),
         "preflight_id": inputs.get("preflight_id"),
     }
 
@@ -1608,11 +1580,81 @@ def _rotate_markdown_import_celery_task_id(build):
     return build
 
 
-def reclaim_stale_markdown_import_builds(kb_id) -> int:
-    """Fail running markdown_import records whose Celery task is gone.
+def persist_markdown_import_celery_task_id(build_record_id, celery_task_id) -> bool:
+    """Record the broker task id after apply_async. Never overwrite an existing id."""
+    task_id = str(celery_task_id or "").strip()
+    if not build_record_id or not task_id:
+        return False
+    with transaction.atomic():
+        build = BuildRecord.objects.select_for_update().filter(pk=build_record_id, trigger="markdown_import").first()
+        if build is None or build.status != "running":
+            return False
+        stored = str((build.inputs or {}).get(_CELERY_TASK_ID_KEY) or "").strip()
+        if stored:
+            return stored == task_id
+        inputs = dict(build.inputs or {})
+        inputs[_CELERY_TASK_ID_KEY] = task_id
+        build.inputs = inputs
+        build.save(update_fields=["inputs", "updated_at"])
+        return True
 
-    Caller must already hold the knowledge-base row lock. Lazy-imports the wiki
-    task helper so this module does not import tasks.wiki at load time.
+
+def claim_markdown_import_execution(kb_id, build_record_id, current_task_id):
+    """Re-read fencing under KB+build row locks. Stale or terminal workers skip."""
+    current_task_id = str(current_task_id or "").strip()
+    with transaction.atomic():
+        knowledge_base = WikiKnowledgeBase.objects.select_for_update().filter(pk=kb_id).first()
+        build = (
+            BuildRecord.objects.select_for_update()
+            .filter(
+                pk=build_record_id,
+                knowledge_base_id=kb_id,
+                trigger="markdown_import",
+            )
+            .first()
+        )
+        if build is None:
+            return None, {
+                "status": "failed",
+                "code": "knowledge_base_not_found",
+                "retryable": False,
+            }
+        stored_task_id = str((build.inputs or {}).get(_CELERY_TASK_ID_KEY) or "").strip()
+        if build.status in {"success", "partial"}:
+            return None, {"status": "success", "build_record_id": build.pk}
+        if stored_task_id and stored_task_id != current_task_id:
+            logger.info(
+                "wiki markdown import skipped stale celery task knowledge_base=%s build_record=%s",
+                kb_id,
+                build_record_id,
+            )
+            return None, {"status": "skipped", "code": "stale_celery_task"}
+        if build.status == "failed":
+            return None, {"status": "skipped", "code": "markdown_import_build_terminal"}
+        if knowledge_base is None:
+            from apps.opspilot.tasks.wiki import _fail_wiki_task_build
+
+            _fail_wiki_task_build(build, "knowledge_base_not_found", "知识库不存在")
+            return None, {
+                "status": "failed",
+                "code": "knowledge_base_not_found",
+                "retryable": False,
+            }
+        if not stored_task_id and current_task_id:
+            inputs = dict(build.inputs or {})
+            inputs[_CELERY_TASK_ID_KEY] = current_task_id
+            build.inputs = inputs
+            build.save(update_fields=["inputs", "updated_at"])
+        return build, None
+
+
+def reclaim_stale_markdown_import_builds(kb_id) -> int:
+    """Fail running markdown_import records that never persisted a Celery task id.
+
+    Caller must already hold the knowledge-base row lock. Only empty celery_task_id
+    may be reclaimed; rotate a fencing token so an in-flight worker must skip.
+    Lazy-imports the wiki task helper so this module does not import tasks.wiki
+    at load time.
     """
     from apps.opspilot.tasks.wiki import _fail_wiki_task_build
 
@@ -1629,6 +1671,7 @@ def reclaim_stale_markdown_import_builds(kb_id) -> int:
     for build in running:
         if markdown_import_celery_task_is_live((build.inputs or {}).get(_CELERY_TASK_ID_KEY)):
             continue
+        _rotate_markdown_import_celery_task_id(build)
         _fail_wiki_task_build(
             build,
             "markdown_import_stale",
@@ -1718,7 +1761,6 @@ def enqueue_markdown_import(
             if existing is not None and existing.status == "running":
                 if markdown_import_celery_task_is_live((existing.inputs or {}).get(_CELERY_TASK_ID_KEY)):
                     return _accepted_import_payload(existing), None
-                _rotate_markdown_import_celery_task_id(existing)
                 return _accepted_import_payload(existing), _markdown_import_dispatch(existing)
 
         if record.expires_at <= timezone.now():
@@ -1742,7 +1784,6 @@ def enqueue_markdown_import(
                 "archive_locator": locator,
                 "filename": str(filename or "")[:255],
                 "preflight_id": record.pk,
-                _CELERY_TASK_ID_KEY: _new_markdown_import_celery_task_id(),
             },
             stage="queued",
             status="running",
@@ -1964,7 +2005,9 @@ __all__ = [
     "enqueue_markdown_import",
     "execute_markdown_import",
     "inspect_markdown_archive",
+    "claim_markdown_import_execution",
     "markdown_import_celery_task_is_live",
+    "persist_markdown_import_celery_task_id",
     "preflight_markdown_import",
     "reclaim_stale_markdown_import_builds",
     "run_markdown_import_search_enrichment",

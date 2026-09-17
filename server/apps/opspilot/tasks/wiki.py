@@ -878,40 +878,35 @@ def wiki_execute_markdown_import_task(
 ):
     """Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker."""
     from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
-    from apps.opspilot.services.wiki.markdown_import_governance_service import _release_preflight_after_failure, execute_markdown_import
+    from apps.opspilot.services.wiki.markdown_import_governance_service import (
+        _release_preflight_after_failure,
+        claim_markdown_import_execution,
+        execute_markdown_import,
+    )
     from apps.opspilot.services.wiki.parsed_media_service import delete_import_archive, read_import_archive_bytes
 
+    current_task_id = str(getattr(getattr(wiki_execute_markdown_import_task, "request", None), "id", None) or "")
+    build, early = claim_markdown_import_execution(kb_id, build_record_id, current_task_id)
+    if early is not None:
+        return early
     knowledge_base = WikiKnowledgeBase.objects.filter(pk=kb_id).first()
-    build = BuildRecord.objects.filter(pk=build_record_id, knowledge_base_id=kb_id, trigger="markdown_import").first()
-    inputs = build.inputs or {} if build is not None else {}
+    inputs = build.inputs or {}
     preflight_id = inputs.get("preflight_id")
     archive_locator = inputs.get("archive_locator") or archive_locator
     filename = inputs.get("filename") or filename
-    stored_task_id = str(inputs.get("celery_task_id") or "")
-    current_task_id = str(getattr(getattr(wiki_execute_markdown_import_task, "request", None), "id", None) or "")
-    if knowledge_base is None or build is None:
+    if knowledge_base is None:
         logger.error(
             "wiki markdown import missing target knowledge_base=%s build_record=%s",
             kb_id,
             build_record_id,
         )
-        if build is not None:
-            _fail_wiki_task_build(build, "knowledge_base_not_found", "知识库不存在")
-            _release_preflight_after_failure(preflight_id)
+        _fail_wiki_task_build(build, "knowledge_base_not_found", "知识库不存在")
+        _release_preflight_after_failure(preflight_id)
         return {
             "status": "failed",
             "code": "knowledge_base_not_found",
             "retryable": False,
         }
-    if stored_task_id and current_task_id and stored_task_id != current_task_id:
-        logger.info(
-            "wiki markdown import skipped stale celery task knowledge_base=%s build_record=%s",
-            kb_id,
-            build_record_id,
-        )
-        return {"status": "skipped", "code": "stale_celery_task"}
-    if build.status in {"success", "partial"}:
-        return {"status": "success", "build_record_id": build.pk}
     if not preflight_id and not str(preflight_token or "").strip():
         _fail_wiki_task_build(
             build,
