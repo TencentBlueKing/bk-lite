@@ -132,19 +132,21 @@
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.3"
         name = "state"
 
-# ---- 风扇状态归一：enabled(3)→1(正常)，notSupported/disabled/dangerous 及其余→2(异常)。----
+# ---- 风扇状态归一：enabled(3)→1(正常)，notSupported(1) 视为无传感器/不适用→1(正常)，disabled/dangerous 及其余→2(异常)。----
 [[processors.enum]]
     namepass = ["device_fan"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
+            "1" = 1
             "3" = 1
-# ---- 电源状态归一：同 OperStatus 枚举，enabled(3)→1(正常)，其余→2(异常)。----
+# ---- 电源状态归一：同 OperStatus；enabled(3)/notSupported(1)→1(正常)，其余→2(异常)。----
 [[processors.enum]]
     namepass = ["device_psu"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
+            "1" = 1
             "3" = 1

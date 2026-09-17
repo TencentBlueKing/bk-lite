@@ -63,12 +63,10 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_temperature_celsius',
       display_name: '最高温度',
       description:
-        '负载均衡机箱最高温度（摄氏度）。品牌自适应：物理设备有值（F5 走 F5-BIGIP-SYSTEM sysChassisTempTemperature 专用温度表）；65535 无传感器哨兵显示「无传感器」；虚拟版（F5 VE，无物理机箱）显示「--」。异常升高多为风扇故障或散热不良。',
+        '负载均衡机箱最高温度（摄氏度）。品牌自适应：物理设备有值（F5 走 F5-BIGIP-SYSTEM sysChassisTempTemperature 专用温度表）；哨兵语义由 collect_type 契约注入；虚拟版（F5 VE，无物理机箱）显示「--」。异常升高多为风扇故障或散热不良。',
       unit: 'celsius',
-      query: 'max(device_temperature_celsius{__$labels__} != 65535) by (instance_id) or max(device_temperature_celsius{__$labels__}) by (instance_id)',
-      color: '#f5222d',
-      unavailableSentinels: [65535],
-      unavailableLabel: '无传感器'
+      query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
+      color: '#f5222d'
     },
     {
       name: 'device_fan_state',

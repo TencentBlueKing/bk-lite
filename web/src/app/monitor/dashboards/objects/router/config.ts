@@ -47,12 +47,10 @@ export const ROUTER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_temperature_celsius',
       display_name: '最高温度',
       description:
-        '路由器机箱最高温度（摄氏度）。品牌自适应：仅暴露温度 OID 的型号有值（华为 AR 走 HUAWEI-ENTITY-EXTENT hwEntityTemperature；H3C 等 65535 无传感器哨兵显示「无传感器」），软件路由（Vyatta）等无硬件传感器显示「--」。异常升高多为风扇故障或散热不良。',
+        '路由器机箱最高温度（摄氏度）。品牌自适应：仅暴露温度 OID 的型号有值；哨兵语义由 collect_type 契约注入。软件路由（Vyatta）等无硬件传感器显示「--」。异常升高多为风扇故障或散热不良。',
       unit: 'celsius',
-      query: 'max(device_temperature_celsius{__$labels__} != 65535) by (instance_id) or max(device_temperature_celsius{__$labels__}) by (instance_id)',
-      color: '#f5222d',
-      unavailableSentinels: [65535],
-      unavailableLabel: '无传感器'
+      query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
+      color: '#f5222d'
     },
     {
       name: 'device_fan_state',
