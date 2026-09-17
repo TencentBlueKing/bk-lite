@@ -777,18 +777,19 @@ const Asset = () => {
   };
 
   return (
-    <div className={assetStyle.asset}>
+    <>
       {modalContextHolder}
-      <ResizableSidebar collapseStorageKey="monitor.integration.asset.sidebarCollapsed">
-        <div className={assetStyle.tree}>
-          <TreeSelector
-            data={treeData}
-            defaultSelectedKey={defaultSelectObj as string}
-            onNodeSelect={handleObjectChange}
-            loading={treeLoading}
-          />
-        </div>
-      </ResizableSidebar>
+      <div className={assetStyle.asset}>
+        <ResizableSidebar collapseStorageKey="monitor.integration.asset.sidebarCollapsed">
+          <div className={assetStyle.tree}>
+            <TreeSelector
+              data={treeData}
+              defaultSelectedKey={defaultSelectObj as string}
+              onNodeSelect={handleObjectChange}
+              loading={treeLoading}
+            />
+          </div>
+        </ResizableSidebar>
         <div className={assetStyle.table}>
           <div className={assetStyle.search}>
             <Input
@@ -842,6 +843,7 @@ const Asset = () => {
             rowSelection={rowSelection}
           ></CustomTable>
         </div>
+        </div>
       </div>
       <EditConfig ref={configRef} onSuccess={() => getAssetInsts(objectId)} />
       <EditInstance
@@ -850,7 +852,7 @@ const Asset = () => {
         onSuccess={() => getAssetInsts(objectId)}
       />
       <TemplateConfigDrawer ref={templateDrawerRef} onSuccess={() => {}} />
-    </div>
+    </>
   );
 };
 

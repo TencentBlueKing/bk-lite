@@ -321,7 +321,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     const showLeftPanel = showTemplateList && plugins.length > 1;
 
     return (
-      <div>
+      <>
         <EditConfig ref={configRef} onSuccess={handleConfigSuccess} />
         <OperateDrawer
           title={instanceName || '--'}
@@ -513,7 +513,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
             </div>
           </div>
         </OperateDrawer>
-      </div>
+      </>
     );
   }
 );
