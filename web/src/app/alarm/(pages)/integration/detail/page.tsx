@@ -28,12 +28,13 @@ import { useCommon } from '@/app/alarm/context/common';
 import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useUserInfoContext } from '@/context/userInfo';
 import {
+  buildIntegrationEventSearchParams,
   commitIntegrationEventListSettled,
   commitIntegrationEventListSuccess,
 } from './integrationEventListRequest';
 import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
-import { EventItem } from '@/app/alarm/types/alarms';
+import { EventItem, SearchFilterCondition } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import {
   applyK8sMetaFetchResult,
@@ -78,10 +79,7 @@ const IntegrationDetail: FC = () => {
     pageSize: 10,
     total: 0,
   });
-  const [searchCondition, setSearchCondition] = useState<{
-    field: string;
-    value: string;
-  } | null>(null);
+  const [searchCondition, setSearchCondition] = useState<SearchFilterCondition | null>(null);
   const [logoLoadFailed, setLogoLoadFailed] = useState<boolean>(false);
   const [guideTeamSecrets, setGuideTeamSecrets] = useState<TeamSecretItem[]>([]);
   const [guideTeamSecretsLoading, setGuideTeamSecretsLoading] = useState<boolean>(false);
@@ -280,9 +278,7 @@ const IntegrationDetail: FC = () => {
         received_at_before: timeRange?.[1]?.toISOString(),
         received_at_after: timeRange?.[0]?.toISOString(),
       };
-      if (searchCondition) {
-        params[searchCondition.field] = searchCondition.value;
-      }
+      Object.assign(params, buildIntegrationEventSearchParams(searchCondition));
       const res = await getEventList(params);
       commitIntegrationEventListSuccess(eventListRequestGuard, requestId, () => {
         const items = res.items || [];
@@ -362,7 +358,7 @@ const IntegrationDetail: FC = () => {
     }
   }, [sourceItemId, isZabbixSource]);
 
-  const onFilterSearch = (condition: { field: string; value: string }) => {
+  const onFilterSearch = (condition: SearchFilterCondition) => {
     setSearchCondition(condition);
     setPagination((prev) => ({ ...prev, current: 1 }));
   };
@@ -370,7 +366,7 @@ const IntegrationDetail: FC = () => {
   const eventAttrList = [
     { attr_id: 'title', attr_name: '标题', attr_type: 'str', option: [] },
     { attr_id: 'description', attr_name: '内容', attr_type: 'str', option: [] },
-    { attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'str', option: [] },
+    { attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'push_source', option: [] },
   ];
 
   const handleK8sDownload = async (fileKey: string, fileName: string, params: any) => {
