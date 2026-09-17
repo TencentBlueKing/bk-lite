@@ -50,7 +50,7 @@ export const alarmMatchRuleInitialConditionLists: Record<
 
 export const alarmMatchRuleRuleList = [
   { name: 'title', verbose_name: '标题' },
-  { name: 'source_id', verbose_name: '告警源' },
+  { name: 'source_id', verbose_name: '集成源' },
   { name: 'level', verbose_name: '级别' },
   { name: 'resource_type', verbose_name: '类型对象' },
   { name: 'resource_id', verbose_name: '对象实例' },

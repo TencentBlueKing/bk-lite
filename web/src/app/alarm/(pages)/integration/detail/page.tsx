@@ -28,12 +28,15 @@ import { useCommon } from '@/app/alarm/context/common';
 import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useUserInfoContext } from '@/context/userInfo';
 import {
+  buildIntegrationEventSearchParams,
+  buildMonitorSourceFilter,
   commitIntegrationEventListSettled,
   commitIntegrationEventListSuccess,
+  selectedMonitorSourceIds,
 } from './integrationEventListRequest';
 import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
-import { EventItem } from '@/app/alarm/types/alarms';
+import { EventItem, SearchFilterCondition } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import {
   applyK8sMetaFetchResult,
@@ -55,6 +58,7 @@ const IntegrationDetail: FC = () => {
     listTeamSecrets,
     addTeamSecret,
     revealTeamSecret,
+    getPushSourceStats,
   } = useSourceApi();
   const { flatGroups } = useUserInfoContext();
   const { getEventList } = useAlarmApi();
@@ -78,10 +82,8 @@ const IntegrationDetail: FC = () => {
     pageSize: 10,
     total: 0,
   });
-  const [searchCondition, setSearchCondition] = useState<{
-    field: string;
-    value: string;
-  } | null>(null);
+  const [searchCondition, setSearchCondition] = useState<SearchFilterCondition | null>(null);
+  const [pushSourceStats, setPushSourceStats] = useState<{ id: string; count: number }[]>([]);
   const [logoLoadFailed, setLogoLoadFailed] = useState<boolean>(false);
   const [guideTeamSecrets, setGuideTeamSecrets] = useState<TeamSecretItem[]>([]);
   const [guideTeamSecretsLoading, setGuideTeamSecretsLoading] = useState<boolean>(false);
@@ -280,9 +282,7 @@ const IntegrationDetail: FC = () => {
         received_at_before: timeRange?.[1]?.toISOString(),
         received_at_after: timeRange?.[0]?.toISOString(),
       };
-      if (searchCondition) {
-        params[searchCondition.field] = searchCondition.value;
-      }
+      Object.assign(params, buildIntegrationEventSearchParams(searchCondition));
       const res = await getEventList(params);
       commitIntegrationEventListSuccess(eventListRequestGuard, requestId, () => {
         const items = res.items || [];
@@ -362,15 +362,48 @@ const IntegrationDetail: FC = () => {
     }
   }, [sourceItemId, isZabbixSource]);
 
-  const onFilterSearch = (condition: { field: string; value: string }) => {
+  const onFilterSearch = (condition: SearchFilterCondition) => {
     setSearchCondition(condition);
     setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
+  const onMonitorSourceStatClick = (id: string) => {
+    const selected = selectedMonitorSourceIds(searchCondition);
+    if (selected.length === 1 && selected[0] === id) {
+      onFilterSearch({ field: 'push_source_id', type: 'push_source', value: [] });
+      return;
+    }
+    onFilterSearch(buildMonitorSourceFilter(id));
+  };
+
+  useEffect(() => {
+    if (!source?.id) {
+      setPushSourceStats([]);
+      return;
+    }
+    let cancelled = false;
+    getPushSourceStats(source.id)
+      .then((rows) => {
+        if (cancelled) return;
+        setPushSourceStats(
+          Array.isArray(rows)
+            ? rows.filter((item): item is { id: string; count: number } =>
+              Boolean(item && typeof item.id === 'string' && typeof item.count === 'number'))
+            : [],
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setPushSourceStats([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source?.id]);
+
   const eventAttrList = [
     { attr_id: 'title', attr_name: '标题', attr_type: 'str', option: [] },
     { attr_id: 'description', attr_name: '内容', attr_type: 'str', option: [] },
-    { attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'str', option: [] },
+    { attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'push_source', option: [] },
   ];
 
   const handleK8sDownload = async (fileKey: string, fileName: string, params: any) => {
@@ -908,11 +941,52 @@ const IntegrationDetail: FC = () => {
     return <CompactEmptyState description={t('common.noData')} />;
   }
 
-  const renderEventFilters = () => (
-    <div className="mb-4 flex flex-wrap items-center gap-4">
+  const renderEventFilters = () => {
+    const selected = selectedMonitorSourceIds(searchCondition);
+    return (
+    <div className="mb-4">
+      {pushSourceStats.length ? (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="shrink-0 text-[13px] leading-5 text-[var(--color-text-2)]">
+            {t('integration.pushSourceStats')}
+          </span>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {pushSourceStats.map((item) => {
+              const active = selected.includes(item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onMonitorSourceStatClick(item.id)}
+                  className={[
+                    'inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] leading-4 transition-colors',
+                    active
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                      : 'border-[var(--color-border-1)] bg-[var(--color-fill-1)] text-[var(--color-text-1)] hover:border-[var(--color-primary)]',
+                  ].join(' ')}
+                >
+                  <span className="max-w-[160px] truncate">{item.id}</span>
+                  <span
+                    className={[
+                      'min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-semibold tabular-nums',
+                      active
+                        ? 'bg-[var(--color-primary)] text-[var(--color-bg-1)]'
+                        : 'bg-[var(--color-bg-1)] text-[var(--color-text-2)]',
+                    ].join(' ')}
+                  >
+                    {item.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-4">
       <div className="flex items-center gap-2">
         <SearchFilter
           attrList={eventAttrList}
+          condition={searchCondition}
           onSearch={onFilterSearch}
         />
         <RefreshIconButton
@@ -932,7 +1006,9 @@ const IntegrationDetail: FC = () => {
         />
       </div>
     </div>
-  );
+    </div>
+    );
+  };
 
   return (
     <div className="w-full flex-1">

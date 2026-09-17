@@ -26,7 +26,7 @@ from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus, Even
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
-from apps.alerts.service.monitor_sources import collect_push_source_ids
+from apps.alerts.service.monitor_sources import collect_push_source_ids, remember_snapshot
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
@@ -209,15 +209,16 @@ def _bulk_build_instant_alerts(hits: List[InstantHit]) -> List[str]:
                 Alert.objects.bulk_create(alerts_to_create)
                 # 回查实际入库的 Alert（兼容 MySQL bulk_create 不回填 pk 的情况）
                 wanted_alert_ids = {a.alert_id for a in alerts_to_create}
-                created = list(Alert.objects.filter(alert_id__in=wanted_alert_ids).values_list("id", "alert_id", "fingerprint"))
+                created = list(Alert.objects.filter(alert_id__in=wanted_alert_ids).only("id", "alert_id", "fingerprint", "team", "push_source_ids"))
                 m2m_rows = []
-                for alert_pk, alert_id, fp in created:
-                    evt = fp_to_event.get(fp)
+                for alert in created:
+                    remember_snapshot(alert)
+                    evt = fp_to_event.get(alert.fingerprint)
                     if evt is None:
                         continue
-                    bind_active_fingerprint(fp_to_lease[fp], Alert(pk=alert_pk))
-                    m2m_rows.append(Alert.events.through(alert_id=alert_pk, event_id=evt.id))
-                    created_alert_ids.append(alert_id)
+                    bind_active_fingerprint(fp_to_lease[alert.fingerprint], Alert(pk=alert.pk))
+                    m2m_rows.append(Alert.events.through(alert_id=alert.pk, event_id=evt.id))
+                    created_alert_ids.append(alert.alert_id)
                 if m2m_rows:
                     Alert.events.through.objects.bulk_create(m2m_rows, ignore_conflicts=True)
         except Exception:

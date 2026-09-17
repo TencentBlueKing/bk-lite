@@ -66,6 +66,25 @@ def build_alert(strategy, events):
         )
 
 
+def test_snapshot_write_observes_catalog(context, monkeypatch):
+    from apps.alerts.service import push_source_catalog as catalog_mod
+    from apps.alerts.service.monitor_sources import associate_event_with_monitor_sources
+
+    store = catalog_mod.MemoryCatalogStore()
+    monkeypatch.setattr(
+        catalog_mod,
+        "_default_catalog",
+        catalog_mod.PushSourceCatalog(store=store, now=lambda: 1_700_000_000, min_interval=0),
+    )
+    source, strategy = context
+    alert = build_alert(strategy, [make_event(source, "E-1", "prod", team=[1])])
+    team_ids = list(alert.team or [])
+    cat = catalog_mod.default_catalog()
+    assert "prod" in cat.list_for_teams(team_ids)
+    associate_event_with_monitor_sources(alert.pk, make_event(source, "E-2", "test", team=[1]))
+    assert set(cat.list_for_teams(team_ids)) >= {"prod", "test"}
+
+
 def test_aggregation_stores_deduplicated_sources_and_preserves_earlier_members(context):
     source, strategy = context
     events = [make_event(source, f"E-{index}", value) for index, value in enumerate(["prod", "001", "prod", "1", "", "default"])]

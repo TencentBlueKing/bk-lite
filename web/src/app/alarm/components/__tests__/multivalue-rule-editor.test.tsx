@@ -6,7 +6,10 @@ import { invalidMatchRules, ruleFields, isMultiOperator } from '../../utils/mult
 
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/app/alarm/context/common', () => ({ useCommon: () => ({ levelMeta: {event:{list:[{level_id:1,level_display_name:'严重'}]}} }) }));
-vi.mock('@/app/alarm/api/integration', () => ({ useSourceApi: () => ({ getAlertSourceOptions: async () => [{id:7,name:'Prometheus'}] }) }));
+vi.mock('@/app/alarm/api/integration', () => ({ useSourceApi: () => ({
+  getAlertSourceOptions: async () => [{id:7,name:'Prometheus'}],
+  getPushSourceIdOptions: async () => [],
+}) }));
 afterEach(cleanup);
 beforeAll(() => { window.matchMedia = vi.fn().mockReturnValue({matches:false, addListener:vi.fn(),removeListener:vi.fn()}); });
 
@@ -30,7 +33,7 @@ describe('字段类型决定编辑控件及可用操作符', () => {
       'alarmCommon.multiOperators.any_ofList','alarmCommon.multiOperators.all_of','alarmCommon.multiOperators.none_ofList']);
     fireEvent.click(screen.getByText('alarmCommon.multiOperators.any_ofList'));
     expect(onChange).toHaveBeenLastCalledWith([[{key:'push_source_ids',operator:'any_of',value:['a','b']}]]);
-    const input=screen.getByRole('combobox',{name:'alarmCommon.multiValueInput'});
+    const input=screen.getByRole('combobox',{name:'alarmCommon.pushSourceInput'});
     fireEvent.change(input,{target:{value:'001'}});fireEvent.keyDown(input,{key:'Enter',keyCode:13});
     expect(onChange).toHaveBeenLastCalledWith([[{key:'push_source_ids',operator:'any_of',value:['a','b','001']}]]);
   });
