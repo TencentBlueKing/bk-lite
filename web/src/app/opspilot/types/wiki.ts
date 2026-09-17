@@ -774,6 +774,11 @@ export interface WikiMarkdownImportExecutePage {
 }
 
 export interface WikiMarkdownImportExecuteResult {
+  async?: boolean;
+  accepted?: boolean;
+  queued?: boolean;
+  status?: string;
+  stage?: string;
   build_record_id?: number;
   generation_id?: number;
   counts?: {

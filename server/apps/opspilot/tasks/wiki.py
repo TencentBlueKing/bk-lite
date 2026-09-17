@@ -867,6 +867,163 @@ def wiki_retry_markdown_import_task(
     return {"status": "success", **result}
 
 
+@shared_task(name="apps.opspilot.tasks.wiki_execute_markdown_import_task", queue="opspilot_wiki")
+def wiki_execute_markdown_import_task(
+    kb_id,
+    build_record_id,
+    preflight_token,
+    archive_locator,
+    filename="",
+    operator="",
+):
+    """Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker."""
+    from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.markdown_import_governance_service import _release_preflight_after_failure, execute_markdown_import
+    from apps.opspilot.services.wiki.parsed_media_service import delete_import_archive, read_import_archive_bytes
+
+    knowledge_base = WikiKnowledgeBase.objects.filter(pk=kb_id).first()
+    build = BuildRecord.objects.filter(pk=build_record_id, knowledge_base_id=kb_id, trigger="markdown_import").first()
+    preflight_id = (build.inputs or {}).get("preflight_id") if build is not None else None
+    if knowledge_base is None or build is None:
+        logger.error(
+            "wiki markdown import missing target knowledge_base=%s build_record=%s",
+            kb_id,
+            build_record_id,
+        )
+        if build is not None:
+            _fail_wiki_task_build(build, "knowledge_base_not_found", "知识库不存在")
+            _release_preflight_after_failure(preflight_id)
+        return {
+            "status": "failed",
+            "code": "knowledge_base_not_found",
+            "retryable": False,
+        }
+    if build.status in {"success", "partial"}:
+        return {"status": "success", "build_record_id": build.pk}
+    if not str(preflight_token or "").strip():
+        _fail_wiki_task_build(
+            build,
+            "markdown_import_preflight_identity_incomplete",
+            "Markdown 导入缺少完整单次预检身份",
+        )
+        _release_preflight_after_failure(preflight_id)
+        return {
+            "status": "failed",
+            "code": "markdown_import_preflight_identity_incomplete",
+            "retryable": False,
+        }
+
+    try:
+        content = read_import_archive_bytes(archive_locator, knowledge_base_id=kb_id)
+    except FileNotFoundError:
+        _fail_wiki_task_build(
+            build,
+            "markdown_import_archive_missing",
+            "导入归档已丢失，请重新预检后重试",
+        )
+        _release_preflight_after_failure(preflight_id)
+        return {
+            "status": "failed",
+            "code": "markdown_import_archive_missing",
+            "retryable": False,
+        }
+    except Exception as error:
+        logger.exception(
+            "wiki markdown import archive read failed knowledge_base=%s build_record=%s failed_stage=%s error_type=%s",
+            kb_id,
+            build_record_id,
+            "read_archive",
+            type(error).__name__,
+        )
+        _fail_wiki_task_build(
+            build,
+            "markdown_import_archive_unreadable",
+            "导入归档读取失败，请重新预检后重试",
+        )
+        _release_preflight_after_failure(preflight_id)
+        return {
+            "status": "failed",
+            "code": "markdown_import_archive_unreadable",
+            "retryable": False,
+        }
+
+    try:
+        result = execute_markdown_import(
+            knowledge_base,
+            preflight_token,
+            content,
+            filename=filename,
+            actor=operator,
+            existing_build_record_id=build_record_id,
+            defer_search_enrichment=True,
+        )
+    except Exception as error:
+        logger.exception(
+            "wiki markdown import failed knowledge_base=%s build_record=%s failed_stage=%s error_type=%s",
+            kb_id,
+            build_record_id,
+            "execute",
+            type(error).__name__,
+        )
+        retryable = bool(getattr(error, "retryable", False))
+        code = getattr(error, "code", "markdown_import_generation_failed")
+        with transaction.atomic():
+            WikiKnowledgeBase.objects.select_for_update().get(pk=kb_id)
+            failed = BuildRecord.objects.select_for_update().filter(pk=build_record_id, knowledge_base_id=kb_id).first()
+            _fail_wiki_task_build(
+                failed,
+                code,
+                str(error),
+                retryable=retryable,
+                outcome="superseded" if retryable else "failed",
+            )
+            _release_preflight_after_failure(preflight_id)
+        return {
+            "status": "failed",
+            "code": code,
+            "retryable": retryable,
+            "error": str(error),
+        }
+    finally:
+        delete_import_archive(archive_locator, knowledge_base_id=kb_id)
+
+    logger.info(
+        "wiki markdown import completed knowledge_base=%s build_record=%s",
+        kb_id,
+        build_record_id,
+    )
+    _dispatch_markdown_import_search_enrichment(kb_id, result)
+    return {"status": "success", **result}
+
+
+def _dispatch_markdown_import_search_enrichment(kb_id, result):
+    generation_id = (result or {}).get("generation_id")
+    page_ids = [int(row["page_id"]) for row in (result or {}).get("pages") or [] if row.get("page_id")]
+    if not generation_id or not page_ids:
+        return
+    try:
+        wiki_enrich_markdown_import_search_task.delay(kb_id, generation_id, page_ids)
+    except Exception as error:
+        logger.warning(
+            "wiki markdown import search enrich dispatch failed knowledge_base=%s generation_id=%s failed_stage=%s error_type=%s",
+            kb_id,
+            generation_id,
+            "dispatch_search_enrich",
+            type(error).__name__,
+        )
+        from apps.opspilot.services.wiki.markdown_import_governance_service import run_markdown_import_search_enrichment
+
+        run_markdown_import_search_enrichment(kb_id, generation_id, page_ids)
+
+
+@shared_task(name="apps.opspilot.tasks.wiki_enrich_markdown_import_search_task", queue="opspilot_wiki")
+def wiki_enrich_markdown_import_search_task(kb_id, generation_id, page_ids):
+    """Colloquial aliases and embeddings after imported pages are already visible."""
+    from apps.opspilot.services.wiki.markdown_import_governance_service import run_markdown_import_search_enrichment
+
+    return run_markdown_import_search_enrichment(kb_id, generation_id, page_ids)
+
+
 @shared_task(name="apps.opspilot.tasks.wiki_refresh_web_materials_task", queue="opspilot_maintenance")
 def wiki_refresh_web_materials_task():
     """网页资料定时刷新:按各站点自己的同步策略(Material.sync_policy)重新抓取并摄取,内容变化触发安全更新。

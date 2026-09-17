@@ -1,3 +1,5 @@
+import type { WikiMarkdownImportExecuteResult } from "@/app/opspilot/types/wiki";
+
 export type WikiMarkdownImportFormat = "markdown" | "okf";
 
 type Translate = (
@@ -216,3 +218,53 @@ export const formatMarkdownImportGovernanceError = (
   t: Translate,
   error: { code?: string; message?: string; details?: unknown },
 ): string => markdownImportGovernanceErrorView(t, error).title;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const hasMarkdownImportResultFields = (row: Record<string, unknown>): boolean =>
+  row.async !== undefined ||
+  row.accepted !== undefined ||
+  row.queued !== undefined ||
+  row.build_record_id !== undefined ||
+  row.generation_id !== undefined ||
+  row.counts !== undefined ||
+  row.pages !== undefined ||
+  row.created !== undefined ||
+  row.updated !== undefined;
+
+export const unwrapMarkdownImportExecuteResult = (
+  raw: unknown,
+): WikiMarkdownImportExecuteResult => {
+  let current: unknown = raw;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!isPlainObject(current)) return {};
+    if (hasMarkdownImportResultFields(current)) {
+      return current as WikiMarkdownImportExecuteResult;
+    }
+    if (isPlainObject(current.data)) {
+      current = current.data;
+      continue;
+    }
+    return current as WikiMarkdownImportExecuteResult;
+  }
+  return isPlainObject(current)
+    ? (current as WikiMarkdownImportExecuteResult)
+    : {};
+};
+
+export const isBackgroundMarkdownImport = (
+  result: WikiMarkdownImportExecuteResult,
+): boolean => {
+  if (result.queued === true || result.accepted === true || result.async === true) {
+    return true;
+  }
+  if (result.build_record_id == null) return false;
+  if (result.generation_id != null || result.pages != null) return false;
+  const status = String(result.status || "");
+  const stage = String(result.stage || "");
+  if (status === "running" || status === "queued" || stage === "queued") {
+    return true;
+  }
+  return result.counts == null;
+};
