@@ -1,5 +1,71 @@
 {
   "object": "Switch",
   "plugin": "Switch Kyland SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Kyland交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Kyland 工业交换机控制平面 CPU 使用率（cpuCurrentUtilRate），持续过高时触发告警，便于发现控制面过载、环网协议震荡或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Kyland交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Kyland 工业交换机系统内存使用率（devMemoryUtilRate），持续过高可能表示表项膨胀、内存泄漏或容量不足。部分型号可能未实现该对象。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Kyland交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Kyland 工业交换机的主备电源输入状态，归一后 1=正常，>1=异常。任一电源故障或断电时触发告警，提示需检查供电冗余。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

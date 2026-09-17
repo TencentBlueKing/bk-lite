@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_redline",
   "plugin": "Transmission Redline SNMP",
-  "plugin_desc": "Redline broadband wireless transmission SNMP child template for devices under Redline PEN 10728. This child template relies on the shared Transmission SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "Redline AN80i broadband wireless transmission SNMP child template for devices under Redline PEN 10728. Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private radio objects are the AN80i average SINADR scalar (an80iIfAvrSinAdr) mapped as sinadr, PMP downlink RSSI (an80iIfPmpLinkDLRssi, walked from an80iIfPmpLinkId) mapped as dl_rssi, and optional PMP uplink RSSI (an80iIfPmpLinkULRssi) mapped as ul_rssi. CPU, memory, temperature, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — Redline AN80i PTP and PMP broadband wireless units.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_redline'}) by (instance_id)",
   "name": "Transmission",
@@ -14,9 +14,68 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "sinadr",
+    "dl_rssi"
   ],
   "metrics": [
+    {
+      "metric_group": "Radio",
+      "name": "sinadr",
+      "query": "avg(sinadr_sinadr{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "SINADR",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "AN80i average SINADR (signal to interference, noise and distortion ratio) from the an80iIfAvrSinAdr scalar under PEN 10728. The SNMP object is Integer32 with no scaling. This prefers the PTP scalar over PMP table columns; PMP-only radios that omit the scalar skip the row."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "dl_rssi",
+      "query": "dl_rssi{instance_type='transmission', __$labels__}",
+      "display_name": "PMP Downlink RSSI",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "linkId",
+          "description": "PMP link identifier"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "AN80i PMP downlink RSSI from an80iIfPmpLinkDLRssi, indexed by an80iIfPmpLinkId. The collector walks the PMP link identifier first, then reads the DL RSSI column. Integer32 with no scaling. PTP RSSI scalars are not used."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "ul_rssi",
+      "query": "ul_rssi{instance_type='transmission', __$labels__}",
+      "display_name": "PMP Uplink RSSI",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "linkId",
+          "description": "PMP link identifier"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional AN80i PMP uplink RSSI from an80iIfPmpLinkULRssi, indexed by an80iIfPmpLinkId. The collector walks the PMP link identifier first, then reads the UL RSSI column. Integer32 with no scaling. Missing rows on some firmware revisions are skipped."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

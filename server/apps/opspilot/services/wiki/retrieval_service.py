@@ -7,6 +7,7 @@ pgvector 语义检索为后期可选增强(P6),不在此处。
 
 import hashlib
 import json
+import math
 import re
 
 from django.core.cache import cache
@@ -25,8 +26,16 @@ from apps.opspilot.services.wiki.active_generation_query_service import (
 )
 from apps.opspilot.services.wiki.embed_cache import embed_texts_cached
 from apps.opspilot.services.wiki.embedding_service import cosine, rrf_fuse
+from apps.opspilot.services.wiki.generation_navigation_service import BODY_INDEX_SEP, indexable_body_excerpt, split_index_search_text
 from apps.opspilot.services.wiki.title_service import title_identity_key
 from apps.opspilot.services.wiki.wiki_budget_service import estimate_tokens
+
+_BODY_TOKEN_WEIGHT = 1
+_MAX_BODY_TERM_HITS = 8
+_FIELD_TERM_CAP = 2
+_VECTOR_RELEVANT_RANK = 8
+_STRONG_SCORE_RATIO = 0.5
+_WEAK_SCORE_RATIO = 0.45
 
 
 def _has_cjk(text):
@@ -48,8 +57,68 @@ def _tokenize(query):
 
 
 def _score(text, terms):
+    """Coverage score: each term counts at most `_FIELD_TERM_CAP` times per field."""
     text = (text or "").lower()
-    return sum(text.count(t) for t in terms if t)
+    return sum(min(text.count(t), _FIELD_TERM_CAP) for t in terms if t)
+
+
+def _distinct_term_hits(text, terms):
+    text = (text or "").lower()
+    return sum(1 for term in terms if term and term in text)
+
+
+def _idf_weight(term, df, n_docs):
+    if n_docs <= 0:
+        return 1.0
+    return math.log((n_docs + 1) / ((df.get(term, 0) or 0) + 1)) + 1.0
+
+
+def _entry_document_blob(entry, excerpt=""):
+    return "\n".join(
+        [
+            entry.title or "",
+            " ".join(entry.aliases or []),
+            " ".join(entry.tags or []),
+            " ".join(entry.keywords or []),
+            " ".join(entry.headings or []),
+            " ".join(entry.entities or []),
+            entry.summary or "",
+            excerpt or "",
+        ]
+    ).lower()
+
+
+def _term_document_frequency(entries, terms, loaded_bodies):
+    n_docs = len(entries)
+    df = {term: 0 for term in terms if term}
+    if not df or n_docs <= 0:
+        return n_docs, df
+    for entry in entries:
+        blob = _entry_document_blob(entry, _body_excerpt_for_entry(entry, loaded_bodies))
+        for term in df:
+            if term in blob:
+                df[term] += 1
+    return n_docs, df
+
+
+def _weighted_field_hits(text, terms, df, n_docs, *, cap=_FIELD_TERM_CAP):
+    text = (text or "").lower()
+    total = 0.0
+    for term in terms:
+        if not term:
+            continue
+        count = text.count(term)
+        if not count:
+            continue
+        total += min(count, cap) * _idf_weight(term, df, n_docs)
+    return total
+
+
+def _weighted_distinct_hits(text, terms, df, n_docs, *, cap=_MAX_BODY_TERM_HITS):
+    text = (text or "").lower()
+    weights = [_idf_weight(term, df, n_docs) for term in terms if term and term in text]
+    weights.sort(reverse=True)
+    return sum(weights[:cap])
 
 
 def _matched_terms(terms, *texts):
@@ -92,44 +161,27 @@ def _fallback_answer(contexts):
     return f"{_FALLBACK_PREFIX}根据《{top['title']}》：\n{top['snippet']}"
 
 
-_POLICY_INTENT_MARKERS = ("制度", "规范", "政策", "规定", "管理办法", "管理规范")
-_POLICY_PAGE_TYPES = {"Policy", "policy", "Standard", "standard"}
-_GUIDE_PAGE_TYPES = {"User Guide", "user_guide", "How-to", "how-to", "Troubleshooting", "troubleshooting"}
+def _body_excerpt_for_entry(entry, loaded_bodies=None):
+    _nav, stored = split_index_search_text(getattr(entry, "search_text", "") or "")
+    if stored:
+        return stored
+    if loaded_bodies:
+        return loaded_bodies.get(getattr(entry, "page_version_id", None), "") or ""
+    return ""
 
 
-def _has_policy_intent(query, terms):
-    """True when the user is asking for policy/regulation rather than a how-to guide."""
-    blob = f"{query or ''}".lower()
-    if any(marker.lower() in blob for marker in _POLICY_INTENT_MARKERS):
-        return True
-    return any(term in _POLICY_INTENT_MARKERS for term in (terms or []))
+def _load_missing_body_excerpts(entries):
+    missing_ids = [entry.page_version_id for entry in entries if BODY_INDEX_SEP not in (entry.search_text or "")]
+    if not missing_ids:
+        return {}
+    loaded = {}
+    for pk, body in PageVersion.objects.filter(pk__in=missing_ids).values_list("pk", "body").iterator(chunk_size=200):
+        loaded[pk] = indexable_body_excerpt(body)
+    return loaded
 
 
-def _policy_intent_boost(entry, terms, query):
-    """Prefer Policy/Standard docs when the query asks for 制度/规范.
-
-    Keyword MVP has no embeddings; queries like "VPN使用有什么制度要求" otherwise
-    over-rank nearby 手册/账号规范 pages that share generic tokens.
-    """
-    if not _has_policy_intent(query, terms):
-        return 0
-    title = entry.title or ""
-    page_type = (entry.page_type or "").strip()
-    boost = 0
-    if page_type in _POLICY_PAGE_TYPES:
-        boost += 36
-    if any(marker in title for marker in ("管理规范", "使用规范", "管理制度", "使用管理")):
-        boost += 24
-    # Domain token in title (e.g. VPN) + policy phrasing should beat a how-to handbook.
-    domain_hits = sum(1 for term in terms if term and len(term) >= 2 and term.lower() in title.lower())
-    if domain_hits and any(marker in title for marker in ("规范", "制度", "政策")):
-        boost += 18 * domain_hits
-    if page_type in _GUIDE_PAGE_TYPES or any(marker in title for marker in ("手册", "指引", "FAQ", "指南")):
-        boost -= 20
-    return boost
-
-
-def _index_score(entry, terms, query):
+def _index_score(entry, terms, query, *, body_excerpt="", idf=None, n_docs=0):
+    df = idf or {}
     title = entry.title or ""
     aliases = " ".join(entry.aliases or [])
     tags = " ".join(entry.tags or [])
@@ -142,17 +194,18 @@ def _index_score(entry, terms, query):
         entry.normalized_title,
         *(title_identity_key(alias) for alias in (entry.aliases or [])),
     }
+    excerpt = body_excerpt or _body_excerpt_for_entry(entry)
     score = (
-        _score(title, terms) * 12
-        + _score(aliases, terms) * 10
-        + _score(tags, terms) * 5
-        + _score(keywords, terms) * 5
-        + _score(entities, terms) * 4
-        + _score(headings, terms) * 3
-        + _score(summary, terms) * 2
-        + _score(entry.page_type, terms)
+        _weighted_field_hits(title, terms, df, n_docs) * 12
+        + _weighted_field_hits(aliases, terms, df, n_docs) * 10
+        + _weighted_field_hits(tags, terms, df, n_docs) * 5
+        + _weighted_field_hits(keywords, terms, df, n_docs) * 5
+        + _weighted_field_hits(entities, terms, df, n_docs) * 4
+        + _weighted_field_hits(headings, terms, df, n_docs) * 3
+        + _weighted_field_hits(summary, terms, df, n_docs) * 2
+        + _weighted_field_hits(entry.page_type, terms, df, n_docs)
+        + _weighted_distinct_hits(excerpt, terms, df, n_docs) * _BODY_TOKEN_WEIGHT
     )
-    score += _policy_intent_boost(entry, terms, query)
     if exact:
         score += 100
     return score, exact
@@ -170,7 +223,7 @@ def _generation_search_cache_key(scope, query, directory_ids, top_k):
         separators=(",", ":"),
     ).encode("utf-8")
     digest = hashlib.sha256(payload).hexdigest()
-    return f"wiki:generation-index-search:v2:{scope.generation_id}:{digest}"
+    return f"wiki:generation-index-search:v4:{scope.generation_id}:{digest}"
 
 
 def _generation_index_search(scope, terms, *, query, directory_ids, top_k):
@@ -188,9 +241,19 @@ def _generation_index_search(scope, terms, *, query, directory_ids, top_k):
     )
     if directory_ids is not None:
         queryset = queryset.filter(directory_id__in=directory_ids)
+    entries = list(queryset.order_by("page_id"))
+    loaded_bodies = _load_missing_body_excerpts(entries)
+    n_docs, df = _term_document_frequency(entries, terms, loaded_bodies)
     ranked = []
-    for entry in queryset.order_by("page_id"):
-        score, exact = _index_score(entry, terms, query)
+    for entry in entries:
+        score, exact = _index_score(
+            entry,
+            terms,
+            query,
+            body_excerpt=_body_excerpt_for_entry(entry, loaded_bodies),
+            idf=df,
+            n_docs=n_docs,
+        )
         if score <= 0:
             continue
         ranked.append((score, exact, entry))
@@ -199,7 +262,7 @@ def _generation_index_search(scope, terms, *, query, directory_ids, top_k):
     top_score = selected[0][0] if selected else 0
     second_score = selected[1][0] if len(selected) > 1 else 0
     high_confidence = bool(selected) and (
-        selected[0][1] or top_score >= 20 or (top_score >= 8 and top_score >= max(second_score * 1.8, second_score + 4))
+        selected[0][1] or (top_score > 0 and (len(selected) == 1 or top_score >= max(second_score * 1.8, second_score + 1e-6)))
     )
     versions = PageVersion.objects.in_bulk([entry.page_version_id for _score_value, _exact, entry in selected])
     results = []
@@ -331,6 +394,86 @@ def search(
     return results
 
 
+def _hit_key(hit):
+    return f"{hit['kind']}:{hit['id']}"
+
+
+def _stored_vector_hits(
+    knowledge_base,
+    query,
+    top_k,
+    embed_fn=None,
+    *,
+    directory_id=None,
+    include_descendants=False,
+    read_scope=None,
+):
+    """Recall pages by cosine against stored summary embeddings. Query is embedded once."""
+    scope = read_scope or bind_read_scope(knowledge_base)
+    directory_ids = directory_scope_ids(
+        knowledge_base,
+        directory_id=directory_id,
+        include_descendants=include_descendants,
+        read_scope=scope,
+    )
+    pages = page_queryset(
+        knowledge_base,
+        statuses=("active",),
+        directory_ids=directory_ids,
+        read_scope=scope,
+    ).select_related("current_version")
+    indexed = []
+    for page in pages:
+        snapshot = page_snapshot(page, knowledge_base=knowledge_base)
+        version = snapshot.page_version
+        vec = getattr(version, "embedding", None) if version is not None else None
+        if not vec:
+            continue
+        indexed.append((page, snapshot, vec))
+    if not indexed:
+        assert_read_scope_current(scope)
+        return []
+    embed = embed_fn or (lambda texts: embed_texts_cached(texts, knowledge_base.embed_provider))
+    qvecs = embed([query])
+    if not qvecs or not qvecs[0]:
+        assert_read_scope_current(scope)
+        return []
+    qv = qvecs[0]
+    ranked = []
+    for page, snapshot, vec in indexed:
+        score = cosine(qv, vec)
+        if score <= 0:
+            continue
+        ranked.append((score, page, snapshot))
+    ranked.sort(key=lambda item: (-item[0], item[1].id))
+    results = []
+    for rank, (score, page, snapshot) in enumerate(ranked[:top_k], start=1):
+        body = snapshot.body or ""
+        results.append(
+            {
+                "kind": "page",
+                "id": page.id,
+                "page_version_id": snapshot.page_version_id,
+                "title": snapshot.title,
+                "snippet": body[:2000],
+                "score": score,
+                "generation_id": snapshot.generation_id,
+                "directory_id": snapshot.directory_id,
+                "directory_key": snapshot.directory_key,
+                "directory_breadcrumb": list(snapshot.directory_breadcrumb),
+                "heading_path": "",
+                "route_confidence": "vector",
+                "explanation": {
+                    "matched_by": ["vector"],
+                    "vector_score": score,
+                    "semantic_rank": rank,
+                },
+            }
+        )
+    assert_read_scope_current(scope)
+    return results
+
+
 def hybrid_search(
     knowledge_base,
     query,
@@ -342,11 +485,11 @@ def hybrid_search(
     include_descendants=False,
     read_scope=None,
 ):
-    """混合检索:关键词召回候选 → 语义重排 → RRF 融合。无嵌入/失败时回退关键词。
+    """混合检索:关键词召回 ∪ 存量摘要向量召回 → RRF。无向量时回退关键词。
 
-    embed_fn(texts)->List[vector] 可注入以便测试;默认走知识库的 EmbedProvider。
+    embed_fn(texts)->List[vector] 只用于查询向量;默认走知识库的 EmbedProvider。
     """
-    candidates = search(
+    kw_candidates = search(
         knowledge_base,
         query,
         top_k=candidate_k,
@@ -354,45 +497,56 @@ def hybrid_search(
         include_descendants=include_descendants,
         read_scope=read_scope,
     )
-    if not candidates:
+    sem_candidates = _stored_vector_hits(
+        knowledge_base,
+        query,
+        candidate_k,
+        embed_fn=embed_fn,
+        directory_id=directory_id,
+        include_descendants=include_descendants,
+        read_scope=read_scope,
+    )
+    if not kw_candidates and not sem_candidates:
         return []
+    if not sem_candidates:
+        return kw_candidates[:top_k]
 
-    def _key(c):
-        return f"{c['kind']}:{c['id']}"
-
-    by_key = {_key(c): c for c in candidates}
-    kw_rank = [_key(c) for c in candidates]
-
-    embed = embed_fn or (lambda texts: embed_texts_cached(texts, knowledge_base.embed_provider))
-    qvecs = embed([query])
-    cvecs = embed([f"{c['title']} {c['snippet']}" for c in candidates])
-    if not qvecs or not cvecs or len(cvecs) != len(candidates):
-        return candidates[:top_k]  # 无嵌入 → 回退关键词
-
-    qv = qvecs[0]
-    vector_scores = {i: cosine(qv, cvecs[i]) for i in range(len(candidates))}
-    order = sorted(range(len(candidates)), key=lambda i: vector_scores[i], reverse=True)
-    sem_rank = [_key(candidates[i]) for i in order]
-    fused = rrf_fuse([kw_rank, sem_rank], top_k=top_k)
+    by_key = {}
+    kw_rank = []
+    for candidate in kw_candidates:
+        key = _hit_key(candidate)
+        by_key[key] = dict(candidate)
+        kw_rank.append(key)
+    sem_rank = []
+    vector_score_by_key = {}
+    for candidate in sem_candidates:
+        key = _hit_key(candidate)
+        sem_rank.append(key)
+        vector_score_by_key[key] = candidate.get("score") or 0
+        if key not in by_key:
+            by_key[key] = dict(candidate)
+    rank_lists = [kw_rank, sem_rank] if kw_rank else [sem_rank]
+    fused = rrf_fuse(rank_lists, top_k=top_k)
     keyword_ranks = {key: rank for rank, key in enumerate(kw_rank, start=1)}
     semantic_ranks = {key: rank for rank, key in enumerate(sem_rank, start=1)}
-    vector_score_by_key = {_key(candidates[i]): vector_scores[i] for i in range(len(candidates))}
+    kw_keys = set(kw_rank)
+    sem_keys = set(sem_rank)
 
     results = []
     for key in fused:
         item = dict(by_key[key])
         explanation = dict(item.get("explanation") or {})
-        matched_by = list(explanation.get("matched_by") or [])
-        if "keyword" not in matched_by:
+        matched_by = [item_name for item_name in (explanation.get("matched_by") or []) if item_name]
+        if key in kw_keys and "keyword" not in matched_by and "generation_index" not in matched_by:
             matched_by.append("keyword")
-        if "vector" not in matched_by:
+        if key in sem_keys and "vector" not in matched_by:
             matched_by.append("vector")
         explanation.update(
             {
                 "matched_by": matched_by,
                 "keyword_rank": keyword_ranks.get(key),
                 "semantic_rank": semantic_ranks.get(key),
-                "vector_score": vector_score_by_key.get(key, 0),
+                "vector_score": vector_score_by_key.get(key, explanation.get("vector_score") or 0),
                 "fusion": "rrf",
             }
         )
@@ -551,31 +705,49 @@ def _distinctive_terms_in_title(hit, terms):
     return any(str(term).lower() in title for term in terms)
 
 
-def _is_relevant_hit(hit, *, min_strong_score=100, min_weak_score=60, min_weak_terms=2):
+def _semantic_rank(hit):
+    rank = (hit.get("explanation") or {}).get("semantic_rank")
+    try:
+        return int(rank)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_vector_relevant(hit):
+    if "vector" not in _hit_matched_by(hit):
+        return False
+    rank = _semantic_rank(hit)
+    return rank is None or rank <= _VECTOR_RELEVANT_RANK
+
+
+def _is_relevant_hit(hit, *, top_score=None, min_strong_score=100, min_weak_score=60, min_weak_terms=2):
     """Drop keyword near-misses that only share generic tokens (e.g. 知识).
 
-    Without embeddings, search almost always returns top_k hits; feeding weak hits
-    to the LLM causes out-of-KB answers (translation/recipes/etc.).
-
-    Graph hops are not keyword matches (`matched_by: ["graph"]` only). They stay
-    relevant here; `_filter_relevant_contexts` keeps those aligned to a surviving seed.
-    `min_weak_terms` no longer rejects a single distinctive term — generic tokens
-    are excluded first, then one remaining term is enough.
+    Vector recall hits are kept by semantic rank, not keyword score.
+    Graph hops stay relevant here; `_filter_relevant_contexts` keeps those aligned
+    to a surviving seed.
     """
     if _is_graph_expansion(hit):
         return True
-    score = _hit_relevance_score(hit)
-    if score >= min_strong_score:
+    if _is_vector_relevant(hit):
         return True
     if (hit.get("explanation") or {}).get("exact_title_or_alias"):
+        return True
+    score = _hit_relevance_score(hit)
+    if score >= min_strong_score:
         return True
     distinctive = _distinctive_matched_terms(hit)
     if not distinctive:
         return False
     if _distinctive_terms_in_title(hit, distinctive):
         return True
+    peak = top_score if top_score and top_score > 0 else None
+    strong_cut = peak * _STRONG_SCORE_RATIO if peak else min_strong_score
+    weak_cut = peak * _WEAK_SCORE_RATIO if peak else min_weak_score
+    if score >= strong_cut:
+        return True
     needed = 1 if min_weak_terms else 0
-    return score >= min_weak_score and len(distinctive) >= needed
+    return score >= weak_cut and len(distinctive) >= needed
 
 
 def _page_hit_id(hit):
@@ -590,12 +762,14 @@ def _graph_source_id(hit):
 
 def _filter_relevant_contexts(contexts):
     hits = list(contexts or [])
+    direct = [hit for hit in hits if not _is_graph_expansion(hit)]
+    top_score = max((_hit_relevance_score(hit) for hit in direct), default=0)
     seeds = []
     graph_hits = []
     for hit in hits:
         if _is_graph_expansion(hit):
             graph_hits.append(hit)
-        elif _is_relevant_hit(hit):
+        elif _is_relevant_hit(hit, top_score=top_score):
             seeds.append(hit)
     kept_page_ids = {page_id for page_id in (_page_hit_id(hit) for hit in seeds) if page_id is not None}
     aligned_graph = []
@@ -627,19 +801,15 @@ def _adapt_context_k(
     gap_ratio=0.45,
     weak_score=60.0,
 ):
-    """Shrink filtered contexts before LLM (scheme A: adaptive top_k).
+    """Shrink filtered contexts before LLM, preserving retrieval order.
 
-    - Sort by score descending; never exceed max_k.
-    - Always keep the best hit when any remain after relevance filtering.
-    - If the top hit is exact-title/alias or score >= strong_score, prefer 1-2
-      contexts unless subsequent hits are also strong or close in score.
-    - Score-gap: with a strong top and len(kept) >= 2, stop when the next score
-      is below top * gap_ratio; with exact title and len(kept) >= 2, stop when
-      the next hit is weak.
+    Direct / vector hits stay eligible even when cosine scores are not on the
+    keyword scale. Graph neighbors are only kept if they still remain after
+    the caller reserved slots for direct hits.
     """
     if not hits:
         return []
-    ranked = sorted(hits, key=_hit_relevance_score, reverse=True)
+    ranked = list(hits)
     try:
         max_k = max(1, int(max_k or 1))
     except (TypeError, ValueError):
@@ -648,7 +818,7 @@ def _adapt_context_k(
     top = ranked[0]
     top_score = _hit_relevance_score(top)
     top_exact = bool((top.get("explanation") or {}).get("exact_title_or_alias"))
-    top_strong = top_exact or top_score >= float(strong_score)
+    top_strong = top_exact or _is_vector_relevant(top) or top_score >= float(strong_score)
     kept = [top]
 
     for hit in ranked[1:]:
@@ -656,21 +826,24 @@ def _adapt_context_k(
             break
         score = _hit_relevance_score(hit)
         exact = bool((hit.get("explanation") or {}).get("exact_title_or_alias"))
-        is_strong = exact or score >= float(strong_score)
-        is_weak = (not exact) and score < float(weak_score)
+        vector_keep = _is_vector_relevant(hit)
+        is_strong = exact or vector_keep or (top_score > 0 and score >= top_score * _STRONG_SCORE_RATIO) or score >= float(strong_score)
+        is_weak = (
+            (not exact)
+            and (not vector_keep)
+            and ((top_score > 0 and score < top_score * _WEAK_SCORE_RATIO) or (top_score <= 0 and score < float(weak_score)))
+        )
         close = top_score > 0 and score >= top_score * float(gap_ratio)
 
         if top_strong:
             if len(kept) >= 2:
-                # Gap rule / exact+weak: stop before taking a 3rd+ weak/far hit.
-                if top_score > 0 and score < top_score * float(gap_ratio):
+                if top_score > 0 and score < top_score * float(gap_ratio) and not vector_keep:
                     break
                 if top_exact and is_weak:
                     break
                 if not (is_strong or close):
                     break
             else:
-                # Prefer stopping at 1 when the runner-up is far/weak.
                 if top_score > 0 and score < top_score * float(gap_ratio) and not is_strong:
                     break
                 if top_exact and is_weak:
@@ -678,6 +851,19 @@ def _adapt_context_k(
 
         kept.append(hit)
     return kept
+
+
+def default_retrieval_mode(knowledge_base, retrieval_mode=None):
+    mode = (retrieval_mode or "").strip().lower()
+    if mode in {"keyword", "hybrid"}:
+        return mode
+    if getattr(knowledge_base, "embed_provider_id", None):
+        return "hybrid"
+    return "keyword"
+
+
+def _qa_retrieval_mode(knowledge_base, retrieval_mode=None):
+    return default_retrieval_mode(knowledge_base, retrieval_mode)
 
 
 def _prepare_answer_context(
@@ -688,6 +874,8 @@ def _prepare_answer_context(
     *,
     directory_id=None,
     include_descendants=False,
+    retrieval_mode=None,
+    embed_fn=None,
 ):
     from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
     from apps.opspilot.services.wiki.wiki_context_service import build_context
@@ -701,6 +889,8 @@ def _prepare_answer_context(
         directory_id=directory_id,
         include_descendants=include_descendants,
         llm_model_id=llm_model_id,
+        retrieval_mode=_qa_retrieval_mode(knowledge_base, retrieval_mode),
+        embed_fn=embed_fn,
     )
     contexts = _adapt_context_k(_filter_relevant_contexts(context_result["hits"]), max_k=top_k)
     # Keep citations aligned with surviving contexts when ids are present.
@@ -738,6 +928,8 @@ def stream_answer(
     *,
     directory_id=None,
     include_descendants=False,
+    retrieval_mode=None,
+    embed_fn=None,
 ):
     """Yield SSE-oriented events: meta / delta / done / error."""
     prepared = _prepare_answer_context(
@@ -747,6 +939,8 @@ def stream_answer(
         top_k=top_k,
         directory_id=directory_id,
         include_descendants=include_descendants,
+        retrieval_mode=retrieval_mode,
+        embed_fn=embed_fn,
     )
     if prepared["empty"]:
         empty_answer = "知识库中暂无相关资料,无法回答该问题。"
@@ -902,6 +1096,8 @@ def answer(
     *,
     directory_id=None,
     include_descendants=False,
+    retrieval_mode=None,
+    embed_fn=None,
 ):
     """问答试用:复用 generation 查询预算后执行一次有界回答。"""
     prepared = _prepare_answer_context(
@@ -911,6 +1107,8 @@ def answer(
         top_k=top_k,
         directory_id=directory_id,
         include_descendants=include_descendants,
+        retrieval_mode=retrieval_mode,
+        embed_fn=embed_fn,
     )
     if prepared["empty"]:
         return {"answer": "知识库中暂无相关资料,无法回答该问题。", "citations": [], "contexts": [], "mode": "empty"}

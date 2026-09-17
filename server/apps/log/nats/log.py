@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from django.db.models import Count, Q
@@ -669,3 +669,79 @@ def count_successful_logins_by_host(hosts, time_range, user_info=None, **kwargs)
             exc_info=safe_exception_info(exc),
         )
         return {"result": False, "data": [], "message": "成功登录计数失败"}
+
+
+def _llm_keyword_to_query(keyword: str) -> str:
+    keyword = str(keyword or "").strip()
+    if not keyword:
+        return "*"
+    pattern = f".*{LogGroupQueryBuilder._escape_regex_value(keyword)}.*"
+    field = LogGroupQueryBuilder._encode_logsql_field("message")
+    encoded = LogGroupQueryBuilder._encode_logsql_string(pattern)
+    return f"{field}:re({encoded})"
+
+
+def _llm_accessible_log_groups(user_info, requested_group_ids=None):
+    accessible = _resolve_log_group_scope(user_info)
+    if not requested_group_ids:
+        return accessible
+    wanted = {str(item) for item in requested_group_ids if item not in (None, "")}
+    return [group for group in accessible if str(group.id) in wanted]
+
+
+def _llm_default_time_range():
+    now = datetime.now(timezone.utc)
+    return format_rfc3339_utc(now - timedelta(hours=24)), format_rfc3339_utc(now)
+
+
+def _llm_execute_log_search(query, time_range, limit, user_info, log_group_ids=None):
+    accessible_groups = _llm_accessible_log_groups(user_info, log_group_ids)
+    if not accessible_groups:
+        return {"result": True, "data": [], "message": ""}
+    group_ids = [group.id for group in accessible_groups]
+    final_query, _ = SearchService._build_storage_query(query, group_ids, resolved_groups=accessible_groups)
+    try:
+        start_time, end_time = _normalize_query_time_range(time_range) if time_range else _llm_default_time_range()
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    try:
+        limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    if final_query == LogGroupQueryBuilder.DENY_ALL_QUERY:
+        return {"result": True, "data": [], "message": ""}
+    vm_api = VictoriaMetricsAPI()
+    data = vm_api.query(final_query, start_time, end_time, limit)
+    if isinstance(data, list):
+        data = [to_logical_event(item) for item in data]
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def list_log_groups(user_info=None, **kwargs):
+    """列出当前用户可访问的日志分组。"""
+    user_info = user_info or kwargs.get("user_info")
+    groups = _resolve_log_group_scope(user_info)
+    return {
+        "result": True,
+        "data": [{"id": group.id, "name": group.name} for group in groups],
+        "message": "",
+    }
+
+
+@nats_client.register
+def log_search_structured(query_data=None, user_info=None, **kwargs):
+    """结构化/高级日志查询：在权限分组范围内执行 keyword 或原生 LogsQL。"""
+    query_data = query_data or kwargs.get("query_data") or {}
+    user_info = user_info or kwargs.get("user_info")
+    raw_query = str(query_data.get("query") or "").strip()
+    keyword = str(query_data.get("keyword") or "").strip()
+    query = raw_query or _llm_keyword_to_query(keyword)
+    return _llm_execute_log_search(
+        query,
+        query_data.get("time_range"),
+        query_data.get("limit") or 10,
+        user_info,
+        query_data.get("log_group_ids"),
+    )
+

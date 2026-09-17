@@ -2,41 +2,34 @@ import { describe, expect, it } from 'vitest';
 
 import { resolveCmdbPublicMenuItems } from '../cmdbPublicMenus';
 
-const INST_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-
 describe('resolveCmdbPublicMenuItems', () => {
   it('shows monitor entries only when a single stable monitorId exists', () => {
     const withMonitor = resolveCmdbPublicMenuItems({
-      instUuid: INST_UUID,
       modelId: 'host',
       monitorId: 'mon-1',
-      isNetworkDevice: false,
-      hasOpsAnalysis: true,
+      nodeId: '',
       widgets: {
         'monitor.monitorView': true,
         'monitor.alertList': true,
+        'monitor.monitorPolicy': true,
         'ops-analysis.relatedTopology': true,
-        'ops-analysis.networkStatusTopology': true,
-        'ops-analysis.application3D': true,
       },
     });
     expect(withMonitor.map((item) => item.key)).toEqual([
       'monitorView',
       'alertList',
+      'monitorPolicy',
     ]);
 
     const unlinked = resolveCmdbPublicMenuItems({
-      instUuid: INST_UUID,
       modelId: 'host',
       monitorId: '',
-      isNetworkDevice: false,
-      hasOpsAnalysis: true,
+      nodeId: '',
       widgets: {
         'monitor.monitorView': true,
         'monitor.alertList': true,
+        'monitor.monitorPolicy': true,
         'ops-analysis.relatedTopology': true,
-        'ops-analysis.networkStatusTopology': true,
-        'ops-analysis.application3D': true,
       },
     });
     expect(unlinked.map((item) => item.key)).toEqual([]);
@@ -44,111 +37,58 @@ describe('resolveCmdbPublicMenuItems', () => {
 
   it('never emits a relatedTopology sidebar item even when the widget is declared', () => {
     const items = resolveCmdbPublicMenuItems({
-      instUuid: INST_UUID,
       modelId: 'host',
       monitorId: 'mon-1',
-      isNetworkDevice: true,
-      hasOpsAnalysis: true,
+      nodeId: '',
       widgets: {
         'monitor.monitorView': true,
         'ops-analysis.relatedTopology': true,
-        'ops-analysis.networkStatusTopology': true,
-        'ops-analysis.application3D': true,
       },
     });
-    expect(items.map((item) => item.key)).not.toContain('relatedTopology');
-    expect(items.map((item) => item.key)).toContain('networkStatusTopology');
+    expect(items.map((item) => item.key)).toEqual(['monitorView']);
   });
 
-  it('gates network status by network theme and 3D by system model only', () => {
-    const network = resolveCmdbPublicMenuItems({
-      instUuid: INST_UUID,
-      modelId: 'switch',
-      monitorId: '',
-      isNetworkDevice: true,
-      hasOpsAnalysis: true,
-      widgets: {
-        'ops-analysis.relatedTopology': true,
-        'ops-analysis.networkStatusTopology': true,
-        'ops-analysis.application3D': true,
-      },
-    });
-    expect(network.map((item) => item.key)).toEqual(['networkStatusTopology']);
-    expect(network[0]?.url).toBe(
-      '/cmdb/assetData/detail/networkStatusTopology',
-    );
-
-    const system = resolveCmdbPublicMenuItems({
-      instUuid: INST_UUID,
-      modelId: 'system',
-      monitorId: '',
-      isNetworkDevice: false,
-      hasOpsAnalysis: true,
-      widgets: {
-        'ops-analysis.relatedTopology': true,
-        'ops-analysis.networkStatusTopology': true,
-        'ops-analysis.application3D': true,
-      },
-    });
-    expect(system.map((item) => item.key)).toEqual(['application3D']);
-
-    const application = resolveCmdbPublicMenuItems({
-      instUuid: INST_UUID,
-      modelId: 'application',
-      monitorId: '',
-      isNetworkDevice: false,
-      hasOpsAnalysis: true,
-      widgets: {
-        'ops-analysis.relatedTopology': true,
-        'ops-analysis.application3D': true,
-      },
-    });
-    expect(application.map((item) => item.key)).toEqual([]);
-  });
-
-  it('hides ops-analysis entries when undeclared or missing instUuid', () => {
+  it('keeps monitor and node entries when ops-analysis related topology is undeclared', () => {
     expect(
       resolveCmdbPublicMenuItems({
-        instUuid: '',
-        modelId: 'system',
+        modelId: 'host',
         monitorId: 'mon-1',
-        isNetworkDevice: true,
-        hasOpsAnalysis: true,
+        nodeId: 'node-1',
         widgets: {
           'monitor.monitorView': true,
-          'ops-analysis.relatedTopology': true,
-          'ops-analysis.networkStatusTopology': true,
-          'ops-analysis.application3D': true,
+          'monitor.alertList': true,
+          'monitor.monitorPolicy': true,
+          'node.nodeStatus': true,
         },
       }).map((item) => item.key),
-    ).toEqual(['monitorView']);
+    ).toEqual(['monitorView', 'alertList', 'monitorPolicy', 'nodeStatus']);
 
     expect(
       resolveCmdbPublicMenuItems({
-        instUuid: INST_UUID,
-        modelId: 'system',
-        monitorId: 'mon-1',
-        isNetworkDevice: true,
-        hasOpsAnalysis: true,
+        modelId: 'server_room',
+        monitorId: '',
+        nodeId: '',
         widgets: {},
       }).map((item) => item.key),
     ).toEqual([]);
   });
 
-  it('hides monitor public entries when ops-analysis is not sold', () => {
+  it('shows node status only for host with a direct nodeId', () => {
     expect(
       resolveCmdbPublicMenuItems({
-        instUuid: INST_UUID,
         modelId: 'host',
-        monitorId: 'mon-1',
-        isNetworkDevice: true,
-        hasOpsAnalysis: false,
-        widgets: {
-          'monitor.monitorView': true,
-          'monitor.alertList': true,
-          'ops-analysis.networkStatusTopology': true,
-          'ops-analysis.application3D': true,
-        },
+        monitorId: '',
+        nodeId: 'node-1',
+        widgets: { 'node.nodeStatus': true },
+      }).map((item) => item.key),
+    ).toEqual(['nodeStatus']);
+
+    expect(
+      resolveCmdbPublicMenuItems({
+        modelId: 'switch',
+        monitorId: '',
+        nodeId: 'node-1',
+        widgets: { 'node.nodeStatus': true },
       }).map((item) => item.key),
     ).toEqual([]);
   });

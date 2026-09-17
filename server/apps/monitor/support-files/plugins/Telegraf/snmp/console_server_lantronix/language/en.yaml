@@ -1,7 +1,9 @@
 ConsoleServer Lantronix SLC SNMP:
   name: Lantronix SLC ConsoleServer SNMP
-  desc: SNMP monitoring template for Lantronix SLC console server. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Lantronix SLC console server. It reports chassis
+    internal temperature, power-supply A/B status, optional active session count,
+    optional per-port sensor temperature and humidity, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime
 monitor_object:
   ConsoleServer: ConsoleServer
 monitor_object_type:
@@ -40,15 +42,38 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_temperature_celsius:
       name: Temperature
-      desc: Temperature reading of the console server in degrees Celsius. High values
-        may indicate cooling or ambient-temperature risk.
+      desc: Internal chassis temperature of the Lantronix SLC in degrees Celsius.
+        High values may indicate cooling or ambient-temperature risk. A 9999 read-error
+        sentinel is dropped.
     device_psu_state:
       name: Power Supply Status
-      desc: Input power state of the console server, normalized to 1=healthy and 2=fault.
-        Any unknown or non-normal code should be investigated as a power-path risk.
+      desc: Rolled-up power-supply state of the console server, normalized to 1=healthy
+        and 2=fault. notInstalled on supply B is not treated as a fault.
+    psu_a_status:
+      name: Power Supply A Status
+      desc: Status of Lantronix SLC power supply A, normalized to healthy or fault.
+    psu_b_status:
+      name: Power Supply B Status
+      desc: Status of Lantronix SLC power supply B, normalized to healthy or fault.
+        notInstalled is treated as healthy.
+    active_sessions:
+      name: Active Sessions
+      desc: Number of active console connections reported by the optional connections
+        table row count.
+    lantronix_port_temperature_celsius:
+      name: Port Sensor Temperature
+      desc: Optional per-port sensor temperature in degrees Celsius. Ports without
+        a numeric sensor reading are skipped.
+    lantronix_port_humidity_percent:
+      name: Port Sensor Humidity
+      desc: Optional per-port sensor relative humidity percent. Ports without a numeric
+        sensor reading are skipped.
 monitor_object_metric_group:
   ConsoleServer:
     Base: Base
     Traffic: Traffic
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Power: Power
+    Sessions: Sessions
+    Humidity: Humidity

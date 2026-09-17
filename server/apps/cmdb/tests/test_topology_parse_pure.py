@@ -607,6 +607,60 @@ class ParseTopologyTest(unittest.TestCase):
         self.assertEqual(result["summary"]["authoritative_links"], 1)
         self.assertEqual(result["topology"]["authoritative_links"][0]["target_port_id"], "sw2:2")
 
+    def test_remote_port_name_normalization_matches_cdp_g_digit_to_gi(self) -> None:
+        aggregate = {
+            "devices": [
+                {
+                    "device": {"host": "sw1"},
+                    "success": True,
+                    "collector_result": {
+                        "result": {
+                            "evidence": {
+                                "system": [{"tag": "System-SysName", "ifindex": "", "val": "sw1"}],
+                                "interfaces": [{"tag": "IFXTable-IfName", "ifindex": "1", "val": "Te1/1/4"}],
+                                "ip": [],
+                                "arp": [],
+                                "neighbors": [
+                                    {"tag": "CDP-DeviceId", "ifindex": "1.1", "val": "sw2"},
+                                    {"tag": "CDP-DevicePort", "ifindex": "1.1", "val": "g2/1/1"},
+                                ],
+                                "bridge": [],
+                                "fdb": [],
+                            }
+                        }
+                    },
+                },
+                {
+                    "device": {"host": "sw2"},
+                    "success": True,
+                    "collector_result": {
+                        "result": {
+                            "evidence": {
+                                "system": [{"tag": "System-SysName", "ifindex": "", "val": "sw2"}],
+                                "interfaces": [{"tag": "IFXTable-IfName", "ifindex": "2", "val": "Gi2/1/1"}],
+                                "ip": [],
+                                "arp": [],
+                                "neighbors": [],
+                                "bridge": [],
+                                "fdb": [],
+                            }
+                        }
+                    },
+                },
+            ]
+        }
+
+        result = parse_aggregate_result(aggregate)
+        self.assertEqual(result["summary"]["authoritative_links"], 1)
+        self.assertEqual(result["topology"]["authoritative_links"][0]["target_port_id"], "sw2:2")
+
+    def test_interface_abbreviation_candidates_cover_cdp_g_digit(self) -> None:
+        from apps.cmdb.collection.collect_plugin.topology.parse import build_interface_name_candidates
+
+        self.assertTrue(build_interface_name_candidates("g2/1/1") & build_interface_name_candidates("Gi2/1/1"))
+        self.assertTrue(build_interface_name_candidates("GE2/1/1") & build_interface_name_candidates("GigabitEthernet2/1/1"))
+        self.assertFalse(build_interface_name_candidates("Gi1") & build_interface_name_candidates("Gi1/0/1"))
+
     def test_remote_port_name_normalization_matches_port_channel_to_po(self) -> None:
         aggregate = {
             "devices": [

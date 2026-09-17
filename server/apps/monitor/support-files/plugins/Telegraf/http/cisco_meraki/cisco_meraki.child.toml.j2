@@ -1,0 +1,15 @@
+[[inputs.prometheus]]
+    startup_error_behavior = "retry"
+    urls = ["${STARGAZER_URL}/api/monitor/{{ instance_type }}/metrics"]
+    interval = "{{ interval | default(120, true) }}s"
+    timeout = "{{ timeout | default(180, true) }}s"
+    response_timeout = "{{ response_timeout | default(180, true) }}s"
+
+    [inputs.prometheus.http_headers]
+        password = "${PASSWORD__{{ config_id }}}"
+        base_url = "{{ base_url }}"
+        organization_id = "{{ organization_id }}"
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "http"
+        config_type = "cisco_meraki"

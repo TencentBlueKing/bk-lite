@@ -785,15 +785,15 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         const response =
           operationType === 'installCollector'
             ? await getCollectorNodes({
-                taskId: taskIds,
-                page: pageQuery.page,
-                page_size: pageQuery.page_size
-              })
+              taskId: taskIds,
+              page: pageQuery.page,
+              page_size: pageQuery.page_size
+            })
             : await getCollectorOperationNodes({
-                taskId: taskIds,
-                page: pageQuery.page,
-                page_size: pageQuery.page_size
-              });
+              taskId: taskIds,
+              page: pageQuery.page,
+              page_size: pageQuery.page_size
+            });
         if (!requestGuardRef.current.shouldContinue(currentGeneration)) {
           return;
         }
@@ -806,9 +806,9 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           prev.total === resolvedPage.total
             ? prev
             : {
-                ...prev,
-                total: resolvedPage.total
-              }
+              ...prev,
+              total: resolvedPage.total
+            }
         );
         const retryTaskIds = Array.from(
           new Set(collectorRetryTaskIdsRef.current.values())
@@ -1168,7 +1168,7 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           />
         )}
         <CustomTable
-          scroll={{ x: 'calc(100vw - 320px)' }}
+          scroll={{ x: 'max-content' }}
           rowKey="id"
           loading={pageLoading}
           columns={columns}

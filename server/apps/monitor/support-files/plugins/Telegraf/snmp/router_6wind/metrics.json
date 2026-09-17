@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_6wind",
   "plugin": "Router 6WIND VSR SNMP",
-  "plugin_desc": "6WIND VSR router SNMP child template (enterprise 7336). The verified profile builds on standard MIB-II and IF-MIB ifXTable plus HOST-RESOURCES hrProcessorLoad for per-core CPU utilization. Memory, temperature, fan and power state remain N/A: hrStorage mixes RAM/Flash rows that telegraf inputs.snmp cannot filter row-wise, and no stable vendor-specific scalar device-health gauges are confirmed. The shared Router SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/router metric model while this plugin provides the 6WIND collect_type, UI and Telegraf child template. Supported brands/models — 6WIND Virtual Service Router.",
+  "plugin_desc": "6WIND VSR router SNMP child template (enterprise 7336). Host health is collected from UCD-SNMP (enterprise 2021). CPU utilization is 100 minus ssCpuIdle, or ssCpuUser plus ssCpuSystem when idle is absent. Memory utilization is derived from memTotalReal and memAvailReal (kB). Optional HOST-RESOURCES hrProcessorLoad and hrStorage physical-memory rows are collected as fallback. Private IPsec and license objects under enterprise 7336 are not used for this health set. Interface traffic uses the built-in IF-MIB table. Temperature, fan and power remain N/A. Supported brands/models — 6WIND Virtual Service Router.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_6wind'}) by (instance_id)",
   "name": "Router",
@@ -15,9 +15,75 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage"
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
+    {
+      "metric_group": "Router",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id) or (100 - avg(device_cpu_idle{instance_type='router', __$labels__}) by (instance_id)) or (avg(device_cpu_user{instance_type='router', __$labels__}) by (instance_id) + avg(device_cpu_system{instance_type='router', __$labels__}) by (instance_id)) or avg(device_cpu_hr_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilization of the 6WIND VSR router from UCD-SNMP ssCpuIdle (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when idle is absent, then to HOST-RESOURCES hrProcessorLoad."
+    },
+    {
+      "metric_group": "Router",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='router', __$labels__}*1024 or sum(device_memory_hr_total{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total real memory of the 6WIND VSR router (UCD-SNMP memTotalReal, reported in kB and converted to bytes), falling back to HOST-RESOURCES hrStorage physical-memory size."
+    },
+    {
+      "metric_group": "Router",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='router', __$labels__}*1024 or sum(device_memory_hr_free{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available real memory of the 6WIND VSR router (UCD-SNMP memAvailReal, reported in kB and converted to bytes), falling back to HOST-RESOURCES hrStorage physical-memory free."
+    },
+    {
+      "metric_group": "Router",
+      "name": "device_memory_used",
+      "query": "(device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__})*1024 or sum(device_memory_hr_used{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used real memory of the 6WIND VSR router, derived as memTotalReal minus memAvailReal and converted from kB to bytes, falling back to HOST-RESOURCES hrStorage physical-memory used."
+    },
+    {
+      "metric_group": "Router",
+      "name": "device_memory_usage",
+      "query": "100 * (device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__}) / device_memory_total{instance_type='router', __$labels__} or (100 * sum(device_memory_hr_used{instance_type='router', __$labels__}) by (instance_id) / sum(device_memory_hr_total{instance_type='router', __$labels__}) by (instance_id))",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Real memory utilization of the 6WIND VSR router, derived as (memTotalReal - memAvailReal) / memTotalReal * 100, falling back to HOST-RESOURCES hrStorage physical-memory used/size."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -53,24 +119,6 @@
         "instance_id"
       ],
       "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
-    },
-    {
-      "metric_group": "Router",
-      "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='router', __$labels__}",
-      "display_name": "CPU Usage",
-      "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports per-core CPU load on the 6WIND VSR router as a percentage (HOST-RESOURCES-MIB hrProcessorLoad). Sustained high values indicate control-plane or forwarding load."
     },
     {
       "metric_group": "Base",

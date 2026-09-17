@@ -1,6 +1,8 @@
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
@@ -98,15 +100,18 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(dict(count=queryset.count(), items=results))
 
+    @HasPermission("search-View")
     def create(self, request, *args, **kwargs):
         self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["created_by"] = request.user.username
-        response = super().create(request, *args, **kwargs)
-        condition_id = response.data["id"]
-        organizations = request.data.get("organizations", [])
-        self.update_condition_organizations(condition_id, organizations)
-        return response
+        with transaction.atomic():
+            response = super().create(request, *args, **kwargs)
+            condition_id = response.data["id"]
+            organizations = request.data.get("organizations", [])
+            self.update_condition_organizations(condition_id, organizations)
+            return response
 
+    @HasPermission("search-View")
     def update(self, request, *args, **kwargs):
         if kwargs.get("partial", False):
             return super().update(request, *args, **kwargs)
@@ -115,29 +120,34 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
         self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["updated_by"] = request.user.username
         condition_id = condition.id
-        response = super().update(request, *args, **kwargs)
-        organizations = request.data.get("organizations")
-        self.update_condition_organizations(condition_id, organizations)
-        return response
+        with transaction.atomic():
+            response = super().update(request, *args, **kwargs)
+            organizations = request.data.get("organizations")
+            self.update_condition_organizations(condition_id, organizations)
+            return response
 
+    @HasPermission("search-View")
     def partial_update(self, request, *args, **kwargs):
         condition = self.get_object()
         if "organizations" in request.data:
             self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["updated_by"] = request.user.username
         condition_id = condition.id
-        response = super().partial_update(request, *args, **kwargs)
-        organizations = request.data.get("organizations")
-        if "organizations" in request.data:
-            self.update_condition_organizations(condition_id, organizations)
-        return response
+        with transaction.atomic():
+            response = super().partial_update(request, *args, **kwargs)
+            organizations = request.data.get("organizations")
+            if "organizations" in request.data:
+                self.update_condition_organizations(condition_id, organizations)
+            return response
 
+    @HasPermission("search-View")
     def destroy(self, request, *args, **kwargs):
         condition = self.get_object()
         condition_id = condition.id
-        MonitorConditionOrganization.objects.filter(monitor_condition_id=condition_id).delete()
-        condition.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        with transaction.atomic():
+            MonitorConditionOrganization.objects.filter(monitor_condition_id=condition_id).delete()
+            condition.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
     def update_condition_organizations(self, condition_id, organizations):
         """更新条件的组织"""

@@ -61,6 +61,7 @@ class PatchSource(TimeInfo, MaintainerInfo):
         verbose_name="连通性状态",
     )
     last_checked_at = models.DateTimeField(null=True, blank=True, verbose_name="上次连通性检测时间")
+    connectivity_revision = models.IntegerField(default=0, verbose_name="连通性配置版本")
     sync_in_progress = models.BooleanField(
         default=False,
         db_index=True,

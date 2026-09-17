@@ -1,7 +1,8 @@
-from apps.node_mgmt.models.node_version import NodeComponentVersion
-from apps.node_mgmt.models.sidecar import Node
 from django.db.models import Prefetch
 from rest_framework import serializers
+
+from apps.node_mgmt.models.node_version import NodeComponentVersion
+from apps.node_mgmt.models.sidecar import Node
 
 
 class NodeSerializer(serializers.ModelSerializer):
@@ -41,7 +42,7 @@ class NodeSerializer(serializers.ModelSerializer):
             "nodeorganization_set",
             Prefetch(
                 "component_versions",
-                queryset=NodeComponentVersion.objects.filter(component_type="controller").order_by("-last_check_at"),
+                queryset=NodeComponentVersion.objects.filter(component_type__in=["controller", "collector"]).order_by("-last_check_at"),
             ),
         )
         return queryset
@@ -51,9 +52,9 @@ class NodeSerializer(serializers.ModelSerializer):
         return [rel.organization for rel in obj.nodeorganization_set.all()]
 
     def get_versions(self, obj):
-        """获取节点关联的控制器版本信息（直接读取已计算好的升级状态）"""
+        """获取节点关联的控制器与采集器版本信息"""
         versions = []
-        component_versions = [v for v in obj.component_versions.all() if v.component_type == "controller"]
+        component_versions = [v for v in obj.component_versions.all() if v.component_type in {"controller", "collector"}]
 
         for version_info in component_versions:
             versions.append(

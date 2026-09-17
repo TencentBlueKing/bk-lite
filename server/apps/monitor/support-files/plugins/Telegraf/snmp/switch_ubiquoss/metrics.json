@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ubiquoss",
   "plugin": "Switch Ubiquoss SNMP",
-  "plugin_desc": "Ubiquoss Corp. GPON/EPON OLT and L2/L3 industrial Ethernet switch SNMP child template under Ubiquoss enterprise PEN 36141. The shared Switch SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The private UBIQUOSS-SMI / UBQS-SMI / UBQS-PRODUCTS-MIB / UBQS-ENVMON-MIB / UBQS-CPU-STATS-MIB / UBQS-ENTITY-MIB / UBQS-ENTITY-ALARM-MIB / UBQS-INTERFACE-MIB / UBQS-SYSTEM-MIB / UBQS-SYSINFO-MIB / UBQS-SNMP-MIB / UBQS-AUTO-RESET-MIB and the EPON / 10GEPON family expose the ubiquoss enterprise root plus chassis, card, fan, power, temperature, port, and OLT PM subtrees, but every documented health-related leaf is per-stack-unit, per-fan, per-PSU or per-port -- telegraf inputs.snmp cannot aggregate those rows into a single bk-lite device_* metric, so they are kept as N/A to honor the no-fabricated-health-metrics rule.",
+  "plugin_desc": "Ubiquoss switch SNMP collection (IANA PEN 7800). This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB interface traffic. Proven private device-health objects: control-plane CPU utilization preferring the 1-minute scalar (5-second and 5-minute windows as fallbacks, 0-100 percent) and memory utilization computed as Alloc/Total or 1-Free/Total from Alloc, Free and Total scalars (Alloc is a quantity, not a precomputed percent). An optional fan reading is collected when the leaf is present. Supported brands/models — Ubiquoss switches.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ubiquoss'}) by (instance_id)",
   "name": "Switch",
@@ -14,9 +14,89 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__} or device_cpu_usage_5s{instance_type='switch', __$labels__} or device_cpu_usage_5min{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the Ubiquoss device control plane as a 0-100 percentage, preferring the 1-minute scalar under IANA PEN 7800 and falling back to the 5-second then 5-minute windows when the preferred leaf is absent. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports allocated memory of the Ubiquoss device (Alloc scalar under IANA PEN 7800). Alloc is a quantity used as the numerator of memory utilization, not a precomputed percentage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='switch', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports free memory of the Ubiquoss device (Free scalar under IANA PEN 7800). Together with total memory it provides the fallback utilization formula 1-Free/Total when Alloc is absent."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports total memory of the Ubiquoss device (Total scalar under IANA PEN 7800). It is the denominator for memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "avg((device_memory_used{instance_type='switch', __$labels__} / device_memory_total{instance_type='switch', __$labels__} * 100) or ((1 - device_memory_free{instance_type='switch', __$labels__} / device_memory_total{instance_type='switch', __$labels__}) * 100)) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the Ubiquoss device as a 0-100 percentage, computed as Alloc/Total when Alloc is present, otherwise 1-Free/Total. Alloc is never treated as an already-normalized percent. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "avg(device_fan_speed{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the optional Ubiquoss fan reading under IANA PEN 7800. The leaf is skipped when a device does not implement it. Abnormally low or zero values can indicate a stalled or failed fan and a risk of overheating."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

@@ -1,6 +1,7 @@
 Wireless ACKSYS SNMP:
   name: ACKSYS（Telegraf）
-  desc: 面向 ACKSYS 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 ACKSYS 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率、运行时长、堆内存字节、主板温度、双路电源状态、AP
+    客户端数和网桥 RSSI（企业号 PEN 28097）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -24,18 +25,38 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
-    device_cpu_usage:
-      name: CPU 使用率
-      desc: 无线设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示客户端关联负载过高、控制平面压力或射频管理开销过大，会影响漫游与管理响应。
+    heap_free_bytes:
+      name: 堆空闲量
+      desc: ACKSYS WaveOS 当前可用堆内存字节数。空闲量持续偏低表示内存压力，可能影响无线转发或管理服务。
+    heap_total_bytes:
+      name: 堆总量
+      desc: ACKSYS WaveOS 堆内存总字节数。与空闲量一起作为堆使用率的分母。
+    heap_low_water_bytes:
+      name: 堆低水位
+      desc: ACKSYS WaveOS 堆空闲低水位字节数，记录自上次复位以来观察到的最低空闲堆，用于发现瞬时内存压力。
     device_memory_usage:
-      name: 内存使用率
-      desc: 无线设备的整体内存使用率，以 0-100 百分比直接上报。内存压力过高会导致接入点丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。
+      name: 堆使用率
+      desc: 由堆总量与空闲字节推导的 ACKSYS WaveOS 堆使用率，单位为百分比。持续偏高表示堆内存压力，而不是伪造的 CPU 或通用内存百分比。
     device_temperature_celsius:
       name: 温度
-      desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
+      desc: ACKSYS 主板传感器 0 的温度，原始值为毫摄氏度，查询时除以 1000 转为摄氏度。读数不高于 -274000 毫摄氏度表示传感器不可用。温度过高可能表示机箱温升或射频硬件热压力。
+    device_psu_state:
+      name: 电源线 1 状态
+      desc: ACKSYS 工业无线设备电源线 1 的运行状态，原始码 powerOn/powerOff 归一为正常或异常。双路供电机型的第二路见备用电源状态。
+    device_psu_state_backup:
+      name: 电源线 2 状态
+      desc: ACKSYS 工业无线设备电源线 2 的运行状态，原始码 powerOn/powerOff 归一为正常或异常。
+    wireless_client_count:
+      name: 关联客户端数
+      desc: ACKSYS 接入点当前关联的无线客户端数量。该标量在接入点模式下有效；逐客户端 RSSI 表不采集。
+    wireless_signal_strength:
+      name: 网桥 RSSI
+      desc: ACKSYS 网桥模式下对端连接的 RSSI（dBm）。该标量在网桥模式下有效；接入点逐客户端 RSSI 为行表，不采集。
 monitor_object_metric_group:
   Wireless:
     Base: 基础
     Traffic: 流量
     Wireless: 无线
+    Memory: 内存
     Temperature: 温度
+    Hardware Status: 硬件状态

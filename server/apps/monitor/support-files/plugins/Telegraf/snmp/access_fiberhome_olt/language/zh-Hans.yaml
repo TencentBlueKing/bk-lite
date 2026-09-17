@@ -1,6 +1,6 @@
 Access FiberHome OLT SNMP:
   name: 烽火 FiberHome OLT（Telegraf）
-  desc: 面向 FiberHome OLT 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 FiberHome OLT 接入设备的 SNMP 监控模板，可采集板卡 CPU 使用率、板卡内存使用率、每端口入向/出向流量速率和运行时长（企业号 5875）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:

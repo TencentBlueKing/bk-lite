@@ -384,4 +384,42 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     await user.click(removeRecipient as Element);
     expect(recipients.closest('.ant-select')?.textContent).not.toContain('7');
   });
+
+  it('截断候选不删除已选处理人，保存仍提交原 User.id', async () => {
+    const user = userEvent.setup();
+    api.getPolicy.mockResolvedValue({
+      ...policy,
+      handlers: [101],
+    });
+    api.getNotificationRecipients.mockResolvedValue(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index + 1,
+        username: `user${index + 1}`,
+        display_name: `User ${index + 1}`,
+      })),
+    );
+
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+
+    await waitFor(() =>
+      expect(api.getNotificationRecipients).toHaveBeenCalledWith(
+        expect.objectContaining({ organization_ids: '10', limit: 100 }),
+      ),
+    );
+
+    const handlersSelect = await screen.findByLabelText('处理人');
+    await waitFor(() => {
+      expect(handlersSelect.closest('.ant-select')?.textContent).toContain('101');
+    });
+
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    await waitFor(() =>
+      expect(api.updatePolicy).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          handlers: [101],
+        }),
+      ),
+    );
+  });
 });

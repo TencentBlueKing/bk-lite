@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_smartoptics",
   "plugin": "Transmission Smartoptics SNMP",
-  "plugin_desc": "Smartoptics DCP and M-Series WDM/DWDM transmission SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "Smartoptics DCP and M-Series WDM/DWDM transmission SNMP child template (enterprise PEN 30826). Interface traffic is supplied by the shared IF-MIB table include. DCP-ENV-MON supplies chassis health. Temperature (dcpEnvMonTemperatureValue) is tenths of a degree Celsius and is divided by 10 in the query. Fan status (dcpEnvMonFanStatus) is normalized so ok and notPresent are healthy and alarm is fault. Fan speed (RPM) and power consumption (Watt) are optional table columns and are collected when present. CPU and memory utilization are not exposed as stable shared health objects in DCP-ENV-MON, so they are not collected.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_smartoptics'}) by (instance_id)",
   "name": "Transmission",
@@ -14,9 +14,63 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_fan_state"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}/10) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest Smartoptics DCP environmental temperature in degrees Celsius. The raw dcpEnvMonTemperatureValue is in tenths of a degree, so the query divides it by 10. High values may indicate cooling problems, high ambient temperature or overloaded hardware."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst Smartoptics DCP fan status from dcpEnvMonFanStatus, normalized so ok(2) and notPresent(1) are healthy (1) and alarm(3) or any other code is fault (2). A value greater than 1 indicates a cooling-module fault that can lead to overheating."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "max(device_fan_speed{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional Smartoptics DCP fan rotation speed in RPM from dcpEnvMonFanSpeed, taken as the maximum across fans. The column is SKU-dependent; models without a speed reading simply omit this metric. Abnormally low or zero RPM indicates a stalled or failed fan."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_power_watts",
+      "query": "max(device_power_watts{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Power Consumption",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional Smartoptics DCP power consumption in watts from dcpEnvMonPowerConsumptionValue, taken as the maximum across sensors. The table is SKU-dependent; models without a consumption sensor simply omit this metric."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

@@ -250,6 +250,12 @@ class MonitorModuleIngestService:
                         allowed_org_ids=allowed,
                         plugin=plugin,
                     )
+            if source_module == "node_mgmt":
+                updated = cls._notify_host_peers_after_write(
+                    updated,
+                    operator=operator,
+                    allowed_org_ids=allowed,
+                )
             return IngestResult(id=updated.id, updated=True).as_dict()
 
         return cls._create_for_source(
@@ -488,6 +494,10 @@ class MonitorModuleIngestService:
                         "node_ids": [node_id],
                         "group_ids": cls._normalize_org_ids(raw, allowed_org_ids),
                         "instance_type": "os",
+                        "ip": instance.ip or cls._extract_ip(raw),
+                        "cloud_region_id": (instance.cloud_region_id if instance.cloud_region_id is not None else cls._extract_cloud_region_id(raw)),
+                        "node_id": node_id,
+                        "cmdb_id": cls._normalize_optional_str(instance.cmdb_id),
                     }
                 ],
             }
@@ -1091,7 +1101,7 @@ class MonitorModuleIngestService:
         ip: str | None,
         cloud: int | None,
     ) -> MonitorInstance | None:
-        """主机优先按 IP+云区域认领；未命中或歧义则返回 None，交给唯一 IP。"""
+        """主机优先按 IP+云区域认领；规范主键命中含软删，交给调用方回收或忽略。"""
         if not ip or cloud is None:
             return None
         for raw_instance_id in (f"{cloud}_os_{ip}", f"{cloud}_{ip}"):
@@ -1105,7 +1115,7 @@ class MonitorModuleIngestService:
             except ValueError:
                 continue
             by_pk = cls._find_by_pk(storage_key)
-            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+            if by_pk and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
                 return by_pk
         matches = list(
             MonitorInstance.objects.filter(
@@ -1377,10 +1387,30 @@ class MonitorModuleIngestService:
         cloud = cls._extract_cloud_region_id(raw)
         name = cls._extract_name(raw, ip=ip)
         instance_id = cls._new_instance_id(node_id=node_id, raw=raw)
-
-        # 主键冲突时回退 uuid，避免与存量云区域+IP 实例撞车阻断推送
-        if MonitorInstance.objects.filter(id=instance_id).exists():
-            instance_id = uuid.uuid4().hex
+        occupied = MonitorInstance.objects.select_for_update().filter(id=instance_id).select_related("monitor_object").first()
+        if occupied:
+            if occupied.monitor_object_id != monitor_object.id:
+                raise ValueError("monitor instance id occupied")
+            instance = cls._update_instance(
+                occupied,
+                raw=raw,
+                node_id=node_id,
+                cmdb_id=cmdb_id,
+                operator=operator,
+                allowed_org_ids=allowed_org_ids,
+            )
+            instance = cls._notify_host_peers_after_write(
+                instance,
+                operator=operator,
+                allowed_org_ids=allowed_org_ids,
+            )
+            logger.info(
+                "[MonitorModuleIngest] reclaimed instance_id=%s node_id=%s cmdb_id=%s",
+                instance.id,
+                instance.node_id,
+                cmdb_id,
+            )
+            return instance
 
         instance = MonitorInstance.objects.create(
             id=instance_id,
@@ -1397,34 +1427,49 @@ class MonitorModuleIngestService:
         )
         org_ids = cls._normalize_org_ids(raw, allowed_org_ids)
         cls._bind_organizations(instance, org_ids, operator=operator)
-
-        # IoC：创建后通知节点 + CMDB（best-effort，异常不得影响本域创建）
-        if monitor_object.name == HOST_OBJECT_NAME:
-            try:
-                cls._best_effort_notify_peers_on_create(
-                    instance,
-                    operator=operator,
-                    allowed_org_ids=allowed_org_ids,
-                )
-                try:
-                    instance.refresh_from_db()
-                except Exception:
-                    logger.exception(
-                        "[MonitorModuleIngest] refresh after IoC hook failed instance_id=%s",
-                        instance.id,
-                    )
-            except Exception:
-                logger.exception(
-                    "[MonitorModuleIngest] post-create IoC hook failed instance_id=%s",
-                    instance.id,
-                )
-
+        instance = cls._notify_host_peers_after_write(
+            instance,
+            operator=operator,
+            allowed_org_ids=allowed_org_ids,
+        )
         logger.info(
             "[MonitorModuleIngest] created instance_id=%s node_id=%s cmdb_id=%s",
             instance.id,
             instance.node_id,
             cmdb_id,
         )
+        return instance
+
+    @classmethod
+    def _notify_host_peers_after_write(
+        cls,
+        instance: MonitorInstance,
+        *,
+        operator: str,
+        allowed_org_ids: list[int],
+    ) -> MonitorInstance:
+        """主机写入后通知节点 + CMDB，把本侧 monitor_id 成对回写。失败不阻断本域写入。"""
+        object_name = getattr(getattr(instance, "monitor_object", None), "name", None)
+        if object_name != HOST_OBJECT_NAME:
+            return instance
+        try:
+            cls._best_effort_notify_peers_on_create(
+                instance,
+                operator=operator,
+                allowed_org_ids=allowed_org_ids,
+            )
+            try:
+                instance.refresh_from_db()
+            except Exception:
+                logger.exception(
+                    "[MonitorModuleIngest] refresh after IoC hook failed instance_id=%s",
+                    instance.id,
+                )
+        except Exception:
+            logger.exception(
+                "[MonitorModuleIngest] post-write IoC hook failed instance_id=%s",
+                instance.id,
+            )
         return instance
 
     @classmethod
@@ -1435,7 +1480,7 @@ class MonitorModuleIngestService:
         operator: str,
         allowed_org_ids: list[int],
     ) -> None:
-        """监控主机新建钩子：通知节点（只关联）+ CMDB（create/update）。"""
+        """监控主机写入钩子：通知节点（只关联）+ CMDB（create/update，回写 monitor_id）。"""
         try:
             from apps.monitor.services.module_push import MonitorToCmdbPushService
 

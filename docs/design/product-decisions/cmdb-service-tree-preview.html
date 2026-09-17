@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CMDB 服务树 · 冻结前展示稿</title>
+  <style>
+    :root {
+      --color-primary: #155aef;
+      --color-primary-bg: #e8f0ff;
+      --color-background-body: #f4f6f8;
+      --color-bg: #ffffff;
+      --color-fill-1: #f7f8fa;
+      --color-fill-2: #f2f3f5;
+      --color-border: #e5e6eb;
+      --color-text-1: #1d2129;
+      --color-text-2: #4e5969;
+      --color-text-3: #86909c;
+      --color-text-4: #c9cdd4;
+      --color-success: #00b42a;
+      --color-fail: #f53f3f;
+      --color-warning: #ff7d00;
+      --shadow-modal: 0 8px 28px rgba(29, 33, 41, 0.12);
+      --z-backdrop: 30;
+      --z-modal: 40;
+      --z-toast: 50;
+      --tree-width: 280px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: var(--color-text-1);
+      background: var(--color-background-body);
+      line-height: 1.5;
+    }
+    button, input, select { font: inherit; }
+
+    .shell { display: grid; grid-template-rows: auto auto 1fr; height: 100%; }
+    .banner {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px; background: #1d2129; color: #f2f3f5;
+    }
+    .banner span { color: #c9cdd4; }
+    .banner-toggle { margin-left: auto; color: #c9cdd4; display: flex; align-items: center; gap: 8px; }
+    .banner-toggle input { accent-color: var(--color-primary); }
+    .crumb {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; background: var(--color-bg);
+      border-bottom: 1px solid var(--color-border); color: var(--color-text-2);
+    }
+    .crumb b { color: var(--color-text-1); }
+    .crumb .sep { color: var(--color-text-4); }
+
+    .page {
+      display: grid; grid-template-rows: auto 1fr;
+      min-height: 0; margin: 12px;
+      background: var(--color-bg); border: 1px solid var(--color-border);
+    }
+    .header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border-bottom: 1px solid var(--color-border);
+    }
+    .segmented { display: inline-flex; padding: 2px; background: var(--color-fill-2); }
+    .segmented button {
+      border: 0; background: transparent; color: var(--color-text-2);
+      padding: 4px 12px; cursor: pointer;
+    }
+    .segmented button[aria-selected="true"] {
+      background: var(--color-bg); color: var(--color-text-1); font-weight: 600;
+    }
+    .segmented button:focus-visible,
+    .btn:focus-visible, .tree-item:focus-visible {
+      outline: 2px solid var(--color-primary); outline-offset: 2px;
+    }
+    .toolbar { margin-left: auto; display: flex; gap: 8px; }
+    .btn {
+      border: 1px solid var(--color-border); background: var(--color-bg);
+      color: var(--color-text-1); padding: 4px 12px; cursor: pointer;
+    }
+    .btn:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+    .btn-primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+    .btn:disabled {
+      color: var(--color-text-4); background: var(--color-fill-1); cursor: not-allowed;
+    }
+
+    .workspace { display: grid; grid-template-columns: var(--tree-width) 1fr; min-height: 0; }
+    .tree-pane {
+      border-right: 1px solid var(--color-border);
+      display: grid; grid-template-rows: auto 1fr auto;
+      min-height: 0; background: var(--color-fill-1);
+    }
+    .tree-head {
+      padding: 10px 12px 8px; font-weight: 600;
+      border-bottom: 1px solid var(--color-border); background: var(--color-bg);
+    }
+    .tree-head small { display: block; font-weight: 400; color: var(--color-text-3); }
+    .tree { overflow: auto; padding: 8px 0 12px; }
+    .tree-item {
+      display: flex; align-items: center; gap: 6px;
+      width: 100%; border: 0; background: transparent;
+      padding: 6px 12px; cursor: pointer; text-align: left; color: var(--color-text-1);
+    }
+    .tree-item:hover { background: var(--color-fill-2); }
+    .tree-item.selected { background: var(--color-primary-bg); color: var(--color-primary); }
+    .tree-item .twist {
+      width: 14px; color: var(--color-text-3); flex: none;
+    }
+    .tree-item .dot {
+      width: 8px; height: 8px; border-radius: 50%; flex: none;
+    }
+    .dot.system { background: #155aef; }
+    .dot.group { background: #0f8a6a; }
+    .dot.app { background: #7a5af8; }
+    .count {
+      margin-left: auto; color: var(--color-text-3); font-size: 12px;
+    }
+    .tree-item.selected .count { color: var(--color-primary); }
+    .tree-foot {
+      padding: 8px 12px; color: var(--color-text-3); font-size: 12px;
+      border-top: 1px solid var(--color-border); background: var(--color-bg);
+    }
+    body.hide-notes .tree-foot { display: none; }
+
+    .main { display: grid; grid-template-rows: auto auto 1fr; min-height: 0; min-width: 0; }
+    .main-head {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 16px; border-bottom: 1px solid var(--color-border);
+    }
+    .main-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    .kind { color: var(--color-text-3); font-size: 12px; }
+    .path { color: var(--color-text-3); margin-top: 2px; }
+    .hint {
+      margin: 0; padding: 8px 16px;
+      background: var(--color-fill-1); color: var(--color-text-2);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .hint.warn { background: #fff7e8; color: #ad4e00; }
+    .list { overflow: auto; padding: 0 16px 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left; padding: 8px 0;
+      border-bottom: 1px solid var(--color-border); font-weight: 400;
+    }
+    th { color: var(--color-text-3); }
+    .tag {
+      display: inline-block; padding: 0 6px;
+      background: var(--color-fill-2); color: var(--color-text-2); font-size: 12px;
+    }
+    .tag.multi { background: #fff7e8; color: #ad4e00; }
+
+    .bands { display: none; padding: 16px 20px; gap: 12px; overflow: auto; }
+    .bands.show { display: grid; }
+    .band {
+      display: grid; grid-template-columns: 88px 1fr;
+      min-height: 88px; background: var(--color-fill-1);
+    }
+    .band h3 {
+      margin: 0; padding: 12px 10px; font-size: 12px; font-weight: 600;
+      color: var(--color-text-2); border-right: 1px solid var(--color-border);
+    }
+    .band .cards { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+    .card {
+      width: 168px; padding: 8px 10px;
+      background: var(--color-bg); border: 1px solid var(--color-border);
+    }
+    .card small { display: block; color: var(--color-text-3); font-size: 11px; }
+
+    .backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(29, 33, 41, 0.45); z-index: var(--z-backdrop);
+    }
+    .modal {
+      display: none; position: fixed; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(560px, calc(100vw - 32px));
+      background: var(--color-bg); box-shadow: var(--shadow-modal); z-index: var(--z-modal);
+    }
+    .modal.open, .backdrop.open { display: block; }
+    .modal header, .modal footer { padding: 12px 16px; }
+    .modal header {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--color-border); font-size: 16px; font-weight: 600;
+    }
+    .modal .close { border: 0; background: transparent; color: var(--color-text-3); cursor: pointer; font-size: 18px; }
+    .modal .body { padding: 16px; }
+    .modal footer {
+      display: flex; justify-content: flex-end; gap: 8px;
+      border-top: 1px solid var(--color-border);
+    }
+    label.field { display: grid; gap: 4px; margin-bottom: 12px; color: var(--color-text-2); }
+    input[type="text"], select {
+      width: 100%; border: 1px solid var(--color-border); padding: 6px 10px; background: var(--color-bg);
+    }
+    .sheet { width: 100%; font-size: 12px; }
+    .sheet th, .sheet td { border: 1px solid var(--color-border); padding: 6px 8px; }
+    .sheet th { background: var(--color-fill-2); }
+    .ok { color: var(--color-success); }
+    .miss { color: var(--color-fail); }
+    .toast {
+      position: fixed; right: 16px; bottom: 16px;
+      background: #1d2129; color: #fff; padding: 8px 12px;
+      z-index: var(--z-toast); opacity: 0; pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+    .toast.show { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="banner">
+      <strong>已确认展示 · 左树右表</strong>
+      <span>左侧只放系统 / 业务分组 / 应用。主机在右侧列表，避免多归属把图画乱。</span>
+      <label class="banner-toggle"><input id="notesToggle" type="checkbox" checked /> 显示设计说明</label>
+    </div>
+    <div class="crumb">
+      CMDB <span class="sep">/</span> 资产 <span class="sep">/</span> 应用系统
+      <span class="sep">/</span> <b>核心交易系统</span> <span class="sep">/</span> 关联关系
+    </div>
+    <div class="page">
+      <header class="header">
+        <div class="segmented" role="tablist">
+          <button type="button" disabled>列表</button>
+          <button type="button" disabled>拓扑</button>
+          <button type="button" role="tab" aria-selected="true" data-view="tree">服务树</button>
+          <button type="button" role="tab" aria-selected="false" data-view="bands">应用拓扑</button>
+        </div>
+        <div class="toolbar" id="treeToolbar">
+          <button class="btn" id="btnImport">导入</button>
+          <button class="btn" id="btnExport">导出</button>
+          <button class="btn" id="btnNewApp">新建应用</button>
+          <button class="btn" id="btnAssign" disabled>添加主机</button>
+          <button class="btn" id="btnTransfer" disabled>转移主机</button>
+          <button class="btn" id="btnUnbind" disabled>解除挂靠</button>
+        </div>
+      </header>
+      <div class="workspace" id="treeView">
+        <aside class="tree-pane">
+          <div class="tree-head">服务树<small>主机不进左树</small></div>
+          <div class="tree" id="tree" role="tree" aria-label="服务树"></div>
+          <div class="tree-foot" id="treeFoot">
+            点应用才出现添加/转移/解除挂靠。点系统或分组只能看汇总、建子节点。勾选哪些主机就操作哪些。
+          </div>
+        </aside>
+        <section class="main">
+          <div class="main-head">
+            <div>
+              <div class="kind" id="kind">应用系统</div>
+              <h2 id="title">核心交易系统</h2>
+              <div class="path" id="path">核心交易系统</div>
+            </div>
+          </div>
+          <p class="hint" id="hint"></p>
+          <div class="list" id="list"></div>
+        </section>
+      </div>
+      <div class="bands" id="bands">
+        <div class="band"><h3>系统层</h3><div class="cards"><div class="card"><small>应用系统</small><b>核心交易系统</b></div></div></div>
+        <div class="band"><h3>服务层</h3><div class="cards">
+          <div class="card"><small>应用</small><b>支付核心</b></div>
+          <div class="card"><small>应用</small><b>清算服务</b></div>
+          <div class="card"><small>应用</small><b>对账服务</b></div>
+          <div class="card"><small>业务分组不会单独成层</small><b>支付域 / 清算组会混进这一带</b></div>
+        </div></div>
+        <div class="band"><h3>主机层</h3><div class="cards">
+          <div class="card"><small>主机</small><b>pay-app-01</b></div>
+          <div class="card"><small>主机</small><b>pay-db-01</b></div>
+          <div class="card"><small>主机</small><b>recon-01</b></div>
+          <div class="card"><small>主机</small><b>pay-batch-01</b></div>
+        </div></div>
+        <div class="band"><h3>应用服务</h3><div class="cards">
+          <div class="card"><small>MySQL</small><b>pay-mysql</b></div>
+          <div class="card"><small>Nginx</small><b>pay-nginx</b></div>
+        </div></div>
+        <div class="band"><h3>基础设施</h3><div class="cards">
+          <div class="card"><small>机柜</small><b>A-12</b></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="backdrop" id="backdrop"></div>
+  <div class="modal" id="assignModal">
+    <header>添加主机<button class="close" data-close>×</button></header>
+    <div class="body">
+      <p class="hint">只给当前应用加边。主机必须已存在；其它应用上的挂靠不动。</p>
+      <label class="field">目标应用<input id="assignApp" type="text" readonly /></label>
+      <label class="field">选择已有主机
+        <select>
+          <option>pay-idle-01 · 10.0.12.18</option>
+          <option>db-spare-02 · 10.0.12.44</option>
+        </select>
+      </label>
+    </div>
+    <footer>
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" id="confirmAssign">添加</button>
+    </footer>
+  </div>
+  <div class="modal" id="transferModal">
+    <header>转移主机<button class="close" data-close>×</button></header>
+    <div class="body">
+      <p class="hint warn">只拆当前应用上的边。目标可以是其它系统下的应用；其它挂靠保留。</p>
+      <label class="field">当前应用<input id="transferFrom" type="text" readonly /></label>
+      <label class="field">主机<select id="transferHost"></select></label>
+      <label class="field">目标应用
+        <select>
+          <option>本系统 · 对账服务</option>
+          <option>本系统 · 清算服务</option>
+          <option>资金系统 · 结算网关</option>
+        </select>
+      </label>
+    </div>
+    <footer>
+      <button class="btn" data-close>取消</button>
+      <button class="btn btn-primary" id="confirmTransfer">转移</button>
+    </footer>
+  </div>
+  <div class="modal" id="importModal" style="width:min(820px, calc(100vw - 32px))">
+    <header>服务树导入<button class="close" data-close>×</button></header>
+    <div class="body">
+      <p class="hint">一行 = 已有主机 + 路径。空分组列 = 应用直挂系统。缺分组/应用则创建，主机对不上该行失败。</p>
+      <table class="sheet">
+        <thead>
+          <tr><th>应用系统</th><th>业务分组</th><th>二级分组</th><th>应用</th><th>主机标识</th><th>结果</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>核心交易系统</td><td>支付域</td><td></td><td>支付核心</td><td>10.0.12.8</td><td class="ok">分配到已有主机</td></tr>
+          <tr><td>核心交易系统</td><td>支付域</td><td>清算组</td><td>清算服务</td><td>10.0.12.21</td><td class="ok">创建「清算组」并分配</td></tr>
+          <tr><td>核心交易系统</td><td></td><td></td><td>对账服务</td><td>10.0.12.9</td><td class="ok">应用直挂系统</td></tr>
+          <tr><td>核心交易系统</td><td>支付域</td><td></td><td>支付核心</td><td>10.0.99.1</td><td class="miss">主机不存在，该行失败</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <footer><button class="btn" data-close>关闭</button></footer>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const nodes = [
+      { id: "sys", type: "system", name: "核心交易系统", parent: null },
+      { id: "pay", type: "group", name: "支付域", parent: "sys" },
+      { id: "clear", type: "group", name: "清算组", parent: "pay" },
+      { id: "clearApp", type: "app", name: "清算服务", parent: "clear" },
+      { id: "payCore", type: "app", name: "支付核心", parent: "pay" },
+      { id: "recon", type: "app", name: "对账服务", parent: "sys" }
+    ];
+    const hosts = [
+      { id: "h1", name: "pay-batch-01", ip: "10.0.12.21", apps: ["clearApp"] },
+      { id: "h2", name: "pay-app-01", ip: "10.0.12.8", apps: ["payCore"] },
+      { id: "h3", name: "pay-db-01", ip: "10.0.12.9", apps: ["payCore", "recon"] },
+      { id: "h4", name: "recon-01", ip: "10.0.12.33", apps: ["recon"] }
+    ];
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+    const kindLabel = { system: "应用系统", group: "业务分组", app: "应用" };
+    let selected = "sys";
+
+    function childrenOf(id) { return nodes.filter((n) => n.parent === id); }
+    function hostsOf(appId) { return hosts.filter((h) => h.apps.includes(appId)); }
+    function descendantApps(id) {
+      const n = byId[id];
+      if (n.type === "app") return [n];
+      return childrenOf(id).flatMap((c) => descendantApps(c.id));
+    }
+    function descendantHosts(id) {
+      const acc = descendantApps(id).flatMap((a) => hostsOf(a.id));
+      return [...new Map(acc.map((h) => [h.id, h])).values()];
+    }
+    function pathOf(id) {
+      const parts = [];
+      let cur = byId[id];
+      while (cur) { parts.unshift(cur.name); cur = cur.parent ? byId[cur.parent] : null; }
+      return parts.join(" / ");
+    }
+    function depthOf(id) {
+      let d = 0, cur = byId[id];
+      while (cur.parent) { d += 1; cur = byId[cur.parent]; }
+      return d;
+    }
+    function isNestedGroup(n) {
+      return n.type === "group" && n.parent && byId[n.parent].type === "group";
+    }
+
+    function renderTree() {
+      const root = document.getElementById("tree");
+      const walk = (id) => {
+        const n = byId[id];
+        const kids = childrenOf(id);
+        const hostCount = descendantHosts(id).length;
+        const pad = 12 + depthOf(id) * 16;
+        const twist = kids.length ? "▾" : "";
+        return `
+          <button class="tree-item${selected === id ? " selected" : ""}" data-id="${id}" role="treeitem" aria-selected="${selected === id}">
+            <span style="padding-left:${pad}px;display:flex;align-items:center;gap:6px;width:100%">
+              <span class="twist">${twist}</span>
+              <span class="dot ${n.type}"></span>
+              <span>${n.name}</span>
+              <span class="count">${n.type === "app" ? hostsOf(id).length + " 台" : hostCount + " 台"}</span>
+            </span>
+          </button>
+          ${kids.map((c) => walk(c.id)).join("")}
+        `;
+      };
+      root.innerHTML = walk("sys");
+      root.querySelectorAll(".tree-item").forEach((el) => {
+        el.addEventListener("click", () => select(el.dataset.id));
+      });
+    }
+
+    function hostTable(rows, showApp) {
+      if (!rows.length) return `<p class="kind">还没有主机。选中应用后用「添加主机」挂上已有主机。</p>`;
+      return `
+        <table>
+          <thead><tr><th>主机</th><th>IP</th>${showApp ? "<th>挂在</th>" : "<th>归属</th>"}</tr></thead>
+          <tbody>
+            ${rows.map((h) => `
+              <tr>
+                <td>${h.name}</td>
+                <td>${h.ip}</td>
+                <td>${showApp
+                  ? h.apps.map((a) => byId[a].name).join("、")
+                  : (h.apps.length > 1 ? '<span class="tag multi">还挂着其它应用</span>' : '<span class="tag">仅本应用</span>')}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+    }
+
+    function renderMain() {
+      const n = byId[selected];
+      document.getElementById("kind").textContent = kindLabel[n.type];
+      document.getElementById("title").textContent = n.name;
+      document.getElementById("path").textContent = pathOf(n.id);
+      const canNewApp = n.type === "system" || n.type === "group";
+      document.getElementById("btnNewApp").disabled = !canNewApp;
+      document.getElementById("btnAssign").disabled = n.type !== "app";
+      document.getElementById("btnTransfer").disabled = n.type !== "app" || hostsOf(n.id).length === 0;
+      document.getElementById("btnUnbind").disabled = n.type !== "app" || hostsOf(n.id).length === 0;
+
+      if (n.type === "app") {
+        document.getElementById("hint").textContent = "应用才是主机挂载点。添加把其它主机挂上来；勾选后可转移或解除挂靠。转移只换当前这条边，可跨系统。";
+        document.getElementById("list").innerHTML = hostTable(hostsOf(n.id), false);
+      } else {
+        const kids = childrenOf(n.id);
+        const nested = isNestedGroup(n);
+        document.getElementById("hint").textContent = n.type === "group"
+          ? (nested ? "已是二级分组，不能再套一层。其下主机只读汇总。" : "分组管结构。要挂主机，点到具体应用。")
+          : "系统/分组管结构。右侧是子节点和其下主机汇总，不能在这里分配。";
+        document.getElementById("list").innerHTML = `
+          <table>
+            <thead><tr><th>子节点</th><th>类型</th><th>其下主机</th></tr></thead>
+            <tbody>
+              ${kids.map((k) => `<tr><td>${k.name}</td><td>${kindLabel[k.type]}</td><td>${descendantHosts(k.id).length}</td></tr>`).join("")}
+            </tbody>
+          </table>
+          <p class="kind" style="margin:16px 0 8px">其下主机（去重，只读）</p>
+          ${hostTable(descendantHosts(n.id), true)}
+        `;
+      }
+    }
+
+    function select(id) {
+      selected = id;
+      renderTree();
+      renderMain();
+    }
+
+    function toast(text) {
+      const el = document.getElementById("toast");
+      el.textContent = text;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 2200);
+    }
+    function openModal(id) {
+      document.getElementById("backdrop").classList.add("open");
+      document.getElementById(id).classList.add("open");
+    }
+    function closeModal() {
+      document.getElementById("backdrop").classList.remove("open");
+      document.querySelectorAll(".modal").forEach((el) => el.classList.remove("open"));
+    }
+
+    document.getElementById("notesToggle").addEventListener("change", (e) => {
+      document.body.classList.toggle("hide-notes", !e.target.checked);
+    });
+    document.querySelectorAll(".segmented [role=tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tree = btn.dataset.view === "tree";
+        document.querySelectorAll(".segmented [role=tab]").forEach((b) => {
+          b.setAttribute("aria-selected", b === btn ? "true" : "false");
+        });
+        document.getElementById("treeView").style.display = tree ? "grid" : "none";
+        document.getElementById("bands").classList.toggle("show", !tree);
+        document.getElementById("treeToolbar").style.display = tree ? "flex" : "none";
+      });
+    });
+    document.getElementById("btnImport").addEventListener("click", () => openModal("importModal"));
+    document.getElementById("btnExport").addEventListener("click", () => toast("导出当前节点子树：同一套路径列。"));
+    document.getElementById("btnNewApp").addEventListener("click", () => toast("在当前节点下新建应用。可直挂系统。"));
+    document.getElementById("btnAssign").addEventListener("click", () => {
+      document.getElementById("assignApp").value = byId[selected].name;
+      openModal("assignModal");
+    });
+    document.getElementById("btnTransfer").addEventListener("click", () => {
+      document.getElementById("transferFrom").value = byId[selected].name;
+      document.getElementById("transferHost").innerHTML = hostsOf(selected)
+        .map((h) => `<option>${h.name} · ${h.ip}${h.apps.length > 1 ? " · 还挂着其它应用" : ""}</option>`)
+        .join("");
+      openModal("transferModal");
+    });
+    document.getElementById("btnUnbind").addEventListener("click", () => {
+      toast("将解除勾选主机与当前应用的挂靠。主机资产和其它应用挂靠保留。");
+    });
+    document.getElementById("confirmAssign").addEventListener("click", () => { closeModal(); toast("已分配。其它应用上的边还在。"); });
+    document.getElementById("confirmTransfer").addEventListener("click", () => { closeModal(); toast("已从当前应用摘下并挂到目标应用。其它挂靠未动。"); });
+    document.getElementById("backdrop").addEventListener("click", closeModal);
+    document.querySelectorAll("[data-close]").forEach((btn) => btn.addEventListener("click", closeModal));
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+    renderTree();
+    renderMain();
+  </script>
+</body>
+</html>

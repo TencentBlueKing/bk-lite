@@ -36,14 +36,37 @@ def _policy(**kwargs):
 
 
 def _mq(metric=None, **kwargs):
+    default_agg = {"data": {"result": []}}
+    comparison = kwargs.get("comparison", kwargs.get("agg", default_agg))
+    existence = kwargs.get("existence", comparison)
+    formatted_override = kwargs["formatted"] if "formatted" in kwargs else None
+
+    def format_aggregation_metrics(data):
+        if formatted_override is not None:
+            return formatted_override
+        result = {}
+        for item in (data or {}).get("data", {}).get("result", []):
+            instance_id = str(((item.get("metric") or {}).get("instance_id"),))
+            values = item.get("values") or []
+            if not values:
+                continue
+            result[instance_id] = {
+                "value": float(values[-1][1]),
+                "raw_data": item,
+            }
+        return result
+
     m = SimpleNamespace(
         metric=metric,
-        query_aggregation_metrics=lambda period, points=1: kwargs.get("agg", {"data": {"result": []}}),
+        query_comparison_metrics=lambda period, points=1: comparison,
+        query_existence_metrics=lambda period, points=1: existence,
         convert_metric_values=lambda data: data,
-        format_aggregation_metrics=lambda data: kwargs.get("formatted", {}),
+        format_aggregation_metrics=format_aggregation_metrics,
         get_display_unit=lambda: kwargs.get("display_unit", ""),
         get_enum_value_map=lambda: kwargs.get("enum_map", {}),
         convert_thresholds=lambda thresholds: thresholds,
+        query_overlay_last_values=lambda: ({}, {}),
+        get_source_display_unit=lambda: kwargs.get("display_unit", ""),
     )
     return m
 
@@ -57,7 +80,7 @@ class TestDetectThresholdAlerts:
             _policy(), {"('h1',)": "主机1"}, {}, [],
             _mq(agg=agg),
         )
-        alerts, infos = detector.detect_threshold_alerts()
+        alerts, infos, holds = detector.detect_threshold_alerts()
         assert len(alerts) == 1
         assert alerts[0]["level"] == "critical"
         assert alerts[0]["value"] == 95.0
@@ -72,10 +95,26 @@ class TestDetectThresholdAlerts:
             _policy(), {"('h1',)": "主机1"}, {}, [],
             _mq(agg=agg),
         )
-        alerts, infos = detector.detect_threshold_alerts()
+        alerts, infos, holds = detector.detect_threshold_alerts()
         assert alerts == []
+        assert holds == []
         assert len(infos) == 1
         assert infos[0]["level"] == "info"
+
+    def test_hysteresis_band_yields_hold(self):
+        agg = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}, "values": [[100, "75"]]},
+        ]}}
+        detector = AlertDetector(
+            _policy(recovery_threshold={"method": "<", "value": 70}),
+            {"('h1',)": "主机1"}, {}, [],
+            _mq(agg=agg),
+        )
+        alerts, infos, holds = detector.detect_threshold_alerts()
+        assert alerts == []
+        assert infos == []
+        assert len(holds) == 1
+        assert holds[0]["level"] == "hold"
 
     def test_filters_events_outside_scope(self, mocker):
         agg = {"data": {"result": [
@@ -87,7 +126,7 @@ class TestDetectThresholdAlerts:
             _policy(), {"('h1',)": "主机1"}, {}, [],
             _mq(agg=agg),
         )
-        alerts, infos = detector.detect_threshold_alerts()
+        alerts, infos, holds = detector.detect_threshold_alerts()
         ids = {a["metric_instance_id"] for a in alerts}
         assert ids == {"('h1',)"}
 
@@ -116,7 +155,7 @@ class TestDetectThresholdAlerts:
             parent_instances_map={"('cluster-a',)": "生产集群"},
         )
 
-        alerts, _ = detector.detect_threshold_alerts()
+        alerts, _, _ = detector.detect_threshold_alerts()
 
         assert alerts[0]["monitor_instance_id"] == "('cluster-a', 'orders-7f9')"
         assert alerts[0]["content"] == "生产集群/orders-7f9 超阈值"
@@ -225,6 +264,54 @@ class TestDetectNoDataAlerts:
         assert events[0]["monitor_instance_id"] == child_id
         assert events[0]["content"] == "生产集群/orders-7f9 无数据"
 
+    @pytest.mark.django_db
+    def test_count_if_zero_match_row_is_info_not_no_data_and_increments_recovery(self):
+        comparison = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}, "values": [[100, "0"]]},
+        ]}}
+        existence = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
+        ]}}
+        alert = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="('h1',)",
+            metric_instance_id="('h1',)",
+            alert_type="alert", status="new", info_event_count=2,
+        )
+        detector = AlertDetector(
+            _policy(
+                algorithm="count_if_over_time",
+                threshold=[{"method": ">", "value": 5, "level": "warning"}],
+            ),
+            {"('h1',)": "主机1"},
+            {"('h1',)": "('h1',)"},
+            [alert],
+            _mq(comparison=comparison, existence=existence),
+        )
+        alerts, infos, holds = detector.detect_threshold_alerts()
+        assert alerts == []
+        assert holds == []
+        assert len(infos) == 1
+        assert infos[0]["value"] in (0, 0.0, "0")
+        assert detector.detect_no_data_alerts() == []
+        detector.count_events(alerts, infos)
+        alert.refresh_from_db()
+        assert alert.info_event_count == 3
+
+    def test_missing_comparison_does_not_report_no_data(self):
+        existence = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
+        ]}}
+        comparison = {"data": {"result": []}}
+        detector = AlertDetector(
+            _policy(), {"('h1',)": "主机1"}, {"('h1',)": "('h1',)"}, [],
+            _mq(comparison=comparison, existence=existence),
+        )
+        alerts, infos, holds = detector.detect_threshold_alerts()
+        assert alerts == []
+        assert infos == []
+        assert holds == []
+        assert detector.detect_no_data_alerts() == []
+
 
 class TestBuildDimensionNameMap:
     def test_no_metric_returns_empty(self):
@@ -263,6 +350,16 @@ class TestCountEvents:
         a2.refresh_from_db()
         assert a1.info_event_count == 1   # 命中 info → +1
         assert a2.info_event_count == 0   # 命中 alert → 清零
+
+    def test_hold_does_not_change_info_count(self):
+        a1 = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="alert", status="new", info_event_count=2,
+        )
+        detector = AlertDetector(_policy(), {}, {}, [a1], _mq())
+        detector.count_events([], [])
+        a1.refresh_from_db()
+        assert a1.info_event_count == 2
 
 
 @pytest.mark.django_db

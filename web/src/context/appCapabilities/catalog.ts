@@ -3,6 +3,9 @@ export const APP_CAPABILITY_LOADERS = {
   cmdb: () => import('@/app/cmdb/capability'),
   monitor: () => import('@/app/monitor/capability'),
   'ops-analysis': () => import('@/app/ops-analysis/capability'),
+  log: () => import('@/app/log/capability'),
+  node: () => import('@/app/node-manager/capability'),
+  apm: () => import('@/app/apm/capability'),
 } as const;
 
 export type AppCapabilityName = keyof typeof APP_CAPABILITY_LOADERS;

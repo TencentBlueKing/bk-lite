@@ -65,6 +65,44 @@ export function asCollectorStatusList(
   return Array.isArray(collectors) ? collectors : [];
 }
 
+export function collectorDisplayName(collector?: {
+  name?: unknown;
+  collector_name?: unknown;
+  collector?: unknown;
+} | null): string {
+  return String(
+    collector?.collector_name || collector?.name || collector?.collector || ''
+  ).trim();
+}
+
+export function parseCollectorQueryNames(value?: string | null): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const part of String(value || '').split(',')) {
+    const name = part.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
+export function isSameCollectorName(
+  collector: {
+    name?: unknown;
+    collector_name?: unknown;
+    collector?: unknown;
+  },
+  names: string | string[]
+): boolean {
+  const current = collectorDisplayName(collector).toLowerCase();
+  if (!current) return false;
+  const targets = Array.isArray(names) ? names : parseCollectorQueryNames(names);
+  return targets.some((name) => name.toLowerCase() === current);
+}
+
 export function isExecutorCollector(collector: {
   collector_id?: unknown;
   id?: unknown;
@@ -126,31 +164,54 @@ export function filterCollectorsForOperationType<
 export interface CollectorOperationSelectGroup {
   label: string;
   title: string;
-  options: Array<{ label: string; value: string }>;
+  options: Array<{
+    label: string;
+    value: string;
+    disabled?: boolean;
+    title?: string;
+  }>;
 }
 
 export function groupCollectorsForOperationSelect(
-  collectors: Array<{ id: string; name: string }>,
-  getLabelKey: (name: string) => string | undefined
+  collectors: Array<{
+    id: string;
+    name: string;
+    latest_package_version?: string;
+  }>,
+  getLabelKey: (name: string) => string | undefined,
+  selectOptions?: { requirePackage?: boolean; missingPackageHint?: string }
 ): CollectorOperationSelectGroup[] {
-  const options: CollectorOperationSelectGroup[] = [];
+  const groups: CollectorOperationSelectGroup[] = [];
   collectors.forEach((item) => {
     const tag =
       getLabelKey(item.name) ||
       (isExecutorCollector(item) ? 'Executor' : item.name);
-    const option = { label: item.name, value: item.id };
-    const tagIndex = options.findIndex((group) => group.title === tag);
+    const option: {
+      label: string;
+      value: string;
+      disabled?: boolean;
+      title?: string;
+    } = {
+      label: item.name,
+      value: item.id
+    };
+    if (selectOptions?.requirePackage) {
+      const missingPackage = !item.latest_package_version;
+      option.disabled = missingPackage;
+      option.title = missingPackage ? selectOptions.missingPackageHint : undefined;
+    }
+    const tagIndex = groups.findIndex((group) => group.title === tag);
     if (tagIndex >= 0) {
-      options[tagIndex].options.push(option);
+      groups[tagIndex].options.push(option);
       return;
     }
-    options.push({
+    groups.push({
       label: tag,
       title: tag,
       options: [option]
     });
   });
-  return options;
+  return groups;
 }
 
 export function applyConfigFormValues(
@@ -169,4 +230,43 @@ export function applyConfigFormValues(
     formInstance.setFieldsValue(values);
   }
   return true;
+}
+
+export interface CollectorPackStatusTag {
+  name: string;
+  color: string;
+  tooltip: string;
+}
+
+type Translate = (
+  key: string,
+  fallback?: string,
+  values?: Record<string, string | number>
+) => string;
+
+export function buildCollectorPackStatusTag(
+  version: string | null | undefined,
+  t: Translate,
+  options?: { pinnedVersion?: string | null }
+): CollectorPackStatusTag {
+  const packVersion = String(version || '').trim();
+  const pinnedVersion = String(options?.pinnedVersion || '').trim();
+  if (packVersion) {
+    return {
+      name: packVersion,
+      color: 'blue',
+      tooltip: pinnedVersion
+        ? t('node-manager.packetManage.pinnedPackHint', '', {
+          version: pinnedVersion
+        })
+        : t('node-manager.packetManage.importedPackHint', '', {
+          version: packVersion
+        })
+    };
+  }
+  return {
+    name: t('node-manager.packetManage.missingPack'),
+    color: 'warning',
+    tooltip: t('node-manager.packetManage.missingPackHint')
+  };
 }

@@ -33,6 +33,8 @@
         name = "source"
         is_tag = true
 
+    # Chassis IF pattern: ifXTable 64-bit HC only. Do not expand ifInErrors,
+    # ifOperStatus, or 32-bit octet counters.
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
@@ -47,3 +49,104 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+    # CPU current-interval average (PEN 2879, table by CE+CPU) → cpu_usage_percent / device_cpu_usage, direct %.
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2879.2.8.5.1.17.1.3"
+        name = "usage"
+
+    # Memory current-interval average (PEN 2879, table by CE) → memory_usage_percent / device_memory_usage, direct %.
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2879.2.8.5.1.19.1.2"
+        name = "usage"
+
+    # Optional PSU present / power-fault (PEN 2879, TruthValue true=1 false=2).
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2879.2.8.5.1.8.1.3"
+        name = "present"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2879.2.8.5.1.8.1.16"
+        name = "fault"
+
+    # Optional fan speed (PEN 2879, DisplayString RPM) → device_fan_speed.
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2879.2.8.5.1.7.1.3"
+        name = "speed"
+
+    # Optional disk status (PEN 2879, online=1 missing=2 failed=3 unknown=4).
+    [[inputs.snmp.table]]
+        name = "device_disk"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2879.2.8.5.1.5.1.7"
+        name = "state"
+
+# Absent PSU rows (present != true) are dropped. present=true and fault=false → 1 healthy;
+# present=true and fault=true or unknown → 2 fault.
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    present = metric.fields.get("present")
+    if present == None:
+        return None
+    present_text = str(present).split(".")[0]
+    if present_text != "1":
+        return None
+    fault = metric.fields.get("fault")
+    fault_text = "" if fault == None else str(fault).split(".")[0]
+    if fault_text == "2":
+        metric.fields["state"] = 1
+    else:
+        metric.fields["state"] = 2
+    return metric
+'''
+
+# Fan speed is a DisplayString RPM reading; keep the leading integer.
+[[processors.starlark]]
+    namepass = ["device_fan"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("speed")
+    if raw == None:
+        return None
+    text = str(raw).strip()
+    n = 0
+    seen = False
+    for ch in text:
+        if ch >= "0" and ch <= "9":
+            n = n * 10 + int(ch)
+            seen = True
+        elif seen:
+            break
+    if not seen:
+        return None
+    metric.fields["speed"] = n
+    return metric
+'''
+
+# Disk status: online(1) → 1 healthy; missing/failed/unknown/other → 2 fault.
+[[processors.enum]]
+    namepass = ["device_disk"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

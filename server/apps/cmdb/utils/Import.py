@@ -520,10 +520,12 @@ class Import:
         return result, asso_key_map
 
     def get_check_attr_map(self):
+        from apps.cmdb.services.module_ingest import is_unique_identity_attr
+
         check_attr_map = dict(is_only={}, is_required={}, editable={})
         unique_ctx = build_unique_rule_context(self.model_id)
         for attr in self.attrs:
-            if attr.get(ModelConstraintKey.unique.value, False):
+            if is_unique_identity_attr(attr):
                 check_attr_map[ModelConstraintKey.unique.value][attr["attr_id"]] = attr["attr_name"]
             if attr.get(ModelConstraintKey.required.value, False):
                 check_attr_map[ModelConstraintKey.required.value][attr["attr_id"]] = attr["attr_name"]

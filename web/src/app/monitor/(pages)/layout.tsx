@@ -16,15 +16,17 @@ export default function RootMonitor({
   // 满足 Next 对 CSR bailout 的边界要求，避免日后 prerender 范围扩大时 build 突然失败。
   return (
     <CommonProvider>
-      <Suspense
-        fallback={
-          <div className="w-full h-full flex items-center justify-center">
-            <Spin size="large" />
-          </div>
-        }
-      >
-        {children}
-      </Suspense>
+      <div className="flex h-full min-h-0 w-full flex-1 flex-col">
+        <Suspense
+          fallback={
+            <div className="flex h-full w-full items-center justify-center">
+              <Spin size="large" />
+            </div>
+          }
+        >
+          {children}
+        </Suspense>
+      </div>
     </CommonProvider>
   );
 }

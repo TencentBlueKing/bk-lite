@@ -78,11 +78,7 @@ class RiskViewSet(AuthViewSet):
         target_ids = set(
             access.queryset("View").values_list("id", flat=True)
         )
-        items = [
-            item
-            for item in compute_risk_items()
-            if item.host_id in target_ids
-        ]
+        items = compute_risk_items(target_ids)
         operable_target_ids = set(
             access.queryset("Operate").values_list("id", flat=True)
         )

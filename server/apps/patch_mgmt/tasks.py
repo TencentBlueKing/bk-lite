@@ -15,7 +15,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -27,25 +27,45 @@ ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 
 
 @shared_task(max_retries=0)
-def check_patch_source_connectivity(source_id: int) -> None:
+def check_patch_source_connectivity(source_id: int, revision: int | None = None) -> None:
     """补丁源连通性探测 Celery 入口。
 
     执行真实 HTTP 探测（connectivity_prober.probe_source）：
       - 有 URL：探测可达性 → record_connectivity_result 写回 CONNECTED/FAILED。
       - 无 URL：无法探测 → 重置为 UNKNOWN。
+      - 无 revision 且当前配置版本 > 0：fail-closed，不覆盖更新后的 UNKNOWN。
 
     Args:
         source_id: PatchSource.pk
+        revision: 排队时的配置版本；旧任务可省略。
     """
     from apps.patch_mgmt.models import PatchSource
     from apps.patch_mgmt.services.connectivity_prober import probe_source
     from apps.patch_mgmt.services.source_sync_service import SourceSyncService
 
-    logger.info("[check_patch_source_connectivity] 开始: source_id=%s", source_id)
+    logger.info("[check_patch_source_connectivity] 开始: source_id=%s revision=%s", source_id, revision)
     try:
         source = PatchSource.objects.get(pk=source_id)
     except PatchSource.DoesNotExist:
         logger.error("[check_patch_source_connectivity] 补丁源不存在: source_id=%s", source_id)
+        return
+
+    if revision is None:
+        if source.connectivity_revision > 0:
+            logger.info(
+                "[check_patch_source_connectivity] 跳过无版本的旧探测: source_id=%s current_revision=%s",
+                source_id,
+                source.connectivity_revision,
+            )
+            return
+        revision = source.connectivity_revision
+    elif revision != source.connectivity_revision:
+        logger.info(
+            "[check_patch_source_connectivity] 跳过过期探测: source_id=%s task_revision=%s current_revision=%s",
+            source_id,
+            revision,
+            source.connectivity_revision,
+        )
         return
 
     result = probe_source(source)
@@ -59,7 +79,7 @@ def check_patch_source_connectivity(source_id: int) -> None:
         )
         return
 
-    SourceSyncService.record_connectivity_result(source, reachable=result.reachable)
+    SourceSyncService.record_connectivity_result(source, reachable=result.reachable, revision=revision)
     logger.info(
         "[check_patch_source_connectivity] 探测完成: source_id=%s name=%s %s",
         source_id,
@@ -337,8 +357,8 @@ def reconcile_assessment_notification_deliveries() -> None:
             logger.exception("补偿通知任务投递到 broker 失败 delivery=%s", delivery_id)
 
 
-@shared_task(max_retries=0)
-def execute_governance_task(task_id: int) -> None:
+@shared_task(bind=True, max_retries=5)
+def execute_governance_task(self, task_id: int) -> None:
     """启动治理父任务，并将每台主机拆成独立 Celery 子任务。"""
     from apps.patch_mgmt.config import CHAIN_TIMEOUT, get_host_task_limits
     from apps.patch_mgmt.constants import GovernanceTaskStatus
@@ -348,9 +368,17 @@ def execute_governance_task(task_id: int) -> None:
 
     try:
         task = GovernanceTask.objects.get(pk=task_id)
-    except GovernanceTask.DoesNotExist:
-        logger.error("[execute_governance_task] 任务不存在: task_id=%s", task_id)
-        return
+    except GovernanceTask.DoesNotExist as exc:
+        try:
+            logger.debug(
+                "[execute_governance_task] 任务暂不可见，将重试: task_id=%s retries=%s",
+                task_id,
+                self.request.retries,
+            )
+            raise self.retry(exc=exc, countdown=1) from exc
+        except MaxRetriesExceededError:
+            logger.error("[execute_governance_task] 任务不存在: task_id=%s", task_id)
+            return
 
     reconcile_stale_history(limit=1000, target_ids=task.target_list)
     task.refresh_from_db()
@@ -714,6 +742,53 @@ def probe_target_connectivity(target_id: int) -> None:
     )
 
 
+_REBOOT_RECOVERING_STAGE = "reboot_recovering"
+_REBOOT_RECOVERING_LEASE = timedelta(seconds=180)
+
+
+def _recycle_expired_reboot_recovering_leases(now) -> None:
+    from apps.patch_mgmt.constants import GovernanceTaskType
+    from apps.patch_mgmt.models import GovernanceTaskHost
+
+    cutoff = now - _REBOOT_RECOVERING_LEASE
+    GovernanceTaskHost.objects.filter(
+        stage=_REBOOT_RECOVERING_STAGE,
+        task__task_type=GovernanceTaskType.REBOOT,
+    ).filter(Q(last_heartbeat_at__isnull=True) | Q(last_heartbeat_at__lte=cutoff)).update(stage="pending_reboot")
+
+
+def _claim_pending_reboot_host(host, now) -> bool:
+    from apps.patch_mgmt.models import GovernanceTaskHost
+
+    return bool(
+        GovernanceTaskHost.objects.filter(pk=host.pk, stage="pending_reboot").update(
+            stage=_REBOOT_RECOVERING_STAGE,
+            last_heartbeat_at=now,
+        )
+    )
+
+
+def _release_reboot_recovering_claim(host) -> None:
+    from apps.patch_mgmt.models import GovernanceTaskHost
+
+    GovernanceTaskHost.objects.filter(pk=host.pk, stage=_REBOOT_RECOVERING_STAGE).update(stage="pending_reboot")
+
+
+def _existing_reboot_verify_task(host):
+    from apps.patch_mgmt.constants import GovernanceTaskType
+    from apps.patch_mgmt.models import GovernanceTask
+
+    return (
+        GovernanceTask.objects.filter(
+            task_type=GovernanceTaskType.VERIFY,
+            parent_task=host.task,
+            host_results__target_id=host.target_id,
+        )
+        .order_by("id")
+        .first()
+    )
+
+
 @shared_task(max_retries=0)
 def verify_pending_reboot_hosts() -> None:
     """扫描 pending_reboot 状态的 reboot 任务主机，探测连通性后自动创建验证任务。
@@ -721,12 +796,13 @@ def verify_pending_reboot_hosts() -> None:
     由 CELERY_BEAT_SCHEDULE 每 60 秒触发一次。只处理 task_type=reboot 的主机
     （install 的 pending_reboot 表示等待用户触发重启，不在此处理）。
     """
-    from datetime import timedelta
-
     from apps.patch_mgmt.config import REBOOT_VERIFY_MAX_WAIT
     from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
     from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
     from apps.patch_mgmt.services.patch_execution_service import _check_host_reachable, _finalize_task_status, _read_boot_marker
+
+    now = timezone.now()
+    _recycle_expired_reboot_recovering_leases(now)
 
     pending_hosts = GovernanceTaskHost.objects.filter(
         stage="pending_reboot",
@@ -741,7 +817,6 @@ def verify_pending_reboot_hosts() -> None:
         pending_hosts.count(),
     )
 
-    now = timezone.now()
     max_wait = timedelta(seconds=REBOOT_VERIFY_MAX_WAIT)
     min_wait = timedelta(seconds=60)  # reboot 命令发出后至少等 60 秒再探测
 
@@ -775,74 +850,110 @@ def verify_pending_reboot_hosts() -> None:
             _finalize_task_status(host.task)
             continue
 
+        if not _claim_pending_reboot_host(host, now):
+            continue
+
+        recovered = False
+        created_verify_id = None
         try:
-            target = PatchTarget.objects.get(pk=host.target_id)
-        except PatchTarget.DoesNotExist:
-            continue
+            try:
+                target = PatchTarget.objects.get(pk=host.target_id)
+            except PatchTarget.DoesNotExist:
+                continue
 
-        if not _check_host_reachable(target):
-            logger.info(
-                "[verify_pending_reboot_hosts] 主机 %s 尚未恢复，等待下次轮询",
-                host.target_name,
-            )
-            continue
-
-        current_marker = _read_boot_marker(
-            target,
-            execution_id=f"reboot-verify:{host.task_id}:{host.target_id}",
-        )
-        if not host.boot_marker_before or not current_marker:
-            logger.warning(
-                "[verify_pending_reboot_hosts] 主机 %s 启动标识不可用，继续等待",
-                host.target_name,
-            )
-            continue
-        if current_marker == host.boot_marker_before:
-            logger.info(
-                "[verify_pending_reboot_hosts] 主机 %s 已可达但启动标识未变化，继续等待",
-                host.target_name,
-            )
-            continue
-
-        verify_task = GovernanceTask.objects.create(
-            name=f"重启后自动验证 · {host.target_name} · {now.strftime('%m-%d %H:%M')}",
-            task_type=GovernanceTaskType.VERIFY,
-            execution_mode="now",
-            status=GovernanceTaskStatus.PENDING,
-            target_list=[host.target_id],
-            patch_list=list(
-                dict.fromkeys(
-                    int(item["patch_id"])
-                    for item in (host.task.risk_snapshot or [])
-                    if int(item.get("host_id") or 0) == host.target_id and item.get("patch_id")
+            if not _check_host_reachable(target):
+                logger.info(
+                    "[verify_pending_reboot_hosts] 主机 %s 尚未恢复，等待下次轮询",
+                    host.target_name,
                 )
-            ),
-            risk_snapshot=[item for item in (host.task.risk_snapshot or []) if int(item.get("host_id") or 0) == host.target_id],
-            team=host.task.team or [],
-            created_by=host.task.created_by,
-            timeout=host.task.timeout or 3600,
-            parent_task=host.task,
-            chain_started_at=host.task.chain_started_at,
-            chain_deadline_at=host.task.chain_deadline_at,
-        )
-        GovernanceTaskHost.objects.create(
-            task=verify_task,
-            target_id=host.target_id,
-            target_name=host.target_name,
-            target_ip=host.target_ip,
-            stage="waiting",
-            stage_color="default",
-        )
+                continue
 
-        host.stage = "completed"
-        host.stage_color = "success"
-        host.reason = f"主机已恢复，已创建自动验证任务 {verify_task.id}"
-        host.save(update_fields=["stage", "stage_color", "reason", "updated_at"])
-        _finalize_task_status(host.task)
+            current_marker = _read_boot_marker(
+                target,
+                execution_id=f"reboot-verify:{host.task_id}:{host.target_id}",
+            )
+            if not host.boot_marker_before or not current_marker:
+                logger.warning(
+                    "[verify_pending_reboot_hosts] 主机 %s 启动标识不可用，继续等待",
+                    host.target_name,
+                )
+                continue
+            if current_marker == host.boot_marker_before:
+                logger.info(
+                    "[verify_pending_reboot_hosts] 主机 %s 已可达但启动标识未变化，继续等待",
+                    host.target_name,
+                )
+                continue
 
-        execute_governance_task.delay(verify_task.id)
-        logger.info(
-            "[verify_pending_reboot_hosts] 主机 %s 已恢复，创建验证任务 %s",
-            host.target_name,
-            verify_task.id,
-        )
+            with transaction.atomic():
+                locked = (
+                    GovernanceTaskHost.objects.select_for_update()
+                    .select_related("task")
+                    .filter(pk=host.pk, stage=_REBOOT_RECOVERING_STAGE)
+                    .first()
+                )
+                if locked is None:
+                    continue
+
+                verify_task = _existing_reboot_verify_task(locked)
+                if verify_task is None:
+                    verify_task = GovernanceTask.objects.create(
+                        name=f"重启后自动验证 · {locked.target_name} · {now.strftime('%m-%d %H:%M')}",
+                        task_type=GovernanceTaskType.VERIFY,
+                        execution_mode="now",
+                        status=GovernanceTaskStatus.PENDING,
+                        target_list=[locked.target_id],
+                        patch_list=list(
+                            dict.fromkeys(
+                                int(item["patch_id"])
+                                for item in (locked.task.risk_snapshot or [])
+                                if int(item.get("host_id") or 0) == locked.target_id and item.get("patch_id")
+                            )
+                        ),
+                        risk_snapshot=[
+                            item
+                            for item in (locked.task.risk_snapshot or [])
+                            if int(item.get("host_id") or 0) == locked.target_id
+                        ],
+                        team=locked.task.team or [],
+                        created_by=locked.task.created_by,
+                        timeout=locked.task.timeout or 3600,
+                        parent_task=locked.task,
+                        chain_started_at=locked.task.chain_started_at,
+                        chain_deadline_at=locked.task.chain_deadline_at,
+                    )
+                    GovernanceTaskHost.objects.create(
+                        task=verify_task,
+                        target_id=locked.target_id,
+                        target_name=locked.target_name,
+                        target_ip=locked.target_ip,
+                        stage="waiting",
+                        stage_color="default",
+                    )
+                    created_verify_id = verify_task.id
+
+                updated = GovernanceTaskHost.objects.filter(
+                    pk=locked.pk,
+                    stage=_REBOOT_RECOVERING_STAGE,
+                ).update(
+                    stage="completed",
+                    stage_color="success",
+                    reason=f"主机已恢复，已创建自动验证任务 {verify_task.id}",
+                )
+                if not updated:
+                    transaction.set_rollback(True)
+                    created_verify_id = None
+                    continue
+                recovered = True
+
+            _finalize_task_status(host.task)
+            if created_verify_id:
+                execute_governance_task.delay(created_verify_id)
+            logger.info(
+                "[verify_pending_reboot_hosts] 主机 %s 已恢复，创建验证任务 %s",
+                host.target_name,
+                created_verify_id or verify_task.id,
+            )
+        finally:
+            if not recovered:
+                _release_reboot_recovering_claim(host)

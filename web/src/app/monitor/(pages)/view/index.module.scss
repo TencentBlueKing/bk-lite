@@ -1,19 +1,29 @@
 .view {
     display: flex;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
 
     .tree {
-        height: calc(100vh - 90px);
+        height: 100%;
+        min-height: 0;
         padding: 20px 10px 10px 10px;
         background: var(--color-bg-1);
         overflow-y: auto;
     }
 
     .table {
-        flex: 1;
+        flex: 1 1 0%;
         min-width: 0;
+        max-width: 100%;
         padding: 20px;
         background: var(--color-bg-1);
-        height: calc(100vh - 90px);
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
     }
 }
 
@@ -84,7 +94,10 @@
     }
 
     .rightSide {
-        width: calc(100vw - 246px);
+        flex: 1;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
         background-color: var(--color-bg-1);
         padding: 20px;
         display: flex;

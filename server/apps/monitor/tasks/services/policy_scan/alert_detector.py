@@ -50,10 +50,13 @@ class AlertDetector:
             self.instances_map,
         )
 
-    def detect_threshold_alerts(self):
+    def detect_threshold_alerts(self, *, log_events=True, vm_data=None):
         trigger_count = getattr(self.policy, "trigger_count", 1) or 1
-        vm_data = self.metric_query_service.query_aggregation_metrics(self.policy.period, trigger_count)
-        vm_data = self.metric_query_service.convert_metric_values(vm_data)
+        if vm_data is None:
+            vm_data = self.metric_query_service.query_comparison_metrics(
+                self.policy.period, trigger_count
+            )
+            vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
         group_by_keys = self._get_group_by_keys()
         df = vm_to_dataframe(
@@ -76,22 +79,40 @@ class AlertDetector:
         thresholds = self.metric_query_service.convert_thresholds(
             self.policy.threshold
         )
-        alert_events, info_events = calculate_alerts(
+        recovery_threshold = self._converted_recovery_threshold()
+        overlay_current_map, overlay_baseline_map = (
+            self.metric_query_service.query_overlay_last_values()
+        )
+        template_context["overlay_current_map"] = overlay_current_map
+        template_context["overlay_baseline_map"] = overlay_baseline_map
+        template_context["source_display_unit"] = (
+            self.metric_query_service.get_source_display_unit()
+        )
+        alert_events, info_events, hold_events = calculate_alerts(
             self.policy.alert_name,
             df,
             thresholds,
             template_context,
             n=trigger_count,
+            recovery_threshold=recovery_threshold,
         )
 
         if self.policy.source:
             alert_events = self._filter_events_by_scope(alert_events)
             info_events = self._filter_events_by_scope(info_events)
+            hold_events = self._filter_events_by_scope(hold_events)
 
-        if alert_events:
+        if log_events and alert_events:
             self._log_alert_events(alert_events, vm_data)
 
-        return alert_events, info_events
+        return alert_events, info_events, hold_events
+
+    def _converted_recovery_threshold(self):
+        recovery = getattr(self.policy, "recovery_threshold", None) or {}
+        if not recovery.get("method") or recovery.get("value") is None:
+            return None
+        converted = self.metric_query_service.convert_thresholds([recovery])
+        return converted[0] if converted else recovery
 
     def _get_metric_display_name(self):
         if self.policy.query_condition.get("type") == "formula":
@@ -106,7 +127,7 @@ class AlertDetector:
         if not self.policy.no_data_period or not self.policy.source:
             return []
 
-        aggregation_metrics = self.metric_query_service.query_aggregation_metrics(self.policy.no_data_period)
+        aggregation_metrics = self.metric_query_service.query_existence_metrics(self.policy.no_data_period)
         aggregation_result = self.metric_query_service.format_aggregation_metrics(aggregation_metrics)
 
         events = self._build_no_data_events(aggregation_result)
@@ -434,7 +455,7 @@ class AlertDetector:
             logger.debug(f"Policy {self.policy.id}: no_data_recovery_period not configured, skip recovery")
             return []
 
-        aggregation_metrics = self.metric_query_service.query_aggregation_metrics(self.policy.no_data_recovery_period)
+        aggregation_metrics = self.metric_query_service.query_existence_metrics(self.policy.no_data_recovery_period)
         logger.debug(f"Policy {self.policy.id}: no_data recovery query returned {len(aggregation_metrics.get('data', {}).get('result', []))} results")
 
         aggregation_result = self.metric_query_service.format_aggregation_metrics(aggregation_metrics)

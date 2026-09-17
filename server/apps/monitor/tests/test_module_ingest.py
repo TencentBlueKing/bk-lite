@@ -1,11 +1,12 @@
 """MonitorModuleIngestService：按 node_id / cmdb_id / 类型身份（主机 IP+云区域→IP，其它 IP）/ 同名 归并。"""
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
 
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.services.module_ingest import CMDB_MODEL_TO_MONITOR_OBJECT, DEFAULT_HOST_COLLECT_MODULES, MonitorModuleIngestService
 from apps.monitor.utils.dimension import build_safe_instance_id, normalize_instance_identity
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
@@ -1202,6 +1203,179 @@ def test_node_push_collect_failure_does_not_keep_instance(host_object, mock_coll
         MonitorModuleIngestService.ingest(_params())
 
     assert MonitorInstance.objects.count() == 0
+
+
+def _stop_collect_mock_and_stub_controller(mock_collect_apply, mocker):
+    """走真实接入建行，但切断 Controller / 节点 RPC。"""
+    from apps.monitor.services.host_deployment import HostDeploymentStatus
+
+    mock_collect_apply.stop()
+    mocker.patch("apps.monitor.services.node_mgmt.Controller")
+    mocker.patch.object(HostDeploymentStatus, "get_configured_node_ids", return_value=set())
+    mocker.patch("apps.rpc.node_mgmt.NodeMgmt.get_nodes_by_ids", return_value=[])
+
+
+@pytest.mark.django_db
+def test_node_push_onboarding_reuses_ingest_instance(host_object, mock_collect_apply, mocker):
+    """节点 ingest 先写带外联 ID 的行，接入套用不得再拆出一条无外联的 Telegraf 行。"""
+    _stop_collect_mock_and_stub_controller(mock_collect_apply, mocker)
+
+    result = MonitorModuleIngestService.ingest(_params(raw={"ip": "10.0.0.1", "name": "10.0.0.1"}))
+    rows = list(MonitorInstance.objects.all())
+    assert [row.id for row in rows] == [result["id"]]
+    inst = rows[0]
+    assert inst.node_id == "n1"
+    assert inst.ip == "10.0.0.1"
+
+
+@pytest.mark.django_db
+def test_node_push_does_not_fork_uuid_shell_from_nameless_onboarding(host_object, mock_collect_apply, mocker):
+    """接入页 generate_monitor_instance_id 留下的无 IP 空壳，节点推送必须认领同一行。"""
+    _stop_collect_mock_and_stub_controller(mock_collect_apply, mocker)
+    MonitorInstance.objects.create(
+        id="a" * 32,
+        name="10.0.0.1",
+        monitor_object=host_object,
+    )
+
+    MonitorModuleIngestService.ingest(_params(raw={"ip": "10.0.0.1", "name": "10.0.0.1"}))
+
+    rows = list(MonitorInstance.objects.values_list("id", "ip", "node_id"))
+    assert len(rows) == 1, rows
+    assert rows[0][2] == "n1"
+
+
+@pytest.mark.django_db
+def test_cmdb_probe_before_monitor_then_node_push_links_one_instance(host_object, mock_collect_apply):
+    """节点先落 CMDB 时监控还不存在；随后节点推监控必须仍是一条，并写上 cmdb_id。"""
+    probe = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="ci-1",
+            link_ids={"cmdb_id": "ci-1", "node_id": "n1"},
+            raw={"ip": "10.0.0.1", "name": "10.0.0.1", "model_id": "host"},
+        )
+    )
+    assert probe.get("ignored") is True
+    assert MonitorInstance.objects.count() == 0
+
+    created = MonitorModuleIngestService.ingest(
+        _params(
+            link_ids={"node_id": "n1", "cmdb_id": "ci-1"},
+            raw={"ip": "10.0.0.1", "name": "10.0.0.1"},
+        )
+    )
+    assert MonitorInstance.objects.count() == 1
+    inst = MonitorInstance.objects.get(id=created["id"])
+    assert inst.node_id == "n1"
+    assert inst.cmdb_id == "ci-1"
+
+    linked = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="ci-1",
+            link_ids={"cmdb_id": "ci-1", "node_id": "n1"},
+            raw={"ip": "10.0.0.1", "name": "10.0.0.1", "model_id": "host"},
+        )
+    )
+    assert linked["id"] == inst.id
+    assert MonitorInstance.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_node_push_does_not_uuid_fork_when_os_key_is_soft_deleted(host_object, mock_collect_apply):
+    """软删占用了规范主键时，节点推送应回收该行，而不是 uuid 另建一条空壳。"""
+    canonical = normalize_instance_identity("1_os_10.0.0.1")["storage_instance_key"]
+    MonitorInstance.objects.create(
+        id=canonical,
+        name="old",
+        monitor_object=host_object,
+        is_deleted=True,
+    )
+
+    result = MonitorModuleIngestService.ingest(_params(raw={"ip": "10.0.0.1", "name": "10.0.0.1"}))
+
+    rows = list(MonitorInstance.objects.values_list("id", "is_deleted", "node_id"))
+    assert len(rows) == 1, rows
+    assert result["id"] == canonical
+    assert rows[0] == (canonical, False, "n1")
+    inst = MonitorInstance.objects.get(id=canonical)
+    assert inst.ip == "10.0.0.1"
+
+
+@pytest.mark.django_db
+def test_node_push_reclaim_log_uses_stable_template(host_object, mock_collect_apply, monkeypatch, caplog):
+    """主键占用走回收时，INFO 模板与独立参数固定，不把身份拼进模板。"""
+    canonical = normalize_instance_identity("1_os_10.0.0.1")["storage_instance_key"]
+    MonitorInstance.objects.create(
+        id=canonical,
+        name="old",
+        monitor_object=host_object,
+        is_deleted=True,
+    )
+    monkeypatch.setattr(MonitorModuleIngestService, "_find_by_type_identity", classmethod(lambda cls, raw: None))
+    caplog.set_level(logging.INFO, logger="monitor")
+
+    MonitorModuleIngestService.ingest(_params(raw={"ip": "10.0.0.1", "name": "10.0.0.1"}))
+
+    records = [record for record in caplog.records if record.msg == "[MonitorModuleIngest] reclaimed instance_id=%s node_id=%s cmdb_id=%s"]
+    assert len(records) == 1
+    assert records[0].args == (canonical, "n1", None)
+    assert canonical not in records[0].msg
+    assert MonitorInstance.objects.filter(id=canonical, is_deleted=False, node_id="n1").exists()
+
+
+@pytest.mark.django_db
+def test_node_push_claims_telegraf_row_without_ip_field(host_object, mock_collect_apply):
+    """接入页建行不写 ip 字段；节点推送仍须按规范主键认领，不能另建带外联 ID 的空壳。"""
+    canonical = normalize_instance_identity("1_os_10.0.0.1")["storage_instance_key"]
+    MonitorInstance.objects.create(
+        id=canonical,
+        name="10.0.0.1",
+        monitor_object=host_object,
+    )
+    CollectConfig.objects.create(
+        id="cfg-telegraf",
+        monitor_instance_id=canonical,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+    )
+
+    result = MonitorModuleIngestService.ingest(_params(raw={"ip": "10.0.0.1", "name": "10.0.0.1"}))
+
+    assert MonitorInstance.objects.count() == 1
+    inst = MonitorInstance.objects.get()
+    assert inst.id == canonical
+    assert result["id"] == canonical
+    assert inst.node_id == "n1"
+    assert inst.ip == "10.0.0.1"
+    assert CollectConfig.objects.filter(monitor_instance_id=canonical, collector="Telegraf").exists()
+
+
+@pytest.mark.django_db
+def test_node_push_claim_notifies_peers_with_monitor_id(host_object, mock_collect_apply, mock_peer_notify):
+    """认领已有 Telegraf 行后仍须通知 CMDB，把 monitor_id 成对写回。"""
+    canonical = normalize_instance_identity("1_os_10.0.0.1")["storage_instance_key"]
+    MonitorInstance.objects.create(
+        id=canonical,
+        name="10.0.0.1",
+        monitor_object=host_object,
+    )
+    mock_peer_notify.reset_mock()
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            link_ids={"node_id": "n1", "cmdb_id": "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee"},
+            raw={"ip": "10.0.0.1", "name": "10.0.0.1"},
+        )
+    )
+
+    assert result["id"] == canonical
+    mock_peer_notify.assert_called()
+    notified = mock_peer_notify.call_args.args[0]
+    assert notified.id == canonical
+    assert notified.node_id == "n1"
 
 
 @pytest.mark.django_db

@@ -1,5 +1,5 @@
 'use client';
-import React, { useRef, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Descriptions } from 'antd';
 import {
   TableDataItem,
@@ -30,8 +30,8 @@ const Information: React.FC<TableDataItem> = ({
   const { convertToLocalizedTime } = useLocalizedTime();
   const LEVEL_LIST = useLevelList();
   const commonContext = useCommon();
-  const authList = useRef(commonContext?.authOrganizations || []);
-  const organizationList: Organization[] = authList.current;
+  const organizationList: Organization[] =
+    commonContext?.authOrganizations || [];
 
   const isAggregate = useMemo(
     () => formData.alert_type === 'aggregate',

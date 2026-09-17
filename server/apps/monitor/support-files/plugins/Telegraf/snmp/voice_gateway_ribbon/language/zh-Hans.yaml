@@ -1,6 +1,6 @@
 VoiceGateway Ribbon SNMP:
   name: Ribbon（Telegraf）
-  desc: 面向 Ribbon 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Ribbon 语音网关的 SNMP 监控模板,可采集 CPU使用率、内存使用率、可选电源与磁盘状态、风扇转速、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -27,12 +27,26 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 设备温度
       desc: 语音网关设备温度，单位为摄氏度。用于识别散热异常、风道堵塞或过热风险。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Ribbon/Sonus 语音网关当前间隔 CPU 使用率（按 CE+CPU 表采集，直接为百分比）。看板取各核最高值。
+    device_memory_usage:
+      name: 内存使用率
+      desc: Ribbon/Sonus 语音网关当前间隔内存使用率（按 CE 表采集，直接为百分比）。看板取各 CE 最高值。
     device_psu_state:
       name: 电源状态
-      desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
+      desc: 语音网关电源在位与电源故障组合后的状态，归一后 1 表示正常，2 表示异常。未在位电源不计入。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 可选风扇转速，单位为 RPM。转速过低或为零可能表示风扇停转。
+    device_disk_state:
+      name: 磁盘状态
+      desc: 可选硬盘状态，归一后 1 表示在线正常，2 表示缺失、失败、未知或其他异常。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态

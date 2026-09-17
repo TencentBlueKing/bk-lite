@@ -14,9 +14,8 @@ describe('monitor alert page app-slot isolation', () => {
     expect(pageSource).not.toMatch(/from ['"]@\/app\/alarm/);
   });
 
-  it('renders extra tabs through the shared slot seam', () => {
-    expect(pageSource).toContain('useAppSlotTabs(');
-    expect(pageSource).toContain("'monitor.event.extraTabs'");
-    expect(pageSource).toContain('id="monitor.event.extraTabs"');
+  it('does not host extra tabs from other apps', () => {
+    expect(pageSource).not.toContain('useAppSlotTabs');
+    expect(pageSource).not.toContain('monitor.event.extraTabs');
   });
 });

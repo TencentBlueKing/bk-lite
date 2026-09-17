@@ -142,12 +142,14 @@ def build_nats_source_config():
         {
             "monitor_id": "monitor_id",
             "cmdb_id": "cmdb_id",
+            "node_id": "node_id",
         }
     )
     config["event_fields_desc_mapping"].update(
         {
             "monitor_id": "监控实例ID快照 | 类型: string | 必填: 否",
             "cmdb_id": "CMDB实例ID快照 | 类型: string | 必填: 否",
+            "node_id": "节点ID快照 | 类型: string | 必填: 否",
         }
     )
     return config

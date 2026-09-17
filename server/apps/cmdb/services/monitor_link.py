@@ -10,6 +10,7 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import cmdb_link_identity
 from apps.cmdb.services.module_push import EVENT_LIFECYCLE, MODULE_NAME, TARGET_MONITOR, CmdbToMonitorPushService, causation_id_for
 from apps.core.logger import cmdb_logger as logger
+from apps.node_mgmt.services.module_push_contract import ingest_auth_kwargs
 from apps.rpc.monitor import Monitor
 
 BATCH_PUSH_LIMIT = 100
@@ -327,9 +328,8 @@ class MonitorLinkService:
                 occurred_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 raw=raw,
                 link_ids=link_ids,
-                allowed_org_ids=allowed_org_ids,
-                operator=operator,
                 causation_id=causation_id_for(MODULE_NAME, cmdb_id, TARGET_MONITOR),
+                **ingest_auth_kwargs(actor_scope),
             )
         except Exception as exc:
             cls._log_op_failed(

@@ -34,9 +34,13 @@
         is_tag = true
     # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns) ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
         name = "interface"
         inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
@@ -56,6 +60,6 @@
         name = "firewall"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.17028.1.1.1.4.0"
+        oid = "1.3.6.1.4.1.17028.1.1.1.4"
         name = "current_connections"
 # ---- CPU/内存/温度/风扇/电源：Kerio Control（GFI 软件型 UTM）私有 MIB 未以无需行过滤的标量形式暴露 CPU/内存/环境传感器 → N/A。仅 接口流量(IF-MIB 64位)+运行时长(底座)+当前活动连接 干净可采。----

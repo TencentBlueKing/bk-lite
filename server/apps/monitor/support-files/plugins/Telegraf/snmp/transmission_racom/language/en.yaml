@@ -1,8 +1,9 @@
 Transmission RACOM SNMP:
   name: RACOM (Telegraf)
-  desc: SNMP monitoring template for RACOM transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 33555).
+  desc: SNMP monitoring template for RACOM RAy3 transmission device. It reports CPU
+    utilization, memory utilization, modem temperature, optional radio temperature,
+    optional supply voltage, optional received signal strength, and system uptime
+    (IANA PEN 33555).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -39,6 +40,40 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
+    cpu_usage_percent:
+      name: CPU Usage
+      desc: CPU utilization of the RACOM RAy3 microwave unit, reported directly as
+        a 0-100 percentage with no scaling. Sustained high CPU usage can indicate
+        wireless backhaul traffic pressure, control-plane load or abnormal traffic.
+    memory_usage_percent:
+      name: Memory Usage
+      desc: Memory utilization of the RACOM RAy3 microwave unit, reported directly
+        as a 0-100 percentage with no scaling. Sustained high memory usage may indicate
+        control-plane resource pressure or unstable device services.
+    modem_temperature_celsius:
+      name: Modem Temperature
+      desc: Modem-board temperature of the RACOM RAy3 microwave unit in degrees Celsius.
+        The SNMP scalar reports hundredths of a degree and the query divides by 100.
+        High values may indicate cooling problems, high ambient temperature or overloaded
+        hardware.
+    radio_temperature_celsius:
+      name: Radio Temperature
+      desc: Optional radio-module temperature of the RACOM RAy3 microwave unit in
+        degrees Celsius. The SNMP scalar reports hundredths of a degree and the query
+        divides by 100. Some firmware revisions omit this object. High values may
+        indicate RF hardware thermal stress.
+    device_voltage_volts:
+      name: Supply Voltage
+      desc: Optional power-supply voltage of the RACOM RAy3 microwave unit in volts.
+        The SNMP scalar reports tenths of a volt and the query divides by 10. Readings
+        far from the rated DC input indicate brownout, wiring faults or a failing
+        supply.
+    rss_dbm:
+      name: Received Signal Strength
+      desc: Optional received signal strength of the RACOM RAy3 microwave link in
+        dBm. The SNMP scalar reports tenths of a dBm and the query divides by 10.
+        A dropping RSS is an early sign of path fade, antenna misalignment or radio
+        degradation.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU utilization of the transmission device reported directly as a 0-100
@@ -72,3 +107,4 @@ monitor_object_metric_group:
     Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Radio: Radio

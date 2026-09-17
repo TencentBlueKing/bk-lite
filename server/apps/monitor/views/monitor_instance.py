@@ -286,6 +286,8 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
                     "instance_name": instance.name or instance.id,
                     "instance_id_values": list(parse_instance_id(instance.id)),
                     "instance_id_keys": instance_id_keys,
+                    "cmdb_id": instance.cmdb_id or "",
+                    "node_id": instance.node_id or "",
                 },
             }
         )

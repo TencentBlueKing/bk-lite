@@ -90,13 +90,13 @@
 
 ## 五、支持的采集类型与采集器范围
 
-平台随包预置 **18 种**内置采集类型，按 `display_category` 归入 **7 大分类**，由 **6 种**采集器（`collector`）承载，开箱即用、无需手动定义。下表按分类列出采集类型，括号内为该采集类型预置的解析字段数（基于内置 `support-files/plugins/*/collect_type.json` 的 `attrs` 统计），合计预置约 **328 个**解析字段。
+平台随包预置 **19 种**内置采集类型，按 `display_category` 归入 **7 大分类**，由 **6 种**采集器（`collector`）承载，开箱即用、无需手动定义。下表按分类列出采集类型，括号内为该采集类型预置的解析字段数（基于内置 `support-files/plugins/*/collect_type.json` 的 `attrs` 统计）。
 
 ### 5.1 内置采集类型（按分类）
 
 | 分类（display_category） | 采集类型（预置字段数） | 采集器 |
 |---|---|---|
-| 通用（general，3 种） | file 文件（9）、syslog（16）、snmp_trap（8） | Vector / Vector / Snmptrapd |
+| 通用（general，4 种） | file 文件（9）、kafka_subscribe Kafka 日志订阅（12）、syslog（16）、snmp_trap（8） | Vector / Vector / Vector / Snmptrapd |
 | Kubernetes（k8s，1 种） | kubernetes（10） | Vector |
 | 数据库（database，5 种） | mysql（17）、postgresql（18）、redis（15）、mongodb（11）、elasticsearch（24） | Filebeat |
 | 中间件（middleware，4 种） | apache（22）、nginx（22）、kafka（14）、rabbitmq（10） | Filebeat |
@@ -108,19 +108,19 @@
 
 | 采集器（collector） | 承载采集类型数 | 适用对象 |
 |---|---|---|
-| Vector | 4 | file、syslog、kubernetes、docker |
+| Vector | 5 | file、syslog、kubernetes、docker、kafka_subscribe |
 | Filebeat | 9 | mysql、postgresql、redis、mongodb、elasticsearch、apache、nginx、kafka、rabbitmq |
 | Packetbeat | 2 | flows、http |
 | Auditbeat | 1 | file_integrity |
 | Winlogbeat | 1 | winlogbeat |
 | Snmptrapd | 1 | snmp_trap |
 
-> 说明：18 种采集类型与 7 大分类口径与 PRD 一致；分类排序按代码 `DISPLAY_CATEGORY_ORDER`（general → k8s → database → middleware → network → container → security）。括号内字段数为各采集类型 `collect_type.json` 中 `attrs` 预置字段条目数，反映该类型默认抽取/规范化的日志字段，实际入库字段可随解析规则扩展。源码中内置采集类型与采集器均未标注 Beta，全部为 GA；除内置类型外，日志支持基于 Vector / Filebeat 等采集器自定义采集配置扩展自定义日志源。
+> 说明：19 种采集类型与 7 大分类口径一致；分类排序按代码 `DISPLAY_CATEGORY_ORDER`（general → k8s → database → middleware → network → container → security）。括号内字段数为各采集类型 `collect_type.json` 中 `attrs` 预置字段条目数，反映该类型默认抽取/规范化的日志字段，实际入库字段可随解析规则扩展。源码中内置采集类型与采集器均未标注 Beta，全部为 GA；除内置类型外，日志支持基于 Vector / Filebeat 等采集器自定义采集配置扩展自定义日志源。
 
 
 ## 六、采集类型字段明细（逐项）
 
-> 本节逐项列出各日志采集类型的预置字段，源自各采集类型 `collect_type.json` 的 `attrs` 定义。共 18 种采集类型、328 个字段。
+> 本节逐项列出各日志采集类型的预置字段，源自各采集类型 `collect_type.json` 的 `attrs` 定义。共 19 种采集类型。
 
 ### 容器
 
@@ -269,6 +269,23 @@
 | `source_type` | 数据来源类型 |
 | `timestamp` | 日志时间戳 |
 | `instance_id` | 采集实例ID |
+
+#### kafka_subscribe（采集器 Vector · 12 字段）
+
+| 字段 | 中文含义 |
+|---|---|
+| `collect_type` | 采集类型标识 |
+| `collector` | 采集器名称 |
+| `instance_id` | 采集实例ID |
+| `host_name` | 采集节点主机名 |
+| `host_ip` | 采集节点 IP |
+| `message` | 日志正文 |
+| `offset` | Kafka 分区偏移量 |
+| `partition` | Kafka 分区号 |
+| `source_type` | 数据来源类型 |
+| `timestamp` | 日志服务端时间 |
+| `collect_timestamp` | 日志采集时间 |
+| `topic` | Kafka Topic 名称 |
 
 #### snmp_trap（采集器 Snmptrapd · 8 字段）
 

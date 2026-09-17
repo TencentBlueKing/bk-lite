@@ -63,9 +63,10 @@ def test_calculate_alerts_triggers_above_threshold():
         "display_unit": "%",
         "instances_map": {"('h1',)": "主机1"},
     }
-    alerts, infos = calculate_alerts("$instance_name $value", df, thresholds, ctx, n=2)
+    alerts, infos, holds = calculate_alerts("$instance_name $value", df, thresholds, ctx, n=2)
     assert len(alerts) == 1
     assert infos == []
+    assert holds == []
     a = alerts[0]
     assert a["level"] == "error"
     assert a["value"] == 95.0
@@ -81,8 +82,9 @@ def test_calculate_alerts_below_threshold_goes_to_info():
     )
     thresholds = [{"method": ">", "value": 80, "level": "error"}]
     ctx = {"instance_id_keys": ["instance_id"]}
-    alerts, infos = calculate_alerts("x", df, thresholds, ctx, n=2)
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, ctx, n=2)
     assert alerts == []
+    assert holds == []
     assert len(infos) == 1
     assert infos[0]["level"] == "info"
     assert infos[0]["value"] == "20"
@@ -96,10 +98,11 @@ def test_calculate_alerts_skips_non_finite_values(bad_value):
         ]
     )
     thresholds = [{"method": ">", "value": 80, "level": "error"}]
-    alerts, infos = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
 
     assert alerts == []
     assert infos == []
+    assert holds == []
 
 
 def test_calculate_alerts_skips_rows_with_insufficient_values():
@@ -109,8 +112,8 @@ def test_calculate_alerts_skips_rows_with_insufficient_values():
         ]
     )
     thresholds = [{"method": ">", "value": 80, "level": "error"}]
-    alerts, infos = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=3)
-    assert alerts == [] and infos == []
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=3)
+    assert alerts == [] and infos == [] and holds == []
 
 
 def test_calculate_alerts_invalid_threshold_method_raises():
@@ -134,6 +137,177 @@ def test_calculate_alerts_first_matching_threshold_wins():
         {"method": ">", "value": 90, "level": "error"},
         {"method": ">", "value": 80, "level": "warning"},
     ]
-    alerts, _ = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
     assert len(alerts) == 1
     assert alerts[0]["level"] == "error"
+    assert infos == []
+    assert holds == []
+
+
+def test_calculate_alerts_hysteresis_band_goes_to_hold():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "75"], [2, "72"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 80, "level": "error"}]
+    recovery = {"method": "<", "value": 70}
+    alerts, infos, holds = calculate_alerts(
+        "x",
+        df,
+        thresholds,
+        {"instance_id_keys": ["instance_id"]},
+        n=2,
+        recovery_threshold=recovery,
+    )
+    assert alerts == []
+    assert infos == []
+    assert len(holds) == 1
+    assert holds[0]["level"] == "hold"
+
+
+def test_calculate_alerts_hysteresis_below_recovery_goes_to_info():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "60"], [2, "65"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 80, "level": "error"}]
+    recovery = {"method": "<", "value": 70}
+    alerts, infos, holds = calculate_alerts(
+        "x",
+        df,
+        thresholds,
+        {"instance_id_keys": ["instance_id"]},
+        n=2,
+        recovery_threshold=recovery,
+    )
+    assert alerts == []
+    assert holds == []
+    assert len(infos) == 1
+
+
+def test_calculate_alerts_hysteresis_above_trigger_still_alerts():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "90"], [2, "95"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 80, "level": "error"}]
+    recovery = {"method": "<", "value": 70}
+    alerts, infos, holds = calculate_alerts(
+        "x",
+        df,
+        thresholds,
+        {"instance_id_keys": ["instance_id"]},
+        n=2,
+        recovery_threshold=recovery,
+    )
+    assert len(alerts) == 1
+    assert infos == []
+    assert holds == []
+
+
+def test_calculate_alerts_without_recovery_threshold_matches_old_behavior():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "75"], [2, "72"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 80, "level": "error"}]
+    alerts, infos, holds = calculate_alerts(
+        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2
+    )
+    assert alerts == []
+    assert holds == []
+    assert len(infos) == 1
+
+
+def test_calculate_alerts_hysteresis_respects_trigger_count():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "90"], [2, "75"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 80, "level": "error"}]
+    recovery = {"method": "<", "value": 70}
+    alerts, infos, holds = calculate_alerts(
+        "x",
+        df,
+        thresholds,
+        {"instance_id_keys": ["instance_id"]},
+        n=2,
+        recovery_threshold=recovery,
+    )
+    assert alerts == []
+    assert infos == []
+    assert len(holds) == 1
+
+
+def test_calculate_alerts_renders_overlay_template_variables():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "40"], [2, "50"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 10, "level": "error"}]
+    ctx = {
+        "instance_id_keys": ["instance_id"],
+        "display_unit": "%",
+        "source_display_unit": "MB",
+        "overlay_current_map": {"('h1',)": 120.0},
+        "overlay_baseline_map": {"('h1',)": 80.0},
+        "instances_map": {"('h1',)": "主机1"},
+    }
+    alerts, _, _ = calculate_alerts(
+        "$value $current_value $baseline_value", df, thresholds, ctx, n=2
+    )
+    assert "50.00%" in alerts[0]["content"]
+    assert "120.00MB" in alerts[0]["content"]
+    assert "80.00MB" in alerts[0]["content"]
+
+
+def test_timeleft_huge_finite_hours_from_near_zero_slope_does_not_trigger():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "10000000"]]},
+        ]
+    )
+    thresholds = [{"method": "<", "value": 2, "level": "warning"}]
+    alerts, infos, holds = calculate_alerts(
+        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}
+    )
+    assert alerts == []
+    assert holds == []
+    assert len(infos) == 1
+
+
+def test_timeleft_zero_hours_when_target_below_water_triggers():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "0"]]},
+        ]
+    )
+    thresholds = [{"method": "<", "value": 2, "level": "warning"}]
+    alerts, infos, holds = calculate_alerts(
+        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}
+    )
+    assert infos == []
+    assert holds == []
+    assert len(alerts) == 1
+    assert alerts[0]["value"] in (0, 0.0, "0")
+
+
+def test_calculate_alerts_trigger_count_with_offset_style_points():
+    df = vm_to_dataframe(
+        [
+            {"metric": {"instance_id": "h1"}, "values": [[1, "10"], [2, "60"]]},
+        ]
+    )
+    thresholds = [{"method": ">", "value": 50, "level": "warning"}]
+    alerts, infos, holds = calculate_alerts(
+        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2
+    )
+    assert alerts == []
+    assert holds == []
+    assert len(infos) == 1

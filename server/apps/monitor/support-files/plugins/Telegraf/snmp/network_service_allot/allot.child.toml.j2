@@ -47,3 +47,55 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+    # ---- Allot 传感器表（PEN 2603）：walk alSensorType，按类型保留行后再读 alSensorRawValue。----
+    # 类型：temperature(1) / fan(2) / powerSupply(3) / cpu(4) / memory(5) / storage(6)。
+    # 禁止写死实例下标；同一列 OID 整列 walk，由 starlark 按类型映射到共享指标。
+    # 告警树标量/告警配置表不是机箱健康读数，不采。
+    # fan(2)/powerSupply(3) 的 raw 值无 1=正常/2=异常 约定，不提升为共享风扇/电源状态。
+    [[inputs.snmp.table]]
+        name = "allot_sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2603.5.5.18.1.1"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2603.5.5.18.1.2"
+        name = "sensor_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2603.5.5.18.1.3"
+        name = "raw_value"
+
+[[processors.starlark]]
+    namepass = ["allot_sensor"]
+    source = '''
+def apply(metric):
+    t = str(metric.tags.get("sensor_type", ""))
+    value = metric.fields.get("raw_value")
+    if value == None:
+        return None
+    if "raw_value" in metric.fields:
+        metric.fields.pop("raw_value")
+    if "sensor_type" in metric.tags:
+        metric.tags.pop("sensor_type")
+    if t == "4" or t == "cpu":
+        metric.name = "device_cpu"
+        metric.fields["usage"] = value
+        return metric
+    if t == "5" or t == "memory":
+        metric.name = "device_memory"
+        metric.fields["usage"] = value
+        return metric
+    if t == "1" or t == "temperature":
+        metric.name = "device_temperature"
+        metric.fields["celsius"] = value
+        return metric
+    if t == "6" or t == "storage":
+        metric.name = "device_storage"
+        metric.fields["usage"] = value
+        return metric
+    return None
+'''

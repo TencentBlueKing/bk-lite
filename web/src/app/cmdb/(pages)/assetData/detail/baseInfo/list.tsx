@@ -32,6 +32,7 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
+import { isCloudRegionAttr, toCloudSelectValue } from '@/app/cmdb/utils/cloudRegion';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
@@ -168,8 +169,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       );
       value = filtered.length > 0 ? filtered : undefined;
     }
-    if (fieldKey === 'cloud' || fieldKey === 'cloud_id') {
-      return String(value);
+    if (isCloudRegionAttr(fieldKey)) {
+      return toCloudSelectValue(value);
     }
     return value;
   };
@@ -325,7 +326,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                       ) ? (
                         <Select placeholder={t('common.selectTip')}>
                           {cloudOptions.map((opt) => (
-                            <Select.Option key={opt.proxy_id} value={opt.proxy_id}>
+                            <Select.Option key={String(opt.proxy_id)} value={Number(opt.proxy_id)}>
                               {opt.proxy_name}
                             </Select.Option>
                           ))}

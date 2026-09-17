@@ -3,22 +3,19 @@
 对照 apps/cmdb/services/auto_relation_reconcile.py：
   - 匹配规则判定（exact/iexact/contains/未知）
   - 空值判定 / mapping 读取
-  - schedule_* 调度入口的规范化与去重、DEBUG 直跑 vs send_task
+  - schedule_* 调度入口的规范化与去重、一律 send_task
   - 期望目标集合计算、mapping 过滤（n:1/1:1 歧义、1:n 目标抢占）
   - reconcile_source_instance 的增删幂等、reconcile_for_instance / full_sync_rule 编排
 
 只在 GraphClient / ModelManage / celery 这些真实外部边界打桩，断言真实输出与副作用。
 """
 import pydantic.root_model  # noqa: F401  预热，避免覆盖率插桩竞态
-
 import pytest
 
 from apps.cmdb.services import auto_relation_reconcile as mod
+from apps.cmdb.services.auto_relation_reconcile import AUTO_RELATION_EDGE_RULE_ID_FIELD, AUTO_RELATION_EDGE_SOURCE, AUTO_RELATION_EDGE_SOURCE_FIELD
+from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService as SVC
 from apps.cmdb.services.auto_relation_reconcile import (
-    AUTO_RELATION_EDGE_RULE_ID_FIELD,
-    AUTO_RELATION_EDGE_SOURCE,
-    AUTO_RELATION_EDGE_SOURCE_FIELD,
-    AutoRelationRuleReconcileService as SVC,
     schedule_incoming_rule_full_sync_by_model_ids,
     schedule_instance_auto_relation_reconcile,
     schedule_rule_auto_relation_full_sync,
@@ -219,9 +216,7 @@ def test_reconcile_source_instance_creates_missing_edge(monkeypatch):
     targets = [{"_id": 11, "host_ip": "10.0.0.1"}]
     fake = FakeGraph(query_edge=lambda *a: [])  # 无既有边
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
-    monkeypatch.setattr(
-        "apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None
-    )
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
     summary = SVC.reconcile_source_instance(src, assoc, rules, target_instances=targets)
     assert summary["created"] == 1
     assert summary["deleted"] == 0
@@ -327,24 +322,31 @@ def test_list_enabled_rules_by_src_model_filters(monkeypatch):
             "src_model_id": "other",
             "dst_model_id": "host",
             "model_asst_id": "x",
-            "auto_relation_rule": {"version": 1, "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}]},
+            "auto_relation_rule": {
+                "version": 1,
+                "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}],
+            },
         },
         {  # 源模型匹配且有启用规则 → 入选
             "src_model_id": "vm",
             "dst_model_id": "host",
             "model_asst_id": "vm_run_host",
-            "auto_relation_rule": {"version": 1, "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}]},
+            "auto_relation_rule": {
+                "version": 1,
+                "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}],
+            },
         },
         {  # 源模型匹配但规则全 disabled → 跳过
             "src_model_id": "vm",
             "dst_model_id": "host",
             "model_asst_id": "vm_disabled",
-            "auto_relation_rule": {"version": 1, "rules": [{"rule_id": "r", "enabled": False, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}]},
+            "auto_relation_rule": {
+                "version": 1,
+                "rules": [{"rule_id": "r", "enabled": False, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}],
+            },
         },
     ]
-    monkeypatch.setattr(
-        "apps.cmdb.services.auto_relation_reconcile.model_association_search", lambda mid: associations
-    )
+    monkeypatch.setattr("apps.cmdb.services.auto_relation_reconcile.model_association_search", lambda mid: associations)
     out = SVC._list_enabled_rules_by_src_model("vm")
     assert len(out) == 1
     assoc, rules = out[0]
@@ -358,18 +360,22 @@ def test_list_enabled_rule_ids_by_dst_model(monkeypatch):
             "src_model_id": "vm",
             "dst_model_id": "host",
             "model_asst_id": "vm_run_host",
-            "auto_relation_rule": {"version": 1, "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}]},
+            "auto_relation_rule": {
+                "version": 1,
+                "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}],
+            },
         },
         {  # dst 不匹配
             "src_model_id": "vm",
             "dst_model_id": "switch",
             "model_asst_id": "vm_run_switch",
-            "auto_relation_rule": {"version": 1, "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}]},
+            "auto_relation_rule": {
+                "version": 1,
+                "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}],
+            },
         },
     ]
-    monkeypatch.setattr(
-        "apps.cmdb.services.auto_relation_reconcile.model_association_search", lambda mid: associations
-    )
+    monkeypatch.setattr("apps.cmdb.services.auto_relation_reconcile.model_association_search", lambda mid: associations)
     out = SVC._list_enabled_rule_ids_by_dst_model("host")
     assert out == ["vm_run_host"]
 
@@ -433,9 +439,7 @@ def test_reconcile_for_instances_dedupes_incoming_full_sync_rules(monkeypatch):
     ]
     fake = FakeGraph(query_entity=(instances, len(instances)))
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
-    monkeypatch.setattr(
-        SVC, "_list_enabled_rules_by_src_model", classmethod(lambda cls, mid: [])
-    )
+    monkeypatch.setattr(SVC, "_list_enabled_rules_by_src_model", classmethod(lambda cls, mid: []))
     monkeypatch.setattr(
         SVC,
         "_list_enabled_rule_ids_by_dst_model",
@@ -467,9 +471,7 @@ def test_reconcile_for_instances_runs_source_locally_and_reports_missing(monkeyp
         "_list_enabled_rules_by_src_model",
         classmethod(lambda cls, mid: [(association, rules)]),
     )
-    monkeypatch.setattr(
-        SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: [])
-    )
+    monkeypatch.setattr(SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: []))
     reconciled = []
 
     def fake_reconcile(cls, instance, assoc, enabled_rules):
@@ -488,9 +490,7 @@ def test_reconcile_for_instances_runs_source_locally_and_reports_missing(monkeyp
 # full_sync_rule
 # --------------------------------------------------------------------------
 def test_full_sync_rule_cleanup_when_no_enabled_rules(monkeypatch):
-    monkeypatch.setattr(
-        "apps.cmdb.services.auto_relation_reconcile.model_association_info_search", lambda mid: None
-    )
+    monkeypatch.setattr("apps.cmdb.services.auto_relation_reconcile.model_association_info_search", lambda mid: None)
     monkeypatch.setattr(SVC, "cleanup_auto_edges_by_rule", classmethod(lambda cls, mid: 7))
     out = SVC.full_sync_rule("dead_rule")
     assert out["mode"] == "cleanup"
@@ -504,11 +504,12 @@ def test_full_sync_rule_full_sync_path(monkeypatch):
         "dst_model_id": "host",
         "asst_id": "run",
         "mapping": "n:n",
-        "auto_relation_rule": {"version": 1, "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}]},
+        "auto_relation_rule": {
+            "version": 1,
+            "rules": [{"rule_id": "r", "enabled": True, "match_pairs": [{"src_field_id": "ip", "dst_field_id": "host_ip"}]}],
+        },
     }
-    monkeypatch.setattr(
-        "apps.cmdb.services.auto_relation_reconcile.model_association_info_search", lambda mid: association
-    )
+    monkeypatch.setattr("apps.cmdb.services.auto_relation_reconcile.model_association_info_search", lambda mid: association)
     # 目标 + 源
     monkeypatch.setattr(
         SVC,
@@ -527,18 +528,15 @@ def test_full_sync_rule_full_sync_path(monkeypatch):
 # --------------------------------------------------------------------------
 # schedule_* 调度入口
 # --------------------------------------------------------------------------
-def test_schedule_instance_reconcile_normalizes_and_dispatches_one_batch(monkeypatch, settings):
+def test_schedule_instance_reconcile_normalizes_and_sends_one_batch_task(monkeypatch, settings):
     settings.DEBUG = True
-    called = []
+    sent = []
     # transaction.on_commit 在非事务下立即执行回调
     monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
-    import apps.cmdb.tasks.celery_tasks as ct
-    monkeypatch.setattr(
-        ct, "reconcile_instances_auto_association_task", lambda ids: called.append(ids)
-    )
+    monkeypatch.setattr(mod.current_app, "send_task", lambda name, args: sent.append((name, args)))
 
     schedule_instance_auto_relation_reconcile([3, "3", 0, -1, "bad", 5])
-    assert called == [[3, 5]]
+    assert sent == [(mod.INSTANCE_BATCH_RECONCILE_TASK, [[3, 5]])]
 
 
 def test_schedule_instance_reconcile_empty_noop(monkeypatch):
@@ -548,7 +546,7 @@ def test_schedule_instance_reconcile_empty_noop(monkeypatch):
     assert on_commit_called == []
 
 
-def test_schedule_instance_reconcile_sends_one_batch_task_when_not_debug(monkeypatch, settings):
+def test_schedule_instance_reconcile_sends_one_batch_task(monkeypatch, settings):
     settings.DEBUG = False
     monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
     sent = []
@@ -573,19 +571,19 @@ def test_schedule_rule_full_sync_dedupes_and_clears_pending(monkeypatch, setting
     settings.DEBUG = True
     mod._PENDING_RULE_FULL_SYNC_IDS.clear()
     monkeypatch.setattr(mod.transaction, "on_commit", lambda fn: fn())
-    called = []
-    import apps.cmdb.tasks.celery_tasks as ct
-    monkeypatch.setattr(ct, "full_sync_auto_association_rule_task", lambda mid: called.append(mid))
+    sent = []
+    monkeypatch.setattr(mod.current_app, "send_task", lambda name, args: sent.append((name, args)))
     schedule_rule_auto_relation_full_sync(["r1", " r1 ", "", None, "r2"])
-    assert called == ["r1", "r2"]
+    assert sent == [
+        (mod.RULE_FULL_SYNC_TASK, ["r1"]),
+        (mod.RULE_FULL_SYNC_TASK, ["r2"]),
+    ]
     # dispatch 后 pending 应清空
     assert mod._PENDING_RULE_FULL_SYNC_IDS == set()
 
 
 def test_schedule_incoming_by_model_ids(monkeypatch):
-    monkeypatch.setattr(
-        SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: ["vm_run_host"] if mid == "host" else [])
-    )
+    monkeypatch.setattr(SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: ["vm_run_host"] if mid == "host" else []))
     captured = []
     monkeypatch.setattr(mod, "schedule_rule_auto_relation_full_sync", lambda ids: captured.append(list(ids)))
     schedule_incoming_rule_full_sync_by_model_ids(["host", "host", "", None])

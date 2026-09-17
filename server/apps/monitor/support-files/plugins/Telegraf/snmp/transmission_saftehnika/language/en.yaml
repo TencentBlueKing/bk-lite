@@ -1,8 +1,9 @@
 Transmission SAF Tehnika SNMP:
   name: SAF Tehnika (Telegraf)
-  desc: SNMP monitoring template for SAF Tehnika transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 19011).
+  desc: SNMP monitoring template for SAF Tehnika Integra transmission devices. Select
+    the Integra-B or Integra-W product branch so only that system tree is polled.
+    It reports CPU usage, memory usage, CPU temperature, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime (IANA PEN 7571).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -39,6 +40,23 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
+    cpu_usage_percent:
+      name: CPU Usage
+      desc: CPU utilization of the Integra transmission device as a 0-100 percentage,
+        derived as 100 minus the idle reading in tenths of a percent. Sustained high
+        CPU usage can indicate microwave backhaul traffic pressure, control-plane
+        load or abnormal traffic.
+    memory_usage_percent:
+      name: Memory Usage
+      desc: Memory utilization of the Integra transmission device as a 0-100 percentage,
+        derived as 100 minus the free reading in tenths of a percent. Sustained high
+        memory usage may indicate control-plane resource pressure or unstable device
+        services.
+    cpu_temperature_celsius:
+      name: CPU Temperature
+      desc: CPU temperature of the Integra transmission device in degrees Celsius,
+        scaled from tenths of a degree. High values may indicate cooling problems,
+        high ambient temperature or overloaded hardware.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU utilization of the transmission device reported directly as a 0-100

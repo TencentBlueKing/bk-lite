@@ -215,10 +215,15 @@ class TestRun:
         mocker.patch.object(
             scan.alert_detector,
             "detect_threshold_alerts",
-            return_value=([], []),
+            return_value=([], [], []),
         )
         mocker.patch.object(scan.alert_detector, "count_events")
         mocker.patch.object(scan.alert_detector, "recover_threshold_alerts", return_value=[])
+        mocker.patch.object(
+            scan.metric_query_service,
+            "query_existence_metrics",
+            return_value={"data": {"result": []}},
+        )
         create = mocker.patch.object(
             scan.event_alert_manager,
             "create_events_and_alerts",
@@ -227,6 +232,63 @@ class TestRun:
         scan.run()
         # 无事件 → create_events_and_alerts 不应被调用（events 为空走 early return）
         create.assert_not_called()
+
+
+class TestSyncBaselinesFromExistence:
+    def test_creates_baseline_when_comparison_empty_but_existence_has_row(self, mocker):
+        obj = _make_obj()
+        MonitorInstance.objects.create(id="('h1',)", name="主机1", monitor_object=obj)
+        policy = _make_policy(
+            obj,
+            source={"type": "instance", "values": ["('h1',)"]},
+            compare_mode="offset_1h",
+            compare_value_kind="percent",
+            period={"type": "min", "value": 5},
+        )
+        scan = MonitorPolicyScan(policy)
+        existence = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[100, "12"]]},
+                ]
+            }
+        }
+        comparison = {"data": {"result": []}}
+        mocker.patch.object(scan.metric_query_service, "set_monitor_obj_instance_key")
+        mocker.patch.object(
+            scan.metric_query_service,
+            "query_existence_metrics",
+            return_value=existence,
+        )
+        mocker.patch.object(
+            scan.metric_query_service,
+            "query_comparison_metrics",
+            return_value=comparison,
+        )
+        mocker.patch.object(
+            scan.metric_query_service,
+            "convert_metric_values",
+            side_effect=lambda data: data,
+        )
+        mocker.patch.object(
+            scan.metric_query_service,
+            "query_overlay_last_values",
+            return_value=({}, {}),
+        )
+        mocker.patch.object(
+            scan.event_alert_manager,
+            "create_events_and_alerts",
+            return_value=([], []),
+        )
+
+        scan.run()
+
+        assert set(
+            PolicyInstanceBaseline.objects.filter(policy_id=policy.id).values_list(
+                "metric_instance_id",
+                "monitor_instance_id",
+            )
+        ) == {("('h1',)", "('h1',)")}
 
 
 class TestPodAlertEndToEnd:
@@ -261,7 +323,12 @@ class TestPodAlertEndToEnd:
         def mock_victoriametrics(*args, **kwargs):
             return {"data": {"result": phase["result"]}}
 
-        mocker.patch.dict(metric_query_module.METHOD, {"max": mock_victoriametrics})
+        mocker.patch.object(
+            metric_query_module,
+            "VictoriaMetricsAPI",
+        ).return_value.query_range.side_effect = lambda *args, **kwargs: {
+            "data": {"result": phase["result"]}
+        }
         mocker.patch(
             "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
             return_value="2026/01/01/mock.json.gz",
@@ -414,7 +481,12 @@ class TestThresholdLifecycleEvents:
         def mock_victoriametrics(*args, **kwargs):
             return {"data": {"result": phase["result"]}}
 
-        mocker.patch.dict(metric_query_module.METHOD, {"max": mock_victoriametrics})
+        mocker.patch.object(
+            metric_query_module,
+            "VictoriaMetricsAPI",
+        ).return_value.query_range.side_effect = lambda *args, **kwargs: {
+            "data": {"result": phase["result"]}
+        }
         snapshot_store = {}
 
         def upload_snapshot(self, instance, json_data, *args, **kwargs):
@@ -452,3 +524,57 @@ class TestThresholdLifecycleEvents:
         alert.refresh_from_db()
         assert alert.status == "new"
         assert alert.level == "critical"
+
+
+class TestStockPolicyScanRegression:
+    def test_policy_without_new_fields_still_creates_alert_and_event(self, mocker):
+        obj = _make_obj()
+        MonitorInstance.objects.create(id="('h1',)", name="主机1", monitor_object=obj)
+        policy = _make_policy(
+            obj,
+            source={"type": "instance", "values": ["('h1',)"]},
+            algorithm="max",
+            threshold=[{"method": ">", "value": 80, "level": "critical"}],
+            period={"type": "min", "value": 5},
+        )
+        mocker.patch.object(
+            metric_query_module,
+            "VictoriaMetricsAPI",
+        ).return_value.query_range.return_value = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[1767225600, "95"]]}
+                ]
+            }
+        }
+        snapshot_store = {}
+
+        def upload_snapshot(self, instance, json_data, *args, **kwargs):
+            snapshot_store["data"] = json_data
+            return "2026/01/01/mock.json.gz"
+
+        mocker.patch(
+            "apps.core.fields.s3_json_field.S3JSONField._upload_to_s3",
+            upload_snapshot,
+        )
+        mocker.patch(
+            "apps.core.fields.s3_json_field.S3JSONField._load_from_s3",
+            lambda self, *args, **kwargs: snapshot_store.get("data", []),
+        )
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier.notify_alerts"
+        )
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.snapshot_recorder.SnapshotRecorder._build_pre_alert_snapshot",
+            return_value=None,
+        )
+
+        MonitorPolicyScan(policy).run()
+
+        alert = MonitorAlert.objects.get(policy_id=policy.id)
+        events = list(MonitorEvent.objects.filter(policy_id=policy.id))
+        assert alert.status == "new"
+        assert alert.level == "critical"
+        assert len(events) == 1
+        assert events[0].action == MonitorEvent.Action.TRIGGERED
+        assert MonitorAlertMetricSnapshot.objects.filter(alert_id=alert.id).exists()

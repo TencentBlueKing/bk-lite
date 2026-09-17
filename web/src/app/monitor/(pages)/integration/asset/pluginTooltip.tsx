@@ -12,8 +12,12 @@ interface PluginTooltipContentProps {
   timeText: string;
   collectionNodeLabel: string;
   notAssociatedText: string;
+  packVersionLabel: string;
+  packVersionText: string;
   collectMode?: string;
   collectorNodes?: CollectorNode[];
+  needUpdate?: boolean;
+  needUpdateText?: string;
 }
 
 interface PluginTooltipTriggerProps {
@@ -46,14 +50,19 @@ const PluginTooltipContent = ({
   timeText,
   collectionNodeLabel,
   notAssociatedText,
+  packVersionLabel,
+  packVersionText,
   collectMode,
-  collectorNodes
+  collectorNodes,
+  needUpdate,
+  needUpdateText
 }: PluginTooltipContentProps) => {
   const formattedNodes = formatCollectorNodes(collectMode, collectorNodes);
 
   return (
     <div className="text-xs leading-5">
       <div>{statusText}</div>
+      <div>{`${packVersionLabel}：${packVersionText}`}</div>
       <div>{`${lastReportTimeLabel}：${timeText}`}</div>
       <div>
         <span>{`${collectionNodeLabel}：`}</span>
@@ -67,6 +76,7 @@ const PluginTooltipContent = ({
           <span>{notAssociatedText}</span>
         )}
       </div>
+      {needUpdate && needUpdateText ? <div>{needUpdateText}</div> : null}
     </div>
   );
 };

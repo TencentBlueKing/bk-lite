@@ -28,6 +28,31 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "Palo Alto防火墙内存使用率过高",
+      "alert_name": "防火墙${resource_name} 内存使用率过高",
+      "description": "监控 Palo Alto 防火墙 RAM 使用率（panhrStorageTable 内存行 used×units / size×units），当超过阈值时触发告警，便于及时发现内存压力导致会话处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "Palo Alto防火墙会话表使用率过高",
       "alert_name": "防火墙${resource_name} 会话表使用率过高",
       "description": "监控 Palo Alto 防火墙会话表使用率，接近 100% 时新建连接可能被丢弃。当超过阈值时触发告警，便于及时扩容或排查连接洪泛。",

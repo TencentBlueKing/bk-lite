@@ -127,3 +127,39 @@ def test_host_resource_snapshot_returns_avg_max_without_health(monkeypatch):
     assert out["data"]["host_count"] == 1
     assert "healthy" not in out["data"]
     assert "unhealthy" not in out["data"]
+
+
+def test_host_resource_snapshot_accepts_logical_instance_id(monkeypatch):
+    allowed = SimpleNamespace(id="('MTVmOTFiYTM5ODZk',)", name="local", ip="10.10.41.149", interval=60)
+    _patch_scope(monkeypatch, {allowed.id: allowed})
+    captured = {}
+    monkeypatch.setattr(
+        nm,
+        "HostResourceSnapshotService",
+        lambda **kwargs: SimpleNamespace(run=lambda instances: captured.update(instances=instances) or {"host_count": len(instances)}),
+    )
+
+    out = nm.get_host_resource_snapshot(instance_ids=["MTVmOTFiYTM5ODZk"], user_info={"user": "u", "team": 1})
+
+    assert out["result"] is True
+    assert captured["instances"] == [allowed]
+    assert out["data"]["host_count"] == 1
+
+
+def test_host_resource_snapshot_rejects_cmdb_locators(monkeypatch):
+    from apps.monitor.services.host_dashboard import CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE
+
+    allowed = SimpleNamespace(id="('MTVmOTFiYTM5ODZk',)", name="local", ip="10.10.41.149", interval=60)
+    _patch_scope(monkeypatch, {allowed.id: allowed})
+
+    class FailVM:
+        def __init__(self):
+            raise AssertionError("cmdb locators must not query")
+
+    monkeypatch.setattr(nm, "VictoriaMetricsAPI", FailVM)
+    out = nm.get_host_resource_snapshot(
+        instance_ids=["100000000001"],
+        user_info={"user": "u", "team": 1},
+    )
+    assert out["result"] is False
+    assert out["message"] == CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE

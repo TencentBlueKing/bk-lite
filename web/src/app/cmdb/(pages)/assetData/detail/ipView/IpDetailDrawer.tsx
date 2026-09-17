@@ -12,7 +12,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useCommon } from '@/app/cmdb/context/common';
 import { getOrganizationDisplayText } from '@/app/cmdb/components/cmdb-shared';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
-import { KIND_COLOR, ipToCellKind, type CellKind, type IpInstance } from './ipamCells';
+import { ALLOC_COLOR, LIVE_COLOR, classifyAlloc, classifyLive, type AllocKind, type IpInstance } from './ipamCells';
 import {
   IPAM_ALLOC_ATTR_ID,
   IPAM_ASSET_PERMISSION_PATH,
@@ -34,6 +34,7 @@ import {
   isEditableIpAttr,
   isPersistedIp,
   listDrawerIpAttrs,
+  normalizeUserIds,
   type IpamEditPayload,
   type IpamModelAttr,
 } from './ipamEdit';
@@ -50,7 +51,7 @@ interface IpDetailDrawerProps {
   onSave: (payload: IpamEditPayload) => Promise<void> | void;
 }
 
-type DraftValue = string | string[];
+type DraftValue = string | string[] | number[];
 
 const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
   ip,
@@ -157,25 +158,17 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
       [IPAM_ALLOC_ATTR_ID]: currentAlloc || (persisted ? '' : defaultAllocStatus(allocOptions)),
       [IPAM_STATUS_ATTR_ID]: firstEnum(record[IPAM_STATUS_ATTR_ID]) || '',
       [IPAM_TYPE_ATTR_ID]: firstEnum(record[IPAM_TYPE_ATTR_ID]) || '',
-      [IPAM_USER_ATTR_ID]: Array.isArray(record[IPAM_USER_ATTR_ID])
-        ? (record[IPAM_USER_ATTR_ID] as unknown[]).map(String)
-        : record[IPAM_USER_ATTR_ID]
-          ? [String(record[IPAM_USER_ATTR_ID])]
-          : [],
+      [IPAM_USER_ATTR_ID]: normalizeUserIds(record[IPAM_USER_ATTR_ID]),
       [IPAM_MAC_ATTR_ID]: record[IPAM_MAC_ATTR_ID] == null ? '' : String(record[IPAM_MAC_ATTR_ID]),
       [IPAM_DESC_ATTR_ID]: record[IPAM_DESC_ATTR_ID] == null ? '' : String(record[IPAM_DESC_ATTR_ID]),
     });
   }, [open, ip, persisted, attrs, detail]);
 
-  const kindLabel = useMemo<Record<CellKind, string>>(
+  const allocLabel = useMemo<Record<AllocKind, string>>(
     () => ({
       free: t('Model.ipViewFree'),
-      allocated_online: t('Model.ipViewAllocatedOnline'),
-      allocated_offline: t('Model.ipViewAllocatedOffline'),
-      conflict: t('Model.ipViewConflict'),
+      allocated: t('Model.ipViewAllocated'),
       reserved: t('Model.ipViewReserved'),
-      gateway: t('Model.ipViewGateway'),
-      unknown: t('Model.ipViewUnknown'),
     }),
     [t]
   );
@@ -187,8 +180,9 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
 
   if (!ip) return null;
 
-  const kind = ipToCellKind(ip);
-  const color = KIND_COLOR[persisted ? kind : 'free'];
+  const alloc = persisted ? classifyAlloc(ip) : 'free';
+  const live = persisted ? classifyLive(ip) : 'none';
+  const color = ALLOC_COLOR[alloc];
   const savePermission =
     action === 'delete' ? ['Delete'] : persisted ? ['Edit'] : ['Add'];
 
@@ -248,13 +242,13 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
       return (
         <Select
           mode="multiple"
-          value={(draft[attr.attr_id] as string[]) || []}
+          value={(draft[attr.attr_id] as number[]) || []}
           disabled={disabled}
           showSearch
           optionFilterProp="label"
           placeholder={t('common.selectTip', isZh ? '请选择' : 'Select')}
           options={userList.map((user) => ({
-            value: String(user.id),
+            value: Number(user.id),
             label: `${user.display_name || user.username}(${user.username})`,
           }))}
           onChange={(value) => patchDraft(attr.attr_id, value)}
@@ -307,7 +301,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
         allocatedStatus,
         ipStatus: String(draft[IPAM_STATUS_ATTR_ID] || ''),
         ipType: String(draft[IPAM_TYPE_ATTR_ID] || ''),
-        ipUser: Array.isArray(draft[IPAM_USER_ATTR_ID]) ? (draft[IPAM_USER_ATTR_ID] as string[]) : [],
+        ipUser: draft[IPAM_USER_ATTR_ID],
         mac: String(draft[IPAM_MAC_ATTR_ID] || ''),
         description: String(draft[IPAM_DESC_ATTR_ID] || ''),
       })
@@ -352,10 +346,16 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
         ) : null
       }
     >
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-2">
         <Tag color={color} className="text-white">
-          {persisted ? kindLabel[kind] : t('Model.ipViewFree')}
+          {allocLabel[alloc]}
         </Tag>
+        {live !== 'none' ? (
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: LIVE_COLOR[live], boxShadow: '0 0 0 1px var(--color-bg-1)' }}
+          />
+        ) : null}
       </div>
       {attrLoading && attrs.length === 0 ? (
         <div className="py-6 text-center">

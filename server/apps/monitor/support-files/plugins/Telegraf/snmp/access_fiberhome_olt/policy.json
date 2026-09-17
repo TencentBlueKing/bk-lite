@@ -1,5 +1,20 @@
 {
   "object": "Access",
   "plugin": "Access FiberHome OLT SNMP",
-  "templates": []
+  "templates": [
+    {
+      "metric_name": "device_cpu_usage",
+      "alert_name": "CPU usage high",
+      "algorithm": "Threshold",
+      "threshold": 85,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_memory_usage",
+      "alert_name": "Memory usage high",
+      "algorithm": "Threshold",
+      "threshold": 85,
+      "level": "warning"
+    }
+  ]
 }

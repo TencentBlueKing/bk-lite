@@ -1,7 +1,7 @@
 Firewall Palo Alto SNMP:
   name: Palo Alto (Telegraf)
   desc: SNMP monitoring template for Palo Alto firewall. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+    CPU utilization, RAM used/total, session-table health, interface speed, and other key metrics
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -101,9 +101,9 @@ monitor_object_metric:
         Persistently low free memory can indicate rising memory pressure.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of used physical memory in bytes on the
-        firewall, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+      desc: This metric reports the amount of used RAM in bytes on the Palo Alto firewall
+        (PAN-COMMON-MIB panhrStorageUsed × panhrStorageAllocationUnits, RAM rows only).
+        It helps gauge absolute memory consumption and pressure.
     firewall_vpn_encrypted_pps:
       name: VPN Encrypted Packets Rate
       desc: This metric reports the rate of VPN-encrypted packets on the firewall
@@ -121,15 +121,14 @@ monitor_object_metric:
         heavy traffic inspection load, attack activity or a control-plane bottleneck.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the overall memory utilization of the FortiGate firewall
-        (FORTINET-FORTIGATE-MIB fgSysMemUsage, reported directly as a percentage).
-        When memory pressure is high the device may enter conserve mode and drop new
-        sessions.
+      desc: This metric reports RAM utilization of the Palo Alto firewall, derived
+        as used/total from PAN-COMMON-MIB panhrStorageTable RAM rows. High memory
+        pressure can degrade session handling.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the FortiGate
-        firewall (FORTINET-FORTIGATE-MIB fgSysMemCapacity, reported in KB and converted
-        to bytes).
+      desc: This metric reports the total RAM capacity of the Palo Alto firewall in
+        bytes (PAN-COMMON-MIB panhrStorageSize × panhrStorageAllocationUnits, RAM
+        rows only).
     firewall_active_sessions:
       name: IPv4 Active Sessions
       desc: This metric reports the number of active IPv4 sessions currently tracked

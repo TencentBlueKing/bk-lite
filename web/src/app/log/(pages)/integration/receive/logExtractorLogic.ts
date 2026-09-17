@@ -248,6 +248,29 @@ const EXTRACTOR_TYPE_LABEL_KEYS: Record<ExtractorType, string> = {
 export const extractorTypeLabelKey = (type: ExtractorType): string =>
   EXTRACTOR_TYPE_LABEL_KEYS[type];
 
+const EXTRACTOR_SIMPLE_SEGMENT = /^[@A-Za-z_][@A-Za-z0-9_-]*$/;
+
+export const formatExtractorPathSegment = (key: string) =>
+  EXTRACTOR_SIMPLE_SEGMENT.test(key) ? key : `[${JSON.stringify(key)}]`;
+
+const joinExtractorPath = (prefix: string, segment: string) =>
+  prefix
+    ? segment.startsWith('[')
+      ? `${prefix}${segment}`
+      : `${prefix}.${segment}`
+    : segment;
+
+export const extractorPathFromSearchField = (fieldKey: string) => {
+  const raw = fieldKey.trim();
+  if (!raw) return 'message';
+  if (raw.includes('[')) return raw;
+  return raw
+    .split('.')
+    .filter(Boolean)
+    .map(formatExtractorPathSegment)
+    .reduce((path, segment) => joinExtractorPath(path, segment), '');
+};
+
 export const flattenExtractorPaths = (
   value: unknown,
   prefix = '',
@@ -255,14 +278,7 @@ export const flattenExtractorPaths = (
 ): Set<string> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
   Object.entries(value).forEach(([key, child]) => {
-    const segment = /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
-      ? key
-      : `[${JSON.stringify(key)}]`;
-    const path = prefix
-      ? segment.startsWith('[')
-        ? `${prefix}${segment}`
-        : `${prefix}.${segment}`
-      : segment;
+    const path = joinExtractorPath(prefix, formatExtractorPathSegment(key));
     result.add(path);
     flattenExtractorPaths(child, path, result);
   });
@@ -348,9 +364,7 @@ export const flattenExtractorLeafValues = (
     return result;
   }
   entries.forEach(([key, child]) => {
-    const segment = /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
-      ? key
-      : `[${JSON.stringify(key)}]`;
+    const segment = formatExtractorPathSegment(key);
     const path = prefix
       ? segment.startsWith('[')
         ? `${prefix}${segment}`

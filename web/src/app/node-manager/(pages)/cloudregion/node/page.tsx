@@ -14,7 +14,8 @@ import {
   Modal,
   Tooltip,
   Tag,
-  Dropdown
+  Dropdown,
+  Alert
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -42,6 +43,7 @@ import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
 import CollectorOperation from './collectorOperation';
 import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import PermissionWrapper from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
@@ -53,7 +55,9 @@ import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
-import { listNodeHostedCollectors } from '@/app/node-manager/utils/collectorConfig';
+import { listNodeHostedCollectors, parseCollectorQueryNames, isSameCollectorName, collectorDisplayName } from '@/app/node-manager/utils/collectorConfig';
+import { MODULE_OBJECT_QUERY_PARAM } from '@/app/monitor/utils/monitorObjectQuery';
+import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -61,6 +65,7 @@ type TableRowSelection<T extends object = object> =
 
 const Node = () => {
   const { t } = useTranslation();
+  const router = useScreenAwareRouter();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
@@ -73,6 +78,18 @@ const Node = () => {
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const name = searchParams.get('name') || '';
   const notDeployed = searchParams.get('not_deployed');
+  const packCollectorNames = parseCollectorQueryNames(searchParams.get('collector'));
+  const packCollectorNamesRef = useRef(packCollectorNames);
+  packCollectorNamesRef.current = packCollectorNames;
+  const packObjectId = searchParams.get(MODULE_OBJECT_QUERY_PARAM) || '';
+  const packPluginId = searchParams.get('plugin_id') || '';
+  const packAlignAssetUrl = packObjectId
+    ? buildCollectNeedUpdateAssetUrl({
+      monitorObjectId: packObjectId,
+      pluginId: packPluginId || null,
+      needUpdate: true
+    })
+    : '';
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
   const collectorDetailRef = useRef<any>(null);
@@ -551,8 +568,41 @@ const Node = () => {
               );
             }
           );
-          return statusTags.length > 0 ? (
-            <div className="flex flex-nowrap gap-1">{statusTags}</div>
+          const focusTags = packCollectorNamesRef.current
+            .map((collectorName) => {
+              const matched = allCollectors.find((collector: any) =>
+                isSameCollectorName(collector, collectorName)
+              );
+              if (!matched) return null;
+              const versionInfo = (record.versions || []).find(
+                (item: TableDataItem) =>
+                  item.component_type === 'collector' &&
+                  String(item.component_id) === String(matched.collector_id)
+              );
+              return (
+                <Tag
+                  key={`pack-${collectorName}`}
+                  color="processing"
+                  className="cursor-pointer py-1 px-2"
+                  onClick={() =>
+                    handleCollectorTagClick(record, allCollectors, collectorName)
+                  }
+                >
+                  {collectorDisplayName(matched) || collectorName}
+                  {versionInfo?.upgradeable
+                    ? ` · ${t('node-manager.cloudregion.node.collectorUpgradeable', '', {
+                      version: versionInfo?.latest_version || '--'
+                    })}`
+                    : ''}
+                </Tag>
+              );
+            })
+            .filter(Boolean);
+          return statusTags.length > 0 || focusTags.length > 0 ? (
+            <div className="flex flex-nowrap gap-1">
+              {focusTags}
+              {statusTags}
+            </div>
           ) : (
             <span>--</span>
           );
@@ -563,11 +613,13 @@ const Node = () => {
 
   const handleCollectorTagClick = (
     record: TableDataItem,
-    collectors: any[]
+    collectors: any[],
+    focusCollectorName?: string
   ) => {
     collectorDetailRef.current?.showModal({
       collectors,
-      row: record
+      row: record,
+      focusCollectorName
     });
   };
 
@@ -616,6 +668,31 @@ const Node = () => {
           {showNodeTable && (
             <div className={`${nodeStyle.node} w-full h-full`}>
               <div className="overflow-hidden">
+                {packCollectorNames.length ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    className="mb-4"
+                    message={t(
+                      'node-manager.packetManage.nodeImportCollectorHint',
+                      '',
+                      { collector: packCollectorNames.join(' / ') }
+                    )}
+                    description={t(
+                      'node-manager.packetManage.nodeImportCollectorDesc'
+                    )}
+                    action={
+                      packAlignAssetUrl ? (
+                        <Button
+                          size="small"
+                          onClick={() => router.push(packAlignAssetUrl)}
+                        >
+                          {t('node-manager.packetManage.goToStaleAssets')}
+                        </Button>
+                      ) : null
+                    }
+                  />
+                ) : null}
                 <div className="flex items-center justify-between mb-4">
                   <SearchCombination
                     fieldConfigs={fieldConfigs}
@@ -741,6 +818,11 @@ const Node = () => {
               collectorId={collectorId}
               collectorName={collectorName}
               collectorPackageId={collectorPackageId}
+              alignAssetUrl={
+                collectorOperationType === 'installCollector'
+                  ? packAlignAssetUrl || undefined
+                  : undefined
+              }
               cancel={cancelCollectorOperation}
             />
           )}

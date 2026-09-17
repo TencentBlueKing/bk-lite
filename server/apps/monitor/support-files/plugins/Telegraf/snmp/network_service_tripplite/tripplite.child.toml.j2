@@ -33,6 +33,20 @@
         name = "source"
         is_tag = true
 
+    # PRODUCTS battery charge % and output-line load % (PEN 850). Interface traffic stays on the existing IF-MIB HC floor.
+    [[inputs.snmp.table]]
+        name = "network_service_tripplite_battery"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.850.1.1.3.1.3.1.1.1.4"
+        name = "capacity"
+    [[inputs.snmp.table]]
+        name = "network_service_tripplite_output"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.850.1.1.3.1.3.3.2.1.5"
+        name = "load"
+
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"

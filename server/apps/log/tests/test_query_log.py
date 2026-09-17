@@ -930,6 +930,66 @@ def test_alert_snapshots_returns_data_for_authorized_policy(api_client, authenti
     assert response.json()["data"]["snapshot_info"]["snapshot_count"] == 1
 
 
+@pytest.mark.django_db
+def test_alert_snapshots_returns_frozen_query_clue_not_live_policy(api_client, authenticated_user, mocker):
+    policy = _create_policy("frozen-clue-policy", organization=1)
+    alert, _ = _create_alert_with_event(policy, "alert-snapshot-clue", "event-snapshot-clue")
+    frozen_clue = {
+        "policy_id": policy.id,
+        "policy_name": "frozen-clue-policy",
+        "log_groups": ["group-a"],
+        "alert_condition": {"query": "error AND host:web-1"},
+        "period": {"type": "min", "value": 5},
+    }
+    snapshots = [
+        {
+            "type": "event",
+            "event_id": "event-snapshot-clue",
+            "raw_data": [{"_msg": "hit"}],
+            "query_clue": frozen_clue,
+        }
+    ]
+    AlertSnapshot.objects.create(alert=alert, policy=policy, source_id=alert.source_id, snapshots=snapshots)
+    mocker.patch(
+        "apps.core.fields.s3_json_field.S3JSONField._load_from_s3",
+        return_value=snapshots,
+    )
+    policy.alert_condition = {"query": "error AND host:web-2"}
+    policy.save(update_fields=["alert_condition"])
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/alert/snapshots/{alert.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()["data"]
+    assert payload["alert_info"]["id"] == alert.id
+    assert payload["snapshots"][0]["query_clue"] == frozen_clue
+    assert payload["snapshots"][0]["raw_data"] == [{"_msg": "hit"}]
+    assert payload["snapshots"][0]["query_clue"]["alert_condition"]["query"] == "error AND host:web-1"
+
+
+@pytest.mark.django_db
+def test_alert_snapshots_keeps_missing_query_clue_without_live_backfill(api_client, authenticated_user, mocker):
+    policy = _create_policy("legacy-clue-policy", organization=1)
+    alert, _ = _create_alert_with_event(policy, "alert-snapshot-legacy", "event-snapshot-legacy")
+    snapshots = [{"type": "event", "event_id": "event-snapshot-legacy", "raw_data": [{"_msg": "old"}]}]
+    AlertSnapshot.objects.create(alert=alert, policy=policy, source_id=alert.source_id, snapshots=snapshots)
+    mocker.patch(
+        "apps.core.fields.s3_json_field.S3JSONField._load_from_s3",
+        return_value=snapshots,
+    )
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/alert/snapshots/{alert.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    item = response.json()["data"]["snapshots"][0]
+    assert "query_clue" not in item
+    assert item["raw_data"] == [{"_msg": "old"}]
+
+
 # ---------------------------------------------------------------------------
 # Issue #3359: tail_async 的 iter_lines 必须在线程池中运行，不得阻塞事件循环
 # ---------------------------------------------------------------------------

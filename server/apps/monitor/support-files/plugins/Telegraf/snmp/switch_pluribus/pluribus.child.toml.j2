@@ -34,9 +34,13 @@
         is_tag = true
     # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns) ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
         name = "interface"
         inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
@@ -64,11 +68,11 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.5.0"
+        oid = "1.3.6.1.4.1.2021.4.5"
         name = "total"
         conversion = "int"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.6.0"
+        oid = "1.3.6.1.4.1.2021.4.6"
         name = "free"
         conversion = "int"
     # ---- Pluribus Netvisor ONE temperature (LM-SENSORS-MIB lmTempSensorsValue, 表 OID, ℃) ----

@@ -34,9 +34,13 @@
         is_tag = true
     # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
         name = "interface"
         inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
@@ -54,7 +58,7 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8691.7.1.5.0"
+        oid = "1.3.6.1.4.1.8691.7.1.5"
         name = "celsius"
     # ---- Moxa 双路电源输入状态 (MOXA-MIB, 每路 on(1)/off(2)) ----
     # 待现网核验：电源输入1 .8691.7.1.6.1.0 / 输入2 .8691.7.1.6.2.0（原始码 on=1）。
@@ -63,10 +67,10 @@
         name = "device_psu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8691.7.1.6.1.0"
+        oid = "1.3.6.1.4.1.8691.7.1.6.1"
         name = "state"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8691.7.1.6.2.0"
+        oid = "1.3.6.1.4.1.8691.7.1.6.2"
         name = "state_backup"
 # ---- CPU/内存/风扇：Moxa 工业交换机为无风扇被动散热设计，私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载 → CPU/内存/风扇 N/A 不采。仅温度/电源输入/接口干净可采。----
 # ---- 状态归一：电源输入 on(1)→1(正常),其余→2(异常)。----

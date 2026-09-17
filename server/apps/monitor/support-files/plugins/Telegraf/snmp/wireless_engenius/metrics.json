@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_engenius",
   "plugin": "Wireless EnGenius SNMP",
-  "plugin_desc": "EnGenius 无线设备 SNMP 采集基线模板（接口流量 + 运行时长，Senao 企业号 14125）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。EnGenius 私有 MIB 以配置为主——ENGENIUS-PRIVATE-MIB 无 CPU/温度/内存对象；仅旧版 mesh 固件的 ENGENIUS-MESH-MIB 暴露空闲内存百分比与字符串型运行时长，且云管 ECW/EWS 机型无该私有树；关联客户端数无标量计数，须对客户端表逐行计数且各列为文本，无法可靠 gauge 化；信道利用率无对象。为跨机型（含云管）稳定可采，CPU/内存/温度/客户端数/信道利用率为 N/A，不伪造。适用品牌型号——EnGenius 企业无线 AP（ECW/EWS 云管系列、ENH/ENS 系列接入点，企业号 14125）及其他遵循 IF-MIB 标准的无线 AP。",
+  "plugin_desc": "EnGenius 无线设备 SNMP 采集（Senao 企业号 14125）。在 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets）与 sysUpTime 之外，采集私有 sys_info 健康标量：CPU 使用率（cpu_loading DisplayString 解析为 0-100%）与内存使用率（mem_usage DisplayString 解析为 0-100%）。空串、非数字或解析失败的 CPU/内存读数跳过，不按 0% 上报；设备无该私有叶时缺省，不报错。无私有温度/风扇 Gauge，不臆造。不扩展 ifHC* / ifOperStatus。适用 EnGenius Fit / ECW 等声明支持该私有 MIB 的企业无线 AP。",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_engenius'}) by (instance_id)",
   "name": "Wireless",
@@ -15,7 +15,9 @@
   ],
   "supplementary_indicators": [
     "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
+    "device_total_outgoing_traffic",
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
     {
@@ -30,6 +32,32 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the wireless device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the EnGenius wireless device (cpu_loading, OID 14125.9.1.1.9). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. Empty, non-numeric, or unparseable readings are skipped and not reported as 0%. Sustained high CPU usage can indicate heavy client-association load, control-plane pressure, or RF management overhead affecting roaming and management responsiveness."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the EnGenius wireless device (mem_usage, OID 14125.9.1.1.10). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. Empty, non-numeric, or unparseable readings are skipped and not reported as 0%. High memory pressure can cause the access point to drop client associations or restart services, so investigate client counts or abnormal load promptly."
     },
     {
       "metric_group": "Traffic",

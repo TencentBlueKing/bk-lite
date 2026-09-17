@@ -14,8 +14,9 @@
 
 .node {
     .table {
-        width: calc(100vw - 278px);
-        min-width: 1000px;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
     }
 }
 
@@ -36,8 +37,9 @@
 
     .form {
         height: calc(100vh - 310px);
-        width: calc(100vw - 280px);
-        min-width: 600px;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
         overflow-y: auto;
         padding: 10px;
 

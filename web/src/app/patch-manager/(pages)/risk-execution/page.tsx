@@ -24,6 +24,14 @@ import FilterToolbar from '@/components/filter-toolbar';
 import CompactEmptyState from '@/components/compact-empty-state';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import {
+  collectPagedItems,
+  EXECUTION_EXPORT_LIST_PAGE_SIZE,
+  EXECUTION_EXPORT_MAX_RISK_DETAILS,
+  EXECUTION_EXPORT_MAX_TASKS,
+  EXECUTION_EXPORT_RISK_DETAIL_CONCURRENCY,
+  mapWithConcurrency,
+} from '@/app/patch-manager/utils/execution-export-budget';
 import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -508,30 +516,53 @@ export default function RiskExecutionPage() {
     }
   };
 
-  const loadExportRiskRows = async (taskId: number) => {
-    const task = await api.getGovernanceTaskDetail(taskId);
-    return Promise.all(
-      (task.risk_items || []).map((risk: RiskSummary) => (
-        api.getGovernanceRiskItemDetail(taskId, risk.id)
-      )),
-    );
-  };
-
   const handleExport = async (selectedOnly: boolean) => {
     setExporting(true);
     try {
+      let truncated = false;
       let rows: TaskRow[];
       if (selectedOnly) {
         rows = tasks.filter((row) => selectedTasks.includes(row.key));
       } else {
-        const response = await api.getGovernanceTaskList({
-          page: 1,
-          page_size: 10000,
-          search: appliedTaskSearch || undefined,
-          task_type: taskType as 'install' | 'reboot' | undefined,
+        const collected = await collectPagedItems({
+          fetchPage: async ({ page, pageSize, signal }) => {
+            const response = await api.getGovernanceTaskList(
+              {
+                page,
+                page_size: pageSize,
+                search: appliedTaskSearch || undefined,
+                task_type: taskType as 'install' | 'reboot' | undefined,
+              },
+              { signal },
+            );
+            return {
+              items: mapTaskRows(response.items || []),
+              count: response.count,
+            };
+          },
+          pageSize: EXECUTION_EXPORT_LIST_PAGE_SIZE,
+          maxItems: EXECUTION_EXPORT_MAX_TASKS,
         });
-        rows = mapTaskRows(response.items || []);
+        rows = collected.items;
+        truncated = collected.truncated;
       }
+      let remainingRiskDetails = EXECUTION_EXPORT_MAX_RISK_DETAILS;
+      const loadExportRiskRows = async (taskId: number) => {
+        if (remainingRiskDetails <= 0) {
+          truncated = true;
+          return [];
+        }
+        const task = await api.getGovernanceTaskDetail(taskId);
+        const mapped = await mapWithConcurrency({
+          items: (task.risk_items || []) as RiskSummary[],
+          mapper: (risk) => api.getGovernanceRiskItemDetail(taskId, risk.id),
+          concurrency: EXECUTION_EXPORT_RISK_DETAIL_CONCURRENCY,
+          maxResults: remainingRiskDetails,
+        });
+        remainingRiskDetails -= mapped.items.length;
+        if (mapped.truncated) truncated = true;
+        return mapped.items;
+      };
       await exportTasks(
         rows,
         selectedOnly
@@ -541,6 +572,12 @@ export default function RiskExecutionPage() {
         formatDateTime,
         t,
       );
+      if (truncated) {
+        message.warning(t('patchManager.execution.exportTruncated', undefined, {
+          taskLimit: EXECUTION_EXPORT_MAX_TASKS,
+          riskLimit: EXECUTION_EXPORT_MAX_RISK_DETAILS,
+        }));
+      }
     } finally {
       setExporting(false);
     }

@@ -9,6 +9,7 @@ import {
   clearTemplateSelection,
   canDeleteTemplates,
   containsBuiltinTemplate,
+  formatTemplateAlgorithmSummary,
   getAssetCollectionTemplateLabels,
   getAssetOrganizationText,
   getPrimaryNoticeType,
@@ -312,5 +313,15 @@ assert.match(
   /requestId !== assetRequestIdRef\.current/,
   '旧资产请求响应不应覆盖新查询'
 );
+
+assert.equal(
+  formatTemplateAlgorithmSummary({ algorithm: 'p95_over_time' }),
+  'P95'
+);
+assert.equal(
+  formatTemplateAlgorithmSummary({ algorithm: 'count_if_over_time' }),
+  '条件计数'
+);
+assert.equal(formatTemplateAlgorithmSummary({ algorithm: 'rate' }), '速率');
 
 console.log('monitor-template-bulk logic validation passed');

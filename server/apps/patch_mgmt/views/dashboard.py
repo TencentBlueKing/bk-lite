@@ -116,13 +116,8 @@ class PatchDashboardViewSet(AuthViewSet):
             status=GovernanceTaskStatus.FAILED
         ).count()
 
-        # 真实风险项（按团队过滤）
-        all_risk_items = compute_risk_items()
-        risk_items = [
-            item
-            for item in all_risk_items
-            if item.host_id in target_ids
-        ]
+        # 真实风险项（按已核验主机范围计算）
+        risk_items = compute_risk_items(target_ids)
         missing_risk_items = [i for i in risk_items if i.compliance == RiskCompliance.MISSING]
         pending_risk_count = len(missing_risk_items)
 

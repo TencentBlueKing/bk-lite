@@ -1,0 +1,35 @@
+Wireless Ruckus SNMP:
+  name: Ruckus（Telegraf）
+  desc: 面向 Ruckus ZoneDirector 无线控制器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率、关联 AP 数、已注册 AP 数、客户端数和许可 AP 数（企业号 PEN 25053）。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示无线控制器自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Ruckus 无线控制器的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示客户端关联负载过高或控制平面压力过大，会影响漫游与管理响应。
+    device_memory_usage:
+      name: 内存使用率
+      desc: Ruckus 无线控制器的整体内存使用率，以 0-100 百分比直接上报。内存压力过高会导致控制器丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。
+    wireless_ap_count:
+      name: 关联 AP 数
+      desc: 当前与 ZoneDirector 控制器关联的接入点数量。数值突然下降可能表示接入点断连或控制器发生切换。
+    wireless_registered_ap_count:
+      name: 已注册 AP 数
+      desc: 当前已在 ZoneDirector 控制器注册的接入点数量。可与关联 AP 数、许可 AP 数对照，发现注册缺口。
+    wireless_client_count:
+      name: 客户端数
+      desc: 当前通过 ZoneDirector 控制器关联的无线客户端数量。数量快速增长可能伴随控制器 CPU 与内存压力上升。
+    wireless_licensed_ap_count:
+      name: 许可 AP 数
+      desc: ZoneDirector 控制器已授权的接入点数量。当关联 AP 接近该上限时，可能需要补充许可。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    Traffic: 流量
+    Wireless: 无线

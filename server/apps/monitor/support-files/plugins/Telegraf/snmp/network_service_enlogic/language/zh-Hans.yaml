@@ -1,6 +1,6 @@
 NetworkService Enlogic PDU SNMP:
   name: Enlogic PDU（Telegraf）
-  desc: 面向 Enlogic PDU 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Enlogic PDU 的 SNMP 监控模板，可采集 PDU 有功功率、输入相位电流、插座电流、环境摄氏温度、相对湿度、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -16,7 +16,7 @@ monitor_object_metric:
         位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
     interface_ifHCOutOctets:
       name: 接口发送流量速率
-      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
         位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     device_total_incoming_traffic:
       name: 设备接收总流量速率
@@ -78,8 +78,31 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP 层级
       desc: Spectracom NTP 当前 stratum 层级。
+    pdu_active_power_watts:
+      name: PDU 有功功率
+      desc: 来自 pduUnitStatusActivePower 与 pduUnitStatusName 的 PDU 单元有功功率，单位为瓦。原始值已是瓦。
+    pdu_phase_current_amps:
+      name: PDU 相位电流
+      desc: 来自 pduInputPhaseStatusCurrent 与 pduInputPhaseStatusCount 的逐相位输入电流，单位为安培。原始值为百分之一安培，查询除以 100。
+    pdu_phase_voltage_volts:
+      name: PDU 相位电压
+      desc: 来自 pduInputPhaseStatusVoltage 的逐相位输入电压，单位为伏特。原始值已是伏特。
+    pdu_phase_power_watts:
+      name: PDU 相位功率
+      desc: 来自 pduInputPhaseStatusActivePower 的逐相位有功功率，单位为瓦。原始值已是瓦。
+    pdu_outlet_current_amps:
+      name: PDU 插座电流
+      desc: 来自 pduOutletMeteredStatusCurrent 与 pduOutletMeteredStatusName 的逐插座电流，单位为安培。原始值为百分之一安培，查询除以 100。
+    env_temperature_celsius:
+      name: 环境温度
+      desc: 来自 pduExternalSensorStatusHighPrecisionValue 的逐传感器外部温度，单位为摄氏度。仅保留铭牌类型为温度且单位为摄氏的行。原始值为十分之一度，查询除以 10。
+    env_humidity_percent:
+      name: 环境湿度
+      desc: 来自同一高精度值列的逐传感器外部相对湿度。仅保留铭牌类型为湿度且单位为百分比的行。原始值为十分之一，查询除以 10。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础
     Traffic: 流量
     NetworkService: 网络服务
+    Power: 电力
+    Environment: 环境

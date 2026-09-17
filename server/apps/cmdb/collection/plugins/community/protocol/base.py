@@ -16,4 +16,7 @@ class BaseProtocolCollectionPlugin(AutoRegisterCollectionPluginMixin, ProtocolCo
 
     @property
     def model_field_mapping(self):
+        mappings = getattr(self, "field_mappings", None)
+        if mappings:
+            return {model_id: bind_collection_mapping(self, mapping) for model_id, mapping in mappings.items()}
         return {self.model_id: bind_collection_mapping(self, self.field_mapping)}

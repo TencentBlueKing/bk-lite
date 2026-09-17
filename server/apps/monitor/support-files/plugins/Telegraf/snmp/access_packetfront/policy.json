@@ -1,5 +1,13 @@
 {
   "object": "Access",
   "plugin": "Access PacketFront SNMP",
-  "templates": []
+  "templates": [
+    {
+      "metric_name": "device_temperature_celsius",
+      "alert_name": "Temperature high",
+      "algorithm": "Threshold",
+      "threshold": 70,
+      "level": "warning"
+    }
+  ]
 }

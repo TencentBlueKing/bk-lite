@@ -1,0 +1,56 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Ruckus SNMP",
+  "templates": [
+    {
+      "name": "Ruckus无线设备CPU使用率过高",
+      "alert_name": "无线设备${resource_name} CPU 使用率过高",
+      "description": "监控 Ruckus ZoneDirector 无线控制器的整体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在客户端关联负载过高或控制平面压力，避免影响漫游与管理响应。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ruckus无线设备内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Ruckus ZoneDirector 无线控制器的整体内存使用率，当超过阈值时触发告警。内存压力过高会导致控制器丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -32,18 +32,44 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
-    [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+# @bk_include_ifmib_table
+    # Inventory tags only (not health metrics). Empty strings yield empty tags.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.1.1.0"
+        name = "fwrev"
         is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.1.2.0"
+        name = "sernum"
+        is_tag = true
+    # Chassis temperature Fr8p8 Integer32; metric query uses /256 to Celsius.
+    # Do not treat the raw value as °C. Do not invent CPU% or memory.
+    # Do not bind HOST-RESOURCES.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.39.0"
+        name = "device_temperature_celsius"
+    # Fan RPM Integer32, no scaling.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.42.0"
+        name = "device_fan_rpm"
+    # RF level Fr8p8; metric query uses /256 to dBµV.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.2.0"
+        name = "deva_rf_level"
+    # Optional broadcast monitors (Fr8p8 /256 unless noted). Missing scalars yield no point.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.15.0"
+        name = "deva_pilot_level"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.9.0"
+        name = "deva_mpx_level"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.21.0"
+        name = "deva_left_audio_level"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.24.0"
+        name = "deva_right_audio_level"
+    # RDS BER Fr1p15; metric query uses /32768.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35833.37.3.35.0"
+        name = "deva_rds_ber"

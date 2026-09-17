@@ -16,6 +16,8 @@ import re
 from dataclasses import replace
 from typing import Iterable
 
+from django.db.models import prefetch_related_objects
+
 from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
 from apps.patch_mgmt.services.compliance_evaluator import (
@@ -253,7 +255,21 @@ def _linux_specs(requirements: list) -> dict[int, list[RequirementSpec]]:
 
 def linux_requirement_specs(requirements: Iterable) -> dict[int, list[RequirementSpec]]:
     """构造 Linux 要求规格，供评估与治理前适用性复核共享。"""
-    return _linux_specs(list(requirements))
+    materialized = list(requirements)
+    patches = []
+    seen_ids: set[int] = set()
+    for requirement in materialized:
+        patch = getattr(requirement, "patch", None)
+        patch_pk = getattr(patch, "pk", None)
+        if patch is None or patch_pk is None or patch_pk in seen_ids:
+            continue
+        if not hasattr(patch, "sources"):
+            continue
+        seen_ids.add(patch_pk)
+        patches.append(patch)
+    if patches:
+        prefetch_related_objects(patches, "sources")
+    return _linux_specs(materialized)
 
 
 def _parse_linux_fact_line(raw_line: str) -> tuple[int | None, int | None, str, LinuxPackageFact] | None:

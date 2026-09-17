@@ -171,13 +171,13 @@ const OperationLog: React.FC = () => {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} flex min-h-0 flex-1 flex-col`}>
       <Introduction
         title={t('OperationLog.title')}
         message={t('OperationLog.description')}
       />
-      <div className={styles.content}>
-        <div className={`${styles.filterWrapper} mb-[20px]`}>
+      <div className={`${styles.content} flex min-h-0 flex-1 flex-col`}>
+        <div className={`${styles.filterWrapper} mb-[20px] shrink-0`}>
           <div className="flex items-center gap-4">
             <div className="flex items-center">
               <label className="mr-2 whitespace-nowrap">
@@ -241,16 +241,17 @@ const OperationLog: React.FC = () => {
             </div>
           </div>
         </div>
-        <CustomTable
-          size="middle"
-          rowKey="id"
-          loading={tableLoading}
-          columns={columns}
-          dataSource={dataList}
-          pagination={pagination}
-          onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 490px)' }}
-        />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <CustomTable
+            size="middle"
+            rowKey="id"
+            loading={tableLoading}
+            columns={columns}
+            dataSource={dataList}
+            pagination={pagination}
+            onChange={handleTableChange}
+          />
+        </div>
       </div>
     </div>
   );

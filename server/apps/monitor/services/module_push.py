@@ -5,9 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
-from apps.core.utils.current_team_scope import resolve_current_team_data_scope
+from apps.core.utils.current_team_scope import build_request_push_actor_scope
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization
 from apps.node_mgmt.services.module_push_contract import (
     EVENT_LIFECYCLE,
@@ -40,15 +39,7 @@ MONITOR_OBJECT_TO_CMDB_MODEL = {
 
 def build_monitor_push_actor_scope(request) -> dict[str, Any]:
     """从请求鉴权上下文构造跨模块推送 actor_scope。"""
-    operator = getattr(getattr(request, "user", None), "username", "") or ""
-    try:
-        scope = resolve_current_team_data_scope(request)
-        return {
-            "allowed_org_ids": list(scope.data_team_ids),
-            "operator": scope.username or operator,
-        }
-    except BaseAppException:
-        return {"allowed_org_ids": [], "operator": operator}
+    return build_request_push_actor_scope(request)
 
 
 def causation_id_for(source_module: str, source_id: str, target: str) -> str:

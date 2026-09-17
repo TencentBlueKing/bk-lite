@@ -1,5 +1,6 @@
 """文件/网页资料解析测试。MinIO 与 markitdown 均通过 parser/storage 注入隔离。"""
 
+import logging
 import os
 import subprocess
 import sys
@@ -678,3 +679,74 @@ def test_material_file_upload_endpoint_accepts_temporary_uploaded_file(api_clien
     created = Material.objects.get(id=response.json()["data"]["id"])
     assert created.file
     assert created.status == "pending"
+
+
+@pytest.mark.django_db
+def test_material_file_create_rolls_back_when_object_storage_save_fails(api_client, monkeypatch, tmp_path, caplog):
+    """单文件上传在对象存储不可用时不得留下资料行。"""
+    from apps.opspilot.models import Material
+
+    file_field = Material._meta.get_field("file")
+    original_storage = file_field.storage
+    file_field.storage = FileSystemStorage(location=tmp_path, base_url="/test-media/")
+
+    def boom(name, content, max_length=None):
+        raise ConnectionError("minio down")
+
+    monkeypatch.setattr(file_field.storage, "save", boom)
+    caplog.set_level(logging.WARNING, logger="opspilot")
+    kb = _kb()
+    try:
+        resp = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/",
+            {
+                "knowledge_base": kb.id,
+                "name": "lost.md",
+                "material_type": "file",
+                "file": SimpleUploadedFile("lost.md", b"# lost"),
+            },
+            format="multipart",
+        )
+    finally:
+        file_field.storage = original_storage
+
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["result"] is False
+    assert body["message"] == ("对象存储不可用（MinIO 未就绪），资料上传失败，未保存。请检查对象存储服务后重试。")
+    assert not Material.objects.filter(knowledge_base=kb).exists()
+    records = [record for record in caplog.records if record.name == "opspilot" and record.msg == "wiki material create 对象存储失败 kb=%s error_type=%s"]
+    assert len(records) == 1
+    assert records[0].args == (kb.id, "MaterialStorageError")
+    assert "minio down" not in records[0].getMessage()
+
+
+@pytest.mark.django_db
+def test_material_file_create_rolls_back_when_stored_object_is_missing(api_client, monkeypatch, tmp_path):
+    """单文件上传写入后对象不存在时回滚资料行。"""
+    from apps.opspilot.models import Material
+
+    file_field = Material._meta.get_field("file")
+    original_storage = file_field.storage
+    file_field.storage = FileSystemStorage(location=tmp_path, base_url="/test-media/")
+    monkeypatch.setattr(file_field.storage, "exists", lambda name: False)
+    kb = _kb()
+    try:
+        resp = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/",
+            {
+                "knowledge_base": kb.id,
+                "name": "ghost.md",
+                "material_type": "file",
+                "file": SimpleUploadedFile("ghost.md", b"# ghost"),
+            },
+            format="multipart",
+        )
+    finally:
+        file_field.storage = original_storage
+
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["result"] is False
+    assert "对象存储不可用（MinIO 未就绪）" in body["message"]
+    assert not Material.objects.filter(knowledge_base=kb).exists()

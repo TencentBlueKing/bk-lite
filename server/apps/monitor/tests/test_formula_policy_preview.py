@@ -29,7 +29,7 @@ def test_preview_formula_uses_compiled_query(mocker):
         instance_id_keys=["instance_id"],
     )
     captured = {}
-    api = mocker.patch("apps.monitor.tasks.utils.policy_methods.VictoriaMetricsAPI")
+    api = mocker.patch("apps.monitor.services.policy_preview.VictoriaMetricsAPI")
 
     def fake_query_range(query, *args):
         captured["query"] = query
@@ -98,7 +98,7 @@ def test_preview_formula_returns_compiled_warnings(mocker):
         instance_id_keys=["instance_id"],
     )
 
-    mocker.patch("apps.monitor.tasks.utils.policy_methods.VictoriaMetricsAPI").return_value.query_range.return_value = {
+    mocker.patch("apps.monitor.services.policy_preview.VictoriaMetricsAPI").return_value.query_range.return_value = {
         "status": "success",
         "data": {"result": []},
     }
@@ -206,7 +206,7 @@ def test_preview_formula_applies_instance_filter_to_each_or_branch(mocker):
         instance_id_keys=["node"],
     )
     captured = {}
-    api = mocker.patch("apps.monitor.tasks.utils.policy_methods.VictoriaMetricsAPI")
+    api = mocker.patch("apps.monitor.services.policy_preview.VictoriaMetricsAPI")
 
     def fake_query_range(query, *args):
         captured["query"] = query

@@ -1,7 +1,9 @@
 Switch Korenix SNMP:
   name: Korenix (Telegraf)
-  desc: SNMP monitoring template for Korenix switch. It reports system uptime, interface
-    speed, inbound error packets, and other key metrics
+  desc: SNMP monitoring template for Korenix JetNet industrial Ethernet switches. It reports
+    system uptime, interface traffic via the shared IF-MIB floor, dual power LED status,
+    and SFP DDM temperature, transmit power, and receive power (IANA PEN 24062). Chassis
+    CPU and memory utilization are not collected.
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -20,6 +22,30 @@ monitor_object_metric:
       name: SFP TX Power
       desc: Optical transmit power reading of the SFP/SFP+ module. Abnormal Tx power
         may indicate an aging or failing optical module.
+    psu1_status:
+      name: PSU1 Status
+      desc: Operational state of power input 1 LED. Native codes are on (1), blinkNormal
+        (2), blinkFast (3), and off (4). A value other than 1 means the primary power
+        input is not steadily present.
+    psu2_status:
+      name: PSU2 Status
+      desc: Operational state of power input 2 LED. Native codes are on (1), blinkNormal
+        (2), blinkFast (3), and off (4). A value other than 1 means the redundant power
+        input is not steadily present.
+    sfp_temperature_celsius:
+      name: SFP Temperature
+      desc: Current SFP DDM temperature in degrees Celsius. Empty or no-module rows
+        are skipped. Abnormally high module temperature can indicate airflow issues
+        or a failing optic.
+    sfp_tx_power:
+      name: SFP TX Power
+      desc: Current SFP DDM transmit power reading. Empty or no-module rows are skipped.
+        Abnormally low Tx power can indicate an aging or failing optical module.
+    sfp_rx_power:
+      name: SFP RX Power
+      desc: Current SFP DDM receive power reading. Empty or no-module rows are skipped.
+        Abnormally low Rx power can indicate link attenuation, dirty fiber, or a
+        faulty peer transmitter.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.

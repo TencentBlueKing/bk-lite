@@ -46,7 +46,13 @@ import styles from '@/app/apm/events/event-workspace.module.scss';
 interface ThresholdEditorRow {
   severity: ApmPolicySeverity;
   comparator: ApmPolicyComparator;
-  value: number | string | null;
+  value: number | null;
+}
+
+interface ChannelOption {
+  value: number;
+  label: string;
+  disabled: boolean;
 }
 
 interface PolicyEditorValues extends Omit<
@@ -127,16 +133,6 @@ function decodeServiceScope(scope: string) {
   };
 }
 
-function pruneByCandidateIds<T extends string | number>(
-  current: T[] | undefined,
-  candidates: Array<{ id: number | string }>,
-): T[] {
-  if (!Array.isArray(current) || !current.length) return [];
-  if (!candidates.length) return [];
-  const allowed = new Set(candidates.map((item) => String(item.id)));
-  return current.filter((item) => allowed.has(String(item)));
-}
-
 function seedRecipientsFromHandlers(
   recipients: string[] | undefined,
   handlers: Array<string | number> | undefined,
@@ -148,12 +144,13 @@ function seedRecipientsFromHandlers(
 
 function thresholdToEditorValue(metric: ApmPolicyMetric, value: number | string) {
   const numeric = Number(value);
-  return metric === 'error_rate' && Number.isFinite(numeric) ? numeric * 100 : value;
+  if (!Number.isFinite(numeric)) return null;
+  return metric === 'error_rate' ? numeric * 100 : numeric;
 }
 
 function normalizeThresholds(metric: ApmPolicyMetric, rows: ThresholdEditorRow[] = []) {
   return rows.flatMap((item, index) => {
-    if (item.value === null || item.value === '' || item.value === undefined) return [];
+    if (item.value === null || item.value === undefined) return [];
     const numericValue = Number(item.value);
     if (!Number.isFinite(numericValue)) return [];
     return [{
@@ -164,10 +161,10 @@ function normalizeThresholds(metric: ApmPolicyMetric, rows: ThresholdEditorRow[]
   });
 }
 
-function NumberWithUnit({ unit, ...props }: ComponentProps<typeof InputNumber> & { unit: string }) {
+function NumberWithUnit({ unit, ...props }: ComponentProps<typeof InputNumber<number>> & { unit: string }) {
   return (
     <Space.Compact className={styles.numberWithUnit}>
-      <InputNumber {...props} />
+      <InputNumber<number> {...props} />
       <span className={styles.numberUnit}>{unit}</span>
     </Space.Compact>
   );
@@ -289,6 +286,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const noDataSeverity = Form.useWatch('no_data_severity', form);
   const notificationChannelIds = Form.useWatch('notification_channel_ids', form);
   const organizations = Form.useWatch('organizations', form);
+  const selectedHandlers = Form.useWatch('handlers', form);
   const organizationKey = (organizations || []).join(',');
   const policyName = Form.useWatch('name', form);
   const [services, setServices] = useState<ApmService[]>([]);
@@ -357,17 +355,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           }
           return list;
         });
-        const current = form.getFieldValue('handlers') || [];
-        const pruned = pruneByCandidateIds(current, list);
-        if (
-          Array.isArray(current)
-          && (
-            pruned.length !== current.length
-            || pruned.some((item, index) => String(item) !== String(current[index]))
-          )
-        ) {
-          form.setFieldValue('handlers', pruned);
-        }
       })
       .catch(() => {
         // 拉取失败时不改动已选处理人，避免误清空
@@ -433,7 +420,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   }, [loadedPolicy, services, t]);
 
   const channelOptions = useMemo(() => {
-    const options = channels.map((item) => ({
+    const options: ChannelOption[] = channels.map((item) => ({
       value: item.id,
       label: item.availability === 'available'
         ? item.name
@@ -441,10 +428,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       disabled: item.availability !== 'available',
     }));
     for (const target of loadedPolicy?.notification_targets || []) {
-      if (options.some((item) => item.value === target.channel_id)) continue;
-      const name = target.channel_name || t('apm.alerts.channel', '渠道 {id}', { id: target.channel_id });
+      const channelId = Number(target.channel_id);
+      if (!Number.isFinite(channelId) || options.some((item) => item.value === channelId)) continue;
+      const name = target.channel_name || t('apm.alerts.channel', '渠道 {id}', { id: channelId });
       options.push({
-        value: target.channel_id,
+        value: channelId,
         label: t('apm.policies.unavailableChannelOption', '{name}（当前不可用）', { name }),
         disabled: true,
       });
@@ -459,6 +447,21 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     })),
     [availableEndpoints, selectedEndpoints],
   );
+
+  const handlerOptions = useMemo(() => {
+    const options: Array<{ value: string | number; label: string }> = handlerUsers.map((item) => ({
+      value: item.id,
+      label: formatUserName(item),
+    }));
+    for (const id of selectedHandlers || []) {
+      if (options.some((item) => String(item.value) === String(id))) continue;
+      options.push({
+        value: id,
+        label: String(id),
+      });
+    }
+    return options;
+  }, [handlerUsers, selectedHandlers]);
 
   const channelRecipientModeMap = useMemo(() => {
     const map = new Map<number, ApmNotificationChannel['recipient_mode'] | undefined>();
@@ -763,16 +766,13 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             name="handlers"
             label={t('apm.policies.handlers', '处理人')}
           >
-            <Select
+            <Select<(string | number)[]>
               mode="multiple"
               allowClear
               showSearch
               optionFilterProp="label"
               disabled={!organizationKey}
-              options={handlerUsers.map((item) => ({
-                value: item.id,
-                label: formatUserName(item),
-              }))}
+              options={handlerOptions}
               placeholder={organizationKey
                 ? t('apm.policies.handlersPlaceholder', '从策略所属组织选择处理人')
                 : t('apm.policies.selectOrganizationFirst', '请先选择所属组织')}
@@ -874,7 +874,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               <span className={styles.conditionSentence}>
                 {t('apm.policies.consecutive', '连续')}
                 <Form.Item name="trigger_after" noStyle rules={[{ required: true }]}>
-                  <InputNumber min={1} max={60} aria-label={t('apm.policies.triggerCountAria', '连续触发次数')} />
+                  <InputNumber<number> min={1} max={60} aria-label={t('apm.policies.triggerCountAria', '连续触发次数')} />
                 </Form.Item>
                 {t('apm.policies.triggerSentenceSuffix', '个汇聚周期满足阈值时触发告警。')}
               </span>
@@ -884,7 +884,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
               <span className={styles.conditionSentence}>
                 {t('apm.policies.consecutive', '连续')}
                 <Form.Item name="recover_after" noStyle rules={[{ required: true }]}>
-                  <InputNumber min={1} max={60} aria-label={t('apm.policies.recoveryCountAria', '连续恢复次数')} />
+                  <InputNumber<number> min={1} max={60} aria-label={t('apm.policies.recoveryCountAria', '连续恢复次数')} />
                 </Form.Item>
                 {t('apm.policies.recoverySentenceSuffix', '个周期不满足阈值时自动恢复。')}
               </span>
@@ -905,7 +905,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     },
                   ]}
                 >
-                  <InputNumber min={1} max={60} placeholder={t('apm.common.close', '关闭')} aria-label={t('apm.policies.noDataCountAria', '无数据持续次数')} />
+                  <InputNumber<number> min={1} max={60} placeholder={t('apm.common.close', '关闭')} aria-label={t('apm.policies.noDataCountAria', '无数据持续次数')} />
                 </Form.Item>
                 {t('apm.policies.noDataSentenceSuffix', '个周期无数据时')}
                 <Form.Item
@@ -988,7 +988,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   },
                 ]}
               >
-                <Select
+                <Select<number[]>
                   mode="multiple"
                   allowClear
                   options={channelOptions}

@@ -1695,7 +1695,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         try:
             validate_ip_belongs_to_subnet(ip_addr, subnet)
-            existing = find_ip_in_subnet(_query_subnet_ips(subnet.get("_id")), ip_addr)
+            existing = find_ip_in_subnet(_query_subnet_ips(subnet), ip_addr)
             action = decide_manual_ip_action(existing, request.data.get("ip_allocated_status"))
         except (IpamEditError, BaseAppException) as exc:
             status_code = getattr(exc, "status_code", status.HTTP_400_BAD_REQUEST)

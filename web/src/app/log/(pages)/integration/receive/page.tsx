@@ -58,8 +58,8 @@ const Asset = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const commonContext = useCommon();
-  const authList = useRef(commonContext?.authOrganizations || []);
-  const organizationList: Organization[] = authList.current;
+  const organizationList: Organization[] =
+    commonContext?.authOrganizations || [];
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const configRef = useRef<ModalRef>(null);
   const k8sConfigRef = useRef<ModalRef>(null);
@@ -300,9 +300,9 @@ const Asset = () => {
           handoff?.event ||
             (shouldCreate
               ? consumeExtractorCreateSample({
-                  kind: 'instance',
-                  id: extractorId
-                })
+                kind: 'instance',
+                id: extractorId
+              })
               : null)
         );
         setExtractorInitialSourceField(
@@ -561,7 +561,7 @@ const Asset = () => {
   };
 
   return (
-    <div className="flex overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 overflow-hidden">
       <TreeSelector
         data={treeData}
         loading={treeLoading}
@@ -570,7 +570,7 @@ const Asset = () => {
         onNodeSelect={handleObjectChange}
         style={{ width: 236, height: 'calc(100vh - 146px)' }}
       />
-      <div className="w-[calc(100vw-236px)] min-w-[1040px] bg-[var(--color-bg-1)] p-[20px]">
+      <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
         <div className="flex justify-between items-center mb-[10px]">
           <Input
             allowClear
@@ -604,7 +604,7 @@ const Asset = () => {
         </div>
         <CustomTable
           className="w-full"
-          scroll={{ y: 'calc(100vh - 340px)', x: 'calc(100vw- 280x)' }}
+          scroll={{ y: 'calc(100vh - 340px)', x: 'max-content' }}
           columns={columns}
           dataSource={tableData}
           pagination={pagination}

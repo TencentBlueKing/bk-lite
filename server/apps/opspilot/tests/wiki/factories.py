@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from apps.opspilot.models import KnowledgePage, Material, WikiKnowledgeBase
 from apps.opspilot.services.wiki.page_service import create_manual_page
+from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
 
 def _unique_name(prefix):
@@ -18,6 +19,12 @@ class WikiFactory:
         }
         values.update(overrides)
         return WikiKnowledgeBase.objects.create(**values)
+
+    def bootstrapped_knowledge_base(self, **overrides):
+        kb = self.knowledge_base(**overrides)
+        bootstrap_knowledge_base(kb, operator="u")
+        kb.refresh_from_db()
+        return kb
 
     def material(self, *, knowledge_base, **overrides):
         values = {

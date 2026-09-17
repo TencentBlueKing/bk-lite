@@ -8,6 +8,7 @@ they can be unit-tested without Django.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
@@ -20,10 +21,20 @@ from apps.monitor.services.host_resource_top import (
     host_display_name,
     normalize_metric_candidates,
 )
+from apps.monitor.utils.alert_name_variables import resolve_resource_ip
 from apps.monitor.utils.dimension import parse_instance_id
 
 HOST_OBJECT_NAME = "Host"
 DEFAULT_RANGE_STEP = "5m"
+
+DENIED_MONITOR_INSTANCE_MESSAGE = "没有权限访问指定的实例"
+CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE = (
+    "这些 instance_ids 是 CMDB 实例标识（inst_uuid 或数字 inst_id），不能直接查询监控。"
+    "请改用 CMDB 实例的 monitor_id，或调用 cmdb_get_monitor_ids；"
+    "未联动则用 monitor_list_object_instances 按主机名或 IP 获取监控 instance_id。"
+)
+_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_CMDB_NUMERIC_INST_ID_RE = re.compile(r"^[1-9]\d{9,15}$")
 
 RANGE_METRIC_FOLD_SUM = "sum"
 RANGE_METRIC_FOLD_MAX = "max"
@@ -236,6 +247,105 @@ def build_host_meta(instances: Iterable[Any]) -> dict[str, dict[str, Any]]:
         host_meta[key] = meta
         host_meta[instance_id] = meta
     return host_meta
+
+
+def _alias_token(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _instance_identity(instance: Any, fallback: str = "") -> str:
+    return str(getattr(instance, "id", "") or fallback)
+
+
+def _add_instance_alias(aliases: dict[str, list[Any]], token: str, instance: Any) -> None:
+    if not token:
+        return
+    bucket = aliases.setdefault(token, [])
+    ident = _instance_identity(instance)
+    if ident and any(_instance_identity(item) == ident for item in bucket):
+        return
+    bucket.append(instance)
+
+
+def _alias_tokens_for_instance(storage_id: str, instance: Any) -> list[str]:
+    tokens: list[str] = []
+    seen: set[str] = set()
+
+    def collect(value: Any) -> None:
+        token = _alias_token(value)
+        if not token or token in seen:
+            return
+        seen.add(token)
+        tokens.append(token)
+        lowered = token.lower()
+        if lowered not in seen:
+            seen.add(lowered)
+            tokens.append(lowered)
+
+    collect(storage_id)
+    parsed = parse_instance_id(storage_id)
+    if parsed:
+        collect(parsed[0])
+    collect(getattr(instance, "id", ""))
+    parsed_pk = parse_instance_id(getattr(instance, "id", ""))
+    if parsed_pk:
+        collect(parsed_pk[0])
+    collect(getattr(instance, "name", ""))
+    collect(getattr(instance, "ip", ""))
+    collect(resolve_resource_ip(getattr(instance, "summary_facts", None), getattr(instance, "ip", None)))
+    collect(getattr(instance, "cmdb_id", ""))
+    return tokens
+
+
+def looks_like_cmdb_instance_locator(token: Any) -> bool:
+    text = str(token or "").strip()
+    if not text:
+        return False
+    return bool(_UUID_RE.fullmatch(text) or _CMDB_NUMERIC_INST_ID_RE.fullmatch(text))
+
+
+def unresolved_monitor_instance_message(unresolved: Iterable[Any]) -> str:
+    tokens = [str(item).strip() for item in unresolved if item not in (None, "")]
+    if tokens and all(looks_like_cmdb_instance_locator(item) for item in tokens):
+        return CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE
+    return DENIED_MONITOR_INSTANCE_MESSAGE
+
+
+def _instance_id_aliases(authorized_instances: dict[str, Any]) -> dict[str, list[Any]]:
+    aliases: dict[str, list[Any]] = {}
+    for storage_id, instance in (authorized_instances or {}).items():
+        for token in _alias_tokens_for_instance(str(storage_id), instance):
+            _add_instance_alias(aliases, token, instance)
+    return aliases
+
+
+def resolve_instance_storage_ids(
+    authorized_instances: dict[str, Any],
+    instance_ids: Iterable[Any],
+) -> tuple[list[str], list[str]]:
+    """Map requested IDs/names/IPs to storage keys; leftover tokens are unauthorized/unknown."""
+    aliases = _instance_id_aliases(authorized_instances)
+    storage_ids: list[str] = []
+    unresolved: list[str] = []
+    seen: set[str] = set()
+    for item in instance_ids or []:
+        key = _alias_token(item)
+        matches = aliases.get(key) or aliases.get(key.lower())
+        if not matches:
+            unresolved.append(str(item))
+            continue
+        for instance in matches:
+            ident = _instance_identity(instance, fallback=key)
+            if ident not in seen:
+                seen.add(ident)
+                storage_ids.append(ident)
+    return storage_ids, unresolved
+
+
+def select_instances_by_ids(authorized_instances: dict[str, Any], instance_ids: Iterable[Any]) -> list[Any]:
+    """Resolve storage keys like ('abc',) and the logical first component abc."""
+    storage_ids, _unresolved = resolve_instance_storage_ids(authorized_instances, instance_ids)
+    return [authorized_instances[storage_id] for storage_id in storage_ids if storage_id in authorized_instances]
 
 
 def empty_host_snapshot(*, host_count: int = 0) -> dict[str, Any]:

@@ -76,20 +76,22 @@ const CustomTable = <T extends object>({
   const [filters, setFilters] = useState<Record<string, FilterValue | null>>({});
   const [sorter, setSorter] = useState<SorterResult<T> | SorterResult<T>[]>({});
   const [extra, setExtra] = useState<TableCurrentDataSource<T>>();
-  const [columns, setColumns] = useState<any[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [containerWidth, setContainerWidth] = useState<number | undefined>(undefined);
   const scrollY = scroll?.y;
   const hasPagination = Boolean(pagination);
   const hasData = Boolean(TableProps.dataSource?.length);
 
-  // 监听父容器高度变化
+  // 监听父容器高度与自身宽度：横向按列宽定死会让短表缩在左侧，铺不满工作区
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const parentElement = container.parentElement;
     if (!parentElement) return;
 
-    const updateTableHeight = () => {
+    const updateTableLayout = () => {
+      const nextWidth = container.clientWidth;
+      setContainerWidth(previous => (previous === nextWidth ? previous : nextWidth));
       const dimensions = resolveTableDimensions({
         scrollY,
         viewportHeight: window.innerHeight,
@@ -107,20 +109,22 @@ const CustomTable = <T extends object>({
       );
     };
 
-    updateTableHeight();
+    updateTableLayout();
 
     const scheduler = createRafScheduler(
-      updateTableHeight,
+      updateTableLayout,
       window.requestAnimationFrame.bind(window),
       window.cancelAnimationFrame.bind(window)
     );
     let resizeObserver: ResizeObserver | undefined;
 
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(scheduler.schedule);
+      resizeObserver.observe(container);
+      resizeObserver.observe(parentElement);
+    }
     if (typeof scrollY === 'string' && scrollY.includes('vh')) {
       window.addEventListener('resize', scheduler.schedule);
-    } else if (scrollY === undefined && hasPagination && typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(scheduler.schedule);
-      resizeObserver.observe(parentElement);
     }
 
     return () => {
@@ -129,11 +133,6 @@ const CustomTable = <T extends object>({
       scheduler.cancel();
     };
   }, [scrollY, hasPagination, size]);
-
-  useEffect(() => {
-    const initialColumns = renderColumns();
-    setColumns(initialColumns);
-  }, [TableProps.columns, rowDraggable]);
 
   const enhanceColumnRender = (column: any) => {
     if (column.render) return column;
@@ -155,32 +154,33 @@ const CustomTable = <T extends object>({
     };
   };
 
-  const renderColumns = useCallback(() => {
+  const handleDragStart = (index: number) => () => {
+    setDraggedIndex(index);
+    onRowDragStart?.(index);
+  };
+
+  const columns = useMemo((): any[] => {
     let cols = TableProps.columns || [];
-
-    cols = cols.map(col => enhanceColumnRender(col));
-
-    if (rowDraggable) {
-      return [
-        {
-          key: 'sort',
-          align: 'center',
-          width: 30,
-          title: '',
-          dataIndex: 'sort',
-          render: (_: any, __: T, index: number) => (
-            <HolderOutlined
-              className="font-[800] text-[16px] mr-[6px] cursor-move"
-              draggable
-              onDragStart={handleDragStart(index)}
-            />
-          ),
-        },
-        ...cols,
-      ];
-    }
-    return cols;
-  }, [TableProps.columns, rowDraggable]);
+    cols = cols.map((col) => enhanceColumnRender(col));
+    if (!rowDraggable) return cols;
+    return [
+      {
+        key: 'sort',
+        align: 'center',
+        width: 30,
+        title: '',
+        dataIndex: 'sort',
+        render: (_: any, __: T, index: number) => (
+          <HolderOutlined
+            className="font-[800] text-[16px] mr-[6px] cursor-move"
+            draggable
+            onDragStart={handleDragStart(index)}
+          />
+        ),
+      },
+      ...cols,
+    ];
+  }, [TableProps.columns, rowDraggable, onRowDragStart]);
 
   // 处理列宽拖拽
   const handleColumnResize = (colKey: string) => (newWidth: number) => {
@@ -197,8 +197,9 @@ const CustomTable = <T extends object>({
       columns,
       columnWidths,
       tableLayout: TableProps.tableLayout,
+      containerWidth,
     })
-  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout]);
+  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout, containerWidth]);
 
   const resizableColumns = useCallback(() => {
     return columns.map((col: any, index: number) => {
@@ -237,11 +238,6 @@ const CustomTable = <T extends object>({
   const resetDragState = () => {
     setDraggedIndex(null);
     setHoveredIndex(null);
-  };
-
-  const handleDragStart = (index: number) => () => {
-    setDraggedIndex(index);
-    onRowDragStart?.(index);
   };
 
   const handleDragEnd = () => {
@@ -315,8 +311,10 @@ const CustomTable = <T extends object>({
       cell: ResizableTitle,
     },
   };
+  const lockVerticalSize = containerHeight !== undefined && hasPagination;
   const mergedScroll: TableProps<T>['scroll'] = resolveTableScroll({
     calculatedScrollX: columnLayout.scrollX,
+    containerWidth,
     scroll,
     calculatedScrollY: tableHeight,
     hasData,
@@ -325,11 +323,12 @@ const CustomTable = <T extends object>({
   return (
     <div
       ref={containerRef}
-      className={`relative ${customTableStyle.customTable}`}
+      className={`relative ${customTableStyle.customTable}${hasPagination && scrollY !== 'auto' ? ' h-full' : ''}`}
       style={{
-        height:
-          containerHeight !== undefined && hasPagination
-            ? `${containerHeight}px`
+        height: lockVerticalSize
+          ? `${containerHeight}px`
+          : hasPagination && scrollY !== 'auto'
+            ? '100%'
             : 'auto',
       }}
     >
@@ -352,25 +351,27 @@ const CustomTable = <T extends object>({
           handleTableChange(filters, sorter, extra)
         }
       />
-      {pagination && !loading && !!pagination.total && (<div className="absolute right-0 bottom-0 flex justify-end">
-        <Pagination
-          total={pagination?.total}
-          showSizeChanger={pagination?.showSizeChanger ?? true}
-          current={pagination?.current}
-          pageSize={pagination?.pageSize}
-          onChange={handlePageChange}
-          showTotal={(total) => (
-            <div className="flex items-center">
-              <span>{`${t('common.total')} ${total} ${t('common.items')}`}</span>
-              {rowSelection ? (
-                <div className="text-sm h-[32px] flex items-center px-4">
-                  {`${t('common.checked')} ${rowSelection?.selectedRowKeys?.length} ${t('common.items')}`}
-                </div>
-              ) : null}
-            </div>
-          )}
-        />
-      </div>)}
+      {pagination && !loading && !!pagination.total && (
+        <div className={lockVerticalSize ? 'absolute right-0 bottom-0 flex justify-end' : 'mt-3 flex justify-end'}>
+          <Pagination
+            total={pagination?.total}
+            showSizeChanger={pagination?.showSizeChanger ?? true}
+            current={pagination?.current}
+            pageSize={pagination?.pageSize}
+            onChange={handlePageChange}
+            showTotal={(total) => (
+              <div className="flex items-center">
+                <span>{`${t('common.total')} ${total} ${t('common.items')}`}</span>
+                {rowSelection ? (
+                  <div className="text-sm h-[32px] flex items-center px-4">
+                    {`${t('common.checked')} ${rowSelection?.selectedRowKeys?.length} ${t('common.items')}`}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          />
+        </div>
+      )}
       {fieldSetting.showSetting ? (
         <Button
           type="text"

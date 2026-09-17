@@ -5,10 +5,7 @@
 
 from types import SimpleNamespace
 
-import pytest
-
 from apps.cmdb.services.instance import InstanceManage as IM
-
 
 # --------------------------------------------------------------------------
 # _collect_topology_node_ids / _prune_topology_node
@@ -106,6 +103,16 @@ def test_build_check_attr_map():
     assert m["is_only"] == {"name": "名称"}
     assert m["is_required"] == {"name": "名称"}
     assert "desc" in m["editable"]
+
+
+def test_build_check_attr_map_excludes_system_link_unique_flags():
+    attrs = [
+        {"attr_id": "inst_name", "attr_name": "实例名", "is_only": True},
+        {"attr_id": "node_id", "attr_name": "节点ID", "is_only": True},
+        {"attr_id": "monitor_id", "attr_name": "监控实例ID", "is_only": True, "is_system_link": True},
+    ]
+    m = IM._build_check_attr_map(attrs)
+    assert m["is_only"] == {"inst_name": "实例名"}
 
 
 def test_build_check_attr_map_no_update():

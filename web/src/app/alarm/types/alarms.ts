@@ -3,6 +3,7 @@ import type { Pagination, TableDataItem } from '@/app/alarm/types/types';
 export interface MonitorObjectSnapshot {
   monitor_id: string;
   cmdb_id: string | null;
+  node_id?: string | null;
   resource_type: string | null;
   resource_name: string | null;
 }
@@ -376,7 +377,7 @@ export interface AlarmTableProps {
   dataSource: TableDataItem[];
   pagination?: Pagination;
   loading: boolean;
-  tableScrollY: string;
+  tableScrollY?: string;
   selectedRowKeys: React.Key[];
   onChange: (pag: any) => void;
   onRefresh: () => void;

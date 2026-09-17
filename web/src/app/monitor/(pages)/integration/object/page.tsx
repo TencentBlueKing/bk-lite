@@ -522,11 +522,11 @@ const ObjectPage = () => {
   };
 
   return (
-    <div className="w-full flex overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 gap-2.5 overflow-hidden">
       {/* 左侧对象类型列表 */}
       <ResizableSidebar collapseStorageKey="monitor.integration.object.sidebarCollapsed">
-        <div className="h-[calc(100vh-146px)] bg-[var(--color-bg-1)] overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-2.5 pt-5 mb-[15px]">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-1)] px-2.5 py-5">
+          <div className="mb-4 flex shrink-0 items-center justify-between">
             <span className="font-semibold">
               {t('monitor.object.objectType')}
             </span>
@@ -539,7 +539,7 @@ const ObjectPage = () => {
               />
             </Permission>
           </div>
-          <div className="flex-1 overflow-y-auto px-2.5 pb-2.5">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <TreeSelector
               data={treeData}
               defaultSelectedKey={defaultSelectedKey}
@@ -553,9 +553,9 @@ const ObjectPage = () => {
       </ResizableSidebar>
 
       {/* 右侧对象列表 */}
-      <div className="flex-1 flex flex-col bg-[var(--color-bg-1)] p-5 overflow-hidden">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
         {/* 标题栏 */}
-        <div className="flex items-center justify-between mb-[15px]">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold m-0">
               {selectedType?.name || ''}
@@ -596,7 +596,7 @@ const ObjectPage = () => {
         </div>
 
         {/* 工具栏 */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex min-w-0 shrink-0 items-center justify-between gap-3">
           <Input
             allowClear
             className="w-80"
@@ -618,9 +618,8 @@ const ObjectPage = () => {
         </div>
 
         {/* 对象表格 */}
-        <div className="flex-1 overflow-hidden">
+        <div className="min-h-0 min-w-0 flex-1">
           <CustomTable
-            scroll={{ y: 'calc(100vh - 390px)' }}
             columns={columns}
             dataSource={objectList}
             pagination={pagination}

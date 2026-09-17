@@ -10,6 +10,14 @@ from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
 pytestmark = [pytest.mark.unit]
 
 
+@pytest.fixture(autouse=True)
+def _no_graph_inventory_lookup(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.collection.collect_plugin.network.load_task_interfaces_safe",
+        lambda task_id: [],
+    )
+
+
 def _make_plugin(min_confidence=0.0, snapshot=None):
     plugin = CollectNetworkMetrics.__new__(CollectNetworkMetrics)
     plugin.collect_inst = SimpleNamespace(
@@ -80,7 +88,8 @@ def test_snapshot_written_with_links_and_process_data():
     plugin = _make_plugin()
     captured = {}
     with mock.patch.object(
-        plugin, "save_topology_snapshot",
+        plugin,
+        "save_topology_snapshot",
         side_effect=lambda snapshot: captured.update(snapshot),
     ):
         plugin.collect_topology_relationships([], _topo_rows())
@@ -112,7 +121,8 @@ def test_previous_snapshot_marks_missing_link_stale():
     plugin = _make_plugin(snapshot=previous)
     captured = {}
     with mock.patch.object(
-        plugin, "save_topology_snapshot",
+        plugin,
+        "save_topology_snapshot",
         side_effect=lambda snapshot: captured.update(snapshot),
     ):
         plugin.collect_topology_relationships([], _topo_rows())
@@ -172,7 +182,8 @@ def test_snapshot_unresolved_neighbors_are_slimmed():
     plugin = _make_plugin()
     captured = {}
     with mock.patch.object(
-        plugin, "save_topology_snapshot",
+        plugin,
+        "save_topology_snapshot",
         side_effect=lambda snapshot: captured.update(snapshot),
     ):
         plugin.collect_topology_relationships([], rows)

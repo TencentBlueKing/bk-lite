@@ -601,6 +601,8 @@ class Controller:
                         )
                     )
 
+                from apps.monitor.services.collect_config_update import plugin_content_fingerprint, sha256_text
+
                 collect_configs.append(
                     CollectConfig(
                         id=config_id,
@@ -611,6 +613,10 @@ class Controller:
                         config_type=config_info["type"],
                         file_type=template["file_type"],
                         is_child=is_child,
+                        applied_content_sha256=plugin_content_fingerprint(plugin_obj),
+                        applied_rendered_sha256=sha256_text(template_config),
+                        applied_pack_version=getattr(plugin_obj, "pack_version", "") or "",
+                        content_hand_edited=False,
                     )
                 )
 

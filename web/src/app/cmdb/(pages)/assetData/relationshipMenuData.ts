@@ -9,23 +9,80 @@ const getAssociationInstanceCount = (item: unknown): number => {
   return Array.isArray(instances) ? instances.length : 0;
 };
 
-export function mergeRelationshipAssociations<TInstance, TDefinition>(
-  instances: readonly TInstance[],
-  definitions: readonly TDefinition[]
-): Array<TInstance | TDefinition> {
-  const instanceAssociationIds = new Set(
-    instances.map(getAssociationId)
-  );
+export function visibleRelationshipAssociations<T>(
+  associations: readonly T[]
+): T[] {
+  return associations.filter((item) => getAssociationInstanceCount(item) > 0);
+}
 
-  return [
-    ...instances,
-    ...definitions.filter((item) => {
-      const associationId = getAssociationId(item);
-      return (
-        associationId === undefined || !instanceAssociationIds.has(associationId)
-      );
-    }),
-  ];
+export interface RelationshipMenuItem {
+  text: string;
+  value: number;
+  model_asst_id: string;
+}
+
+export interface RelationshipMenuSection {
+  title: string;
+  children: RelationshipMenuItem[];
+}
+
+interface AssociationTypeLike {
+  asst_id?: string;
+  asst_name?: string;
+}
+
+interface AssociationRecord {
+  model_asst_id?: unknown;
+  asst_id?: unknown;
+  src_model_id?: unknown;
+  dst_model_id?: unknown;
+  src_model_name?: unknown;
+  dst_model_name?: unknown;
+}
+
+export function buildRelationshipMenuSections({
+  instances,
+  assoTypes,
+  modelId,
+}: {
+  instances: readonly unknown[];
+  assoTypes: readonly AssociationTypeLike[];
+  modelId: string;
+}): RelationshipMenuSection[] {
+  const grouped = new Map<string, RelationshipMenuItem[]>();
+
+  visibleRelationshipAssociations(instances).forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const record = item as AssociationRecord;
+    const associationId = getAssociationId(item);
+    if (typeof associationId !== 'string' || !associationId) return;
+
+    const asstId = typeof record.asst_id === 'string' ? record.asst_id : '';
+    const title =
+      assoTypes.find((type) => type.asst_id === asstId)?.asst_name || '--';
+    const text =
+      record.dst_model_id === modelId
+        ? String(record.src_model_name || record.src_model_id || '')
+        : String(record.dst_model_name || record.dst_model_id || '');
+    const child: RelationshipMenuItem = {
+      model_asst_id: associationId,
+      text,
+      value: getAssociationInstanceCount(item),
+    };
+
+    const existing = grouped.get(title) || [];
+    const previous = existing.find((entry) => entry.model_asst_id === associationId);
+    if (!previous) {
+      existing.push(child);
+    } else if (child.value > previous.value) {
+      Object.assign(previous, child);
+    }
+    grouped.set(title, existing);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([title, children]) => ({ title, children }))
+    .filter((section) => section.children.length > 0);
 }
 
 export const getDefaultExpandedRelationshipKeys = (

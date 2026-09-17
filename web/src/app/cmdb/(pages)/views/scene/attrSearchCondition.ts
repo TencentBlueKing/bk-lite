@@ -1,4 +1,8 @@
 import type { AttrFieldType } from '@/app/cmdb/types/assetManage';
+import {
+  buildCloudRegionQueryCondition,
+  isCloudRegionAttr,
+} from '@/app/cmdb/utils/cloudRegion';
 
 export const MAX_SEARCH_LENGTH = 128;
 
@@ -48,14 +52,8 @@ export const buildAttrSearchCondition = (
   if (!attr?.attr_id) return null;
   if (isEmptySearchValue(attr, value)) return null;
 
-  if (attr.attr_id === 'cloud') {
-    const text = typeof value === 'number' ? String(value) : boundText(value);
-    if (!text && typeof value !== 'number') return null;
-    return {
-      field: attr.attr_id,
-      type: typeof value === 'number' ? 'int=' : 'str=',
-      value: typeof value === 'number' ? value : text,
-    };
+  if (isCloudRegionAttr(attr.attr_id)) {
+    return buildCloudRegionQueryCondition(attr.attr_id, value);
   }
 
   switch (attr.attr_type) {

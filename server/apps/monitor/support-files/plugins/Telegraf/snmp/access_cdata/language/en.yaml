@@ -1,7 +1,8 @@
 Access C-Data SNMP:
   name: Access C-Data SNMP
-  desc: SNMP monitoring template for C-Data access device. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for C-Data access device. It reports CPU utilization,
+    chassis temperature, PSU A/B on bits, fan status bitmap, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime (IANA PEN 34592).
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -82,6 +83,18 @@ monitor_object_metric:
       desc: Fan operating state of the access device. Normal state is normalized to
         1 and abnormal or unknown states are normalized to 2, indicating possible
         cooling degradation.
+    psu_a_on:
+      name: PSU A On
+      desc: Power supply A on bit from the chassis power-status bitmap. Value 1 means
+        PSU A is on and 0 means off.
+    psu_b_on:
+      name: PSU B On
+      desc: Power supply B on bit from the chassis power-status bitmap. Value 1 means
+        PSU B is on and 0 means off.
+    fan_status_bitmap:
+      name: Fan Status Bitmap
+      desc: Chassis fan status bitmap. Bit 0 is fan 1, bit 1 is fan 2, bit 2 is fan 3,
+        and bit 3 is fan 4, each with 1 meaning on.
     device_disk_usage:
       name: Disk Usage
       desc: Disk volume usage of the access device, reported as the highest volume

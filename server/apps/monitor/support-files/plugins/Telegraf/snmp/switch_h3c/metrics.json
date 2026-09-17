@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_h3c",
   "plugin": "Switch H3C SNMP",
-  "plugin_desc": "H3C / HPE Comware switch-specific SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). In addition to standard IF-MIB interface metrics, it collects H3C private OIDs for device health: per-entity CPU utilization (hh3cEntityExtCpuUsage) and memory utilization (hh3cEntityExtMemUsage). Both are reported per physical entity where most entities return 0 and the CPU/memory-bearing board carries the real value, so device-level CPU/memory are taken as the maximum across entities. Temperature is not collected because all entities report 0 for hh3cEntityExtTemperature on Comware; fan and power-supply state live in ENTITY-MIB with per-row entPhysicalClass filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).",
+  "plugin_desc": "H3C / HPE Comware switch SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Proven private device-health objects: per-entity CPU utilization (hh3cEntityExtCpuUsage, with optional 1-minute and 5-minute averages), memory utilization (hh3cEntityExtMemUsage), temperature (hh3cEntityExtTemperature; 65535 unsupported sentinel filtered), optional voltage (hh3cEntityExtVoltage) and optional current power (hh3cEntityExtCurrentPower), plus fan and power-supply operational state from hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad. Device-level CPU and memory are taken as the maximum across entities because most rows return 0. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_h3c'}) by (instance_id)",
   "name": "Switch",
@@ -16,7 +16,11 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_usage"
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state",
+    "device_voltage_volts"
   ],
   "metrics": [
     {
@@ -38,6 +42,32 @@
       "description": "This metric reports the CPU utilization of the H3C / HPE Comware device control plane (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage), taken as the maximum across physical entities so the active CPU board's load is reflected rather than diluted by entities that report 0. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_1min",
+      "query": "max(device_cpu_usage_1min{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization (1 min)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the one-minute CPU utilization of the H3C / HPE Comware device control plane (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsageIn1Minute), taken as the maximum across physical entities so the active CPU board's load is reflected."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_5min",
+      "query": "max(device_cpu_usage_5min{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization (5 min)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the five-minute CPU utilization of the H3C / HPE Comware device control plane (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsageIn5Minutes), taken as the maximum across physical entities so the active CPU board's load is reflected."
+    },
+    {
       "metric_group": "Memory",
       "name": "device_memory_usage",
       "query": "device_memory_usage{instance_type='switch', __$labels__}",
@@ -54,6 +84,112 @@
         "instance_id"
       ],
       "description": "This metric reports overall memory utilization of the H3C / HPE Comware device (HH3C-ENTITY-EXT-MIB hh3cEntityExtMemUsage, a direct percent value), taken as the maximum across physical entities so the memory-bearing board's usage is reflected. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__} != 65535",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the temperature reading of each H3C / HPE Comware hardware entity (HH3C-ENTITY-EXT-MIB hh3cEntityExtTemperature), in degrees Celsius. The 65535 unsupported sentinel is filtered out. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', entPhysicalClass='7', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each H3C / HPE Comware cooling fan (HH3C-ENTITY-EXT-MIB hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass fan=7), normalized so that 1 means ok (enabled) and 2 means bad. A non-ok state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', entPhysicalClass='6', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each H3C / HPE Comware power supply (HH3C-ENTITY-EXT-MIB hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass powerSupply=6), normalized so that 1 means ok (enabled) and 2 means bad. A non-ok state signals a power redundancy or hardware fault and must be remediated promptly."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "(device_voltage_volts{instance_type='switch', __$labels__} != 65535) / 1000",
+      "display_name": "Input Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the entity voltage of the H3C / HPE Comware device (HH3C-ENTITY-EXT-MIB hh3cEntityExtVoltage, millivolts scaled to volts). The 65535 unsupported sentinel is filtered out. Values far from the rated range may indicate unstable power and hardware risk."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_power_watts",
+      "query": "device_power_watts{instance_type='switch', __$labels__}",
+      "display_name": "Power Consumption",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports current power consumption in watts of H3C / HPE Comware physical entities (HH3C-ENTITY-EXT-MIB hh3cEntityExtCurrentPower). It is a consumption reading, not power-supply health; PSU health uses hh3cEntityExtOperStatus with entPhysicalClass powerSupply=6."
     },
     {
       "metric_group": "Traffic",

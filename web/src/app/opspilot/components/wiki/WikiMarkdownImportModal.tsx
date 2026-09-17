@@ -35,9 +35,11 @@ import {
   markdownImportGovernanceErrorView,
   formatArchiveBytes,
   initialCreateDirectoriesFromFolders,
+  isBackgroundMarkdownImport,
   markdownImportAccept,
   markdownImportFilePattern,
   okfSkippedReasonLabel,
+  unwrapMarkdownImportExecuteResult,
   type MarkdownImportGovernanceErrorView,
   type WikiMarkdownImportFormat,
 } from "@/app/opspilot/utils/wikiMarkdownImport";
@@ -80,8 +82,10 @@ const WikiMarkdownImportModal = ({
   onCompleted,
 }: WikiMarkdownImportModalProps) => {
   const { t } = useTranslation();
-  const { preflightKnowledgeBaseMarkdown, executeKnowledgeBaseMarkdown } =
-    useWikiApi();
+  const {
+    preflightKnowledgeBaseMarkdown,
+    executeKnowledgeBaseMarkdown,
+  } = useWikiApi();
   const isOkf = importFormat === "okf";
   const archivePattern = markdownImportFilePattern(importFormat);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -305,6 +309,26 @@ const WikiMarkdownImportModal = ({
     invalidatePreflight();
   };
 
+  const finishImport = async (result: WikiMarkdownImportExecuteResult) => {
+    const created = result.counts?.created ?? result.created ?? 0;
+    const updated = result.counts?.updated ?? result.updated ?? 0;
+    const candidate = result.counts?.candidate ?? 0;
+    setPreflight(null);
+    message.success(
+      t("wiki.markdownImportDone")
+        .replace("{created}", String(created))
+        .replace("{updated}", String(updated))
+        .replace("{candidate}", String(candidate)),
+    );
+    await onCompleted(result);
+  };
+
+  const acceptBackgroundImport = () => {
+    message.info(t("wiki.markdownImportRunning"));
+    setPreflight(null);
+    onCancel();
+  };
+
   const handleExecute = async () => {
     if (!selectedFile || !preflight || preflightExpired || preflightStale) {
       message.warning(t("wiki.markdownImportRepreflightRequired"));
@@ -312,22 +336,18 @@ const WikiMarkdownImportModal = ({
     }
     setExecuting(true);
     try {
-      const result = await executeKnowledgeBaseMarkdown(
-        kbId,
-        selectedFile,
-        preflight.token,
+      const result = unwrapMarkdownImportExecuteResult(
+        await executeKnowledgeBaseMarkdown(
+          kbId,
+          selectedFile,
+          preflight.token,
+        ),
       );
-      const created = result.counts?.created ?? result.created ?? 0;
-      const updated = result.counts?.updated ?? result.updated ?? 0;
-      const candidate = result.counts?.candidate ?? 0;
-      setPreflight(null);
-      message.success(
-        t("wiki.markdownImportDone")
-          .replace("{created}", String(created))
-          .replace("{updated}", String(updated))
-          .replace("{candidate}", String(candidate)),
-      );
-      await onCompleted(result);
+      if (isBackgroundMarkdownImport(result)) {
+        acceptBackgroundImport();
+        return;
+      }
+      await finishImport(result);
     } catch (error) {
       setPreflightStale(true);
       if (error instanceof HandledRequestError && error.status === 409) {

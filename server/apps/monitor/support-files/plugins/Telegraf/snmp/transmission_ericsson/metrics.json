@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ericsson",
   "plugin": "Transmission Ericsson SNMP",
-  "plugin_desc": "Ericsson microwave and carrier transmission SNMP baseline child template for devices under Ericsson PEN 193. The available state confirms the public enterprise root and Ericsson child subtrees, but no verified vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power health OIDs. This child declares no vendor-specific metric deltas; uptime, IF-MIB 64-bit interface traffic and aggregate device traffic are supplied by the shared Transmission SNMP floor.",
+  "plugin_desc": "Ericsson MINI-LINK/PT microwave transmission SNMP child template for devices under Ericsson PEN 193.223. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB interface traffic through the common IF-MIB table. This child adds the confirmed MINI-LINK/PT internal temperature leaf 1.3.6.1.4.1.193.223.2.4.1.1.2.1 as device_temperature_celsius in degrees Celsius; readings of 0.0 are treated as N/A and skipped. CPU, memory, fan and power-supply health are N/A because no stable shared device-health objects are confirmed on this MINI-LINK/PT tree. Ericsson router ENVMON and other Ericsson PENs are not bound.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_ericsson'}) by (instance_id)",
   "name": "Transmission",
@@ -14,9 +14,23 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__} != 0) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ericsson MINI-LINK/PT internal temperature in degrees Celsius, read from leaf 1.3.6.1.4.1.193.223.2.4.1.1.2.1. Readings of 0.0 are treated as N/A and skipped."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

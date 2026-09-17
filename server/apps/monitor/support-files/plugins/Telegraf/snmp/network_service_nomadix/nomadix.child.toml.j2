@@ -32,18 +32,33 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # Current online subscribers (aaaSubCurrTable). Do not walk the
+    # authorization config table 1.3.6.1.4.1.3309.1.3.2.18.2.
+    # Row count is aggregated as active_subscribers; subIndex/subMac tag the raw series.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        oid = "1.3.6.1.4.1.3309.1.3.2.18.1"
+        name = "active"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.3309.1.3.2.18.1.1.1"
+        name = "subIndex"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.3309.1.3.2.18.1.1.2"
+        name = "subMac"
+        is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.3309.1.3.2.18.1.1.1"
+        name = "subscribers"
+    # Optional current DAT sessions (datSessionTable). First column is the session index.
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.3309.1.3.8.1"
+        name = "active_dat"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3309.1.3.8.1.1.1"
+        name = "sessions"
+# ---- CPU/内存/温度：私有 MIB 无稳定整机标量 → 不臆造，不采。AAA/计费配置表不当成健康指标。----

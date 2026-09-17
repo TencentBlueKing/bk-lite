@@ -53,9 +53,18 @@ class ToolPlanningError(RuntimeError):
 # 弱模型常忽略模糊描述；目录含 monitor_* 时用系统侧导读强制对齐主机指标场景。
 _MONITOR_CATALOG_HINT = (
     "能力导读：目录含 monitor_* 时，可查 BK-Lite 已纳管主机/实例的 CPU使用率、内存、磁盘与告警。"
-    "用户问「主机名xxx的CPU」必须规划 monitor_* 步骤，典型顺序："
+    "用户问「主机名或IP xxx的CPU」必须规划 monitor_* 步骤，典型顺序："
     "monitor_list_objects→monitor_list_object_instances→monitor_list_object_metrics→monitor_query_metric_data；"
+    "instance_ids 优先用列表返回的 instance_id，实例名或 IP 也可传入后续工具；"
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
+)
+
+# CMDB 与监控的实例 ID 不是同一套；目录同时含两边工具时强制走联动映射。
+_CMDB_MONITOR_LINK_HINT = (
+    "联动规则：CMDB 与监控的实例 ID 不是同一套。"
+    "禁止把 cmdb_search_instances / cmdb_get_instance 返回的 inst_uuid、_id 或数字 inst_id 传入 monitor_* 的 instance_ids。"
+    "已联动时用 CMDB 实例的 monitor_id，或先调 cmdb_get_monitor_ids；"
+    "未联动则用 monitor_list_object_instances 按主机名或 IP 取监控 instance_id。"
 )
 
 # 告警 RCA：缺 namespace 时必须先反查；禁止用扫全集群当反查。取证链由智能体 prompt 决定。
@@ -1207,6 +1216,7 @@ class ToolExecutionPlanner:
     ) -> str:
         lines = []
         has_monitor = False
+        has_cmdb = False
         has_k8s_lookup = False
         has_pod_diagnose = False
         has_restart_evidence = False
@@ -1224,6 +1234,8 @@ class ToolExecutionPlanner:
                 continue
             if name.startswith("monitor_"):
                 has_monitor = True
+            if name.startswith("cmdb_"):
+                has_cmdb = True
             if name in _K8S_NAMESPACE_LOOKUP_TOOLS:
                 has_k8s_lookup = True
             if name == _K8S_KNOWN_POD_DIAGNOSE_TOOL:
@@ -1249,6 +1261,8 @@ class ToolExecutionPlanner:
         hints = []
         if has_monitor:
             hints.append(_MONITOR_CATALOG_HINT)
+        if has_monitor and has_cmdb:
+            hints.append(_CMDB_MONITOR_LINK_HINT)
         if has_k8s_lookup:
             hints.append(_K8S_NAMESPACE_LOOKUP_HINT)
         if has_restart_evidence and is_pod_restart_reason_query(user_message, agent_system_prompt):

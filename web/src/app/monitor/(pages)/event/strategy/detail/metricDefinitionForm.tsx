@@ -20,7 +20,7 @@ import {
   useMethodList,
   useGroupMethodList
 } from '@/app/monitor/hooks/event';
-import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
+import { COMPARISON_METHOD, SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { useConditionList } from '@/app/monitor/hooks';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { debounce } from 'lodash';
@@ -31,6 +31,14 @@ import {
   buildMetricExpressionQueryCondition,
   MetricExpressionMode
 } from './formulaExpressionUtils';
+import {
+  COUNT_IF_ALGORITHM,
+  NEW_ALGORITHMS,
+  PER_SERIES_ALGORITHMS,
+  formatAlgorithmDisplayLabel,
+  getAlgorithmShortName,
+  groupAlgorithmOptions
+} from './strategyDetailUtils';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -60,6 +68,10 @@ interface MetricDefinitionFormProps {
   onPeriodChange: (val: number | null) => void;
   onPeriodUnitChange: (val: string) => void;
   onAlgorithmChange: (val: string) => void;
+  isEnumMetric?: boolean;
+  disableRateAlgorithm?: boolean;
+  countPredicate?: { method: string; value: number | null };
+  onCountPredicateChange?: (val: { method: string; value: number | null }) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -86,10 +98,36 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   onPeriodChange,
   onPeriodUnitChange,
   onAlgorithmChange,
+  isEnumMetric = false,
+  disableRateAlgorithm = false,
+  countPredicate,
+  onCountPredicateChange,
   isTrap
 }) => {
   const { t } = useTranslation();
   const METHOD_LIST = useMethodList();
+  const algorithmOptions = useMemo(() => {
+    return METHOD_LIST.filter((item) => {
+      const value = String(item.value);
+      if (isEnumMetric && NEW_ALGORITHMS.includes(value)) {
+        return false;
+      }
+      if (
+        metricExpressionMode === 'formula' &&
+        PER_SERIES_ALGORITHMS.includes(value)
+      ) {
+        return false;
+      }
+      return true;
+    }).map((item) => ({
+      ...item,
+      disabled: disableRateAlgorithm && String(item.value) === 'rate'
+    }));
+  }, [METHOD_LIST, isEnumMetric, metricExpressionMode, disableRateAlgorithm]);
+  const groupedAlgorithmOptions = useMemo(
+    () => groupAlgorithmOptions(algorithmOptions),
+    [algorithmOptions]
+  );
   const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
@@ -101,7 +139,6 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   }, [monitorName, getGroupIds]);
 
   // 防抖处理汇聚周期值变化
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedPeriodChange = useCallback(
     debounce((val: number | null) => {
       onPeriodChange(val);
@@ -298,6 +335,16 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   {
                     required: true,
                     message: t('common.required')
+                  },
+                  {
+                    validator: async (_, value) => {
+                      if (disableRateAlgorithm && value === 'rate') {
+                        return Promise.reject(
+                          new Error(t('monitor.events.rateAlreadyInQuery'))
+                        );
+                      }
+                      return Promise.resolve();
+                    }
                   }
                 ]}
               >
@@ -307,29 +354,138 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   }}
                   placeholder={t('monitor.events.convergenceMethod')}
                   showSearch
+                  optionFilterProp="label"
+                  filterOption={(input, option) => {
+                    const query = input.trim().toLowerCase();
+                    if (!query) return true;
+                    const label = String(option?.label || '').toLowerCase();
+                    const value = String(option?.value || '').toLowerCase();
+                    const shortName = getAlgorithmShortName(
+                      String(option?.value || '')
+                    ).toLowerCase();
+                    return (
+                      label.includes(query) ||
+                      value.includes(query) ||
+                      shortName.includes(query)
+                    );
+                  }}
                   onChange={onAlgorithmChange}
                 >
-                  {METHOD_LIST.map((item) => (
-                    <Option value={item.value} key={item.value}>
-                      <Tooltip
-                        overlayInnerStyle={{
-                          whiteSpace: 'pre-line',
-                          color: 'var(--color-text-1)'
-                        }}
-                        placement="rightTop"
-                        arrow={false}
-                        color="var(--color-bg-1)"
-                        title={item.title}
-                      >
-                        <span className="w-full flex">{item.label}</span>
-                      </Tooltip>
-                    </Option>
+                  {groupedAlgorithmOptions.map((group) => (
+                    <Select.OptGroup
+                      key={group.key}
+                      label={
+                        group.key === 'change'
+                          ? t('monitor.events.algorithmGroupChange')
+                          : t('monitor.events.algorithmGroupWindow')
+                      }
+                    >
+                      {group.options.map((item) => {
+                        const shortName = getAlgorithmShortName(
+                          String(item.value)
+                        );
+                        const showShort =
+                          Boolean(shortName) &&
+                          shortName !==
+                            String(item.label).trim().toUpperCase();
+                        return (
+                        <Option
+                          value={item.value}
+                          key={item.value}
+                          disabled={item.disabled}
+                          label={formatAlgorithmDisplayLabel(
+                            String(item.label),
+                            String(item.value)
+                          )}
+                        >
+                          <Tooltip
+                            overlayInnerStyle={{
+                              whiteSpace: 'pre-line',
+                              color: 'var(--color-text-1)'
+                            }}
+                            placement="rightTop"
+                            arrow={false}
+                            color="var(--color-bg-1)"
+                            title={
+                              item.disabled
+                                ? t('monitor.events.rateAlreadyInQuery')
+                                : item.title
+                            }
+                          >
+                            <span className="inline-flex min-w-0 max-w-full items-baseline">
+                              <span className="shrink-0 text-[var(--color-text-1)]">
+                                {item.label}
+                              </span>
+                              {showShort ? (
+                                <span className="text-[var(--color-text-3)]">
+                                  （{shortName}）
+                                </span>
+                              ) : null}
+                            </span>
+                          </Tooltip>
+                        </Option>
+                        );
+                      })}
+                    </Select.OptGroup>
                   ))}
                 </Select>
               </Form.Item>
               <div className="text-[var(--color-text-3)] mt-[10px]">
                 {t('monitor.events.convergenceMethodTip')}
               </div>
+            </Form.Item>
+          )
+        }
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prevValues, currentValues) =>
+          prevValues.algorithm !== currentValues.algorithm ||
+          prevValues.collect_type !== currentValues.collect_type
+        }
+      >
+        {({ getFieldValue }) =>
+          isTrap(getFieldValue) ||
+          getFieldValue('algorithm') !== COUNT_IF_ALGORITHM ? null : (
+            <Form.Item
+              label={
+                <span className="w-[100px]">
+                  {t('monitor.events.countPredicate')}
+                </span>
+              }
+              required
+            >
+              <InputNumber
+                className="w-full"
+                addonBefore={
+                  <Select
+                    value={countPredicate?.method || '>'}
+                    popupMatchSelectWidth={false}
+                    style={{ width: 80 }}
+                    aria-label={t('monitor.events.method')}
+                    onChange={(method) =>
+                      onCountPredicateChange?.({
+                        method,
+                        value: countPredicate?.value ?? null
+                      })
+                    }
+                  >
+                    {COMPARISON_METHOD.map((item) => (
+                      <Option value={item.value} key={String(item.value)}>
+                        {item.label}
+                      </Option>
+                    ))}
+                  </Select>
+                }
+                value={countPredicate?.value}
+                placeholder={t('common.inputTip')}
+                onChange={(value) =>
+                  onCountPredicateChange?.({
+                    method: countPredicate?.method || '>',
+                    value: typeof value === 'number' ? value : null
+                  })
+                }
+              />
             </Form.Item>
           )
         }

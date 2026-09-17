@@ -721,7 +721,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   };
 
   return (
-    <div className="w-full min-w-[600px]">
+    <div className="w-full min-w-0 max-w-full">
       <Form form={form} name="basic" layout="vertical">
         <Form.Item
           name="os"
@@ -916,7 +916,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         >
           <CustomTable
             rowKey="key"
-            scroll={{ x: 'calc(100vw - 320px)' }}
+            scroll={{ x: 'max-content' }}
             columns={tableColumns}
             dataSource={tableData}
             rowSelection={rowSelection}

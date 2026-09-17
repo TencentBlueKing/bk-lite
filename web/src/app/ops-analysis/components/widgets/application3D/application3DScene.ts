@@ -38,6 +38,7 @@ import {
 import {
   WALL_ENTRANCE,
   WALL_FILTER_MOTION,
+  WALL_PAGE_TURN_MOTION,
   FOCUS_MOTION,
   ARCHITECTURE_MOTION,
   architectureLabelDelayMs,
@@ -89,7 +90,13 @@ const ARCH_POLAR = APPLICATION3D_USER_POLAR;
 export interface Application3DSceneController {
   reconcile: (
     items: Application3DWallItem[],
-    options?: { playIntro?: boolean; playFilter?: boolean; forceRepaint?: boolean },
+    options?: {
+      playIntro?: boolean;
+      playFilter?: boolean;
+      pageDirection?: 'next' | 'prev';
+      forceRepaint?: boolean;
+      layoutCount?: number;
+    },
   ) => void;
   resize: () => void;
   setActive: (active: boolean) => void;
@@ -114,6 +121,7 @@ interface ApplicationCardVisual {
   homePosition: THREE.Vector3;
   homeScale: THREE.Vector3;
   homeRotationY: number;
+  columnIndex?: number;
   cardTone: Application3DCardTone;
   hoverAmount: number;
   glassEl: HTMLDivElement;
@@ -133,6 +141,7 @@ const setCardOpacity = (visual: ApplicationCardVisual, opacity: number) => {
   visual.material.uniforms.uOpacity.value = 0;
   visual.sideMaterial.opacity = opacity * 0.5;
   visual.glassEl.style.opacity = String(opacity);
+  visual.glassEl.hidden = opacity < 0.02;
 };
 
 const setCardBrightness = (visual: ApplicationCardVisual, value: number) => {
@@ -862,7 +871,19 @@ export const createApplication3DScene = (
   const cardFaceGeometry = createRoundedCardFaceGeometry(cardOutline);
   const floorGlowGeometry = new THREE.PlaneGeometry(1, 1);
   const visuals = new Map<string, ApplicationCardVisual>();
+  /** Display order for the current wall page; Map is lookup-only. */
+  let wallItemOrder: string[] = [];
+  let wallLayoutCount = 0;
   const raycaster = new THREE.Raycaster();
+
+  const orderedVisuals = () => {
+    const entries: ApplicationCardVisual[] = [];
+    wallItemOrder.forEach((id) => {
+      const visual = visuals.get(id);
+      if (visual) entries.push(visual);
+    });
+    return entries;
+  };
   const pointer = new THREE.Vector2();
 
   const wallCameraPosition = new THREE.Vector3(0, 0, 20);
@@ -1129,7 +1150,7 @@ export const createApplication3DScene = (
     desiredTarget.copy(wallLookTarget);
     controls.update();
 
-    const entries = Array.from(visuals.values());
+    const entries = orderedVisuals();
     if (!entries.length) {
       finishIntro();
       return;
@@ -1208,7 +1229,7 @@ export const createApplication3DScene = (
 
   const playFilterTransition = () => {
     cancelTweens();
-    const entries = Array.from(visuals.values());
+    const entries = orderedVisuals();
     if (!entries.length) return;
     const duration = (reducedMotion
       ? WALL_ENTRANCE.reducedMotionMs
@@ -1229,19 +1250,79 @@ export const createApplication3DScene = (
     });
   };
 
+  const playPageTurnTransition = (direction: 'next' | 'prev') => {
+    cancelTweens();
+    const entries = orderedVisuals();
+    if (!entries.length) return;
+    if (reducedMotion) {
+      entries.forEach((visual) => {
+        applyHomePose(visual);
+        setCardOpacity(visual, 1);
+      });
+      return;
+    }
+
+    const duration = WALL_PAGE_TURN_MOTION.durationMs / 1000;
+    const sign = direction === 'next' ? 1 : -1;
+    const startXOffset = sign * WALL_PAGE_TURN_MOTION.offsetX;
+    const startZOffset = WALL_PAGE_TURN_MOTION.offsetZ;
+    const startRotY = (sign * -WALL_PAGE_TURN_MOTION.rotateYDeg * Math.PI) / 180;
+
+    const maxCol = entries.reduce((acc, v) => Math.max(acc, v.columnIndex ?? 0), 0);
+
+    entries.forEach((visual) => {
+      const col = visual.columnIndex ?? 0;
+      const staggerCol = direction === 'next' ? col : Math.max(maxCol - col, 0);
+      const delay = (staggerCol * WALL_PAGE_TURN_MOTION.columnStaggerMs) / 1000;
+
+      const fromPos = new THREE.Vector3(
+        visual.homePosition.x + startXOffset,
+        visual.homePosition.y,
+        visual.homePosition.z + startZOffset,
+      );
+      const fromRotY = visual.homeRotationY + startRotY;
+
+      visual.root.position.copy(fromPos);
+      visual.root.rotation.set(0, fromRotY, 0);
+      visual.root.scale.copy(visual.homeScale);
+      setCardOpacity(visual, 0);
+
+      startTween(
+        duration,
+        (t) => {
+          setCardOpacity(visual, t);
+          visual.root.position.lerpVectors(fromPos, visual.homePosition, t);
+          visual.root.rotation.set(
+            0,
+            fromRotY + (visual.homeRotationY - fromRotY) * t,
+            0,
+          );
+        },
+        () => {
+          applyHomePose(visual);
+          setCardOpacity(visual, 1);
+        },
+        easeOutEntrance,
+        delay,
+      );
+    });
+  };
+
   const layoutVisuals = (layoutOptions?: {
     playIntro?: boolean;
     playFilter?: boolean;
+    pageDirection?: 'next' | 'prev';
   }) => {
     const layout = buildApplication3DLayout(
-      visuals.size,
+      wallLayoutCount || visuals.size,
       viewportWidth / Math.max(viewportHeight, 1),
     );
 
     let row = 0;
     let column = 0;
-    Array.from(visuals.values()).forEach((visual) => {
+    orderedVisuals().forEach((visual) => {
       const rowCardCount = layout.rowCardCounts[row];
+      visual.columnIndex = column;
       visual.homeScale.set(layout.cardWidth, layout.cardHeight, CARD_THICKNESS);
       const planarX =
         -layout.wallWidth / 2 +
@@ -1257,7 +1338,8 @@ export const createApplication3DScene = (
       if (
         phase !== 'initializing' &&
         !layoutOptions?.playIntro &&
-        !layoutOptions?.playFilter
+        !layoutOptions?.playFilter &&
+        !layoutOptions?.pageDirection
       ) {
         applyHomePose(visual);
       }
@@ -1268,12 +1350,12 @@ export const createApplication3DScene = (
       }
     });
 
-    let lowestY = Infinity;
+    const lastRowY =
+      layout.wallHeight / 2 -
+      (layout.rows - 1) * (layout.cardHeight + layout.gapY) -
+      layout.cardHeight / 2;
     visuals.forEach((visual) => {
-      lowestY = Math.min(lowestY, visual.homePosition.y);
-    });
-    visuals.forEach((visual) => {
-      visual.isBottomRow = Math.abs(visual.homePosition.y - lowestY) < 0.05;
+      visual.isBottomRow = Math.abs(visual.homePosition.y - lastRowY) < 0.05;
       syncReflection(visual);
     });
 
@@ -1282,7 +1364,7 @@ export const createApplication3DScene = (
     floorGridMaterial.uniforms.uFade.value = Math.max(layout.wallWidth * 3.1, 32);
     wallLookTarget.set(0, 0, 0);
     const wallPose = resolveApplication3DWallCamera(
-      visuals.size,
+      wallLayoutCount || visuals.size,
       camera.aspect,
       camera.fov,
     );
@@ -1302,7 +1384,9 @@ export const createApplication3DScene = (
     if (layoutOptions?.playIntro) {
       playEntrance();
     } else {
-      if (layoutOptions?.playFilter) {
+      if (layoutOptions?.pageDirection) {
+        playPageTurnTransition(layoutOptions.pageDirection);
+      } else if (layoutOptions?.playFilter) {
         playFilterTransition();
       }
       snapCameraHome();
@@ -1321,24 +1405,37 @@ export const createApplication3DScene = (
 
   const reconcile = (
     items: Application3DWallItem[],
-    reconcileOptions?: { playIntro?: boolean; playFilter?: boolean; forceRepaint?: boolean },
+    reconcileOptions?: {
+      playIntro?: boolean;
+      playFilter?: boolean;
+      pageDirection?: 'next' | 'prev';
+      forceRepaint?: boolean;
+      layoutCount?: number;
+    },
   ) => {
     const playIntro =
       Boolean(reconcileOptions?.playIntro) &&
       items.length > 0 &&
       !entrancePlayed;
+    const pageDirection = reconcileOptions?.pageDirection;
     const playFilter =
       Boolean(reconcileOptions?.playFilter) &&
       items.length > 0 &&
-      !playIntro;
+      !playIntro &&
+      !pageDirection;
     const forceRepaint = Boolean(reconcileOptions?.forceRepaint);
+    wallItemOrder = items.map((item) => item.id);
+    wallLayoutCount = Math.max(
+      items.length,
+      Math.floor(reconcileOptions?.layoutCount ?? items.length) || items.length,
+    );
     if (playIntro) {
       entrancePlayed = true;
       clearIntroTimers();
       cancelTweens();
       phase = 'initializing';
       setOrbitEnabled(false);
-    } else if (playFilter) {
+    } else if (pageDirection || playFilter) {
       clearIntroTimers();
       cancelTweens();
       cameraComplete = null;
@@ -1439,7 +1536,7 @@ export const createApplication3DScene = (
       particlesBuilt = true;
     }
     syncParticleScale();
-    layoutVisuals({ playIntro, playFilter });
+    layoutVisuals({ playIntro, playFilter, pageDirection });
   };
 
   const shortestAngleDelta = (from: number, to: number) => {
@@ -2131,6 +2228,7 @@ export const createApplication3DScene = (
       controls.dispose();
       visuals.forEach(disposeVisual);
       visuals.clear();
+      wallItemOrder = [];
       disposeArchitecture();
       wallGroup.removeFromParent();
       floorPlate.geometry.dispose();

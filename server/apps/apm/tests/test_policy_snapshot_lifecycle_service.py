@@ -1,4 +1,6 @@
 from datetime import timedelta
+from decimal import Decimal
+
 import pytest
 from django.utils import timezone
 
@@ -14,7 +16,9 @@ from apps.apm.models import (
     ApmServiceOrganization,
 )
 from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
-from apps.apm.services.contracts import ServiceRed, ServiceRedPoint
+from apps.apm.services import metric_snapshots
+from apps.apm.services.contracts import MetricDataState, PolicyQueryResult, ServiceRed, ServiceRedPoint
+from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore
 from apps.apm.tests.helpers import bind_policy_organizations
 
 pytestmark = pytest.mark.django_db
@@ -209,3 +213,67 @@ def test_snapshot_payload_failure_keeps_domain_event_and_retryable_evidence(mult
     assert snapshot.payload_error_code == "object_storage_unavailable"
     assert snapshot.pending_payload["series"]
     assert upload.call_count == 1
+
+
+def test_alert_metric_snapshot_store_caps_oldest_entries(multilevel_policy, mocker):
+    assert metric_snapshots.MAX_ALERT_METRIC_SNAPSHOTS == 1440
+    mocker.patch.object(metric_snapshots, "MAX_ALERT_METRIC_SNAPSHOTS", 8)
+
+    now = timezone.now().replace(second=0, microsecond=0)
+    alert = ApmAlert.objects.create(
+        external_id="metric-snapshot-cap",
+        policy=multilevel_policy,
+        service=multilevel_policy.service,
+        policy_id_snapshot=str(multilevel_policy.id),
+        policy_name=multilevel_policy.name,
+        service_namespace="shop",
+        service_name="checkout",
+        environment="production",
+        metric_type="error_rate",
+        severity="warning",
+        status=ApmAlert.Status.ACTIVE,
+        organizations=[10],
+        started_at=now,
+        last_event_at=now,
+    )
+    threshold = {"severity": "warning", "comparator": "gt", "value": "0.05"}
+    times = [now + timedelta(minutes=offset) for offset in range(9)]
+    for evaluated_at in times:
+        ApmAlertMetricSnapshotStore.record(
+            alert=alert,
+            event=None,
+            policy=multilevel_policy,
+            result=PolicyQueryResult(
+                value=Decimal("0.12"),
+                breached=True,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.AVAILABLE,
+            ),
+            threshold=threshold,
+        )
+
+    stored = ApmAlertMetricSnapshot.objects.get(alert=alert)
+    expected_times = [item.isoformat() for item in times[1:]]
+    assert len(stored.snapshots) == 8
+    assert [item["snapshot_time"] for item in stored.snapshots] == expected_times
+
+    payload = ApmAlertMetricSnapshotStore.serialize(stored)
+    assert payload["truncated"] is True
+    assert isinstance(payload["snapshots"], list)
+    assert [item["snapshot_time"] for item in payload["snapshots"]] == expected_times
+
+    ApmAlertMetricSnapshotStore.record(
+        alert=alert,
+        event=None,
+        policy=multilevel_policy,
+        result=PolicyQueryResult(
+            value=Decimal("0.99"),
+            breached=True,
+            evaluated_at=times[-1],
+            data_state=MetricDataState.AVAILABLE,
+        ),
+        threshold=threshold,
+    )
+    stored.refresh_from_db()
+    assert len(stored.snapshots) == 8
+    assert stored.snapshots[-1]["value"] == "0.12"

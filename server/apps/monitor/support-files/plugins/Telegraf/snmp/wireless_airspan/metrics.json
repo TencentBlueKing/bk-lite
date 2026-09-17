@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_airspan",
   "plugin": "Wireless Airspan SNMP",
-  "plugin_desc": "Airspan wireless access SNMP baseline collection for devices under Airspan PEN 1803. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. No stable public private device-health leaf OIDs are collected in this pass.",
+  "plugin_desc": "Airspan wireless SNMP child template for devices under enterprise PEN 989. Interface traffic is supplied by the shared Wireless SNMP IF-MIB floor. Proven private health objects are the sensor temperature monitor table (Integer32 degrees Celsius as device_temperature_celsius, no query scaling) and the optional DC voltage monitor table (Integer32 millivolts, scaled by /1000 to volts). Both tables are walked by sensor index; empty tables yield no rows. Optional name and status columns use the same index. CPU and memory percentages are not collected because no stable private CPU or memory leaves were confirmed. HOST-RESOURCES and UCD are not bound. Product or sysObject trees and traps are not treated as health. Supported brands/models - Airspan wireless access and backhaul devices that expose the PEN 989 sensor tables and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_airspan'}) by (instance_id)",
   "name": "Wireless",
@@ -14,9 +14,99 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_voltage_volts"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='wireless', __$labels__}",
+      "display_name": "Sensor Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Temperature sensor index"
+        },
+        {
+          "name": "sensor",
+          "description": "Temperature sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor temperature from the PEN 989 sensor temperature monitor table. The Integer32 value is already in degrees Celsius, so the query does not scale it. Empty temperature tables yield no rows. Persistently high values may indicate cooling problems, high ambient temperature, or hardware thermal stress."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_temperature_status",
+      "query": "device_temperature_status{instance_type='wireless', __$labels__}",
+      "display_name": "Temperature Sensor Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"tooHigh\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"tooLow\",\"id\":2,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Temperature sensor index"
+        },
+        {
+          "name": "sensor",
+          "description": "Temperature sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional per-sensor temperature status from the same PEN 989 temperature monitor index. Values are normal(0), tooHigh(1) and tooLow(2). Empty temperature tables yield no rows."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "device_voltage_volts{instance_type='wireless', __$labels__} / 1000",
+      "display_name": "DC Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Voltage sensor index"
+        },
+        {
+          "name": "sensor",
+          "description": "Voltage sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional per-sensor DC voltage from the PEN 989 DC voltage monitor table. The Integer32 value is millivolts and is scaled by /1000 in the query to volts. Empty voltage tables yield no rows. Values far from the expected DC rail may indicate power or hardware risk."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_status",
+      "query": "device_voltage_status{instance_type='wireless', __$labels__}",
+      "display_name": "DC Voltage Sensor Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"nominal\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"tooHigh\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"tooLow\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"outOfRange\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Voltage sensor index"
+        },
+        {
+          "name": "sensor",
+          "description": "Voltage sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional per-sensor DC voltage status from the same PEN 989 voltage monitor index. Values are nominal(0), tooHigh(1), tooLow(2) and outOfRange(3). Empty voltage tables yield no rows."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

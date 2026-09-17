@@ -41,6 +41,7 @@ afterEach(() => {
 });
 
 describe('PublicRelatedTopoSlot', () => {
+  // 未购运营分析 = 目录探测不到该键，走的就是下面这条「未声明」分支。
   it('renders the default Topo when the public widget is undeclared', () => {
     render(
       <PublicRelatedTopoSlot instUuid={INST_UUID} fallback={<div>default-topo</div>} />,

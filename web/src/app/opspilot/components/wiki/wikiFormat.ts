@@ -26,6 +26,7 @@ export const TRIGGER_LABEL: Record<string, string> = {
   material_queue: "wiki.triggerMaterialQueue",
   material_queue_item: "wiki.triggerMaterialQueueItem",
   rebuild: "wiki.triggerRebuild",
+  markdown_import: "wiki.triggerMarkdownImport",
   build: "wiki.triggerBuildCascade",
   maintenance_retry: "wiki.triggerMaintenanceRetry",
   page_delete: "wiki.triggerPageDelete",

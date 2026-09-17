@@ -32,18 +32,43 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # ---- l3Table (PEN 6666 isdn 4); index is DisplayString l3Label ----
+    # l3NumBchanActive 1.3.6.1.4.1.6666.1.4.1.4 → active_b_channels (Gauge)
+    # l3NumBchan       1.3.6.1.4.1.6666.1.4.1.3 → configured_b_channels
+    # l3CallsBoot      1.3.6.1.4.1.6666.1.4.1.5 → calls_since_boot (Counter)
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        oid = "1.3.6.1.4.1.6666.1.4"
+        name = "active_b"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.6666.1.4.1.1"
+        name = "l3Label"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.6666.1.4.1.4"
+        name = "channels"
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.6666.1.4"
+        name = "configured_b"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.6666.1.4.1.1"
+        name = "l3Label"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6666.1.4.1.3"
+        name = "channels"
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.6666.1.4"
+        name = "calls_since"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6666.1.4.1.1"
+        name = "l3Label"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6666.1.4.1.5"
+        name = "boot"
+# ---- CPU/内存/温度/风扇/电源：私有树无稳定共享健康标量 → N/A，不臆造。----
+# ---- ISDN L2 状态是信令链路状态，不作为主机健康采集。----

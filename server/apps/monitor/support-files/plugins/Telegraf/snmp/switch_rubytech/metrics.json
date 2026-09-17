@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_rubytech",
   "plugin": "Switch RubyTech SNMP",
-  "plugin_desc": "Baseline SNMP child template for RubyTech managed Ethernet and industrial switches (enterprise PEN 5205). The available state confirms RubyTech managed switch product families and public enterprise switch subtrees, but no reliable public row-filter-free scalar CPU, memory, temperature, fan or power-supply health OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Switch SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — RubyTech managed Ethernet switches such as IGS/IPGS industrial series and related L2/L3 managed switch families.",
+  "plugin_desc": "RubyTech managed Ethernet switch SNMP collection (IANA PEN 5205). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. CPU utilization uses model-branch selection by sysObjectID and does not mix model branches: FGS2924R (sysObjectID 1.3.6.1.4.1.5205.2.34) parses fgs2924rCpuLoad DisplayString percent text to cpu_usage_percent; ES2226 (sysObjectID 1.3.6.1.4.1.5205.2.31) parses es2226CPULoad to cpu_usage_percent. RamSize leaves are RAM capacity only and are not treated as memory usage. Temperature, fan and power-supply state are not collected. Supported brands/models — RubyTech FGS2924R and ES2226.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_rubytech'}) by (instance_id)",
   "name": "Switch",
@@ -14,44 +14,36 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "cpu_usage_percent",
+    "device_cpu_usage"
   ],
   "metrics": [
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "metric_group": "CPU",
+      "name": "cpu_usage_percent",
+      "query": "avg(cpu_usage_percent{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "percent",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "CPU utilization of the RubyTech switch control plane as a 0-100 percentage. Model-branch selection by sysObjectID chooses FGS2924R fgs2924rCpuLoad or ES2226 es2226CPULoad; DisplayString percent text is parsed to cpu_usage_percent. The two model branches are not mixed. Sustained high CPU usage can indicate control-plane overload and may lead to slow management response or packet processing delays."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(cpu_usage_percent{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "percent",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "CPU utilization of the RubyTech switch control plane as a 0-100 percentage, sourced from cpu_usage_percent after model-branch selection by sysObjectID. RamSize is not used. Sustained high CPU usage can indicate control-plane overload and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Base",
