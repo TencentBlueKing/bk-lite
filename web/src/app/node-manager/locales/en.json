@@ -583,6 +583,7 @@
       "restoreBuiltin": "Restore Built-in",
       "restoreBuiltinConfirm": "Restore this collector's plugin and startup parameters from the product built-in files. The imported pack version will be cleared. This returns to built-in content and does not undo the last import. To go back to a previous pack, re-import that zip. Historical binaries stay in the library.",
       "restoreSuccess": "Built-in restored",
+      "restoreBuiltinStaleHint": "{count} instance(s) can align collection configs to the current built-in content. Open Assets to upgrade the probe.",
       "coveredArch": "Covered architectures",
       "latestPack": "Latest pack",
       "allowlistFlags": "Allowed flags",

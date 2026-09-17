@@ -244,15 +244,9 @@ const Collector = () => {
           if (staleCount > 0) {
             Modal.success({
               title: t('node-manager.packetManage.restoreSuccess'),
-              content: (
-                <div className="text-base leading-relaxed text-[var(--color-text-1)]">
-                  {t('node-manager.packetManage.successStalePrefix')}
-                  <span className="mx-1 inline-block min-w-[1.25em] text-center text-2xl font-semibold tabular-nums text-[var(--color-warning,#d48806)]">
-                    {staleCount}
-                  </span>
-                  {t('node-manager.packetManage.successStaleSuffix')}
-                </div>
-              ),
+              content: t('node-manager.packetManage.restoreBuiltinStaleHint', '', {
+                count: staleCount
+              }),
               okText: t('node-manager.packetManage.goToStaleAssets'),
               onOk: () => {
                 router.push(

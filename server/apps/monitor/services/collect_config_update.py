@@ -266,16 +266,6 @@ class CollectConfigUpdateService:
         current = plugin_content_fingerprint(plugin)
         previous = (previous_fingerprint or "").strip()
         first_fingerprint = bool(current) and not previous
-        if previous and current and previous == current:
-            return {
-                "stale_instance_count": 0,
-                "plugin_id": plugin.id,
-                "monitor_object_id": CollectorReleasePluginService.resolve_entry_monitor_object_id(
-                    plugin_name=plugin.name,
-                    collector=plugin.collector,
-                ),
-                "first_fingerprint": False,
-            }
         try:
             count = CollectConfigUpdateService.count_stale_instances(plugin, actor_context)
         except (UnauthorizedException, BaseAppException):
@@ -408,13 +398,13 @@ class CollectConfigUpdateService:
         if config_obj.file_type == "toml" and raw_content:
             try:
                 parsed = ConfigFormat.toml_to_dict(raw_content)
-            except Exception:
-                parsed = {}
+            except Exception as exc:
+                raise BaseAppException("采集配置内容无法解析，无法按新模板重渲染") from exc
         elif config_obj.file_type == "yaml" and raw_content:
             try:
                 parsed = ConfigFormat.yaml_to_dict(raw_content) or {}
-            except Exception:
-                parsed = {}
+            except Exception as exc:
+                raise BaseAppException("采集配置内容无法解析，无法按新模板重渲染") from exc
 
         context = _flatten_parsed_content(parsed)
         context.update(_unwrap_env_config(payload.get("env_config") or {}, config_obj.id))
@@ -602,7 +592,7 @@ class CollectConfigUpdateService:
             instance_edited = False
             instance_failed = False
             for config_obj in instance_configs:
-                if not is_config_stale(config_obj, plugin):
+                if not discard_hand_edited and not is_config_stale(config_obj, plugin):
                     continue
                 if is_config_hand_edited(config_obj) and not discard_hand_edited:
                     instance_edited = True

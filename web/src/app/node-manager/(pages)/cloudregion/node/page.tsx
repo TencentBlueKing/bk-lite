@@ -818,7 +818,11 @@ const Node = () => {
               collectorId={collectorId}
               collectorName={collectorName}
               collectorPackageId={collectorPackageId}
-              alignAssetUrl={packAlignAssetUrl || undefined}
+              alignAssetUrl={
+                collectorOperationType === 'installCollector'
+                  ? packAlignAssetUrl || undefined
+                  : undefined
+              }
               cancel={cancelCollectorOperation}
             />
           )}

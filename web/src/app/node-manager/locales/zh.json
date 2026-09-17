@@ -583,6 +583,7 @@
       "restoreBuiltin": "恢复内置",
       "restoreBuiltinConfirm": "将按产品内置文件恢复该采集器的插件与启动参数，已导入的包版本会被清除。这会回到产品内置，不是撤销最近一次导入。要退回上一份导入包，请再导入那份 zip。历史二进制包不会删除。",
       "restoreSuccess": "已恢复内置",
+      "restoreBuiltinStaleHint": "有 {count} 个实例的采集配置可对齐到当前内置内容，请到资产页升级探针。",
       "coveredArch": "已覆盖架构",
       "latestPack": "最新包",
       "allowlistFlags": "允许的启动参数",
