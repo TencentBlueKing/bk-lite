@@ -55,3 +55,16 @@ def validate_envelope(data: dict[str, Any]) -> tuple[bool, str | None]:
     if not isinstance(link_ids, dict):
         return False, "link_ids must be an object"
     return True, None
+
+
+def ingest_auth_kwargs(actor_scope: dict[str, Any] | None) -> dict[str, Any]:
+    """跨模块 ingest 的授权字段：有 user_info 才带上，供对端与报文组织取交集。"""
+    scope = actor_scope or {}
+    kwargs: dict[str, Any] = {
+        "allowed_org_ids": list(scope.get("allowed_org_ids") or []),
+        "operator": str(scope.get("operator") or ""),
+    }
+    user_info = scope.get("user_info")
+    if isinstance(user_info, dict) and user_info:
+        kwargs["user_info"] = user_info
+    return kwargs

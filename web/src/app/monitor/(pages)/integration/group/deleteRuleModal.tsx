@@ -52,7 +52,7 @@ const DeleteRuleModal = forwardRef<ModalRef, ModalProps>(
     };
 
     return (
-      <div>
+      <>
         <OperateModal
           width={430}
           closable={false}
@@ -89,7 +89,7 @@ const DeleteRuleModal = forwardRef<ModalRef, ModalProps>(
         >
           <div>{t('monitor.integrations.deleteRuleTips')}</div>
         </OperateModal>
-      </div>
+      </>
     );
   }
 );

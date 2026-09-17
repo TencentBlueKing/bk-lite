@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_mrv",
   "plugin": "Transmission MRV SNMP",
-  "plugin_desc": "MRV OptiDriver optical transmission SNMP child template (enterprise PEN 33). The verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific row-filter-free CPU, memory, temperature, fan, power or optical health gauges are confirmed from MRV-IN-REACH-SYSTEM-MIB facts in this worktree. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Transmission SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate traffic while this plugin provides the MRV collect_type, UI and Telegraf child template. Supported brands/models — MRV OptiDriver ROADM and optical transmission devices.",
+  "plugin_desc": "MRV OptiDriver optical transmission SNMP child template for devices under MRV PEN 629 (NBS-CMMC). Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health is chassis temperature in degrees Celsius (nbsCmmcChassisTemperature, Integer32 with no scaling; unsupported sentinel -2147483648 is skipped). CPU, memory, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — MRV OptiDriver and NBS optical transmission chassis.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_mrv'}) by (instance_id)",
   "name": "Transmission",
@@ -14,9 +14,23 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "temperature_celsius",
+      "query": "max(temperature_celsius{instance_type='transmission', __$labels__} != -2147483648) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MRV OptiDriver chassis temperature in degrees Celsius (NBS-CMMC nbsCmmcChassisTemperature under PEN 629, indexed by chassisIdx). The SNMP object is Integer32 with no scaling. Unsupported instances report -2147483648 and those samples are skipped. High values may indicate cooling problems, high ambient temperature or overloaded hardware."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

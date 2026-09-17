@@ -32,20 +32,38 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns: ifInOctets/ifOutOctets/ifInErrors/ifOutErrors/ifInDiscards/ifOutDiscards/ifInUcastPkts/ifOutUcastPkts/ifSpeed/ifAdminStatus/ifOperStatus) ----
+    # ---- 可选：序列号 / 固件版本（设备返回时作为实例标签，无响应则自然缺省）----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20540.2.1.1.4"
+        name = "serialNumber"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20540.2.1.1.6"
+        name = "firmwareRevision"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- P1 电源输入状态 → psu1_status ----
+    # 原始码 off(0) / on(1) / unknown(2)。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
-        name = "interface"
+        name = "psu1"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+        oid = "1.3.6.1.4.1.20540.2.1.1.1"
+        name = "status"
+    # ---- P2 电源输入状态 → psu2_status ----
+    # 原始码 off(0) / on(1) / unknown(2)。
+    [[inputs.snmp.table]]
+        name = "psu2"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.20540.2.1.1.2"
+        name = "status"
+    # ---- OK 告警继电器状态 → ok_relay_status ----
+    # 原始码 off(0) / on(1) / unknown(2)。on 表示继电器处于正常（OK）侧。
+    [[inputs.snmp.table]]
+        name = "ok_relay"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-# ---- CPU/内存/温度/风扇/电源：Sixnet SLX 工业以太网交换机为无风扇导热式被动散热设计，其温度、双路冗余电源输入与告警继电器等环境量主要经 Modbus/TCP 与 LED/告警继电器对外暴露，厂商私有 MIB（企业号 20540）未以无需行级过滤的标量形式公开稳定的健康对象 → CPU/内存/温度/风扇/电源 N/A 不采。本基线模板仅采集标准 MIB-II 运行时长与 IF-MIB（含 64 位 HC）接口指标，干净可采。----
+        oid = "1.3.6.1.4.1.20540.2.1.1.3"
+        name = "status"
+# ---- CPU/内存/温度/风扇：无私有 CPU 或内存使用率标量，不臆造 CPU%/内存%；无风扇对象 → N/A 不采。----

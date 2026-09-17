@@ -79,3 +79,42 @@ class DjangoApmReliabilityService:
             started_at=started_at,
             ended_at=evaluated_at,
         )
+
+    @staticmethod
+    def _measurement_key(slo: ApmSlo) -> tuple:
+        return (
+            slo.service.namespace,
+            slo.service.name,
+            slo.environment,
+            slo.endpoint,
+            slo.sli_type,
+            slo.latency_threshold_ms,
+            slo.evaluation_window,
+            slo.is_enabled,
+        )
+
+    def _evaluation_for(self, slo: ApmSlo, cached: SloEvaluation) -> SloEvaluation:
+        if cached.current_rate is None:
+            return cached
+        return SloEvaluation(
+            current_rate=cached.current_rate,
+            budget_remaining=self._budget_remaining(float(slo.objective), cached.current_rate),
+            data_state=cached.data_state,
+            started_at=cached.started_at,
+            ended_at=cached.ended_at,
+            reason=cached.reason,
+        )
+
+    def evaluate_many(self, slos: list[ApmSlo], *, evaluated_at: datetime) -> dict:
+        cache: dict[tuple, SloEvaluation | Exception] = {}
+        results: dict = {}
+        for slo in slos:
+            key = self._measurement_key(slo)
+            if key not in cache:
+                try:
+                    cache[key] = self.evaluate(slo, evaluated_at=evaluated_at)
+                except (TelemetryStoreUnavailable, ValueError) as exc:
+                    cache[key] = exc
+            cached = cache[key]
+            results[slo.id] = self._evaluation_for(slo, cached) if isinstance(cached, SloEvaluation) else cached
+        return results

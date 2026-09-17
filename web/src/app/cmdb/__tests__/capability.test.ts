@@ -15,8 +15,12 @@ describe('cmdb capability', () => {
   it('registers the base-info widget as a per-key dynamic import', () => {
     expect(APP_CAPABILITY_LOADERS.cmdb).toBeTypeOf('function');
     expect(capabilitySource).toContain("'cmdb.baseInfo'");
+    expect(capabilitySource).toContain("'cmdb.assetChange'");
     expect(capabilitySource).toContain(
       "import('@/app/cmdb/components/public/BaseInfoWidget')",
+    );
+    expect(capabilitySource).toContain(
+      "import('@/app/cmdb/components/public/AssetChangeWidget')",
     );
     expect(capabilitySource).not.toMatch(
       /import BaseInfoWidget from ['"]@\/app\/cmdb\/components\/public\/BaseInfoWidget['"]/,

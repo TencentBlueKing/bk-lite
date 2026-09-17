@@ -144,13 +144,13 @@ const ShieldStrategy: React.FC = () => {
   ], [t, loadingIds, handleStatusToggle, handleEdit, handleDelete, convertToLocalizedTime]);
 
   return (
-    <>
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col">
       <Introduction
         title={t('settings.shieldStrategy')}
         message={t('settings.shieldStrategyMessage')}
       />
-      <div className="p-4 bg-[var(--color-bg-1)] rounded-lg shadow">
-        <div className="nav-box flex justify-between mb-[20px]">
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg bg-[var(--color-bg-1)] p-4 shadow">
+        <div className="nav-box mb-[20px] flex shrink-0 justify-between">
           <div className="flex items-center">
             <Input
               allowClear
@@ -168,16 +168,17 @@ const ShieldStrategy: React.FC = () => {
             </Button>
           </PermissionWrapper>
         </div>
-        <CustomTable
-          size="middle"
-          rowKey="id"
-          loading={tableLoading}
-          columns={columns}
-          dataSource={dataList}
-          pagination={pagination}
-          onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 460px)' }}
-        />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <CustomTable
+            size="middle"
+            rowKey="id"
+            loading={tableLoading}
+            columns={columns}
+            dataSource={dataList}
+            pagination={pagination}
+            onChange={handleTableChange}
+          />
+        </div>
         <OperateModal
           open={operateVisible}
           onClose={() => setOperateVisible(false)}
@@ -185,7 +186,7 @@ const ShieldStrategy: React.FC = () => {
           onSuccess={() => refreshList({ current: 1 })}
         />
       </div>
-    </>
+    </div>
   );
 };
 

@@ -21,7 +21,7 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.falkordb_format import FormatDBResult
-from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector
+from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.instance_identity import (
     EDGE_DST_UUID_FIELD,
@@ -322,7 +322,7 @@ class FalkorDBClient:
             for attr in check_attrs:
                 exist_item_attr = exist_item.get(attr)
                 item_attr = item.get(attr)
-                if exist_item_attr and item_attr and item_attr == exist_item_attr:
+                if exist_item_attr and item_attr and attr_values_equal(attr, exist_item_attr, item_attr):
                     not_only_attr.add(attr)
 
         if not not_only_attr:

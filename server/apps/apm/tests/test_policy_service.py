@@ -277,3 +277,22 @@ def test_no_traffic_policy_treats_missing_request_samples_as_zero(policy):
     assert result.value == 0
     assert result.breached is True
     assert result.data_state == MetricDataState.AVAILABLE
+
+
+def test_targets_keep_legal_cartesian_product_and_cap_oversized_combinations(policy):
+    policy.version_mode = ApmPolicy.VersionMode.SPECIFIC
+    policy.endpoints = [f"GET /e{i}" for i in range(10)]
+    policy.versions = [f"v{i}" for i in range(10)]
+
+    legal = DjangoApmPolicyService._targets(policy)
+
+    assert len(legal) == 100
+    assert legal[0] == ("GET /e0", "v0")
+    assert legal[-1] == ("GET /e9", "v9")
+
+    policy.endpoints = ["GET /a", "GET /b"]
+    policy.versions = [f"v{i}" for i in range(100)]
+    oversized = DjangoApmPolicyService._targets(policy)
+
+    assert len(oversized) == 100
+    assert oversized == [(endpoint, version) for endpoint in policy.endpoints for version in policy.versions][:100]

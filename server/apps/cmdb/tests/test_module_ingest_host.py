@@ -48,7 +48,7 @@ def test_ensure_host_node_id_attr_creates_when_missing(mocker):
     assert attr_info["attr_id"] == "node_id"
     assert attr_info["editable"] is False
     assert attr_info["is_system_link"] is True
-    assert attr_info["is_only"] is True
+    assert attr_info["is_only"] is False
     assert attr_info["is_required"] is False
 
 
@@ -81,6 +81,47 @@ def test_ensure_host_node_id_attr_upgrades_legacy_editable(mocker):
     patched = update.call_args.args[1]
     assert patched["editable"] is False
     assert patched["is_system_link"] is True
+    assert patched["is_only"] is False
+
+
+def test_ensure_host_node_id_attr_clears_legacy_unique_flag(mocker):
+    mocker.patch(
+        "apps.cmdb.services.model.ModelManage.search_model_info",
+        return_value={
+            "_id": 1,
+            "model_id": "host",
+            "attrs": json.dumps(
+                [
+                    {
+                        "attr_id": "node_id",
+                        "attr_name": "节点ID",
+                        "editable": False,
+                        "is_only": True,
+                        "is_system_link": True,
+                        "attr_group": "系统联动",
+                    }
+                ]
+            ),
+        },
+    )
+    create = mocker.patch("apps.cmdb.services.model.ModelManage.create_model_attr")
+    update = mocker.patch("apps.cmdb.services.model.ModelManage.update_model_attr")
+
+    ready = ensure_host_node_id_attr(username="tester")
+
+    assert ready is True
+    create.assert_not_called()
+    update.assert_called_once()
+    assert update.call_args.args[1]["is_only"] is False
+
+
+def test_is_unique_identity_attr_skips_system_link_ids():
+    from apps.cmdb.services.module_ingest import is_unique_identity_attr
+
+    assert is_unique_identity_attr({"attr_id": "inst_name", "is_only": True}) is True
+    assert is_unique_identity_attr({"attr_id": "node_id", "is_only": True}) is False
+    assert is_unique_identity_attr({"attr_id": "monitor_id", "is_only": True, "is_system_link": True}) is False
+    assert is_unique_identity_attr({"attr_id": "serial", "is_only": False}) is False
 
 
 def test_filter_and_strip_system_link_helpers():
@@ -254,6 +295,109 @@ def test_claim_host_persists_node_id_when_user_path_strips_system_links(mocker):
 
     assert claimed["node_id"] == "n2"
     assert claimed["monitor_id"] == "('1_os_10.11.27.147',)"
+
+
+def test_update_host_keeps_custom_inst_name_when_ip_cloud_unchanged(mocker):
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 10, "inst_name": "web-prod-01"},
+    )
+    existing = {
+        "_id": 10,
+        "node_id": "n1",
+        "ip_addr": "10.0.0.7",
+        "cloud": 2,
+        "inst_name": "web-prod-01",
+        "organization": [1],
+        "os_type": "1",
+    }
+    desired = {
+        "model_id": "host",
+        "inst_name": "10.0.0.7[华东]",
+        "ip_addr": "10.0.0.7",
+        "organization": [2],
+        "cloud": 2,
+        "os_type": "1",
+        "node_id": "n1",
+    }
+
+    CmdbModuleIngestService._update_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    written = update.call_args.kwargs["update_attr"]
+    assert "inst_name" not in written
+    assert written["organization"] == [2]
+
+
+def test_update_host_refreshes_inst_name_when_ip_or_cloud_changes(mocker):
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 10, "inst_name": "10.0.0.8[华东]"},
+    )
+    existing = {
+        "_id": 10,
+        "node_id": "n1",
+        "ip_addr": "10.0.0.7",
+        "cloud": 2,
+        "inst_name": "web-prod-01",
+        "organization": [1],
+        "os_type": "1",
+    }
+    desired = {
+        "model_id": "host",
+        "inst_name": "10.0.0.8[华东]",
+        "ip_addr": "10.0.0.8",
+        "organization": [1],
+        "cloud": 2,
+        "os_type": "1",
+        "node_id": "n1",
+    }
+
+    CmdbModuleIngestService._update_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    assert update.call_args.kwargs["update_attr"]["inst_name"] == "10.0.0.8[华东]"
+    assert update.call_args.kwargs["update_attr"]["ip_addr"] == "10.0.0.8"
+
+
+def test_claim_host_keeps_custom_inst_name_when_ip_cloud_unchanged(mocker):
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 20, "node_id": "n2", "inst_name": "web-prod-01"},
+    )
+    existing = {
+        "_id": 20,
+        "ip_addr": "1.1.1.2",
+        "cloud": 1,
+        "inst_name": "web-prod-01",
+    }
+    desired = {
+        "inst_name": "1.1.1.2[1]",
+        "ip_addr": "1.1.1.2",
+        "organization": [1],
+        "cloud": 1,
+        "os_type": "1",
+        "node_id": "n2",
+    }
+
+    CmdbModuleIngestService._claim_host(
+        existing,
+        desired,
+        operator="tester",
+        allowed_org_ids=[1],
+    )
+
+    written = update.call_args.kwargs["update_attr"]
+    assert written["node_id"] == "n2"
+    assert "inst_name" not in written
 
 
 def test_update_host_persists_monitor_id_when_user_path_strips_system_links(mocker):

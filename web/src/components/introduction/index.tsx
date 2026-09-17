@@ -14,8 +14,8 @@ interface IntroductionProp {
 
 const Introduction: React.FC<IntroductionProp> = ({ message, title, minWidth, spacing, className }) => (
   <Card
-    className={`${introductionStyle.introduction} ${className ?? ''} ${spacing === 'compact' ? 'mb-2' : spacing === 'flush' ? 'mb-0' : 'mb-[16px]'}`}
-    style={{ width: '100%', minWidth: minWidth ?? 800 }}
+    className={`${introductionStyle.introduction} w-full min-w-0 shrink-0 ${className ?? ''} ${spacing === 'compact' ? 'mb-2' : spacing === 'flush' ? 'mb-0' : 'mb-[16px]'}`}
+    style={{ width: '100%', ...(minWidth != null ? { minWidth } : {}) }}
   >
     <p className="font-extrabold text-base">{title}</p>
     <p className={`text-sm mt-[10px] sub-name ${introductionStyle.subName}`}>

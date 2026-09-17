@@ -47,10 +47,10 @@ import type { ActiveAlertStatus } from '@/app/apm/components/application-card';
 import ServiceCatalogTable from '@/app/apm/components/service-catalog-table';
 import {
   alertStatusFromLevel,
-  alertKey,
   countActiveAlerts,
   expandServiceRows,
   indexEnabledSlos,
+  lookupActiveAlert,
   isAlertStatusFilter,
   isTimeWindow,
   metricKey,
@@ -97,7 +97,7 @@ export default function ApmServicesPage() {
     getApplications,
     getEvents,
     getHealth,
-    getServiceRed,
+    getServiceRedBatch,
     getServices,
     getSlos,
     setServiceArchived,
@@ -292,29 +292,37 @@ export default function ApmServicesPage() {
     const [amount, unit] = timeWindowUnits[timeWindow];
     const endedAt = dayjs();
     const startedAt = endedAt.subtract(amount, unit);
+    const chunkSize = 40;
+    const chunks: typeof targets[] = [];
+    for (let offset = 0; offset < targets.length; offset += chunkSize) {
+      chunks.push(targets.slice(offset, offset + chunkSize));
+    }
     setMetricsLoading(true);
     setMetricFailureKeys([]);
-    Promise.allSettled(targets.map(async (row) => ({
-      key: metricKey(row.serviceId, row.environment),
-      metric: await getServiceRed(
-        row.serviceId,
-        row.environment,
-        startedAt.toISOString(),
-        endedAt.toISOString(),
-        undefined,
-        { include_breakdown: false },
-      ),
+    // 任一批次整体失败只标记该批次内的服务，不影响其他批次已返回的指标。
+    void Promise.allSettled(chunks.map((chunk) => getServiceRedBatch({
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      include_breakdown: false,
+      targets: chunk.map((row) => ({ service_id: row.serviceId, environment: row.environment })),
     })))
       .then((results) => {
         if (!active) return;
-        setRedMetrics(Object.fromEntries(results.flatMap((result) => (
-          result.status === 'fulfilled' ? [[result.value.key, result.value.metric]] : []
-        ))));
-        setMetricFailureKeys(results.flatMap((result, index) => (
-          result.status === 'rejected'
-            ? [metricKey(targets[index].serviceId, targets[index].environment)]
-            : []
-        )));
+        const metrics: Record<string, ApmServiceRed> = {};
+        const failureKeys: string[] = [];
+        results.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            chunks[index].forEach((row) => failureKeys.push(metricKey(row.serviceId, row.environment)));
+            return;
+          }
+          result.value.items.forEach((item) => {
+            const key = metricKey(item.service_id, item.environment);
+            if (item.ok === false) failureKeys.push(key);
+            else metrics[key] = item;
+          });
+        });
+        setRedMetrics(metrics);
+        setMetricFailureKeys(failureKeys);
       })
       .finally(() => {
         if (active) setMetricsLoading(false);
@@ -322,7 +330,7 @@ export default function ApmServicesPage() {
     return () => {
       active = false;
     };
-  }, [getServiceRed, metricRefreshKey, rows, state, timeWindow]);
+  }, [getServiceRedBatch, metricRefreshKey, rows, state, timeWindow]);
 
   const alertCounts = useMemo(() => countActiveAlerts(firingEvents), [firingEvents]);
   const sloByServiceEnv = useMemo(() => indexEnabledSlos(slos), [slos]);
@@ -344,7 +352,7 @@ export default function ApmServicesPage() {
   const filteredRows = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
     return rows.filter((item) => {
-      const alertStatus = alertStatusFromLevel(alertCounts.get(alertKey(item.serviceName, item.environment))?.level);
+      const alertStatus = alertStatusFromLevel(lookupActiveAlert(alertCounts, item.serviceId, item.serviceName, item.environment)?.level);
       const matchesKeyword = !normalizedKeyword
         || `${item.namespace} ${item.serviceName} ${item.applicationName}`.toLowerCase().includes(normalizedKeyword);
       const matchesStatus = statusFilter === undefined || statusFilter === alertStatus;
@@ -429,7 +437,7 @@ export default function ApmServicesPage() {
       const metric = redMetrics[metricKey(row.serviceId, row.environment)];
       if (metric) current.metrics.push(metric);
       if (metricFailureKeys.includes(metricKey(row.serviceId, row.environment))) current.metricUnavailable = true;
-      const activeAlert = alertCounts.get(alertKey(row.serviceName, row.environment));
+      const activeAlert = lookupActiveAlert(alertCounts, row.serviceId, row.serviceName, row.environment);
       current.alertCount += activeAlert?.count ?? 0;
       current.alertLevel = Math.min(current.alertLevel, activeAlert?.level ?? 5);
       summaries.set(row.namespace, current);

@@ -1,5 +1,95 @@
 {
   "object": "VoiceGateway",
   "plugin": "VoiceGateway Yeastar SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Yeastar语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Yeastar P 系列语音网关的 CPU 使用率（pCPUUtilization 百分比文本解析为 0-100），当持续高于阈值时触发告警，提示可能存在呼叫处理压力或控制面过载。",
+      "metric_name": "cpu_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Yeastar语音网关内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 Yeastar P 系列语音网关的内存使用率（pMemoryUsage 百分比文本解析为 0-100），当持续高于阈值时触发告警，提示可能存在资源紧张或服务异常。",
+      "metric_name": "memory_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Yeastar语音网关本地存储使用率过高",
+      "alert_name": "语音网关${resource_name} 本地存储使用率过高",
+      "description": "监控 Yeastar P 系列语音网关的本地存储使用率（pLocalStorageUsage 百分比文本解析为 0-100），当持续高于阈值时触发告警，提示录音或系统存储可能耗尽。",
+      "metric_name": "local_storage_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Yeastar语音网关电话引擎异常",
+      "alert_name": "语音网关${resource_name} 电话引擎状态异常",
+      "description": "监控 Yeastar P 系列语音网关电话引擎状态（pAsteriskStatus，归一后 1=正常，>1=异常），当引擎非运行态时触发告警。",
+      "metric_name": "asterisk_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
 }

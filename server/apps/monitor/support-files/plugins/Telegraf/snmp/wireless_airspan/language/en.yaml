@@ -1,8 +1,8 @@
 Wireless Airspan SNMP:
   name: Airspan (Telegraf)
-  desc: SNMP monitoring template for Airspan wireless device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 1803).
+  desc: SNMP monitoring template for Airspan wireless device. It reports sensor
+    temperature, optional DC voltage, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime (IANA PEN 989).
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
@@ -51,14 +51,29 @@ monitor_object_metric:
         associations or restart services, so investigate client counts or abnormal
         load promptly.
     device_temperature_celsius:
-      name: Temperature
-      desc: Chassis temperature in degrees Celsius of the wireless device, read directly
-        with no scaling. Only models equipped with a temperature sensor report a real
-        value; fanless access points return 0. High temperatures can indicate cooling
-        failure or poor airflow and risk thermal shutdown.
+      name: Sensor Temperature
+      desc: Per-sensor temperature of the wireless device in degrees Celsius, read
+        directly with no scaling. Empty sensor tables yield no rows. Persistently
+        high values can indicate cooling failure, poor airflow, or hardware thermal
+        stress.
+    device_temperature_status:
+      name: Temperature Sensor Status
+      desc: Optional per-sensor temperature status of the wireless device. Normal
+        is 0, too high is 1, and too low is 2. Empty sensor tables yield no rows.
+    device_voltage_volts:
+      name: DC Voltage
+      desc: Optional per-sensor DC voltage of the wireless device in volts, converted
+        from millivolt readings. Empty voltage tables yield no rows. Values outside
+        the expected DC rail may indicate power or hardware risk.
+    device_voltage_status:
+      name: DC Voltage Sensor Status
+      desc: Optional per-sensor DC voltage status of the wireless device. Nominal
+        is 0, too high is 1, too low is 2, and out of range is 3. Empty voltage tables
+        yield no rows.
 monitor_object_metric_group:
   Wireless:
     Base: Base
     Traffic: Traffic
     Wireless: Wireless
     Temperature: Temperature
+    Hardware Status: Hardware Status

@@ -1,4 +1,6 @@
 .search {
+    width: 100%;
+    min-width: 0;
 
     .searchCondition {
         margin: 10px 0;
@@ -11,6 +13,8 @@
 
     .tableArea {
         display: flex;
+        width: 100%;
+        min-width: 0;
     }
 
     .fieldTree {

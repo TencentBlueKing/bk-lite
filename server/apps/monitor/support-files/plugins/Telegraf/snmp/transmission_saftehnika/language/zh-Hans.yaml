@@ -1,6 +1,7 @@
 Transmission SAF Tehnika SNMP:
   name: SAF Tehnika（Telegraf）
-  desc: 面向 SAF Tehnika 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 19011）。
+  desc: 面向 SAF Tehnika Integra 传输设备的 SNMP 监控模板。接入时选择 Integra-B 或 Integra-W 产品分支，只采集对应系统树，禁止混采。可采集
+    CPU 使用率、内存使用率、CPU 温度、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 7571）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -24,6 +25,15 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: Integra 传输设备的 CPU 使用率，由空闲×10% 读数换算为 100 减去 idle/10。持续偏高可能表示微波回传业务压力、控制平面负载或异常流量。
+    memory_usage_percent:
+      name: 内存使用率
+      desc: Integra 传输设备的内存使用率，由空闲×10% 读数换算为 100 减去 free/10。持续偏高可能表示控制面资源压力或设备服务不稳定。
+    cpu_temperature_celsius:
+      name: CPU 温度
+      desc: Integra 传输设备的 CPU 温度，原始值为 ×10 摄氏度，查询时除以 10。温度偏高可能表示散热异常、环境温度过高或硬件过载。
     device_cpu_usage:
       name: CPU 使用率
       desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。

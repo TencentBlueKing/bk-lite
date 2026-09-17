@@ -49,6 +49,22 @@ assert.deepEqual(buildAlertSnapshotChartModel(thresholdSnapshots).xAxisDomain, [
 assert.deepEqual(buildAlertSnapshotChartModel(thresholdSnapshots).noDataTimes, []);
 assert.equal(buildAlertSnapshotChartModel(thresholdSnapshots, { alertType: 'alert' }).gapIntervals.length, 0);
 
+const overlaySnapshots = [
+  {
+    type: 'event',
+    raw_data: { values: [[100, '90']] },
+    current_value: 120,
+    baseline_value: 80,
+    compared_value: 50,
+    result_unit: 'percent',
+  },
+];
+assert.deepEqual(buildAlertSnapshotChartModel(overlaySnapshots).overlay, {
+  currentValue: 120,
+  baselineValue: 80,
+  comparedValue: 50,
+});
+
 const noDataSnapshots = [
   {
     type: 'no_data',

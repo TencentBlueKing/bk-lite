@@ -1,6 +1,6 @@
 NetworkService DEVA Broadcast SNMP:
   name: DEVA Broadcast（Telegraf）
-  desc: 面向 DEVA Broadcast 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 DEVA Broadcast 网络服务设备的 SNMP 监控模板,可采集机箱温度、风扇转速、射频电平、可选导频/MPX/RDS/左右声道电平、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 35833）。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -31,8 +31,29 @@ monitor_object_metric:
       name: 内存使用率
       desc: 网络服务设备的系统内存使用率（设备直接上报的百分比）。持续偏高可能表示设备上的映射/流表存在内存压力。
     device_temperature_celsius:
-      name: 温度
-      desc: 网络服务设备的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+      name: 机箱温度
+      desc: 网络服务设备的机箱温度读数，单位为摄氏度（Fr8p8 整型按 /256 换算）。温度偏高可能表示散热或环境温度风险。
+    device_fan_rpm:
+      name: 风扇转速
+      desc: 网络服务设备风扇转速，单位为转每分钟。转速持续偏低或为零可能表示风扇停转或散热失效。
+    deva_rf_level:
+      name: 射频电平
+      desc: 射频输入电平，单位为 dBµV（Fr8p8 整型按 /256 换算）。电平持续偏低可能表示天线、馈线或开路信号异常。
+    deva_pilot_level:
+      name: 导频电平
+      desc: 可选 19 kHz 导频平均电平（Fr8p8 整型按 /256 换算）。标量缺失时不产生数据点。
+    deva_mpx_level:
+      name: MPX 电平
+      desc: 可选 MPX 平均电平（Fr8p8 整型按 /256 换算）。标量缺失时不产生数据点。
+    deva_left_audio_level:
+      name: 左声道电平
+      desc: 可选左声道音频平均电平（Fr8p8 整型按 /256 换算）。标量缺失时不产生数据点。
+    deva_right_audio_level:
+      name: 右声道电平
+      desc: 可选右声道音频平均电平（Fr8p8 整型按 /256 换算）。标量缺失时不产生数据点。
+    deva_rds_ber:
+      name: RDS 误码率
+      desc: 可选 RDS 误码率（Fr1p15 整型按 /32768 换算）。标量缺失时不产生数据点。
     network_service_dns_service_state:
       name: DNS 服务状态
       desc: DNS 服务运行状态，统一归一为 1=正常、2=异常。
@@ -83,3 +104,5 @@ monitor_object_metric_group:
     Base: 基础
     Traffic: 流量
     NetworkService: 网络服务
+    Temperature: 温度
+    Hardware Status: 硬件状态

@@ -1,7 +1,8 @@
 Access PacketFront SNMP:
   name: Access PacketFront SNMP
-  desc: SNMP monitoring template for PacketFront access device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for PacketFront access device. It reports chassis
+    sensor temperature, fan RPM, board voltage, per-port inbound traffic rate,
+    per-port outbound traffic rate, and system uptime (IANA PEN 9303).
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -58,10 +59,19 @@ monitor_object_metric:
         percentage by a private scalar. Sustained high memory can indicate forwarding
         table, ONU management table, or control-service pressure.
     device_temperature_celsius:
-      name: System Temperature
-      desc: System temperature of the access device in degrees Celsius. Persistently
-        high values may indicate cooling problems, high ambient temperature, or excessive
-        device load.
+      name: Chassis Temperature
+      desc: Chassis sensor temperature of the access device in degrees Celsius, scaled
+        from hundredths of a degree. Persistently high values may indicate cooling
+        problems, high ambient temperature, or excessive device load.
+    device_fan_rpm:
+      name: Fan Speed
+      desc: Fan rotation speed of the access device in revolutions per minute. Persistently
+        low or zero RPM may indicate a stalled fan or cooling failure.
+    device_voltage_volts:
+      name: Board Voltage
+      desc: Board voltage of the access device in volts, converted from millivolt
+        channel readings. Values outside the expected rail range may indicate power
+        or hardware risk.
     device_card_temperature_level:
       name: Card Temperature Level
       desc: Relative card temperature level of the access device. Values 1-10 indicate

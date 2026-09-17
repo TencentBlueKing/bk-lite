@@ -1,6 +1,6 @@
 ConsoleServer Lantronix SLC SNMP:
   name: Lantronix SLC 控制台服务器（Telegraf）
-  desc: 面向 Lantronix SLC 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Lantronix SLC 控制台服务器的 SNMP 监控模板,可采集机箱内部温度、电源 A/B 状态、可选活动会话数、可选端口传感器温度和湿度、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   ConsoleServer: 控制台服务器
 monitor_object_type:
@@ -26,13 +26,31 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
     device_temperature_celsius:
       name: 温度
-      desc: 控制台服务器的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+      desc: Lantronix SLC 机箱内部温度，单位为摄氏度。温度偏高可能表示散热或环境温度风险。读数错误哨兵 9999 会被丢弃。
     device_psu_state:
       name: 电源状态
-      desc: 控制台服务器的输入电源状态，统一归一为 1=正常、2=异常。未知或非正常码均按电源路径风险处理。
+      desc: 控制台服务器电源状态汇总，统一归一为 1=正常、2=异常。电源 B 未安装不视为故障。
+    psu_a_status:
+      name: 电源 A 状态
+      desc: Lantronix SLC 电源 A 状态，统一归一为正常或异常。
+    psu_b_status:
+      name: 电源 B 状态
+      desc: Lantronix SLC 电源 B 状态，统一归一为正常或异常。未安装按正常处理。
+    active_sessions:
+      name: 活动会话数
+      desc: 可选的控制台活动连接数，来自连接表行数。
+    lantronix_port_temperature_celsius:
+      name: 端口传感器温度
+      desc: 可选的每端口传感器温度，单位为摄氏度。无数值读数的端口会被跳过。
+    lantronix_port_humidity_percent:
+      name: 端口传感器湿度
+      desc: 可选的每端口传感器相对湿度百分比。无数值读数的端口会被跳过。
 monitor_object_metric_group:
   ConsoleServer:
     Base: 基础
     Traffic: 流量
     Temperature: 温度
     Hardware Status: 硬件状态
+    Power: 电源
+    Sessions: 会话
+    Humidity: 湿度

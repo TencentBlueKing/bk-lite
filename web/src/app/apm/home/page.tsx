@@ -51,6 +51,7 @@ import type {
 } from '@/app/apm/types';
 import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import SummaryMetricCard from '@/components/summary-metric-card';
+import { createLatestRequestGuard } from '@/context/latestRequestGuard';
 import { useTranslation } from '@/utils/i18n';
 
 const { Text, Paragraph } = Typography;
@@ -318,6 +319,7 @@ function ReleaseOverviewList({ items }: { items: ApmDashboardReleaseRow[] }) {
 export default function ApmHomePage() {
   const { t } = useTranslation();
   const { getDashboard, isLoading: authLoading } = useApmApi();
+  const [requestGuard] = useState(createLatestRequestGuard);
   const [timeWindow, setTimeWindow] = useState<ApmTimeWindow>('1h');
   const [dashboard, setDashboard] = useState<ApmDashboard | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -325,19 +327,26 @@ export default function ApmHomePage() {
 
   const load = useCallback(() => {
     if (authLoading) return;
+    const requestId = requestGuard.begin();
     setLoading(true);
     setLoadFailed(false);
     getDashboard(timeWindow)
       .then((payload) => {
-        setDashboard(payload);
-        setLoadFailed(false);
+        requestGuard.commitIfCurrent(requestId, () => {
+          setDashboard(payload);
+          setLoadFailed(false);
+        });
       })
       .catch(() => {
-        setDashboard(null);
-        setLoadFailed(true);
+        requestGuard.commitIfCurrent(requestId, () => {
+          setDashboard(null);
+          setLoadFailed(true);
+        });
       })
-      .finally(() => setLoading(false));
-  }, [authLoading, getDashboard, timeWindow]);
+      .finally(() => {
+        requestGuard.commitIfCurrent(requestId, () => setLoading(false));
+      });
+  }, [authLoading, getDashboard, requestGuard, timeWindow]);
 
   useEffect(() => {
     load();

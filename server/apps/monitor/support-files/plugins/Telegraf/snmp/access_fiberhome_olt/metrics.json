@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_fiberhome_olt",
   "plugin": "Access FiberHome OLT SNMP",
-  "plugin_desc": "FiberHome OLT and GPON access-device SNMP child template. The template keeps the shared Access baseline only: MIB-II uptime and IF-MIB ifXTable 64-bit HC interface counters. FiberHome OLT private health leaves are not modeled in this pass because stable device-level CPU, memory, temperature, fan or power OIDs are not confirmed from the available FIBERHOME-OLT-COMMON-MIB signal. PON, ONU and optical service tables are not promoted to shared device-health metrics.",
+  "plugin_desc": "FiberHome OLT access-device SNMP collection under enterprise PEN 5875 (GEPON-OLT-COMMON-MIB). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB interface traffic, it collects board CPU utilization (cardCpuUtil) and board memory utilization (cardMemUtil) from cardInfoTable. Both leaves are precision-100 integers, so dividing the raw value by 100 yields the percentage. This child binds only the cardInfoTable tree and does not also bind the older manager-card tree; some OLT series do not expose these columns, and the metrics appear only when the device answers this path. PON, ONU and optical service tables are not promoted to shared device-health metrics. Supported brands/models — FiberHome OLT and GPON access devices.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_fiberhome_olt'}) by (instance_id)",
   "name": "Access",
@@ -14,9 +14,37 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='access', __$labels__} / 100) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board CPU utilization from GEPON-OLT-COMMON-MIB cardCpuUtil. The device reports a precision-100 integer; dividing by 100 yields the percentage. Some OLT series do not expose this column, so the metric is present only when the walk returns values."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='access', __$labels__} / 100) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board memory utilization from GEPON-OLT-COMMON-MIB cardMemUtil. The device reports a precision-100 integer; dividing by 100 yields the percentage. Some OLT series do not expose this column, so the metric is present only when the walk returns values."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

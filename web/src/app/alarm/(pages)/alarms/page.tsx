@@ -143,10 +143,6 @@ const Alert: React.FC = () => {
     return showChart !== undefined ? showChart : true;
   });
 
-  const tableScrollY = showChart
-    ? 'calc(100vh - 500px)'
-    : 'calc(100vh - 400px)';
-
   const isActiveAlarms = activeTab === 'activeAlarms';
 
   const stateOptions = useMemo(() => (isActiveAlarms ? baseStates : allStates).map((val) => ({
@@ -393,7 +389,7 @@ const Alert: React.FC = () => {
   );
 
   return (
-    <div className="h-full min-h-0 min-w-0 w-full">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col">
       <div className={alertStyle.alert}>
         <AlarmFilters
           filters={filters}
@@ -452,8 +448,8 @@ const Alert: React.FC = () => {
             </div>
           </Spin>
           <div className={alertStyle.table}>
-            <Tabs activeKey={activeTab} items={tabList} onChange={changeTab} />
-            <div className="mb-[16px] flex min-w-0 flex-wrap items-center justify-between gap-y-2">
+            <Tabs className="shrink-0" activeKey={activeTab} items={tabList} onChange={changeTab} />
+            <div className="mb-[16px] flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-y-2">
               <div className="flex items-center space-x-4">
                 <SearchFilter
                   attrList={alarmAttrList}
@@ -487,16 +483,17 @@ const Alert: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
             <AlarmTable
               dataSource={tableData}
               pagination={pagination}
               loading={tableLoading}
-              tableScrollY={tableScrollY}
               selectedRowKeys={selectedRowKeys}
               onSelectionChange={setSelectedRowKeys}
               onChange={handleTableChange}
               onRefresh={onRefresh}
             />
+            </div>
           </div>
         </div>
       </div>

@@ -18,6 +18,7 @@ import {
   isPersistedIp,
   listDrawerIpAttrs,
   listReadonlyIpAttrs,
+  normalizeUserIds,
   requiredMenuPermission,
 } from '../src/app/cmdb/(pages)/assetData/detail/ipView/ipamEdit';
 
@@ -104,6 +105,10 @@ assert.equal(enumOptionsFromAttr({ attr_id: 'description', option: { widget_type
 assert.equal(enumName(enumOptionsFromAttr(allocAttr), 'allocated'), '已分配');
 assert.equal(defaultAllocStatus(enumOptionsFromAttr(allocAttr)), 'allocated');
 
+assert.deepEqual(normalizeUserIds(['1', 2]), [1, 2]);
+assert.deepEqual(normalizeUserIds('3'), [3]);
+assert.deepEqual(normalizeUserIds(['alice']), []);
+
 assert.deepEqual(
   buildIpamEditPayload({
     subnetInstUuid: 'subnet-1',
@@ -111,7 +116,7 @@ assert.deepEqual(
     allocatedStatus: 'allocated',
     ipStatus: 'offline',
     ipType: 'static',
-    ipUser: ['u1'],
+    ipUser: ['1'],
     mac: 'AA:BB:CC:DD:EE:FF',
     description: 'web vip',
   }),
@@ -121,7 +126,7 @@ assert.deepEqual(
     ip_allocated_status: 'allocated',
     ip_status: 'offline',
     ip_type: 'static',
-    ip_user: ['u1'],
+    ip_user: [1],
     mac: 'AA:BB:CC:DD:EE:FF',
     description: 'web vip',
   }
@@ -154,7 +159,12 @@ assert.match(drawerSrc, /layout="vertical"/);
 assert.match(drawerSrc, /span=\{12\}/);
 assert.match(drawerSrc, /Input\.TextArea/);
 assert.match(drawerSrc, /IPAM_DESC_ATTR_ID/);
-assert.doesNotMatch(drawerSrc, /t\('Model\.ipViewAllocated'\)/);
+assert.match(drawerSrc, /normalizeUserIds\(record\[IPAM_USER_ATTR_ID\]\)/);
+assert.match(drawerSrc, /value: Number\(user\.id\)/);
+assert.doesNotMatch(drawerSrc, /value: String\(user\.id\)/);
+assert.match(drawerSrc, /t\('Model\.ipViewAllocated'\)/);
+assert.match(drawerSrc, /classifyAlloc/);
+assert.doesNotMatch(drawerSrc, /ipToCellKind|KIND_COLOR|CellKind/);
 assert.doesNotMatch(drawerSrc, /auto_collect/);
 assert.doesNotMatch(drawerSrc, /ip_table/);
 assert.equal(IPAM_ASSET_PERMISSION_PATH, '/cmdb/assetData');

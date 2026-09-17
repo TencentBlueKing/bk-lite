@@ -23,6 +23,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { AttrFieldType, UserItem, FullInfoGroupItem, FullInfoAttrItem, FieldConfig } from '@/app/cmdb/types/assetManage';
 import { deepClone, getStringValidationRule, getNumberRangeRule, normalizeTimeValueForForm, normalizeTimeValueForSubmit, getFieldItem } from '@/app/cmdb/utils/common';
+import { isCloudRegionAttr, toCloudSelectValue } from '@/app/cmdb/utils/cloudRegion';
 import { getEnumDefaultValueForForm } from '@/app/cmdb/utils/enumDefaultValue';
 import { useInstanceApi } from '@/app/cmdb/api';
 import styles from './filterBar.module.scss';
@@ -98,7 +99,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     useEffect(() => {
       if (modelId === 'host') {
         const cloudName = proxyOptions.find(
-          (opt: any) => opt.proxy_id === +cloudValue,
+          (opt: any) => Number(opt.proxy_id) === Number(cloudValue),
         )?.proxy_name;
         if (ipValue && cloudName) {
           form.setFieldsValue({
@@ -144,6 +145,11 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             forms[key] = forms[key]
               .map((item: any) => Number(item))
               .filter((num: number) => !isNaN(num));
+          } else if (isCloudRegionAttr(target?.attr_id) && forms[key] != null && forms[key] !== '') {
+            const parsed = toCloudSelectValue(forms[key]);
+            if (parsed !== undefined) {
+              forms[key] = parsed;
+            }
           }
         }
 
@@ -252,7 +258,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
             {proxyOptions.map((opt) => (
               <Select.Option
                 key={String(opt.proxy_id)}
-                value={String(opt.proxy_id)}
+                value={Number(opt.proxy_id)}
               >
                 {opt.proxy_name}
               </Select.Option>

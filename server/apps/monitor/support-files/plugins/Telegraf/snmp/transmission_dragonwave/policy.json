@@ -1,5 +1,56 @@
 {
   "object": "Transmission",
   "plugin": "Transmission DragonWave SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "DragonWave传输设备射频温度过高",
+      "alert_name": "传输设备${resource_name} 射频温度过高",
+      "description": "监控 DragonWave Horizon Compact Plus 微波传输设备的射频温度（hzCpRadioTemperature，十分之一摄氏度换算为摄氏度），当持续高于阈值时触发告警，提示射频硬件热压力、环境温度过高或散热异常。",
+      "metric_name": "radio_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "DragonWave传输设备系统温度过高",
+      "alert_name": "传输设备${resource_name} 系统温度过高",
+      "description": "监控 DragonWave Harmony MWR 微波传输设备的可选系统温度（mwrSystemTemperature，摄氏度）。Horizon Compact Plus 不返回该对象；有读数且持续高于阈值时触发告警，提示散热异常、环境温度过高或硬件过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

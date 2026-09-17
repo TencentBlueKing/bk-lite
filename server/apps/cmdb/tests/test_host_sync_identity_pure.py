@@ -3,13 +3,50 @@
 from types import SimpleNamespace
 
 from apps.cmdb.services.host_sync_identity import (
+    apply_model_cloud_id,
     build_host_inst_name,
+    heal_legacy_cloud_id,
+    host_lookup_key,
     is_node_mgmt_sidecar_id,
     is_unique_conflict,
     node_id_to_write,
+    parse_cloud_id,
     resolve_host_identity,
+    should_refresh_host_inst_name,
 )
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
+
+
+def test_host_lookup_key_normalizes_numeric_string():
+    assert host_lookup_key(ip_addr="10.0.0.1", cloud="1") == ("10.0.0.1", 1)
+
+
+def test_parse_cloud_id_accepts_int_and_numeric_string():
+    assert parse_cloud_id(1) == 1
+    assert parse_cloud_id("2") == 2
+    assert parse_cloud_id(" 3 ") == 3
+    assert parse_cloud_id("") is None
+    assert parse_cloud_id(None) is None
+    assert parse_cloud_id("aliyun") is None
+    assert parse_cloud_id(True) is None
+
+
+def test_apply_model_cloud_id_coerces_host_and_subnet():
+    host = apply_model_cloud_id("host", {"cloud": "1", "ip_addr": "10.0.0.1"})
+    assert host["cloud"] == 1
+    subnet = apply_model_cloud_id("subnet", {"cloud_id": "8"})
+    assert subnet["cloud_id"] == 8
+    other = apply_model_cloud_id("switch", {"cloud": "1"})
+    assert other["cloud"] == "1"
+
+
+def test_heal_legacy_cloud_id_rewrites_numeric_string():
+    update_attr = heal_legacy_cloud_id("host", {"cloud": "2"}, {"inst_name": "h"})
+    assert update_attr["cloud"] == 2
+    already_int = heal_legacy_cloud_id("host", {"cloud": 2}, {"inst_name": "h"})
+    assert "cloud" not in already_int
+    explicit = heal_legacy_cloud_id("host", {"cloud": "2"}, {"cloud": 3})
+    assert explicit["cloud"] == 3
 
 
 def test_build_host_inst_name_prefers_cloud_name():
@@ -18,6 +55,16 @@ def test_build_host_inst_name_prefers_cloud_name():
 
 def test_build_host_inst_name_falls_back_to_cloud_id():
     assert build_host_inst_name(ip="10.0.0.1", cloud_name="", cloud_id=7) == "10.0.0.1[7]"
+
+
+def test_should_refresh_host_inst_name_only_when_identity_changes():
+    existing = {"ip_addr": "10.0.0.7", "cloud": 2, "inst_name": "web-prod-01"}
+    same_identity = {"ip_addr": "10.0.0.7", "cloud": 2, "inst_name": "10.0.0.7[华东]"}
+    assert should_refresh_host_inst_name(None, same_identity) is True
+    assert should_refresh_host_inst_name(existing, same_identity) is False
+    assert should_refresh_host_inst_name(existing, {**same_identity, "ip_addr": "10.0.0.8"}) is True
+    assert should_refresh_host_inst_name(existing, {**same_identity, "cloud": 3}) is True
+    assert should_refresh_host_inst_name({"ip_addr": "10.0.0.7", "cloud_id": 2, "inst_name": "web-prod-01"}, same_identity) is False
 
 
 def test_resolve_by_node_id_does_not_fall_back_to_cmdb_id():

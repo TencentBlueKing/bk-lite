@@ -19,7 +19,7 @@ Vastbase G100（海量数据）B 兼容模式补丁集合。
   ``varchar_pattern_ops`` 索引均可用；
 * timestamptz 语义正确（同一时刻的不同写法 epoch 一致）。
 
-因此本模块只处理 7 类真实不兼容点，比 kingbase 补丁更短。
+因此本模块只处理 8 类真实不兼容点，比 kingbase 补丁更短。
 
 补丁清单
 ========
@@ -58,6 +58,12 @@ Vastbase G100（海量数据）B 兼容模式补丁集合。
    注意 6 与 7 覆盖的是**两种驱动**：pyproject 锁定 psycopg2-binary，但运行镜像内装有
    psycopg3（opspilot extra 经 langchain-postgres 带入），Django 4.2 会优先使用 psycopg3。
    两条补丁必须同时存在。
+
+8. **聚合 FILTER 子句**（运行期阻断）：``COUNT(...) FILTER (WHERE ...)`` 是 PG 9.4 语法，
+   Vastbase 报 ``syntax error at or near "("``。server 内 30 余处 ``Count(..., filter=Q(...))``
+   都会命中（告警源列表、作业看板、节点动作统计等）。关掉
+   ``supports_aggregate_filter_clause``，Django 自动降级为 ``COUNT(CASE WHEN ...)``。
+   实现见 ``pg_aggregate_filter``。
 
 已知未覆盖
 ==========
@@ -186,12 +192,20 @@ def apply_early_patches():
     _patch_sequence_reset_sql()
     _patch_naive_datetime_converter()
     _patch_psycopg3_timestamptz_missing_tz()
+    _patch_aggregate_filter_clause()
 
     logger.info(
         "Vastbase B-mode patches applied "
         "(version gate + introspection + serial + on-conflict + sequence reset + "
-        "naive datetime + psycopg3 timestamptz)"
+        "naive datetime + psycopg3 timestamptz + aggregate filter)"
     )
+
+
+def _patch_aggregate_filter_clause():
+    """聚合 ``FILTER (WHERE ...)`` 降级为 ``CASE WHEN``（PG 9.4 语法，Vastbase 不支持）。"""
+    from apps.core.db_patches.pg_aggregate_filter import disable_aggregate_filter_clause
+
+    disable_aggregate_filter_clause()
 
 
 def _patch_minimum_database_version():

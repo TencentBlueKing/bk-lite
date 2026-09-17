@@ -1,6 +1,6 @@
 VoiceGateway Mitel SNMP:
   name: Mitel（Telegraf）
-  desc: 面向 Mitel 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Mitel MiVoice 5000 语音网关的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、可选空闲内存总量、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -30,9 +30,31 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
+    cpu_usage_percent:
+      name: CPU 使用率
+      desc: 该指标报告 Mitel MiVoice 5000 的整体 CPU 使用率，由 UCD-SNMP ssCpuIdle 按 100−idle 计算；缺 idle
+        时回退为 ssCpuUser+ssCpuSystem。持续偏高说明呼叫处理或控制面负载吃紧。
+    memory_total:
+      name: 内存总量
+      desc: 该指标报告 Mitel MiVoice 5000 的物理内存总量（UCD-SNMP memTotalReal，原始单位 kB，已换算为字节）。
+    memory_free:
+      name: 空闲内存
+      desc: 该指标报告 Mitel MiVoice 5000 当前可用的物理内存字节数（UCD-SNMP memAvailReal，原始单位 kB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
+    memory_used:
+      name: 已用内存
+      desc: 该指标报告 Mitel MiVoice 5000 当前已使用的内存字节数，按 memTotalReal − memAvailReal 计算并由 kB 换算为字节。
+    memory_usage_percent:
+      name: 内存使用率
+      desc: 该指标报告 Mitel MiVoice 5000 整体内存使用率，按 (memTotalReal − memAvailReal) / memTotalReal
+        × 100 计算。持续偏高可能表示资源紧张。
+    memory_total_free:
+      name: 空闲内存总量
+      desc: Mitel MiVoice 5000 可选的空闲内存总量（UCD-SNMP memTotalFree，原始单位 kB，已换算为字节）。标量存在时采集。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
     Temperature: 温度
     Hardware Status: 硬件状态
+    CPU: CPU
+    Memory: 内存

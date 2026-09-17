@@ -75,6 +75,8 @@ _APP_SERVICE_MODEL_IDS = (
         {
             "mysql",
             "oracle",
+            "oracle_instance",
+            "oracle_pdb",
             "mssql",
             "redis",
             "mongodb",

@@ -26,11 +26,19 @@ class PatchTargetFilter(filters.FilterSet):
         valid = {item[0] for item in ComplianceStatus.CHOICES}
         if value not in valid:
             return queryset.none()
+        from apps.patch_mgmt.services.governance_convergence import (
+            project_target_assessment_statuses,
+        )
         from apps.patch_mgmt.services.risk_service import compute_host_compliance_status
 
-        target_ids = [
-            target.id
-            for target in queryset.select_related("baseline_binding__baseline")
-            if compute_host_compliance_status(target) == value
-        ]
+        targets = list(queryset.select_related("baseline_binding__baseline"))
+        bound_ids = [target.id for target in targets if getattr(target, "baseline_binding", None)]
+        projected_map = project_target_assessment_statuses(bound_ids)
+        target_ids = []
+        for target in targets:
+            kwargs = {}
+            if getattr(target, "baseline_binding", None):
+                kwargs["projected"] = projected_map.get(target.id)
+            if compute_host_compliance_status(target, **kwargs) == value:
+                target_ids.append(target.id)
         return queryset.filter(id__in=target_ids)

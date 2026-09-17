@@ -34,9 +34,13 @@
         is_tag = true
     # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
         name = "interface"
         inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
@@ -55,7 +59,7 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1991.1.1.2.1.52.0"
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.52"
         name = "usage"
     # ---- Brocade/Foundry dynamic memory utilization (FOUNDRY-SN-AGENT-MIB snAgGblDynMemUtil, scalar %) ----
     # 待现网核验：1.3.6.1.4.1.1991.1.1.2.1.53.0（% 直报，无 used/free 字节）→ 统一 device_memory_usage(原始%)。
@@ -63,7 +67,7 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1991.1.1.2.1.53.0"
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.53"
         name = "usage"
     # ---- Brocade/Foundry chassis temperature (FOUNDRY-SN-AGENT-MIB snChasActualTemperature) ----
     # 待现网核验：1.3.6.1.4.1.1991.1.1.1.1.18 → device_temperature_celsius。

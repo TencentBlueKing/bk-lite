@@ -360,8 +360,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = () => {
         <b className="text-[14px] flex mb-[10px] ml-[-10px]">
           {t('log.integration.configuration')}
         </b>
-        <div className="w-1/2 min-w-[500px]">{formItems}</div>
-        <div className="w-[calc(100vw-306px)] min-w-[500px]">
+        <div className="w-full min-w-0 max-w-full md:w-1/2">{formItems}</div>
+        <div className="w-full min-w-0 max-w-full">
           <div className="flex items-center justify-between mb-[10px]">
             <span className="text-[14px]">
               {t('log.integration.MonitoredObject')}

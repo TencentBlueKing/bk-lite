@@ -214,31 +214,31 @@ const CorrelationRulesPage: React.FC = () => {
   ], [t, handleEdit, handleDelete, convertToLocalizedTime]);
 
   return (
-    <>
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col">
       <Introduction
         title={t('settings.correlationRules')}
         message={t('settings.correlationRulesMessage')}
       />
-      <div className="p-4 bg-[var(--color-bg-1)] rounded-lg shadow">
-        <div>
-          <div className="nav-box flex justify-between mb-[14px]">
-            <div className="flex items-center">
-              <Input
-                allowClear
-                value={searchKey}
-                placeholder={t('common.search')}
-                style={{ width: 250 }}
-                onChange={(e) => setSearchKey(e.target.value)}
-                onPressEnter={handleFilterChange}
-                onClear={handleFilterClear}
-              />
-            </div>
-            <PermissionWrapper requiredPermissions={['Add']}>
-              <Button type="primary" onClick={() => handleEdit('add')}>
-                {t('common.addNew')}
-              </Button>
-            </PermissionWrapper>
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg bg-[var(--color-bg-1)] p-4 shadow">
+        <div className="nav-box mb-[14px] flex shrink-0 justify-between">
+          <div className="flex items-center">
+            <Input
+              allowClear
+              value={searchKey}
+              placeholder={t('common.search')}
+              style={{ width: 250 }}
+              onChange={(e) => setSearchKey(e.target.value)}
+              onPressEnter={handleFilterChange}
+              onClear={handleFilterClear}
+            />
           </div>
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" onClick={() => handleEdit('add')}>
+              {t('common.addNew')}
+            </Button>
+          </PermissionWrapper>
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
           <CustomTable
             size="middle"
             rowKey="id"
@@ -247,28 +247,27 @@ const CorrelationRulesPage: React.FC = () => {
             dataSource={dataList}
             pagination={pagination}
             onChange={handleTableChange}
-            scroll={{ y: 'calc(100vh - 460px)' }}
-          />
-          <OperateModal
-            open={operateVisible}
-            onClose={() => setOperateVisible(false)}
-            currentRow={currentRow}
-            onSuccess={() => {
-              setPagination((prev) => ({ ...prev, current: 1 }));
-              getTableList({ current: 1, pageSize: pagination.pageSize });
-            }}
-          />
-          <AlertListDrawer
-            visible={alertDrawerVisible}
-            ruleId={currentRuleId}
-            onClose={() => {
-              setAlertDrawerVisible(false);
-              setCurrentRuleId(null);
-            }}
           />
         </div>
+        <OperateModal
+          open={operateVisible}
+          onClose={() => setOperateVisible(false)}
+          currentRow={currentRow}
+          onSuccess={() => {
+            setPagination((prev) => ({ ...prev, current: 1 }));
+            getTableList({ current: 1, pageSize: pagination.pageSize });
+          }}
+        />
+        <AlertListDrawer
+          visible={alertDrawerVisible}
+          ruleId={currentRuleId}
+          onClose={() => {
+            setAlertDrawerVisible(false);
+            setCurrentRuleId(null);
+          }}
+        />
       </div>
-    </>
+    </div>
   );
 };
 

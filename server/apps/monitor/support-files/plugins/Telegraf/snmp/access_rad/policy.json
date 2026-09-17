@@ -1,5 +1,13 @@
 {
   "object": "Access",
   "plugin": "Access RAD SNMP",
-  "templates": []
+  "templates": [
+    {
+      "metric_name": "sfp_laser_temperature_celsius",
+      "alert_name": "Optical laser temperature high",
+      "algorithm": "Threshold",
+      "threshold": 70,
+      "level": "warning"
+    }
+  ]
 }

@@ -52,14 +52,27 @@ def convert_vm_result_copy(data, source_unit, target_unit):
     return converted
 
 
+def _convert_scalar(value, source_unit, target_unit):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return value
+    converted = UnitConverter.convert_values([float(value)], source_unit, target_unit)
+    return converted[0]
+
+
 def convert_snapshots_copy(snapshots, source_unit, target_unit):
     _validate_conversion(source_unit, target_unit)
     converted = deepcopy(snapshots)
+    convert_extras = bool(source_unit and target_unit and source_unit != target_unit)
     for snapshot in converted:
         raw_data = snapshot.get("raw_data")
-        if not isinstance(raw_data, dict):
-            continue
-        _convert_points_in_place(
-            raw_data.get("values") or [], source_unit, target_unit
-        )
+        if isinstance(raw_data, dict):
+            _convert_points_in_place(
+                raw_data.get("values") or [], source_unit, target_unit
+            )
+        if convert_extras:
+            for key in ("current_value", "baseline_value", "compared_value"):
+                if key in snapshot:
+                    snapshot[key] = _convert_scalar(
+                        snapshot[key], source_unit, target_unit
+                    )
     return converted

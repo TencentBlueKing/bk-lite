@@ -652,10 +652,14 @@ class ApmSloViewSet(viewsets.GenericViewSet):
         )
         return get_object_or_404(queryset, id=service_id)
 
-    def _serialize(self, slo):
+    def _serialize(self, slo, *, evaluation=None, evaluated_at=None, service=None):
         data = self.get_serializer(slo).data
+        evaluated_at = evaluated_at or timezone.now()
         try:
-            evaluation = self._service().evaluate(slo, evaluated_at=timezone.now())
+            if evaluation is None:
+                evaluation = (service or self._service()).evaluate(slo, evaluated_at=evaluated_at)
+            if isinstance(evaluation, Exception):
+                raise evaluation
             data.update(asdict(evaluation))
         except (TelemetryStoreUnavailable, ValueError) as exc:
             data.update(
@@ -664,7 +668,7 @@ class ApmSloViewSet(viewsets.GenericViewSet):
                     "budget_remaining": None,
                     "data_state": "unavailable",
                     "started_at": None,
-                    "ended_at": timezone.now(),
+                    "ended_at": evaluated_at,
                     "reason": str(exc),
                 }
             )
@@ -672,7 +676,16 @@ class ApmSloViewSet(viewsets.GenericViewSet):
 
     @HasPermission("services-View")
     def list(self, request, *args, **kwargs):
-        return Response([self._serialize(slo) for slo in self.get_queryset()[:200]])
+        slos = list(self.get_queryset()[:200])
+        service = self._service()
+        evaluated_at = timezone.now()
+        evaluations = service.evaluate_many(slos, evaluated_at=evaluated_at)
+        return Response(
+            [
+                self._serialize(slo, evaluation=evaluations.get(slo.id), evaluated_at=evaluated_at, service=service)
+                for slo in slos
+            ]
+        )
 
     @HasPermission("services-View")
     def retrieve(self, request, *args, **kwargs):

@@ -1,0 +1,111 @@
+# Huawei AR Router SNMP Guide
+
+This plugin uses Telegraf `inputs.snmp` on the selected node to collect Huawei AR-series router health, entity voltage, board power in watts, milliwatt chassis/board energy, chassis used/total power in watts, and interface traffic.
+
+## Prerequisites
+
+- The selected node can reach the device SNMP port (default `161/UDP`).
+- SNMPv2c or SNMPv3 is enabled with read-only access.
+- SNMPv3 with auth and privacy is recommended. For v2c, enter the community only in the dedicated form field.
+- The device must expose standard IF-MIB plus the Huawei private objects declared by this template. Some models or restricted views omit individual tables; missing objects do not block the rest of the metrics.
+
+## Setup steps
+
+1. Confirm SNMP reachability from the node to the device IP (see Pre-access checks).
+2. Choose the SNMP version. For v2c fill in the community. For v3 fill in the security name, level, auth/privacy protocols, and passwords.
+3. Adjust port, timeout, and interval if needed. Defaults are port `161`, timeout `10` seconds, interval `60` seconds.
+4. In the monitor-object table, choose the node and fill in the device IP, instance name, and group.
+5. Save and wait for at least one collection interval.
+
+## Pre-access checks
+
+Replace `TARGET` with the device IP. Use a read-only community (or the matching v3 probe in a v3 environment):
+
+```bash
+TARGET=192.0.2.10
+snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.3.0
+snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
+```
+
+`sysUpTime` (`1.3.6.1.2.1.1.3.0`) should return TimeTicks. On AR routers, `sysObjectID` (`1.3.6.1.2.1.1.2.0`) belongs to `1.3.6.1.4.1.2011.2.224` (hwAR).
+
+## sysObjectID model dictionary
+
+Root `1.3.6.1.4.1.2011.2.224`. Leaf numbers below are the product identity used by this plugin.
+
+| Leaf | Display name |
+| --- | --- |
+| 340 | AR8140-12G10XG |
+| 341 | AR8140-T-12G10XG |
+| 349 | AR720 |
+| 350 | AR730 |
+| 363 | AR6710-L50T2X4 |
+| 364 | AR6710-L50T2X4-T |
+| 365 | AR6710-L26T2X4 |
+| 366 | AR6710-L26T2X4-T |
+| 368 | AR5710-H8T2TS1 |
+| 369 | AR5710-H8T2TS1-T |
+| 370 | AR6710-L8T3TS1X2 |
+| 371 | AR6710-L8T3TS1X2-T |
+| 378 | AR8700-8 |
+| 379 | AR6510-L11T1X2 |
+| 380 | AR6510-L5T4S4 |
+| 381 | AR5510-H8P2TW1 |
+| 382 | AR5510-H10T1 |
+| 383 | AR5510-L5T-LTE4EA |
+| 384 | AR5510-L5T |
+| 385 | AR6500-10 |
+
+Other leaves under the same root remain AR-series devices. The model dictionary is unchanged and this plugin does not create a new AR monitor object. Entity voltage (mV→V), board power (watts), chassis used/total power in watts, and chassis/board energy in milliwatts are collected on the existing plugin.
+
+## Form fields
+
+| Field | Required | Default | Notes |
+| --- | --- | --- | --- |
+| IP | yes | none | Device management address. Locked on edit. |
+| Port | yes | `161` | SNMP UDP port. |
+| Version | yes | v2c | `v2c` or `v3`. |
+| Community | required for v2c | `public` | Read-only community. |
+| Name / Level / Auth protocol / Auth password / Privacy protocol / Privacy password | v3 by level | per form | SNMPv3 only. Passwords are injected via environment variables and are not stored as plaintext in the template. |
+| Timeout | yes | `10` seconds | Per-request SNMP timeout. |
+| Interval | yes | `60` seconds | Collection period, minimum `1` second. |
+| Node | yes | none | Collector node. |
+| Instance name | yes | none | Display name in the platform. |
+| Group | yes | none | Instance group. |
+
+## After access
+
+Wait for at least one collection interval, then confirm the instance appears and check:
+
+- `snmp_uptime` keeps increasing.
+- `device_cpu_usage` and `device_memory_usage` have readings.
+- Entity health shows `device_voltage_volts` (mV converted to V) and, when the leaf exists, `device_entity_board_power` (watts). These share `hwEntityStateTable` with CPU/memory/temperature and are distinct from optical-module voltage.
+- `device_power_used` / `device_power_total` report chassis used and total power in watts (`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`). Distinct from `device_energy_*_mw` milliwatt energy gauges.
+- Fan-equipped models show `device_fan_state` / `device_fan_speed` (percent of full speed).
+- Optical DDM shows `device_optical_rx_power` / `device_optical_tx_power` (µW converted to dBm) plus temperature (°C), module voltage (mV→V), and bias (µA) when modules are present. Invalid sentinel `2147483647` is dropped.
+- `device_energy_current_power_mw` / `device_energy_average_power_mw` / `device_energy_rated_power_mw` report chassis energy in milliwatts (`hwCurrentPower` / `hwAveragePower` / `hwRatedPower`; divide by 1000 for watts). Board series use `device_board_current_power_mw` / `device_board_rated_power_mw` with dimension `hwBoardName`; empty names and `-1` are dropped. Distinct from `device_entity_board_power` (watts).
+- `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on in-service ports.
+
+Interface traffic uses the built-in IF-MIB table (`ifTable` / `ifXTable`). This template does not expand IF objects such as extra `ifHC*` or `ifOperStatus` leaves.
+
+## Troubleshooting
+
+### Only uptime and interfaces, no CPU or memory
+
+The SNMP view may not authorize entity-health objects. Confirm the read-only view includes `1.3.6.1.4.1.2011.5.25.31`.
+
+### No milliwatt energy metrics
+
+Confirm the view includes `1.3.6.1.4.1.2011.6.157`. These series are milliwatts (`device_energy_*_mw` / `device_board_*_mw`) and coexist with `device_entity_board_power` (watts) and chassis watts metrics `device_power_used` / `device_power_total`. Missing energy tables do not mean entity voltage, board power, chassis watts, CPU/memory, or IF-MIB collection failed.
+
+### No chassis watts power metrics
+
+Confirm the view includes `1.3.6.1.4.1.2011.5.25.31.3`. These scalars are watts (`device_power_used` / `device_power_total`), not milliwatts, and are distinct from `device_energy_*_mw`. Missing chassis watts power does not mean ENERGY milliwatt gauges, entity CPU/memory, or IF-MIB collection failed.
+
+### High-speed traffic is zero or wrong
+
+Confirm collection uses 64-bit `ifHCInOctets` / `ifHCOutOctets` from the built-in IF-MIB table.
+
+### sysObjectID is not in the table above
+
+The device is still an AR-series router if the OID is under `1.3.6.1.4.1.2011.2.224`. Collection does not depend on a listed leaf; the dictionary is for model recognition only.

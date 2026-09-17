@@ -1,6 +1,6 @@
 NetworkService Asentria SiteBoss SNMP:
   name: Asentria SiteBoss（Telegraf）
-  desc: 面向 Asentria SiteBoss 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Asentria SiteBoss 网络服务设备的 SNMP 监控模板,可采集 EventSensor 温度、湿度、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -78,6 +78,12 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP 层级
       desc: Spectracom NTP 当前 stratum 层级。
+    network_service_asentria_temperature:
+      name: Asentria 温度
+      desc: SiteBoss 450 产品子树下的 esPoint 温度。
+    network_service_asentria_humidity:
+      name: Asentria 湿度
+      desc: SiteBoss 450 产品子树下的 esPoint 相对湿度百分比。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础

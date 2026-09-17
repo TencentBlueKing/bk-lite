@@ -31,6 +31,7 @@ from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.services.policy_bulk import build_bulk_policy_payloads, normalize_stored_metric_unit
 from apps.monitor.services.policy_preview import PolicyPreviewService
+from apps.monitor.services.policy_dry_run import PolicyDryRunService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -753,8 +754,20 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         return ""
 
     @action(methods=["post"], detail=False, url_path="preview")
+    @HasPermission("strategy_list-Add,strategy_list-Edit")
     def preview(self, request):
-        data = PolicyPreviewService(request.data).preview()
+        payload = dict(request.data)
+        PolicyDryRunService.authorize_preview_payload(
+            payload, _build_actor_context(request)
+        )
+        data = PolicyPreviewService(payload).preview()
+        return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="dry_run")
+    @HasPermission("strategy_list-Add,strategy_list-Edit")
+    def dry_run(self, request):
+        payload = dict(request.data)
+        data = PolicyDryRunService(payload, _build_actor_context(request)).run()
         return WebUtils.response_success(data)
 
     def get_bulk_policy_assets(self, monitor_object_id, asset_ids):

@@ -112,6 +112,11 @@ def test_check_unique_attr_ok():
     FalkorDBClient.check_unique_attr({"name": "host2"}, {"name": "名称"}, [{"name": "host1"}])
 
 
+def test_check_unique_attr_cloud_int_matches_legacy_string():
+    with pytest.raises(BaseAppException):
+        FalkorDBClient.check_unique_attr({"cloud": 1}, {"cloud": "云区域"}, [{"cloud": "1"}])
+
+
 def test_check_required_attr_missing():
     c = _client()
     with pytest.raises(BaseAppException):
@@ -194,6 +199,15 @@ def test_query_entity_returns_formatted_nodes():
     assert result[0]["inst_name"] == "host1"
     assert result[0]["_id"] == 1
     assert "MATCH (n:instance)" in c._graph.last_query
+
+
+def test_format_db_result_coerces_legacy_string_cloud():
+    from apps.cmdb.graph.falkordb_format import FormatDBResult
+
+    node = FakeNode(1, ["instance"], {"inst_name": "h", "model_id": "host", "cloud": "1"})
+    formatted = FormatDBResult(FakeResultSet([], []))._format_value(node)
+    assert formatted["cloud"] == 1
+    assert formatted["_id"] == 1
 
 
 def test_query_entity_with_search_params():

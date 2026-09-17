@@ -75,11 +75,23 @@ def prepare_windows_package(uploaded_file) -> PreparedWindowsPackage:
     )
 
 
+def _lock_patch(patch: Patch) -> Patch:
+    return Patch.objects.select_for_update().get(pk=patch.pk)
+
+
 def _mark_failed(patch: Patch, detail, message: str) -> None:
-    patch.pkg_status = PackageStatus.DOWNLOAD_FAILED
-    patch.save(update_fields=["pkg_status", "updated_at"])
-    detail.package_error = message[:1000]
-    detail.save(update_fields=["package_error"])
+    with transaction.atomic():
+        locked = _lock_patch(patch)
+        if locked.pkg_status != PackageStatus.DOWNLOADING:
+            return
+        locked.pkg_status = PackageStatus.DOWNLOAD_FAILED
+        locked.save(update_fields=["pkg_status", "updated_at"])
+        try:
+            locked_detail = locked.windows_detail
+        except WindowsPatchDetail.DoesNotExist:
+            locked_detail = detail
+        locked_detail.package_error = message[:1000]
+        locked_detail.save(update_fields=["package_error"])
 
 
 def store_windows_package(
@@ -91,12 +103,16 @@ def store_windows_package(
     """校验并保存手工补丁包，成功后才将补丁置为就绪。"""
     if patch.os_type != OSType.WINDOWS:
         raise WindowsPackageError("仅 Windows 补丁支持上传文件")
-    if patch.pkg_status != PackageStatus.DOWNLOADING:
-        raise WindowsPackageError("当前补丁状态不允许上传文件")
 
-    detail = patch.windows_detail
+    detail = None
     try:
         with transaction.atomic():
+            locked = _lock_patch(patch)
+            if locked.os_type != OSType.WINDOWS:
+                raise WindowsPackageError("仅 Windows 补丁支持上传文件")
+            if locked.pkg_status != PackageStatus.DOWNLOADING:
+                raise WindowsPackageError("当前补丁状态不允许上传文件")
+            detail = locked.windows_detail
             package = prepared or prepare_windows_package(uploaded_file)
             detail.package_original_name = package.file_name
             detail.package_extension = package.extension
@@ -116,21 +132,24 @@ def store_windows_package(
                     "package_uploaded_at",
                 ]
             )
+            locked.pkg_status = PackageStatus.READY
+            locked.save(update_fields=["pkg_status", "updated_at"])
     except WindowsPackageError as exc:
+        if detail is None:
+            raise
         _mark_failed(patch, detail, str(exc))
         raise
     except Exception as exc:
-        if detail.package_file:
+        if detail is not None and detail.package_file:
             try:
                 detail.package_file.delete(save=False)
             except Exception:
                 pass
+        if detail is None:
+            raise
         _mark_failed(patch, detail, f"补丁包存储失败: {exc}")
         raise WindowsPackageStorageError("补丁包存储失败") from exc
 
-    with transaction.atomic():
-        patch.pkg_status = PackageStatus.READY
-        patch.save(update_fields=["pkg_status", "updated_at"])
     return {
         "file_name": package.file_name,
         "file_size": package.file_size,
@@ -146,20 +165,21 @@ def replace_failed_windows_package(
     prepared: PreparedWindowsPackage | None = None,
 ) -> dict:
     """仅对失败记录重新上传，就绪文件不允许替换。"""
-    if patch.pkg_status != PackageStatus.DOWNLOAD_FAILED:
-        raise WindowsPackageError("仅上传失败的补丁允许替换文件")
-
-    detail = patch.windows_detail
-    if detail.package_file:
-        try:
-            detail.package_file.delete(save=False)
-        except Exception as exc:
-            raise WindowsPackageError("无法清理上次失败的补丁包") from exc
-
     with transaction.atomic():
-        patch.pkg_status = PackageStatus.DOWNLOADING
-        patch.save(update_fields=["pkg_status", "updated_at"])
-    return store_windows_package(patch, uploaded_file, prepared=prepared)
+        locked = _lock_patch(patch)
+        if locked.pkg_status != PackageStatus.DOWNLOAD_FAILED:
+            raise WindowsPackageError("仅上传失败的补丁允许替换文件")
+
+        detail = locked.windows_detail
+        if detail.package_file:
+            try:
+                detail.package_file.delete(save=False)
+            except Exception as exc:
+                raise WindowsPackageError("无法清理上次失败的补丁包") from exc
+
+        locked.pkg_status = PackageStatus.DOWNLOADING
+        locked.save(update_fields=["pkg_status", "updated_at"])
+    return store_windows_package(locked, uploaded_file, prepared=prepared)
 
 
 def expire_stale_windows_package_uploads(

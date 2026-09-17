@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_endrun",
   "plugin": "NetworkService EndRun SNMP",
-  "plugin_desc": "EndRun time-server SNMP collection for devices under EndRun PEN 13827. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so NTP, PTP and GPS service indicators are not promoted into shared device-health metrics.",
+  "plugin_desc": "EndRun time-server SNMP collection for appliances under EndRun PEN 13827. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template probes the Cntp and Gntp product branches and reports NTP stratum from the branch that answers. Shared CPU, memory, fan and power-health scalars are not claimed.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_endrun'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,23 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "network_service_endrun_ntp_stratum"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_endrun_ntp_stratum",
+      "query": "max(network_service_endrun_cntp_stratum{instance_type='network_service', __$labels__} or network_service_endrun_gntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "EndRun NTP Stratum",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "NTP stratum from the Cntp or Gntp product branch. Value 1 is synchronized; 11 is flywheeling; 16 is unsynchronized."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +47,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average inbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCInOctets counter."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +65,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average outbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCOutOctets counter."
     },
     {
       "metric_group": "Base",
@@ -64,7 +78,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }

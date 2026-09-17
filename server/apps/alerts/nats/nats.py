@@ -19,7 +19,7 @@ from django.utils import timezone
 
 import nats_client
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
-from apps.alerts.constants.constants import PERMISSION_ALERT, AlertsSourceTypes, AlertStatus, EventLevel, LevelType
+from apps.alerts.constants.constants import PERMISSION_ALERT, AlertsSourceTypes, AlertStatus, EventLevel, LevelType, SessionStatus
 from apps.alerts.models.alert_operator import AlarmStrategy, NotifyResult
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
@@ -30,6 +30,9 @@ from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.core.utils.viewset_utils import GenericViewSetFun
+from apps.system_mgmt.models import User
+from apps.system_mgmt.models.role import Role
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
 TRUSTED_INTERNAL_PUSHERS = TRUSTED_INTERNAL_EVENT_CALLERS
@@ -1400,3 +1403,222 @@ def get_active_alert_top(limit=10, **kwargs):
         )
 
     return {"result": True, "data": alerts_with_duration, "message": ""}
+
+
+def _format_alert_datetime(value):
+    if value is None:
+        return None
+    return timezone.localtime(value).isoformat()
+
+
+def _serialize_alert_for_tool(alert, *, detail=False):
+    data = {
+        "alert_id": alert.alert_id,
+        "title": alert.title,
+        "content": alert.content,
+        "status": alert.status,
+        "level": alert.level,
+        "source_name": alert.source_name or "",
+        "operator": alert.operator or [],
+        "item": alert.item,
+        "resource_id": alert.resource_id,
+        "resource_type": alert.resource_type,
+        "resource_name": alert.resource_name,
+        "rule_id": alert.rule_id,
+        "fingerprint": alert.fingerprint,
+        "dimensions": alert.dimensions or {},
+        "first_event_time": _format_alert_datetime(alert.first_event_time),
+        "last_event_time": _format_alert_datetime(alert.last_event_time),
+        "created_at": _format_alert_datetime(alert.created_at),
+        "updated_at": _format_alert_datetime(alert.updated_at),
+    }
+    if detail:
+        data["labels"] = alert.labels or {}
+        data["enrichment"] = alert.enrichment or {}
+    return data
+
+
+def _serialize_event_for_tool(event):
+    source = getattr(event, "source", None)
+    return {
+        "event_id": event.event_id,
+        "title": event.title,
+        "description": event.description or "",
+        "level": event.level,
+        "action": event.action,
+        "status": event.status,
+        "source_name": getattr(source, "name", "") if source is not None else "",
+        "resource_id": event.resource_id,
+        "resource_type": event.resource_type,
+        "resource_name": event.resource_name,
+        "received_at": _format_alert_datetime(event.received_at),
+    }
+
+
+def _paginate_queryset(queryset, page, page_size):
+    count = queryset.count()
+    start = (page - 1) * page_size
+    items = list(queryset[start : start + page_size])
+    return count, items
+
+
+def _llm_is_superuser(user_info: dict) -> bool:
+    permission_user = _build_permission_user(user_info)
+    if permission_user is None:
+        return False
+    real_user = User.objects.filter(username=permission_user.username, domain=permission_user.domain).first()
+    if not real_user:
+        return False
+    role_ids = set(getattr(real_user, "role_list", []) or [])
+    if not role_ids:
+        return False
+    role_names = {f"{role.app}--{role.name}" if role.app else role.name for role in Role.objects.filter(id__in=role_ids).only("name", "app")}
+    return bool({"admin", "system-manager--admin"}.intersection(role_names))
+
+
+def _llm_alert_team_ids(user_info: dict):
+    current_team = int(user_info.get("team"))
+    if user_info.get("include_children"):
+        try:
+            descendant_ids = GroupUtils.get_group_with_descendants(current_team)
+            if descendant_ids:
+                return [int(item) for item in descendant_ids]
+        except Exception:
+            logger.warning("llm alert include_children team expand failed")
+    return [current_team]
+
+
+def _llm_authorized_alert_queryset(user_info: dict):
+    """LLM 只读查询授权：不依赖 caller 传入的 Alarms-View / is_superuser 字段。"""
+    user_info = user_info or {}
+    current_team = user_info.get("team")
+    if not current_team:
+        return None, {"result": False, "data": [], "message": "缺少组织信息"}
+
+    permission_user = _build_permission_user(user_info)
+    if not permission_user:
+        return None, {"result": False, "data": [], "message": "缺少用户信息"}
+
+    team_ids = _llm_alert_team_ids(user_info)
+    if _llm_is_superuser(user_info):
+        return apply_team_scope_with_group_ids(Alert.objects.all(), team_ids), None
+
+    permission_data = get_permission_rules(
+        permission_user,
+        int(current_team),
+        "alerts",
+        PERMISSION_ALERT,
+        user_info.get("include_children", False),
+    )
+    if not isinstance(permission_data, dict):
+        permission_data = {}
+    instance_ids = [item["id"] for item in permission_data.get("instance", []) if isinstance(item, dict) and item.get("id") is not None]
+    permission_team_ids = permission_data.get("team", [])
+
+    if not instance_ids and not permission_team_ids:
+        return Alert.objects.none(), None
+
+    normalized_permission_team_ids = []
+    for team_id in permission_team_ids:
+        try:
+            normalized_permission_team_ids.append(int(team_id))
+        except (TypeError, ValueError):
+            logger.warning("Invalid alert permission team id: %s", team_id)
+
+    authorized_queryset = apply_team_scope_with_group_ids(Alert.objects.all(), normalized_permission_team_ids)
+    if instance_ids:
+        authorized_queryset = Alert.objects.filter(Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids))
+    return authorized_queryset.distinct(), None
+
+
+@nats_client.register
+def list_alerts(query_data=None, user_info=None, **kwargs):
+    """只读查询告警中心告警列表。"""
+    query_data = query_data or kwargs.get("query_data") or {}
+    user_info = user_info or kwargs.get("user_info") or {}
+    queryset, error = _llm_authorized_alert_queryset(user_info)
+    if error:
+        return error
+    queryset = queryset.exclude(session_status__in=SessionStatus.NO_CONFIRMED)
+
+    status = query_data.get("status")
+    if status:
+        statuses = status if isinstance(status, list) else [status]
+        queryset = queryset.filter(status__in=statuses)
+    level = query_data.get("level")
+    if level:
+        levels = level if isinstance(level, list) else [level]
+        queryset = queryset.filter(level__in=levels)
+    keyword = str(query_data.get("keyword") or "").strip()
+    if keyword:
+        queryset = queryset.filter(Q(title__icontains=keyword) | Q(resource_name__icontains=keyword) | Q(alert_id__icontains=keyword))
+
+    try:
+        page = max(int(query_data.get("page") or 1), 1)
+        page_size = min(max(int(query_data.get("page_size") or 20), 1), 100)
+    except (TypeError, ValueError):
+        return {"result": False, "data": {"count": 0, "page": 1, "page_size": 20, "items": []}, "message": "page/page_size 必须是正整数"}
+
+    queryset = queryset.order_by("-created_at")
+    count, items = _paginate_queryset(queryset, page, page_size)
+    return {
+        "result": True,
+        "data": {
+            "count": count,
+            "page": page,
+            "page_size": page_size,
+            "items": [_serialize_alert_for_tool(alert) for alert in items],
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_alert_detail(alert_id=None, user_info=None, **kwargs):
+    """只读查询告警详情。"""
+    alert_id = alert_id or kwargs.get("alert_id")
+    user_info = user_info or kwargs.get("user_info") or {}
+    if not alert_id:
+        return {"result": False, "data": {}, "message": "alert_id is required"}
+    queryset, error = _llm_authorized_alert_queryset(user_info)
+    if error:
+        return error
+    queryset = queryset.exclude(session_status__in=SessionStatus.NO_CONFIRMED)
+    alert = queryset.filter(alert_id=alert_id).first()
+    if alert is None:
+        return {"result": False, "data": {}, "message": "告警不存在"}
+    return {"result": True, "data": _serialize_alert_for_tool(alert, detail=True), "message": ""}
+
+
+@nats_client.register
+def list_alert_events(alert_id=None, query_data=None, user_info=None, **kwargs):
+    """只读查询告警关联事件。"""
+    alert_id = alert_id or kwargs.get("alert_id")
+    query_data = query_data or kwargs.get("query_data") or {}
+    user_info = user_info or kwargs.get("user_info") or {}
+    if not alert_id:
+        return {"result": False, "data": {"count": 0, "page": 1, "page_size": 20, "items": []}, "message": "alert_id is required"}
+    queryset, error = _llm_authorized_alert_queryset(user_info)
+    if error:
+        return error
+    queryset = queryset.exclude(session_status__in=SessionStatus.NO_CONFIRMED)
+    alert = queryset.filter(alert_id=alert_id).first()
+    if alert is None:
+        return {"result": False, "data": {"count": 0, "page": 1, "page_size": 20, "items": []}, "message": "告警不存在"}
+    try:
+        page = max(int(query_data.get("page") or 1), 1)
+        page_size = min(max(int(query_data.get("page_size") or 20), 1), 100)
+    except (TypeError, ValueError):
+        return {"result": False, "data": {"count": 0, "page": 1, "page_size": 20, "items": []}, "message": "page/page_size 必须是正整数"}
+    events_qs = Event.objects.select_related("source").filter(alert=alert).order_by("-received_at")
+    count, items = _paginate_queryset(events_qs, page, page_size)
+    return {
+        "result": True,
+        "data": {
+            "count": count,
+            "page": page,
+            "page_size": page_size,
+            "items": [_serialize_event_for_tool(event) for event in items],
+        },
+        "message": "",
+    }

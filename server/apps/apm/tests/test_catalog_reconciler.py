@@ -1,6 +1,8 @@
 from datetime import timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryMetricStore, TelemetryStoreUnavailable
@@ -175,6 +177,41 @@ def test_manual_service_archive_survives_new_activity():
     discovered.instance.refresh_from_db()
     assert discovered.service.archive_reason == "manual"
     assert discovered.instance.last_seen_at == observed_at + timedelta(minutes=1)
+
+
+def test_reconciler_discovers_many_instances_with_bounded_queries():
+    observed_at = timezone.now()
+    create_application("shop", (10,))
+    activities = [_activity("shop", f"pod-{index}", observed_at - timedelta(seconds=index)) for index in range(25)]
+
+    with CaptureQueriesContext(connection) as captured:
+        result = TelemetryCatalogReconciler(InMemoryMetricStore(activities=activities)).reconcile(observed_at=observed_at)
+
+    assert result.discovered_services == 1
+    assert result.discovered_instances == 25
+    assert len(captured.captured_queries) < 40
+
+
+def test_reconciler_keeps_latest_duplicate_dimension():
+    observed_at = timezone.now()
+    create_application("shop", (10,))
+    older = observed_at - timedelta(minutes=2)
+    newer = observed_at - timedelta(minutes=1)
+    metric_store = InMemoryMetricStore(
+        activities=[
+            _activity("shop", "pod-a", older, environment="testing", version="1.0"),
+            _activity("shop", "pod-a", newer, environment="production", version="2.0"),
+            _activity("shop", "pod-a", older - timedelta(minutes=1), environment="stale", version="0.9"),
+        ]
+    )
+
+    result = TelemetryCatalogReconciler(metric_store).reconcile(observed_at=observed_at)
+    instance = ApmServiceInstance.objects.get(instance_id="pod-a")
+
+    assert result.discovered_instances == 1
+    assert instance.environment == "production"
+    assert instance.version == "2.0"
+    assert instance.last_seen_at == newer
 
 
 def test_environment_views_and_instance_status_filters_are_bounded(apm_api_client):

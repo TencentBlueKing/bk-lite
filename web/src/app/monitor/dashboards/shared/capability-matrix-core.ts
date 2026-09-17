@@ -54,6 +54,7 @@ const TRAFFIC = [
 const FW_SESSION = [
   'firewall_sessions',
   'firewall_session_utilization',
+  'firewall_session_rate',
   'firewall_active_sessions',
   'firewall_current_connections',
   'firewall_active_connections',

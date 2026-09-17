@@ -12,7 +12,6 @@ import {
   TablePaginationConfig,
   Tree,
   Input,
-  Empty,
   Tag,
   Tooltip,
 } from 'antd';
@@ -1491,7 +1490,7 @@ const AssetDataContent = () => {
             pagination={pagination}
             loading={tableLoading}
             scroll={{
-              x: 'calc(100vw - 400px)',
+              x: 'max-content',
               y: storeQueryList.length > 0
                 ? 'calc(100vh - 320px)'
                 : 'calc(100vh - 300px)'

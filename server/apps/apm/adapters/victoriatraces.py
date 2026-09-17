@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import os
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -149,18 +150,61 @@ _SPAN_ERROR_TYPE_FIELD = "`span_attr:error.type`"
 _HTTP_STATUS_FIELD = "`span_attr:http.response.status_code`"
 
 
-def _encode_cursor(started_at: datetime) -> str:
-    microseconds = int(started_at.timestamp() * 1_000_000) - 1
-    return base64.urlsafe_b64encode(str(microseconds).encode()).decode().rstrip("=")
+def _timestamp_us(value: datetime) -> int:
+    return int(value.timestamp() * 1_000_000)
 
 
-def _decode_cursor(cursor: str) -> datetime:
+def _encode_cursor(started_at: datetime, item_id: str) -> str:
+    payload = json.dumps({"t": _timestamp_us(started_at), "id": item_id}, separators=(",", ":"))
+    return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+
+
+def _decode_cursor_key(cursor: str) -> tuple[int, str | None]:
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
-        microseconds = int(base64.urlsafe_b64decode(padded.encode()).decode())
-        return datetime.fromtimestamp(microseconds / 1_000_000, tz=UTC)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
     except (ValueError, UnicodeDecodeError) as exc:
         raise ValueError("Trace 游标无效") from exc
+    if raw.lstrip("-").isdigit():
+        return int(raw), None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Trace 游标无效") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Trace 游标无效")
+    timestamp_us = payload.get("t")
+    item_id = payload.get("id")
+    if not isinstance(timestamp_us, int) or not isinstance(item_id, str) or not item_id:
+        raise ValueError("Trace 游标无效")
+    return timestamp_us, item_id
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, str | None]:
+    timestamp_us, item_id = _decode_cursor_key(cursor)
+    try:
+        return datetime.fromtimestamp(timestamp_us / 1_000_000, tz=UTC), item_id
+    except (OverflowError, OSError, ValueError) as exc:
+        raise ValueError("Trace 游标无效") from exc
+
+
+def _apply_cursor(query_ended_at: datetime, cursor: str | None) -> tuple[datetime, int | None, str | None]:
+    """旧数字游标保持减 1 微秒窗口；复合游标把 ended_at 留在并列时间戳之内。"""
+
+    if not cursor:
+        return query_ended_at, None, None
+    cursor_us, cursor_id = _decode_cursor_key(cursor)
+    try:
+        cursor_at = datetime.fromtimestamp(cursor_us / 1_000_000, tz=UTC)
+    except (OverflowError, OSError, ValueError) as exc:
+        raise ValueError("Trace 游标无效") from exc
+    if cursor_id is None:
+        return min(query_ended_at, cursor_at), None, None
+    return min(query_ended_at, cursor_at + timedelta(microseconds=1)), cursor_us, cursor_id
+
+
+def _before_cursor(occurred_at: datetime, item_id: str, cursor_us: int, cursor_id: str) -> bool:
+    return (_timestamp_us(occurred_at), item_id) < (cursor_us, cursor_id)
 
 
 def _logsql_string(value: str) -> str:
@@ -383,7 +427,7 @@ class VictoriaTracesTelemetryStore:
         _validate_window(query.started_at, query.ended_at)
         if not 1 <= query.limit <= 200:
             raise ValueError("Trace 查询 limit 必须在 1 到 200 之间")
-        ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
+        ended_at, cursor_us, cursor_id = _apply_cursor(query.ended_at, query.cursor)
         filters = ["*"]
         if query.service_name is not None:
             filters.append(f"{_SERVICE_FIELD}:={_logsql_string(query.service_name)}")
@@ -407,6 +451,8 @@ class VictoriaTracesTelemetryStore:
             ended_at=ended_at,
             limit=query.limit + 1,
             fill="newest_first",
+            cursor_us=cursor_us,
+            cursor_id=cursor_id,
         )
         traces, _omitted = self._fetch_topology_traces(
             selected,
@@ -427,9 +473,15 @@ class VictoriaTracesTelemetryStore:
             matched_at = matched_at_by_id.get(trace_id) or min(span.started_at for span in detail.spans)
             summaries.append((matched_at, self._summary(detail, matching_span)))
         summaries.sort(key=lambda item: (item[0], item[1].trace_id), reverse=True)
+        if cursor_id is not None and cursor_us is not None:
+            summaries = [item for item in summaries if _before_cursor(item[0], item[1].trace_id, cursor_us, cursor_id)]
         page_pairs = summaries[: query.limit]
         page_items = tuple(summary for _, summary in page_pairs)
-        next_cursor = _encode_cursor(page_pairs[-1][0]) if len(summaries) > query.limit and page_pairs else None
+        next_cursor = (
+            _encode_cursor(page_pairs[-1][0], page_pairs[-1][1].trace_id)
+            if len(summaries) > query.limit and page_pairs
+            else None
+        )
         return TracePage(items=page_items, next_cursor=next_cursor)
 
     def search_spans(self, query: SpanSearchQuery) -> SpanPage:
@@ -446,7 +498,7 @@ class VictoriaTracesTelemetryStore:
         if query.min_duration_ms is not None and query.max_duration_ms is not None and query.min_duration_ms > query.max_duration_ms:
             raise ValueError("min_duration_ms 不能大于 max_duration_ms")
 
-        ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
+        ended_at, cursor_us, cursor_id = _apply_cursor(query.ended_at, query.cursor)
         filters = ["*"]
         if query.service_name is not None:
             filters.append(f"{_SERVICE_FIELD}:={_logsql_string(query.service_name)}")
@@ -467,16 +519,23 @@ class VictoriaTracesTelemetryStore:
         if query.max_duration_ms is not None:
             filters.append(f"duration:<={int(query.max_duration_ms * 1_000_000)}")
 
-        logs_query = f"{' '.join(filters)} | sort by (_time) desc | limit {query.limit + 1} {_span_search_fields_pipe()}"
-        rows = self._query_rows(logs_query, query.started_at, ended_at, limit=query.limit + 1)
+        fetch_limit = query.limit + 1 + (1 if cursor_id is not None else 0)
+        logs_query = f"{' '.join(filters)} | sort by (_time) desc | limit {fetch_limit} {_span_search_fields_pipe()}"
+        rows = self._query_rows(logs_query, query.started_at, ended_at, limit=fetch_limit)
         items: list[SpanSummary] = []
         for row in rows:
             summary = self._span_summary_from_row(row)
             if summary is not None:
                 items.append(summary)
         items.sort(key=lambda item: (item.started_at, item.span_id), reverse=True)
+        if cursor_id is not None and cursor_us is not None:
+            items = [item for item in items if _before_cursor(item.started_at, item.span_id, cursor_us, cursor_id)]
         page_items = tuple(items[: query.limit])
-        next_cursor = _encode_cursor(page_items[-1].started_at) if len(items) > query.limit and page_items else None
+        next_cursor = (
+            _encode_cursor(page_items[-1].started_at, page_items[-1].span_id)
+            if len(items) > query.limit and page_items
+            else None
+        )
         return SpanPage(items=page_items, next_cursor=next_cursor)
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
@@ -507,6 +566,139 @@ class VictoriaTracesTelemetryStore:
                 continue
             merged.append(replace(span, attributes={**base, **extra}))
         return replace(detail, spans=tuple(merged), truncated=truncated)
+
+    def get_span_details(self, keys: Sequence[tuple[str, str]]) -> dict[tuple[str, str], SpanDetail]:
+        wanted = list(dict.fromkeys((trace_id, span_id) for trace_id, span_id in keys if trace_id and span_id))
+        if not wanted:
+            return {}
+        ended_at = datetime.now(UTC) + timedelta(minutes=1)
+        started_at = ended_at - MAX_QUERY_WINDOW
+        traces_by_id = self._traces_from_span_rows(
+            self._query_span_structure_rows(wanted, started_at=started_at, ended_at=ended_at)
+        )
+        found: dict[tuple[str, str], SpanDetail] = {}
+        for trace_id, span_id in wanted:
+            detail = traces_by_id.get(trace_id)
+            if detail is None:
+                continue
+            span = next((item for item in detail.spans if item.span_id == span_id), None)
+            if span is not None:
+                found[(trace_id, span_id)] = span
+        attributes_by_key = self._fetch_span_details_attributes(
+            list(found),
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+        details: dict[tuple[str, str], SpanDetail] = {}
+        for key, span in found.items():
+            base = _row_detail_attributes(span.attributes)
+            extra = attributes_by_key.get(key)
+            details[key] = replace(span, attributes=base if extra is None else {**base, **extra})
+        return details
+
+    def _query_span_structure_rows(
+        self,
+        keys: list[tuple[str, str]],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> list[dict[str, Any]]:
+        if not keys:
+            return []
+        try:
+            return self._query_rows(
+                self._span_details_query(keys, fields_pipe=_trace_structure_fields_pipe()),
+                started_at,
+                ended_at,
+                limit=len(keys),
+            )
+        except TelemetryStoreUnavailable as exc:
+            if _is_response_too_large(exc) and len(keys) > 1:
+                mid = max(1, len(keys) // 2)
+                return self._query_span_structure_rows(
+                    keys[:mid],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                ) + self._query_span_structure_rows(
+                    keys[mid:],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+            raise
+
+    def _fetch_span_details_attributes(
+        self,
+        keys: list[tuple[str, str]],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> dict[tuple[str, str], dict[str, object]]:
+        attributes: dict[tuple[str, str], dict[str, object]] = {}
+        for offset in range(0, len(keys), TRACE_DETAIL_ATTR_BATCH):
+            attributes.update(
+                self._fetch_span_details_attribute_batch(
+                    keys[offset : offset + TRACE_DETAIL_ATTR_BATCH],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+            )
+        return attributes
+
+    def _fetch_span_details_attribute_batch(
+        self,
+        keys: list[tuple[str, str]],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> dict[tuple[str, str], dict[str, object]]:
+        if not keys:
+            return {}
+        wanted = set(keys)
+        try:
+            rows = self._query_rows(
+                self._span_details_query(keys),
+                started_at,
+                ended_at,
+                limit=len(keys),
+            )
+        except TelemetryStoreUnavailable as exc:
+            if _is_response_too_large(exc) and len(keys) > 1:
+                mid = max(1, len(keys) // 2)
+                left = self._fetch_span_details_attribute_batch(
+                    keys[:mid],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+                right = self._fetch_span_details_attribute_batch(
+                    keys[mid:],
+                    started_at=started_at,
+                    ended_at=ended_at,
+                )
+                return {**left, **right}
+            if _is_response_too_large(exc):
+                logger.warning(
+                    "event=apm_span_details_omitted failed_stage=get_span_details error_type=%s omitted_spans=%s",
+                    type(exc).__name__,
+                    1,
+                )
+                return {}
+            raise
+        result: dict[tuple[str, str], dict[str, object]] = {}
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            span_id = str(row.get("span_id", "")).strip()
+            key = (trace_id, span_id)
+            if not trace_id or not span_id or key not in wanted:
+                continue
+            result[key] = _row_detail_attributes(row)
+        return result
+
+    @staticmethod
+    def _span_details_query(keys: list[tuple[str, str]], *, fields_pipe: str = "") -> str:
+        quoted_traces = ",".join(_logsql_string(trace_id) for trace_id in dict.fromkeys(trace_id for trace_id, _ in keys))
+        quoted_spans = ",".join(_logsql_string(span_id) for span_id in dict.fromkeys(span_id for _, span_id in keys))
+        suffix = f" {fields_pipe}" if fields_pipe else ""
+        return f"trace_id:in({quoted_traces}) span_id:in({quoted_spans}) | limit {len(keys)}{suffix}"
 
     def _fetch_trace_span_attributes(
         self,
@@ -1013,6 +1205,8 @@ class VictoriaTracesTelemetryStore:
         ended_at: datetime,
         limit: int,
         fill: str = "round_robin",
+        cursor_us: int | None = None,
+        cursor_id: str | None = None,
     ) -> tuple[list[str], dict[str, datetime], dict[str, int], bool]:
         """按切片取 trace_id；``round_robin`` 供拓扑跨时段取样，``newest_first`` 供列表分页保持最新优先。"""
 
@@ -1065,6 +1259,10 @@ class VictoriaTracesTelemetryStore:
             if trace_id in seen:
                 continue
             seen.add(trace_id)
+            matched_at = matched_at_by_id.get(trace_id)
+            if cursor_id is not None and cursor_us is not None:
+                if matched_at is None or not _before_cursor(matched_at, trace_id, cursor_us, cursor_id):
+                    continue
             trace_ids.append(trace_id)
         truncated = len(trace_ids) > limit
         selected_ids = trace_ids[:limit]

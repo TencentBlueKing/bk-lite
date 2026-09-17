@@ -1,7 +1,8 @@
 Router Avici SNMP:
   name: Avici (Telegraf)
-  desc: SNMP monitoring template for Avici router. It reports system uptime, interface
-    speed, inbound error packets, and other key metrics (IANA PEN 2474).
+  desc: SNMP monitoring template for Avici TSR/SSR routers. It reports system uptime,
+    CPU utilization, memory utilization, module temperature, and 64-bit interface
+    traffic (IANA PEN 2474).
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -9,9 +10,10 @@ monitor_object_type:
 monitor_object_metric:
   Router:
     device_temperature_celsius:
-      name: Device Temperature
-      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
-        high values may indicate fan failure, poor airflow, or high ambient temperature.
+      name: Temperature
+      desc: Current module temperature in degrees Celsius (MODULE-MIB aviciModuleCurrTemp),
+        one series per bay.slot. Abnormally high values may indicate cooling or airflow
+        problems.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each cooling fan (enum). A non-normal state indicates
@@ -21,30 +23,37 @@ monitor_object_metric:
       desc: Operational state of each power supply unit (enum). A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
-      name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      name: Memory Total
+      desc: This metric reports total memory in bytes for each inventory row (MEMORY-MIB
+        aviciPlatformMemoryTotal).
     device_memory_free:
-      name: Free Memory
-      desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+      name: Memory Free
+      desc: This metric reports free memory in bytes for each inventory row (MEMORY-MIB
+        aviciPlatformMemoryFree). Persistently low free memory can indicate rising
+        memory pressure.
     device_memory_used:
-      name: Used Memory
-      desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+      name: Memory Used
+      desc: This metric reports used memory in bytes for each inventory row (MEMORY-MIB
+        aviciPlatformMemoryUsed). It helps gauge absolute memory consumption and pressure.
     device_cpu_usage:
-      name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      name: CPU Utilization
+      desc: This metric reports CPU busy percent over the last 5 minutes for each
+        inventory row (PROCESS-MIB aviciCPUTotal5min). Sustained high usage indicates
+        heavy forwarding or control-plane load.
+    device_cpu_usage_1min:
+      name: CPU Utilization (1 min)
+      desc: This metric reports CPU busy percent over the last 1 minute for each inventory
+        row (PROCESS-MIB aviciCPUTotal1min).
+    device_cpu_usage_5sec:
+      name: CPU Utilization (5 sec)
+      desc: This metric reports CPU busy percent over the last 5 seconds for each
+        inventory row (PROCESS-MIB aviciCPUTotal5sec).
     device_memory_usage:
-      name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      name: Memory Utilization
+      desc: This metric reports memory utilization as used/total×100 for each inventory
+        row, skipping rows whose total is 0. When total is missing, used/(used+free)×100
+        is used instead. Sustained high usage may be caused by oversized routing tables
+        or memory leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

@@ -1,6 +1,6 @@
 Transmission Smartoptics SNMP:
   name: Smartoptics（Telegraf）
-  desc: 面向 Smartoptics 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 30826）。
+  desc: 面向 Smartoptics 传输设备的 SNMP 监控模板,可采集 传感器温度、风扇状态、可选风扇转速、可选功耗、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 30826）。不采集 CPU 与内存使用率。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -32,10 +32,16 @@ monitor_object_metric:
       desc: 传输设备的整体内存使用率，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。
     device_temperature_celsius:
       name: 温度
-      desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+      desc: Smartoptics DCP 机箱环境温度，单位为摄氏度。原始值为十分之一度，查询时除以 10。温度偏高可能表示散热异常、环境温度过高或硬件过载。
     device_fan_state:
       name: 风扇状态
-      desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。
+      desc: Smartoptics DCP 各散热风扇的运行状态。非正常状态表示散热模块告警，可能导致设备过热。缺位风扇按正常处理。
+    device_fan_speed:
+      name: 风扇转速
+      desc: Smartoptics DCP 风扇转速（RPM，取各风扇最大值）。转速过低或为 0 表示风扇卡滞或故障。无转速列的机型不报告该指标。
+    device_power_watts:
+      name: 功耗
+      desc: Smartoptics DCP 机箱功耗，单位为瓦。无功耗传感器的机型不报告该指标。
     device_psu_state:
       name: 电源状态
       desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
@@ -47,3 +53,4 @@ monitor_object_metric_group:
     Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
+    Power: 功耗

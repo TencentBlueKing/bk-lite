@@ -9,11 +9,17 @@ import { useInstanceApi } from '@/app/cmdb/api/instance';
 import usePermissions from '@/hooks/usePermissions';
 import IpDetailDrawer from './IpDetailDrawer';
 import {
-  KIND_COLOR,
+  ALLOC_COLOR,
+  DEFAULT_IPAM_FILTERS,
+  LIVE_COLOR,
   buildOctetMap,
-  ipToCellKind,
-  type CellKind,
+  cellMatchesFilter,
+  classifyAlloc,
+  classifyLive,
+  type AllocKind,
+  type IpamLegendFilters,
   type IpInstance,
+  type LiveKind,
 } from './ipamCells';
 import { IPAM_ASSET_PERMISSION_PATH, type IpamEditPayload } from './ipamEdit';
 
@@ -70,28 +76,68 @@ const SummaryBar: React.FC<SummaryBarProps> = ({ data }) => {
   );
 };
 
-const Legend: React.FC = () => {
+interface LegendProps {
+  filters: IpamLegendFilters;
+  onToggleAlloc: (kind: AllocKind) => void;
+  onToggleLive: (kind: Exclude<LiveKind, 'none'>) => void;
+}
+
+const Legend: React.FC<LegendProps> = ({ filters, onToggleAlloc, onToggleLive }) => {
   const { t } = useTranslation();
-  const items: Array<{ kind: CellKind; label: string }> = [
+  const allocItems: Array<{ kind: AllocKind; label: string }> = [
     { kind: 'free', label: t('Model.ipViewFree') },
-    { kind: 'allocated_online', label: t('Model.ipViewAllocatedOnline') },
-    { kind: 'allocated_offline', label: t('Model.ipViewAllocatedOffline') },
-    { kind: 'conflict', label: t('Model.ipViewConflict') },
+    { kind: 'allocated', label: t('Model.ipViewAllocated') },
     { kind: 'reserved', label: t('Model.ipViewReserved') },
-    { kind: 'gateway', label: t('Model.ipViewGateway') },
-    { kind: 'unknown', label: t('Model.ipViewUnknown') },
+  ];
+  const liveItems: Array<{ kind: Exclude<LiveKind, 'none'>; label: string }> = [
+    { kind: 'online', label: t('Model.ipViewOnline') },
+    { kind: 'offline', label: t('Model.ipViewOffline') },
+    { kind: 'conflict', label: t('Model.ipViewConflict') },
   ];
   return (
-    <div className="flex flex-wrap gap-x-5 gap-y-2 py-2">
-      {items.map(({ kind, label }) => (
-        <span key={kind} className="flex items-center gap-1.5 text-xs">
-          <span
-            className="inline-block h-3.5 w-3.5 shrink-0 rounded-sm"
-            style={{ background: KIND_COLOR[kind] }}
-          />
-          <span className="text-[var(--color-text-2)]">{label}</span>
-        </span>
-      ))}
+    <div className="flex flex-wrap items-center gap-2 py-2">
+      {allocItems.map(({ kind, label }) => {
+        const pressed = filters.alloc[kind];
+        return (
+          <button
+            key={kind}
+            type="button"
+            data-filter-alloc={kind}
+            aria-pressed={pressed}
+            onClick={() => onToggleAlloc(kind)}
+            className={`inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border-2)] px-2.5 py-1 text-xs ${pressed ? 'bg-[var(--color-bg-1)] text-[var(--color-text-2)]' : 'bg-transparent text-[var(--color-text-4)] opacity-50'}`}
+          >
+            <span
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{ background: ALLOC_COLOR[kind] }}
+            />
+            {label}
+          </button>
+        );
+      })}
+      <span className="mx-1 hidden h-4 w-px bg-[var(--color-border-2)] sm:inline-block" />
+      {liveItems.map(({ kind, label }) => {
+        const pressed = filters.live[kind];
+        return (
+          <button
+            key={kind}
+            type="button"
+            data-filter-live={kind}
+            aria-pressed={pressed}
+            onClick={() => onToggleLive(kind)}
+            className={`inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border-2)] px-2.5 py-1 text-xs ${pressed ? 'bg-[var(--color-bg-1)] text-[var(--color-text-2)]' : 'bg-transparent text-[var(--color-text-4)] opacity-50'}`}
+          >
+            <span
+              className="inline-block h-2 w-2 shrink-0 rounded-full"
+              style={{
+                background: LIVE_COLOR[kind],
+                boxShadow: '0 0 0 1px var(--color-bg-1)',
+              }}
+            />
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 };
@@ -103,6 +149,7 @@ interface SquareGridProps {
   data: IpamViewData;
   subnetInstUuid: string;
   baseOffset?: number;
+  filters: IpamLegendFilters;
   onReload: () => Promise<void>;
 }
 
@@ -110,6 +157,7 @@ const SquareGrid: React.FC<SquareGridProps> = ({
   data,
   subnetInstUuid,
   baseOffset = 1,
+  filters,
   onReload,
 }) => {
   const { t } = useTranslation();
@@ -124,12 +172,16 @@ const SquareGrid: React.FC<SquareGridProps> = ({
   const [selectedIp, setSelectedIp] = useState<IpInstance | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const cells: Array<{ hostNum: number; ip: IpInstance | null; kind: CellKind }> = [];
+  const cells: Array<{ hostNum: number; ip: IpInstance | null; alloc: AllocKind; live: LiveKind }> = [];
   for (let i = 0; i < data.capacity; i++) {
     const hostNum = baseOffset + i;
     const ip = octetMap.get(hostNum) ?? null;
-    const kind: CellKind = ip ? ipToCellKind(ip) : 'free';
-    cells.push({ hostNum, ip, kind });
+    cells.push({
+      hostNum,
+      ip,
+      alloc: ip ? classifyAlloc(ip) : 'free',
+      live: ip ? classifyLive(ip) : 'none',
+    });
   }
 
   const subnetPrefix = data.subnet_address.split('.').slice(0, 3).join('.');
@@ -175,9 +227,10 @@ const SquareGrid: React.FC<SquareGridProps> = ({
           gridTemplateColumns: `repeat(auto-fill, minmax(${CELL_MIN}px, 1fr))`,
         }}
       >
-        {cells.map(({ hostNum, ip, kind }) => {
-          const color = KIND_COLOR[kind];
-          const isFree = kind === 'free';
+        {cells.map(({ hostNum, ip, alloc, live }) => {
+          const color = ALLOC_COLOR[alloc];
+          const isFree = alloc === 'free';
+          const dim = !cellMatchesFilter({ alloc, live }, filters);
           const ipAddr = ip?.ip_addr ?? `${subnetPrefix}.${hostNum}`;
           const clickable = Boolean(ip) || hasAdd;
 
@@ -203,16 +256,26 @@ const SquareGrid: React.FC<SquareGridProps> = ({
           return (
             <Tooltip key={hostNum} title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
               <div
-                className={`ipam-cell flex select-none items-center justify-center rounded-md text-[11px] tabular-nums ${clickable ? 'cursor-pointer' : 'cursor-default'} ${isFree ? 'font-normal' : 'font-semibold text-white'}`}
+                className={`ipam-cell relative flex select-none items-center justify-center rounded-md text-[11px] tabular-nums ${clickable ? 'cursor-pointer' : 'cursor-default'} ${dim ? 'font-normal' : isFree ? 'font-normal' : 'font-semibold text-white'}`}
                 onClick={() => handleCellClick(hostNum, ip)}
                 style={{
                   height: CELL_H,
-                  background: isFree ? 'rgba(82,196,26,0.12)' : color,
-                  border: `1px solid ${isFree ? 'rgba(82,196,26,0.35)' : color}`,
-                  color: isFree ? '#389e0d' : undefined,
+                  background: dim ? 'var(--color-fill-2)' : isFree ? 'rgba(82,196,26,0.12)' : color,
+                  border: `1px solid ${dim ? 'var(--color-border-2)' : isFree ? 'rgba(82,196,26,0.35)' : color}`,
+                  color: dim ? 'var(--color-text-4)' : isFree ? '#389e0d' : undefined,
                 }}
               >
                 {hostNum}
+                {live !== 'none' ? (
+                  <span
+                    className="pointer-events-none absolute top-[3px] right-[3px] h-2 w-2 rounded-full"
+                    style={{
+                      background: LIVE_COLOR[live],
+                      boxShadow: '0 0 0 1px var(--color-bg-2)',
+                      opacity: dim ? 0.35 : 1,
+                    }}
+                  />
+                ) : null}
               </div>
             </Tooltip>
           );
@@ -229,6 +292,37 @@ const SquareGrid: React.FC<SquareGridProps> = ({
         onClose={() => setDrawerOpen(false)}
         onSave={handleSave}
       />
+    </>
+  );
+};
+
+interface FilteredSquareGridProps {
+  data: IpamViewData;
+  subnetInstUuid: string;
+  baseOffset?: number;
+  onReload: () => Promise<void>;
+}
+
+const FilteredSquareGrid: React.FC<FilteredSquareGridProps> = (props) => {
+  const [filters, setFilters] = useState<IpamLegendFilters>(DEFAULT_IPAM_FILTERS);
+  const toggleAlloc = (kind: AllocKind) => {
+    setFilters((prev) => ({
+      ...prev,
+      alloc: { ...prev.alloc, [kind]: !prev.alloc[kind] },
+    }));
+  };
+  const toggleLive = (kind: Exclude<LiveKind, 'none'>) => {
+    setFilters((prev) => ({
+      ...prev,
+      live: { ...prev.live, [kind]: !prev.live[kind] },
+    }));
+  };
+  return (
+    <>
+      <Legend filters={filters} onToggleAlloc={toggleAlloc} onToggleLive={toggleLive} />
+      <div className="mt-2">
+        <SquareGrid {...props} filters={filters} />
+      </div>
     </>
   );
 };
@@ -413,15 +507,12 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
           {t('Model.ipViewBack')} — {data.subnet_address}/{data.prefixlen}
         </Button>
         <SummaryBar data={drillData} />
-        <Legend />
-        <div className="mt-2">
-          <SquareGrid
-            data={drillData}
-            subnetInstUuid={instUuid}
-            baseOffset={1}
-            onReload={reload}
-          />
-        </div>
+        <FilteredSquareGrid
+          data={drillData}
+          subnetInstUuid={instUuid}
+          baseOffset={1}
+          onReload={reload}
+        />
       </div>
     );
   }
@@ -429,10 +520,9 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
   return (
     <div className="px-1">
       <SummaryBar data={data} />
-      <Legend />
       <div className="mt-2">
         {isSmallSubnet ? (
-          <SquareGrid
+          <FilteredSquareGrid
             data={data}
             subnetInstUuid={instUuid}
             baseOffset={1}

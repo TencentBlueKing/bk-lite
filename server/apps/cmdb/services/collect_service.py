@@ -240,6 +240,12 @@ class CollectModelService(object):
         if not cloud_name:
             cloud_name = cls._get_cloud_region_name(cloud)
 
+        parsed = cls._safe_int(cloud)
+        if parsed is not None:
+            cloud = parsed
+        elif cloud not in (None, ""):
+            cloud = None
+
         return cloud, cloud_name
 
     @classmethod
@@ -263,6 +269,9 @@ class CollectModelService(object):
         )
 
         changed = False
+        parsed = cls._safe_int(cloud)
+        if parsed is not None:
+            cloud = parsed
         if cloud not in (None, "") and params.get("cloud") != cloud:
             params["cloud"] = cloud
             changed = True

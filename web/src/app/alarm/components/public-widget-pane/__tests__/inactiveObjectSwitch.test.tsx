@@ -175,4 +175,50 @@ describe('alarm public pane object switch', () => {
     const action = screen.getByText('custom-action');
     expect(switcher.closest('.justify-between')).toBe(action.closest('.justify-between'));
   });
+
+  it('replaces host chrome with embed toolbar so the switcher sits beside back, not centered', async () => {
+    function SpyEmbedWidget({
+      onHeaderAction,
+      onEmbedToolbar,
+      objectSwitcher,
+    }: {
+      onHeaderAction?: (node: React.ReactNode) => void;
+      onEmbedToolbar?: (node: React.ReactNode) => void;
+      objectSwitcher?: React.ReactNode;
+    }) {
+      useEffect(() => {
+        onHeaderAction?.(null);
+        onEmbedToolbar?.(
+          <div data-testid="embed-toolbar" className="flex w-full min-w-0 items-center gap-3">
+            <button type="button">back-to-timeline</button>
+            {objectSwitcher}
+            <div className="min-w-0 flex-1" />
+            <a href="/cmdb">open-in-cmdb</a>
+          </div>,
+        );
+        return () => onEmbedToolbar?.(null);
+      }, [objectSwitcher, onEmbedToolbar, onHeaderAction]);
+      return <div>detail-body</div>;
+    }
+    const loadWidget = vi.fn(async () => ({ default: SpyEmbedWidget }));
+    render(
+      <PublicWidgetPane
+        active
+        loadWidget={loadWidget}
+        identifier="inst-01"
+        identifierProp="instUuid"
+        toolbarStart={<div data-testid="object-switcher">host-a</div>}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('embed-toolbar')).toBeTruthy();
+    });
+
+    expect(screen.getByText('back-to-timeline')).toBeTruthy();
+    expect(screen.getByTestId('object-switcher')).toBeTruthy();
+    expect(screen.getByText('open-in-cmdb')).toBeTruthy();
+    expect(document.querySelector('.justify-between')).toBeNull();
+    expect(screen.queryByText('custom-action')).toBeNull();
+  });
 });

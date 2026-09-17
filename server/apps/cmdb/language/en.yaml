@@ -37,6 +37,8 @@ MODEL:
   module: Module
   host: Host
   oracle: Oracle
+  oracle_instance: Oracle Instance
+  oracle_pdb: Oracle PDB
   mysql: MySQL
   mssql: MSSQL
   redis: Redis
@@ -98,6 +100,7 @@ MODEL:
   aliyun_pgsql: Alibaba Cloud PgSQL
   aliyun_redis: Alibaba Cloud Redis
   application: Application
+  biz_group: Business Group
   aws_cf: AWS CloudFront
   aws_docdb: AWS DocumentDB Cluster
   aws_ec2: AWS EC2
@@ -393,6 +396,9 @@ ATTR:
     operator: Main Operator
     bak_operator: Backup Operator
     app_type: Application Type
+  biz_group:
+    inst_name: Group Name
+    organization: Organization
   biz:
     inst_name: Name
     organization: Organization
@@ -468,6 +474,35 @@ ATTR:
     collect_time: Last Updated Time
     service_name: Service Name
     tag: Tag
+    db_unique_name: DB Unique Name
+    open_mode: Open Mode
+    log_mode: Log Mode
+    nls_characterset: Character Set
+    is_cdb: Is CDB
+    collect_scope: Collect Scope
+    cluster_type: Cluster Type
+    instance_count: Instance Count
+    pdb_count: PDB Count
+  oracle_instance:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+    db_unique_name: DB Unique Name
+    sid: SID
+    host_name: Host Name
+    ip_addr: IP Address
+    port: Port
+    status: Status
+    version: Version
+  oracle_pdb:
+    inst_name: Name
+    organization: Organization
+    tag: Tag
+    db_unique_name: DB Unique Name
+    pdb_name: PDB Name
+    open_mode: Open Mode
+    restricted: Restricted
+    service_name: Service Name
   mysql:
     inst_name: Name
     organization: Organization

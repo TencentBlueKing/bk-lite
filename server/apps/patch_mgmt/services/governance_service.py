@@ -97,8 +97,8 @@ def _resolve_team(request) -> list[int]:
     return []
 
 
-def _trigger_async(task_id: int) -> None:
-    """触发 Celery 异步执行；投递失败必须显式收口，禁止伪成功。"""
+def _dispatch_governance_task(task_id: int) -> None:
+    """事务提交后投递 Celery 任务；broker 失败仍显式标 FAILED。"""
     try:
         from apps.patch_mgmt.tasks import execute_governance_task
 
@@ -122,6 +122,11 @@ def _trigger_async(task_id: int) -> None:
         )
         logger.exception("%s task_id=%s", reason, task_id)
         raise RuntimeError(reason) from exc
+
+
+def _trigger_async(task_id: int) -> None:
+    """触发 Celery 异步执行；必须等事务提交后再入队，避免 worker 读到未提交行。"""
+    transaction.on_commit(lambda: _dispatch_governance_task(task_id))
 
 
 def _lock_and_assert_hosts_available(target_ids: list[int], execution_mode: str) -> None:
@@ -234,7 +239,7 @@ def _build_reboot_scope(target_ids: list[int]) -> tuple[list[dict], str]:
     from apps.patch_mgmt.services.risk_service import compute_risk_items
 
     pending_items = sorted(
-        (item for item in compute_risk_items() if item.remediation == RemediationStatus.PENDING_REBOOT and item.host_id in target_ids),
+        (item for item in compute_risk_items(target_ids) if item.remediation == RemediationStatus.PENDING_REBOOT and item.host_id in target_ids),
         key=lambda item: (item.host_id, item.patch_id, item.baseline_id),
     )
     source_by_pair = _source_record_by_pair(pending_items)
@@ -477,7 +482,7 @@ def _create_evaluation_task(
     default_name_prefix: str,
 ) -> GovernanceTask:
     """评估/验证任务创建公共逻辑。"""
-    target_ids = [int(t) for t in target_ids if t]
+    target_ids = list(dict.fromkeys(int(t) for t in target_ids if t))
     if not target_ids:
         raise PatchBusinessError("target_ids_required", "target_ids is required")
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))

@@ -1,7 +1,9 @@
 NetworkService Rittal CMC III SNMP:
   name: Rittal CMC III (Telegraf)
   desc: SNMP monitoring template for Rittal CMC III network service device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+    environment temperature in Celsius, relative humidity, PDU active power, PDU
+    current, per-port inbound traffic rate, per-port outbound traffic rate, and system
+    uptime by walking the CMC-III variable table (IANA PEN 2606.7).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -21,8 +23,8 @@ monitor_object_metric:
         ifInOctets on high-speed ports, keeping the rate accurate.
     interface_ifHCOutOctets:
       name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+      desc: This metric calculates the average rate of outbound bytes sent over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
         counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
         ifOutOctets on high-speed ports, keeping the rate accurate.
     device_total_incoming_traffic:
@@ -100,8 +102,31 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Per-sensor environment temperature in degrees Celsius, mapped from CMC-III
+        variable-table rows whose unit is degree C and whose name matches a temperature
+        reading. Exact names vary by sensor configuration, so row indexes are never
+        assumed.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Per-sensor relative humidity in percent, mapped from CMC-III variable-table
+        rows whose unit is percent and whose name matches a humidity reading. Exact
+        names vary by sensor configuration, so row indexes are never assumed.
+    pdu_active_power_watts:
+      name: PDU Active Power
+      desc: PDU active power in watts, mapped from CMC-III variable-table rows whose
+        unit is W and whose name matches a power reading. Exact names vary by sensor
+        configuration, so row indexes are never assumed.
+    pdu_current_amps:
+      name: PDU Current
+      desc: PDU current in amperes, mapped from CMC-III variable-table rows whose unit
+        is A and whose name matches a current reading. Exact names vary by sensor
+        configuration, so row indexes are never assumed.
 monitor_object_metric_group:
   NetworkService:
     Base: Base
     Traffic: Traffic
     NetworkService: NetworkService
+    Power: Power
+    Environment: Environment

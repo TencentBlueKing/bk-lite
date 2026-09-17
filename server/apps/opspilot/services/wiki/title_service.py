@@ -14,6 +14,7 @@ from contextlib import contextmanager
 
 MAX_TITLE_LENGTH = 255
 _COMPACT_TITLE_SEPARATORS = frozenset("-_./" + chr(92) + "（）()【】[]《》<>:：")
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+)$", re.MULTILINE)
 
 
 class InvalidWikiTitle(ValueError):
@@ -208,3 +209,39 @@ def title_alias_terms_for_enrichment(kb, title):
         if compact_title_key(canonical) == canonical_key:
             terms.add(alias)
     return [term for term in terms if term]
+
+
+def heading_from_markdown(body):
+    match = _HEADING_RE.search(str(body or ""))
+    if not match:
+        return ""
+    try:
+        return validate_display_title(match.group(1))
+    except InvalidWikiTitle:
+        return ""
+
+
+def retitle_unrelated_page(page_data, occupied_title_keys):
+    """Keep an unrelated page from colliding with an existing title."""
+
+    data = dict(page_data or {})
+    heading = heading_from_markdown(data.get("body"))
+    current_title = str(data.get("title") or "").strip()
+    candidates = []
+    if heading:
+        candidates.append(heading)
+    if current_title and heading:
+        candidates.append(f"{heading}（{current_title}）")
+    elif current_title:
+        candidates.append(f"{current_title}·主题摘录")
+    occupied = {str(item) for item in occupied_title_keys or []}
+    for candidate in candidates:
+        try:
+            display = validate_display_title(candidate)
+        except InvalidWikiTitle:
+            continue
+        if title_identity_key(display) not in occupied:
+            data["title"] = display
+            data["existing_page_id"] = None
+            return data
+    return data

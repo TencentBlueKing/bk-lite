@@ -401,6 +401,7 @@ class InstanceSearch:
                 collect_type=plugin.collect_type,
                 display_name=lan.get(f"{plugin_key_name}.name") or plugin.name,
                 display_description=lan.get(f"{plugin_key_name}.desc") or plugin.description,
+                pack_version=plugin.pack_version or "",
             )
             plugin_map[plugin.id] = plugin_info
 
@@ -509,6 +510,9 @@ class InstanceSearch:
             # 自动正常、一条幻影手动）。按模板身份去重，仅保留状态优先级最高的一条。
             item["plugins"] = self._dedupe_instance_plugins(item["plugins"])
 
+        from apps.monitor.services.collect_config_update import CollectConfigUpdateService
+
+        CollectConfigUpdateService.annotate_instance_plugins(data["results"])
         return data
 
     def _batch_collection_nodes_by_config_ids(self, config_ids):
@@ -958,6 +962,9 @@ class InstanceSearch:
         if name:
             qs = qs.filter(name__icontains=name)
         qs = self._apply_process_filters(qs)
+        from apps.monitor.services.collect_config_update import CollectConfigUpdateService
+
+        qs = CollectConfigUpdateService.filter_instance_qs(qs, self.query_data)
 
         # 去除重复
         qs = qs.distinct()

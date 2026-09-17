@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_racom",
   "plugin": "Transmission RACOM SNMP",
-  "plugin_desc": "RACOM RAy microwave backhaul transmission SNMP baseline child template for devices under RACOM PEN 33555. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "RACOM RAy3 microwave backhaul transmission SNMP child template for devices under RACOM PEN 33555 (RacomRay3). Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health scalars are CPU usage and memory usage as direct 0-100 percentages (useCpu, useMemory), modem temperature in hundredths of a degree Celsius (temperatureModem, query scaled by 1/100), optional radio temperature in hundredths of a degree Celsius (temperatureRadio, query scaled by 1/100), optional supply voltage in tenths of a volt (voltageUnit, query scaled by 1/10), and optional received signal strength in tenths of dBm (rss, query scaled by 1/10). Fan and power-supply state enumerations are not published, so they are not collected. Supported brands/models — RACOM RAy3 microwave links.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_racom'}) by (instance_id)",
   "name": "Transmission",
@@ -14,44 +14,89 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "cpu_usage_percent",
+    "memory_usage_percent",
+    "modem_temperature_celsius"
   ],
   "metrics": [
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "metric_group": "CPU",
+      "name": "cpu_usage_percent",
+      "query": "avg(cpu_usage_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "percent",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "CPU utilization of the RACOM RAy3 microwave unit (RacomRay3 useCpu under PEN 33555), reported directly as a 0-100 percentage with no scaling. Sustained high CPU usage can indicate wireless backhaul traffic pressure, control-plane load or abnormal traffic."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "metric_group": "Memory",
+      "name": "memory_usage_percent",
+      "query": "avg(memory_usage_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "percent",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Memory utilization of the RACOM RAy3 microwave unit (RacomRay3 useMemory under PEN 33555), reported directly as a 0-100 percentage with no scaling. Sustained high memory usage may indicate control-plane resource pressure or unstable device services."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "modem_temperature_celsius",
+      "query": "max(modem_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
+      "display_name": "Modem Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Modem-board temperature of the RACOM RAy3 microwave unit in degrees Celsius (RacomRay3 temperatureModem under PEN 33555). The SNMP scalar reports hundredths of a degree, so the query divides the raw value by 100. High values may indicate cooling problems, high ambient temperature or overloaded hardware."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "radio_temperature_celsius",
+      "query": "max(radio_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
+      "display_name": "Radio Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional radio-module temperature of the RACOM RAy3 microwave unit in degrees Celsius (RacomRay3 temperatureRadio under PEN 33555). The SNMP scalar reports hundredths of a degree, so the query divides the raw value by 100. Some firmware revisions omit this object; missing rows are skipped. High values may indicate RF hardware thermal stress."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "avg(device_voltage_volts{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "display_name": "Supply Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional power-supply voltage of the RACOM RAy3 microwave unit in volts (RacomRay3 voltageUnit under PEN 33555). The SNMP scalar reports tenths of a volt, so the query divides the raw value by 10. Readings far from the rated DC input indicate brownout, wiring faults or a failing supply."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "rss_dbm",
+      "query": "avg(rss_dbm{instance_type='transmission', __$labels__} / 10) by (instance_id)",
+      "display_name": "Received Signal Strength",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional received signal strength of the RACOM RAy3 microwave link in dBm (RacomRay3 rss under PEN 33555). The SNMP scalar reports tenths of a dBm (for example -39 means -3.9 dBm), so the query divides the raw value by 10. A dropping RSS is an early sign of path fade, antenna misalignment or radio degradation."
     },
     {
       "metric_group": "Base",

@@ -455,9 +455,16 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               failed.length > 3
                 ? `…(共 ${failed.length} 项)`
                 : `共 ${failed.length} 项`;
-            message.warning(
+            const storageUnavailable = failed.some((item) =>
+              item.error.includes("对象存储不可用"),
+            );
+            const toast = storageUnavailable ? message.error : message.warning;
+            toast(
               `${t("wiki.batchAddMaterialPartial")}: ${suffix}\n${preview}`,
             );
+            if (storageUnavailable && !(result?.items?.length ?? 0)) {
+              return;
+            }
           }
           successMessage = `${t("wiki.batchAddMaterialDone")}: ${result?.items?.length ?? 0}`;
         }

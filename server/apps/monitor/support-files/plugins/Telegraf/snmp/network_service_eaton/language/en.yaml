@@ -1,7 +1,8 @@
 NetworkService Eaton UPS PDU Environmental SNMP:
   name: Eaton UPS PDU Environmental (Telegraf)
-  desc: SNMP monitoring template for Eaton network service device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Eaton UPS network service device. It reports battery charge
+    percent, output load percent, per-port inbound traffic rate, per-port outbound traffic
+    rate, and system uptime
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -100,6 +101,12 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    network_service_eaton_battery_capacity:
+      name: Eaton Battery Charge
+      desc: XUPS battery charge as a percent of full capacity.
+    network_service_eaton_output_load:
+      name: Eaton Output Load
+      desc: XUPS output load as a percent of rated capacity.
 monitor_object_metric_group:
   NetworkService:
     Base: Base

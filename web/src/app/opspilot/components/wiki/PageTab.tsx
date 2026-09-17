@@ -17,6 +17,10 @@ import {
   KnowledgePage,
   WikiDirectoryTreeResult,
 } from "@/app/opspilot/types/wiki";
+import {
+  parseExportBlobError,
+  parseJsonErrorBlob,
+} from "@/app/opspilot/utils/wikiExportBlobError";
 import WikiDirectoryTree, {
   findFirstWikiTreePageId,
   toWikiTreePages,
@@ -48,6 +52,7 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     deleteNestedDirectory,
     movePagesToDirectory,
     exportKnowledgeBaseMarkdown,
+    exportKnowledgeBaseOkf,
     deletePage,
   } = useWikiApi();
 
@@ -61,6 +66,7 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     "loading" | "ready" | "error"
   >("loading");
   const [exportingMarkdown, setExportingMarkdown] = useState(false);
+  const [exportingOkf, setExportingOkf] = useState(false);
   const [markdownImportOpen, setMarkdownImportOpen] = useState(false);
   const [okfImportOpen, setOkfImportOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -287,23 +293,52 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     }
   };
 
+  const downloadExportBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handleExportMarkdown = async () => {
     setExportingMarkdown(true);
     try {
       const blob = await exportKnowledgeBaseMarkdown(kbId);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `wiki-kb-${kbId}-markdown.zip`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      const jsonError = await parseJsonErrorBlob(blob);
+      if (jsonError) {
+        message.error(jsonError.message);
+        return;
+      }
+      downloadExportBlob(blob, `wiki-kb-${kbId}-markdown.zip`);
       message.success(t("wiki.exportMarkdownDone"));
-    } catch {
-      message.error(t("wiki.exportMarkdownFailed"));
+    } catch (error) {
+      const parsed = await parseExportBlobError(error);
+      message.error(parsed?.message || t("wiki.exportMarkdownFailed"));
     } finally {
       setExportingMarkdown(false);
+    }
+  };
+
+  const handleExportOkf = async () => {
+    setExportingOkf(true);
+    try {
+      const blob = await exportKnowledgeBaseOkf(kbId);
+      const jsonError = await parseJsonErrorBlob(blob);
+      if (jsonError) {
+        message.error(jsonError.message);
+        return;
+      }
+      downloadExportBlob(blob, `wiki-kb-${kbId}-okf.zip`);
+      message.success(t("wiki.exportOkfDone"));
+    } catch (error) {
+      const parsed = await parseExportBlobError(error);
+      message.error(parsed?.message || t("wiki.exportOkfFailed"));
+    } finally {
+      setExportingOkf(false);
     }
   };
 
@@ -371,6 +406,13 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
               onClick={handleExportMarkdown}
             >
               {t("wiki.exportMarkdown")}
+            </Button>
+            <Button
+              icon={<FileZipOutlined />}
+              loading={exportingOkf}
+              onClick={handleExportOkf}
+            >
+              {t("wiki.exportOkf")}
             </Button>
             <Button
               type="primary"

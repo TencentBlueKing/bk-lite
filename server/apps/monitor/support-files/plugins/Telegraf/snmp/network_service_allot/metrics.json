@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_allot",
   "plugin": "NetworkService Allot SNMP",
-  "plugin_desc": "Allot enterprise service gateway SNMP baseline child template for network-service devices under Allot PEN 2603. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm Allot enterprise gateway monitoring and private SNMP MIB identity, but do not prove stable shared CPU, memory, temperature, fan or power-health scalar semantics, so private service, traffic and policy tables are not promoted into shared device-health metrics.",
+  "plugin_desc": "Allot network-service SNMP collection for appliances under enterprise PEN 2603. Beyond the NetworkService IF chassis (MIB-II sysUpTime and IF-MIB 64-bit HC interface traffic, without ifInErrors or ifOperStatus expansion), it walks alSensorType and keeps cpu(4) and memory(5) rows, then reads alSensorRawValue at those indices as CPU and memory utilization percentages. Temperature and storage rows are taken from the same sensor table by type. Sensor indices are discovered from the type column and are not assumed to be fixed. Alert-tree scalars and alert-configuration tables are not treated as chassis health readings. Fan and power-supply rows exist in the same table, but their raw values have no documented 1=healthy/2=fault encoding, so they are not promoted to shared fan or PSU health states. Supported brands/models — Allot NetEnforcer and service-gateway appliances (enterprise 2603).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_allot'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,87 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart (sysUpTime). By monitoring the uptime, network administrators can understand the stability and reliability of the Allot appliance and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilization of the Allot appliance, taken from alSensorRawValue rows whose alSensorType is cpu(4), reported directly as a percentage. Sensor indices are discovered by walking the type column."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "System memory utilization of the Allot appliance, taken from alSensorRawValue rows whose alSensorType is memory(5), reported directly as a percentage. Sensor indices are discovered by walking the type column."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='network_service', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Sensor"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature reading of the Allot appliance in degrees Celsius, taken from alSensorRawValue rows whose alSensorType is temperature(1)."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_storage_usage",
+      "query": "device_storage_usage{instance_type='network_service', __$labels__}",
+      "display_name": "Storage Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Sensor"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Storage utilization of the Allot appliance, taken from alSensorRawValue rows whose alSensorType is storage(6), reported directly as a percentage."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -52,19 +130,6 @@
         "instance_id"
       ],
       "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
-    },
-    {
-      "metric_group": "Base",
-      "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
-      "display_name": "System Uptime",
-      "data_type": "Number",
-      "unit": "s",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
     }
   ]
 }

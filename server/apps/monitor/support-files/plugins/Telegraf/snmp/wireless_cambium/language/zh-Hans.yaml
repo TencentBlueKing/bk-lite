@@ -1,6 +1,6 @@
 Wireless Cambium SNMP:
   name: Cambium (Telegraf)
-  desc: 面向 Cambium 无线设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  desc: 面向 Cambium 无线设备的 SNMP 监控模板,可采集 CPU 使用率、可选关联站点数量、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -33,6 +33,9 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
+    wireless_cambium_sta_count:
+      name: 关联站点数量
+      desc: ePMP AP 当前关联站点数量（仅 AP 上报）。
 monitor_object_metric_group:
   Wireless:
     Base: 基础

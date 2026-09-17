@@ -76,8 +76,9 @@
 
     .searchDetail {
         .input {
-            min-width: 500px;
-            width: calc(100vw - 450px);
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
         }
 
         .searchResult {
@@ -88,7 +89,7 @@
                 padding: 10px;
                 flex: 1;
                 max-height: calc(100vh - 180px);
-                min-width: 500px;
+                min-width: 0;
                 overflow-y: auto;
 
                 .active {

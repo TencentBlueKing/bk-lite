@@ -1,3 +1,4 @@
+import base64
 from datetime import timedelta
 
 import pytest
@@ -30,11 +31,11 @@ def _summary(trace_id, application_id, instance_id, now):
     )
 
 
-def _detail(trace_id, application_id, instance_id, now, attributes=None):
-    span = SpanDetail(
-        span_id="1" * 16,
-        parent_span_id=None,
-        name="POST /checkout",
+def _span(span_id, application_id, instance_id, now, *, parent_span_id=None, name="POST /checkout", attributes=None):
+    return SpanDetail(
+        span_id=span_id,
+        parent_span_id=parent_span_id,
+        name=name,
         started_at=now,
         duration_ms=25,
         status="ok",
@@ -45,13 +46,18 @@ def _detail(trace_id, application_id, instance_id, now, attributes=None):
         instance_id=instance_id,
         kind="server",
     )
+
+
+def _detail(trace_id, application_id, instance_id, now, attributes=None, spans=None):
+    items = spans or (_span("1" * 16, application_id, instance_id, now, attributes=attributes),)
+    root = next((item for item in items if item.parent_span_id is None), items[0])
     return TraceDetail(
         trace_id,
-        (span,),
-        application_id,
-        "checkout",
-        "production",
-        instance_id,
+        items,
+        root.service_namespace,
+        root.service_name,
+        root.environment,
+        root.instance_id,
     )
 
 
@@ -108,6 +114,47 @@ def test_direct_trace_access_is_non_enumerable_and_sensitive_attributes_never_re
     assert visible.status_code == 200
     assert visible.data["spans"][0]["attributes"] == {"http.route": "/checkout"}
     assert forbidden.status_code == missing.status_code == 404
+
+
+def test_mixed_org_trace_detail_returns_only_current_org_spans(apm_api_client, mocker):
+    now = timezone.now()
+    _discover(organization_ids=[10], instance_id="pod-allowed", application_id="shop")
+    _discover(organization_ids=[20], instance_id="pod-denied", application_id="billing")
+    hidden_root = _span(
+        "2" * 16,
+        "billing",
+        "pod-denied",
+        now,
+        name="POST /billing",
+        attributes={"Authorization": "Bearer other-org"},
+    )
+    visible_child = _span(
+        "3" * 16,
+        "shop",
+        "pod-allowed",
+        now,
+        parent_span_id=hidden_root.span_id,
+        attributes={"http.route": "/checkout", "Authorization": "Bearer secret"},
+    )
+    mixed = _detail("e" * 32, "billing", "pod-denied", now, spans=(hidden_root, visible_child))
+    hidden_only = _detail("f" * 32, "billing", "pod-denied", now, spans=(hidden_root,))
+    service = DjangoTelemetryQueryService(trace_store=InMemoryTraceStore(details=[mixed, hidden_only]))
+    mocker.patch("apps.apm.views.traces.ApmTraceViewSet._query_service", return_value=service)
+
+    response = apm_api_client.get(f"/api/v1/apm/traces/{'e' * 32}/")
+    forbidden = apm_api_client.get(f"/api/v1/apm/traces/{'f' * 32}/")
+
+    assert response.status_code == 200
+    assert [span["span_id"] for span in response.data["spans"]] == [visible_child.span_id]
+    assert response.data["spans"][0]["parent_span_id"] == hidden_root.span_id
+    assert response.data["spans"][0]["service_namespace"] == "shop"
+    assert response.data["spans"][0]["instance_id"] == "pod-allowed"
+    assert response.data["spans"][0]["attributes"] == {"http.route": "/checkout"}
+    assert response.data["truncated"] is True
+    assert response.data["service_namespace"] == "shop"
+    assert response.data["service_name"] == "checkout"
+    assert response.data["instance_id"] == "pod-allowed"
+    assert forbidden.status_code == 404
 
 
 def test_missing_instance_detail_falls_back_to_service_organization(apm_api_client, mocker):
@@ -173,6 +220,18 @@ def test_trace_permission_is_checked_before_querying_storage(apm_user_without_pe
 
     assert response.status_code == 403
     query.assert_not_called()
+
+
+def test_overflow_cursor_returns_invalid_query_before_searching_storage(apm_api_client):
+    overflow_cursor = base64.urlsafe_b64encode(b"9" * 80).decode().rstrip("=")
+
+    response = apm_api_client.get(
+        "/api/v1/apm/traces/",
+        {"service_name": "checkout", "environment": "production", "cursor": overflow_cursor},
+    )
+
+    assert response.status_code == 400
+    assert response.data["code"] == "invalid_query"
 
 
 def test_arbitrary_traceql_is_rejected_instead_of_forwarded(apm_api_client, mocker):

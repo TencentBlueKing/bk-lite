@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_omnitron",
   "plugin": "Switch Omnitron SNMP",
-  "plugin_desc": "Omnitron Systems Technology iConverter management-module SNMP child template for industrial Ethernet media converters and fiber transceiver modules under Omnitron enterprise PEN 7342. The shared Switch SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The private OMNITRON-MIB / OMNITRON-POE-MIB / OMNITRON-TC-MIB (omnitron OBJECT IDENTIFIER ::= { enterprises 7342 } + icAgent(1)/prodAgent(2)/omnitronProducts(5) + managementModule(1)/omnitronMIB(3)) expose iConverter management module inventory and PoE port budget leaves, but the publicly documented OMNITRON-MIB / OMNITRON-POE-MIB / OMNITRON-TC-MIB do not publish a stable, row-free chassis-level scalar health object that bk-lite can promote to a single device_* metric; the OMNITRON-POE-MIB and icAgent/managementModule subtrees are per-port or per-module rows, which telegraf inputs.snmp cannot aggregate into one bk-lite scalar, so they are kept as N/A to honor the no-fabricated-health-metrics rule.",
+  "plugin_desc": "Omnitron iConverter SNMP collection (OMNITRON-EXT-MIB, IANA PEN 7342). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Per-module health comes from ostModuleStatusTable, indexed by ostModuleIndex (CCSS chassis and slot). CPU utilization (ostSnmpCpuUtilization) is Unsigned32 milli-percent and is divided by 1000 to a 0-100 percentage. RAM used (ostSnmpRamUsed) is kbytes where 1 indicates 1000 bytes and is published as memory used bytes. Flash used (ostSnmpFlashUsed) is optional and uses the same kbytes-to-bytes scale. The table does not expose RAM total or free, so memory utilization percent is not derived. Temperature, fan and power-supply sensors are not published in this table and are not collected. Supported brands/models — Omnitron iConverter management modules and industrial Ethernet media converters.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_omnitron'}) by (instance_id)",
   "name": "Switch",
@@ -14,44 +14,64 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_used"
   ],
   "metrics": [
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization",
       "data_type": "Number",
-      "unit": "byteps",
+      "unit": "percent",
       "dimensions": [
         {
-          "name": "ifDescr",
-          "description": "ifDescr"
+          "name": "index",
+          "description": "ostModuleIndex (CCSS chassis and slot)"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Per-module CPU utilization of the Omnitron iConverter management module (OMNITRON-EXT-MIB ostSnmpCpuUtilization). The device reports milli-percent (1 = 0.001 percent, range 0-100000); collection divides by 1000 so this metric is a 0-100 percentage. Dimension index is ostModuleIndex (CCSS). Sustained high CPU usage can indicate control-plane overload or a failing module, and may lead to slow management response."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__} * 1000",
+      "display_name": "Memory Used",
       "data_type": "Number",
-      "unit": "byteps",
+      "unit": "bytes",
       "dimensions": [
         {
-          "name": "ifDescr",
-          "description": "ifDescr"
+          "name": "index",
+          "description": "ostModuleIndex (CCSS chassis and slot)"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Per-module RAM currently used by the CPU on the Omnitron iConverter management module (OMNITRON-EXT-MIB ostSnmpRamUsed). The device reports kbytes where 1 indicates 1000 bytes (not 1024); the query multiplies by 1000 so this metric is in bytes. Dimension index is ostModuleIndex (CCSS). The table does not expose RAM total or free, so utilization percent is not derived."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_flash_used",
+      "query": "device_flash_used{instance_type='switch', __$labels__} * 1000",
+      "display_name": "Flash Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "ostModuleIndex (CCSS chassis and slot)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-module flash memory currently used on the Omnitron iConverter management module (OMNITRON-EXT-MIB ostSnmpFlashUsed, optional). The device reports kbytes where 1 indicates 1000 bytes; the query multiplies by 1000 so this metric is in bytes. Dimension index is ostModuleIndex (CCSS). Some modules omit this column."
     },
     {
       "metric_group": "Base",

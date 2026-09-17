@@ -49,6 +49,53 @@ export const useInstanceApi = () => {
   const getApplicationResourceResources = (modelId: string, instUuid: string) =>
     get(`/cmdb/api/instance/application_resource_resources/${modelId}/${instUuid}/`);
 
+  const getServiceTree = (systemUuid: string) =>
+    get(`/cmdb/api/service_tree/${systemUuid}/tree/`);
+
+  const getServiceTreeHosts = (systemUuid: string, nodeUuid: string) =>
+    get(`/cmdb/api/service_tree/${systemUuid}/hosts/`, { params: { node_uuid: nodeUuid } });
+
+  const createServiceTreeChild = (
+    systemUuid: string,
+    params: { parent_uuid: string; kind: string; inst_name: string }
+  ) => post(`/cmdb/api/service_tree/${systemUuid}/children/`, params);
+
+  const renameServiceTreeNode = (
+    systemUuid: string,
+    params: { node_uuid: string; inst_name: string }
+  ) => post(`/cmdb/api/service_tree/${systemUuid}/rename/`, params);
+
+  const deleteServiceTreeNode = (systemUuid: string, nodeUuid: string) =>
+    post(`/cmdb/api/service_tree/${systemUuid}/delete_node/`, { node_uuid: nodeUuid });
+
+  const assignServiceTreeHosts = (
+    systemUuid: string,
+    params: { application_uuid: string; host_uuids: string[] }
+  ) => post(`/cmdb/api/service_tree/${systemUuid}/assign/`, params);
+
+  const transferServiceTreeHosts = (
+    systemUuid: string,
+    params: { source_app: string; target_app: string; host_uuids: string[] }
+  ) => post(`/cmdb/api/service_tree/${systemUuid}/transfer/`, params);
+
+  const unbindServiceTreeHosts = (
+    systemUuid: string,
+    params: { application_uuid: string; host_uuids: string[] }
+  ) => post(`/cmdb/api/service_tree/${systemUuid}/unbind/`, params);
+
+  const getServiceTreeApplicationSystems = (
+    systemUuid: string,
+    uuids: string[]
+  ) => post(`/cmdb/api/service_tree/${systemUuid}/application_systems/`, { uuids });
+
+  const importServiceTree = (systemUuid: string, formData: FormData) =>
+    post(`/cmdb/api/service_tree/${systemUuid}/import/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+  const exportServiceTree = (systemUuid: string) =>
+    get(`/cmdb/api/service_tree/${systemUuid}/export/`, { responseType: 'blob' });
+
   const getApplicationResourceInstances = (
     modelId: string,
     instUuid: string,
@@ -202,7 +249,7 @@ export const useInstanceApi = () => {
     ip_allocated_status: string;
     ip_status?: string;
     ip_type?: string;
-    ip_user?: string[];
+    ip_user?: number[];
     mac?: string;
     description?: string;
   }) => post('/cmdb/api/instance/ipam_ip/', params);
@@ -250,6 +297,17 @@ export const useInstanceApi = () => {
     getApplicationResourceResources,
     getApplicationResourceInstances,
     exportApplicationResourceInstances,
+    getServiceTree,
+    getServiceTreeHosts,
+    createServiceTreeChild,
+    renameServiceTreeNode,
+    deleteServiceTreeNode,
+    assignServiceTreeHosts,
+    transferServiceTreeHosts,
+    unbindServiceTreeHosts,
+    getServiceTreeApplicationSystems,
+    importServiceTree,
+    exportServiceTree,
     getInstanceDetail,
     createInstance,
     updateInstance,

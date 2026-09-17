@@ -1,6 +1,6 @@
 Wireless LigoWave SNMP:
   name: LigoWave（Telegraf）
-  desc: 面向 LigoWave 无线设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 32750）。
+  desc: 面向 LigoWave 无线设备的 SNMP 监控模板,可采集 Radio3 天线 0 RSSI、底噪、天线 0 SNR、可选发射功率、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 32750）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -33,9 +33,33 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
+    rx_signal_level_0:
+      name: 天线 0 RSSI
+      desc: Radio3 天线 0 最近接收信号电平（ligoRdo3RxLastSigLevel0）。按 ifIndex 与 endpoint 索引，Integer32
+        不换算。RSSI 持续下降可能表示路径衰落、天线失准或射频劣化。
+    rx_noise:
+      name: 接收底噪
+      desc: Radio3 接收底噪（ligoRdo3RxNoise）。按 ifIndex 与 endpoint 索引，Integer32 不换算。底噪升高会降低
+        SNR 与链路裕量。
+    rx_snr_0:
+      name: 天线 0 SNR
+      desc: Radio3 天线 0 最近信噪比（ligoRdo3RxLastSnr0）。按 ifIndex 与 endpoint 索引，Integer32 不换算。SNR
+        持续下降可能表示路径衰落或干扰。
+    tx_power:
+      name: 发射功率
+      desc: 可选 Radio3 发射功率（ligoRdo3TxPower）。按 ifIndex 与 endpoint 索引，Gauge32 不换算。部分固件或缺省行会跳过。发射功率异常偏低可能表示射频静默、硬件故障或配置变更。
+    rx_signal_level_1:
+      name: 天线 1 RSSI
+      desc: 可选 Radio3 天线 1 最近接收信号电平（ligoRdo3RxLastSigLevel1）。按 ifIndex 与 endpoint 索引，Integer32
+        不换算。缺天线的列由采集端跳过。
+    rx_signal_level_2:
+      name: 天线 2 RSSI
+      desc: 可选 Radio3 天线 2 最近接收信号电平（ligoRdo3RxLastSigLevel2）。按 ifIndex 与 endpoint 索引，Integer32
+        不换算。缺天线的列由采集端跳过。
 monitor_object_metric_group:
   Wireless:
     Base: 基础
     Traffic: 流量
     Wireless: 无线
     Temperature: 温度
+    Radio: 射频

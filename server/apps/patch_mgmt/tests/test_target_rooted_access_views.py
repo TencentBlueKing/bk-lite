@@ -3,6 +3,7 @@
 import pytest
 from rest_framework import status
 
+from apps.node_mgmt.models import Node  # noqa: F401
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
     GovernanceTaskStatus,
@@ -32,14 +33,52 @@ def _client(api_client, user, permissions):
     return api_client
 
 
-def _target_rules(mocker, *, visible_team=1, instances=None):
+def _target_rules(mocker, *, visible_team=1, instances=None, team=None):
+    team_ids = [visible_team] if team is None else team
+
     def rules(_user, _team, _app, module, _children):
         if module != "patch_target":
             return {"team": [], "instance": []}
-        return {"team": [visible_team], "instance": instances or []}
+        return {"team": team_ids, "instance": instances or []}
 
     return mocker.patch(
         "apps.core.utils.viewset_utils.get_permission_rules", side_effect=rules
+    )
+
+
+def _target_with_completed_history(*, name, ip, team, ssh_key=None):
+    kwargs = {"name": name, "ip": ip, "team": team}
+    if ssh_key:
+        kwargs["ssh_key_file"] = ssh_key
+    target = PatchTarget.objects.create(**kwargs)
+    task = GovernanceTask.objects.create(
+        name=f"{name}-history",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.COMPLETED,
+        target_list=[target.id],
+        team=team,
+    )
+    host = GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=target.id,
+        target_name=target.name,
+        stage="completed",
+    )
+    return target, task, host
+
+
+def _patch_destroy_side_effects(mocker):
+    return (
+        mocker.patch(
+            "apps.patch_mgmt.services.governance_convergence.reconcile_stale_history"
+        ),
+        mocker.patch(
+            "apps.patch_mgmt.views.patch_target.purge_target_governance_history"
+        ),
+        mocker.patch.object(
+            PatchTarget._meta.get_field("ssh_key_file").storage,
+            "delete",
+        ),
     )
 
 
@@ -284,3 +323,103 @@ class TestTargetRootedOperationScope:
         assert task.host_results.get(target_id=denied.id).stage == "waiting"
         task.refresh_from_db()
         assert task.status == GovernanceTaskStatus.RUNNING
+
+    def test_destroy_rejects_hidden_target_before_side_effects(
+        self, api_client, authenticated_user, mocker
+    ):
+        target, task, host = _target_with_completed_history(
+            name="hidden-delete",
+            ip="10.0.4.1",
+            team=[2],
+            ssh_key="ssh_keys/hidden_delete.pem",
+        )
+        reconcile, purge, storage_delete = _patch_destroy_side_effects(mocker)
+        client = _client(
+            api_client, authenticated_user, {"patch_target-Delete"}
+        )
+        _target_rules(mocker)
+
+        response = client.delete(f"{BASE}/patch_target/{target.id}/")
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert PatchTarget.objects.filter(pk=target.id).exists()
+        assert GovernanceTask.objects.filter(pk=task.id).exists()
+        assert GovernanceTaskHost.objects.filter(pk=host.id).exists()
+        reconcile.assert_not_called()
+        purge.assert_not_called()
+        storage_delete.assert_not_called()
+
+    def test_destroy_rejects_view_only_instance_before_side_effects(
+        self, api_client, authenticated_user, mocker
+    ):
+        target, task, host = _target_with_completed_history(
+            name="view-only-delete",
+            ip="10.0.4.2",
+            team=[2],
+            ssh_key="ssh_keys/view_only_delete.pem",
+        )
+        reconcile, purge, storage_delete = _patch_destroy_side_effects(mocker)
+        client = _client(
+            api_client, authenticated_user, {"patch_target-Delete"}
+        )
+        _target_rules(
+            mocker,
+            team=[],
+            instances=[{"id": target.id, "permission": ["View"]}],
+        )
+
+        response = client.delete(f"{BASE}/patch_target/{target.id}/")
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert PatchTarget.objects.filter(pk=target.id).exists()
+        assert GovernanceTask.objects.filter(pk=task.id).exists()
+        assert GovernanceTaskHost.objects.filter(pk=host.id).exists()
+        reconcile.assert_not_called()
+        purge.assert_not_called()
+        storage_delete.assert_not_called()
+
+    def test_destroy_allows_operate_instance_and_removes_row(
+        self, api_client, authenticated_user, mocker
+    ):
+        target, task, host = _target_with_completed_history(
+            name="operate-delete",
+            ip="10.0.4.3",
+            team=[2],
+        )
+        client = _client(
+            api_client, authenticated_user, {"patch_target-Delete"}
+        )
+        _target_rules(
+            mocker,
+            team=[],
+            instances=[{"id": target.id, "permission": ["View", "Operate"]}],
+        )
+
+        response = client.delete(f"{BASE}/patch_target/{target.id}/")
+
+        assert response.status_code in (
+            status.HTTP_200_OK,
+            status.HTTP_204_NO_CONTENT,
+        )
+        assert not PatchTarget.objects.filter(pk=target.id).exists()
+        assert not GovernanceTaskHost.objects.filter(pk=host.id).exists()
+        assert not GovernanceTask.objects.filter(pk=task.id).exists()
+
+    def test_destroy_allows_superuser_without_instance_grant(
+        self, su_client
+    ):
+        target, task, host = _target_with_completed_history(
+            name="superuser-delete",
+            ip="10.0.4.4",
+            team=[2],
+        )
+
+        response = su_client.delete(f"{BASE}/patch_target/{target.id}/")
+
+        assert response.status_code in (
+            status.HTTP_200_OK,
+            status.HTTP_204_NO_CONTENT,
+        )
+        assert not PatchTarget.objects.filter(pk=target.id).exists()
+        assert not GovernanceTaskHost.objects.filter(pk=host.id).exists()
+        assert not GovernanceTask.objects.filter(pk=task.id).exists()

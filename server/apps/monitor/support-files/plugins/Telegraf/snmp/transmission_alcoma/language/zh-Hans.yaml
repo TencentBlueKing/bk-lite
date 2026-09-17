@@ -1,6 +1,6 @@
 Transmission Alcoma SNMP:
   name: Alcoma（Telegraf）
-  desc: 面向 Alcoma 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Alcoma 传输设备的 SNMP 监控模板,可采集 温度、接收电平、发射功率、可选信噪比、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 12140）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -33,6 +33,18 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    temperature_celsius:
+      name: 温度
+      desc: Alcoma alMP 射频温度，单位为摄氏度。离线单元上报 -1，查询侧跳过。温度偏高可能表示射频硬件热压力、环境温度过高或硬件过载。
+    rx_level_db:
+      name: 接收电平
+      desc: Alcoma alMP 接收电平，单位为 dB。离线单元上报 -128，查询侧跳过。接收电平下降可能表示路径衰落、天线失准或射频劣化。
+    tx_power_db:
+      name: 发射功率
+      desc: Alcoma alMP 发射功率，单位为 dB。离线单元上报 -128，查询侧跳过。发射功率异常偏低可能表示射频静默、硬件故障或配置变更。
+    snr_db:
+      name: 信噪比
+      desc: 可选的 Alcoma alMP 信噪比，单位为 dB。部分固件不返回该对象。信噪比下降可能表示路径衰落或干扰。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。
@@ -47,3 +59,4 @@ monitor_object_metric_group:
     Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
+    Radio: 射频

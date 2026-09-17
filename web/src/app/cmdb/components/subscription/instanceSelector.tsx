@@ -14,6 +14,7 @@ import type {
 } from '@/app/cmdb/types/subscription';
 import type { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
 import { toCmdbInstanceOptions } from '@/app/cmdb/utils/instanceOption';
+import { parseCloudRegionId, toCloudSelectValue } from '@/app/cmdb/utils/cloudRegion';
 import {
   getFieldType,
   getEnumOptions,
@@ -178,11 +179,14 @@ const toFilterItem = (row: ConditionRow, field?: AttrFieldType): FilterItem | nu
         return null;
       }
       const rawValue = Array.isArray(row.value) ? row.value[0] : row.value;
-      const isNumeric = typeof rawValue === 'number' || /^\d+$/.test(String(rawValue));
+      const cloudId = parseCloudRegionId(rawValue);
+      if (cloudId === null) {
+        return null;
+      }
       return {
         field: row.field,
-        type: isNumeric ? 'int=' : 'str=',
-        value: isNumeric ? Number(rawValue) : String(rawValue),
+        type: 'int=',
+        value: cloudId,
       };
     }
     default:
@@ -230,8 +234,8 @@ function ConditionValueInput({
           allowClear
           showSearch
           placeholder={t('subscription.pleaseSelectValue')}
-          value={row.value as string | number | undefined}
-          options={cloudOptions.map((item) => ({ label: item.proxy_name, value: item.proxy_id }))}
+          value={toCloudSelectValue(row.value)}
+          options={cloudOptions.map((item) => ({ label: item.proxy_name, value: Number(item.proxy_id) }))}
           onChange={(value) => onChange(value)}
         />
       );

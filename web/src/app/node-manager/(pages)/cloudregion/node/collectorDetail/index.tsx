@@ -108,9 +108,23 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const [inputValue, setInputValue] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ row }) => {
+      showModal: ({ row, focusCollectorName }) => {
         setVisible(true);
-        const filteredCollectors = listNodeHostedCollectors(row);
+        const filteredCollectors: TableDataItem[] = listNodeHostedCollectors(
+          row
+        ).map((collector) => {
+          const versionInfo = (row.versions || []).find(
+            (item: TableDataItem) =>
+              item.component_type === 'collector' &&
+              String(item.component_id) === String(collector.collector_id)
+          );
+          return {
+            ...collector,
+            pack_version: versionInfo?.version || '',
+            latest_version: versionInfo?.latest_version || '',
+            upgradeable: Boolean(versionInfo?.upgradeable)
+          };
+        });
         setCollectors(filteredCollectors);
         setForm(row);
         selectedCollectorRef.current = null;
@@ -122,7 +136,15 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             const priorityB = STATUS_CODE_PRIORITY[b.status] || 999;
             return priorityA - priorityB;
           });
-          const firstCollector = sortedCollectors[0];
+          const focusedName = String(focusCollectorName || '').trim();
+          const focusedCollector = focusedName
+            ? sortedCollectors.find(
+              (item) =>
+                String(item.collector_name || item.name || '').trim() ===
+                  focusedName
+            )
+            : null;
+          const firstCollector = focusedCollector || sortedCollectors[0];
           // 处理message为对象的情况
           if (
             firstCollector.message &&
@@ -675,6 +697,24 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                                   <div className="font-medium text-sm">
                                     {collector.collector_name}
                                   </div>
+                                  {collector.pack_version ? (
+                                    <div className="text-xs text-[var(--color-text-3)] mt-1">
+                                      {t(
+                                        'node-manager.cloudregion.node.collectorVersion'
+                                      )}
+                                      : {collector.pack_version}
+                                      {collector.upgradeable
+                                        ? ` · ${t(
+                                          'node-manager.cloudregion.node.collectorUpgradeable',
+                                          '',
+                                          {
+                                            version:
+                                              collector.latest_version || '--'
+                                          }
+                                        )}`
+                                        : ''}
+                                    </div>
+                                  ) : null}
                                   <div
                                     className="text-xs mt-1"
                                     style={{ color: collectorStatusInfo.color }}
@@ -701,6 +741,14 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                     <span className="text-sm text-[var(--color-text-2)]">
                       {selectedCollector.collector_name}
                     </span>
+                    {selectedCollector.pack_version ? (
+                      <Tag>
+                        {selectedCollector.pack_version}
+                        {selectedCollector.upgradeable
+                          ? ` → ${selectedCollector.latest_version || '--'}`
+                          : ''}
+                      </Tag>
+                    ) : null}
                   </div>
                   {/* 状态信息 */}
                   <div className="py-3 px-4 bg-[var(--color-fill-1)] rounded flex-shrink-0">

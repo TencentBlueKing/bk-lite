@@ -1,3 +1,4 @@
+import base64
 from datetime import timedelta
 
 import pytest
@@ -63,6 +64,18 @@ def test_span_search_filters_by_instance_org(apm_api_client, mocker):
     assert [item["span_id"] for item in response.data["items"]] == ["1" * 16, "3" * 16]
     assert response.data["items"][0]["http_method"] == "POST"
     assert response.data["next_cursor"] is None
+
+
+def test_overflow_cursor_returns_invalid_query_before_searching_storage(apm_api_client):
+    overflow_cursor = base64.urlsafe_b64encode(b"9" * 80).decode().rstrip("=")
+
+    response = apm_api_client.get(
+        "/api/v1/apm/spans/",
+        {"service_name": "checkout", "environment": "production", "cursor": overflow_cursor},
+    )
+
+    assert response.status_code == 400
+    assert response.data["code"] == "invalid_query"
 
 
 def test_span_query_rejects_unknown_params_and_maps_degradation(apm_api_client, mocker):

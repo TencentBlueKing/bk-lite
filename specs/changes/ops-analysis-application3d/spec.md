@@ -63,7 +63,8 @@ Application Wall
 - Normal Screen 与 Share Screen。
 - 真实 Three.js/WebGL 3D Application Wall。
 - 当前 actor 权限可见的全部 **应用系统（CMDB `system`）** 自动上墙（无编辑期勾选）。
-- 连续 Wall、`system_status` filter、refresh、empty/error/unknown/stale。
+- Wall、`system_status` filter、refresh、empty/error/unknown/stale。
+- 前端 Wall 分页：每页 24 张；按告警优先级与数量排序（unknown 整段落在 normal 前）；左右翻页翅膀 + 右下角 `n / m 页`。
 - Application selection、focus、**详情 / 部署架构** 两路径、detail、close detail、architecture back、back（仅 view/share）。
 - 经 exact `system_contains_application` 的子 Application，再经 exact `application_run_host` 关联 Host 的 Monitor 健康聚合。
 - 对该系统的 3D 部署架构树：`system` 根 → exact `system_contains_application` → `application` → exact `application_run_host` → `host`（unique by `inst_uuid`）。
@@ -88,7 +89,7 @@ Application Wall
 - Central Alert integration。
 - Prometheus、Zabbix、K8s、SNMP 或 APM 告警健康聚合。
 - 任意 CMDB relation、BFS projection、`Application ← System → Host` **健康** fallback、Module/Service 中间路径。
-- 传统 Wall 分页。
+- 后端 Wall 分页（当前仍一次拉全量，前端切片；硬容量仍待 Phase 7）。
 - 自由拖动 3D Application cards 或复杂自由相机。
 - 旧 Babylon/Three 代码迁移。
 - 为未来 APM 或跨告警源能力预留 DTO 字段。
@@ -184,7 +185,7 @@ Hard invariants：
 
 ### Wall membership
 
-默认 Wall 成员 = 当前 actor 权限可见的全部 System（CMDB System View），按 `inst_name` 排序，无编辑期勾选。零子 Application 的 System 仍是成员。
+默认 Wall 成员 = 当前 actor 权限可见的全部 System（CMDB System View），无编辑期勾选。零子 Application 的 System 仍是成员。前端展示顺序：`alarming` 按 `highestSeverity.rank` 降序再 `activeAlarmCount` 降序，然后 `unknown`，最后 `normal`；同组内 `name` 再 `id`。后端查询仍可按 `inst_name` 拉取。
 
 可选 `system_status` filter 按 **System 自身** `status` 收窄成员（见 Filters）；该路径不得用于 Host/告警健康聚合。
 
@@ -622,7 +623,7 @@ Semantics：
 - `alarms.state='available'` 表示权限、mapping 和查询完整；此时 counts 必须全部精确且非 null。
 - `alarms.state='unavailable'` 不携带内部 reason、count、statistics、items 或 cursor，避免把部分结果误解为完整结果或暴露隐藏资源存在性。无子 Application 的 System、以及有子 Application 但零合法 Host 的 System，走同一 `unavailable` 告警集合（墙卡健康分别为 `unknown/no_application` 与 `unknown/no_host`），不得伪造 `available` 空列表冒充干净健康。
 - `alarms.items=[]` 且 `activeAlarmCount=0` 是合法 zero alarms，只能出现在 `available` 分支。
-- 列表分页只用于 Detail DOM alarm browser，不改变连续 Wall；cursor 必须 opaque、scope-bound，不能携带可篡改权限范围。
+- 列表分页只用于 Detail DOM alarm browser；Wall 卡片分页在前端完成，不走该 cursor；alarm cursor 必须 opaque、scope-bound，不能携带可篡改权限范围。
 - `metricName` 必须来自真实指标展示名：`query_condition.type='metric'` → `Metric.display_name`（fallback `Metric.name`）；`type='formula'` → `result_name`。**禁止**使用 `MonitorPolicy.alert_name`（告警名称/标题模板）冒充指标名；无法解析时为 `null`。
 - `isNoData` 与 `severity` 正交：no_data Alert 仍返回按 `MonitorAlert.level` 归一的 Severity；`severity=null` 只用于无法映射的 level，不得仅因 `isNoData` 清空。
 - `alertType` 来自 `MonitorAlert.alert_type`（归一为 `alert` | `no_data`），不得并入 severity。
@@ -1000,9 +1001,10 @@ Rules：
 - focus：selected card 移动/旋转/突出，其他 cards 弱化；Focused 卡片上出现 **详情** 与 **部署架构**（navy frost CTA），以及返回应用墙。
 - 不得改现有 Wall card 样式、frost-glass 材质或布局尺寸。
 
-### Continuous layout
+### Paged layout
 
-当前 filter 结果始终是一面连续 Wall，不出现页码。Application count 变化时重新布局整面 Wall。
+当前 filter 结果超过 24 张时分页：每页最多 24 张，左右流线型羽翼翻页（悬浮微胶囊 + 矢量 Chevron，hover 方向微移与冰蓝微光），右下角 HUD 状态晶片微标 `n / m 页`（带呼吸光点，en: `n / m pages`）。单页不显示分页 chrome。Focus / Detail / Architecture 时隐藏翻页；编辑态只渲染第 1 页，保留只读页码。可翻页时密度、相机和网格锁在满页 24 档，末页按该网格左上铺卡、其余空槽；总数回到 ≤24 后恢复按张数分档。Application count 变化时重新布局**当前页**。
+翻页动效：微景深横向推流（Directional Lateral Flow with Gentle Depth Shift）。下一页时卡片从右后方（+X / -Z / 微侧倾）顺滑滑入归位，上一页时从左后方（-X / -Z / 微侧倾）顺滑滑入归位，并带有列向顺次微波浪；普通条件筛选（如状态下拉）仍保持原地轻微缩放淡入。
 
 布局目标：
 

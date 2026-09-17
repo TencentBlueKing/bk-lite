@@ -873,6 +873,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /airspan|air4g|air5g|airharmony|airvelocity/i, label: 'Airspan', icon: 'mm-airspan_airspan' },
   { match: /acksys|airlink|waveos/i, label: 'ACKSYS', icon: 'mm-acksys_acksys' },
   { match: /\bxirrus\b/i, label: 'Xirrus', icon: 'mm-xirrus_xirrus' },
+  { match: /ruckus|zonedirector|\bsmartzone\b/i, label: 'Ruckus', icon: 'mm-ruckus_ruckus' },
   { match: /prosoft|radiolinx|\brlx2?\b|icx35/i, label: 'ProSoft Technology', icon: 'mm-prosoft_prosoft' },
   { match: /socomec|net\s*vision/i, label: 'Socomec', icon: 'mm-socomec_socomec' },
   { match: /liebert|vertiv/i, label: 'Liebert', icon: 'mm-liebert_liebert' },

@@ -1,0 +1,24 @@
+name: ssl_cer
+version: 1.0.0
+category: certificate
+metadata:
+  display_name: SSL 证书
+  description: 对已录入 SSL 证书实例的域名做 TLS 握手，采集颁发者与有效期
+  author: WeOps
+  tags:
+  - certificate
+  - ssl
+  cloud_protocol: false
+  model_id: ssl_cer
+executors:
+  protocol:
+    type: protocol
+    execution_mode: async
+    capacity_group: default
+    collector:
+      module: plugins.inputs.ssl_cer.ssl_cer_info
+      class: SslCerInfo
+    target_policy:
+      mode: tls
+      port: 443
+default_executor: protocol

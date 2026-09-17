@@ -27,6 +27,10 @@ collect_type:
     file:
       description: Collects log data from files for centralized logging and analysis.
       name: File
+    kafka_subscribe:
+      name: Kafka Log Subscription
+      description: Subscribes to log events from external Kafka topics and forwards
+        them into the log system. This is not Kafka broker log file collection.
   Packetbeat:
     http:
       description: Monitors HTTP traffic to analyze web application performance and

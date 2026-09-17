@@ -8,6 +8,7 @@ import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
 import { buildInternalWorksheetHyperlinkFormula } from '@/app/patch-manager/utils/worksheet-hyperlink';
+import { buildPendingRiskListParams, collectPendingRiskExportRows } from '@/app/patch-manager/utils/pending-risk-export';
 import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import RemediationTag from '@/app/patch-manager/components/remediation-tag';
 import ExcelJS from 'exceljs';
@@ -149,18 +150,11 @@ export default function RiskPendingPage() {
     const ticket = coordinator.begin({ visible: !silent });
     if (!ticket) return;
     try {
-      const params: any = { view: viewParam, page, page_size: pageSize };
-      if (view === 'host') {
-        if (hostIdFilter) params.host_id = hostIdFilter;
-        if (filters.host_name) params.host_name = filters.host_name;
-        if (filters.os_type) params.os_type = filters.os_type === 'win' ? 'windows' : 'linux';
-      } else if (view === 'patch') {
-        if (filters.patch_name) params.patch_name = filters.patch_name;
-        if (filters.severity) params.severity = filters.severity;
-      } else {
-        if (filters.baseline_name) params.baseline_name = filters.baseline_name;
-      }
-      if (filters.remediation) params.remediation = filters.remediation;
+      const params = buildPendingRiskListParams(viewParam, filters, {
+        page,
+        pageSize,
+        hostId: hostIdFilter,
+      });
       const res = await api.getRiskList(params, { signal: ticket.signal });
       if (!coordinator.shouldApply(ticket)) return;
       setRiskData(res.results || []);
@@ -647,16 +641,28 @@ export default function RiskPendingPage() {
   };
 
   const handleExportAll = async () => {
-    if (riskData.length === 0) {
-      message.warning(t('patchManager.risk.noExportData'));
-      return;
-    }
     try {
-      const workbook = buildWorkbook(riskData, view);
+      const { rows, truncated } = await collectPendingRiskExportRows(
+        (params) => api.getRiskList(params),
+        view,
+        filters,
+        { hostId: hostIdFilter },
+      );
+      if (rows.length === 0) {
+        message.warning(t('patchManager.risk.noExportData'));
+        return;
+      }
+      const workbook = buildWorkbook(rows, view);
       const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
       await downloadWorkbook(workbook, `${t('patchManager.risk.exportFilePrefix')}-${t(`patchManager.risk.view.${view}`)}-${timestamp}.xlsx`);
+      if (truncated) {
+        message.warning(t('patchManager.risk.exportTruncated', undefined, { count: rows.length }));
+        return;
+      }
       message.success(t('patchManager.risk.exportSucceeded'));
-    } catch {
+    } catch (error) {
+      console.error('Failed to export pending risks:', error);
+      message.error(t('patchManager.risk.exportFailed'));
     }
   };
 

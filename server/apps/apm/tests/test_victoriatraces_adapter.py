@@ -1,5 +1,6 @@
+import base64
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from logging import LogRecord
 from unittest.mock import Mock
 
@@ -8,7 +9,13 @@ import requests
 from django.utils import timezone
 
 from apps.apm.adapters import TelemetryQueryTooLarge, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
-from apps.apm.adapters.victoriatraces import MAX_RESPONSE_BYTES, RESPONSE_TOO_LARGE, _pack_trace_ids
+from apps.apm.adapters.victoriatraces import (
+    MAX_RESPONSE_BYTES,
+    RESPONSE_TOO_LARGE,
+    _decode_cursor,
+    _encode_cursor,
+    _pack_trace_ids,
+)
 from apps.apm.services.contracts import (
     InstanceActivityQuery,
     MetricDataState,
@@ -62,6 +69,20 @@ def _oversized_response():
     response.raise_for_status.return_value = None
     response.iter_content.return_value = []
     return response
+
+
+def _overflow_cursor() -> str:
+    return base64.urlsafe_b64encode(b"9" * 80).decode().rstrip("=")
+
+
+def test_decode_cursor_maps_overflowing_timestamp_to_value_error():
+    with pytest.raises(ValueError, match="Trace 游标无效"):
+        _decode_cursor(_overflow_cursor())
+
+    now = timezone.now()
+    decoded_at, item_id = _decode_cursor(_encode_cursor(now, "trace-a"))
+    assert item_id == "trace-a"
+    assert now - decoded_at < timedelta(milliseconds=2)
 
 
 def test_search_builds_controlled_resource_filters_and_maps_logsql_spans():
@@ -216,6 +237,167 @@ def test_search_pages_newest_first_across_sample_slices_without_skipping_traces(
     assert paged == expected
     # 较新切片已凑够一页（8 + 8 > 9）时不再向更旧切片发 trace_id 查询：4 个切片只查了 2 个。
     assert first_page_id_queries == 2
+
+
+def test_search_pages_same_timestamp_traces_without_skipping():
+    """limit+1 条相同 matched_at、不同 id 的 Trace，翻页必须拿到剩余同时间记录且无重复。"""
+
+    import re
+
+    ended_at = timezone.now().replace(microsecond=0)
+    started_at = ended_at - timedelta(minutes=15)
+    matched_at = ended_at - timedelta(seconds=5)
+    traces = {f"t{index:03d}".ljust(32, "0"): matched_at for index in range(3)}
+
+    def fake_query_rows(logs_query, slice_started_at, slice_ended_at, limit=None):
+        if "stats by (trace_id)" in logs_query:
+            vt_limit = int(re.search(r"\| limit (\d+)$", logs_query).group(1))
+            rows = [
+                {"trace_id": trace_id, "matched_at": str(int(matched.timestamp() * 1_000_000_000)), "spans": "1"}
+                for trace_id, matched in traces.items()
+                if slice_started_at <= matched < slice_ended_at
+            ]
+            rows.sort(key=lambda row: row["trace_id"], reverse=True)
+            return rows[:vt_limit]
+        requested = re.findall(r'"(t\d{3}0+)"', logs_query)
+        return [
+            _span_row(trace_id, f"s{trace_id[:15]}", traces[trace_id], service="checkout")
+            for trace_id in requested
+            if slice_started_at <= traces[trace_id] < slice_ended_at
+        ]
+
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    store._query_rows = fake_query_rows
+    query = TraceSearchQuery(
+        started_at=started_at,
+        ended_at=ended_at,
+        service_name="checkout",
+        environment=None,
+        limit=2,
+    )
+
+    first = store.search(query)
+    second = store.search(TraceSearchQuery(**{**query.__dict__, "cursor": first.next_cursor}))
+    paged = [item.trace_id for item in first.items] + [item.trace_id for item in second.items]
+    expected = sorted(traces, reverse=True)
+
+    assert first.next_cursor is not None
+    assert [item.trace_id for item in first.items] == expected[:2]
+    assert paged == expected
+    assert len(set(paged)) == 3
+    assert second.next_cursor is None
+    cursor_at, cursor_id = _decode_cursor(first.next_cursor)
+    assert cursor_id == expected[1]
+    assert int(cursor_at.timestamp() * 1_000_000) == int(matched_at.timestamp() * 1_000_000)
+
+
+def test_search_spans_pages_same_timestamp_without_skipping():
+    """limit+1 条相同 started_at、不同 span_id 的 Span，翻页必须拿到剩余同时间记录且无重复。"""
+
+    now = timezone.now().replace(microsecond=0)
+    started_at = now - timedelta(hours=1)
+    ended_at = now + timedelta(minutes=1)
+    span_time = now - timedelta(seconds=5)
+    span_ids = [f"{index:016x}" for index in range(3)]
+
+    def fake_query_rows(_logs_query, query_started_at, query_ended_at, limit=None):
+        rows = [
+            _span_row("a" * 32, span_id, span_time, service="checkout")
+            for span_id in span_ids
+            if query_started_at <= span_time < query_ended_at
+        ]
+        rows.sort(key=lambda row: row["span_id"], reverse=True)
+        vt_limit = len(rows) if limit is None else limit
+        return rows[:vt_limit]
+
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    store._query_rows = fake_query_rows
+    query = SpanSearchQuery(started_at=started_at, ended_at=ended_at, limit=2)
+
+    first = store.search_spans(query)
+    second = store.search_spans(SpanSearchQuery(**{**query.__dict__, "cursor": first.next_cursor}))
+    paged = [item.span_id for item in first.items] + [item.span_id for item in second.items]
+    expected = sorted(span_ids, reverse=True)
+
+    assert first.next_cursor is not None
+    assert [item.span_id for item in first.items] == expected[:2]
+    assert paged == expected
+    assert len(set(paged)) == 3
+    assert second.next_cursor is None
+    cursor_at, cursor_id = _decode_cursor(first.next_cursor)
+    assert cursor_id == expected[1]
+    assert int(cursor_at.timestamp() * 1_000_000) == int(span_time.timestamp() * 1_000_000)
+
+
+def test_search_legacy_numeric_cursor_keeps_minus_one_microsecond_window():
+    import re
+
+    ended_at = timezone.now().replace(microsecond=0)
+    started_at = ended_at - timedelta(minutes=15)
+    newer = ended_at - timedelta(seconds=5)
+    older = ended_at - timedelta(seconds=10)
+    traces = {"n" * 32: newer, "o" * 32: older}
+
+    def fake_query_rows(logs_query, slice_started_at, slice_ended_at, limit=None):
+        if "stats by (trace_id)" in logs_query:
+            rows = [
+                {"trace_id": trace_id, "matched_at": str(int(matched.timestamp() * 1_000_000_000)), "spans": "1"}
+                for trace_id, matched in traces.items()
+                if slice_started_at <= matched < slice_ended_at
+            ]
+            rows.sort(key=lambda row: -int(row["matched_at"]))
+            return rows
+        requested = re.findall(r'"([no]{32})"', logs_query)
+        return [
+            _span_row(trace_id, f"s{trace_id[:15]}", traces[trace_id], service="checkout")
+            for trace_id in requested
+            if slice_started_at <= traces[trace_id] < slice_ended_at
+        ]
+
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    store._query_rows = fake_query_rows
+    microseconds = int(newer.timestamp() * 1_000_000) - 1
+    legacy = base64.urlsafe_b64encode(str(microseconds).encode()).decode().rstrip("=")
+
+    page = store.search(
+        TraceSearchQuery(
+            started_at=started_at,
+            ended_at=ended_at,
+            service_name="checkout",
+            environment=None,
+            limit=10,
+            cursor=legacy,
+        )
+    )
+
+    assert [item.trace_id for item in page.items] == ["o" * 32]
+
+
+def test_trace_cursor_roundtrip_and_invalid_payload():
+    started_at = timezone.now().replace(microsecond=123)
+    encoded = _encode_cursor(started_at, "trace-a")
+    cursor_at, item_id = _decode_cursor(encoded)
+    assert item_id == "trace-a"
+    assert int(cursor_at.timestamp() * 1_000_000) == int(started_at.timestamp() * 1_000_000)
+
+    microseconds = int(started_at.timestamp() * 1_000_000) - 1
+    legacy = base64.urlsafe_b64encode(str(microseconds).encode()).decode().rstrip("=")
+    decoded_at, legacy_id = _decode_cursor(legacy)
+    assert legacy_id is None
+    assert decoded_at == datetime.fromtimestamp(microseconds / 1_000_000, tz=UTC)
+
+    with pytest.raises(ValueError, match="游标无效"):
+        _decode_cursor("@@@")
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=Mock())
+    with pytest.raises(ValueError, match="游标无效"):
+        store.search(
+            TraceSearchQuery(
+                started_at=started_at - timedelta(minutes=15),
+                ended_at=started_at,
+                limit=10,
+                cursor="@@@",
+            )
+        )
 
 
 def test_topology_sampling_keeps_round_robin_across_slices():

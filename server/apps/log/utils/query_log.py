@@ -107,7 +107,6 @@ class VictoriaMetricsAPI:
             "query": query or "*",
             "start": start,
             "end": end,
-            "ignore_pipes": 1,
         }
         response = requests.get(
             self._build_url(self.host, "/select/logsql/field_names"),

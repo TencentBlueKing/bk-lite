@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_socomec",
   "plugin": "NetworkService Socomec iPDU UPS SNMP",
-  "plugin_desc": "Socomec iPDU, UPS and Net Vision SNMP baseline child template for network-service devices under Socomec PEN 4555. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm iPDU identity, inlet, outlet, EMD temperature or humidity, threshold alarm, UPS input, output, bypass, battery, load and device connection tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "Socomec Net Vision UPS SNMP child template for devices under Socomec PEN 4555. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. This child collects the SOCOMECUPS-MIB Net Vision classic tree 4555.1.1.1 only and does not mix NV7 4555.1.1.7 in the same collect path. Proven private increments are upsEstimatedChargeRemaining as ups_battery_charge_percent, upsBatteryStatus as ups_battery_status, upsOutputPercentLoad as ups_output_load_percent per line index, and optional upsBatteryVoltage as ups_battery_voltage scaled by /10 from tenths of a volt. CPU and memory scalars are not invented. iPDU proprietary identity, inlet, outlet, EMD and alarm tables are not collected in this pass. Supported brands/models - Socomec Net Vision UPS devices that expose SOCOMECUPS-MIB classic 4555.1.1.1 and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_socomec'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,88 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "ups_battery_charge_percent",
+    "ups_battery_status",
+    "ups_output_load_percent"
   ],
   "metrics": [
+    {
+      "metric_group": "Power",
+      "name": "ups_battery_charge_percent",
+      "query": "ups_battery_charge_percent{instance_type='network_service', __$labels__}",
+      "display_name": "UPS Battery Charge Remaining",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP instance index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Estimated battery charge remaining in percent from SOCOMECUPS-MIB upsEstimatedChargeRemaining (1.3.6.1.4.1.4555.1.1.1.1.2.4) on the Net Vision classic tree. The SNMP value is already a percentage."
+    },
+    {
+      "metric_group": "Status",
+      "name": "ups_battery_status",
+      "query": "ups_battery_status{instance_type='network_service', __$labels__}",
+      "display_name": "UPS Battery Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"unknown\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"batteryNormal\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"batteryLow\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"batteryDepleted\",\"id\":4,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP instance index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Battery status from SOCOMECUPS-MIB upsBatteryStatus (1.3.6.1.4.1.4555.1.1.1.1.2.1) on the Net Vision classic tree. Values follow the MIB enumeration unknown(1), batteryNormal(2), batteryLow(3) and batteryDepleted(4)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "ups_output_load_percent",
+      "query": "ups_output_load_percent{instance_type='network_service', __$labels__}",
+      "display_name": "UPS Output Load",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Output line index"
+        },
+        {
+          "name": "line",
+          "description": "upsOutputLineIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-line output percent load from SOCOMECUPS-MIB upsOutputPercentLoad (1.3.6.1.4.1.4555.1.1.1.1.4.4.1.4) with upsOutputLineIndex (1.3.6.1.4.1.4555.1.1.1.1.4.4.1.1) on the Net Vision classic tree. The SNMP value is already a percentage. Empty output-line tables yield no rows."
+    },
+    {
+      "metric_group": "Power",
+      "name": "ups_battery_voltage",
+      "query": "ups_battery_voltage{instance_type='network_service', __$labels__} / 10",
+      "display_name": "UPS Battery Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP instance index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Battery voltage in volts from SOCOMECUPS-MIB upsBatteryVoltage (1.3.6.1.4.1.4555.1.1.1.1.2.5) on the Net Vision classic tree. The SNMP value is tenths of a volt, so the query divides by 10."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +112,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +130,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Base",

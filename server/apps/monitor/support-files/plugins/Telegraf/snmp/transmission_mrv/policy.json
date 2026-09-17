@@ -1,5 +1,31 @@
 {
   "object": "Transmission",
   "plugin": "Transmission MRV SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "MRV传输设备机箱温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 MRV OptiDriver 光传输设备的机箱温度（nbsCmmcChassisTemperature，摄氏度）。不受支持哨兵 -2147483648 已在指标查询中跳过；有读数且持续高于阈值时触发告警，提示散热异常、环境温度过高或硬件过载。",
+      "metric_name": "temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

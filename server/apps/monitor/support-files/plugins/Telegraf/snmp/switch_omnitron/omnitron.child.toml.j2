@@ -32,28 +32,38 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+# @bk_include_ifmib_table
+    # ---- OMNITRON-EXT-MIB ostModuleStatusTable (PEN 7342) ----
+    # Indexed by ostModuleIndex (CCSS = chassis 1-99 + slot 1-99). Walk every
+    # module row; do not collapse the table into a fabricated chassis scalar.
+    # ostSnmpCpuUtilization is Unsigned32 milli-percent (1 = 0.001 percent,
+    # range 0-100000). conversion float(3) divides by 10^3 so the stored field
+    # is cpu usage percent (0-100).
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
-        name = "interface"
+        name = "device_cpu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+        oid = "1.3.6.1.4.1.7342.7.1.3.2.1.5"
+        name = "usage"
+        conversion = "float(3)"
+    # ostSnmpRamUsed is kbytes where 1 indicates 1000 bytes (not KiB/1024).
+    # Stored as device_memory_used; the metric query multiplies by 1000 to bytes.
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.7342.7.1.3.2.1.6"
+        name = "used"
+        conversion = "int"
+    # ostSnmpFlashUsed is optional on some modules; same kbytes unit
+    # (1 = 1000 bytes). Metric query multiplies by 1000 to bytes.
+    [[inputs.snmp.table]]
+        name = "device_flash"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- Omnitron iConverter private subtree is intentionally NOT collected ----
-    # OMNITRON-MIB (PEN 7342) exposes icAgent(1)/prodAgent(2)/omnitronProducts(5) +
-    # managementModule(1) + omnitronMIB(3) per-management-module / per-port rows, and
-    # OMNITRON-POE-MIB exposes per-port PoE power budget rows. telegraf inputs.snmp
-    # cannot aggregate per-row / per-port leaves into a single bk-lite device_*
-    # metric, so the private subtree is kept as N/A to honor the
-    # no-fabricated-health-metrics rule. Generic Switch SNMP floor (uptime +
-    # ifXTable 64-bit HC) is sufficient for chassis-level reachability and
-    # interface traffic.
+        oid = "1.3.6.1.4.1.7342.7.1.3.2.1.7"
+        name = "used"
+        conversion = "int"

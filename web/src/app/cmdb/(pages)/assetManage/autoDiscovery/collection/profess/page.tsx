@@ -16,6 +16,7 @@ import IPMITask from './components/ipmiTask';
 import RedfishTask from './components/redfishTask';
 import ConfigFileTask from './components/configFileTask';
 import NetworkConfigFileTask from './components/networkConfigFileTask';
+import SslCerTask from './components/sslCerTask';
 import IpTask from './components/ipTask';
 import PCTask from './components/pcTask';
 import PluginCard from './components/pluginCard';
@@ -693,6 +694,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (currentPlugin.model_id === 'network_config_file') {
       return <NetworkConfigFileTask {...taskProps} />;
+    }
+
+    if (currentPlugin.model_id === 'ssl_cer') {
+      return <SslCerTask {...taskProps} />;
     }
 
     const taskTypeKey = currentPlugin.task_type || currentPlugin.type || actualCategory.id;

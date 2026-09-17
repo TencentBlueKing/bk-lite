@@ -1,6 +1,6 @@
 export const useMerakiDeviceConfig = () => {
   return {
-    instance_type: 'cisco_meraki_device',
+    instance_type: 'cisco_meraki',
     dashboardDisplay: [
       {
         indexId: 'meraki_device_availability_status',
@@ -35,7 +35,7 @@ export const useMerakiDeviceConfig = () => {
     ],
     groupIds: {},
     collectTypes: {
-      'Cisco Meraki Device': 'http'
+      'Cisco Meraki': 'http'
     }
   };
 };

@@ -1,5 +1,31 @@
 {
   "object": "Transmission",
   "plugin": "Transmission Ciena SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Ciena传输设备CPU使用率过高",
+      "alert_name": "传输设备${resource_name} CPU 使用率过高",
+      "description": "监控 Ciena CES/SAOS 机箱每槽位 CPU 使用率（cienaCesChassisCPUHealthCurrMeasurement，cpu-Usage，直接百分比），当持续高于阈值时触发告警，提示可能存在控制平面负载、转发压力或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

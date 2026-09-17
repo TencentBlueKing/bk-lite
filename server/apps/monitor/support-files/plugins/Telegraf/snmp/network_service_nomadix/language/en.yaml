@@ -1,13 +1,23 @@
 NetworkService Nomadix SNMP:
   name: Nomadix (Telegraf)
-  desc: SNMP monitoring template for Nomadix network service device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Nomadix network service device. It reports current
+    online subscriber count, DAT session count, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime (IANA PEN 3309).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
   Network Device: Network Equipment
 monitor_object_metric:
   NetworkService:
+    active_subscribers:
+      name: Active Subscribers
+      desc: Count of current online subscribers from the current-subscriber table
+        (aaaSubCurrTable). Each SNMP table row is one online subscriber. This is not
+        the authorization configuration table.
+    active_dat_sessions:
+      name: Active DAT Sessions
+      desc: Count of current DAT sessions from the DAT session table (datSessionTable).
+        Each SNMP table row is one active session.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart,

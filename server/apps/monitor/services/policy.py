@@ -429,6 +429,12 @@ class PolicyService:
                 metric_name = str(query.get("metric_name") or "").strip()
                 if metric_name:
                     portable["metric_name"] = metric_name
+        portable.setdefault("compare_mode", "absolute")
+        portable.setdefault("compare_value_kind", "")
+        portable.setdefault("count_predicate", {})
+        portable.setdefault("forecast_lookback", {})
+        portable.setdefault("recovery_threshold", {})
+        portable.setdefault("forecast_target", None)
         return portable
 
     @staticmethod

@@ -40,6 +40,7 @@ import MetricDefinitionForm from './metricDefinitionForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import MetricPreview from './metricPreview';
+import DryRunResultModal, { DryRunResult } from './dryRunResultModal';
 import VariablesTable from './variablesTable';
 import { isStringArray } from '@/app/monitor/utils/common';
 import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
@@ -59,14 +60,28 @@ import {
   pruneNoticeUsers,
   shouldRequireNoticeUsers,
   collectMetricQueryTexts,
+  queriesContainRateFunction,
+  resolveCompareFieldsForSave,
+  resolveNoDataPeriodsForSave,
+  resolveRecoveryThresholdForSave,
   resolveEffectiveCalculationUnit,
   resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
+  resolveThresholdUnitBase,
   resolveUnitOnMetricSelect,
   restoreCalculationUnitState,
   scaleThresholdValuesForUnitChange,
-  scheduleValueToMinutes
+  scheduleValueToMinutes,
+  COMPARE_MODE_ABSOLUTE,
+  COUNT_IF_ALGORITHM,
+  DEFAULT_FORECAST_LOOKBACK,
+  coerceRecoveryForThresholds,
+  coerceThresholdsForCompareMode,
+  defaultCompareValueKind,
+  getCompareModeSelectOptions,
+  getCompareValueKinds,
+  type SceneChipApplyResult
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -95,7 +110,7 @@ const StrategyOperation = () => {
     getMonitorObject,
     getAllUsers
   } = useMonitorApi();
-  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate } = useEventApi();
+  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate, dryRunMonitorPolicy } = useEventApi();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
   const groupedUnitOptions = useMemo(
@@ -131,6 +146,10 @@ const StrategyOperation = () => {
   const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [dryRunVisible, setDryRunVisible] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
+  const [previewInstanceId, setPreviewInstanceId] = useState('');
   const [templateSaving, setTemplateSaving] = useState<boolean>(false);
   const [templateSavedOnce, setTemplateSavedOnce] = useState(false);
   const [templateConfirmVisible, setTemplateConfirmVisible] = useState(false);
@@ -200,6 +219,17 @@ const StrategyOperation = () => {
   const [groupAlgorithm, setGroupAlgorithm] = useState<string | null>('avg');
   const [period, setPeriod] = useState<number | null>(null);
   const [algorithm, setAlgorithm] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState<string>(COMPARE_MODE_ABSOLUTE);
+  const [compareValueKind, setCompareValueKind] = useState<string>('');
+  const [countPredicate, setCountPredicate] = useState<{
+    method: string;
+    value: number | null;
+  }>({ method: '>', value: null });
+  const [forecastTarget, setForecastTarget] = useState<number | null>(null);
+  const [forecastLookback, setForecastLookback] = useState<{
+    type: string;
+    value: number;
+  }>(DEFAULT_FORECAST_LOOKBACK);
   const [formData, setFormData] = useState<StrategyFields>({
     threshold: [],
     source: { type: '', values: [] }
@@ -221,6 +251,10 @@ const StrategyOperation = () => {
       value: null
     }
   ]);
+  const [recoveryThreshold, setRecoveryThreshold] = useState<{
+    method?: string;
+    value?: number | null;
+  }>({});
   const [calculationUnit, setCalculationUnit] = useState<string | null>(null);
   const [thresholdUnit, setThresholdUnit] = useState<string | null>(null);
   const [pluginList, setPluginList] = useState<SegmentedItem[]>([]);
@@ -234,30 +268,45 @@ const StrategyOperation = () => {
     unit: calculationUnit,
     unitList
   });
+  const selectedMetricUnit =
+    metrics.find((item) => item.name === metric)?.unit || null;
+  const thresholdBaseUnit = resolveThresholdUnitBase({
+    compareValueKind,
+    calculationUnit: effectiveCalculationUnit,
+    metricUnit: selectedMetricUnit,
+    algorithm
+  });
   const effectiveThresholdUnit = resolveThresholdUnit({
     thresholdUnit,
-    calculationUnit: effectiveCalculationUnit,
+    calculationUnit: thresholdBaseUnit,
     unitList
   });
-  const functionDelayMinutes = useMemo(
+  const functionDelayQueries = useMemo(
     () =>
-      resolveFunctionDelayMinutes(
-        collectMetricQueryTexts({
-          rows: metricRows,
-          metrics,
-          formulaExpression:
-            metricExpressionMode === 'formula' ? formulaExpression : undefined
-        }),
-        scheduleValueToMinutes(period, periodUnit)
-      ),
+      collectMetricQueryTexts({
+        rows: metricRows,
+        metrics,
+        formulaExpression:
+          metricExpressionMode === 'formula' ? formulaExpression : undefined
+      }),
     [
       formulaExpression,
       metricExpressionMode,
       metricRows,
-      metrics,
-      period,
-      periodUnit
+      metrics
     ]
+  );
+  const functionDelayMinutes = useMemo(
+    () =>
+      resolveFunctionDelayMinutes(
+        functionDelayQueries,
+        scheduleValueToMinutes(period, periodUnit)
+      ),
+    [functionDelayQueries, period, periodUnit]
+  );
+  const disableRateAlgorithm = useMemo(
+    () => queriesContainRateFunction(functionDelayQueries),
+    [functionDelayQueries]
   );
 
   useEffect(() => {
@@ -265,11 +314,11 @@ const StrategyOperation = () => {
     setThresholdUnit((current) =>
       getThresholdUnitOnCalculationUnitChange({
         thresholdUnit: current,
-        calculationUnit: effectiveCalculationUnit,
+        calculationUnit: thresholdBaseUnit,
         unitList
       })
     );
-  }, [effectiveCalculationUnit, unitList]);
+  }, [thresholdBaseUnit, unitList]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -444,7 +493,9 @@ const StrategyOperation = () => {
         recovery_condition: 5,
         collect_type: pluginList[0]?.value,
         group_algorithm: 'avg',
-        algorithm: 'avg_over_time'
+        algorithm: 'avg_over_time',
+        compare_mode: COMPARE_MODE_ABSOLUTE,
+        compare_value_kind: ''
       };
       let _metricId = searchParams.get('metricId') || null;
       if (type === 'builtIn') {
@@ -460,6 +511,8 @@ const StrategyOperation = () => {
       // 设置汇聚方式默认值
       setGroupAlgorithm(initForm.group_algorithm || 'avg');
       setAlgorithm(initForm.algorithm || 'avg_over_time');
+      setCompareMode(COMPARE_MODE_ABSOLUTE);
+      setCompareValueKind('');
       // 设置无数据告警默认值为5分钟
       setNoDataAlert(5);
       form.setFieldsValue({
@@ -653,6 +706,34 @@ const StrategyOperation = () => {
     setPeriodUnit(period?.type || 'min');
     setGroupAlgorithm(data.group_algorithm || 'avg');
     setAlgorithm(data.algorithm || null);
+    setCompareMode((data.compare_mode as string) || COMPARE_MODE_ABSOLUTE);
+    setCompareValueKind((data.compare_value_kind as string) || '');
+    const savedRecovery = data.recovery_threshold as
+      | { method?: string; value?: number }
+      | undefined;
+    setRecoveryThreshold(
+      savedRecovery?.method && savedRecovery?.value != null
+        ? { method: savedRecovery.method, value: savedRecovery.value }
+        : {}
+    );
+    const savedPredicate = data.count_predicate as
+      | { method?: string; value?: number }
+      | undefined;
+    setCountPredicate({
+      method: savedPredicate?.method || '>',
+      value: savedPredicate?.value ?? null
+    });
+    setForecastTarget(
+      typeof data.forecast_target === 'number' ? data.forecast_target : null
+    );
+    const savedLookback = data.forecast_lookback as
+      | { type?: string; value?: number }
+      | undefined;
+    setForecastLookback(
+      savedLookback?.type && savedLookback?.value
+        ? { type: savedLookback.type, value: savedLookback.value }
+        : DEFAULT_FORECAST_LOOKBACK
+    );
     if (source?.type) {
       setSource(source);
     } else {
@@ -664,7 +745,7 @@ const StrategyOperation = () => {
     setNoDataAlert(no_data_period?.value || null);
     setNodataUnit(no_data_period?.type || 'min');
     setNoDataRecovery(no_data_recovery_period?.value || null);
-    setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
+    setNoDataRecoveryUnit(no_data_recovery_period?.type || 'min');
     setUnit(schedule?.type || 'min');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
     // 设置无数据告警级别和名称
@@ -921,8 +1002,55 @@ const StrategyOperation = () => {
     setPeriod(val);
   };
 
+  useEffect(() => {
+    const current = getCompareModeSelectOptions({
+      periodType: periodUnit,
+      periodValue: period,
+      algorithm
+    }).find((item) => item.value === compareMode);
+    if (!current || current.disabled) {
+      setCompareMode(COMPARE_MODE_ABSOLUTE);
+      setCompareValueKind('');
+    }
+  }, [compareMode, period, periodUnit, algorithm]);
+
+  const handleCompareModeChange = (val: string) => {
+    setCompareMode(val);
+    const nextThresholds = coerceThresholdsForCompareMode(val, threshold);
+    setThreshold(nextThresholds);
+    setRecoveryThreshold(
+      coerceRecoveryForThresholds(recoveryThreshold, nextThresholds)
+    );
+    if (val === COMPARE_MODE_ABSOLUTE) {
+      setCompareValueKind('');
+      return;
+    }
+    setCompareValueKind((current) => {
+      const allowed = getCompareValueKinds(val);
+      if (current && allowed.includes(current)) {
+        return current;
+      }
+      return defaultCompareValueKind(val);
+    });
+  };
+
   const handleAlgorithmChange = (val: string) => {
     setAlgorithm(val);
+    form.setFieldsValue({ algorithm: val });
+    if (val === COUNT_IF_ALGORITHM) {
+      setCompareMode(COMPARE_MODE_ABSOLUTE);
+      setCompareValueKind('');
+    }
+  };
+
+  const handleSceneChipApply = (payload: SceneChipApplyResult) => {
+    setAlgorithm(payload.algorithm);
+    form.setFieldsValue({ algorithm: payload.algorithm });
+    setCompareMode(payload.compareMode);
+    setCompareValueKind(payload.compareValueKind);
+    setThreshold(payload.thresholds as ThresholdField[]);
+    setRecoveryThreshold(payload.recoveryThreshold);
+    setCountPredicate(payload.countPredicate);
   };
 
   const handleNodataUnitChange = (val: string) => {
@@ -945,6 +1073,10 @@ const StrategyOperation = () => {
 
   const handleNoDataAlertLevelChange = (val: string) => {
     setNoDataAlertLevel(val);
+    if (val !== 'none' && noDataRecovery == null && noDataAlert != null) {
+      setNoDataRecovery(noDataAlert);
+      setNoDataRecoveryUnit(nodataUnit);
+    }
   };
 
   const handleNoDataAlertNameChange = (val: string) => {
@@ -1047,6 +1179,40 @@ const StrategyOperation = () => {
       params.metric_unit = policyUnits.metricUnit;
       params.calculation_unit = policyUnits.calculationUnit;
       params.threshold_unit = policyUnits.thresholdUnit;
+      const compareFields = resolveCompareFieldsForSave({
+        isTrap: isTrapPlugin,
+        compareMode,
+        compareValueKind,
+        algorithm: params.algorithm,
+        countPredicate,
+        forecastTarget,
+        forecastLookback
+      });
+      params.compare_mode = compareFields.compare_mode;
+      params.compare_value_kind = compareFields.compare_value_kind;
+      params.count_predicate = compareFields.count_predicate;
+      params.forecast_target = compareFields.forecast_target;
+      params.forecast_lookback = compareFields.forecast_lookback;
+      params.recovery_threshold = resolveRecoveryThresholdForSave({
+        isTrap: isTrapPlugin,
+        recoveryThreshold
+      });
+      if (!isTrapPlugin && compareFields.compare_value_kind === 'percent') {
+        params.threshold_unit = 'percent';
+      }
+      if (!isTrapPlugin && compareFields.compare_value_kind === 'ratio') {
+        params.threshold_unit = '';
+      }
+      if (!isTrapPlugin && compareFields.compare_value_kind === 'hours') {
+        params.threshold_unit = 'hour';
+      }
+      if (
+        !isTrapPlugin &&
+        (params.algorithm === 'changes' ||
+          params.algorithm === COUNT_IF_ALGORITHM)
+      ) {
+        params.threshold_unit = 'count';
+      }
       params.monitor_object = monitorObjId;
       params.schedule = {
         type: unit,
@@ -1063,17 +1229,27 @@ const StrategyOperation = () => {
         : enableAlerts.filter((item) => item !== 'no_data');
 
       if (isNoDataEnabled) {
-        params.no_data_recovery_period = params.no_data_period = {
-          type: nodataUnit,
-          value: noDataAlert
-        };
+        const noDataPeriods = resolveNoDataPeriodsForSave({
+          enabled: true,
+          detectionValue: noDataAlert,
+          detectionUnit: nodataUnit,
+          recoveryValue: noDataRecovery,
+          recoveryUnit: noDataRecoveryUnit
+        });
+        params.no_data_period = noDataPeriods.no_data_period;
+        params.no_data_recovery_period = noDataPeriods.no_data_recovery_period;
         params.no_data_level = noDataAlertLevel;
         params.no_data_alert_name = noDataAlertName;
       } else {
-        const periodValue = noDataAlert
-          ? { type: nodataUnit, value: noDataAlert }
-          : {};
-        params.no_data_period = params.no_data_recovery_period = periodValue;
+        const noDataPeriods = resolveNoDataPeriodsForSave({
+          enabled: false,
+          detectionValue: noDataAlert,
+          detectionUnit: nodataUnit,
+          recoveryValue: noDataRecovery,
+          recoveryUnit: noDataRecoveryUnit
+        });
+        params.no_data_period = noDataPeriods.no_data_period;
+        params.no_data_recovery_period = noDataPeriods.no_data_recovery_period;
       }
       if (params.notice_type_ids?.length) {
         const firstChannel = channelList.find((item) => item.id === params.notice_type_ids![0]);
@@ -1095,6 +1271,33 @@ const StrategyOperation = () => {
       })
       .catch(() => {
         // 校验失败（含通知开启且通知人为空）时阻止创建/保存
+      });
+  };
+
+  const runDryRun = () => {
+    form
+      ?.validateFields()
+      .then(async (values) => {
+        const params = buildStrategyParams(values);
+        if (!params) return;
+        const payload: Record<string, unknown> = { ...params };
+        if (detailId) {
+          payload.id = Number(detailId);
+        }
+        if (previewInstanceId) {
+          payload.preview = { instance_id: previewInstanceId };
+        }
+        setDryRunLoading(true);
+        try {
+          const data = await dryRunMonitorPolicy(payload);
+          setDryRunResult((data as DryRunResult) || { items: [] });
+          setDryRunVisible(true);
+        } finally {
+          setDryRunLoading(false);
+        }
+      })
+      .catch(() => {
+        // 与保存相同：表单未通过时不发试跑
       });
   };
 
@@ -1244,8 +1447,8 @@ const StrategyOperation = () => {
           )}
         </div>
         <div className={strategyStyle.form} ref={formContainerRef}>
-          <div className="flex gap-6">
-            <div className="w-[820px] flex-shrink-0">
+          <div className="flex min-w-0 gap-6">
+            <div className="min-w-0 max-w-[820px] flex-[1.7] basis-0">
               <Form form={form} name="basic" scrollToFirstError>
                 <Steps
                   direction="vertical"
@@ -1297,6 +1500,16 @@ const StrategyOperation = () => {
                           onPeriodChange={handlePeriodChange}
                           onPeriodUnitChange={handlePeriodUnitChange}
                           onAlgorithmChange={handleAlgorithmChange}
+                          countPredicate={countPredicate}
+                          onCountPredicateChange={setCountPredicate}
+                          disableRateAlgorithm={disableRateAlgorithm}
+                          isEnumMetric={
+                            metricExpressionMode !== 'formula' &&
+                            isStringArray(
+                              metrics.find((item) => item.name === metric)
+                                ?.unit || ''
+                            )
+                          }
                           isTrap={isTrap}
                         />
                       ),
@@ -1308,7 +1521,7 @@ const StrategyOperation = () => {
                         <AlertConditionsForm
                           enableAlerts={enableAlerts}
                           threshold={threshold}
-                          calculationUnit={effectiveCalculationUnit}
+                          calculationUnit={thresholdBaseUnit}
                           thresholdUnit={effectiveThresholdUnit}
                           noDataAlert={noDataAlert}
                           nodataUnit={nodataUnit}
@@ -1322,6 +1535,23 @@ const StrategyOperation = () => {
                               ?.unit || null
                           }
                           isFormulaMode={metricExpressionMode === 'formula'}
+                          period={period}
+                          periodUnit={periodUnit}
+                          compareMode={compareMode}
+                          compareValueKind={compareValueKind}
+                          algorithm={algorithm}
+                          forecastTarget={forecastTarget}
+                          forecastLookback={forecastLookback}
+                          metricLabel={
+                            metrics.find((item) => item.name === metric)
+                              ?.display_name ||
+                            metric ||
+                            null
+                          }
+                          disableRateAlgorithm={disableRateAlgorithm}
+                          countPredicate={countPredicate}
+                          onCountPredicateChange={setCountPredicate}
+                          onSceneChipApply={handleSceneChipApply}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onThresholdUnitChange={handleThresholdUnitChange}
@@ -1335,6 +1565,12 @@ const StrategyOperation = () => {
                             handleNoDataAlertLevelChange
                           }
                           onNoDataAlertNameChange={handleNoDataAlertNameChange}
+                          onCompareModeChange={handleCompareModeChange}
+                          onCompareValueKindChange={setCompareValueKind}
+                          onForecastTargetChange={setForecastTarget}
+                          onForecastLookbackChange={setForecastLookback}
+                          recoveryThreshold={recoveryThreshold}
+                          onRecoveryThresholdChange={setRecoveryThreshold}
                           isTrap={isTrap}
                         />
                       ),
@@ -1355,7 +1591,7 @@ const StrategyOperation = () => {
                 />
               </Form>
             </div>
-            <div className="flex flex-col flex-1 min-w-[400px]">
+            <div className="flex min-w-0 flex-1 basis-0 flex-col">
               <VariablesTable
                 displayFields={currentMonitorObject?.display_fields}
                 groupBy={sanitizeGroupBy(metricRows[0]?.groupBy || groupBy)}
@@ -1375,14 +1611,20 @@ const StrategyOperation = () => {
                 periodUnit={periodUnit}
                 algorithm={algorithm}
                 threshold={threshold}
-                calculationUnit={effectiveCalculationUnit}
+                calculationUnit={thresholdBaseUnit}
                 thresholdUnit={effectiveThresholdUnit}
+                compareMode={compareMode}
+                compareValueKind={compareValueKind}
+                countPredicate={countPredicate}
+                forecastTarget={forecastTarget}
+                forecastLookback={forecastLookback}
                 metricRows={metricRows}
                 metricExpressionMode={metricExpressionMode}
                 resultName={formulaResultName}
                 expression={formulaExpression}
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
+                onSelectedInstanceChange={setPreviewInstanceId}
                 fixedGroupByList={
                   getGroupIds(monitorName as string)?.list || defaultGroup
                 }
@@ -1397,6 +1639,9 @@ const StrategyOperation = () => {
             onClick={createStrategy}
           >
             {t('common.confirm')}
+          </Button>
+          <Button loading={dryRunLoading} onClick={runDryRun}>
+            {translateWithFallback('monitor.events.dryRun', '试跑')}
           </Button>
             {isCreateFlow && templateSavedOnce ? (
             <Button onClick={goBack}>{t('common.back')}</Button>
@@ -1470,6 +1715,13 @@ const StrategyOperation = () => {
           </Form.Item>
         </Form>
       </OperateModal>
+      <DryRunResultModal
+        open={dryRunVisible}
+        loading={dryRunLoading}
+        data={dryRunResult}
+        onClose={() => setDryRunVisible(false)}
+        t={t}
+      />
     </Spin>
   );
 };

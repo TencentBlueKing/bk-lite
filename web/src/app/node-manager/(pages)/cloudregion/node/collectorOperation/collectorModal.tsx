@@ -23,7 +23,6 @@ import {
   groupCollectorsForOperationSelect,
   type CollectorOperationSelectGroup
 } from '@/app/node-manager/utils/collectorConfig';
-const { Option } = Select;
 
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
@@ -66,7 +65,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         const arch = (selectedArchitecture as string) || '';
         setCpuArchitecture(arch);
         setNodeIds(ids || []);
-        initTypeOptions(selectedsystem || '', arch);
+        initTypeOptions(selectedsystem || '', arch, type);
         type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
       }
     }));
@@ -75,7 +74,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       return configList.filter((item) => item.collector_id === collector);
     }, [collector]);
 
-    const initTypeOptions = (selectedsystem: string, arch?: string) => {
+    const initTypeOptions = (
+      selectedsystem: string,
+      arch?: string,
+      operationType?: string
+    ) => {
       if (nodeStateEnum?.tag) {
         const tagData = nodeStateEnum.tag;
         const apps: any[] = [];
@@ -90,7 +93,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         const defaultType = apps.length > 0 ? apps[0].value : '';
         setSelectedType(defaultType);
         if (defaultType) {
-          getCollectors(selectedsystem, defaultType, arch);
+          getCollectors(selectedsystem, defaultType, arch, operationType);
         }
       }
     };
@@ -98,7 +101,8 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const getCollectors = async (
       selectedsystem: string,
       typeTag?: string,
-      arch?: string
+      arch?: string,
+      operationType?: string
     ) => {
       setCollectorLoading(true);
       const currentType = typeTag || selectedType;
@@ -114,10 +118,19 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
           currentType === EXECUTOR_TYPE_TAG
             ? filterCollectorsForOperationType(data || [], currentType)
             : data || [];
+        const currentOperation = operationType || type;
         setOptions(
           groupCollectorsForOperationSelect(
             visibleCollectors,
-            getCollectorLabelKey
+            getCollectorLabelKey,
+            currentOperation === 'installCollector'
+              ? {
+                requirePackage: true,
+                missingPackageHint: t(
+                  'node-manager.cloudregion.node.missingCollectorPackage'
+                )
+              }
+              : undefined
           )
         );
         setCollectorlist(visibleCollectors);
@@ -291,7 +304,19 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             os: system,
             cpu_architecture: cpuArchitecture
           });
-          setPackageList(data);
+          const sorted = [...(data || [])].sort((a, b) =>
+            String(b.version || '').localeCompare(
+              String(a.version || ''),
+              undefined,
+              { numeric: true }
+            )
+          );
+          setPackageList(sorted);
+          if (sorted.length) {
+            collectorFormRef.current?.setFieldsValue({
+              version: sorted[0].id
+            });
+          }
         } finally {
           setVersionLoading(false);
         }
@@ -430,7 +455,12 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                 showSearch
                 allowClear
                 loading={versionLoading}
-                placeholder={t('common.selectMsg')}
+                disabled={!packageList.length}
+                placeholder={
+                  collector && !versionLoading && !packageList.length
+                    ? t('node-manager.cloudregion.node.missingCollectorPackage')
+                    : t('common.selectMsg')
+                }
                 options={packageList.map((item) => ({
                   value: item.id,
                   label: item.version

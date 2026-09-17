@@ -224,7 +224,7 @@ export default function ApmEndpointsPage() {
       service_namespace: selected.namespace,
       service_name: selected.serviceName,
       environment: selected.environment,
-      span_name: selected.route,
+      span_name: selected.endpoint,
       started_at: startedAt.toISOString(),
       ended_at: endedAt.toISOString(),
       limit: 20,

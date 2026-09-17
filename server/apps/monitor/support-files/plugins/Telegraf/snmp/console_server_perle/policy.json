@@ -1,5 +1,31 @@
 {
   "object": "ConsoleServer",
   "plugin": "ConsoleServer Perle IOLAN SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Perle控制台服务器机箱温度过高",
+      "alert_name": "控制台服务器${resource_name} 温度过高",
+      "description": "监控 Perle IOLAN 控制台服务器的机箱内部温度（adminTemperature，摄氏度）。空值或无法解析的读数已跳过；有读数且持续高于阈值时触发告警，提示散热异常、环境温度过高或硬件过载。",
+      "metric_name": "temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

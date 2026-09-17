@@ -2,30 +2,49 @@ type ScrollValue = number | string;
 
 export interface CustomTableScroll {
   x?: ScrollValue | true;
-  y?: ScrollValue;
+  y?: ScrollValue | 'auto';
   scrollToFirstRowOnChange?: boolean;
 }
 
 interface ResolveTableScrollOptions {
   calculatedScrollX: number | undefined;
+  containerWidth?: number;
   scroll: CustomTableScroll | undefined;
   calculatedScrollY: number | undefined;
   hasData: boolean;
 }
 
+const isFillableScrollX = (value: CustomTableScroll['x']): boolean =>
+  value === undefined || value === 'max-content' || value === true;
+
+const isHugContentScrollY = (value: CustomTableScroll['y']): boolean =>
+  value === 'auto';
+
 export const resolveTableScroll = ({
   calculatedScrollX,
+  containerWidth,
   scroll,
   calculatedScrollY,
   hasData,
 }: ResolveTableScrollOptions): CustomTableScroll => {
   const resolvedScroll: CustomTableScroll = {
-    ...(calculatedScrollX !== undefined && hasData
-      ? { x: calculatedScrollX }
-      : {}),
     ...scroll,
   };
-  const hasExplicitScrollY = scroll?.y !== undefined && scroll?.y !== null;
+
+  if (isFillableScrollX(scroll?.x)) {
+    const overflowsContainer =
+      typeof calculatedScrollX === 'number'
+      && typeof containerWidth === 'number'
+      && containerWidth > 0
+      && calculatedScrollX > containerWidth;
+    if (overflowsContainer) {
+      resolvedScroll.x = calculatedScrollX;
+    } else {
+      delete resolvedScroll.x;
+    }
+  }
+
+  const hasExplicitScrollY = scroll?.y !== undefined && scroll?.y !== null && !isHugContentScrollY(scroll?.y);
 
   if (
     calculatedScrollY !== undefined &&
@@ -35,6 +54,10 @@ export const resolveTableScroll = ({
   }
 
   if (!hasData && !hasExplicitScrollY) {
+    delete resolvedScroll.y;
+  }
+
+  if (isHugContentScrollY(scroll?.y)) {
     delete resolvedScroll.y;
   }
 

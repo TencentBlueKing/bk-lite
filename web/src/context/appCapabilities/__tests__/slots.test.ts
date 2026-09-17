@@ -6,7 +6,7 @@ import {
   resolveSlot,
 } from '../slots';
 
-const TrendChart = () => null;
+const GuestChart = () => null;
 
 describe('collectSlotContributions', () => {
   it('collects matching slots and ignores missing or incomplete entries', () => {
@@ -14,38 +14,38 @@ describe('collectSlotContributions', () => {
       [
         null,
         {
-          appName: 'alarm',
+          appName: 'guest',
           slots: {
-            'monitor.event.extraTabs': {
-              key: 'alarmTrend',
-              labelKey: 'alarms.capability.alarmTrend',
-              labelDefault: '告警趋势',
-              component: TrendChart,
+            'host.extraTabs': {
+              key: 'guestChart',
+              labelKey: 'guest.chart',
+              labelDefault: 'Guest Chart',
+              component: GuestChart,
             },
           },
         },
         {
-          appName: 'log',
+          appName: 'other',
           slots: {
-            'monitor.event.extraTabs': {
+            'host.extraTabs': {
               key: '',
               labelKey: 'x',
               labelDefault: 'x',
-              component: TrendChart,
+              component: GuestChart,
             },
           },
         },
       ],
-      'monitor.event.extraTabs'
+      'host.extraTabs'
     );
 
     expect(contributions).toEqual([
       {
-        appName: 'alarm',
-        key: 'alarmTrend',
-        labelKey: 'alarms.capability.alarmTrend',
-        labelDefault: '告警趋势',
-        component: TrendChart,
+        appName: 'guest',
+        key: 'guestChart',
+        labelKey: 'guest.chart',
+        labelDefault: 'Guest Chart',
+        component: GuestChart,
       },
     ]);
   });
@@ -56,28 +56,28 @@ describe('resolveSlot', () => {
     const contributions = collectSlotContributions(
       [
         {
-          appName: 'alarm',
+          appName: 'guest',
           slots: {
-            'monitor.event.extraTabs': {
-              key: 'alarmTrend',
-              labelKey: 'alarms.capability.alarmTrend',
-              labelDefault: '告警趋势',
-              component: TrendChart,
+            'host.extraTabs': {
+              key: 'guestChart',
+              labelKey: 'guest.chart',
+              labelDefault: 'Guest Chart',
+              component: GuestChart,
             },
           },
         },
       ],
-      'monitor.event.extraTabs'
+      'host.extraTabs'
     );
 
-    expect(resolveSlot(contributions, 'alarmTrend')?.appName).toBe('alarm');
+    expect(resolveSlot(contributions, 'guestChart')?.appName).toBe('guest');
     expect(resolveSlot(contributions, 'missing')).toBeNull();
   });
 });
 
 describe('isHostTab', () => {
   it('treats unknown extra keys as host tabs', () => {
-    expect(isHostTab('activeAlarms', ['alarmTrend'])).toBe(true);
-    expect(isHostTab('alarmTrend', ['alarmTrend'])).toBe(false);
+    expect(isHostTab('activeAlarms', ['guestChart'])).toBe(true);
+    expect(isHostTab('guestChart', ['guestChart'])).toBe(false);
   });
 });

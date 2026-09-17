@@ -11,6 +11,11 @@ import { SearchFilterProps } from '@/app/cmdb/types/assetData';
 import { useAssetDataStore, type FilterItem, type SavedFilter } from '@/app/cmdb/store';
 import { useSavedFiltersApi, type SavedFiltersConfigValue } from '@/app/cmdb/api/userConfig';
 import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
+import {
+  buildCloudRegionQueryCondition,
+  isCloudRegionAttr,
+  toCloudSelectValue,
+} from '@/app/cmdb/utils/cloudRegion';
 import { visibleSearchableFilterAttrs } from '../searchFilterAttrs';
 import {
   applyMultiIpPaste,
@@ -133,8 +138,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       ) {
       // condition 为 null 时，传递字段信息用于删除对应筛选项
         condition = { field: searchAttr } as any;
-      } else if (selectedAttr?.attr_id === 'cloud') {
-        condition.type = typeof value === 'number' ? 'int=' : 'str=';
+      } else if (isCloudRegionAttr(selectedAttr?.attr_id)) {
+        const cloudCondition = buildCloudRegionQueryCondition(searchAttr, value);
+        if (!cloudCondition) {
+          condition = { field: searchAttr } as any;
+        } else {
+          condition = cloudCondition;
+        }
       } else {
         switch (selectedAttr?.attr_type) {
           case 'enum':
@@ -258,19 +268,19 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   const renderSearchInput = () => {
     const selectedAttr = attrList.find((attr) => attr.attr_id === searchAttr);
     // 特殊处理-主机的云区域为下拉选项
-    if (selectedAttr?.attr_id === 'cloud' && proxyOptions.length) {
+    if (isCloudRegionAttr(selectedAttr?.attr_id) && proxyOptions.length) {
       return (
         <Select
           placeholder={t('common.selectTip')}
           allowClear
           showSearch
           className="value w-[200px]"
-          value={searchValue}
+          value={toCloudSelectValue(searchValue)}
           onChange={(e) => onSearchValueChange(e, isExactSearch)}
           onClear={() => onSearchValueChange('', isExactSearch)}
         >
           {proxyOptions.map((opt) => (
-            <Select.Option key={opt.proxy_id} value={opt.proxy_id}>
+            <Select.Option key={String(opt.proxy_id)} value={Number(opt.proxy_id)}>
               {opt.proxy_name}
             </Select.Option>
           ))}

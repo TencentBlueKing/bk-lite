@@ -42,6 +42,7 @@ def _create_nats_source(source_id="nats"):
                 "external_id": "external_id",
                 "monitor_id": "monitor_id",
                 "cmdb_id": "cmdb_id",
+                "node_id": "node_id",
                 "resource_id": "resource_id",
                 "resource_name": "resource_name",
                 "resource_type": "resource_type",
@@ -92,6 +93,7 @@ def test_receive_monitor_event_persists_explicit_identity_snapshot():
                 "external_id": "external_id",
                 "monitor_id": "monitor_id",
                 "cmdb_id": "cmdb_id",
+                "node_id": "node_id",
                 "resource_id": "resource_id",
                 "resource_name": "resource_name",
                 "resource_type": "resource_type",
@@ -108,6 +110,7 @@ def test_receive_monitor_event_persists_explicit_identity_snapshot():
         "external_id": "monitor-alert-1",
         "monitor_id": "0001",
         "cmdb_id": "550e8400-e29b-41d4-a716-446655440000",
+        "node_id": "node-0001",
         "resource_id": "0001",
         "resource_name": "ip1",
         "resource_type": "Host",
@@ -133,6 +136,7 @@ def test_receive_monitor_event_persists_explicit_identity_snapshot():
     assert {
         "monitor_id": event.monitor_id,
         "cmdb_id": event.cmdb_id,
+        "node_id": event.node_id,
         "resource_id": event.resource_id,
         "resource_name": event.resource_name,
         "resource_type": event.resource_type,
@@ -140,6 +144,7 @@ def test_receive_monitor_event_persists_explicit_identity_snapshot():
     } == {
         "monitor_id": "0001",
         "cmdb_id": "550e8400-e29b-41d4-a716-446655440000",
+        "node_id": "node-0001",
         "resource_id": "0001",
         "resource_name": "ip1",
         "resource_type": "Host",
@@ -170,7 +175,8 @@ def test_receive_legacy_monitor_event_keeps_identity_fields_null():
 
     assert result["result"] is True
     event = Event.objects.get(source=source)
-    assert (event.monitor_id, event.cmdb_id, event.resource_id) == (
+    assert (event.monitor_id, event.cmdb_id, event.node_id, event.resource_id) == (
+        None,
         None,
         None,
         "legacy-resource-1",
@@ -267,19 +273,23 @@ def test_init_alert_sources_maps_monitor_identity_fields():
     assert {
         "monitor_id": mapping.get("monitor_id"),
         "cmdb_id": mapping.get("cmdb_id"),
+        "node_id": mapping.get("node_id"),
     } == {
         "monitor_id": "monitor_id",
         "cmdb_id": "cmdb_id",
+        "node_id": "node_id",
     }
     restful_mapping = AlertSource.objects.get(source_id="restful").config["event_fields_mapping"]
     assert "monitor_id" not in restful_mapping
     assert "cmdb_id" not in restful_mapping
+    assert "node_id" not in restful_mapping
 
 
 def test_new_monitor_payload_is_accepted_by_old_nats_mapping():
     source = _create_nats_source("nats-old-consumer")
     source.config["event_fields_mapping"].pop("monitor_id")
     source.config["event_fields_mapping"].pop("cmdb_id")
+    source.config["event_fields_mapping"].pop("node_id", None)
     source.save(update_fields=["config"])
 
     result = _receive(

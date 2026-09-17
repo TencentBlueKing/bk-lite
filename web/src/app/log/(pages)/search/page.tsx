@@ -51,6 +51,7 @@ import {
   SearchConfig
 } from '@/app/log/types/search';
 import { aggregateLogs } from '@/app/log/utils/common';
+import { mergeSearchResultFields } from './queryResultFields';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import MarkdownRenderer from '@/components/markdown';
 import AddConditions from './addConditions';
@@ -61,6 +62,7 @@ import { CollectTypeItem } from '@/app/log/types/integration';
 import {
   buildInstanceExtractorPath,
   buildTypeExtractorPath,
+  extractorPathFromSearchField,
   resolveExtractorCreateTarget,
   restoreExtractorEventShape,
   storeExtractorCreateHandoff
@@ -206,6 +208,10 @@ const SearchView: React.FC = () => {
   }, [timeDefaultValue]);
 
   const isList = useMemo(() => activeMenu === 'list', [activeMenu]);
+  const sidebarFields = useMemo(
+    () => mergeSearchResultFields(fields, tableData),
+    [fields, tableData]
+  );
 
   const scrollHeight = useMemo(() => {
     // 根据expand状态和屏幕高度动态计算scroll高度
@@ -490,7 +496,7 @@ const SearchView: React.FC = () => {
       popup.close();
       message.error(t(key));
     };
-    const source_field = sourceField.trim() || 'message';
+    const source_field = extractorPathFromSearchField(sourceField);
     const event = restoreExtractorEventShape({ ...record });
     if (target.kind === 'type') {
       if (!hasConfigurePermission(['Add'])) {
@@ -791,7 +797,7 @@ const SearchView: React.FC = () => {
                   <FieldList
                     style={{ height: scrollHeight + 'px' }}
                     className="w-[230px] min-w-[230px] flex-shrink-0"
-                    fields={fields}
+                    fields={sidebarFields}
                     displayFields={columnFields}
                     addToQuery={addToQuery}
                     changeDisplayColumns={(val) => {
@@ -805,7 +811,7 @@ const SearchView: React.FC = () => {
                   dataSource={tableData}
                   fields={columnFields}
                   highlightQuery={highlightQuery}
-                  scroll={{ x: 'calc(100vw-350px)', y: scrollHeight }}
+                  scroll={{ x: 'max-content', y: scrollHeight }}
                   addToQuery={addToQuery}
                   onCreateExtractor={(row, sourceField) => {
                     void createExtractorFromLog(row, sourceField);

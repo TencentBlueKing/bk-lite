@@ -682,6 +682,10 @@ class InstanceConfigService:
                     id=instance_id,
                     name=instance["instance_name"],
                     monitor_object_id=monitor_object_id,
+                    ip=str(instance["ip"]).strip() if instance.get("ip") not in (None, "") else None,
+                    cloud_region_id=instance.get("cloud_region_id"),
+                    node_id=str(instance["node_id"]).strip() if instance.get("node_id") not in (None, "") else None,
+                    cmdb_id=str(instance["cmdb_id"]).strip() if instance.get("cmdb_id") not in (None, "") else None,
                     summary_facts=InstanceFactResolver.merge(
                         {},
                         instance.get("summary_facts", {}),
@@ -1029,6 +1033,9 @@ class InstanceConfigService:
 
                     ensure_kafka_sasl_mechanism_in_env(env_config)
                 NodeMgmt().update_config_content(base_info["id"], content, env_config)
+                from apps.monitor.services.collect_config_update import CollectConfigUpdateService
+
+                CollectConfigUpdateService.mark_hand_edited(config_obj, content)
 
         if child_info:
             config_obj = config_map.get(child_info["id"])
@@ -1091,3 +1098,6 @@ class InstanceConfigService:
                 content = restore_managed_ifmib_markers(content)
                 content = preserve_closed_ifmib_markers(content, child_info.get("content"))
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)
+            from apps.monitor.services.collect_config_update import CollectConfigUpdateService
+
+            CollectConfigUpdateService.mark_hand_edited(config_obj, content)

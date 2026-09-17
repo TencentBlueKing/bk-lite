@@ -79,7 +79,7 @@ const CollectorLayout = ({
     return (
       <div className="flex flex-col h-[90px] p-4 overflow-hidden">
         <h1 className="text-lg">{title}</h1>
-        <p className="text-sm overflow-hidden w-full min-w-[1000px] mt-[8px]">
+        <p className="mt-[8px] w-full min-w-0 overflow-hidden text-sm text-ellipsis">
           {description}
         </p>
       </div>
@@ -87,7 +87,7 @@ const CollectorLayout = ({
   };
 
   return (
-    <div className="w-full">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <SubLayout
         topSection={<Topsection></Topsection>}
         showBackButton={true}

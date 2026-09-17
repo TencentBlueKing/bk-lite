@@ -247,6 +247,8 @@ export interface ObjectItem {
   display_name?: string;
   collector?: string;
   collect_type?: string;
+  pack_version?: string;
+  stale_instance_count?: number;
   display_type?: string;
   icon?: string;
   instance_count?: number;

@@ -186,8 +186,8 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <ModelDetailContext.Provider value={modelDetail}>
-      <div className={`${attrLayoutStyle.attrLayout}`}>
-        <Card style={{ width: '100%' }} className="mb-[20px]">
+      <div className={`${attrLayoutStyle.attrLayout} flex h-full min-h-0 min-w-0 w-full flex-col`}>
+        <Card style={{ width: '100%' }} className="mb-[20px] shrink-0">
           <header className="flex items-center">
             <ModelIcon
               icon={modelDetail.icn}
@@ -265,11 +265,8 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
           </header>
         </Card>
         <div
-          style={{
-            height: 'calc(100vh - 244px)',
-            ['--custom-height' as string]: 'calc(100vh - 244px)',
-          }}
-          className={attrLayoutStyle.attrLayout}
+          className={`${attrLayoutStyle.attrLayout} min-h-0 min-w-0 flex-1`}
+          style={{ ['--custom-height' as string]: '100%' }}
         >
           <WithSideMenuLayout
             showBackButton={true}

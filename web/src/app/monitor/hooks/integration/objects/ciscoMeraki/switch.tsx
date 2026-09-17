@@ -1,6 +1,6 @@
 export const useMerakiSwitchConfig = () => {
   return {
-    instance_type: 'cisco_meraki_switch',
+    instance_type: 'cisco_meraki',
     dashboardDisplay: [
       {
         indexId: 'meraki_switch_port_enabled',
@@ -25,7 +25,7 @@ export const useMerakiSwitchConfig = () => {
     ],
     groupIds: {},
     collectTypes: {
-      'Cisco Meraki Switch': 'http'
+      'Cisco Meraki': 'http'
     }
   };
 };

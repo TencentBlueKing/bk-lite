@@ -32,18 +32,198 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+    # 发现：优先 sysObjectID 前缀 1.3.6.1.4.1.32285.11. ；CCMTS 为 …11.1. ，EPON 为 …11.2. 。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- CCMTS 系统表 TOPVISION-CCMTS-MIB topCcmtsSysEntry，INDEX ifIndex，不写死 ifIndex ----
+    # 空表无行即跳过该分支。CPU/内存/Flash 为 0-100 直采百分比。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
-        inherit_tags = ["source"]
+        name = "ccmts_cpu"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.32285.11.1.1.2.1.1.1.11"
+        name = "usage"
+    [[inputs.snmp.table]]
+        name = "ccmts_memory"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.1.1.2.1.1.1.10"
+        name = "usage"
+    [[inputs.snmp.table]]
+        name = "ccmts_flash"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.1.1.2.1.1.1.13"
+        name = "usage"
+    # ---- CCMTS 设备温度表 topCcmtsEquipmentTemperatureEntry，INDEX ifIndex，列 OID 为 DDR/BCM3218/supply ----
+    [[inputs.snmp.table]]
+        name = "ccmts_temperature"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.1.1.2.1.10.1.1"
+        name = "celsius_ddr"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.1.1.2.1.10.1.4"
+        name = "celsius_brcm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.1.1.2.1.10.1.5"
+        name = "celsius_supply"
+    # ---- EPON 板卡表 SUMA-EPONEOC-EPON-MIB topSysBoardEntry，INDEX topSysBdSlotIndex，不写死 slot ----
+    # 缺席槽位返回 0，下方 starlark 丢弃；CPU 1-100，内存总量 MB + 空闲字节换算使用率。
+    [[inputs.snmp.table]]
+        name = "epon_cpu"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.3.1.1.3"
+        name = "board_type"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.3.1.1.4"
+        name = "usage"
+    [[inputs.snmp.table]]
+        name = "epon_memory"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.3.1.1.3"
+        name = "board_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.3.1.1.5"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.3.1.1.6"
+        name = "free"
+    [[inputs.snmp.table]]
+        name = "epon_temperature"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.3.1.1.3"
+        name = "board_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.3.1.1.9"
+        name = "celsius"
+    # ---- 可选 EPON 电源交流温度 topSysPowerSupplyACTemperature，INDEX 电源卡，不写死卡号 ----
+    [[inputs.snmp.table]]
+        name = "epon_psu_temperature"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.4.1.1.4"
+        name = "celsius"
+    # ---- 可选 EPON 风扇转速 topSysFanSpeed（rps），INDEX fanCard.fanIndex，不写死风扇位 ----
+    [[inputs.snmp.table]]
+        name = "epon_fan"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.32285.11.2.3.1.5.1.1.4"
+        name = "speed"
+
+# CCMTS（sysObjectID …11.1.）与 EPON（…11.2.）按设备身份只保留一侧，避免两侧表同时有行时重复计数。
+# EPON 缺席槽位（board_type=0 或健康值为 0）丢弃；内存 used=(total*1024*1024-free)/(total*1024*1024)，total=0 跳过。
+[[processors.starlark]]
+    namepass = ["ccmts_cpu", "ccmts_memory", "ccmts_flash", "ccmts_temperature", "epon_cpu", "epon_memory", "epon_temperature", "epon_psu_temperature", "epon_fan"]
+    [processors.starlark.tagpass]
+        brand = ["topvision"]
+    source = '''
+def _soid(metric):
+    soid = metric.tags.get("sysObjectID", "")
+    if soid.startswith("."):
+        soid = soid[1:]
+    return soid
+
+def _is_ccmts(soid):
+    return soid.startswith("1.3.6.1.4.1.32285.11.1.")
+
+def _is_epon(soid):
+    return soid.startswith("1.3.6.1.4.1.32285.11.2.")
+
+def _is_absent_board(metric):
+    board_type = metric.tags.get("board_type")
+    return board_type == "0" or board_type == "0.0"
+
+def _pop_field(metric, key):
+    if metric.fields.get(key) != None:
+        metric.fields.pop(key)
+
+def _nonzero_temps(metric):
+    temps = []
+    for key in ("celsius_ddr", "celsius_brcm", "celsius_supply"):
+        value = metric.fields.get(key)
+        if value != None and value != 0:
+            temps.append(value)
+        _pop_field(metric, key)
+    return temps
+
+def apply(metric):
+    soid = _soid(metric)
+    name = metric.name
+    if _is_ccmts(soid) and name.startswith("epon_"):
+        return None
+    if _is_epon(soid) and name.startswith("ccmts_"):
+        return None
+    if name == "ccmts_cpu":
+        metric.name = "device_cpu"
+        return metric
+    if name == "ccmts_memory":
+        metric.name = "device_memory"
+        return metric
+    if name == "ccmts_flash":
+        metric.name = "device_flash"
+        return metric
+    if name == "ccmts_temperature":
+        temps = _nonzero_temps(metric)
+        if not temps:
+            return None
+        metric.fields["celsius"] = max(temps)
+        metric.name = "device_temperature"
+        return metric
+    if _is_absent_board(metric):
+        return None
+    if name == "epon_cpu":
+        usage = metric.fields.get("usage")
+        if usage == None or usage == 0:
+            return None
+        metric.name = "device_cpu"
+        return metric
+    if name == "epon_memory":
+        total = metric.fields.get("total")
+        free = metric.fields.get("free")
+        if total == None or total == 0:
+            return None
+        total_bytes = float(total) * 1024 * 1024
+        if free == None:
+            free = 0
+        used = total_bytes - float(free)
+        if used < 0:
+            used = 0
+        metric.fields["usage"] = used / total_bytes * 100
+        _pop_field(metric, "total")
+        _pop_field(metric, "free")
+        metric.name = "device_memory"
+        return metric
+    if name == "epon_temperature" or name == "epon_psu_temperature":
+        celsius = metric.fields.get("celsius")
+        if celsius == None or celsius == 0:
+            return None
+        metric.name = "device_temperature"
+        return metric
+    if name == "epon_fan":
+        speed = metric.fields.get("speed")
+        if speed == None or speed == 0:
+            return None
+        metric.name = "device_fan"
+        return metric
+    return metric
+'''

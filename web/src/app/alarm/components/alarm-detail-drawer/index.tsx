@@ -4,6 +4,7 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -39,6 +40,11 @@ import {
   PublicWidgetPane,
   useAlarmPublicWidgets,
 } from '@/app/alarm/components/public-widget-pane';
+import {
+  readAlarmLogAlertId,
+  readAlarmServiceId,
+} from '@/app/alarm/utils/alarmSnapshotObjects';
+import { buildAlarmApmReplayWindow } from '@/app/alarm/utils/alarmApmReplayWindow';
 
 export interface AlarmDetailLevelOption {
   color?: string;
@@ -74,6 +80,7 @@ export interface AlarmDetailDrawerData extends AlarmActionRowData {
   content?: string;
   duration?: string;
   enrichment?: Record<string, unknown>;
+  created_at?: string | null;
   first_event_time?: string | null;
   last_event_time?: string | null;
   closed_at?: string | null;
@@ -82,6 +89,7 @@ export interface AlarmDetailDrawerData extends AlarmActionRowData {
   notification_status?: string;
   notify_status?: string;
   operator_user?: string;
+  resource_id?: string;
   resource_name?: string;
   resource_type?: string;
   monitor_objects?: MonitorObjectSnapshot[];
@@ -158,7 +166,7 @@ const AlarmDetailDrawer = forwardRef<
   ) => {
     const { t } = useTranslation();
     const { copy } = useCopy();
-    const { convertToLocalizedTime } = useLocalizedTime();
+    const { convertToLocalizedTime, timeZone } = useLocalizedTime();
     const eventListFetcher = fetchEventList;
     const logListFetcher = fetchLogList;
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
@@ -182,11 +190,34 @@ const AlarmDetailDrawer = forwardRef<
       monitorObjects: groupVisible ? formData.monitor_objects : undefined,
       includeActionRecords: false,
       activeTab,
+      logAlertId: groupVisible ? readAlarmLogAlertId(formData) : '',
+      serviceId: groupVisible ? readAlarmServiceId(formData) : '',
     });
     const [objectKey, setObjectKey] = useState('0');
     const currentObject =
       publicWidgets.objects.find((item) => item.key === objectKey) ||
       publicWidgets.objects[0];
+    const apmReplayWindow = useMemo(
+      () =>
+        buildAlarmApmReplayWindow(
+          groupVisible
+            ? {
+              first_event_time: formData.first_event_time,
+              last_event_time: formData.last_event_time,
+              created_at: formData.created_at,
+            }
+            : undefined,
+          new Date(),
+          timeZone,
+        ),
+      [
+        groupVisible,
+        formData.first_event_time,
+        formData.last_event_time,
+        formData.created_at,
+        timeZone,
+      ],
+    );
     const tabList = publicWidgets.tabs;
     const renderObjectSwitcher = () =>
       publicWidgets.showObjectSwitcher ? (
@@ -238,11 +269,12 @@ const AlarmDetailDrawer = forwardRef<
         defaultTab = 'baseInfo',
       }) => {
         setEventList([]);
-        setGroupVisible(true);
-        setTitle(title);
+        // formData 先于 visible：避免并发撕裂下先开窗却无锚点时间。
         setFormData(form);
+        setTitle(title);
         setActiveTab(defaultTab);
         setPagination((prev) => ({ ...prev, current: 1, total: 0 }));
+        setGroupVisible(true);
       },
     }));
 
@@ -376,6 +408,7 @@ const AlarmDetailDrawer = forwardRef<
           </div>
         }
         open={groupVisible}
+        destroyOnClose
         width={820}
         onClose={handleCancel}
         maskClosable={false}
@@ -511,6 +544,22 @@ const AlarmDetailDrawer = forwardRef<
             </div>
           )}
 
+          {publicWidgets.alertRawLog.visible && (
+            <div
+              className={
+                activeTab === 'alertRawLog'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.alertRawLog.active}
+                loadWidget={publicWidgets.alertRawLog.loadWidget}
+                identifier={readAlarmLogAlertId(formData)}
+                identifierProp="logAlertId"
+              />
+            </div>
+          )}
           {publicWidgets.monitorView.visible && (
             <div
               className={
@@ -559,6 +608,78 @@ const AlarmDetailDrawer = forwardRef<
                 identifier={currentObject?.instUuid || ''}
                 identifierProp="instUuid"
                 toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.assetChange.visible && (
+            <div
+              className={
+                activeTab === 'assetChange'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.assetChange.active}
+                loadWidget={publicWidgets.assetChange.loadWidget}
+                identifier={currentObject?.instUuid || ''}
+                identifierProp="instUuid"
+                toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.nodeStatus.visible && (
+            <div
+              className={
+                activeTab === 'nodeStatus'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                active={publicWidgets.nodeStatus.active}
+                loadWidget={publicWidgets.nodeStatus.loadWidget}
+                identifier={currentObject?.nodeId || ''}
+                identifierProp="nodeId"
+                toolbarStart={renderObjectSwitcher()}
+              />
+            </div>
+          )}
+          {publicWidgets.serviceOverview.visible && (
+            <div
+              className={
+                activeTab === 'serviceOverview'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                key={`svc-overview-${formData.id}-${apmReplayWindow?.startedAt || ''}-${apmReplayWindow?.endedAt || ''}`}
+                active={publicWidgets.serviceOverview.active}
+                loadWidget={publicWidgets.serviceOverview.loadWidget}
+                identifier={readAlarmServiceId(formData)}
+                identifierProp="serviceId"
+                startedAt={apmReplayWindow?.startedAt}
+                endedAt={apmReplayWindow?.endedAt}
+              />
+            </div>
+          )}
+          {publicWidgets.callChain.visible && (
+            <div
+              className={
+                activeTab === 'callChain'
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                  : 'hidden'
+              }
+            >
+              <PublicWidgetPane
+                key={`call-chain-${formData.id}-${apmReplayWindow?.startedAt || ''}-${apmReplayWindow?.endedAt || ''}`}
+                active={publicWidgets.callChain.active}
+                loadWidget={publicWidgets.callChain.loadWidget}
+                identifier={readAlarmServiceId(formData)}
+                identifierProp="serviceId"
+                startedAt={apmReplayWindow?.startedAt}
+                endedAt={apmReplayWindow?.endedAt}
               />
             </div>
           )}

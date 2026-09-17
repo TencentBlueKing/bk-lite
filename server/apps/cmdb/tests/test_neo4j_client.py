@@ -8,7 +8,6 @@ import pytest
 from apps.cmdb.graph.neo4j import Neo4jClient
 from apps.core.exceptions.base_app_exception import BaseAppException
 
-
 # --------------------------------------------------------------------------
 # fake neo4j objects
 # --------------------------------------------------------------------------
@@ -95,6 +94,13 @@ def test_entity_to_dict():
     assert out["_id"] == 1
     assert out["_label"] == "instance"
     assert out["inst_name"] == "h1"
+
+
+def test_entity_to_dict_coerces_legacy_string_cloud():
+    c = _client()
+    node = FakeNode(1, ["instance"], {"inst_name": "h1", "cloud": "1"})
+    out = c.entity_to_dict((node,))
+    assert out["cloud"] == 1
 
 
 def test_entity_to_list():
@@ -189,6 +195,7 @@ def test_format_search_params_injection_value():
 def test_format_search_params_injection_field():
     """非法 field 名（含注入字符）应被 CQLValidator 拒绝。"""
     from apps.core.exceptions.base_app_exception import BaseAppException
+
     c = _client()
     with pytest.raises((BaseAppException, Exception)):
         c.format_search_params([{"field": "name'] RETURN n //", "type": "str=", "value": "v"}])
@@ -235,6 +242,12 @@ def test_check_unique_attr_conflict():
     c = _client()
     with pytest.raises(BaseAppException):
         c.check_unique_attr({"name": "h"}, {"name": "名称"}, [{"name": "h"}])
+
+
+def test_check_unique_attr_cloud_int_matches_legacy_string():
+    c = _client()
+    with pytest.raises(BaseAppException):
+        c.check_unique_attr({"cloud": 1}, {"cloud": "云区域"}, [{"cloud": "1"}])
 
 
 def test_check_required_attr_missing():
@@ -371,6 +384,25 @@ def test_find_entity_by_id():
     entities = [{"_id": 1}, {"_id": 2}]
     assert c.find_entity_by_id(2, entities)["_id"] == 2
     assert c.find_entity_by_id(99, entities) is None
+
+
+def test_set_entity_properties_accepts_attrs_kwarg():
+    c = _client()
+    c.check_unique_attr = lambda *args, **kwargs: None
+    c.check_unique_rules = lambda *args, **kwargs: None
+    c.check_required_attr = lambda *args, **kwargs: None
+    c.get_editable_attr = lambda properties, _editable: properties
+    c.batch_update_node_properties = lambda label, entity_ids, properties: [(FakeNode(entity_ids[0], [label], properties),)]
+    out = c.set_entity_properties(
+        "instance",
+        [1],
+        {"inst_name": "renamed"},
+        {},
+        [],
+        check=False,
+        attrs=[],
+    )
+    assert out[0]["inst_name"] == "renamed"
 
 
 def test_create_node():

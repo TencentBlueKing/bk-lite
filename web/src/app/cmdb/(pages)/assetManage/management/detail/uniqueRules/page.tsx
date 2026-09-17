@@ -115,7 +115,7 @@ const UniqueRulesPage: React.FC = () => {
   ];
 
   return (
-    <div>
+    <div className="min-w-0 w-full">
       <Alert
         className="mb-[12px]"
         type="info"

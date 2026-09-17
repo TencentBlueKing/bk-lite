@@ -196,7 +196,7 @@ def test_chat_service_passes_wiki_context_options(monkeypatch):
     assert captured["options"]["token_budget"] == 64
     assert chat_kwargs["system_message_prompt"] == "augmented prompt"
     assert chat_kwargs["extra_config"]["wiki_citations"] == [{"title": "服务操作手册"}]
-    assert chat_kwargs["max_model_calls"] == 1
+    assert "max_model_calls" not in chat_kwargs
 
 
 def test_chat_service_skips_wiki_path_for_greeting(monkeypatch):
@@ -279,7 +279,58 @@ def test_chat_service_skips_wiki_path_for_current_time(monkeypatch):
     assert called["augment"] == 0
     assert chat_kwargs["system_message_prompt"] == "你是运维助手"
     assert "wiki_citations" not in chat_kwargs["extra_config"]
+    assert "max_model_calls" not in chat_kwargs
     assert chat_kwargs["extra_config"]["wiki_budget"]["overview_status"] == "skipped_chitchat"
+
+
+def test_chat_service_non_force_wiki_keeps_tool_loop_for_current_time(monkeypatch):
+    """非强制挂知识库时，「当前时间」仍走检索参考，但不得关掉工具循环。"""
+    from apps.opspilot.models import SkillTypeChoices
+    from apps.opspilot.services import chat_service
+
+    captured = {}
+
+    def fake_augment_prompt_with_trace(system_prompt, kb_ids, query, **options):
+        captured["query"] = query
+        captured["options"] = options
+        return "augmented prompt", [], {"overview_status": "routed", "llm_budget": {"used_calls": 0}}
+
+    monkeypatch.setattr(chat_service, "augment_prompt_with_trace", fake_augment_prompt_with_trace)
+    monkeypatch.setattr(
+        chat_service,
+        "load_wiki_budget_config",
+        lambda: SimpleNamespace(qa_max_llm_calls=3, qa_max_output_tokens=1024),
+    )
+
+    chat_kwargs, _, _ = chat_service.ChatService.format_chat_server_kwargs(
+        {
+            "show_think": True,
+            "user_message": "当前时间",
+            "chat_history": [],
+            "conversation_window_size": 10,
+            "skill_prompt": "你是运维助手",
+            "skill_params": [],
+            "wiki_kb_ids": [1],
+            "force_wiki_grounded": False,
+            "temperature": 0.2,
+            "user_id": "u1",
+            "skill_type": SkillTypeChoices.BASIC_TOOL,
+        },
+        SimpleNamespace(
+            openai_api_base="http://llm",
+            openai_api_key="key",
+            model_name="model",
+            protocol_type="openai",
+            vendor_id=None,
+            pk=1,
+        ),
+    )
+
+    assert captured["query"] == "当前时间"
+    assert captured["options"].get("force_wiki_grounded") is False
+    assert chat_kwargs["system_message_prompt"] == "augmented prompt"
+    assert "max_model_calls" not in chat_kwargs
+    assert "max_steps" not in chat_kwargs
 
 
 @pytest.mark.django_db
@@ -374,7 +425,7 @@ def test_chat_service_passes_force_wiki_grounded(monkeypatch):
         lambda: SimpleNamespace(qa_max_llm_calls=3, qa_max_output_tokens=1024),
     )
 
-    chat_service.ChatService.format_chat_server_kwargs(
+    chat_kwargs, _, _ = chat_service.ChatService.format_chat_server_kwargs(
         {
             "show_think": True,
             "user_message": "请重启服务",
@@ -398,3 +449,4 @@ def test_chat_service_passes_force_wiki_grounded(monkeypatch):
         ),
     )
     assert captured["options"].get("force_wiki_grounded") is True
+    assert chat_kwargs["max_model_calls"] == 1

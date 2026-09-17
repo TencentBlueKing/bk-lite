@@ -54,10 +54,12 @@ class Management:
         self.add_list, self.update_list, self.heartbeat_list, self.delete_list = self.contrast(self.old_map, self.new_map)
 
     def get_check_attr_map(self):
+        from apps.cmdb.services.module_ingest import is_unique_identity_attr
+
         attrs = ModelManage.search_model_attr(self.model_id)
         check_attr_map = dict(is_only={}, is_required={}, editable={})
         for attr in attrs:
-            if attr.get("is_only", False):
+            if is_unique_identity_attr(attr):
                 check_attr_map["is_only"][attr["attr_id"]] = attr["attr_name"]
             if attr.get("is_required", False):
                 check_attr_map["is_required"][attr["attr_id"]] = attr["attr_name"]

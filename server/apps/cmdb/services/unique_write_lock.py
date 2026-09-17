@@ -7,6 +7,7 @@ from datetime import timedelta
 from django.db import DatabaseError, IntegrityError
 from django.utils.timezone import now
 
+from apps.cmdb.graph.format_type import CLOUD_ID_FIELDS, parse_cloud_id_value
 from apps.cmdb.models.operation import CmdbUniqueWriteLock
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -18,24 +19,30 @@ class UniqueWriteLockService:
     def _has_value(value) -> bool:
         return value is not None and not (isinstance(value, str) and not value.strip())
 
+    @staticmethod
+    def _normalize_lock_value(field, value):
+        if field in CLOUD_ID_FIELDS:
+            parsed = parse_cloud_id_value(value)
+            if parsed is not None:
+                return parsed
+        return value
+
     @classmethod
     def build_lock_keys(cls, model_id: str, item: dict, check_attr_map: dict) -> list[str]:
         signatures = []
         for field in check_attr_map.get("is_only", {}):
-            value = item.get(field)
+            value = cls._normalize_lock_value(field, item.get(field))
             if cls._has_value(value):
                 signatures.append({"kind": "field", "fields": [field], "values": [value]})
 
         for rule in check_attr_map.get("unique_rules", []):
-            values = [item.get(field) for field in rule.field_ids]
+            values = [cls._normalize_lock_value(field, item.get(field)) for field in rule.field_ids]
             if values and all(cls._has_value(value) for value in values):
                 signatures.append({"kind": str(rule.rule_id), "fields": list(rule.field_ids), "values": values})
 
         keys = []
         for signature in signatures:
-            raw = json.dumps(
-                {"model_id": model_id, **signature}, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
-            )
+            raw = json.dumps({"model_id": model_id, **signature}, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
             keys.append(hashlib.sha256(raw.encode("utf-8")).hexdigest())
         return sorted(set(keys))
 

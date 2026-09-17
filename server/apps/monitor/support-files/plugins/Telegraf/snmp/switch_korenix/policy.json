@@ -101,6 +101,36 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Korenix交换机P1电源异常",
+      "alert_name": "交换机${resource_name} P1 电源 LED 异常",
+      "description": "监控 JetNet 交换机 P1 电源 LED 状态（1=on）。取值不是 1 时提示电源关闭、闪烁或状态异常，需检查主路供电。",
+      "metric_name": "psu1_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Korenix交换机P2电源异常",
+      "alert_name": "交换机${resource_name} P2 电源 LED 异常",
+      "description": "监控 JetNet 交换机 P2 电源 LED 状态（1=on）。取值不是 1 时提示冗余电源关闭、闪烁或状态异常，需检查备路供电。",
+      "metric_name": "psu2_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

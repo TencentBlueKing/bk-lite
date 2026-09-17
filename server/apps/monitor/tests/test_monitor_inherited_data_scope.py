@@ -825,6 +825,35 @@ def test_nats_latest_alerts_all_requested_instances_unauthorized_still_fails(moc
     assert response["message"] == "没有权限访问指定的实例"
 
 
+def test_nats_latest_alerts_accepts_instance_display_name(mocker):
+    policy = _policy("latest-name-policy", [1])
+    instance = MonitorInstance.objects.create(
+        id="('1_10.10.41.149_3306',)",
+        name="10.10.41.149-mysql-3306",
+        monitor_object=policy.monitor_object,
+        ip="10.10.41.149",
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+    alert = MonitorAlert.objects.create(
+        policy_id=policy.id,
+        organizations=list(policy.organizations),
+        monitor_instance_id=instance.id,
+        status="new",
+        level="warning",
+    )
+    user_info = _patch_nats_alert_permissions(mocker)
+
+    response = monitor_nats.query_latest_active_alerts(
+        {"instance_ids": ["10.10.41.149-mysql-3306"]},
+        user_info=user_info,
+    )
+
+    assert response["result"] is True
+    assert [item["id"] for item in response["data"]["items"]] == [alert.id]
+    assert [row["instance_id"] for row in response["data"]["instance_summaries"]] == [instance.id]
+
+
 def test_nats_latest_alerts_without_instance_ids_does_not_emit_summaries(mocker):
     policy = _policy("latest-global-summary-policy", [1])
     instance = MonitorInstance.objects.create(

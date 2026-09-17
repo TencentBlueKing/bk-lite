@@ -1,9 +1,11 @@
 Firewall Huawei SNMP:
   name: Huawei USG (Telegraf)
-  desc: SNMP monitoring template for Huawei Secospace USG firewalls. It reports CPU,
-    memory, temperature, entity voltage, and interface traffic metrics from
-    HUAWEI-ENTITY-EXTENT-MIB. Fan/PSU operational-state OIDs are absent on USG6390;
-    optical power is USG9500-only and omitted.
+  desc: SNMP monitoring for Huawei USG firewalls. It reports per-entity CPU, memory,
+    temperature, and voltage, plus current sessions, new sessions, session-create
+    rate, half-open sessions, TCP/UDP/ICMP session counts, and device forwarding
+    throughput. USG9500 also reports per-SPU CPU usage when those boards are present.
+    Interface metrics use the platform built-in IF-MIB. Supported models include
+    USG6000, USG6000E, USG9500, and HiSecEngine USG.
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -32,6 +34,57 @@ monitor_object_metric:
       desc: Per-entity voltage in volts (hwEntityVoltage; device reports mV, query
         divides by 1000). Dimension descr is entPhysicalName. Abnormal voltage may
         indicate power-rail or board issues.
+    firewall_active_sessions:
+      name: Active Sessions
+      desc: Current concurrent sessions on the Huawei USG firewall (hwSecCurrSessNum).
+        A rapid rise can indicate a connection flood or session-table pressure.
+    firewall_new_sessions:
+      name: New Sessions
+      desc: Newly created sessions on the Huawei USG firewall (hwSecConSessNum). Combined
+        with the concurrent session count it shows whether sessions are created faster
+        than they age out.
+    firewall_total_sessions:
+      name: Total Sessions
+      desc: Current total sessions in the Huawei USG session table (hwSecStatMonTotalSess).
+        Use it with session-create rate to judge remaining session headroom.
+    firewall_session_rate:
+      name: Session Create Rate
+      desc: Current session-establishment rate on the Huawei USG firewall (hwSecStatMonCurSessSpeed).
+        A sudden spike can indicate a connection flood.
+    firewall_half_open_sessions:
+      name: Half-Open Sessions
+      desc: Current half-open sessions on the Huawei USG firewall (hwSecStatMonHalfConn).
+        A sustained rise often indicates SYN flood or incomplete handshake pressure.
+    firewall_active_sessions_tcp:
+      name: Active TCP Sessions
+      desc: Current TCP sessions on the Huawei USG firewall (hwSecStatMonTcpSess).
+        Helps show session composition versus UDP and ICMP.
+    firewall_active_sessions_udp:
+      name: Active UDP Sessions
+      desc: Current UDP sessions on the Huawei USG firewall (hwSecStatMonUdpSess).
+        Helps show session composition versus TCP and ICMP.
+    firewall_active_sessions_icmp:
+      name: Active ICMP Sessions
+      desc: Current ICMP sessions on the Huawei USG firewall (hwSecStatMonIcmpSess).
+        An abnormal rise can indicate scanning or attack traffic.
+    firewall_device_sessions:
+      name: Device Sessions
+      desc: Device-wide session count on the Huawei USG firewall (hwSecStatDeviceSessCount).
+    firewall_device_session_rate:
+      name: Device Session Create Rate
+      desc: Device-wide session-establishment rate on the Huawei USG firewall (hwSecStatDeviceSessSpeed).
+    firewall_throughput32:
+      name: Device Throughput (32-bit)
+      desc: Device forwarding throughput from the 32-bit object (hwSecStatDeviceThroughput).
+        Prefer the 64-bit throughput metric on high-speed platforms.
+    firewall_throughput:
+      name: Device Throughput
+      desc: Device forwarding throughput from the 64-bit object (hwSecStatDeviceThroughput64).
+        This is firewall inspection/forwarding throughput, not IF-MIB interface octets.
+    firewall_spu_usage:
+      name: SPU CPU Usage
+      desc: Average CPU usage of each USG9500 SPU (hwSecStatUsage, 0-100). Dimensions
+        are SPU slot and CPU. Empty on boxes without SPU boards.
     interface_ifAdminStatus:
       name: Interface Admin Status
       desc: Administrative status of the network interface.

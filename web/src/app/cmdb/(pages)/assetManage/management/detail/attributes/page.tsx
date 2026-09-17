@@ -530,7 +530,7 @@ const attrRef = useRef<any>(null);
   const hasTagAttr = tableData.some((attr) => attr.attr_type === 'tag');
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-col">
       <SearchActionBar
         className="mb-4"
         spacing="flush"

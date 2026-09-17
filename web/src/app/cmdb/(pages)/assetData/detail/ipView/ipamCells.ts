@@ -11,49 +11,64 @@ export interface IpInstance {
   [key: string]: unknown;
 }
 
-export type CellKind =
-  | 'free'
-  | 'allocated_online'
-  | 'allocated_offline'
-  | 'conflict'
-  | 'reserved'
-  | 'gateway'
-  | 'unknown';
+export type AllocKind = 'free' | 'allocated' | 'reserved';
+export type LiveKind = 'none' | 'online' | 'offline' | 'conflict';
 
-export const KIND_COLOR: Record<CellKind, string> = {
-  free: '#52c41a',
-  allocated_online: '#1677ff',
-  allocated_offline: '#8c8c8c',
-  conflict: '#ff4d4f',
-  reserved: '#faad14',
-  gateway: '#722ed1',
-  unknown: '#bfbfbf',
+export interface IpamLegendFilters {
+  alloc: Record<AllocKind, boolean>;
+  live: Record<Exclude<LiveKind, 'none'>, boolean>;
+}
+
+export const DEFAULT_IPAM_FILTERS: IpamLegendFilters = {
+  alloc: { free: true, allocated: true, reserved: true },
+  live: { online: true, offline: true, conflict: true },
 };
 
-export function ipToCellKind(ip: IpInstance): CellKind {
+export const ALLOC_COLOR: Record<AllocKind, string> = {
+  free: '#52c41a',
+  allocated: '#1677ff',
+  reserved: '#faad14',
+};
+
+export const LIVE_COLOR: Record<Exclude<LiveKind, 'none'>, string> = {
+  online: '#52c41a',
+  offline: '#8c8c8c',
+  conflict: '#ff4d4f',
+};
+
+function firstEnum(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    return value.length ? String(value[0]) : undefined;
+  }
+  if (value == null || value === '') return undefined;
+  return String(value);
+}
+
+export function classifyAlloc(ip: IpInstance | null): AllocKind {
+  if (!ip) return 'free';
+  const status = firstEnum(ip.ip_allocated_status);
+  if (!status || status === 'available') return ip.ip_allocated_status ? 'free' : 'allocated';
+  if (status === 'reserved') return 'reserved';
+  if (status === 'allocated') return 'allocated';
+  return 'allocated';
+}
+
+export function classifyLive(ip: IpInstance | null): LiveKind {
+  if (!ip) return 'none';
   const statuses = ip.ip_status ?? [];
-  const allocStatuses = ip.ip_allocated_status ?? [];
-  const ipType = ip.ip_type
-    ? Array.isArray(ip.ip_type)
-      ? ip.ip_type
-      : [String(ip.ip_type)]
-    : [];
-
   if (statuses.includes('conflict')) return 'conflict';
-  if (allocStatuses.includes('reserved')) return 'reserved';
-  if (ipType.includes('gateway')) return 'gateway';
+  if (statuses.includes('online')) return 'online';
+  if (statuses.includes('offline')) return 'offline';
+  return 'none';
+}
 
-  const isOnline = statuses.includes('online');
-  const isOffline = statuses.includes('offline');
-  const isAllocated = allocStatuses.includes('allocated');
-
-  if (isAllocated && isOnline) return 'allocated_online';
-  if (isAllocated && isOffline) return 'allocated_offline';
-  if (isAllocated) return 'allocated_online';
-
-  if (statuses.includes('unknown') || allocStatuses.includes('unknown')) return 'unknown';
-
-  return 'unknown';
+export function cellMatchesFilter(
+  cell: { alloc: AllocKind; live: LiveKind },
+  filters: IpamLegendFilters
+): boolean {
+  const allocOn = filters.alloc[cell.alloc];
+  if (cell.live === 'none') return allocOn;
+  return allocOn || filters.live[cell.live];
 }
 
 export function hostOctet(ipAddr: string): number {
