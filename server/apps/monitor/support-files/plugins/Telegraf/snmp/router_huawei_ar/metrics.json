@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei_ar",
   "plugin": "Router Huawei AR SNMP",
-  "plugin_desc": "Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP). Device identity is recognized from sysObjectID under 1.3.6.1.4.1.2011.2.224 (hwAR), including AR8140-12G10XG, AR8140-T-12G10XG, AR720, AR730, AR6710-L50T2X4, AR6710-L26T2X4, AR6710-L8T3TS1X2, AR5710-H8T2TS1, AR8700-8, AR6510, AR5510 and AR6500-10. Interface traffic uses the built-in IF-MIB (including 64-bit HC counters) and is not expanded in this template. Device health uses HUAWEI-ENTITY-EXTENT-MIB CPU/memory (percent), fan speed (percent of full speed), and optical-module DDM (Rx/Tx power converted µW→dBm, temperature, voltage, laser bias).",
+  "plugin_desc": "Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP). Device identity is recognized from sysObjectID under 1.3.6.1.4.1.2011.2.224 (hwAR), including AR8140-12G10XG, AR8140-T-12G10XG, AR720, AR730, AR6710-L50T2X4, AR6710-L26T2X4, AR6710-L8T3TS1X2, AR5710-H8T2TS1, AR8700-8, AR6510, AR5510 and AR6500-10. Interface traffic uses the built-in IF-MIB (including 64-bit HC counters) and is not expanded in this template. Device health uses HUAWEI-ENTITY-EXTENT-MIB CPU/memory (percent), entity voltage (millivolts converted to volts), board power (watts), fan speed (percent of full speed), and optical-module DDM (Rx/Tx power converted µW→dBm, temperature, module voltage, laser bias).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_huawei_ar'}) by (instance_id)",
   "name": "Router",
@@ -17,6 +17,7 @@
     "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage",
+    "device_voltage_volts",
     "device_fan_speed",
     "device_optical_rx_power",
     "device_optical_tx_power",
@@ -90,6 +91,42 @@
         "instance_id"
       ],
       "description": "This metric reports the chassis temperature in degrees Celsius of the Huawei AR router, aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "device_voltage_volts{instance_type='router', __$labels__} / 1000",
+      "display_name": "Input Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity input voltage of the Huawei AR router (HUAWEI-ENTITY-EXTENT-MIB hwEntityVoltage). The device reports millivolts; the query divides by 1000 to display volts. Dimension descr is entPhysicalName, sharing hwEntityStateTable with CPU/memory/temperature. Distinct from optical-module voltage device_optical_voltage (hwEntityOpticalVoltage). Values outside the rated range may indicate unstable power and hardware risk."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_entity_board_power",
+      "query": "device_entity_board_power{instance_type='router', __$labels__}",
+      "display_name": "Board Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board power consumption of each Huawei AR entity (HUAWEI-ENTITY-EXTENT-MIB hwEntityBoardPower), in watts. Dimension descr is entPhysicalName. Some AR SKUs omit this leaf and the table stays empty. Unexpected rise can indicate a failing board, abnormal traffic load, or a cooling problem that increases power draw."
     },
     {
       "metric_group": "Hardware Status",
@@ -215,7 +252,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Supply voltage of each Huawei AR optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalVoltage). The device reports millivolts; the query divides by 1000 to display volts and drops the 2147483647 invalid sentinel. Dimension descr is entPhysicalName. Out-of-range voltage can cause unstable optics."
+      "description": "Supply voltage of each Huawei AR optical module (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalVoltage). The device reports millivolts; the query divides by 1000 to display volts and drops the 2147483647 invalid sentinel. Dimension descr is entPhysicalName. Distinct from per-entity device_voltage_volts (hwEntityVoltage). Out-of-range voltage can cause unstable optics."
     },
     {
       "metric_group": "Hardware Status",

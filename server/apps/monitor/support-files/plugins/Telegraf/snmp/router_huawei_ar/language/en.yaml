@@ -1,9 +1,10 @@
 Router Huawei AR SNMP:
   name: Huawei AR (Telegraf)
   desc: SNMP monitoring template for Huawei AR routers (sysObjectID family 1.3.6.1.4.1.2011.2.224).
-    It reports system uptime, CPU/memory, fan speed (percent of full speed), optical-module
-    DDM, and built-in IF-MIB interface traffic. Supported models include AR8140-12G10XG,
-    AR720/AR730, AR6710-L50T2X4, AR5710-H8T2TS1, AR8700-8, AR5510/AR6510 and AR6500-10.
+    It reports system uptime, CPU/memory, entity voltage (mV converted to volts), board
+    power (watts), fan speed (percent of full speed), optical-module DDM, and built-in
+    IF-MIB interface traffic. Supported models include AR8140-12G10XG, AR720/AR730,
+    AR6710-L50T2X4, AR5710-H8T2TS1, AR8700-8, AR5510/AR6510 and AR6500-10.
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -14,6 +15,19 @@ monitor_object_metric:
       name: Device Temperature
       desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
         high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_voltage_volts:
+      name: Input Voltage
+      desc: Per-entity input voltage of the Huawei AR router (hwEntityVoltage). The
+        device reports millivolts; the query divides by 1000 to display volts. Dimension
+        descr is entPhysicalName. Distinct from optical-module voltage device_optical_voltage
+        (hwEntityOpticalVoltage). Values outside the rated range may indicate unstable
+        power and hardware risk.
+    device_entity_board_power:
+      name: Board Power
+      desc: Board power consumption of each Huawei AR entity (hwEntityBoardPower),
+        in watts. Dimension descr is entPhysicalName. Unexpected rise can indicate
+        a failing board, abnormal traffic load, or a cooling problem that increases
+        power draw.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each cooling fan (enum). A non-normal state indicates
@@ -48,7 +62,8 @@ monitor_object_metric:
     device_optical_voltage:
       name: Optical Module Voltage
       desc: Supply voltage of each optical module (hwEntityOpticalVoltage). The device
-        reports millivolts; the query divides by 1000 to display volts and drops 2147483647. Out-of-range
+        reports millivolts; the query divides by 1000 to display volts and drops 2147483647.
+        Distinct from per-entity device_voltage_volts (hwEntityVoltage). Out-of-range
         voltage can cause unstable optics.
     device_psu_state:
       name: Power Supply Status
