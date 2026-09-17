@@ -14,7 +14,7 @@ Status: implemented
 
 ## User Stories
 
-1. As a 平台超级用户, I want 在节点、监控、日志和 APM 目录里打开「未归属」, so that 我能找到全平台已经丢光组织的对象。
+1. As a 平台超级用户, I want 在节点、监控接入/视图实例、日志采集实例和 APM 应用 / 服务 / 接入实例目录里打开「未归属」, so that 我能找到全平台已经丢光组织的对象。
 2. As a 平台超级用户, I want 给未归属对象指定至少一个组织, so that 目标组织的成员能重新看见并管理它。
 3. As a 平台超级用户, I want 删除确认无用的未归属对象, so that 修复列表不会一直堆着无法回收的残骸。
 4. As an 普通用户或组织管理员, I want 未归属对象继续不可见、不可改, so that 租户隔离不会因为别人丢了组织而变成全员可见。
@@ -55,9 +55,9 @@ Status: implemented
 
 ### 前端
 
-- 仅超级用户在节点列表、监控接入实例列表、日志采集实例列表、APM 服务列表和 APM 接入实例列表看到「未归属」筛选，默认关闭。
+- 仅超级用户在节点列表、监控接入实例列表、监控视图实例列表、日志采集实例列表、APM 应用 / 服务 / 接入实例列表看到「当前组织 | 未归属」分段筛选，默认当前组织。
 - 开启后请求带显式未归属参数；组织列展示未归属而不是当前组织。
-- 行操作复用现有设置组织和删除入口。APM 已有组织分配弹窗和「未分配」文案，补筛选即可。
+- 行操作复用现有设置组织和删除入口。监控视图列表在未归属模式下提供「调整组织」；蜂巢图只列出、不改组织。APM 应用管理复用现有编辑组织。
 - 非超级用户不渲染该筛选；即使用户改请求参数，服务端仍 403。
 
 ## Testing Decisions
@@ -81,4 +81,4 @@ Status: implemented
 - 需求单 p398_632 已按本方案改写描述；实现时标题应按「未归属 / 无组织」理解，不要做成无数据告警可见性。
 - 落地时同步节点、监控、日志、APM 的长期能力表述：超级用户可修复未归属目录对象，但不能把未归属当成当前组织列表的默认附加条件。
 - 运营分析内置数据源已有「超管可列出以便改归属，取数不旁路」先例，本变更与之同向，但对象是丢失组织的目录行，不是全员可见目录。
-- 落地证据：公共入口 `server/apps/core/utils/current_team_scope.py`；目录列表 `server/apps/{monitor,log,node_mgmt,apm}` 的未归属查询与 `server/apps/{monitor,log,node_mgmt,apm}/tests/test_unassigned_instance_repair.py`；Sidecar 空同步 `server/apps/node_mgmt/tests/test_b75_sidecar_service.py`；控制台筛选 `web/src/app/{node-manager,monitor,log,apm}` 对应目录页。
+- 落地证据：公共入口 `server/apps/core/utils/current_team_scope.py`；目录列表 `server/apps/{monitor,log,node_mgmt,apm}` 的未归属查询与 `server/apps/{monitor,log,node_mgmt,apm}/tests/test_unassigned_instance_repair.py`；Sidecar 空同步 `server/apps/node_mgmt/tests/test_b75_sidecar_service.py`；控制台筛选 `web/src/components/catalog-scope-segmented` 与 `web/src/app/{node-manager,monitor,log,apm}` 对应目录页（含监控视图与 APM 应用管理）。
