@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei",
   "plugin": "Switch Huawei SNMP",
-  "plugin_desc": "SNMP monitoring for Huawei campus, chassis, and CloudEngine switches. It reports per-entity CPU, memory, temperature, and fan health (state, presence, and speed as a percent of full speed); chassis used/total power in watts; power-supply presence and operating state; optical-module DDM (receive/transmit power, temperature, voltage, and laser bias); stack/CSS member and port health; and, when M-LAG is enabled, M-LAG port state and member heartbeat. Supported models include S5700, S6700, S7700, S8700, S9300, S9700, S12700, S12700E, S12700H, S16700, and CloudEngine CE SKUs such as CE6881 and CE5881. S12700H and S16700 are V600-generation chassis and use this same plugin and Switch object.",
+  "plugin_desc": "SNMP monitoring for Huawei campus, chassis, and CloudEngine switches. It reports per-entity CPU, memory, temperature, and fan health (state, presence, and speed as a percent of full speed); chassis used/total power in watts; chassis and board energy in milliwatts (divide by 1000 for watts); power-supply presence and operating state; optical-module DDM (receive/transmit power, temperature, voltage, and laser bias); stack/CSS member and port health; and, when M-LAG is enabled, M-LAG port state and member heartbeat. Supported models include S5700, S6700, S7700, S8700, S9300, S9700, S12700, S12700E, S12700H, S16700, and CloudEngine CE SKUs such as CE6881 and CE5881. S12700H and S16700 are V600-generation chassis and use this same plugin and Switch object.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_huawei'}) by (instance_id)",
   "name": "Switch",
@@ -21,7 +21,8 @@
     "device_optical_tx_power",
     "device_psu_state",
     "device_fan_speed",
-    "device_power_used"
+    "device_power_used",
+    "device_energy_current_power_mw"
   ],
   "metrics": [
     {
@@ -193,6 +194,81 @@
         "instance_id"
       ],
       "description": "Chassis-level total power capacity of the Huawei switch (HUAWEI-ENTITY-EXTENT-MIB hwDevicePowerInfoTotalPower), in watts. Used as the denominator when judging how close the chassis is to its power budget."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_energy_current_power_mw",
+      "query": "device_energy_current_power_mw{instance_type='switch', __$labels__}",
+      "display_name": "Chassis Current Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous chassis energy of the Huawei switch (hwCurrentPower), in milliwatts (mW). Divide by 1000 to display watts. Distinct from device_power_used, which is chassis used power in watts from hwDevicePowerInfoUsedPower."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_energy_average_power_mw",
+      "query": "device_energy_average_power_mw{instance_type='switch', __$labels__}",
+      "display_name": "Chassis Average Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Period-average chassis energy of the Huawei switch (hwAveragePower), in milliwatts (mW). Divide by 1000 to display watts. Distinct from device_power_used (watts)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_energy_rated_power_mw",
+      "query": "device_energy_rated_power_mw{instance_type='switch', __$labels__}",
+      "display_name": "Chassis Rated Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Rated chassis energy of the Huawei switch (hwRatedPower), in milliwatts (mW). Divide by 1000 to display watts. Distinct from device_power_total, which is chassis total power in watts from hwDevicePowerInfoTotalPower."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_board_current_power_mw",
+      "query": "device_board_current_power_mw{instance_type='switch', __$labels__}",
+      "display_name": "Board Current Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "hwBoardName",
+          "description": "Board name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous energy of each Huawei switch board (hwBoardCurrentPower), in milliwatts (mW). Divide by 1000 to display watts. Dimension hwBoardName is the board name. Distinct from chassis watts metrics device_power_used / device_power_total."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_board_rated_power_mw",
+      "query": "device_board_rated_power_mw{instance_type='switch', __$labels__}",
+      "display_name": "Board Rated Energy (mW)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "hwBoardName",
+          "description": "Board name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Rated energy of each Huawei switch board (hwBoardRatedPower), in milliwatts (mW). Divide by 1000 to display watts. Dimension hwBoardName is the board name."
     },
     {
       "metric_group": "Hardware Status",
