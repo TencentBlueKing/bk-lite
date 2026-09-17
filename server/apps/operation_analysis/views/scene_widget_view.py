@@ -12,13 +12,11 @@ from apps.operation_analysis.serializers.scene_widget_serializers import (
     Application3DWallRequestSerializer,
     NetworkStatusTopologyRequestSerializer,
     RelatedTopologyRequestSerializer,
-    Room3DEmbedRequestSerializer,
 )
 from apps.operation_analysis.services.application3d import Application3DQueryService
 from apps.operation_analysis.services.application3d.errors import Application3DError
 from apps.operation_analysis.services.network_status_topology import NetworkStatusTopologyService
 from apps.operation_analysis.services.related_topology import RelatedTopologyError, RelatedTopologyService
-from apps.operation_analysis.services.room3d_embed import Room3DEmbedError, Room3DEmbedService
 
 
 class SceneWidgetViewSet(ViewSet):
@@ -127,24 +125,6 @@ class SceneWidgetViewSet(ViewSet):
                 )
             )
         except RelatedTopologyError as exc:
-            return Response(
-                {"code": exc.code, "detail": exc.message},
-                status=self._APPLICATION3D_ERROR_STATUS.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
-            )
-
-    @action(detail=False, methods=["post"], url_path="room3d")
-    def room3d(self, request):
-        """只读 3D 机房布局。对象读权限走 CMDB NATS user_info，不绑运营分析 view-View。"""
-        serializer = Room3DEmbedRequestSerializer(data=request.data or {})
-        serializer.is_valid(raise_exception=True)
-        try:
-            return Response(
-                Room3DEmbedService.build(
-                    request,
-                    inst_uuid=serializer.validated_data["inst_uuid"],
-                )
-            )
-        except Room3DEmbedError as exc:
             return Response(
                 {"code": exc.code, "detail": exc.message},
                 status=self._APPLICATION3D_ERROR_STATUS.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR),

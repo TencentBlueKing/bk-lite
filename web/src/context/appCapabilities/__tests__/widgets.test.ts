@@ -7,7 +7,7 @@ import {
 } from '../widgets';
 
 describe('public widget keys', () => {
-  it('declares the thirteen stable keys and maps them to sold apps', () => {
+  it('declares the ten stable keys and maps them to sold apps', () => {
     expect([...APP_WIDGET_KEYS]).toEqual([
       'monitor.monitorView',
       'monitor.alertList',
@@ -15,9 +15,6 @@ describe('public widget keys', () => {
       'cmdb.baseInfo',
       'cmdb.assetChange',
       'ops-analysis.relatedTopology',
-      'ops-analysis.networkStatusTopology',
-      'ops-analysis.application3D',
-      'ops-analysis.room3D',
       'log.alertRawLog',
       'node.nodeStatus',
       'apm.serviceOverview',
@@ -31,13 +28,6 @@ describe('public widget keys', () => {
     expect(appNameForWidgetKey('ops-analysis.relatedTopology')).toBe(
       'ops-analysis',
     );
-    expect(appNameForWidgetKey('ops-analysis.networkStatusTopology')).toBe(
-      'ops-analysis',
-    );
-    expect(appNameForWidgetKey('ops-analysis.application3D')).toBe(
-      'ops-analysis',
-    );
-    expect(appNameForWidgetKey('ops-analysis.room3D')).toBe('ops-analysis');
     expect(appNameForWidgetKey('log.alertRawLog')).toBe('log');
     expect(appNameForWidgetKey('node.nodeStatus')).toBe('node');
     expect(appNameForWidgetKey('apm.serviceOverview')).toBe('apm');
@@ -55,9 +45,7 @@ describe('public widget keys', () => {
     expect(resolveWidgetLoader(api, 'ops-analysis.relatedTopology')).toBe(
       loadRelated,
     );
-    expect(
-      resolveWidgetLoader(api, 'ops-analysis.networkStatusTopology'),
-    ).toBeNull();
+    expect(resolveWidgetLoader(api, 'cmdb.baseInfo')).toBeNull();
   });
 
   it('treats an unauthorized or empty module as undeclared for every key', () => {

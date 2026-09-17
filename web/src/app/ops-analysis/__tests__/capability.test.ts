@@ -16,29 +16,16 @@ describe('ops-analysis capability', () => {
   it('registers public widgets as per-key dynamic imports', () => {
     expect(APP_CAPABILITY_LOADERS['ops-analysis']).toBeTypeOf('function');
     expect(capabilitySource).toContain("'ops-analysis.relatedTopology'");
-    expect(capabilitySource).toContain("'ops-analysis.networkStatusTopology'");
-    expect(capabilitySource).toContain("'ops-analysis.application3D'");
-    expect(capabilitySource).toContain("'ops-analysis.room3D'");
+    expect(capabilitySource).not.toContain(
+      "'ops-analysis.networkStatusTopology'",
+    );
+    expect(capabilitySource).not.toContain("'ops-analysis.application3D'");
+    expect(capabilitySource).not.toContain("'ops-analysis.room3D'");
     expect(capabilitySource).toContain(
       "import('@/app/ops-analysis/components/widgets/relatedTopology')",
     );
-    expect(capabilitySource).toContain(
-      "import('@/app/ops-analysis/components/widgets/networkStatusTopology/embed')",
-    );
-    expect(capabilitySource).toContain(
-      "import('@/app/ops-analysis/components/widgets/application3D/embed')",
-    );
-    expect(capabilitySource).toContain(
-      "import('@/app/ops-analysis/components/widgets/room3D/embed')",
-    );
     expect(capabilitySource).not.toMatch(
       /import RelatedTopology from ['"]@\/app\/ops-analysis\/components\/widgets\/relatedTopology['"]/,
-    );
-    expect(capabilitySource).not.toMatch(
-      /import NetworkStatusTopologyEmbed from ['"]@\/app\/ops-analysis\/components\/widgets\/networkStatusTopology\/embed['"]/,
-    );
-    expect(capabilitySource).not.toMatch(
-      /import Application3DEmbed from ['"]@\/app\/ops-analysis\/components\/widgets\/application3D\/embed['"]/,
     );
   });
 

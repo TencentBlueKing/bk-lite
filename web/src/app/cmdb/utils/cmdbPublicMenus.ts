@@ -1,14 +1,7 @@
 import type { AppWidgetKey } from '@/context/appCapabilities/widgets';
 
 export interface CmdbPublicMenuItem {
-  key:
-    | 'monitorView'
-    | 'alertList'
-    | 'monitorPolicy'
-    | 'nodeStatus'
-    | 'networkStatusTopology'
-    | 'application3D'
-    | 'room3D';
+  key: 'monitorView' | 'alertList' | 'monitorPolicy' | 'nodeStatus';
   widgetKey: AppWidgetKey;
   titleKey: string;
   url: string;
@@ -16,29 +9,12 @@ export interface CmdbPublicMenuItem {
 
 const DETAIL_BASE = '/cmdb/assetData/detail';
 
-// 这些侧栏项没有独立页面，点击落到关联关系页的对应 Segmented tab。
-const RELATIONSHIP_TAB_BY_MENU_KEY: Partial<
-  Record<CmdbPublicMenuItem['key'], string>
-> = {
-  networkStatusTopology: 'networkStatusTopology',
-  room3D: 'room3D',
-};
-
-export function relationshipTabForPublicMenuKey(
-  key: CmdbPublicMenuItem['key'],
-): string {
-  return RELATIONSHIP_TAB_BY_MENU_KEY[key] || '';
-}
-
 export function resolveCmdbPublicMenuItems(input: {
-  instUuid: string;
   modelId: string;
   monitorId: string;
   nodeId: string;
-  isNetworkDevice: boolean;
   widgets: Partial<Record<AppWidgetKey, boolean>>;
 }): CmdbPublicMenuItem[] {
-  const instUuid = input.instUuid.trim();
   const monitorId = input.monitorId.trim();
   const nodeId = input.nodeId.trim();
   const items: CmdbPublicMenuItem[] = [];
@@ -75,33 +51,6 @@ export function resolveCmdbPublicMenuItems(input: {
       widgetKey: 'node.nodeStatus',
       titleKey: 'Model.publicNodeStatus',
       url: `${DETAIL_BASE}/nodeStatus`,
-    });
-  }
-  if (!instUuid) {
-    return items;
-  }
-  if (input.isNetworkDevice && canShow('ops-analysis.networkStatusTopology')) {
-    items.push({
-      key: 'networkStatusTopology',
-      widgetKey: 'ops-analysis.networkStatusTopology',
-      titleKey: 'Model.publicNetworkStatusTopology',
-      url: `${DETAIL_BASE}/networkStatusTopology`,
-    });
-  }
-  if (input.modelId === 'system' && canShow('ops-analysis.application3D')) {
-    items.push({
-      key: 'application3D',
-      widgetKey: 'ops-analysis.application3D',
-      titleKey: 'Model.publicApplication3D',
-      url: `${DETAIL_BASE}/application3D`,
-    });
-  }
-  if (input.modelId === 'server_room' && canShow('ops-analysis.room3D')) {
-    items.push({
-      key: 'room3D',
-      widgetKey: 'ops-analysis.room3D',
-      titleKey: 'Model.publicRoom3D',
-      url: `${DETAIL_BASE}/room3D`,
     });
   }
   return items;

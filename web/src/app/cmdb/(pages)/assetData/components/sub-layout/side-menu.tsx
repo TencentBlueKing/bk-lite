@@ -20,7 +20,6 @@ import {
 } from '../../relationshipViewNavigation';
 import { buildRelationshipMenuSections } from '../../relationshipMenuData';
 import { useCmdbPublicMenuItems } from '@/app/cmdb/hooks/useCmdbPublicMenuItems';
-import { relationshipTabForPublicMenuKey } from '@/app/cmdb/utils/cmdbPublicMenus';
 
 interface SideMenuProps {
   menuItems: MenuItem[];
@@ -113,13 +112,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
     return `${path}?${params.toString()}`;
   };
 
-  const publicShortcutTabs = publicItems
-    .map((item) => relationshipTabForPublicMenuKey(item.key))
-    .filter(Boolean);
-  const shortcutTabs = [
-    ...shortcuts.map((shortcut) => shortcut.tab),
-    ...publicShortcutTabs,
-  ];
+  const shortcutTabs = shortcuts.map((shortcut) => shortcut.tab);
 
   const isActive = (path: string): boolean => {
     if (pathname === null) return false;
@@ -242,37 +235,20 @@ const SideMenu: React.FC<SideMenuProps> = ({
               )}
             </React.Fragment>
           ))}
-          {publicItems.map((item) => {
-            const relationshipUrl = relItem?.url;
-            const relationshipTab = relationshipTabForPublicMenuKey(item.key);
-            const landsOnRelationshipTab =
-              Boolean(relationshipTab) && Boolean(relationshipUrl);
-            const href =
-              landsOnRelationshipTab && relationshipUrl
-                ? buildRelationshipTabHref(
-                  relationshipUrl,
-                  searchParams,
-                  relationshipTab,
-                )
-                : buildUrlWithParams(item.url);
-            const active = landsOnRelationshipTab && relationshipUrl
-              ? isActive(relationshipUrl) && currentTab === relationshipTab
-              : isActive(item.url);
-            return (
-              <li
-                key={item.key}
-                className={`rounded-md mb-1 ${active ? sideMenuStyle.active : ''}`}
+          {publicItems.map((item) => (
+            <li
+              key={item.key}
+              className={`rounded-md mb-1 ${isActive(item.url) ? sideMenuStyle.active : ''}`}
+            >
+              <Link
+                href={buildUrlWithParams(item.url)}
+                className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
               >
-                <Link
-                  href={href}
-                  className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
-                >
-                  <ApartmentOutlined className="text-base pr-1.5" />
-                  {t(item.titleKey)}
-                </Link>
-              </li>
-            );
-          })}
+                <ApartmentOutlined className="text-base pr-1.5" />
+                {t(item.titleKey)}
+              </Link>
+            </li>
+          ))}
         </ul>
         {showProgress && <>{taskProgressComponent}</>}
         {showBackButton && (

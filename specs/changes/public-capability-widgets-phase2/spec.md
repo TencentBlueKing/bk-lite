@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> 后续修订：公开目录不再包含 `ops-analysis.room3D`。CMDB 机房详情不再挂「3D 机房」公开入口或 `scene_widgets/room3d` 嵌入接口。画布 `room3D` 与 NATS `get_room3d_layout` 仍在。现行 10 键目录见 [`public-capability-widgets-withdraw-oa-embeds`](../public-capability-widgets-withdraw-oa-embeds/spec.md)。下文保留二期当时交付记录（含当时的 `test_room3d_embed`）。
+
 ## Completion Evidence
 
 - 前端：`pnpm test:app-capabilities`（含本期 log/node/apm 声明、事故切换器与选项文案、viewModal 高度链与 embed 工具栏、room3D 槽与侧栏入口、资产变更主场时间线复用与嵌入 list|detail 统一顶栏、历史日志线索契约、策略只读与宿主铺满、节点状态语义）47 files / 157 tests PASS。
@@ -153,7 +155,7 @@ Status: implemented
 ## Further Notes
 
 - 本变更承接 `specs/changes/public-capability-widgets/spec.md`（689）。
-- **本变更正式修订 689 Spec 的目录键集合与告警详情 Tab 序**（目录由 6 键扩至 13 键；告警详情插入本期公共 Tab）。其它 689 行为不回滚；独立复核不得再按「冻死 6 键 / 旧 Tab 序」卡本期交付。
+- **本变更正式修订 689 Spec 的目录键集合与告警详情 Tab 序**（目录由 6 键扩至当时的 13 键；告警详情插入本期公共 Tab）。现行目录已下架 3 个 OA 嵌入键，见 [`public-capability-widgets-withdraw-oa-embeds`](../public-capability-widgets-withdraw-oa-embeds/spec.md)；其它 689 / 本期行为不回滚。独立复核不得再按「冻死 6 键 / 旧 Tab 序 / 已下架的 room3D 嵌入」卡交付。
 - `ops-analysis.room3D` 不得用 `ops-analysis.application3D` 顶替。
 - 现网已具备、可直接消费的事实：APM 推送 `resource_id` = 服务 UUID 且 `resource_type = apm_service`；日志推送 `labels.log_alert_id`；CMDB 主机实例自带系统关联字段 `node_id`；监控实例模型与列表序列化已有 `node_id` / `cmdb_id`。监控 → 告警中心身份快照**尚缺** `node_id`，由本变更按与 `cmdb_id` 同路径补齐。
 - 「可以加载」是模块声明与组件键可用性，不是「这台资产有没有变更记录 / 节点是否在线」。缺标识是绑定门；资源无权是组件内权限门；二者与售卖门分开。

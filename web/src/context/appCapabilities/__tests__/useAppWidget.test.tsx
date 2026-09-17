@@ -57,7 +57,7 @@ describe('useAppWidget', () => {
   it('is ready only for declared keys after the module loads', async () => {
     mocks.clientData = [{ name: 'ops-analysis' }];
     const { result, rerender } = renderHook(
-      ({ key }: { key: 'ops-analysis.relatedTopology' | 'ops-analysis.application3D' }) =>
+      ({ key }: { key: 'ops-analysis.relatedTopology' | 'cmdb.baseInfo' }) =>
         useAppWidget(key),
       { initialProps: { key: 'ops-analysis.relatedTopology' as const } },
     );
@@ -68,7 +68,7 @@ describe('useAppWidget', () => {
     expect(result.current.declared).toBe(true);
     expect(result.current.loadWidget).toBeTypeOf('function');
 
-    rerender({ key: 'ops-analysis.application3D' });
+    rerender({ key: 'cmdb.baseInfo' });
     await waitFor(() => {
       expect(result.current.status).toBe('unavailable');
     });

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> 后续修订：公开目录不再包含 `ops-analysis.networkStatusTopology` / `ops-analysis.application3D`。CMDB 资产详情不再挂「网络状态拓扑」「3D应用」。画布场景组件仍在。现行 10 键目录见 [`public-capability-widgets-withdraw-oa-embeds`](../public-capability-widgets-withdraw-oa-embeds/spec.md)。下文保留一期当时交付记录。
+
 ## Completion Evidence
 
 - 前端：`pnpm exec vitest run` 覆盖目录探测（`appCapabilities/__tests__`、monitor/cmdb/OA `capability.test.ts`）、告警宿主 isolation / Tab 序 / 快照对象、CMDB 入口闸门与宿主 isolation、关联拓扑保存校验、画布 surface、网络嵌入适配、3D `instUuid` 收窄查询、懒加载 `reloadKey`，均 PASS。
@@ -34,7 +36,7 @@ BK-Lite 按已售模块交付后，运维在告警处置和资产排查时仍要
 
 - 延续系统层 `appCapabilities`：提供模块在各自 `capability` 中声明组件并登记目录；使用模块先按售卖 / 模块级访问探测，再按**稳定组件键**检查声明与可加载性。不另建运行时注册表，不把业务组件搬进 shared `src/components`。
 - 授权按售卖模块；组件键解决「模块已购但某组件未声明 / 不可加载」的降级。宿主按键探测，失败与未购买统一不展示入口。
-- 稳定声明键（与展示文案解耦）。一期 6 个如下；二期 `specs/changes/public-capability-widgets-phase2/spec.md` 扩至 13 个（新增 `log.alertRawLog`、`cmdb.assetChange`、`monitor.monitorPolicy`、`ops-analysis.room3D`、`node.nodeStatus`、`apm.serviceOverview`、`apm.callChain`），独立复核不得再按冻死 6 键卡交付：
+- 稳定声明键（与展示文案解耦）。一期当时 6 个如下；二期 `specs/changes/public-capability-widgets-phase2/spec.md` 当时扩至 13 个。现行目录已下架其中 3 个 OA 嵌入键，见 [`public-capability-widgets-withdraw-oa-embeds`](../public-capability-widgets-withdraw-oa-embeds/spec.md)，独立复核不得再按冻死 6 键或已下架的三键卡交付：
   - `monitor.monitorView`
   - `monitor.alertList`
   - `cmdb.baseInfo`

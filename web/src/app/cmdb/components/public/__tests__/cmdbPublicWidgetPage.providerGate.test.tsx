@@ -103,20 +103,20 @@ describe('CmdbPublicWidgetPage provider gate', () => {
   });
 
   it('activates an ops-analysis widget on the same declaration rule as the others', async () => {
-    lazyState.Widget = function PublicApplication3DWidget({
+    lazyState.Widget = function PublicRelatedTopologyWidget({
       instUuid,
     }: {
       instUuid?: string;
     }) {
-      return <div>{`public-3d:${instUuid}`}</div>;
+      return <div>{`public-related:${instUuid}`}</div>;
     };
     render(
       <CmdbPublicWidgetPage
-        widgetKey="ops-analysis.application3D"
+        widgetKey="ops-analysis.relatedTopology"
         identifierProp="instUuid"
       />,
     );
-    expect(await screen.findByText(`public-3d:${INST_UUID}`)).toBeTruthy();
+    expect(await screen.findByText(`public-related:${INST_UUID}`)).toBeTruthy();
     expect(lazyState.loadCalls.at(-1)).toBe(true);
   });
 
@@ -124,7 +124,7 @@ describe('CmdbPublicWidgetPage provider gate', () => {
     widgetState.declared = false;
     for (const widgetKey of [
       'monitor.monitorView',
-      'ops-analysis.application3D',
+      'ops-analysis.relatedTopology',
     ] as const) {
       render(
         <CmdbPublicWidgetPage
