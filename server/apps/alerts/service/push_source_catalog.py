@@ -219,7 +219,6 @@ class PushSourceCatalog:
                 rejected,
             )
         self._record_throttle(team_id, mapping, now)
-        self.store.set(self.READY_KEY.format(team_id=team_id), 1)
 
     def _rows_for_team(self, team_id):
         key = self.KEY.format(team_id=team_id)

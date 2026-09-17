@@ -16,6 +16,7 @@ def catalog():
     return PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: 1_700_000_000, min_interval=60)
 
 
+@pytest.mark.django_db
 def test_observe_keeps_original_identity_per_team():
     cat = catalog()
     cat.observe([1], ["prod", "001", "1", "", "  "])
@@ -35,6 +36,7 @@ def test_observe_refreshes_score_and_skips_within_interval():
     assert cat.store.zscore("alerts:push_source_ids:v1:1", "prod") == 200
 
 
+@pytest.mark.django_db
 def test_cap_rejects_new_members_and_keeps_existing():
     cat = catalog()
     cat.observe([1], [f"s{i}" for i in range(PushSourceCatalog.MAX_MEMBERS)])
@@ -175,6 +177,25 @@ def test_rebuild_loads_snapshot_and_marks_ready_even_when_empty():
     assert cat.list_for_teams([3]) == []
     assert cat.store.get("alerts:push_source_ids:ready:v1:1") == 1
     assert cat.store.get("alerts:push_source_ids:ready:v1:3") == 1
+
+
+@pytest.mark.django_db
+def test_observe_does_not_mark_ready_or_skip_historical_rebuild():
+    now = timezone.now()
+    Alert.objects.create(
+        alert_id="H1",
+        fingerprint="fh",
+        title="t",
+        content="",
+        level="1",
+        team=[1],
+        push_source_ids=["hist"],
+        last_event_time=now,
+    )
+    cat = PushSourceCatalog(store=MemoryCatalogStore(), now=lambda: int(now.timestamp()) + 50, min_interval=0)
+    cat.observe([1], ["live"])
+    assert cat.store.get("alerts:push_source_ids:ready:v1:1") != 1
+    assert set(cat.list_for_teams([1])) >= {"hist", "live"}
 
 
 @pytest.mark.django_db
