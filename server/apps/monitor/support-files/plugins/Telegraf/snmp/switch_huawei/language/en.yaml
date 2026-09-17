@@ -1,12 +1,13 @@
 Switch Huawei SNMP:
   name: Huawei (Telegraf)
   desc: SNMP monitoring for Huawei campus, chassis, and CloudEngine switches. It
-    reports per-entity CPU, memory, temperature, and fan health (state, presence,
-    and speed as a percent of full speed); chassis used/total power in watts;
+    reports per-entity CPU, memory, temperature, and voltage (millivolts converted
+    to volts); fan health (state, presence, and speed as a percent of full speed);
+    chassis used/total power and per-entity board power in watts;
     chassis and board energy in milliwatts (divide by 1000 for watts);
     power-supply presence, operating state, current in milliamperes, voltage in
     millivolts, and module rated power in watts; optical-module DDM (receive/transmit
-    power, temperature, voltage, and laser bias); stack/CSS member and port
+    power, temperature, module voltage, and laser bias); stack/CSS member and port
     health; and, when M-LAG is enabled, M-LAG port state and member heartbeat.
     Supported models include
     S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S12700H/S16700 and CloudEngine
@@ -20,8 +21,11 @@ monitor_object_metric:
   Switch:
     device_voltage_volts:
       name: Input Voltage
-      desc: Device input voltage reading in volts. Values outside the rated range
-        may indicate unstable power and hardware risk.
+      desc: Per-entity input voltage of the Huawei switch (hwEntityVoltage). The
+        device reports millivolts; the query divides by 1000 to display volts.
+        Dimension descr is entPhysicalName. Distinct from optical-module voltage
+        device_optical_voltage (hwEntityOpticalVoltage). Values outside the rated
+        range may indicate unstable power and hardware risk.
     device_optical_rx_power:
       name: SFP RX Power
       desc: Per-module optical receive power in dBm (campus switches report µW; query converts
@@ -46,7 +50,8 @@ monitor_object_metric:
     device_optical_voltage:
       name: Optical Module Voltage
       desc: Supply voltage of each optical module (hwEntityOpticalVoltage). The device
-        reports millivolts; the query divides by 1000 to display volts and drops 2147483647. Out-of-range
+        reports millivolts; the query divides by 1000 to display volts and drops 2147483647.
+        Distinct from per-entity device_voltage_volts (hwEntityVoltage). Out-of-range
         voltage can cause unstable optics.
     snmp_uptime:
       name: System Uptime
@@ -227,6 +232,13 @@ monitor_object_metric:
       desc: Chassis-level total power capacity (hwDevicePowerInfoTotalPower), in watts.
         Used as the denominator when judging how close the chassis is to its power
         budget.
+    device_entity_board_power:
+      name: Board Power
+      desc: Board power consumption of each entity (hwEntityBoardPower), in watts.
+        Dimension descr is entPhysicalName. Distinct from ENERGYMNGT milliwatt
+        series device_board_current_power_mw / device_board_rated_power_mw.
+        Unexpected rise can indicate a failing board, abnormal traffic load, or a
+        cooling problem that increases power draw.
     device_energy_current_power_mw:
       name: Chassis Current Energy (mW)
       desc: Instantaneous chassis energy (hwCurrentPower), in milliwatts. Divide by
@@ -245,7 +257,8 @@ monitor_object_metric:
       name: Board Current Energy (mW)
       desc: Instantaneous energy of each board (hwBoardCurrentPower), in milliwatts.
         Divide by 1000 to display watts. Dimension hwBoardName is the board name.
-        Distinct from chassis watts metrics device_power_used / device_power_total.
+        Distinct from chassis watts metrics device_power_used / device_power_total
+        and from entity watts metric device_entity_board_power (hwEntityBoardPower).
     device_board_rated_power_mw:
       name: Board Rated Energy (mW)
       desc: Rated energy of each board (hwBoardRatedPower), in milliwatts. Divide by

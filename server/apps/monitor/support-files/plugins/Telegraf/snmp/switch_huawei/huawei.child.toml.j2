@@ -92,6 +92,20 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
         name = "celsius"
+    # ---- Huawei Entity voltage (HUAWEI-ENTITY-EXTENT-MIB hwEntityVoltage, per entity) ----
+    # hwEntityVoltage ...1.1.13 Integer32 RO，线侧 mV；metrics 查询 /1000 → V。
+    # descr 取 ENTITY-MIB entPhysicalName，与 CPU/Mem/Temp 同 entPhysicalIndex。
+    # 与光模块 hwEntityOpticalVoltage (...3.1.6) 不同，二者可并存。
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.13"
+        name = "volts"
     # ---- Huawei Fans (HUAWEI-ENTITY-EXTENT-MIB hwFanStatusTable) ----
     # hwEntityFanState ...10.1.7 线侧 INTEGER 仅 normal(1)/abnormal(2)，不是 Cisco 六段枚举。
     # hwEntityFanSpeed ...10.1.5 Integer32，单位为满速百分比，不是 RPM。
@@ -154,6 +168,19 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.3.1"
         name = "total"
+    # ---- Entity board power (hwEntityBoardPower, watts) ----
+    # hwEntityBoardPower ...1.1.24 Integer32 RO，单位瓦特；descr=entPhysicalName。
+    # 与 ENERGYMNGT 板卡毫瓦指标 device_board_*_mw 并存，勿混单位。
+    [[inputs.snmp.table]]
+        name = "device_entity"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.24"
+        name = "board_power"
     # ---- Chassis/board energy (hwCurrentPower / hwBoardCurrentPower, milliwatts) ----
     # 与 hwDevicePowerInfo*（瓦特）并存，线侧为毫瓦，展示可 ÷1000 为瓦特。
     # hwCurrentPower ...6.157.1.6 / hwAveragePower ...1.3 / hwRatedPower ...1.4
