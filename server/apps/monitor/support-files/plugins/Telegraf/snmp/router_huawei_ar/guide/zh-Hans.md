@@ -56,7 +56,7 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 | 384 | AR5510-L5T |
 | 385 | AR6500-10 |
 
-同一根下的其他叶子仍属 AR 系列。本轮不新增私有指标，也不新建 AR 监控对象。
+同一根下的其他叶子仍属 AR 系列。型号字典保持不变，不新建 AR 监控对象。本插件在既有健康指标上增加风扇转速（满速百分比）与光模块 DDM。
 
 ## 页面字段说明
 
@@ -79,6 +79,8 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 
 - `snmp_uptime` 持续增长。
 - `device_cpu_usage`、`device_memory_usage` 有读数。
+- 有风扇的机型上 `device_fan_state` / `device_fan_speed`（满速百分比）有读数。
+- 有光模块时，`device_optical_rx_power` / `device_optical_tx_power`（µW 换算为 dBm）以及温度（°C）、电压（mV→V）、偏置电流（µA）有读数。无效哨兵 `2147483647` 会被丢弃。
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` 在业务口上有速率。
 
 接口流量走内置 IF-MIB（`ifTable` / `ifXTable`）。本模板不扩展 IF，不额外采集 `ifHC*` 或 `ifOperStatus` 叶子。
