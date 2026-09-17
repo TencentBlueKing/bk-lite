@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button, Empty, message, Popconfirm, Space, Switch, Tabs, Tag } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
 import {
@@ -19,6 +20,7 @@ import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 import { CREDENTIAL_CATEGORIES } from '@/components/credential-picker/types';
 import type { CredentialGroupOption, CredentialItem, CredentialTypeItem } from '@/components/credential-picker/types';
+import { resolveCredentialLocate } from '@/components/credential-picker/vaultLocate';
 import { useCredentialApi } from '@/app/system-manager/api/credential';
 import CredentialFormDrawer, { type CredentialDrawerMode } from './CredentialFormDrawer';
 import type { ColumnItem } from '@/types';
@@ -43,6 +45,14 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 
 const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active = true }) => {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const locateQueryRef = useRef({
+    category: searchParams?.get('category') || undefined,
+    type: searchParams?.get('type') || undefined,
+    applied: false,
+  });
+  const pendingLocateTypeRef = useRef<string | undefined>(undefined);
+  const filterTouchedRef = useRef(false);
   const {
     getCredentialTypes,
     getCredentials,
@@ -58,7 +68,9 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
   const [items, setItems] = useState<CredentialItem[]>([]);
   const [assignableGroups, setAssignableGroups] = useState<CredentialGroupOption[]>([]);
   const [usableGroups, setUsableGroups] = useState<CredentialGroupOption[]>([]);
-  const [category, setCategory] = useState<string>(CREDENTIAL_CATEGORIES[0]);
+  const [category, setCategory] = useState<string>(
+    () => resolveCredentialLocate(locateQueryRef.current, []).category,
+  );
   const [typeKey, setTypeKey] = useState<string>(ALL_TYPES);
   const [search, setSearch] = useState('');
   const [ownerId, setOwnerId] = useState<number | undefined>();
@@ -95,6 +107,24 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
     setTypes(nextTypes.items);
     setAssignableGroups(nextAssignable);
     setUsableGroups(nextUsable);
+
+    if (locateQueryRef.current.applied) {
+      return;
+    }
+    locateQueryRef.current.applied = true;
+    if (filterTouchedRef.current) {
+      return;
+    }
+    const next = resolveCredentialLocate(locateQueryRef.current, nextTypes.items);
+    if (next.category !== category) {
+      pendingLocateTypeRef.current = next.type ?? ALL_TYPES;
+      setCategory(next.category);
+      return;
+    }
+    if (next.type) {
+      setTypeKey(next.type);
+      void loadList({ page: 1, type: next.type });
+    }
   };
 
   const loadList = async (opts: {
@@ -153,8 +183,10 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
   }, [active]);
 
   useEffect(() => {
-    setTypeKey(ALL_TYPES);
-    void loadList({ page: 1, type: ALL_TYPES, owner: ownerId, keyword: search });
+    const nextType = pendingLocateTypeRef.current ?? ALL_TYPES;
+    pendingLocateTypeRef.current = undefined;
+    setTypeKey(nextType);
+    void loadList({ page: 1, type: nextType, owner: ownerId, keyword: search });
   }, [category]);
 
   const openCreate = () => {
@@ -378,7 +410,10 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
                     ? 'bg-[var(--color-primary-bg-active)] font-medium text-[var(--color-primary)]'
                     : 'text-[var(--color-text-2)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-text-1)]'
                 }`}
-                onClick={() => setCategory(id)}
+                onClick={() => {
+                  filterTouchedRef.current = true;
+                  setCategory(id);
+                }}
               >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span
@@ -403,6 +438,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
           <Tabs
             activeKey={typeKey}
             onChange={(key) => {
+              filterTouchedRef.current = true;
               setTypeKey(key);
               void loadList({ page: 1, type: key });
             }}
