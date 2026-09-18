@@ -188,6 +188,8 @@ def test_format_mac_invalid_returned_lowercased_colon():
 def test_set_os_type(runner):
     assert runner.set_os_type({"os_type": "Linux 5.10"}) == "1"
     assert runner.set_os_type({"os_type": "Windows Server"}) == "2"
+    assert runner.set_os_type({"os_type": "AIX 7.2"}) == "3"
+    assert runner.set_os_type({"os_type": "HP-UX 11i"}) == "4"
     assert runner.set_os_type({"os_type": ""}) == "other"
     assert runner.set_os_type({"os_type": "Plan9"}) == "other"
 

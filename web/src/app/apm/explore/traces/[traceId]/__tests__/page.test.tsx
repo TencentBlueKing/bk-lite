@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import { HandledRequestError } from '@/utils/request';
 import ApmTraceDetailPage from '../page';
+import { getTextContext } from '../trace.pilot';
 
 const api = {
   getTrace: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 }));
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/apm/explore/traces/trace-1');
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: query.includes('min-width'),
     media: query,
@@ -125,5 +127,17 @@ describe('APM Trace 详情', () => {
     const columnWidths = Array.from(attributeTable?.querySelectorAll('colgroup col') ?? [])
       .map((column) => (column as HTMLElement).style.width);
     expect(columnWidths).toEqual(['58%', '42%']);
+  });
+
+  it('页面问答快照包含服务耗时分解和选中 Span 属性', async () => {
+    renderWithApmIntl(<ApmTraceDetailPage />);
+    await waitFor(() => expect(screen.getByText('http.status_code')).not.toBeNull());
+
+    const snapshot = getTextContext();
+    const byId = Object.fromEntries((snapshot.sections || []).map((section) => [section.id, section.content]));
+    expect(byId['apm-trace-breakdown'] || '').toContain('checkout');
+    expect(byId['apm-trace-selected'] || '').toContain('POST /pay');
+    expect(byId['apm-trace-selected'] || '').toContain('http.status_code');
+    expect(byId['apm-trace-selected'] || '').toContain('500');
   });
 });

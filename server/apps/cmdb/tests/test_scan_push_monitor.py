@@ -385,6 +385,117 @@ def test_scan_push_does_not_import_monitor_internal_ingest():
     assert "push_with_credential" in source
 
 
+def test_middleware_hit_skips_monitor_push(mocker):
+    ingest = _patch_monitor_ingest(mocker)
+    task = ScanTask.objects.create(
+        name="scan-mw",
+        team=[1],
+        families=["middleware"],
+        access_point=[{"id": "node-1"}],
+        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
+    )
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = ScanFamilyRun.objects.create(execution=execution, model_id="nginx", driver_type="job")
+    hit = ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="nginx",
+        host="10.0.1.10",
+        port=80,
+        credential_id="cred-ssh",
+        status=ScanHit.STATUS_SUCCESS,
+        cmdb_model_id="nginx",
+        inst_uuid=UUID_SWITCH,
+    )
+    result = ScanPushMonitorService.push(execution, [hit.id])
+    assert result["items"][0]["status"] == "skipped"
+    assert result["items"][0]["reason"] == "middleware_needs_monitor_credential"
+    ingest.assert_not_called()
+
+
+def test_agent_host_without_node_skips_and_never_sends_ssh(mocker):
+    ingest = _patch_monitor_ingest(mocker)
+    push_with = mocker.patch("apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_with_credential")
+    task = ScanTask.objects.create(
+        name="scan-agent-host",
+        team=[1],
+        families=["host"],
+        access_point=[{"id": "node-1"}],
+        credentials={"host": []},
+        cloud_region={"id": 1},
+    )
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = ScanFamilyRun.objects.create(execution=execution, model_id="host", driver_type="job")
+    hit = ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="host",
+        host="10.0.1.10",
+        port=22,
+        credential_id="agent",
+        status=ScanHit.STATUS_SUCCESS,
+        cmdb_model_id="host",
+        inst_uuid=UUID_SWITCH,
+    )
+    mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.InstanceManage.query_entity_by_uuids",
+        return_value=[{"inst_uuid": UUID_SWITCH, "model_id": "host", "ip_addr": "10.0.1.10"}],
+    )
+    result = ScanPushMonitorService.push(execution, [hit.id])
+    assert result["items"][0]["status"] == "skipped"
+    assert result["items"][0]["reason"] == "agent_host_no_node"
+    push_with.assert_not_called()
+    ingest.assert_not_called()
+
+
+def test_agent_host_with_node_pushes_without_credential(mocker):
+    ingest = _patch_monitor_ingest(mocker)
+    push_with = mocker.patch("apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_with_credential")
+    push_instance = mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.CmdbToMonitorPushService.push_instance",
+        return_value={"monitor_result": {"id": "m-agent", "created": True}},
+    )
+    task = ScanTask.objects.create(
+        name="scan-agent-host-node",
+        team=[1],
+        families=["host"],
+        access_point=[{"id": "node-1"}],
+        credentials={"host": []},
+        cloud_region={"id": 1},
+    )
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_COMPLETED)
+    family_run = ScanFamilyRun.objects.create(execution=execution, model_id="host", driver_type="job")
+    hit = ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="host",
+        host="10.0.1.10",
+        port=22,
+        credential_id="agent",
+        status=ScanHit.STATUS_SUCCESS,
+        cmdb_model_id="host",
+        inst_uuid=UUID_SWITCH,
+    )
+    mocker.patch(
+        "apps.cmdb.services.scan_push_monitor.InstanceManage.query_entity_by_uuids",
+        return_value=[
+            {
+                "inst_uuid": UUID_SWITCH,
+                "model_id": "host",
+                "ip_addr": "10.0.1.10",
+                "node_id": "sidecar-1",
+            }
+        ],
+    )
+    result = ScanPushMonitorService.push(execution, [hit.id])
+    assert result["items"][0]["status"] == "pushed"
+    push_with.assert_not_called()
+    push_instance.assert_called_once()
+    assert push_instance.call_args.args[0] == UUID_SWITCH
+    assert "credential" not in push_instance.call_args.kwargs
+    ingest.assert_not_called()
+
+
 def test_repeat_push_skips_when_ingest_reports_already_present(mocker):
     execution, known, _unknown = _scan_with_hits()
     ingest = _patch_monitor_ingest(

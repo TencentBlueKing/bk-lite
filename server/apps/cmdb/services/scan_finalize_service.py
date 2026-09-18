@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from apps.cmdb.collection.metrics_cannula import MetricsCannula
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.constants.constants import DataCleanupStrategy
-from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, scan_task_type_for_model
+from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanFamilyRun, ScanHit, scan_task_type_for_model
 from apps.core.logger import cmdb_logger as logger
 
 _PHYSICAL_SNAPSHOT_KEYS = ("serial_number", "uuid", "board_serial")
@@ -33,9 +33,25 @@ _NETWORK_SNAPSHOT_KEYS = (
     "model",
 )
 _DB_SNAPSHOT_KEYS = ("inst_name", "ip_addr", "port", "version", "db_version")
+_MIDDLEWARE_SNAPSHOT_KEYS = (
+    "inst_name",
+    "ip_addr",
+    "port",
+    "listen_port",
+    "version",
+    "bin_path",
+    "nginx_path",
+    "conf_path",
+    "config_path",
+    "install_path",
+    "log_path",
+)
+_CHANNEL_PORTS = (0, 22)
 _HOST_OS_TYPE_LABELS = {"1": "Linux", "2": "Windows", "3": "AIX", "4": "Unix"}
 _SCAN_METRICS_RETRY_ATTEMPTS = 12
 _SCAN_METRICS_RETRY_SECONDS = 5
+_SCAN_MIDDLEWARE_METRICS_RETRY_ATTEMPTS = 10
+_SCAN_MIDDLEWARE_METRICS_RETRY_SECONDS = 2
 
 
 def build_scan_collect_shim(family_run: ScanFamilyRun):
@@ -103,6 +119,27 @@ def collect_family_metrics_until_hits(family_run: ScanFamilyRun) -> dict:
         family_run.model_id,
         last_missing,
     )
+    return metrics
+
+
+def collect_middleware_metrics_until_ready(family_run: ScanFamilyRun) -> dict:
+    """JOB 凭据回传先于 VM 落盘；空结果时短等，避免按 listen_port 拆 hit 时误删。"""
+    has_success = family_run.hits.filter(status=ScanHit.STATUS_SUCCESS).exists()
+    attempts = _SCAN_MIDDLEWARE_METRICS_RETRY_ATTEMPTS if has_success else 1
+    metrics = {}
+    for attempt in range(1, attempts + 1):
+        metrics = collect_family_metrics(family_run)
+        rows = (metrics or {}).get(family_run.model_id) or []
+        if rows or not has_success:
+            return metrics
+        logger.info(
+            "[ScanFinalize] 中间件指标尚未就绪 execution=%s family=%s attempt=%s",
+            family_run.execution_id,
+            family_run.model_id,
+            attempt,
+        )
+        if attempt < attempts:
+            time.sleep(_SCAN_MIDDLEWARE_METRICS_RETRY_SECONDS)
     return metrics
 
 
@@ -182,6 +219,8 @@ def _snapshot_keys_for_family(model_id: str):
         return _NETWORK_SNAPSHOT_KEYS
     if model_id == "physcial_server":
         return _PHYSICAL_SNAPSHOT_KEYS
+    if model_id in SCAN_MIDDLEWARE_TYPES:
+        return _MIDDLEWARE_SNAPSHOT_KEYS
     return _DB_SNAPSHOT_KEYS
 
 
@@ -286,6 +325,99 @@ def attach_snmp_hits_to_physical(execution: ScanExecution):
         hit.save(update_fields=["attached_inst_uuid", "updated_at"])
 
 
+def _middleware_hit_port(row: dict) -> int:
+    raw = row.get("listen_port")
+    if raw in (None, ""):
+        raw = row.get("port")
+    if raw in (None, ""):
+        return 0
+    text = str(raw).strip()
+    if text.lower() == "unknown":
+        return 0
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            return int(part)
+        except ValueError:
+            continue
+    return 0
+
+
+def _middleware_snapshot(row: dict, base=None) -> dict:
+    snapshot = dict(base or {})
+    for key in _MIDDLEWARE_SNAPSHOT_KEYS:
+        value = row.get(key)
+        if value not in (None, ""):
+            snapshot[key] = value
+    return snapshot
+
+
+def explode_middleware_hits(family_run: ScanFamilyRun, plugin_result: dict):
+    model_id = family_run.model_id
+    if model_id not in SCAN_MIDDLEWARE_TYPES:
+        return
+    rows_by_host = {}
+    for row in (plugin_result or {}).get(model_id) or []:
+        if not isinstance(row, dict):
+            continue
+        host = _row_host(row)
+        if not host:
+            continue
+        rows_by_host.setdefault(host, []).append(row)
+
+    hits_by_host = {}
+    for hit in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS):
+        hits_by_host.setdefault(hit.host, []).append(hit)
+
+    for host, host_hits in hits_by_host.items():
+        plugin_rows = rows_by_host.get(host) or []
+        if not plugin_rows:
+            family_run.hits.filter(host=host, status=ScanHit.STATUS_SUCCESS).delete()
+            continue
+        templates = []
+        seen_credentials = set()
+        for hit in host_hits:
+            if hit.credential_id in seen_credentials:
+                continue
+            seen_credentials.add(hit.credential_id)
+            templates.append(hit)
+        new_ports = set()
+        for row in plugin_rows:
+            port = _middleware_hit_port(row)
+            new_ports.add(port)
+            for template in templates:
+                existing = family_run.hits.filter(
+                    host=host,
+                    port=port,
+                    credential_id=template.credential_id,
+                ).first()
+                snapshot = _middleware_snapshot(row, existing.snapshot if existing else template.snapshot)
+                if existing:
+                    existing.status = ScanHit.STATUS_SUCCESS
+                    existing.cmdb_model_id = model_id
+                    existing.snapshot = snapshot
+                    existing.save(update_fields=["status", "cmdb_model_id", "snapshot", "updated_at"])
+                    continue
+                ScanHit.objects.create(
+                    execution=family_run.execution,
+                    family_run=family_run,
+                    protocol=template.protocol,
+                    host=host,
+                    port=port,
+                    credential_id=template.credential_id,
+                    status=ScanHit.STATUS_SUCCESS,
+                    cmdb_model_id=model_id,
+                    snapshot=snapshot,
+                )
+        family_run.hits.filter(
+            host=host,
+            status=ScanHit.STATUS_SUCCESS,
+            port__in=_CHANNEL_PORTS,
+        ).exclude(port__in=new_ports).delete()
+
+
 def polish_hit_snapshots(family_run: ScanFamilyRun):
     """收口只整理 snapshot，不写图、不拉 VM。网络用特征库给建议类型。"""
     if family_run.model_id == "network":
@@ -331,6 +463,17 @@ def polish_hit_snapshots(family_run: ScanFamilyRun):
 def write_scan_execution(execution: ScanExecution):
     for family_run in execution.family_runs.all():
         try:
+            if family_run.model_id in SCAN_MIDDLEWARE_TYPES:
+                try:
+                    plugin_result = collect_middleware_metrics_until_ready(family_run)
+                except Exception:
+                    logger.exception(
+                        "[ScanFinalize] 拉取中间件指标失败 execution=%s family=%s",
+                        execution.id,
+                        family_run.model_id,
+                    )
+                else:
+                    explode_middleware_hits(family_run, plugin_result)
             polish_hit_snapshots(family_run)
         except Exception:
             logger.exception(

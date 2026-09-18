@@ -955,10 +955,7 @@ def test_build_task_result_logs_and_summarizes_ansible_failure(caplog):
         callback={},
         instance_id="default",
     )
-    output = (
-        f"10.233.2.31 | UNREACHABLE! => password={sentinel_password} "
-        "Failed to connect to the host via ssh: Connection timed out"
-    )
+    output = f"10.233.2.31 | UNREACHABLE! => password={sentinel_password} " "Failed to connect to the host via ssh: Connection timed out"
 
     with caplog.at_level("WARNING", logger="core.config"):
         result = AnsibleNATSService._build_task_result(
@@ -978,9 +975,7 @@ def test_build_task_result_logs_and_summarizes_ansible_failure(caplog):
     assert "failure_host" not in result["result_summary"]
     assert "failure_stderr" not in result["result_summary"]
 
-    expected_stderr = sanitize_failure_text(
-        f"password={sentinel_password} Failed to connect to the host via ssh: Connection timed out"
-    )
+    expected_stderr = sanitize_failure_text(f"password={sentinel_password} Failed to connect to the host via ssh: Connection timed out")
     records = [item for item in caplog.records if item.msg == ANSIBLE_TASK_FAILED_LOG_TEMPLATE]
     assert len(records) == 1
     record = records[0]
@@ -1137,7 +1132,7 @@ async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkey
 
 
 @pytest.mark.asyncio
-async def test_run_task_uses_remote_windows_stream_for_job_script(tmp_path, monkeypatch):
+async def test_run_task_uses_file_playbook_for_windows_job_script(tmp_path, monkeypatch):
     service = _make_service(tmp_path)
     service.nc = RecordingNATSClient()
     captured = {}
@@ -1155,11 +1150,20 @@ async def test_run_task_uses_remote_windows_stream_for_job_script(tmp_path, monk
         },
     )()
     monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: request)
-    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda prepared: (["ansible", "all"], None))
+    monkeypatch.setattr(
+        "service.nats_service.prepare_windows_script_execution",
+        lambda prepared: (["ansible-playbook", "windows-script.yml"], tmp_path / "windows-script"),
+    )
+
+    def fail_prepare_adhoc(*args, **kwargs):
+        raise AssertionError("Windows job script must not be placed in ansible adhoc arguments")
+
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", fail_prepare_adhoc)
     monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
 
-    async def fake_remote_stream(command, **kwargs):
+    async def fake_run_command(command, timeout, **kwargs):
         captured["command"] = command
+        captured["timeout"] = timeout
         captured.update(kwargs)
         return (
             0,
@@ -1172,11 +1176,7 @@ async def test_run_task_uses_remote_windows_stream_for_job_script(tmp_path, monk
             },
         )
 
-    async def fail_run_command(*args, **kwargs):
-        raise AssertionError("buffered ansible CLI path must not be used")
-
-    monkeypatch.setattr("service.nats_service.run_winrm_stream", fake_remote_stream)
-    monkeypatch.setattr("service.nats_service.run_command", fail_run_command)
+    monkeypatch.setattr("service.nats_service.run_command", fake_run_command)
     monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
     monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
 
@@ -1195,9 +1195,8 @@ async def test_run_task_uses_remote_windows_stream_for_job_script(tmp_path, monk
     result = await service._run_task(task, "owner-a")
 
     assert result["success"] is True
-    assert captured["command"] == request.host_credentials
-    assert captured["script_content"] == request.module_args
-    assert captured["script_type"] == "powershell"
+    assert captured["command"] == ["ansible-playbook", "windows-script.yml"]
+    assert captured["timeout"] == 90
     assert captured["stream_log_topic"] == "job.stream.31.ansible"
     assert captured["execution_id"] == "31"
 

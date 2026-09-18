@@ -1,10 +1,10 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
-export type OpenApiTokenScope = {
+export interface OpenApiTokenScope {
   mode: 'all' | 'allowlist';
   endpoints?: string[];
-};
+}
 
 export interface UserApiSecretListItem {
   id: number;

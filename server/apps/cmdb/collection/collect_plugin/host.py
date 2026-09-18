@@ -23,6 +23,7 @@ class HostCollectMetrics(CollectBase):
             {"id": "2", "name": "Windows"},
             {"id": "3", "name": "AIX"},
             {"id": "4", "name": "Unix"},
+            {"id": "4", "name": "HP-UX"},
             {"id": "other", "name": "Other"},
         ]
         self.server_cpuarch_list = [

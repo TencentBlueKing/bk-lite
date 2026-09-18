@@ -242,6 +242,96 @@ def test_finalize_does_not_attach_snmp_before_physical_ci(mocker):
     assert snmp_hit.attached_inst_uuid == ""
 
 
+def test_finalize_explodes_middleware_listen_ports_and_drops_empty_host(mocker):
+    from apps.cmdb.constants.constants import CollectDriverTypes
+
+    task = _scan_task(families=["middleware"], credentials={"middleware": [{"credential_id": "cred-ssh"}]})
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_RUNNING, claim_token="t")
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="nginx",
+        driver_type=CollectDriverTypes.JOB,
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="nginx",
+        host="10.0.1.10",
+        port=22,
+        credential_id="cred-ssh",
+        status=ScanHit.STATUS_SUCCESS,
+    )
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="nginx",
+        host="10.0.1.11",
+        port=22,
+        credential_id="cred-ssh",
+        status=ScanHit.STATUS_SUCCESS,
+    )
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={
+            "nginx": [
+                {
+                    "ip_addr": "10.0.1.10",
+                    "listen_port": "80",
+                    "version": "1.24",
+                    "conf_path": "/etc/nginx/nginx.conf",
+                    "inst_name": "10.0.1.10-nginx-80",
+                }
+            ]
+        },
+    )
+    write_scan_execution(execution)
+    ports = set(ScanHit.objects.filter(family_run=family_run, status=ScanHit.STATUS_SUCCESS).values_list("host", "port"))
+    assert ports == {("10.0.1.10", 80)}
+    hit = ScanHit.objects.get(host="10.0.1.10", port=80)
+    assert hit.snapshot.get("version") == "1.24"
+    assert hit.cmdb_model_id == "nginx"
+    assert not ScanHit.objects.filter(host="10.0.1.11").exists()
+
+
+def test_finalize_waits_for_middleware_metrics_before_explode(mocker):
+    from apps.cmdb.constants.constants import CollectDriverTypes
+
+    task = _scan_task(families=["middleware"], credentials={"middleware": [{"credential_id": "cred-ssh"}]})
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_RUNNING, claim_token="t")
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="nginx",
+        driver_type=CollectDriverTypes.JOB,
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    ScanHit.objects.create(
+        execution=execution,
+        family_run=family_run,
+        protocol="nginx",
+        host="10.0.1.10",
+        port=22,
+        credential_id="cred-ssh",
+        status=ScanHit.STATUS_SUCCESS,
+    )
+    nginx_row = {
+        "ip_addr": "10.0.1.10",
+        "listen_port": "80",
+        "version": "1.20.1",
+        "inst_name": "10.0.1.10-nginx-80",
+    }
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        side_effect=[{}, {"nginx": [nginx_row]}],
+    )
+    slept = mocker.patch("apps.cmdb.services.scan_finalize_service.time.sleep")
+    write_scan_execution(execution)
+    slept.assert_called_once()
+    hit = ScanHit.objects.get(family_run=family_run, status=ScanHit.STATUS_SUCCESS)
+    assert (hit.host, hit.port) == ("10.0.1.10", 80)
+    assert hit.snapshot.get("listen_port") == "80"
+
+
 def test_poll_ready_finalizes_and_marks_completed(mocker):
     execution, _family_run = _execution_with_network_hits()
     write = mocker.patch(

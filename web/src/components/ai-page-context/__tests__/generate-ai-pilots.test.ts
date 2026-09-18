@@ -55,4 +55,22 @@ describe('generate-ai-pilots', () => {
     expect(alarmsPage).toContain("import './register-alarms-pilot'");
     expect(incidentsPage).toContain("import './register-incidents-pilot'");
   });
+
+  it('registers log search and apm pilots from app pages instead of the shared generated list', () => {
+    const searchPage = readFileSync(
+      resolve(root, '../../../app/log/(pages)/search/page.tsx'),
+      'utf8',
+    );
+    const servicePage = readFileSync(
+      resolve(root, '../../../app/apm/services/[serviceId]/page.tsx'),
+      'utf8',
+    );
+    const tracePage = readFileSync(
+      resolve(root, '../../../app/apm/explore/traces/[traceId]/page.tsx'),
+      'utf8',
+    );
+    expect(searchPage).toContain("import './register-search-pilot'");
+    expect(servicePage).toContain("import './register-service-pilot'");
+    expect(tracePage).toContain("import './register-trace-pilot'");
+  });
 });

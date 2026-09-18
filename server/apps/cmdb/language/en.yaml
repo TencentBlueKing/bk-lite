@@ -57,6 +57,7 @@ MODEL:
   kafka: Kafka
   ibmmq: IBM MQ
   zookeeper: ZooKeeper
+  consul: Consul
   nacos: Nacos
   minio: Minio
   docker: Docker
@@ -940,6 +941,22 @@ ATTR:
     collect_time: Last Updated Time
     collect_task: Collect Task
     tag: Tag
+  consul:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Install Path
+    conf_path: Configuration File Path
+    data_dir: Data Directory
+    role: Role
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
   etcd:
     inst_name: Name
     organization: Organization

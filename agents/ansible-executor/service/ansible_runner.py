@@ -33,6 +33,7 @@ PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES = 20 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_MEMBERS = 2000
 PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES = 5 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES = 50 * 1024 * 1024
+WINDOWS_SCRIPT_MAX_BYTES = 512 * 1024
 
 _SENSITIVE_INVENTORY_PATTERNS = (
     "ansible_password",
@@ -436,6 +437,12 @@ def _materialize_extra_vars(workspace: Path, extra_vars: dict[str, Any]) -> str 
 def _write_restricted_text(path: Path, content: str) -> None:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
     with os.fdopen(descriptor, "w", encoding="utf-8") as file_obj:
+        file_obj.write(content)
+
+
+def _write_restricted_bytes(path: Path, content: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(descriptor, "wb") as file_obj:
         file_obj.write(content)
 
 
@@ -847,6 +854,134 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
         )
     )
     return cmd, workspace
+
+
+def prepare_windows_script_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
+    """Prepare a Windows script for file-based execution through Ansible."""
+    script_type = str(payload.stream_remote_type or "").strip().lower()
+    if payload.module != "win_shell" or script_type not in {"bat", "powershell"}:
+        raise ValueError("file-based Windows execution requires a PowerShell or BAT win_shell request")
+    script_bytes = payload.module_args.encode("utf-8")
+    if len(script_bytes) > WINDOWS_SCRIPT_MAX_BYTES:
+        raise ValueError(f"Windows script exceeds 512 KiB limit: {len(script_bytes)} bytes")
+
+    workspace = create_task_workspace(payload.task_id)
+    try:
+        is_powershell = script_type == "powershell"
+        script_label = "PowerShell" if is_powershell else "BAT"
+        script_suffix = ".ps1" if is_powershell else ".cmd"
+        script_path = workspace / f"job-script{script_suffix}"
+        _write_restricted_bytes(script_path, (b"\xef\xbb\xbf" if is_powershell else b"") + script_bytes)
+
+        remote_path = "{{ bklite_script_temp.path }}"
+        execution_tasks: list[dict[str, Any]] = [
+            {
+                "name": f"Copy {script_label} script",
+                "ansible.windows.win_copy": {
+                    "src": str(script_path),
+                    "dest": remote_path,
+                    "force": True,
+                },
+            }
+        ]
+        if is_powershell:
+            command_argv = [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                remote_path,
+            ]
+        else:
+            execution_tasks.append(
+                {
+                    "name": "Convert BAT script to target encoding",
+                    "ansible.windows.win_powershell": {
+                        "script": "\n".join(
+                            [
+                                "$utf8 = New-Object System.Text.UTF8Encoding($false, $true)",
+                                "$bytes = [IO.File]::ReadAllBytes($path)",
+                                "$text = $utf8.GetString($bytes)",
+                                "[IO.File]::WriteAllText($path, $text, [Text.Encoding]::Default)",
+                            ]
+                        ),
+                        "parameters": {"path": remote_path},
+                    },
+                }
+            )
+            command_argv = ["cmd.exe", "/d", "/q", "/c", remote_path]
+        execution_tasks.append(
+            {
+                "name": f"Execute {script_label} script",
+                "ansible.windows.win_command": {"argv": command_argv},
+            }
+        )
+        playbook = [
+            {
+                "hosts": payload.hosts,
+                "gather_facts": False,
+                "tasks": [
+                    {
+                        "name": f"Create temporary {script_label} script",
+                        "ansible.windows.win_tempfile": {
+                            "state": "file",
+                            "prefix": "bklite-job-",
+                            "suffix": script_suffix,
+                        },
+                        "register": "bklite_script_temp",
+                    },
+                    {
+                        "name": f"Run temporary {script_label} script",
+                        "block": execution_tasks,
+                        "always": [
+                            {
+                                "name": f"Remove temporary {script_label} script",
+                                "ansible.windows.win_file": {"path": remote_path, "state": "absent"},
+                                "when": "bklite_script_temp.path is defined",
+                            }
+                        ],
+                    },
+                ],
+            }
+        ]
+        playbook_file = workspace / "playbook.yml"
+        playbook_file.write_text(yaml.safe_dump(playbook, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+        inventory_value = payload.inventory
+        if payload.inventory_content or payload.host_credentials:
+            inventory_file = workspace / "inventory.ini"
+            parts: list[str] = []
+            if payload.inventory_content:
+                parts.append(payload.inventory_content.rstrip("\n"))
+            if payload.host_credentials:
+                parts.append(_build_host_credentials_inventory(workspace, payload.host_credentials).rstrip("\n"))
+            _write_restricted_text(inventory_file, "\n".join(part for part in parts if part) + "\n")
+            inventory_value = str(inventory_file)
+
+        extra_vars = dict(payload.extra_vars or {})
+        if payload.private_key_content and not payload.host_credentials:
+            private_key_path = _materialize_private_key(workspace, payload.private_key_content)
+            extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
+            if payload.private_key_passphrase:
+                extra_vars.setdefault("ansible_ssh_passphrase", payload.private_key_passphrase)
+
+        command = build_playbook_command(
+            PlaybookRequest(
+                playbook_path=str(playbook_file),
+                inventory=inventory_value,
+                extra_vars=extra_vars,
+                extra_vars_file=_materialize_extra_vars(workspace, extra_vars),
+                execute_timeout=payload.execute_timeout,
+                task_id=payload.task_id,
+                callback=payload.callback,
+            )
+        )
+        return command, workspace
+    except Exception:
+        cleanup_workspace(workspace)
+        raise
 
 
 async def prepare_playbook_execution(

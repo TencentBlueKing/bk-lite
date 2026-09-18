@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button, Modal, Popconfirm, Select, message } from 'antd';
+import { Button, Modal, Popconfirm, Select, Space, message } from 'antd';
 import Permission from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
 import { formatUserName } from '@/utils/userDisplay';
@@ -13,6 +13,7 @@ interface AlertHandlerActionsProps {
   record: TableDataItem;
   closeText: string;
   requiredPermissions?: string[];
+  size?: 'small' | 'middle';
   onSuccess: () => void;
 }
 
@@ -20,6 +21,7 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
   record,
   closeText,
   requiredPermissions = ['Operate'],
+  size = 'middle',
   onSuccess
 }) => {
   const { t } = useTranslation();
@@ -81,37 +83,39 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
         requiredPermissions={requiredPermissions}
         instPermissions={record.permission}
       >
-        {canClaimOrAssign ? (
-          <>
-            <Popconfirm
-              title={t('monitor.events.claimTitle')}
-              description={t('monitor.events.claimContent')}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-              okButtonProps={{ loading: actionLoading }}
-              onConfirm={handleClaim}
-            >
-              <Button type="link" className="mr-[10px] p-0">
-                {t('monitor.events.claim')}
+        <Space size={4}>
+          {canClaimOrAssign ? (
+            <>
+              <Popconfirm
+                title={t('monitor.events.claimTitle')}
+                description={t('monitor.events.claimContent')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                okButtonProps={{ loading: actionLoading }}
+                onConfirm={handleClaim}
+              >
+                <Button type="link" size={size} className="p-0">
+                  {t('monitor.events.claim')}
+                </Button>
+              </Popconfirm>
+              <Button type="link" size={size} className="p-0" onClick={openAssign}>
+                {t('monitor.events.assign')}
               </Button>
-            </Popconfirm>
-            <Button type="link" className="mr-[10px] p-0" onClick={openAssign}>
-              {t('monitor.events.assign')}
+            </>
+          ) : null}
+          <Popconfirm
+            title={t('monitor.events.closeTitle')}
+            description={t('monitor.events.closeContent')}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ loading: actionLoading }}
+            onConfirm={handleClose}
+          >
+            <Button type="link" size={size} className="p-0" disabled={record.status !== 'new'}>
+              {closeText}
             </Button>
-          </>
-        ) : null}
-        <Popconfirm
-          title={t('monitor.events.closeTitle')}
-          description={t('monitor.events.closeContent')}
-          okText={t('common.confirm')}
-          cancelText={t('common.cancel')}
-          okButtonProps={{ loading: actionLoading }}
-          onConfirm={handleClose}
-        >
-          <Button type="link" disabled={record.status !== 'new'}>
-            {closeText}
-          </Button>
-        </Popconfirm>
+          </Popconfirm>
+        </Space>
       </Permission>
       <Modal
         title={t('monitor.events.assignTitle')}
