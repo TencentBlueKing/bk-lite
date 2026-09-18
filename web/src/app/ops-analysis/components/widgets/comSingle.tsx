@@ -31,9 +31,7 @@ import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { buildFallbackSparkline } from '@/app/ops-analysis/utils/singleValueSparkline';
 import { resolveSingleDescriptionText } from '@/app/ops-analysis/utils/singleDescription';
 import {
-  resolveSingleMainSlotHeight,
-  resolveSingleMetaBlockHeight,
-  resolveSingleMetaTypography,
+  resolveSingleValueMetaLayout,
   SINGLE_META_TYPOGRAPHY,
 } from '@/app/ops-analysis/utils/singleMetaTypography';
 import { useTranslation } from '@/utils/i18n';
@@ -308,46 +306,27 @@ const ComSingle: React.FC<ComSingleProps> = ({
     compareAmount === null
       ? '--'
       : `${compareAmount > 0 ? '↑' : compareAmount < 0 ? '↓' : ''}${Math.abs(compareAmount).toFixed(config?.compareMode === 'value' ? (config.decimalPlaces ?? 0) : 1)}${config?.compareMode === 'value' ? compareUnitLabel : '%'}`;
-  const {
-    descriptionFontSize,
-    compareLabelFontSize,
-    compareValueFontSize,
-    spacing: metaSpacing,
-  } = resolveSingleMetaTypography({ contentAreaHeight, scale });
   const showSparkline = sparklineAvailable;
   const sparklineHeight = showSparkline
     ? scaleScreenMetric(28, screenRenderContext) +
       scaleScreenMetric(6, screenRenderContext)
     : 0;
   const hasDescription = Boolean(descriptionText);
-  const descriptionBlockHeight = resolveSingleMetaBlockHeight({
+  const {
+    typography: {
+      descriptionFontSize,
+      compareLabelFontSize,
+      compareValueFontSize,
+      spacing: metaSpacing,
+    },
+    mainSlotHeight,
+  } = resolveSingleValueMetaLayout({
+    contentAreaHeight,
+    sparklineHeight,
+    scale,
     hasDescription,
-    hasCompare: false,
-    typography: {
-      descriptionFontSize,
-      compareLabelFontSize,
-      compareValueFontSize,
-      spacing: metaSpacing,
-    },
-  });
-  const compareBlockHeight = resolveSingleMetaBlockHeight({
-    hasDescription: false,
     hasCompare: Boolean(config?.compare),
-    typography: {
-      descriptionFontSize,
-      compareLabelFontSize,
-      compareValueFontSize,
-      spacing: metaSpacing,
-    },
   });
-  const mainSlotHeight = hasDescription
-    ? resolveSingleMainSlotHeight({
-      contentAreaHeight,
-      metaBlockHeight: descriptionBlockHeight + compareBlockHeight,
-      sparklineHeight,
-      scale,
-    })
-    : null;
   const sparklineTrendColor = config?.compare ? compareTextColor : metricColor;
   // 命中值映射文本时，用映射文本替换数值并隐藏单位
   const shownMainValue =
