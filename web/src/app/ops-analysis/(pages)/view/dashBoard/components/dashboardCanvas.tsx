@@ -44,8 +44,8 @@ import {
 } from '@/app/ops-analysis/utils/dashboardGroups';
 import {
   activateAllRuntimeWidgets,
+  mergeRuntimeActivationStates,
   resolveRuntimeActivation,
-  shouldCommitRuntimeStates,
   type RuntimeActivationState,
 } from '@/app/ops-analysis/utils/dashboardRuntimeActivation';
 
@@ -53,8 +53,8 @@ import GroupHeader from './groupHeader';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
 import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
-import { DashboardRuntimeSchedulerProvider } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
-import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
+import { DashboardRuntimeSchedulerProvider, useDashboardRuntimeScheduler } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
+import type { DashboardRuntimeScheduler, RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
 
 import 'gridstack/dist/gridstack.min.css';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
@@ -83,6 +83,162 @@ const getDashboardGridInteractionOptions = (editable: boolean) => ({
   resizable: {
     handles: DASHBOARD_WIDGET_RESIZE_HANDLES,
   },
+});
+
+const SchedulerRefBinder = ({
+  schedulerRef,
+}: {
+  schedulerRef: React.MutableRefObject<DashboardRuntimeScheduler | null>;
+}) => {
+  schedulerRef.current = useDashboardRuntimeScheduler();
+  return null;
+};
+
+interface DashboardWidgetCardProps {
+  item: DashboardWidgetLayoutItem;
+  runtimeActive: boolean;
+  runtimePriority?: RuntimeRequestPriority;
+  isEditMode: boolean;
+  dashboardId?: number | string;
+  chartTheme: {
+    panelBg: string;
+    panelBorderColor: string;
+  };
+  filterSearchVersion: number;
+  namespaceSearchVersion: number;
+  dashboardReloadVersion: number;
+  refreshCause: CanvasRuntimeRefreshCause;
+  widgetReloadVersion: number;
+  dataSourceResolver: DashboardCanvasProps['dataSourceResolver'];
+  appliedFilterValues: Record<string, FilterValue>;
+  appliedFilterDefinitions: UnifiedFilterDefinition[];
+  appliedNamespaceId: number | undefined;
+  selectedDashboardLocked?: boolean;
+  shareMode: boolean;
+  onEditWidget: (id: string) => void;
+  onCopyWidget?: (id: string) => void;
+  onDeleteWidget: (id: string) => void;
+  onTopologyLayoutChange?: DashboardCanvasProps['onTopologyLayoutChange'];
+  onWidgetRenderStatus?: DashboardCanvasProps['onWidgetRenderStatus'];
+}
+
+const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
+  item,
+  runtimeActive,
+  runtimePriority,
+  isEditMode,
+  dashboardId,
+  chartTheme,
+  filterSearchVersion,
+  namespaceSearchVersion,
+  dashboardReloadVersion,
+  refreshCause,
+  widgetReloadVersion,
+  dataSourceResolver,
+  appliedFilterValues,
+  appliedFilterDefinitions,
+  appliedNamespaceId,
+  selectedDashboardLocked,
+  shareMode,
+  onEditWidget,
+  onCopyWidget,
+  onDeleteWidget,
+  onTopologyLayoutChange,
+  onWidgetRenderStatus,
+}: DashboardWidgetCardProps) {
+  const { t } = useTranslation();
+  const copyMenuItem = shouldShowAnalysisWidgetCopyAction({
+    interaction: resolveAnalysisCanvasInteraction({
+      editMode: isEditMode,
+      shareMode,
+      isBuiltIn: selectedDashboardLocked,
+    }),
+    sceneWidgetType: item.valueConfig?.sceneWidgetType,
+    chartType: item.valueConfig?.chartType,
+  })
+    ? {
+      key: 'copy',
+      label: t('common.copy'),
+      onClick: () => onCopyWidget?.(item.i),
+    }
+    : null;
+  const menuItems = [
+    { key: 'edit', label: t('common.edit'), onClick: () => onEditWidget(item.i) },
+    ...(copyMenuItem ? [copyMenuItem] : []),
+    { key: 'delete', label: t('common.delete'), danger: true, onClick: () => onDeleteWidget(item.i) },
+  ];
+
+  return (
+    <WidgetHeaderRuntimeSlotProvider>
+      {(runtimeSlotRef) => (
+        <div
+          className="widget rounded-lg overflow-hidden p-3 flex h-full flex-col"
+          style={{
+            backgroundColor: chartTheme.panelBg,
+            border: `1px solid ${chartTheme.panelBorderColor}`,
+          }}
+        >
+          <div className="widget-header mb-2 flex justify-between items-start gap-2">
+            <div className="flex-1 min-w-0">
+              <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
+                {item.name}
+              </h4>
+              {item.description?.trim() && (
+                <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
+                  {item.description}
+                </p>
+              )}
+            </div>
+            <div
+              ref={runtimeSlotRef}
+              className="no-drag ml-auto max-w-[70%] shrink-0 overflow-x-auto"
+            />
+            {isEditMode && (
+              <MoreActionsDropdown
+                items={menuItems}
+                trigger={['hover']}
+                labelAlign="start"
+                buttonClassName="no-drag cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
+                iconStyle={{ fontSize: '18px' }}
+              />
+            )}
+          </div>
+          <div
+            className="widget-body flex-1 h-full min-h-0"
+            style={{
+              overflow: 'hidden',
+            }}
+          >
+            <WidgetWrapper
+              dashboardId={dashboardId}
+              widgetId={item.i}
+              surface="dashboard"
+              key={`${dashboardId ?? 'dashboard'}:${item.i}`}
+              chartType={item.valueConfig?.chartType}
+              config={item.valueConfig}
+              filterSearchVersion={filterSearchVersion}
+              namespaceSearchVersion={namespaceSearchVersion}
+              reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersion || 0}`}
+              refreshCause={refreshCause}
+              dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
+              unifiedFilterValues={appliedFilterValues}
+              filterDefinitions={appliedFilterDefinitions}
+              builtinNamespaceId={appliedNamespaceId}
+              onRenderStatus={onWidgetRenderStatus}
+              runtimeActive={runtimeActive}
+              runtimePriority={runtimePriority}
+              layoutEditable={isEditMode}
+              onTopologyLayoutChange={
+                isEditMode && onTopologyLayoutChange
+                  ? (next) => onTopologyLayoutChange(item.i, next)
+                  : undefined
+              }
+            />
+          </div>
+        </div>
+      )}
+    </WidgetHeaderRuntimeSlotProvider>
+  );
 });
 
 interface DashboardCanvasProps {
@@ -202,6 +358,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       >(() => undefined);
   const [portalVersion, setPortalVersion] = useState(0);
   const [runtimeStates, setRuntimeStates] = useState<Record<string, RuntimeActivationState>>({});
+  const runtimeSchedulerRef = useRef<DashboardRuntimeScheduler | null>(null);
 
   useEffect(() => {
     if (renderMode) {
@@ -225,7 +382,8 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           .filter(isDashboardWidgetItem)
           .map((item, index) => [item.i, index]),
       );
-      const next: Record<string, { active: boolean; priority: RuntimeRequestPriority }> = {};
+      const next: Record<string, RuntimeActivationState> = {};
+      const scheduler = runtimeSchedulerRef.current;
       widgetHostRegistryRef.current.hosts.forEach((host, id) => {
         const shell = host.closest<HTMLElement>('[data-node-kind="widget"]');
         if (!shell) return;
@@ -236,10 +394,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           activationMargin: margin,
           order: widgetOrder.get(id) ?? Number.MAX_SAFE_INTEGER,
         });
+        scheduler?.updateOwnerPriority(id, next[id].priority);
       });
-      setRuntimeStates((previous) =>
-        shouldCommitRuntimeStates(previous, next) ? next : previous,
-      );
+      setRuntimeStates((previous) => mergeRuntimeActivationStates(previous, next));
     };
     const scheduleUpdate = () => {
       if (frame !== null) return;
@@ -686,127 +843,6 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     handleWidgetMutationStopRef.current = handleWidgetMutationStop;
   }, [emitLayoutChange, handleWidgetMutationStop]);
 
-  const renderWidgetCard = useCallback(
-    (item: DashboardWidgetLayoutItem) => {
-      const copyMenuItem = shouldShowAnalysisWidgetCopyAction({
-        interaction: resolveAnalysisCanvasInteraction({
-          editMode: isEditMode,
-          shareMode,
-          isBuiltIn: selectedDashboardLocked,
-        }),
-        sceneWidgetType: item.valueConfig?.sceneWidgetType,
-        chartType: item.valueConfig?.chartType,
-      })
-        ? {
-          key: 'copy',
-          label: t('common.copy'),
-          onClick: () => onCopyWidget?.(item.i),
-        }
-        : null;
-      const menuItems = [
-        { key: 'edit', label: t('common.edit'), onClick: () => onEditWidget(item.i) },
-        ...(copyMenuItem ? [copyMenuItem] : []),
-        { key: 'delete', label: t('common.delete'), danger: true, onClick: () => onDeleteWidget(item.i) },
-      ];
-
-      return (
-        <WidgetHeaderRuntimeSlotProvider>
-          {(runtimeSlotRef) => (
-            <div
-              className="widget rounded-lg overflow-hidden p-3 flex h-full flex-col"
-              style={{
-                backgroundColor: chartTheme.panelBg,
-                border: `1px solid ${chartTheme.panelBorderColor}`,
-              }}
-            >
-              <div className="widget-header mb-2 flex justify-between items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
-                    {item.name}
-                  </h4>
-                  {item.description?.trim() && (
-                    <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
-                      {item.description}
-                    </p>
-                  )}
-                </div>
-                <div
-                  ref={runtimeSlotRef}
-                  className="no-drag ml-auto max-w-[70%] shrink-0 overflow-x-auto"
-                />
-                {isEditMode && (
-                  <MoreActionsDropdown
-                    items={menuItems}
-                    trigger={['hover']}
-                    labelAlign="start"
-                    buttonClassName="no-drag cursor-pointer text-(--color-text-2) transition-colors hover:!bg-transparent hover:text-(--color-text-1)"
-                    iconStyle={{ fontSize: '18px' }}
-                  />
-                )}
-              </div>
-              <div
-                className="widget-body flex-1 h-full min-h-0"
-                style={{
-                  overflow: 'hidden',
-                }}
-              >
-                <WidgetWrapper
-                  dashboardId={dashboardId}
-                  widgetId={item.i}
-                  surface="dashboard"
-                  key={`${dashboardId ?? 'dashboard'}:${item.i}`}
-                  chartType={item.valueConfig?.chartType}
-                  config={item.valueConfig}
-                  filterSearchVersion={filterSearchVersion}
-                  namespaceSearchVersion={namespaceSearchVersion}
-                  reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
-                  refreshCause={refreshCause}
-                  dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
-                  unifiedFilterValues={appliedFilterValues}
-                  filterDefinitions={appliedFilterDefinitions}
-                  builtinNamespaceId={appliedNamespaceId}
-                  onRenderStatus={onWidgetRenderStatus}
-                  runtimeActive={runtimeStates[item.i]?.active ?? renderMode}
-                  runtimePriority={runtimeStates[item.i]?.priority}
-                  layoutEditable={isEditMode}
-                  onTopologyLayoutChange={
-                    isEditMode && onTopologyLayoutChange
-                      ? (next) => onTopologyLayoutChange(item.i, next)
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
-          )}
-        </WidgetHeaderRuntimeSlotProvider>
-      );
-    },
-    [
-      appliedFilterDefinitions,
-      appliedFilterValues,
-      appliedNamespaceId,
-      chartTheme.panelBg,
-      chartTheme.panelBorderColor,
-      dashboardReloadVersion,
-      refreshCause,
-      dataSourceResolver,
-      filterSearchVersion,
-      isEditMode,
-      selectedDashboardLocked,
-      shareMode,
-      namespaceSearchVersion,
-      onDeleteWidget,
-      onCopyWidget,
-      onEditWidget,
-      onTopologyLayoutChange,
-      t,
-      widgetReloadVersions,
-      onWidgetRenderStatus,
-      renderMode,
-      runtimeStates,
-    ],
-  );
-
   useEffect(() => {
     if (!gridRootRef.current) {
       return;
@@ -1188,11 +1224,39 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       return null;
     }
 
-    return createPortal(renderWidgetCard(item), host, `widget:${id}`);
+    return createPortal(
+      <DashboardWidgetCard
+        item={item}
+        runtimeActive={runtimeStates[item.i]?.active ?? Boolean(renderMode)}
+        runtimePriority={runtimeStates[item.i]?.priority}
+        isEditMode={isEditMode}
+        dashboardId={dashboardId}
+        chartTheme={chartTheme}
+        filterSearchVersion={filterSearchVersion}
+        namespaceSearchVersion={namespaceSearchVersion}
+        dashboardReloadVersion={dashboardReloadVersion}
+        refreshCause={refreshCause}
+        widgetReloadVersion={widgetReloadVersions[item.i] || 0}
+        dataSourceResolver={dataSourceResolver}
+        appliedFilterValues={appliedFilterValues}
+        appliedFilterDefinitions={appliedFilterDefinitions}
+        appliedNamespaceId={appliedNamespaceId}
+        selectedDashboardLocked={selectedDashboardLocked}
+        shareMode={shareMode}
+        onEditWidget={onEditWidget}
+        onCopyWidget={onCopyWidget}
+        onDeleteWidget={onDeleteWidget}
+        onTopologyLayoutChange={onTopologyLayoutChange}
+        onWidgetRenderStatus={onWidgetRenderStatus}
+      />,
+      host,
+      `widget:${id}`,
+    );
   });
 
   return (
     <DashboardRuntimeSchedulerProvider>
+      <SchedulerRefBinder schedulerRef={runtimeSchedulerRef} />
       <div
         className="relative w-full"
         style={{
@@ -1270,4 +1334,4 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   );
 };
 
-export default DashboardCanvas;
+export default React.memo(DashboardCanvas);
