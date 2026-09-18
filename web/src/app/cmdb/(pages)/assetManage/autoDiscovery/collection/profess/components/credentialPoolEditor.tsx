@@ -131,11 +131,18 @@ function renderVaultDynamicFields(
   onCloudRegionRefresh?: () => void,
   cloudRegionLoading?: boolean,
   collectModelId?: string,
+  cloudRegionOptions: { label: string; value: string }[] = [],
+  cloudCredentialLabels?: {
+    accessKey: string;
+    accessSecret: string;
+    projectId?: string;
+  },
 ): React.ReactNode {
   const known = new Set([
     'port', 'snmp_port', 'https_port', 'database', 'scheme', 'verify_tls',
     'transport_protocol', 'privilege', 'ssl', 'regionId', 'regionName',
     'source', 'user_type', 'subscription_id', 'enable_password', 'project_id',
+    'projectId',
   ]);
   const portKey = shape === 'snmp' ? 'snmp_port' : shape === 'winsphere' ? 'https_port' : 'port';
   const extras = Object.entries(item).filter(([key, value]) =>
@@ -144,17 +151,76 @@ function renderVaultDynamicFields(
   );
   return (
     <div className={styles.credentialFieldGrid}>
-      {(showPort || shape === 'snmp' || shape === 'winsphere') && (
+      {(shape === 'network_config_file' || item.transport_protocol !== undefined) && (
+        <>
+          <InputRow label={t('Collection.credentialPool.transportProtocol', '连接协议')}>
+            <Select
+              value={normalizeNetworkTransport(item.transport_protocol)}
+              options={[
+                { label: 'SSH', value: 'ssh' },
+                { label: 'Telnet', value: 'telnet' },
+              ]}
+              onChange={(nextValue) => {
+                const transport_protocol = normalizeNetworkTransport(nextValue);
+                updateItem(index, {
+                  transport_protocol,
+                  port: portForNetworkTransportSwitch(item.port, transport_protocol),
+                });
+              }}
+            />
+          </InputRow>
+          {normalizeNetworkTransport(item.transport_protocol) === 'telnet' && (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                'Collection.credentialPool.telnetWarning',
+                'Telnet 明文传输账号口令，仅应在隔离管理网或设备只开放 TCP/23 时使用。',
+              )}
+            />
+          )}
+        </>
+      )}
+      {(shape !== 'cloud' && (showPort || shape === 'snmp' || shape === 'winsphere')) && (
         <InputRow label={t('Collection.port', '端口')}>
           <InputNumber className="!w-full" min={1} max={65535} value={item[portKey]}
             onChange={(next) => updateItem(index, { [portKey]: next ?? undefined })} />
         </InputRow>
       )}
+      {shape === 'cloud' && cloudCredentialLabels?.projectId && (
+        <InputRow label={cloudCredentialLabels.projectId}>
+          <Input
+            value={item.projectId}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, {
+              projectId: event.target.value,
+              regionId: undefined,
+              regionName: undefined,
+            })}
+          />
+        </InputRow>
+      )}
       {shape === 'cloud' && (
         <InputRow label={t('Collection.cloudTask.region', '区域')}>
-          <Input value={item.regionId} onChange={(event) => updateItem(index, { regionId: event.target.value })} />
-          {onCloudRegionRefresh && <Button icon={<SyncOutlined />} loading={cloudRegionLoading}
-            onClick={onCloudRegionRefresh}>{t('common.refresh', '刷新')}</Button>}
+          <div className={styles.credentialInlineControl}>
+            <Select
+              value={item.regionId}
+              onChange={(nextValue, option) => {
+                const label = Array.isArray(option) ? option[0]?.label : option?.label;
+                updateItem(index, { regionId: nextValue, regionName: typeof label === 'string' ? label : undefined });
+              }}
+              loading={cloudRegionLoading}
+              placeholder={t('common.selectTip', '请选择')}
+              options={cloudRegionOptions}
+            />
+            <Button
+              type="text"
+              aria-label={t('common.refresh')}
+              icon={<SyncOutlined spin={cloudRegionLoading} aria-hidden />}
+              onClick={onCloudRegionRefresh}
+              className={styles.credentialRefreshButton}
+            />
+          </div>
         </InputRow>
       )}
       {collectModelId === 'smartx' && (
@@ -186,15 +252,6 @@ function renderVaultDynamicFields(
         <InputRow label={t('Collection.influxdbTask.scheme', '连接协议')}>
           <Select value={item.scheme || 'http'} options={['http', 'https'].map((value) => ({ label: value.toUpperCase(), value }))}
             onChange={(scheme) => updateItem(index, { scheme })} />
-        </InputRow>
-      )}
-      {item.transport_protocol !== undefined && (
-        <InputRow label={t('Collection.credentialPool.transportProtocol', '连接协议')}>
-          <Select value={normalizeNetworkTransport(item.transport_protocol)}
-            options={[{ label: 'SSH', value: 'ssh' }, { label: 'Telnet', value: 'telnet' }]}
-            onChange={(transport_protocol) => updateItem(index, {
-              transport_protocol, port: portForNetworkTransportSwitch(item.port, transport_protocol),
-            })} />
         </InputRow>
       )}
       {shape === 'network_config_file' && item.vault_type_key !== 'network_cli' && (
@@ -1213,7 +1270,6 @@ function renderCredentialFields({
       )}
       <InputRow
         label={shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.username', '用户') : t('user', '用户')}
-        required={shape !== 'ssh'}
       >
         <Input
           value={shape === 'sql' ? item.user : item.username}
@@ -1223,7 +1279,6 @@ function renderCredentialFields({
       </InputRow>
       <InputRow
         label={shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.password', '密码') : t('password', '密码')}
-        required={shape !== 'ssh'}
       >
         <SecretInput
           value={item.password}
@@ -1613,7 +1668,12 @@ export default function CredentialPoolEditor({
                     // 首次切到已有凭据时尚未保存类型，仍须保留任务自己的特权密码。
                     const authContext = { ...item, vault_type_key: selectedVaultType };
                     const clean = Object.fromEntries(Object.entries(item).filter(([key]) => !isVaultAuthField(key, authContext) && key !== 'vault_actor_context'));
-                    if (next === 'vault') clean.vault_type_key = selectedVaultType;
+                    if (next === 'vault') {
+                      clean.vault_type_key = selectedVaultType;
+                      if (credentialShape === 'network_config_file') {
+                        clean.transport_protocol = normalizeNetworkTransport(item.transport_protocol);
+                      }
+                    }
                     if (next === 'inline') {
                       delete clean.vault_credential_id;
                       delete clean.vault_type_key;
@@ -1644,14 +1704,8 @@ export default function CredentialPoolEditor({
                           options={vaultTypeKeys.map((key) => ({ label: key, value: key }))}
                           onChange={(vault_type_key) => updateItem(index, { vault_type_key, vault_credential_id: undefined })} />
                       )}
-                      {credentialShape === 'network_config_file' && selectedVaultType === 'ssh' && (
-                        <div className="mb-2 text-xs text-[var(--color-text-secondary)]">
-                          {t('Collection.networkSshPasswordTip', '仅支持 SSH 密码凭据，可用于 SSH 或 Telnet 登录；特权密码在下方填写。')}
-                        </div>
-                      )}
                       <CredentialPicker category={vaultCategory}
                         type={selectedVaultType}
-                        sshAuthMethod={credentialShape === 'network_config_file' ? 'password' : undefined}
                         value={item.vault_credential_id}
                         onNamesResolved={(credentials) => setCredentialNames((previous) => {
                           const next = { ...previous };
@@ -1671,7 +1725,11 @@ export default function CredentialPoolEditor({
                   ) : <Alert type="warning" showIcon message="当前插件没有可用的内置凭据类型" />}
                 </div>
               )}
-              {source === 'vault' ? renderVaultDynamicFields(item, index, credentialShape, updateItem, t, showPort, onCloudRegionRefresh, cloudRegionLoading, collectModelId) : renderCredentialFields({
+              {source === 'vault' ? renderVaultDynamicFields(
+                item, index, credentialShape, updateItem, t, showPort,
+                onCloudRegionRefresh, cloudRegionLoading, collectModelId,
+                cloudRegionOptions, cloudCredentialLabels,
+              ) : renderCredentialFields({
                 item,
                 index,
                 shape: credentialShape,

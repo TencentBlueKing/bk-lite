@@ -692,7 +692,6 @@
         "ipRangeCycleHint": "This IP range covers many addresses and may take longer to finish. Please evaluate whether a longer collection interval is needed.",
         "hostCredentialOptionalTip": "JOB collection can omit login credentials only when the target host has an available Agent. Otherwise, provide a remote login username and password. Select a credential when using Existing credentials.",
         "legacyNetworkCredentialTip": "This task retains its existing platform account credential.",
-        "networkSshPasswordTip": "Only SSH password credentials are supported for SSH or Telnet login. Enter the privilege password below.",
         "legacyJobCredentialTip": "This task still uses its existing username/password credential.",
         "switchToSshCredential": "Switch to SSH credential",
         "deviceJobCredentialTip": "This plugin runs collection commands on the device over SSH. Enter a device username and password or select an existing credential. Set the port in this task.",

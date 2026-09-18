@@ -1,5 +1,8 @@
 /**
- * 主机采集凭据可空提示与 SSH 用户/密码非必填星号契约。
+ * 主机采集凭据可空提示与 SSH 用户/密码必填星号契约。
+ *
+ * JOB 仍可用 Agent 省略登录凭据，但用户名/密码要显示必填星号，
+ * 避免中间件、扫描等共用 SSH 表单的入口看起来像选填。
  *
  * Run: node --import tsx scripts/cmdb-host-credential-optional-test.ts
  */
@@ -29,10 +32,10 @@ assert.match(
   /hostCredentialOptionalTip/,
   '主机采集表单应展示凭据可空提示',
 );
-assert.match(
+assert.doesNotMatch(
   credentialEditor,
   /required=\{shape !== 'ssh'\}/,
-  'SSH 凭据的用户/密码不应显示必填星号',
+  'SSH 凭据的用户/密码应显示必填星号',
 );
 assert.match(
   baseTask,
