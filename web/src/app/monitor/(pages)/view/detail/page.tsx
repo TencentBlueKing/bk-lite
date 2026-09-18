@@ -122,6 +122,7 @@ const ViewDetail = () => {
             idValues={idValues}
             monitorObjectId={monitorObjectId}
             monitorObjectName={monitorObjectName}
+            monitorObjectDisplayName={monitorObjDisplayName}
             instanceId={instanceId}
             instanceName={instanceName}
           />
@@ -130,6 +131,7 @@ const ViewDetail = () => {
             idValues={idValues}
             monitorObjectId={monitorObjectId}
             monitorObjectName={monitorObjectName}
+            monitorObjectDisplayName={monitorObjDisplayName}
             instanceId={instanceId}
             instanceName={instanceName}
           />
