@@ -51,7 +51,7 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.7262.4.5.2.2.3.0"
+        oid = "1.3.6.1.4.1.7262.4.5.2.2.3"
         name = "celsius"
         conversion = "int"
 # ---- CPU/内存/风扇/电源：无稳定、无需行级过滤的共享健康对象 → N/A，不臆造 CPU%/内存%。射频链路/调制对象不提升为共享设备健康。----

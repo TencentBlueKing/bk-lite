@@ -39,7 +39,7 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.1.0"
+        oid = "1.3.6.1.4.1.56928.2.1.1"
         name = "usage"
     # ---- 内存：memUtilization 标量，DisplayString 百分比文本，解析为 device_memory_usage ----
     # OID 1.3.6.1.4.1.56928.2.1.2.0。
@@ -47,7 +47,7 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.2.0"
+        oid = "1.3.6.1.4.1.56928.2.1.2"
         name = "usage"
     # ---- 温度：afTemperatureCPU / afTemperatureSwitch 标量，取较大值写入 device_temperature_celsius ----
     # CPU 1.3.6.1.4.1.56928.2.1.3.31.0；交换机 1.3.6.1.4.1.56928.2.1.3.30.0。
@@ -55,10 +55,10 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.3.31.0"
+        oid = "1.3.6.1.4.1.56928.2.1.3.31"
         name = "cpu"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.3.30.0"
+        oid = "1.3.6.1.4.1.56928.2.1.3.30"
         name = "switch_sensor"
 # ---- 风扇转速/状态表列 OID 未纳入本轮已证明集合，电源健康也无稳定枚举，均不采。----
 

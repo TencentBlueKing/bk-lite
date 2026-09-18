@@ -54,15 +54,15 @@
         name = "heap"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.1.3.1.0"
+        oid = "1.3.6.1.4.1.28097.1.3.1"
         name = "free_bytes"
         conversion = "int"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.1.3.2.0"
+        oid = "1.3.6.1.4.1.28097.1.3.2"
         name = "total_bytes"
         conversion = "int"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.1.3.3.0"
+        oid = "1.3.6.1.4.1.28097.1.3.3"
         name = "low_water_bytes"
         conversion = "int"
     # motherBoard0：主板温度传感器 0，原始单位毫摄氏度；查询侧 /1000 转为摄氏度。
@@ -71,7 +71,7 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.9.7.2.1.1.0"
+        oid = "1.3.6.1.4.1.28097.9.7.2.1.1"
         name = "celsius"
         conversion = "int"
     # powerStatus-PW1/PW2：powerOff(1)/powerOn(2)，下方 enum 归一为 1=正常 / 2=异常。
@@ -79,11 +79,11 @@
         name = "device_psu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.6.1.0"
+        oid = "1.3.6.1.4.1.28097.6.1"
         name = "state"
         conversion = "int"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.6.2.0"
+        oid = "1.3.6.1.4.1.28097.6.2"
         name = "state_backup"
         conversion = "int"
     # apClientCount：仅接入点模式有效的已关联客户端数标量。
@@ -91,7 +91,7 @@
         name = "wireless_client"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.1.1.3.3.0"
+        oid = "1.3.6.1.4.1.28097.1.1.3.3"
         name = "count"
         conversion = "int"
     # bridge-modeRSSIdBm：仅网桥模式有效的对端连接 RSSI（dBm）。
@@ -99,7 +99,7 @@
         name = "wireless_signal"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.28097.1.1.2.4.0"
+        oid = "1.3.6.1.4.1.28097.1.1.2.4"
         name = "strength"
         conversion = "int"
 # ---- 无私有 CPU 使用率标量，不伪造 CPU%。不扩展 IF-MIB 错误计数、ifOperStatus 或 32 位字节计数器。----

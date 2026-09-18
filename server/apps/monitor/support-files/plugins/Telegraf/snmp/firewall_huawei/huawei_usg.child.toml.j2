@@ -117,22 +117,22 @@
         name = "firewall"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.4.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.4"
         name = "total_sessions"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.3.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.3"
         name = "session_rate"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.5.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.5"
         name = "half_open_sessions"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.6.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.6"
         name = "active_sessions_tcp"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.7.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.7"
         name = "active_sessions_udp"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.8.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.1.2.1.8"
         name = "active_sessions_icmp"
     # ---- 整机会话与吞吐（HUAWEI-SECURITY-STAT-MIB device 标量）----
     # 吞吐优先 64 位对象；32 位 Gauge 在高速设备上可能回绕。未支持的对象为空，不阻断其余指标。
@@ -140,16 +140,16 @@
         name = "firewall"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.6.2.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.6.2"
         name = "device_sessions"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.6.3.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.6.3"
         name = "device_session_rate"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.6.4.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.6.4"
         name = "throughput32"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.6.122.15.6.5.0"
+        oid = "1.3.6.1.4.1.2011.6.122.15.6.5"
         name = "throughput"
     # ---- USG9500 SPU CPU（hwSecStatPerfAndPhyTable，按 PerfIndex；槽位/CPU 为列而非 ENTITY 下标）----
     # 禁止 walk 私有表根 15.2。未插 SPU 或非框式机型表为空，不阻断整机会话/吞吐。
