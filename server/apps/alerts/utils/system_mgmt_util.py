@@ -20,12 +20,15 @@ class SystemMgmtUtils:
         return result["data"]
 
     @staticmethod
-    def send_msg_with_channel(channel_id, title, content, receivers, append_receivers=True):
-        result = SystemMgmt().send_msg_with_channel(
-            channel_id,
-            title,
-            content,
-            receivers,
-            append_receivers=append_receivers,
-        )
+    def send_msg_with_channel(channel_id, title, content, receivers, append_receivers=True, channel_type=None):
+        kwargs = {
+            "channel_id": channel_id,
+            "title": title,
+            "content": content,
+            "receivers": receivers,
+            "append_receivers": append_receivers,
+        }
+        if channel_type:
+            kwargs["channel_type"] = channel_type
+        result = SystemMgmt().send_msg_with_channel(**kwargs)
         return result

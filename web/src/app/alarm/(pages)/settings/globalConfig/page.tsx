@@ -14,6 +14,7 @@ import {
 import { Card, Form, Spin, Modal, message } from 'antd';
 import { LevelItem } from '@/app/alarm/types/index';
 import { BRAND } from '@/app/alarm/constants/colors';
+import { channelOptionValue } from '@/app/alarm/utils/channelIdentity';
 import NoDispatchConfigCard from './components/noDispatchConfigCard';
 import LevelManagementPanel from './components/levelManagementPanel';
 import LevelFormModal from './components/levelFormModal';
@@ -66,7 +67,7 @@ export default function UnallocatedNotificationConfig() {
       setChannelList(data);
       const options: NotifyOption[] = data.map((channel: ChannelItem) => ({
         label: channel.name,
-        value: channel.id.toString(),
+        value: channelOptionValue(channel),
       }));
       setNotifyOptions(options);
     } catch (error) {
@@ -90,7 +91,7 @@ export default function UnallocatedNotificationConfig() {
         const { notify_channel, notify_every, notify_people } = res.value;
 
         const notifyChannelIds = (notify_channel || []).map((ch: any) =>
-          ch.id.toString(),
+          channelOptionValue(ch),
         );
 
         form.setFieldsValue({
@@ -132,7 +133,7 @@ export default function UnallocatedNotificationConfig() {
       const values = await form.validateFields();
 
       const notifyChannels = (values.notify_channel || [])
-        .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
+        .map((id: string) => channelList.find((ch) => channelOptionValue(ch) === id))
         .filter(Boolean);
 
       await updateGlobalConfig(globalConfigId, {

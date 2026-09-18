@@ -9,6 +9,8 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.alerts.views.system_setting import SystemSettingModelViewSet
 from apps.system_mgmt.models.channel import Channel
+from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
+from apps.system_mgmt.models.integration_instance import IntegrationInstance
 
 
 def _render(response):
@@ -37,6 +39,32 @@ def test_get_channel_list_merges_opspilot_and_excludes_plain_nats(authenticated_
         description="",
         team=[],
     )
+    instance = IntegrationInstance.objects.create(
+        name="feishu-im",
+        provider_key="feishu",
+        enabled=True,
+        status="ready",
+        capability_status={"im_notification": "ready"},
+        config={},
+    )
+    IMNotificationChannel.objects.create(
+        name="值班飞书",
+        integration_instance=instance,
+        enabled=True,
+        team=[1],
+    )
+    IMNotificationChannel.objects.create(
+        name="已停用IM",
+        integration_instance=instance,
+        enabled=False,
+        team=[1],
+    )
+    IMNotificationChannel.objects.create(
+        name="外组织IM",
+        integration_instance=instance,
+        enabled=True,
+        team=[2],
+    )
 
     factory = APIRequestFactory()
     request = factory.get("/api/settings/get_channel_list/")
@@ -58,5 +86,9 @@ def test_get_channel_list_merges_opspilot_and_excludes_plain_nats(authenticated_
     assert any(item["id"] == 99 and item["channel_type"] == "nats" and item["team"] == [2] for item in data)
     # 普通 nats（内部直推）被排除
     assert not any("内部直推" in item["name"] for item in data)
-    # 企业微信应用渠道没有接入当前告警发送出口，不能作为模板绑定候选
-    assert not any("企微应用" in item["name"] for item in data)
+    wechat = next(item for item in data if "企微应用" in item["name"])
+    assert wechat["channel_type"] == "enterprise_wechat"
+    im = next(item for item in data if "值班飞书" in item["name"])
+    assert im["channel_type"] == "im_notification"
+    assert not any("已停用IM" in item["name"] for item in data)
+    assert not any("外组织IM" in item["name"] for item in data)

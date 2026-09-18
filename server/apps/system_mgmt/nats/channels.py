@@ -10,6 +10,8 @@ from apps.core.utils.internal_event_auth import (
     sign_internal_event,
     verify_internal_event,
 )
+from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
+from apps.system_mgmt.services.im_notification_service import send_im_notification
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 from .common import *  # noqa: F401,F403
@@ -564,7 +566,7 @@ def dispatch_notification(
 
 
 @nats_client.register
-def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None, append_receivers=True):
+def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None, append_receivers=True, channel_type=None):
     """
     通过指定通道发送消息
     :param channel_id: 通道ID
@@ -574,10 +576,15 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     :param attachments: 附件列表（仅email通道支持），格式为:
         [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
         注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
+    :param channel_type: 可选，用于区分 Channel 与 IMNotificationChannel 的同号主键
     """
+    if channel_type == IMNotificationChannel.CHANNEL_TYPE:
+        return send_im_notification(channel_id, title, content, receivers)
     channel_obj = Channel.objects.filter(id=channel_id).first()
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
+    if channel_type and channel_obj.channel_type != channel_type:
+        return {"result": False, "message": "Channel type mismatch"}
     method_name = (channel_obj.config or {}).get("method_name")
     if channel_obj.channel_type == ChannelChoices.NATS and method_name in RAW_PASSTHROUGH_NATS_METHODS:
         if not isinstance(content, dict) or not isinstance(content.get("pusher"), str) or not content["pusher"]:
@@ -601,6 +608,10 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         if not user_list or not user_list.exists():
             return {"result": False, "message": "No valid recipients found"}
         return send_email(channel_obj, title, content, user_list, attachments)
+    elif channel_obj.channel_type == ChannelChoices.ENTERPRISE_WECHAT:
+        if not user_list or not user_list.exists():
+            return {"result": False, "message": "No valid recipients found"}
+        return send_wechat(channel_obj, content, user_list)
     elif channel_obj.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
         if user_list is not None:
             display_names = list(user_list.values_list("display_name", flat=True))

@@ -8,9 +8,10 @@ import {
 } from '../defaultNotificationTemplateContents';
 
 describe('通知模板组默认内容', () => {
-  it('告警操作内置模板为六渠道提供待认领操作内容', () => {
+  it('告警操作内置模板为七渠道提供待认领操作内容', () => {
     expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.map((item) => item.channel_type)).toEqual([
       'email',
+      'enterprise_wechat',
       'enterprise_wechat_bot',
       'dingtalk_bot',
       'feishu_bot',
@@ -28,10 +29,12 @@ describe('通知模板组默认内容', () => {
       .toEqual(['email', 'dingtalk_bot', 'feishu_bot']);
   });
 
-  it('新建普通模板时提供评审确认的六渠道默认内容', () => {
+  it('新建普通模板时提供评审确认的八渠道默认内容', () => {
     expect(DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS.map((item) => item.channel_type)).toEqual([
       'email',
+      'enterprise_wechat',
       'enterprise_wechat_bot',
+      'im_notification',
       'dingtalk_bot',
       'feishu_bot',
       'custom_webhook',
@@ -64,8 +67,45 @@ describe('通知模板组默认内容', () => {
 </div>`,
       },
       {
+        channel_type: 'enterprise_wechat',
+        subject_template: '',
+        body_template: `[告警通知]
+通知场景：{{ notification.scene_name }}
+告警级别：{{ alert.level }}
+告警标题：{{ alert.title }}
+告警 ID：{{ alert.alert_id }}
+告警资源：{{ alert.resource_name }}（{{ alert.resource_type }}）
+资源 ID：{{ alert.resource_id }}
+监控来源：{{ alert.source_name }}
+监控指标：{{ alert.item }}
+发生时间：{{ alert.created_at }}
+本次接收人：{{ notification.receiver_names }}
+通知时间：{{ notification.generated_at }}
+
+告警内容：
+{{ alert.content }}`,
+      },
+      {
         channel_type: 'enterprise_wechat_bot',
         subject_template: '',
+        body_template: `### {{ notification.scene_name }}｜{{ alert.level }}
+
+**{{ alert.title }}**
+
+> {{ alert.content }}
+
+- **告警资源：** {{ alert.resource_name }}（{{ alert.resource_type }}）
+- **监控来源：** {{ alert.source_name }}
+- **监控指标：** {{ alert.item }}
+- **发生时间：** {{ alert.created_at }}
+- **本次接收人：** {{ notification.receiver_names }}
+
+告警 ID：{{ alert.alert_id }}
+通知时间：{{ notification.generated_at }}`,
+      },
+      {
+        channel_type: 'im_notification',
+        subject_template: '【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}',
         body_template: `### {{ notification.scene_name }}｜{{ alert.level }}
 
 **{{ alert.title }}**
