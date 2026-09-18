@@ -23,7 +23,9 @@ import {
   StopOutlined,
   DeploymentUnitOutlined,
   InfoCircleOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useSkillApi } from '@/app/opspilot/api/skill';
@@ -57,6 +59,32 @@ const SKELETON_ROWS: TableItem[] = [
 ];
 
 const WEB_CHAT_PATH = '/opspilot/skill/chat';
+const SKILL_API_DOCS_PATH = '/opspilot/skill/detail/api';
+
+const skillEmbeddedChatUrl = (skillId: string, channelId: number | string) => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/api/v1/opspilot/skill_channel/embedded/${skillId}/${channelId}/`;
+};
+
+const skillApiDocsHref = (skillId?: string | null) => {
+  if (!skillId) {
+    return SKILL_API_DOCS_PATH;
+  }
+  return `${SKILL_API_DOCS_PATH}?id=${encodeURIComponent(skillId)}`;
+};
+
+const copyText = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+  }
+};
 
 const CHANNEL_OPTIONS = [
   { value: 'platform' },
@@ -293,6 +321,18 @@ const SkillChannelPage: React.FC = () => {
     window.open(WEB_CHAT_PATH, '_blank', 'noopener,noreferrer');
   };
 
+  const copyEmbeddedLink = async (channelId: number) => {
+    if (!skillId) {
+      return;
+    }
+    try {
+      await copyText(skillEmbeddedChatUrl(skillId, channelId));
+      message.success(t('common.copySuccess', '复制成功'));
+    } catch {
+      message.error(t('common.copyFailed', '复制失败'));
+    }
+  };
+
   const columns = useMemo(
     () => [
       {
@@ -322,6 +362,11 @@ const SkillChannelPage: React.FC = () => {
                 {item.channel_type === 'web_chat' ? (
                   <div className="truncate text-xs text-[var(--color-text-3)]">
                     {t('skill.channel.webChatEntry', 'Web 对话入口')}
+                  </div>
+                ) : null}
+                {item.channel_type === 'embedded_chat' ? (
+                  <div className="truncate text-xs text-[var(--color-text-3)]">
+                    {t('skill.channel.embeddedEntry', '嵌入式对话入口')}
                   </div>
                 ) : null}
               </div>
@@ -386,7 +431,7 @@ const SkillChannelPage: React.FC = () => {
       {
         title: t('common.action', '操作'),
         key: 'action',
-        width: 180,
+        width: 240,
         render: (_: unknown, item: TableItem) => {
           if (item.isSkeleton) {
             return (
@@ -407,6 +452,21 @@ const SkillChannelPage: React.FC = () => {
                 >
                   {t('skill.channel.openChat', '对话')}
                 </Button>
+              ) : null}
+              {item.channel_type === 'embedded_chat' ? (
+                <>
+                  <Button type="link" size="small" onClick={() => void copyEmbeddedLink(item.id)}>
+                    {t('skill.channel.copyLink', '链接')}
+                  </Button>
+                  <Button
+                    type="link"
+                    size="small"
+                    href={skillApiDocsHref(skillId)}
+                    target="_blank"
+                  >
+                    {t('skill.channel.viewDocs', '文档')}
+                  </Button>
+                </>
               ) : null}
               <Button type="link" size="small" onClick={() => openEdit(item)}>
                 {t('common.setting', '设置')}
@@ -430,7 +490,7 @@ const SkillChannelPage: React.FC = () => {
         },
       },
     ],
-    [t, switchLoading]
+    [t, switchLoading, skillId]
   );
 
   const isFilterActive = !!nameQuery.trim() || !!typeFilter;
@@ -623,6 +683,47 @@ const SkillChannelPage: React.FC = () => {
           >
             <Switch />
           </Form.Item>
+          {channelType === 'embedded_chat' ? (
+            <div className="mb-4 rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2.5 text-xs leading-5 text-[var(--color-text-3)]">
+              {editing && skillId ? (
+                <>
+                  <p className="mb-2">
+                    {t(
+                      'skill.channel.embeddedApiInfo',
+                      '提供可通过 WebChat 嵌入网页的对话接口。保存渠道后即可复制下方调用地址。'
+                    )}
+                  </p>
+                  <div className="relative mb-2">
+                    <Input.TextArea
+                      readOnly
+                      value={skillEmbeddedChatUrl(skillId, editing.id)}
+                      autoSize={{ minRows: 2, maxRows: 4 }}
+                      className="pr-10 font-mono text-xs"
+                    />
+                    <Button
+                      type="text"
+                      icon={<CopyOutlined />}
+                      size="small"
+                      className="absolute top-1 right-1"
+                      onClick={() => void copyEmbeddedLink(editing.id)}
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="mb-2">
+                  {t('skill.channel.embeddedSaveHint', '保存渠道后，可在列表中复制对接链接。')}
+                </p>
+              )}
+              <span>{t('skill.channel.moreDetails', '如何对接请查看')}</span>
+              <Link
+                href={skillApiDocsHref(skillId)}
+                target="_blank"
+                className="text-[var(--color-primary)] hover:underline"
+              >
+                {t('skill.channel.viewApiDocs', '接入文档 →')}
+              </Link>
+            </div>
+          ) : null}
           {configFields.map((field) => (
             <React.Fragment key={field}>
               <Form.Item

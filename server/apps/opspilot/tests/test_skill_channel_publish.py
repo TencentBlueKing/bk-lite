@@ -342,6 +342,46 @@ class TestPlatformListAndEmbeddedGate:
         assert SkillConversation.objects.filter(channel=ch).exists()
         assert SkillConversationMessage.objects.filter(role="user", content="hi").exists()
 
+    def test_embedded_accepts_sessionId_alias(self):
+        skill = _skill(usage_team=[1])
+        ch = SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.EMBEDDED_CHAT,
+            enabled=True,
+            usage_team=[1],
+        )
+        plain = UserAPISecret.generate_api_secret()
+        UserAPISecret.objects.create(
+            username="apiuser",
+            domain="domain.com",
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(plain),
+        )
+        factory = APIRequestFactory()
+        request = factory.post(
+            f"/skill_channel/embedded/{skill.id}/{ch.id}/",
+            {"message": "hi", "sessionId": "embed-session-1"},
+            format="json",
+            HTTP_API_AUTHORIZATION=plain,
+        )
+        with patch("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat") as mock_stream:
+            from django.http import StreamingHttpResponse
+
+            def gen():
+                yield b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'
+                yield b"data: [DONE]\n\n"
+
+            mock_stream.return_value = StreamingHttpResponse(gen(), content_type="text/event-stream")
+            with patch(
+                "apps.opspilot.services.skill_channel_chat_service.capture_caller_identity",
+                return_value={"username": "apiuser", "domain": "domain.com", "group": 1},
+            ):
+                resp = opspilot_views.execute_skill_embedded_chat(request, skill.id, ch.id)
+            assert resp.status_code == 200
+            mock_stream.assert_called_once()
+        conv = SkillConversation.objects.get(channel=ch)
+        assert conv.session_id == "embed-session-1"
+
 
 class TestSkillConversationHistory:
     def _web_channel(self, skill, **kwargs):

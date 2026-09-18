@@ -250,7 +250,7 @@ def execute_skill_embedded_chat(request, skill_id, channel_id):
     message = (kwargs or {}).get("message", "") or (kwargs or {}).get("user_message", "")
     if not message:
         return create_error_stream_response("message 必填")
-    session_id = (kwargs or {}).get("session_id") or ""
+    session_id = (kwargs or {}).get("session_id") or (kwargs or {}).get("sessionId") or ""
     try:
         user_secret, team_id = authenticate_embedded(request)
         channel = get_enabled_channel(int(channel_id), EMBEDDED)

@@ -2,6 +2,7 @@ import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { message } from 'antd';
 import SkillChannelPage from '../page';
 
 const mockChannels = [
@@ -24,6 +25,12 @@ const mockChannels = [
     id: 3,
     name: '网页在线咨询',
     channel_type: 'web_chat',
+    enabled: true,
+  },
+  {
+    id: 4,
+    name: 'dddd',
+    channel_type: 'embedded_chat',
     enabled: true,
   },
 ];
@@ -109,6 +116,31 @@ describe('SkillChannelPage', () => {
     // 工具栏操作
     expect(screen.getByText('添加渠道')).toBeTruthy();
     expect(screen.getByPlaceholderText('按名称筛选')).toBeTruthy();
+  });
+
+  it('copies embedded chat url and exposes docs link', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const successSpy = vi.spyOn(message, 'success');
+
+    render(<SkillChannelPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('dddd')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '链接' }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        `${window.location.origin}/api/v1/opspilot/skill_channel/embedded/123/4/`
+      );
+      expect(successSpy).toHaveBeenCalledWith('复制成功');
+    });
+    successSpy.mockRestore();
+
+    const docsLink = screen.getByRole('link', { name: '文档' });
+    expect(docsLink.getAttribute('href')).toContain('/opspilot/skill/detail/api?id=123');
   });
 
   it('filters by channel name keyword', async () => {
