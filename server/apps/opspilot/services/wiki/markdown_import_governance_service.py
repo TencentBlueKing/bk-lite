@@ -1179,6 +1179,7 @@ def _create_import_body_candidate(page, document, build, generation, operator, i
 
 _EXECUTION_PREVIEW_KEY = "_execution"
 _TERMINAL_BUILD_STATUSES = frozenset(("success", "partial", "failed"))
+_MARKDOWN_IMPORT_FENCED_CODES = frozenset(("markdown_import_fenced", "markdown_import_build_terminal"))
 
 
 def _preflight_execution_result(record):
@@ -1311,6 +1312,8 @@ def _execute_generation_import(
         operator=operator,
         existing_build_record_id=existing_build_record_id,
     )
+    expected_token = str((build.inputs or {}).get(_CELERY_TASK_ID_KEY) or "")
+    _touch_markdown_import_build(build)
     context = begin_build_generation(
         knowledge_base,
         build,
@@ -1336,7 +1339,10 @@ def _execute_generation_import(
                 old_body = getattr(page.current_version, "body", None) or ""
                 released_locators.update(collect_page_media_locators(old_body) - collect_page_media_locators(document.get("body") or ""))
         created_locators = _upload_okf_page_images(knowledge_base, inspected, archive_content)
+        _touch_markdown_import_build(build)
         for document in inspected.documents:
+            _assert_markdown_import_owns(build, expected_token)
+            _touch_markdown_import_build(build)
             row = preview_by_path[document["archive_path"]]
             page = existing.get(title_identity_key(row["title"]))
             directory = row.get("directory") or {}
@@ -1390,6 +1396,9 @@ def _execute_generation_import(
 
         affected_page_ids = [row["page_id"] for row in result_pages]
 
+        def pre_activation_hook(_candidate):
+            _assert_markdown_import_owns(build, expected_token)
+
         def activation_hook(candidate, _locked_knowledge_base, relation_result):
             payload = {
                 "build_record_id": build.pk,
@@ -1398,7 +1407,7 @@ def _execute_generation_import(
                 "pages": list(result_pages),
                 "relations": relation_result,
             }
-            locked_build = BuildRecord.objects.select_for_update().get(pk=build.pk)
+            locked_build = _assert_markdown_import_owns(build, expected_token)
             _complete_import_build(
                 locked_build,
                 counts=counts,
@@ -1429,11 +1438,13 @@ def _execute_generation_import(
             result_payload.update(payload)
             _gc_okf_page_media(knowledge_base, released_locators)
 
+        _assert_markdown_import_owns(build, expected_token)
         finalize_build_generation(
             context,
             build_record=build,
             page_actions=page_actions,
             directory_trace=directory_trace,
+            pre_activation_hook=pre_activation_hook,
             activation_hook=activation_hook,
             run_embedding_index=False,
         )
@@ -1441,11 +1452,13 @@ def _execute_generation_import(
     except Exception as error:
         for locator in created_locators:
             delete_media_locator(locator)
-        fail_build_generation(context, build_record=build, error=error)
-        BuildRecord.objects.filter(pk=build.pk).exclude(status__in=_TERMINAL_BUILD_STATUSES).update(
-            status="failed", stage="failed", errors=[str(error)]
-        )
-        _release_preflight_after_failure(preflight_record_id)
+        fenced = getattr(error, "code", "") in _MARKDOWN_IMPORT_FENCED_CODES
+        fail_build_generation(context, build_record=None if fenced else build, error=error)
+        if not fenced:
+            BuildRecord.objects.filter(pk=build.pk).exclude(status__in=_TERMINAL_BUILD_STATUSES).update(
+                status="failed", stage="failed", errors=[str(error)]
+            )
+            _release_preflight_after_failure(preflight_record_id)
         raise
 
 
@@ -1500,6 +1513,7 @@ def _maybe_run_markdown_import_search_enrichment(knowledge_base, result, *, defe
 
 
 def _claim_preflight(knowledge_base, token, inspected, actor, preview, *, preflight_id=None):
+    """Consume a one-shot preflight. Consumed is fail-and-rerequest, not same-id resume."""
     token_hash = hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
     with transaction.atomic():
         current = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
@@ -1547,6 +1561,36 @@ def _claim_preflight(knowledge_base, token, inspected, actor, preview, *, prefli
 
 _CELERY_TASK_ID_KEY = "celery_task_id"
 _MARKDOWN_IMPORT_STALE_SECONDS = int(os.environ.get("WIKI_MARKDOWN_IMPORT_STALE_SECONDS", str(2 * 3600)))
+
+
+def _touch_markdown_import_build(build) -> None:
+    """Heartbeat updated_at so TTL reclaim does not kill a live importer."""
+    if build is None:
+        return
+    BuildRecord.objects.filter(pk=build.pk, trigger="markdown_import", status="running").update(updated_at=timezone.now())
+
+
+def _assert_markdown_import_owns(build, expected_token):
+    """Lock the build and abort if fencing token rotated or status left running."""
+    expected = str(expected_token or "").strip()
+    with transaction.atomic():
+        current = BuildRecord.objects.select_for_update().filter(pk=build.pk, trigger="markdown_import").first()
+        if current is None:
+            raise MarkdownImportGovernanceError(
+                "markdown_import_fenced",
+                "导入任务记录不存在",
+                status_code=409,
+                retryable=True,
+            )
+        stored = str((current.inputs or {}).get(_CELERY_TASK_ID_KEY) or "").strip()
+        if current.status != "running" or (expected and stored != expected):
+            raise MarkdownImportGovernanceError(
+                "markdown_import_fenced",
+                "导入任务已被回收或取代",
+                status_code=409,
+                retryable=True,
+            )
+        return current
 
 
 def markdown_import_celery_task_is_live(task_id) -> bool:

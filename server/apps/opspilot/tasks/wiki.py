@@ -883,9 +883,9 @@ def wiki_execute_markdown_import_task(
 ):
     """Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker.
 
-    acks_late + reject_on_worker_lost 让 worker 中途退出后按同一 celery_task_id 重投；
-    claim 只接受与 BuildRecord 中 fencing token 一致的任务。超时仍 running 的记录由
-    reclaim_stale_markdown_import_builds 按 TTL 释放。
+    acks_late + reject_on_worker_lost 只保证 worker 死后消息可重投；预检 consume 之后
+    不是同 id 续跑。重投若预检已 consumed 则 fail-and-rerequest。超时仍 running 的记录
+    由 reclaim_stale_markdown_import_builds 按 TTL 释放，旧工人必须在 activate 前 abort。
     """
     from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
     from apps.opspilot.services.wiki.markdown_import_governance_service import (
@@ -976,6 +976,15 @@ def wiki_execute_markdown_import_task(
             preflight_id=preflight_id,
         )
     except Exception as error:
+        retryable = bool(getattr(error, "retryable", False))
+        code = getattr(error, "code", "markdown_import_generation_failed")
+        if code in {"markdown_import_fenced", "markdown_import_build_terminal"}:
+            logger.info(
+                "wiki markdown import skipped fenced knowledge_base=%s build_record=%s",
+                kb_id,
+                build_record_id,
+            )
+            return {"status": "skipped", "code": code}
         logger.exception(
             "wiki markdown import failed knowledge_base=%s build_record=%s failed_stage=%s error_type=%s",
             kb_id,
@@ -983,8 +992,6 @@ def wiki_execute_markdown_import_task(
             "execute",
             type(error).__name__,
         )
-        retryable = bool(getattr(error, "retryable", False))
-        code = getattr(error, "code", "markdown_import_generation_failed")
         with transaction.atomic():
             WikiKnowledgeBase.objects.select_for_update().get(pk=kb_id)
             failed = BuildRecord.objects.select_for_update().filter(pk=build_record_id, knowledge_base_id=kb_id).first()

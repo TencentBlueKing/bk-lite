@@ -12,6 +12,8 @@ from apps.opspilot.models import BuildRecord, KnowledgePage, WikiGeneration, Wik
 from apps.opspilot.services.wiki.markdown_import_governance_service import (
     MarkdownImportGovernanceError,
     _bind_import_build,
+    _preflight_execution_result,
+    _touch_markdown_import_build,
     claim_markdown_import_execution,
     enqueue_markdown_import,
     execute_markdown_import,
@@ -547,6 +549,85 @@ def test_rebuild_reclaims_stale_recorded_markdown_import(wiki_factory, api_clien
     assert stale.status == "failed"
     assert "markdown_import_stale" in stale.errors[0]
     assert len(calls) == 1
+
+
+def test_heartbeat_keeps_recorded_import_from_ttl_reclaim(wiki_factory):
+    knowledge_base = _ready_kb(wiki_factory)
+    build = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="markdown_import",
+        status="running",
+        stage="generating",
+        inputs={"celery_task_id": "heartbeat-keeps-live"},
+    )
+    _age_markdown_import_build(build)
+    _touch_markdown_import_build(build)
+    assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 0
+    build.refresh_from_db()
+    assert build.status == "running"
+    assert build.inputs["celery_task_id"] == "heartbeat-keeps-live"
+
+
+def test_claimed_worker_ttl_reclaim_does_not_activate_or_write_preflight(wiki_factory, import_storage, monkeypatch):
+    from django.db import transaction
+
+    from apps.opspilot.services.wiki.build_generation_service import finalize_build_generation as original_finalize
+    from apps.opspilot.tasks.wiki import wiki_execute_markdown_import_task
+
+    knowledge_base = _ready_kb(wiki_factory)
+    bootstrap_generation_id = knowledge_base.active_generation_id
+    content = "# 超时回收不得激活\n\n正文。".encode("utf-8")
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="ttl-fence.md",
+        actor="admin",
+    )
+    payload, dispatch = enqueue_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="ttl-fence.md",
+        actor="admin",
+    )
+    assert persist_markdown_import_celery_task_id(payload["build_record_id"], dispatch["celery_task_id"])
+
+    def reclaim_then_finalize(*args, **kwargs):
+        build = BuildRecord.objects.get(pk=payload["build_record_id"])
+        _age_markdown_import_build(build)
+        with transaction.atomic():
+            WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
+            assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 1
+        return original_finalize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.markdown_import_governance_service.finalize_build_generation",
+        reclaim_then_finalize,
+    )
+
+    wiki_execute_markdown_import_task.push_request(id=dispatch["celery_task_id"])
+    try:
+        result = wiki_execute_markdown_import_task.run(
+            knowledge_base.id,
+            dispatch["build_record_id"],
+            operator="admin",
+        )
+    finally:
+        wiki_execute_markdown_import_task.pop_request()
+
+    assert result == {"status": "skipped", "code": "markdown_import_fenced"}
+    knowledge_base.refresh_from_db()
+    assert knowledge_base.active_generation_id == bootstrap_generation_id
+    assert not WikiGeneration.objects.filter(
+        knowledge_base=knowledge_base,
+        pipeline_version="wiki-markdown-import-v1",
+        status="active",
+    ).exists()
+    record = WikiImportPreflight.objects.get(knowledge_base=knowledge_base)
+    assert _preflight_execution_result(record) is None
+    build = BuildRecord.objects.get(pk=payload["build_record_id"])
+    assert build.status == "failed"
+    assert "markdown_import_stale" in build.errors[0]
 
 
 def test_claim_missing_build_returns_import_build_not_found(wiki_factory):
