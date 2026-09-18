@@ -18,3 +18,4 @@ from .user import *  # noqa
 from .user_login_log import *  # noqa
 from .user_sync_source import *  # noqa
 from .credential import *  # noqa
+from .system_api_token import SystemAPIToken  # noqa
