@@ -66,6 +66,8 @@ class CMDBOpenAPIContext:
     def require_feature(self, permission: str):
         if getattr(self.user, "is_superuser", False):
             return
+        if "cmdb--admin" in (getattr(self.user, "roles", None) or []):
+            return
         user_permissions = getattr(self.user, "permission", {}) or {}
         if permission not in set(user_permissions.get("cmdb", set())):
             raise CMDBOpenAPIError("cmdb.permission.denied", "权限不足", 403)

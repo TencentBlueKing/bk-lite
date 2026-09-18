@@ -197,6 +197,16 @@
           ]
         },
         {
+          "id": "system_api_secret",
+          "name": "System API Secret",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
           "id": "audit_log",
           "name": "Audit Logs",
           "operation": [

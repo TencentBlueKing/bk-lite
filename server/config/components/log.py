@@ -175,6 +175,7 @@ FILE_HANDLER_FILES = {
     "opspilot": "opspilot.log",
     "job": "job.log",
     "playground": "playground.log",
+    "openapi": "openapi.log",
 }
 
 APP_LOGGER_FILE_HANDLERS = {
@@ -192,6 +193,7 @@ APP_LOGGER_FILE_HANDLERS = {
     "job": "job",
     "alert": "alert",
     "playground": "playground",
+    "openapi": "openapi",
 }
 
 
