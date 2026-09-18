@@ -1,6 +1,23 @@
 import pytest
 
-from apps.cmdb.models.scan_model import ScanExecution, ScanFamilyRun, ScanHit, ScanTask
+from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
+from apps.cmdb.models.scan_model import (
+    SCAN_AGENT_CREDENTIAL_ID,
+    SCAN_MIDDLEWARE_FAMILY,
+    SCAN_MIDDLEWARE_TYPES,
+    ScanExecution,
+    ScanFamilyRun,
+    ScanHit,
+    ScanTask,
+    agent_placeholder_pool,
+    default_scan_snmp_version,
+    is_agent_credential,
+    normalize_scan_families,
+    resolve_scan_task_credential,
+    scan_driver_type_for_model,
+    scan_encrypt_model_id,
+    scan_task_type_for_model,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -73,3 +90,38 @@ def test_scan_execution_and_hit_can_be_created():
     assert execution.target_count == 0
     assert family_run.received_count == 0
     assert hit.inst_uuid == ""
+
+
+def test_middleware_family_normalizes_and_maps_job_plugin():
+    assert SCAN_MIDDLEWARE_FAMILY in normalize_scan_families(["middleware", "host"])
+    assert SCAN_MIDDLEWARE_TYPES == frozenset({"nginx", "tomcat", "kafka", "zookeeper", "rabbitmq", "consul", "etcd"})
+    assert scan_encrypt_model_id("middleware") == "host"
+    assert scan_driver_type_for_model("nginx") == CollectDriverTypes.JOB
+    assert scan_task_type_for_model("nginx") == CollectPluginTypes.MIDDLEWARE
+    assert is_agent_credential({}) is True
+    assert is_agent_credential({"credential_id": SCAN_AGENT_CREDENTIAL_ID}) is True
+    assert is_agent_credential({"username": "root", "password": "x"}) is False
+    assert is_agent_credential({"private_key": "-----BEGIN KEY-----"}) is False
+    assert agent_placeholder_pool() == [{"credential_id": SCAN_AGENT_CREDENTIAL_ID}]
+
+
+def test_resolve_middleware_credential_falls_back_to_host_pool():
+    task = ScanTask.objects.create(
+        name="scan-mw-resolve",
+        team=["1"],
+        families=["host", "middleware"],
+        credentials={
+            "host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}],
+        },
+    )
+    found = resolve_scan_task_credential(task, "nginx", "cred-ssh")
+    assert found["username"] == "root"
+    agent = resolve_scan_task_credential(task, "nginx", SCAN_AGENT_CREDENTIAL_ID)
+    assert agent == {"credential_id": SCAN_AGENT_CREDENTIAL_ID}
+
+
+def test_default_scan_snmp_version_fills_ui_default():
+    assert default_scan_snmp_version({"community": "public"})["version"] == "v2"
+    assert default_scan_snmp_version({"username": "snmpuser"})["version"] == "v3"
+    assert default_scan_snmp_version({"version": "v2c", "community": "public"})["version"] == "v2c"
+    assert default_scan_snmp_version({"version": "v3", "username": "snmpuser"})["version"] == "v3"

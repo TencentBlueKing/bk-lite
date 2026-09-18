@@ -354,6 +354,41 @@ def test_create_merges_legacy_sql_families_into_database(superuser, monkeypatch)
     assert set(task.decrypt_credentials) == {"database", "network"}
 
 
+def test_create_network_defaults_missing_snmp_version(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data=_payload(
+            families=["network"],
+            credentials={"network": [{"community": "public", "snmp_port": "161"}]},
+        ),
+        current_team="1",
+    )
+    response = ScanTaskViewSet.as_view({"post": "create"})(request)
+    assert response.status_code == 201
+    body = _data(response)
+    assert body["credentials"]["network"][0]["version"] == "v2"
+    task = ScanTask.objects.get(pk=body["id"])
+    assert task.decrypt_credentials["network"][0]["version"] == "v2"
+
+
+def test_retrieve_network_defaults_missing_snmp_version(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    task = ScanTask.objects.create(
+        name="scan-snmp-missing-version",
+        team=[1],
+        access_point=[{"id": "node-1"}],
+        ip_ranges=[{"begin": "10.0.1.1", "end": "10.0.1.2"}],
+        families=["network"],
+        credentials={"network": [{"community": "public"}]},
+    )
+    request = _req("get", superuser, current_team="1")
+    response = ScanTaskViewSet.as_view({"get": "retrieve"})(request, pk=task.id)
+    assert response.status_code == 200
+    assert _data(response)["credentials"]["network"][0]["version"] == "v2"
+
+
 def test_retrieve_old_mysql_task_looks_like_database(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
     task = ScanTask.objects.create(
@@ -372,3 +407,70 @@ def test_retrieve_old_mysql_task_looks_like_database(superuser, monkeypatch):
     assert body["credentials"]["database"][0]["username"] == "legacy"
     assert body["credentials"]["database"][0]["password"] == "******"
     assert "port" not in body["credentials"]["database"][0]
+
+
+def test_create_allows_empty_host_and_middleware_credentials(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data=_payload(
+            families=["host", "middleware"],
+            credentials={"host": [], "middleware": []},
+            cloud_region={"id": 1, "name": "default"},
+        ),
+        current_team="1",
+    )
+    response = ScanTaskViewSet.as_view({"post": "create"})(request)
+    assert response.status_code == 201
+    task = ScanTask.objects.get()
+    assert task.families == ["host", "middleware"]
+
+
+def test_create_middleware_agent_requires_cloud_region(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data=_payload(families=["middleware"], credentials={"middleware": []}),
+        current_team="1",
+    )
+    response = ScanTaskViewSet.as_view({"post": "create"})(request)
+    assert response.status_code == 400
+
+
+def test_create_middleware_ssh_key_only_does_not_require_cloud_region(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data=_payload(
+            families=["middleware"],
+            credentials={"middleware": [{"private_key": "-----BEGIN KEY-----", "port": 22}]},
+        ),
+        current_team="1",
+    )
+    response = ScanTaskViewSet.as_view({"post": "create"})(request)
+    assert response.status_code == 201
+
+
+def test_create_middleware_ssh_does_not_require_cloud_region(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    request = _req(
+        "post",
+        superuser,
+        data=_payload(
+            families=["middleware"],
+            credentials={"middleware": [{"username": "root", "password": "p", "port": 22}]},
+        ),
+        current_team="1",
+    )
+    response = ScanTaskViewSet.as_view({"post": "create"})(request)
+    assert response.status_code == 201
+
+
+def test_create_still_requires_database_credentials(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    request = _req("post", superuser, data=_payload(families=["database"], credentials={"database": []}), current_team="1")
+    response = ScanTaskViewSet.as_view({"post": "create"})(request)
+    assert response.status_code == 400
