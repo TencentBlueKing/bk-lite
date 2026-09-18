@@ -3169,6 +3169,10 @@ def test_get_install_command_view_passes_cpu_architecture(monkeypatch):
 
     monkeypatch.setattr(InstallerService, "get_install_command", fake_get_install_command)
     monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.resolve_current_team_data_scope",
+        lambda request: SimpleNamespace(current_team=1),
+    )
+    monkeypatch.setattr(
         "apps.node_mgmt.views.installer.validate_assignable_organizations",
         lambda request, organizations: frozenset(organizations),
     )
@@ -3200,6 +3204,10 @@ def test_get_install_command_view_passes_cpu_architecture(monkeypatch):
 def test_controller_manual_install_includes_normalized_cpu_architecture(monkeypatch):
     factory = APIRequestFactory()
     view = InstallerViewSet.as_view({"post": "controller_manual_install"})
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.resolve_current_team_data_scope",
+        lambda request: SimpleNamespace(current_team=1),
+    )
     monkeypatch.setattr(
         "apps.node_mgmt.views.installer.validate_assignable_organizations",
         lambda request, organizations: frozenset(organizations),
@@ -3261,9 +3269,17 @@ def test_controller_manual_install_rejects_missing_cpu_architecture():
 
 
 @pytest.mark.django_db
-def test_controller_install_view_rejects_windows_arm64_payload():
+def test_controller_install_view_rejects_windows_arm64_payload(monkeypatch):
     factory = APIRequestFactory()
     view = InstallerViewSet.as_view({"post": "controller_install"})
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.resolve_current_team_data_scope",
+        lambda request: SimpleNamespace(current_team=1),
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.validate_assignable_organizations",
+        lambda request, organizations: frozenset(organizations),
+    )
     request = factory.post(
         "/node_mgmt/api/installer/controller/install/",
         {
