@@ -13,8 +13,13 @@ vi.mock('@/utils/i18n', () => ({
   }),
 }));
 
+const widgetRuntimeRenderCount = { current: 0 };
+
 vi.mock('@/app/ops-analysis/components/widgetDataRenderer', () => ({
-  default: () => <div data-testid="widget-runtime" />,
+  default: function WidgetRuntimeMock() {
+    widgetRuntimeRenderCount.current += 1;
+    return <div data-testid="widget-runtime" />;
+  },
 }));
 
 vi.mock('gridstack', () => ({
@@ -70,6 +75,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  widgetRuntimeRenderCount.current = 0;
   cleanup();
 });
 
@@ -170,5 +176,58 @@ describe('DashboardCanvas copy menu', () => {
     expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
     expect(screen.getByText('common.delete')).toBeTruthy();
+  });
+});
+
+describe('DashboardCanvas overlay re-render isolation', () => {
+  it('does not re-render widget runtime when parent overlay-like state changes', async () => {
+    const scrollRootRef = createRef<HTMLDivElement | null>();
+    scrollRootRef.current = document.createElement('div');
+    const canvasProps = {
+      loading: false,
+      isEditMode: false,
+      isDarkTheme: false,
+      dashboardId: 1,
+      layout: [dataWidget],
+      collapsedGroups: {},
+      chartTheme: { panelBg: '#fff', panelBorderColor: '#eee' },
+      filterSearchVersion: 0,
+      namespaceSearchVersion: 0,
+      dashboardReloadVersion: 0,
+      widgetReloadVersions: {},
+      dataSourceResolver: () => undefined,
+      appliedFilterValues: {},
+      appliedFilterDefinitions: [],
+      appliedNamespaceId: undefined as number | undefined,
+      onLayoutChange: vi.fn(),
+      onOpenAddModal: vi.fn(),
+      onToggleCollapsedGroup: vi.fn(),
+      onRenameGroup: vi.fn(),
+      onRemoveGroup: vi.fn(),
+      onDeleteEntireGroup: vi.fn(),
+      onEditWidget: vi.fn(),
+      onCopyWidget: vi.fn(),
+      onDeleteWidget: vi.fn(),
+      renderMode: true,
+      scrollRootRef,
+    };
+
+    const Parent = ({ overlayOpen }: { overlayOpen: boolean }) => (
+      <>
+        <span data-testid="overlay-flag">{String(overlayOpen)}</span>
+        <DashboardCanvas {...canvasProps} />
+      </>
+    );
+
+    const { rerender } = render(<Parent overlayOpen={false} />);
+    await waitFor(() => {
+      expect(screen.getByText('CPU')).toBeTruthy();
+    });
+    const rendersAfterMount = widgetRuntimeRenderCount.current;
+    expect(rendersAfterMount).toBeGreaterThan(0);
+
+    rerender(<Parent overlayOpen={true} />);
+    expect(screen.getByTestId('overlay-flag').textContent).toBe('true');
+    expect(widgetRuntimeRenderCount.current).toBe(rendersAfterMount);
   });
 });
