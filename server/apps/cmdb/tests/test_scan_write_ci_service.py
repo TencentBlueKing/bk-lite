@@ -19,13 +19,15 @@ def _task(**overrides):
     return ScanTask.objects.create(**values)
 
 
-def _execution(*, family="network", status=ScanExecution.STATUS_COMPLETED, hit_status=ScanHit.STATUS_SUCCESS, **hit_overrides):
+def _execution(
+    *, family="network", status=ScanExecution.STATUS_COMPLETED, hit_status=ScanHit.STATUS_SUCCESS, driver_type="protocol", **hit_overrides
+):
     task = _task(families=[family] if family != "network" else ["network"])
     execution = ScanExecution.objects.create(task=task, status=status)
     family_run = ScanFamilyRun.objects.create(
         execution=execution,
         model_id=family,
-        driver_type="protocol",
+        driver_type=driver_type,
         admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
     )
     values = {
@@ -78,6 +80,16 @@ def _capture_cannula(mocker):
 
     mocker.patch("apps.cmdb.services.scan_finalize_service.MetricsCannula", FakeCannula)
     return captured
+
+
+def _patch_host_graph_lookup(mocker, rows):
+    fake_graph = mocker.MagicMock()
+    fake_graph.query_entity.return_value = (rows, len(rows))
+    mocker.patch(
+        "apps.cmdb.graph.drivers.graph_client.GraphClient",
+        return_value=mocker.MagicMock(__enter__=mocker.Mock(return_value=fake_graph), __exit__=mocker.Mock(return_value=False)),
+    )
+    return fake_graph
 
 
 def test_write_ci_from_snapshot_backfills_uuid(mocker):
@@ -206,3 +218,111 @@ def test_write_host_copies_scan_cloud_region(mocker):
     assert row["inst_name"] == "box-1"
     assert row["cloud"] == 7
     assert row["cloud_name"] == "gz"
+
+
+def _nginx_execution(**hit_overrides):
+    snapshot = {
+        "inst_name": "10.0.1.10-nginx-80",
+        "ip_addr": "10.0.1.10",
+        "listen_port": "80",
+        "version": "1.24",
+        "conf_path": "/etc/nginx/nginx.conf",
+    }
+    snapshot.update(hit_overrides.pop("snapshot", {}))
+    return _execution(
+        family="nginx",
+        driver_type="job",
+        port=80,
+        snapshot=snapshot,
+        cmdb_model_id="",
+        soid="",
+        **hit_overrides,
+    )
+
+
+def test_write_ci_maps_nginx_snapshot(mocker):
+    execution, hit = _nginx_execution(snapshot={"catalina_path": "/usr/share/tomcat9"})
+    captured = _capture_cannula(mocker)
+    _patch_host_graph_lookup(mocker, [])
+    mocker.patch("apps.cmdb.services.instance.InstanceManage.instance_association_create_by_uuid")
+    result = ScanWriteCiService.write(execution, [hit.id])
+    assert result["written"] == 1
+    row = captured["default_metrics"]["nginx"][0]
+    assert row["port"] == 80
+    assert row["version"] == "1.24"
+    assert row["conf_path"] == "/etc/nginx/nginx.conf"
+    assert row["catalina_path"] == "/usr/share/tomcat9"
+    assert row["assos"] == [
+        {
+            "model_id": "host",
+            "inst_name": "10.0.1.10",
+            "asst_id": "run",
+            "model_asst_id": "nginx_run_host",
+        }
+    ]
+    hit.refresh_from_db()
+    assert hit.cmdb_model_id == "nginx"
+
+
+_HOST_UUID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeffff0001"
+
+
+def test_write_ci_attaches_middleware_to_existing_host(mocker):
+    execution, hit = _nginx_execution()
+    _capture_cannula(mocker)
+    fake_graph = _patch_host_graph_lookup(
+        mocker,
+        [{"_id": 11, "inst_uuid": _HOST_UUID, "ip_addr": "10.0.1.10", "inst_name": "box-1", "model_id": "host"}],
+    )
+    create_asso = mocker.patch("apps.cmdb.services.instance.InstanceManage.instance_association_create_by_uuid")
+
+    result = ScanWriteCiService.write(execution, [hit.id])
+
+    assert result["written"] == 1
+    hit.refresh_from_db()
+    assert hit.attached_inst_uuid == _HOST_UUID
+    create_asso.assert_called_once_with(
+        src_inst_uuid="uuid-10.0.1.10",
+        dst_inst_uuid=_HOST_UUID,
+        model_asst_id="nginx_run_host",
+        operator="scan",
+    )
+    _label, filters = fake_graph.query_entity.call_args[0]
+    assert filters == [
+        {"field": "model_id", "type": "str=", "value": "host"},
+        {"field": "ip_addr", "type": "str=", "value": "10.0.1.10"},
+    ]
+
+
+def test_write_ci_skips_middleware_host_attach_when_host_missing(mocker):
+    execution, hit = _nginx_execution()
+    captured = _capture_cannula(mocker)
+    _patch_host_graph_lookup(mocker, [])
+    create_asso = mocker.patch("apps.cmdb.services.instance.InstanceManage.instance_association_create_by_uuid")
+
+    result = ScanWriteCiService.write(execution, [hit.id])
+
+    assert result["written"] == 1
+    assert "host" not in captured["default_metrics"]
+    hit.refresh_from_db()
+    assert hit.attached_inst_uuid == ""
+    create_asso.assert_not_called()
+
+
+def test_write_ci_skips_middleware_host_attach_when_graph_lookup_fails(mocker):
+    execution, hit = _nginx_execution()
+    _capture_cannula(mocker)
+    fake_graph = mocker.MagicMock()
+    fake_graph.query_entity.side_effect = RuntimeError("graph down")
+    mocker.patch(
+        "apps.cmdb.graph.drivers.graph_client.GraphClient",
+        return_value=mocker.MagicMock(__enter__=mocker.Mock(return_value=fake_graph), __exit__=mocker.Mock(return_value=False)),
+    )
+    create_asso = mocker.patch("apps.cmdb.services.instance.InstanceManage.instance_association_create_by_uuid")
+
+    result = ScanWriteCiService.write(execution, [hit.id])
+
+    assert result["written"] == 1
+    hit.refresh_from_db()
+    assert hit.attached_inst_uuid == ""
+    create_asso.assert_not_called()
