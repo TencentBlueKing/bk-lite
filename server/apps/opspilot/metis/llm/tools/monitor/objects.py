@@ -13,16 +13,21 @@ _OBJECT_TYPE_CHOICE_HINT = (
     "options 必须放入 monitor_list_objects 返回的全部真实对象 name，不要截断、不要改用 text、不要在对话里列出类型。"
     "用户已明确说是主机/Host、Pod 或中间件时，不要 request_user_choice，直接用对应对象 id 列实例。"
 )
+_EMPTY_INSTANCE_NEXT_HINT = (
+    "禁止猜测、递增或改换 monitor_obj_id 重试，禁止截断名称按台循环。"
+    "用户未声明类型时 request_user_choice（single_select）问对象类型；"
+    "用户已声明主机/Pod/中间件时不要再问，把空列表当该类型下无匹配实例。"
+)
 _UNMATCHED_INSTANCE_KEYWORD_MESSAGE = (
     "该 monitor_obj_id 下未匹配 keyword。"
     "禁止猜测、递增或改换 monitor_obj_id 重试，禁止截断名称按台循环。"
-    "用户未声明类型时不要把空列表当成最终结论，必须立即 request_user_choice（single_select），"
+    "用户未声明类型时不要把空列表当成最终结论，request_user_choice（single_select）问对象类型，"
     "options 用 monitor_list_objects 返回的全部对象类型名，禁止纯文本列出。"
     "用户已声明主机/Pod/中间件时不要再问类型，把空列表当该类型下无匹配实例。"
 )
 _EMPTY_INSTANCE_OBJECT_MESSAGE = (
     "该 monitor_obj_id 下没有实例。禁止猜测其他 ID。"
-    "用户未声明类型时不要把空列表当成最终结论，必须立即 request_user_choice（single_select），"
+    "用户未声明类型时不要把空列表当成最终结论，request_user_choice（single_select）问对象类型，"
     "options 用 monitor_list_objects 返回的全部对象类型名。"
     "用户已声明类型时不要再问，把空列表当该类型下无此实例。"
 )
@@ -198,13 +203,13 @@ def monitor_list_object_instances(
         payload["data"] = []
     if not items:
         payload["message"] = _EMPTY_INSTANCE_OBJECT_MESSAGE
-        payload["_next_step_hint"] = _OBJECT_TYPE_CHOICE_HINT
+        payload["_next_step_hint"] = _EMPTY_INSTANCE_NEXT_HINT
         return payload
     if needle and not matched:
         payload["keyword"] = str(keyword).strip()
         payload["message"] = _UNMATCHED_INSTANCE_KEYWORD_MESSAGE
         payload["available_names"] = _available_instance_names(items)
-        payload["_next_step_hint"] = _OBJECT_TYPE_CHOICE_HINT
+        payload["_next_step_hint"] = _EMPTY_INSTANCE_NEXT_HINT
         return payload
     payload["_next_step_hint"] = _instance_query_hint(payload["data"])
     return payload

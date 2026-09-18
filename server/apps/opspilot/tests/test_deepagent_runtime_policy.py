@@ -822,6 +822,8 @@ async def test_planner_catalog_prepends_monitor_capability_hint():
     assert "禁止截断后按台循环" in prompt
     assert "request_user_choice" in prompt
     assert "已声明" in prompt
+    assert "空列表不要当最终结论或换 ID 重试，必须 request_user_choice" not in prompt
+    assert "已声明则把空列表当该类型下无匹配" in prompt
     assert "禁止根据名称形态" in prompt
     assert "K8s Pod" in prompt
     assert "list_object_metrics 与 query_metric_data 必须同一步" in prompt

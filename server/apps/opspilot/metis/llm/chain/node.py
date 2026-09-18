@@ -121,8 +121,28 @@ except ImportError:
     PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
-MISSING_PARAMS_NUDGE_LOG = "DeepAgent 步骤因缺参改为向用户澄清: objective=%s error_type=%s failed_stage=%s"
-MISSING_PARAMS_ABORT_LOG = "DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划: objective=%s error_type=%s failed_stage=%s"
+MISSING_PARAMS_NUDGE_LOG = "event=deepagent_missing_params_nudge objective=%s error_type=%s failed_stage=%s thread_id=%s"
+MISSING_PARAMS_ABORT_LOG = "event=deepagent_missing_params_abort objective=%s error_type=%s failed_stage=%s thread_id=%s"
+_MISSING_PARAMS_ERROR_TYPE = "MissingToolParams"
+_MISSING_PARAMS_FAILED_STAGE = "missing_params"
+_LOG_FIELD_MAX_LEN = 120
+
+
+def _bounded_log_field(value, max_len: int = _LOG_FIELD_MAX_LEN) -> str:
+    """规划器/用户侧字段只记有界单行，CR/LF 压成空格，空值记为 -。"""
+    text = " ".join(str(value or "").replace("\r", " ").replace("\n", " ").split())
+    if not text:
+        return "-"
+    return text if len(text) <= max_len else text[:max_len]
+
+
+def _missing_params_log_args(objective, thread_id) -> tuple[str, str, str, str]:
+    return (
+        _bounded_log_field(objective),
+        _MISSING_PARAMS_ERROR_TYPE,
+        _MISSING_PARAMS_FAILED_STAGE,
+        _bounded_log_field(thread_id, max_len=80),
+    )
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
@@ -2364,6 +2384,7 @@ class ToolsNodes(
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
+            missing_params_thread_id = getattr(graph_request, "thread_id", None)
 
             # 创建系统提示
             final_system_prompt = TemplateLoader.render_template(
@@ -2923,9 +2944,7 @@ class ToolsNodes(
                                 if missing_params_nudged:
                                     logger.warning(
                                         MISSING_PARAMS_ABORT_LOG,
-                                        step.objective,
-                                        type(step_exc).__name__,
-                                        "missing_params",
+                                        *_missing_params_log_args(step.objective, missing_params_thread_id),
                                     )
                                     completed_steps.append(
                                         CompletedExecutionStep(
@@ -2950,9 +2969,7 @@ class ToolsNodes(
                                 missing_params_nudged = True
                                 logger.debug(
                                     MISSING_PARAMS_NUDGE_LOG,
-                                    step.objective,
-                                    type(step_exc).__name__,
-                                    "missing_params",
+                                    *_missing_params_log_args(step.objective, missing_params_thread_id),
                                 )
                                 step_payload = {
                                     **agent_state,
@@ -2973,9 +2990,7 @@ class ToolsNodes(
                             if missing_params_nudged:
                                 logger.warning(
                                     MISSING_PARAMS_ABORT_LOG,
-                                    step.objective,
-                                    "MissingToolParams",
-                                    "missing_params",
+                                    *_missing_params_log_args(step.objective, missing_params_thread_id),
                                 )
                                 _collect_output_messages(_without_substitute_plan_text(step_messages))
                                 completed_steps.append(
@@ -3001,9 +3016,7 @@ class ToolsNodes(
                             missing_params_nudged = True
                             logger.debug(
                                 MISSING_PARAMS_NUDGE_LOG,
-                                step.objective,
-                                "MissingToolParams",
-                                "missing_params",
+                                *_missing_params_log_args(step.objective, missing_params_thread_id),
                             )
                             agent_state = step_result
                             step_payload = {

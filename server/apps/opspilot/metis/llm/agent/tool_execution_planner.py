@@ -71,7 +71,7 @@ _MONITOR_CATALOG_HINT = (
     "禁止根据名称形态（如 -default、collector）猜测 K8s Pod 或 Host；"
     "monitor_obj_id 只能用用户已确认类型在 list_objects 中的 id，禁止猜测或递增数字；"
     "list_object_instances 每个 monitor_obj_id 只调一次，keyword 用完整主机名/IP/用户原词，"
-    "禁止截断后按台循环；空列表不要当最终结论或换 ID 重试，必须 request_user_choice 问对象类型；"
+    "禁止截断后按台循环；空列表禁止换 ID 重试；用户未声明类型时 request_user_choice 问对象类型，已声明则把空列表当该类型下无匹配；"
     "instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用实例名或 IP 代替；"
     "query_metric_data 空矩阵是有效结论，禁止换 ID/IP/维度/时间窗/指标名重试；"
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"

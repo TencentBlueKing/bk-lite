@@ -20,7 +20,13 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from apps.core.logger import SafeLogException, opspilot_logger
-from apps.opspilot.metis.llm.chain.node import MISSING_PARAMS_ABORT_LOG, MISSING_PARAMS_NUDGE_LOG, ToolsNodes
+from apps.opspilot.metis.llm.chain.node import (
+    MISSING_PARAMS_ABORT_LOG,
+    MISSING_PARAMS_NUDGE_LOG,
+    ToolsNodes,
+    _bounded_log_field,
+    _missing_params_log_args,
+)
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
     SkillExecutionGuardMiddleware,
@@ -37,16 +43,25 @@ def _tool(name):
     return t
 
 
+_HITL_ALWAYS_ON = frozenset({"request_user_choice"})
+
+
 def _assert_visible_tool_steps(actual_calls, expected_steps):
-    """规划工具按集合包含关系断言，允许 HITL 选择卡出现在执行步。"""
+    """规划工具按集合包含关系断言，执行步只允许额外出现 HITL 选择卡。"""
     assert len(actual_calls) == len(expected_steps), (actual_calls, expected_steps)
     for actual, expected in zip(actual_calls, expected_steps):
-        assert set(expected) <= set(actual), (actual, expected)
+        actual_set, expected_set = set(actual), set(expected)
+        extra = actual_set - expected_set
+        assert expected_set <= actual_set, (actual, expected)
+        assert extra <= _HITL_ALWAYS_ON, (actual, expected)
 
 
 def _assert_registered_tool_names(tools, expected_names):
-    names = [getattr(tool, "name", "") for tool in tools]
-    assert set(expected_names) <= set(names), names
+    names = {getattr(tool, "name", "") for tool in tools}
+    expected = set(expected_names)
+    extra = names - expected
+    assert expected <= names, names
+    assert extra <= _HITL_ALWAYS_ON, names
 
 
 def _request(**overrides):
@@ -56,6 +71,7 @@ def _request(**overrides):
         extra_config={},
         approval_config=None,
         user_id="u1",
+        thread_id="thread-ut-1",
     )
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -335,6 +351,7 @@ class TestBuildDeepagentNodes:
         plan_payload=None,
         plan_payloads=None,
         failing_agent_calls=(),
+        raising_agent_calls=None,
         direct_reply_content=None,
         agent_reply=None,
         agent_replies=None,
@@ -380,6 +397,8 @@ class TestBuildDeepagentNodes:
             extra = getattr(req, "extra_config", None) or {}
             captured.setdefault("hide_during_ainvoke", []).append(bool(extra.get("opspilot_hide_planned_step_text")))
             call_index = len(captured["visible_tool_calls"])
+            if raising_agent_calls and call_index in raising_agent_calls:
+                raise raising_agent_calls[call_index]
             if agent_replies and call_index in agent_replies:
                 reply_text = agent_replies[call_index]
             else:
@@ -1213,12 +1232,15 @@ class TestBuildDeepagentNodes:
         nudges = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_NUDGE_LOG]
         assert len(nudges) == 1
         rec = nudges[0]
-        assert rec.args == ("查询指标", "MissingToolParams", "missing_params")
+        assert rec.args == ("查询指标", "MissingToolParams", "missing_params", "thread-ut-1")
         message = rec.getMessage()
+        assert message.startswith("event=deepagent_missing_params_nudge ")
         assert "objective=查询指标" in message
         assert "error_type=MissingToolParams" in message
         assert "failed_stage=missing_params" in message
+        assert "thread_id=thread-ut-1" in message
         assert sentinel not in message
+        assert sentinel not in rec.args
         assert sentinel not in log_output.getvalue()
 
     def test_missing_params_abort_logs_without_failure_body(self, caplog):
@@ -1268,17 +1290,76 @@ class TestBuildDeepagentNodes:
         finally:
             opspilot_logger.removeHandler(handler)
 
+        assert result["messages"]
         assert len(captured["planner_calls"]) == 1
-        joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
-        assert "缺少必要查询参数" in joined or "请选择" in joined or "仍缺参数" in joined
 
         aborts = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_ABORT_LOG]
         assert len(aborts) == 1
         rec = aborts[0]
-        assert rec.args == ("查询指标", "MissingToolParams", "missing_params")
+        assert rec.args == ("查询指标", "MissingToolParams", "missing_params", "thread-ut-1")
         message = rec.getMessage()
+        assert message.startswith("event=deepagent_missing_params_abort ")
+        assert "objective=查询指标" in message
+        assert "error_type=MissingToolParams" in message
         assert "failed_stage=missing_params" in message
+        assert "thread_id=thread-ut-1" in message
         assert sentinel not in message
+        assert sentinel not in rec.args
+        assert sentinel not in log_output.getvalue()
+
+    def test_missing_params_exception_path_logs_stable_template(self, caplog):
+        node = ToolsNodes()
+        node.all_tools = [_tool("monitor_query_metric_data")]
+        req = _request(user_message="fusion-collector近30天的情况")
+        captured = {}
+        sentinel = "SENTINEL_MISSING_PARAMS_EXC_BODY"
+
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        log_output = io.StringIO()
+        handler = logging.StreamHandler(log_output)
+        handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+        opspilot_logger.addHandler(handler)
+        try:
+            with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+                result = self._run_wrapper(
+                    node,
+                    req,
+                    captured,
+                    plan_payload={
+                        "goal": "查看主机近30天情况",
+                        "steps": [
+                            {
+                                "objective": "查询\n指标",
+                                "tools": ["monitor_query_metric_data"],
+                            }
+                        ],
+                    },
+                    raising_agent_calls={
+                        1: ValueError(f"metric is required {sentinel}"),
+                        2: ValueError(f"metric is required {sentinel}"),
+                    },
+                )
+        finally:
+            opspilot_logger.removeHandler(handler)
+
+        assert result["messages"]
+        assert len(captured["planner_calls"]) == 1
+        ainvoke_blob = "\n".join(
+            str(getattr(message, "content", "") or "") for messages in captured["ainvoke_messages"] for message in messages
+        )
+        assert "缺少必要查询参数" in ainvoke_blob
+
+        nudges = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_NUDGE_LOG]
+        aborts = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_ABORT_LOG]
+        assert len(nudges) == 1
+        assert len(aborts) == 1
+        assert nudges[0].args == ("查询 指标", "MissingToolParams", "missing_params", "thread-ut-1")
+        assert aborts[0].args == ("查询 指标", "MissingToolParams", "missing_params", "thread-ut-1")
+        assert "event=deepagent_missing_params_nudge " in nudges[0].getMessage()
+        assert "event=deepagent_missing_params_abort " in aborts[0].getMessage()
+        assert "\n" not in nudges[0].getMessage()
+        assert sentinel not in nudges[0].getMessage()
+        assert sentinel not in aborts[0].getMessage()
         assert sentinel not in log_output.getvalue()
 
     def test_auth_tool_error_aborts_remaining_steps_without_replan(self):
@@ -2117,6 +2198,18 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     mid = ToolsNodes._planned_tool_step_guidance()
     assert "调查结论" in mid
     assert "一两句话" in mid
+
+
+def test_bounded_log_field_collapses_newlines_and_truncates():
+    assert _bounded_log_field("查询\n指标\r\n") == "查询 指标"
+    assert _bounded_log_field("") == "-"
+    assert len(_bounded_log_field("x" * 200)) == 120
+    assert _missing_params_log_args("查询\n指标", "thread-1") == (
+        "查询 指标",
+        "MissingToolParams",
+        "missing_params",
+        "thread-1",
+    )
 
 
 def test_planned_tool_step_guidance_alert_rca_keeps_report_template():

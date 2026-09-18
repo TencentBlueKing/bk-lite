@@ -646,7 +646,8 @@ def test_monitor_list_object_instances_unmatched_keyword_is_terminal(mocker):
     assert "request_user_choice" in result["message"]
     assert "已声明" in result["message"]
     assert "request_user_choice" in result["_next_step_hint"]
-    assert "不要 request_user_choice" in result["_next_step_hint"] or "已明确" in result["_next_step_hint"]
+    assert "已声明" in result["_next_step_hint"] or "不要再问" in result["_next_step_hint"]
+    assert "必须立即" not in result["_next_step_hint"]
     assert "id-mismatch-sz-app-01" in result["available_names"]
     rpc.monitor_object_instances.assert_called_once()
 
@@ -703,7 +704,8 @@ def test_monitor_list_object_instances_coerces_non_list_payload(mocker):
     assert "request_user_choice" in result["message"]
     assert "已声明" in result["message"]
     assert "request_user_choice" in result["_next_step_hint"]
-    assert "不要 request_user_choice" in result["_next_step_hint"] or "已明确" in result["_next_step_hint"]
+    assert "已声明" in result["_next_step_hint"] or "不要再问" in result["_next_step_hint"]
+    assert "必须立即" not in result["_next_step_hint"]
     assert "禁止猜测" in result["message"] or "猜测其他 ID" in result["message"]
 
 
