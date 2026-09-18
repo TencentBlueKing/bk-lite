@@ -319,6 +319,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       label={compareModeLabels[item.value] || item.value}
     >
       <Tooltip
+        overlayInnerStyle={{ whiteSpace: 'pre-line' }}
         placement="right"
         title={
           item.disabled && item.reasonKey
@@ -326,7 +327,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
             : compareModeTips[item.value]
         }
       >
-        <span className="flex w-full">
+        <span className="flex w-full min-w-0 items-center">
           {compareModeLabels[item.value] || item.value}
         </span>
       </Tooltip>
@@ -395,10 +396,11 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                             label={compareKindLabels[kind] || kind}
                           >
                             <Tooltip
-                              placement="left"
+                              overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+                              placement="right"
                               title={compareKindTips[kind]}
                             >
-                              <span className="flex w-full">
+                              <span className="flex w-full min-w-0 items-center">
                                 {compareKindLabels[kind] || kind}
                               </span>
                             </Tooltip>

@@ -16,9 +16,9 @@ const NO_DATA_LEVEL_OPTIONS = [
 
 const FIELD_NUMBER_CLASS = 'w-[200px]';
 
-export const STRATEGY_CONDITION_LABEL_WIDTH = 160;
+export const STRATEGY_CONDITION_LABEL_WIDTH = 100;
 export const STRATEGY_CONDITION_LABEL_CLASS =
-  'inline-block w-[160px] whitespace-nowrap';
+  'inline-block w-[100px] whitespace-nowrap';
 
 interface RecoveryMethodOption {
   value?: string | number;
