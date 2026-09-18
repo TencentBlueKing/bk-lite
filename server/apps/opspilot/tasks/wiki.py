@@ -964,6 +964,7 @@ def wiki_execute_markdown_import_task(
             "retryable": False,
         }
 
+    keep_staging = False
     try:
         result = execute_markdown_import(
             knowledge_base,
@@ -979,6 +980,8 @@ def wiki_execute_markdown_import_task(
         retryable = bool(getattr(error, "retryable", False))
         code = getattr(error, "code", "markdown_import_generation_failed")
         if code in {"markdown_import_fenced", "markdown_import_build_terminal"}:
+            # 旧工人在 TTL 回收后 abort：staging 可能已被同 sha 的新导入占用，不能删。
+            keep_staging = True
             logger.info(
                 "wiki markdown import skipped fenced knowledge_base=%s build_record=%s",
                 kb_id,
@@ -1010,7 +1013,8 @@ def wiki_execute_markdown_import_task(
             "error": str(error),
         }
     finally:
-        delete_import_archive(archive_locator, knowledge_base_id=kb_id)
+        if not keep_staging:
+            delete_import_archive(archive_locator, knowledge_base_id=kb_id)
 
     logger.info(
         "wiki markdown import completed knowledge_base=%s build_record=%s",

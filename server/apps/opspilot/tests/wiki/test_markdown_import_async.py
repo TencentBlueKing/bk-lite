@@ -630,6 +630,68 @@ def test_claimed_worker_ttl_reclaim_does_not_activate_or_write_preflight(wiki_fa
     assert "markdown_import_stale" in build.errors[0]
 
 
+def test_fenced_worker_does_not_delete_restaged_archive(wiki_factory, import_storage, monkeypatch):
+    from django.db import transaction
+
+    from apps.opspilot.services.wiki.build_generation_service import finalize_build_generation as original_finalize
+    from apps.opspilot.tasks.wiki import wiki_execute_markdown_import_task
+
+    knowledge_base = _ready_kb(wiki_factory)
+    content = "# 回收后重投不得删归档\n\n正文。".encode("utf-8")
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="ttl-keep-staging.md",
+        actor="admin",
+    )
+    payload, dispatch = enqueue_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="ttl-keep-staging.md",
+        actor="admin",
+    )
+    assert persist_markdown_import_celery_task_id(payload["build_record_id"], dispatch["celery_task_id"])
+    locator = dispatch["archive_locator"]
+
+    def reclaim_reenqueue_then_finalize(*args, **kwargs):
+        build = BuildRecord.objects.get(pk=payload["build_record_id"])
+        _age_markdown_import_build(build)
+        with transaction.atomic():
+            WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
+            assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 1
+        again, again_dispatch = enqueue_markdown_import(
+            knowledge_base,
+            preflight["token"],
+            content,
+            filename="ttl-keep-staging.md",
+            actor="admin",
+        )
+        assert again_dispatch is not None
+        assert again["build_record_id"] != payload["build_record_id"]
+        assert locator in import_storage.files
+        return original_finalize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.markdown_import_governance_service.finalize_build_generation",
+        reclaim_reenqueue_then_finalize,
+    )
+
+    wiki_execute_markdown_import_task.push_request(id=dispatch["celery_task_id"])
+    try:
+        result = wiki_execute_markdown_import_task.run(
+            knowledge_base.id,
+            dispatch["build_record_id"],
+            operator="admin",
+        )
+    finally:
+        wiki_execute_markdown_import_task.pop_request()
+
+    assert result == {"status": "skipped", "code": "markdown_import_fenced"}
+    assert locator in import_storage.files
+    assert read_import_archive_bytes(locator, knowledge_base_id=knowledge_base.id) == content
+
+
 def test_claim_missing_build_returns_import_build_not_found(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
     build, early = claim_markdown_import_execution(knowledge_base.pk, 9_999_999, "task-id")
