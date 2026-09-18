@@ -32,6 +32,13 @@ import {
   toCmdbInstanceOptions,
 } from '@/app/cmdb/utils/instanceOption';
 import { buildHostCloudQueryList } from '@/app/cmdb/utils/cloudRegion';
+import {
+  DEFAULT_INST_PAGE_SIZE,
+  mergeInstSelection,
+  resolveInstFetchModelId,
+  resolveInstPaginationChange,
+  restoreInstDrawerSelection,
+} from './instAssetPicker';
 
 import {
   CYCLE_OPTIONS,
@@ -204,7 +211,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const organizationValue = Form.useWatch('organization', form);
     const [instPagination, setInstPagination] = useState({
       current: 1,
-      pageSize: 10,
+      pageSize: DEFAULT_INST_PAGE_SIZE,
       total: 0,
     });
     const dropdownItems = {
@@ -347,16 +354,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     ];
 
     useEffect(() => {
-      if (selectedData.length && instData.length) {
-        const selectedInsts = instData.filter((item) =>
-          selectedData.some((d) => d.inst_uuid === item.inst_uuid)
-        );
-        setSelectedRows(selectedInsts);
-        setSelectedKeys(selectedInsts.map((item) => item.inst_uuid));
-      }
-    }, [selectedData, instData]);
-
-    useEffect(() => {
       if (cleanupStrategyValue === 'after_expiration') {
         const currentDays = form.getFieldValue('cleanupDays');
         if (!currentDays || currentDays === 0) {
@@ -365,7 +362,17 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       }
     }, [cleanupStrategyValue, form]);
 
-    const fetchInstData = async (modelId: string, page = 1, pageSize = 10) => {
+    const seedDrawerSelection = () => {
+      const restored = restoreInstDrawerSelection(selectedData);
+      setSelectedKeys(restored.selectedKeys);
+      setSelectedRows(restored.selectedRows);
+    };
+
+    const fetchInstData = async (
+      fetchModelId: string,
+      page = 1,
+      pageSize = instPagination.pageSize
+    ) => {
       try {
         if (isHostTask && !hasSelectedAccessPointCloudRegion) {
           setInstData([]);
@@ -374,8 +381,13 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         }
 
         setInstLoading(true);
+        setInstPagination((prev) => ({
+          ...prev,
+          current: page,
+          pageSize,
+        }));
         const params: any = {
-          model_id: modelId,
+          model_id: fetchModelId,
           page,
           page_size: pageSize,
         };
@@ -386,11 +398,11 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
         const res = await instanceApi.searchInstances(params);
         setInstData(res.insts || []);
-        setInstPagination((prev) => ({
-          ...prev,
+        setInstPagination({
           current: page,
+          pageSize,
           total: res.count || 0,
-        }));
+        });
       } catch (error) {
         console.error('Failed to fetch instances:', error);
       } finally {
@@ -403,9 +415,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         return;
       }
 
+      seedDrawerSelection();
       setInstVisible(true);
       if (isCommonSelectInstTask) {
-        fetchInstData(instanceModelId);
+        fetchInstData(instanceModelId, 1, instPagination.pageSize);
       }
     };
 
@@ -431,16 +444,20 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const handleMenuClick = ({ key }: { key: string }) => {
       setRelateType(key);
+      seedDrawerSelection();
       setInstVisible(true);
-      fetchInstData(key);
+      fetchInstData(key, 1, instPagination.pageSize);
     };
 
-    const handleRowSelect = (
-      selectedRowKeys: React.Key[],
-      selectedRows: any[]
-    ) => {
+    const handleRowSelect = (selectedRowKeys: React.Key[]) => {
       setSelectedKeys(selectedRowKeys);
-      setSelectedRows(selectedRows);
+      setSelectedRows((prev) =>
+        mergeInstSelection({
+          currentPageRows: instData,
+          selectedRowKeys,
+          previousSelectedRows: prev,
+        })
+      );
     };
 
     const getNetworkConfigDisabledReason = (record: any) => {
@@ -1186,16 +1203,28 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             scroll={{ y: 'calc(100vh - 280px)' }}
             pagination={{
               ...instPagination,
-              onChange: (page, pageSize) =>
+              onChange: (page, pageSize) => {
+                const next = resolveInstPaginationChange({
+                  currentPageSize: instPagination.pageSize,
+                  nextPage: page,
+                  nextPageSize: pageSize,
+                });
                 fetchInstData(
-                  isCommonSelectInstTask ? modelId : relateType,
-                  page,
-                  pageSize,
-                ),
+                  resolveInstFetchModelId({
+                    isCommonSelectInstTask,
+                    instanceModelId,
+                    collectionModelId: modelId,
+                    relateType,
+                  }),
+                  next.page,
+                  next.pageSize,
+                );
+              },
             }}
             rowSelection={{
               type: 'checkbox',
               selectedRowKeys: selectedKeys,
+              preserveSelectedRowKeys: true,
               onChange: handleRowSelect,
               getCheckboxProps: (record: any) => ({
                 disabled: Boolean(getNetworkConfigDisabledReason(record)),
