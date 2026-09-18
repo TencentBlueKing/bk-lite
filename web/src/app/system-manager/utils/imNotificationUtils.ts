@@ -7,6 +7,11 @@ import type {
   IMNotificationChannel,
 } from '@/app/system-manager/types/im-notification';
 
+export function coerceImNotificationTeamIds(team: unknown): number[] {
+  if (!Array.isArray(team)) return [];
+  return team.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+}
+
 export function getImNotificationUnavailableEditingInstance(
   availableInstances: AvailableInstance[],
   editingChannel: Pick<IMNotificationChannel, 'integration_instance' | 'integration_instance_name' | 'provider_key'> | null,

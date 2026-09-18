@@ -47,6 +47,7 @@ import type {
 } from '@/app/system-manager/types/im-notification';
 import {
   buildSchedulePayload,
+  coerceImNotificationTeamIds,
   getLatestSyncSummary,
   getSyncRunStatusText,
   isChannelSyncRunning,
@@ -282,7 +283,7 @@ const ImNotificationPage: React.FC = () => {
         external_receive_field: record.external_receive_field,
         schedule_enabled: parseScheduleConfig(record.schedule_config).scheduleEnabled,
         sync_time: parseScheduleConfig(record.schedule_config).syncTime,
-        team: record.team ?? [],
+        team: coerceImNotificationTeamIds(record.team),
       });
     } else {
       form.resetFields();
@@ -343,7 +344,7 @@ const ImNotificationPage: React.FC = () => {
         external_match_field: values.external_match_field,
         external_receive_field: values.external_receive_field,
         schedule_config: buildSchedulePayload(values.schedule_enabled ?? false, values.sync_time),
-        team: values.team ?? [],
+        team: coerceImNotificationTeamIds(values.team),
       };
       if (editing) {
         const updated = await updateChannel(editing.id, payload);
@@ -573,14 +574,16 @@ const ImNotificationPage: React.FC = () => {
       key: 'actions',
       dataIndex: 'actions',
       fixed: 'right',
-      width: 200,
+      width: 320,
       render: (_, record: IMNotificationChannel) => {
         const dependencyUnavailable = record.dependency_status?.available === false;
         const syncDisabled = dependencyUnavailable || isChannelSyncRunning(record.latest_sync_status);
+        const actionLinkClass = 'p-0';
         const syncButton = (
           <Button
             type="link"
             size="small"
+            className={actionLinkClass}
             onClick={() => handleSyncMappings(record)}
             disabled={syncDisabled}
           >
