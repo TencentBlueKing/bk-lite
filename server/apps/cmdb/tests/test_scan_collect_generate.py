@@ -24,7 +24,11 @@ INFLUX_UUIDS = {
 HOST_FAMILY_UUIDS = {
     "10.0.1.70": "77777777-7777-4777-8777-777777777777",
 }
-ALL_UUIDS = {**HOST_UUIDS, **INFLUX_UUIDS, **HOST_FAMILY_UUIDS}
+NGINX_UUIDS = {
+    "10.0.1.80": "88888888-8888-4888-8888-888888888888",
+    "10.0.1.81": "99999999-9999-4999-8999-999999999999",
+}
+ALL_UUIDS = {**HOST_UUIDS, **INFLUX_UUIDS, **HOST_FAMILY_UUIDS, **NGINX_UUIDS}
 
 
 def _task(**overrides):
@@ -100,6 +104,10 @@ def _graph_row(inst_uuid):
     elif inst_uuid in HOST_FAMILY_UUIDS.values():
         model_id = "host"
         inst_name = host
+        extra = {}
+    elif inst_uuid in NGINX_UUIDS.values():
+        model_id = "nginx"
+        inst_name = f"{host}-nginx-80"
         extra = {}
     else:
         model_id = "switch"
@@ -672,3 +680,82 @@ def test_scan_generate_allows_more_than_three_credentials(mocker, authenticated_
     assert len(collect.decrypt_credentials) == 4
     assert collect.ip_range in ("", None)
     assert len(collect.instances) == 4
+
+
+def test_nginx_ssh_generate_merges_hosts_into_one_job_task(mocker, authenticated_user):
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task(
+        families=["middleware"],
+        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p", "port": 22}]},
+    )
+    execution, hits = _execution_with_hits(
+        task,
+        ["10.0.1.80", "10.0.1.81"],
+        family="nginx",
+        driver_type="job",
+        protocol="nginx",
+        port=80,
+        credential_id="cred-ssh",
+        cmdb_model_id="nginx",
+        uuids=NGINX_UUIDS,
+    )
+    result = ScanCollectGenerateService.generate(
+        execution,
+        [hit.id for hit in hits],
+        operator="tester",
+        request=_request(authenticated_user),
+    )
+    assert result["created"] == 1
+    collect = CollectModels.objects.get(model_id="nginx")
+    assert collect.task_type == "middleware"
+    assert collect.driver_type == "job"
+    assert collect.decrypt_credentials[0]["username"] == "root"
+    assert collect.timeout == 20
+    assert {item.get("inst_uuid") for item in (collect.instances or [])} == set(NGINX_UUIDS.values())
+
+
+def test_nginx_agent_generate_has_no_ssh_password(mocker, authenticated_user):
+    _patch_side_effects(mocker)
+    mocker.patch.object(CollectModelService, "push_butch_node_params")
+    mocker.patch.object(CollectModelService, "delete_butch_node_params")
+    task = _task(
+        families=["middleware"],
+        credentials={"middleware": []},
+        cloud_region={"id": 1, "name": "default"},
+    )
+    execution, hits = _execution_with_hits(
+        task,
+        ["10.0.1.80"],
+        family="nginx",
+        driver_type="job",
+        protocol="nginx",
+        port=80,
+        credential_id="agent",
+        cmdb_model_id="nginx",
+        uuids=NGINX_UUIDS,
+    )
+    ScanCollectGenerateService.generate(
+        execution,
+        [hits[0].id],
+        operator="tester",
+        request=_request(authenticated_user),
+    )
+    collect = CollectModels.objects.get(model_id="nginx")
+    pool = collect.decrypt_credentials or []
+    assert pool
+    assert all(not item.get("password") and not item.get("username") for item in pool)
+    assert collect.timeout == 20
+    assert collect.params["cloud"] == 1
+    assert collect.params["cloud_name"] == "default"
+
+
+def test_normalize_agent_credential_drops_ssh_fields():
+    assert (
+        _normalize_credential_item(
+            "nginx",
+            {"credential_id": "agent", "username": "root", "password": "p", "port": 22},
+        )
+        == {}
+    )

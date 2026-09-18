@@ -407,11 +407,11 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           ...editedFields,
           ...(Object.prototype.hasOwnProperty.call(editedFields, 'organizations')
             ? {
-                organizations: mergeCurrentOrganization(
-                  editedFields.organizations,
-                  currentOrganizationId
-                )
-              }
+              organizations: mergeCurrentOrganization(
+                editedFields.organizations,
+                currentOrganizationId
+              )
+            }
             : {})
         };
         if (

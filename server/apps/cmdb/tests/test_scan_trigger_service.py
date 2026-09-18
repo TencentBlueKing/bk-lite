@@ -152,3 +152,159 @@ def test_trigger_database_family_skips_sql_when_catalog_empty(mocker):
 
     assert admit.call_count == 1
     assert set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True)) == {"network"}
+
+
+def test_trigger_middleware_family_splits_job_types_and_skips_redis_ports(mocker):
+    from apps.cmdb.models.collect_model import PortFingerprint
+    from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES
+
+    PortFingerprint.objects.create(port=6379, target_type="redis", protocol="tcp", built_in=False)
+    task = _scan_task(
+        families=["middleware"],
+        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
+        cloud_region={"id": 1},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    headers_by_model = {}
+
+    def fake_admit(headers):
+        headers_by_model[headers.get("cmdbmodel_id") or headers.get("config_type")] = headers
+        return TriggerResult("accepted", 2, 2)
+
+    mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        side_effect=fake_admit,
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+
+    trigger_scan_execution(execution.id)
+
+    model_ids = set(ScanFamilyRun.objects.filter(execution=execution).values_list("model_id", flat=True))
+    assert model_ids == set(SCAN_MIDDLEWARE_TYPES)
+    assert "middleware" not in model_ids
+    assert "redis" not in model_ids
+    nginx = headers_by_model["nginx"]
+    assert nginx.get("cmdbexecutor_type") == "job" or nginx.get("config_type") == "nginx"
+    assert "6379" not in json.dumps(headers_by_model)
+
+
+def test_trigger_zero_timeout_sends_positive_job_timeout(mocker):
+    from apps.cmdb.services.scan_trigger_service import SCAN_DEFAULT_PLUGIN_TIMEOUT
+
+    task = _scan_task(
+        families=["middleware"],
+        credentials={"middleware": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
+        timeout=0,
+    )
+    execution = ScanExecution.objects.create(task=task)
+    captured = []
+
+    def fake_admit(headers):
+        captured.append(headers)
+        return TriggerResult("accepted", 1, 1)
+
+    mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        side_effect=fake_admit,
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+
+    trigger_scan_execution(execution.id)
+
+    assert captured
+    timeouts = [float(h.get("cmdbtimeout") or h.get("timeout") or 0) for h in captured]
+    assert all(t > 0 for t in timeouts)
+    assert timeouts[0] == float(SCAN_DEFAULT_PLUGIN_TIMEOUT)
+
+
+def test_trigger_empty_middleware_pool_admits_agent_placeholder(mocker):
+    task = _scan_task(
+        families=["middleware"],
+        credentials={"middleware": []},
+        cloud_region={"id": 1, "name": "default"},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    admit = mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        return_value=TriggerResult("accepted", 1, 1),
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+
+    result = trigger_scan_execution(execution.id)
+    assert admit.call_count == 7
+    assert result["target_count"] == 7
+    assert ScanFamilyRun.objects.filter(execution=execution, admit_status=ScanFamilyRun.ADMIT_FAILED).count() == 0
+    first_call = admit.call_args_list[0]
+    first_headers = first_call.args[0] if first_call.args else first_call.kwargs.get("headers")
+    assert "agent" in json.dumps(first_headers)
+
+
+def test_trigger_empty_host_pool_admits_agent_placeholder(mocker):
+    task = _scan_task(
+        families=["host"],
+        credentials={"host": []},
+        cloud_region={"id": 1, "name": "default"},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    admit = mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        return_value=TriggerResult("accepted", 1, 1),
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+    trigger_scan_execution(execution.id)
+    assert admit.call_count == 1
+    assert ScanFamilyRun.objects.get(execution=execution, model_id="host").admit_status != ScanFamilyRun.ADMIT_FAILED
+
+
+def test_trigger_middleware_reuses_host_ssh_pool(mocker):
+    task = _scan_task(
+        families=["host", "middleware"],
+        credentials={"host": [{"credential_id": "cred-ssh", "username": "root", "password": "p"}]},
+        cloud_region={"id": 1},
+    )
+    execution = ScanExecution.objects.create(task=task)
+    seen = []
+
+    def fake_admit(headers):
+        seen.append(headers)
+        return TriggerResult("accepted", 1, 1)
+
+    mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        side_effect=fake_admit,
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+    trigger_scan_execution(execution.id)
+    nginx_headers = [h for h in seen if (h.get("cmdbmodel_id") or h.get("config_type")) == "nginx"][0]
+    assert "root" in json.dumps(nginx_headers)
+
+
+def test_trigger_network_defaults_missing_snmp_version(mocker):
+    task = _scan_task(
+        families=["network"],
+        credentials={
+            "network": [
+                {"community": "public", "snmp_port": "161"},
+                {"version": "v3", "username": "u", "level": "authNoPriv", "integrity": "sha", "authkey": "authkey12"},
+            ]
+        },
+    )
+    execution = ScanExecution.objects.create(task=task)
+    captured = []
+
+    def fake_admit(headers):
+        captured.append(headers)
+        return TriggerResult("accepted", 1, 1)
+
+    mocker.patch(
+        "apps.cmdb.services.scan_trigger_service.StargazerCollectTriggerClient.admit",
+        side_effect=fake_admit,
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.finalize_scan_execution.apply_async")
+
+    trigger_scan_execution(execution.id)
+
+    assert captured
+    headers = captured[0]
+    assert headers.get("cmdbcredential_0_version") == "v2"
+    assert headers.get("cmdbcredential_1_version") == "v3"

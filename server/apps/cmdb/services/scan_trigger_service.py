@@ -4,7 +4,18 @@ from uuid import uuid4
 from django.db import transaction
 from django.utils.timezone import now
 
-from apps.cmdb.models.scan_model import SCAN_DATABASE_FAMILY, SCAN_DATABASE_TYPES, ScanExecution, ScanFamilyRun, ScanTask, scan_driver_type_for_model
+from apps.cmdb.models.scan_model import (
+    SCAN_DATABASE_FAMILY,
+    SCAN_DATABASE_TYPES,
+    SCAN_MIDDLEWARE_FAMILY,
+    SCAN_MIDDLEWARE_TYPES,
+    ScanExecution,
+    ScanFamilyRun,
+    ScanTask,
+    agent_placeholder_pool,
+    default_scan_snmp_pool,
+    scan_driver_type_for_model,
+)
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.port_fingerprint import scan_database_ports_by_type
 from apps.cmdb.services.scan_shot import ScanShot, build_scan_collect_headers, join_ip_ranges
@@ -70,6 +81,27 @@ def expand_sql_pool_with_ports(pool, ports) -> list:
     return expanded
 
 
+def _middleware_scan_pool(task: ScanTask, decrypted) -> list:
+    pool = CollectCredentialPoolService.normalize_pool(decrypted.get(SCAN_MIDDLEWARE_FAMILY) or [])
+    if not pool and "host" in (task.families or []):
+        pool = CollectCredentialPoolService.normalize_pool(decrypted.get("host") or [])
+    if not pool:
+        pool = agent_placeholder_pool()
+    return pool
+
+
+def _iter_other_family_pools(task: ScanTask, decrypted, families, skip):
+    for model_id in families:
+        if model_id in skip or model_id in SCAN_MIDDLEWARE_TYPES:
+            continue
+        if model_id == SCAN_MIDDLEWARE_FAMILY:
+            pool = _middleware_scan_pool(task, decrypted)
+            for mw_type in SCAN_MIDDLEWARE_TYPES:
+                yield str(mw_type), pool
+            continue
+        yield str(model_id), CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+
+
 def iter_scan_family_pools(task: ScanTask):
     decrypted = task.decrypt_credentials or {}
     families = list(task.families or [])
@@ -89,13 +121,14 @@ def iter_scan_family_pools(task: ScanTask):
                 task.id,
                 ",".join(skipped),
             )
-        for model_id in families:
-            if model_id in SCAN_DATABASE_TYPES or model_id == SCAN_DATABASE_FAMILY:
-                continue
-            yield model_id, CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+        yield from _iter_other_family_pools(
+            task,
+            decrypted,
+            families,
+            skip={SCAN_DATABASE_FAMILY, *SCAN_DATABASE_TYPES},
+        )
         return
-    for model_id in families:
-        yield str(model_id), CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+    yield from _iter_other_family_pools(task, decrypted, families, skip=set())
 
 
 def _admit_family(task: ScanTask, execution: ScanExecution, model_id: str, pool=None) -> ScanFamilyRun:
@@ -108,6 +141,10 @@ def _admit_family(task: ScanTask, execution: ScanExecution, model_id: str, pool=
     if pool is None:
         decrypted = task.decrypt_credentials or {}
         pool = CollectCredentialPoolService.normalize_pool(decrypted.get(model_id) or [])
+    if model_id == "network":
+        pool = default_scan_snmp_pool(pool)
+    if not pool and model_id in {"host", *SCAN_MIDDLEWARE_TYPES}:
+        pool = agent_placeholder_pool()
     if not pool:
         family_run.admit_status = ScanFamilyRun.ADMIT_FAILED
         family_run.target_count = 0
@@ -115,7 +152,7 @@ def _admit_family(task: ScanTask, execution: ScanExecution, model_id: str, pool=
         return family_run
 
     params = {"has_network_topo": False}
-    if model_id == "host" and task.cloud_region:
+    if task.cloud_region and (model_id == "host" or model_id in SCAN_MIDDLEWARE_TYPES):
         params["cloud_region"] = task.cloud_region
 
     shot = ScanShot(
@@ -125,7 +162,7 @@ def _admit_family(task: ScanTask, execution: ScanExecution, model_id: str, pool=
         ip_range=join_ip_ranges(task.ip_ranges),
         instances=[],
         credential=pool,
-        timeout=task.timeout or 0,
+        timeout=task.timeout or SCAN_DEFAULT_PLUGIN_TIMEOUT,
         access_point=task.access_point or [],
         params=params,
     )
