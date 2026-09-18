@@ -358,6 +358,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
             <>
               {!isEnumMetric && (
                 <Form.Item
+                  required
                   label={
                     <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                       {t('monitor.events.compareBaseline')}
@@ -479,6 +480,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
 
               {/* 告警阈值 */}
               <Form.Item<StrategyFields>
+                required
                 name="threshold"
                 label={
                   <span className={STRATEGY_CONDITION_LABEL_CLASS}>
