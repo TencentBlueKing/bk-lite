@@ -59,7 +59,7 @@ export const normalizeClientScope = (scope?: unknown): OpenApiTokenScope => (
 export const docsToCatalog = (
   docs?: OpenAPIDocsCatalog | null,
 ): OpenApiTokenServiceCatalog[] => (
-  (docs?.services || []).flatMap((service) => {
+  (docs?.services || []).flatMap((service): OpenApiTokenServiceCatalog[] => {
     if (service.kind === 'external') {
       return [{
         name: service.name,
