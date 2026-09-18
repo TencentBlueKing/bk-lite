@@ -64,7 +64,7 @@ const imPage = readFileSync(
 assert.match(imPage, /resolveExternalFieldOptionLabel/);
 assert.doesNotMatch(imPage, /externalFieldOption\.\$\{field\}/);
 assert.match(imPage, /coerceImNotificationTeamIds/);
-assert.match(imPage, /flex items-center gap-2 whitespace-nowrap/);
+assert.match(imPage, /<Space wrap className="max-w-full">/);
 assert.deepEqual(coerceImNotificationTeamIds(['1', '', 0, 2, 'abc']), [1, 2]);
 assert.deepEqual(coerceImNotificationTeamIds(undefined), []);
 const zh = JSON.parse(
