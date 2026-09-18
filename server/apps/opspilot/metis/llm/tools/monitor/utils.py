@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from langchain_core.runnables import RunnableConfig
 
+from apps.opspilot.metis.llm.common.tool_failure import wrap_tool_error_payload
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.rpc.monitor import MonitorOperationAnaRpc
 
@@ -153,7 +154,7 @@ def resolve_metric_window(start: Any, end: Any) -> Tuple[int, int]:
 
 
 def wrap_error(message: str) -> Dict[str, Any]:
-    return {"success": False, "error": message}
+    return wrap_tool_error_payload(message)
 
 
 def call_monitor_rpc(
