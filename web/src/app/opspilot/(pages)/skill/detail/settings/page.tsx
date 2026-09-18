@@ -12,7 +12,9 @@ import PermissionWrapper from '@/components/permission';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { SkillPackage, SkillPackageParam } from '@/app/opspilot/types/skill';
 import { SelectTool } from '@/app/opspilot/types/tool';
-import SkillMemorySettingsFields from '@/app/opspilot/components/skill/skillMemorySettingsFields';
+import SkillMemorySettingsFields, {
+  SKILL_CAPABILITY_TRAILING_SLOT_CLASS,
+} from '@/app/opspilot/components/skill/skillMemorySettingsFields';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
 import { useMemoryApi, WorkflowMemorySpaceOption } from '@/app/opspilot/api/memory';
 import SkillPackageParamsModal, {
@@ -918,16 +920,7 @@ const SkillSettingsPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <Form.Item
-                    label={t('wiki.title')}
-                    extra={
-                      <span className="text-xs text-[var(--color-text-3)]">
-                        {hasWikiKb
-                          ? t('skill.form.forceWikiGroundedExtra')
-                          : t('skill.form.forceWikiGroundedNeedKb')}
-                      </span>
-                    }
-                  >
+                  <Form.Item label={t('wiki.title')} className="!mb-3.5">
                     <div className="flex items-center gap-2">
                       <Form.Item name="wiki_knowledge_bases" noStyle>
                         <Select
@@ -938,7 +931,7 @@ const SkillSettingsPage: React.FC = () => {
                           options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
                         />
                       </Form.Item>
-                      <div className="flex shrink-0 items-center gap-1.5">
+                      <div className={SKILL_CAPABILITY_TRAILING_SLOT_CLASS}>
                         <Form.Item name="force_wiki_grounded" valuePropName="checked" noStyle>
                           <Switch
                             size="small"
