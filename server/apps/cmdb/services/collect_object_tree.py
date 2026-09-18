@@ -2,11 +2,10 @@ from copy import deepcopy
 
 from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.constants.constants import COLLECT_OBJ_TREE
-from apps.cmdb.services.collect_credential_contract import (
-    get_collect_credential_contract,
-)
+from apps.cmdb.services.collect_credential_contract import get_collect_credential_contract
 
 HOST_COLLECT_OBJECTS_MERGED_TO_HOST = {"aix", "hpux", "domestic_linux"}
+HIDDEN_ENTERPRISE_COLLECT_OBJECTS = HOST_COLLECT_OBJECTS_MERGED_TO_HOST | {"server_bmc"}
 
 
 def _get_enterprise_collect_obj_tree():
@@ -34,7 +33,7 @@ def _normalize_enterprise_children(children):
 
 
 def _should_skip_enterprise_child(category_id, model_id):
-    return category_id == "host_manage" and model_id in HOST_COLLECT_OBJECTS_MERGED_TO_HOST
+    return model_id in HIDDEN_ENTERPRISE_COLLECT_OBJECTS
 
 
 def get_collect_obj_tree():

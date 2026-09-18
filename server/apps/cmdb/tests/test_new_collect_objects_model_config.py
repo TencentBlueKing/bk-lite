@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 MODEL_CONFIG = "apps/cmdb/support-files/model_config.xlsx"
 
 
@@ -19,12 +18,15 @@ EXPECTED_MODELS = {
     "oceanbase_server": "database",
     "oceanbase_tenant": "database",
     "highgo": "database",
-    "server_bmc": "harware",
-    "server_bmc_cpu": "hardware_components",
-    "server_bmc_memory": "hardware_components",
-    "server_bmc_disk": "hardware_components",
-    "server_bmc_vdisk": "hardware_components",
-    "server_bmc_nic": "hardware_components",
+}
+
+REMOVED_MODELS = {
+    "server_bmc",
+    "server_bmc_cpu",
+    "server_bmc_memory",
+    "server_bmc_disk",
+    "server_bmc_vdisk",
+    "server_bmc_nic",
 }
 
 
@@ -43,3 +45,17 @@ def test_batch1_models_use_existing_icons():
     for model_id in EXPECTED_MODELS:
         assert isinstance(by_id[model_id], str)
         assert by_id[model_id].strip()
+
+
+def test_bmc_models_are_removed():
+    models = pd.read_excel(MODEL_CONFIG, sheet_name="models", header=1)
+    present = set(models["model_id"].dropna().astype(str))
+    assert present.isdisjoint(REMOVED_MODELS)
+    assert "tape_library" in present
+
+    xl = pd.ExcelFile(MODEL_CONFIG)
+    leftover_sheets = [
+        f"{prefix}{model_id}" for model_id in REMOVED_MODELS for prefix in ("attr-", "asso-") if f"{prefix}{model_id}" in xl.sheet_names
+    ]
+    assert leftover_sheets == []
+    assert "attr-tape_library" in xl.sheet_names

@@ -95,6 +95,7 @@ def test_get_collect_obj_tree_skips_host_objects_merged_to_host(monkeypatch):
                     {"id": "aix", "model_id": "aix"},
                     {"id": "hpux", "model_id": "hpux"},
                     {"id": "domestic_linux", "model_id": "domestic_linux"},
+                    {"id": "server_bmc", "model_id": "server_bmc"},
                     {"id": "hmc", "model_id": "hmc"},
                 ],
             }
@@ -107,6 +108,7 @@ def test_get_collect_obj_tree_skips_host_objects_merged_to_host(monkeypatch):
     assert "aix" not in model_ids
     assert "hpux" not in model_ids
     assert "domestic_linux" not in model_ids
+    assert "server_bmc" not in model_ids
     assert "hmc" in model_ids
 
 
