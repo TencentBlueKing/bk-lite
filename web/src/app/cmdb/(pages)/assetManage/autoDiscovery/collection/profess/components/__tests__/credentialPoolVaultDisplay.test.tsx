@@ -163,15 +163,33 @@ it('PC macOS 不套用旧 JOB 用户名密码兼容', () => {
   expect(screen.getByTestId('picker').getAttribute('data-type')).toBe('ssh');
 });
 
-it('网络配置新引用查询 SSH 密码类型，并保留协议、端口及特权密码', () => {
+it('网络配置已有凭据查询 SSH 类型，并保留连接协议、端口及特权密码', () => {
   render(<CredentialPoolEditor credentialShape="network_config_file" collectModelId="network_config_file"
     vaultCategory="network" vaultTypeKeys={['ssh']}
     value={[{ credential_source: 'vault', transport_protocol: 'telnet', port: 23 }]} />);
   expect(screen.getByTestId('picker').getAttribute('data-type')).toBe('ssh');
-  expect(screen.getByTestId('picker').getAttribute('data-auth-method')).toBe('password');
-  expect(screen.getByText('特权密码')).toBeTruthy();
+  expect(screen.getByTestId('picker').getAttribute('data-auth-method')).toBeNull();
+  expect(screen.queryByText('仅支持 SSH 密码凭据，可用于 SSH 或 Telnet 登录；特权密码在下方填写。')).toBeNull();
   expect(screen.getByText('连接协议')).toBeTruthy();
+  expect(screen.getByText('特权密码')).toBeTruthy();
   expect(screen.getByRole('spinbutton')).toHaveProperty('value', '23');
+});
+
+it('网络配置切到已有凭据时补齐连接协议，不按 SSH/Telnet 拆凭据类型', () => {
+  const onChange = vi.fn();
+  function Editor() {
+    const [value, setValue] = React.useState<CredentialPoolItem[]>([{ port: 22 }]);
+    return <CredentialPoolEditor credentialShape="network_config_file" vaultCategory="network" vaultTypeKeys={['ssh']}
+      value={value} onChange={(next) => { setValue(next); onChange(next); }} />;
+  }
+  render(<Editor />);
+  fireEvent.click(screen.getByRole('button', { name: '使用已有凭据' }));
+  expect(onChange.mock.lastCall?.[0][0]).toMatchObject({
+    credential_source: 'vault', vault_type_key: 'ssh', transport_protocol: 'ssh', port: 22,
+  });
+  expect(screen.getByTestId('picker').getAttribute('data-type')).toBe('ssh');
+  expect(screen.getByText('连接协议')).toBeTruthy();
+  expect(screen.queryByText('仅支持 SSH 密码凭据，可用于 SSH 或 Telnet 登录；特权密码在下方填写。')).toBeNull();
 });
 it.each(['platform_api', undefined])('网络配置旧平台引用 %s 支持主动换选 SSH', (oldType) => {
   const onChange = vi.fn();
