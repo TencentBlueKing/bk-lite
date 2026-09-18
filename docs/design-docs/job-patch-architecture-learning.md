@@ -139,8 +139,15 @@ Celery：`execute_governance_task` 按主机扇出 `execute_governance_host`（�
 |---|---|
 | 快速执行 | `server/apps/job_mgmt/views/execution.py`、`services/execution_service.py` |
 | 脚本 runner / 选路 | `services/script_execution_runner.py`、`execution_base_service.py` |
+| 文件分发 | `execution_service.create_file_distribution`、`tasks.distribute_files_task`、`file_distribution_runner.py` |
+| 定时任务 | `views/scheduled_task.py`、`tasks.execute_scheduled_task` |
+| 取消与收敛 | `views/execution.py` `cancel`、`tasks.finalize_cancelling_execution` |
+| NATS / 告警入口 | `nats_api.job_script_execute`；告警 `apps/alerts/action/handlers/job.py` |
+| 完成回调 | `callback_service.send_callback`（web HMAC / nats subject） |
 | Ansible 提交与 callback | `execution_base_service._execute_script_via_ansible`、`nats_api.ansible_task_callback` |
 | 测试连接 | `views/target.py` `_perform_connection_test` |
+| 补丁源同步 | `patch_mgmt/tasks.check_patch_source_connectivity`、`source_sync_service.py` |
+| 补丁评估与风险 | `views/baseline.py` `assess`、`assess_parsers.py`、`risk_service.compute_risk_items` |
 | 补丁路由 | `patch_mgmt/services/target_execution_route.py` |
 | 补丁执行与回写 | `patch_mgmt/services/patch_execution_service.py` |
 | Ansible CLI adhoc | `agents/ansible-executor/service/ansible_runner.py` `build_adhoc_command` |
@@ -150,21 +157,28 @@ Celery：`execute_governance_task` 按主机扇出 `execute_governance_host`（�
 
 ## 7. 本模块架构梳理作业
 
-每题自己画一张（Archify 或手绘），边上标 **文件 + 函数名**；英文标识符保持原样。对照 Hub 已有图，标「图对了 / 图漏了 / 图画成容器了」。
+不要画图。笔记第 2–5 节已经写过通道选择、测试连接、Sidecar/Ansible 回写、补丁三条路由和容器 vs 进程，**不要再复述那些**。
 
-**作业 1 — 一次「快速执行」端到端（作业平台）**  
-选一种真实组合（例如：目标管理 + Linux + Ansible + 临时脚本）。从 `web/.../home/page.tsx` 画到 `JobExecution` 落库。必须标出：Celery 是「等 RPC」还是「提交后返回」；结果从哪条 NATS subject 回来。
+每题用文字把**另一条关键链路**梳清楚，固定四段：
 
-**作业 2 — Sidecar vs Ansible 回写对照**  
-只画回写。对比 `ScriptExecutionRunner.run` → `finalize_execution` 与 `ansible_task_callback`。问：SSE / `job.stream.*` 通了，为什么状态还能一直「执行中」？
+1. **入口**：哪个 ViewSet action / NATS handler / Beat 任务  
+2. **调用链**：文件 + 函数名（保持英文标识符）  
+3. **落点**：写了哪张表、MinIO/S3、还是只发消息  
+4. **失败/并发**：超时、重复投递、取消撞上回调时会发生什么（一两句）
 
-**作业 3 — 补丁三条通道**  
-读 `target_execution_route.py` + `patch_execution_service.py`。按「前端 source_type / os_type → 服务 → 写哪张表」画一张。写出 Job 有、Patch 没有的两处（`driver`、回写模型）。
+**作业 1 — 文件分发（JobType.FILE_DISTRIBUTION）**  
+从 `ExecutionService.create_file_distribution` 跟到 `distribute_files_task` → `FileDistributionRunner`。对照脚本执行，写出至少两处不同：高危检查对象（路径 vs 命令）、文件从哪来（`DistributionFile` / 对象存储）、目标路径与 overwrite。过期文件谁清：`cleanup_expired_files`。
 
-**作业 4 — 容器 vs 进程**  
-对着 compose 与 [作业涉及的容器](job-mgmt-deploy-containers.architecture.html) 列表：每个框是 compose 服务还是 fusion 内进程。禁止把 Celery、`JobExecution`、ansible-executor 画成独立容器。
+**作业 2 — 定时任务**  
+从 `ScheduledTaskViewSet` 的启用/crontab，跟到 Beat 触发的 `execute_scheduled_task`。必须写清：锁前预读、`DangerousChecker`、`ConcurrencyPolicy` / skip、`run_count` 自增、最后落到哪条 runner（脚本 / 文件 / Playbook）。问：任务已禁用，Beat 仍触发时函数在哪一层 return。
 
-**作业 5 — 测试连接与执行通道（排障题）**  
-从 `test_connection` 画到 nats-executor；再从同一目标的作业执行画到 ansible-executor。三列对比：容器里手动 ssh、UI 测试连接、作业执行。解释「连接测试异常」和「连接测试失败」的差别。
+**作业 3 — 取消与超时收敛**  
+从 `JobExecutionViewSet.cancel` 跟到 `CANCELLING`，再跟 `finalize_cancelling_execution`（缺结果的目标补「远端结果未知」+ `publish_done_sentinel` + `send_callback`）。对照 `prepare_execution` 的 claim。问两句：Sidecar 还在等 RPC 时取消，远端命令停不停？Ansible 已 fire-and-forget，取消后 `ansible_task_callback` 还来，会不会覆盖终态？
 
-建议顺序：1 → 4 → 2，补丁做 3；5 当综合题。
+**作业 4 — NATS/告警入口与完成回调**  
+读 `nats_api.job_script_execute`：`team = data.get("team")` 是不是授权事实。对照 HTTP `quick_execute` 的登录用户。告警侧入口：`JobActionHandler` → RPC `job_script_execute`。终态后 `send_callback` 怎么分 `callback_type`（web HMAC / nats subject / both）。问：这条回调和 UI 的 SSE / `job.stream.*` 是不是同一条路。
+
+**作业 5 — 补丁：源同步 → 评估快照 → 风险（不是执行通道）**  
+从补丁源连通性 `check_patch_source_connectivity` / `SourceSyncService`（WSUS、Linux repo）写到 `Patch`。再从基线 `bind_hosts`、`assess`、`assess_parsers` 写到 `HostComplianceSnapshot`。风险页读的是 `compute_risk_items` 还是实时扫主机。`retry-host` 重试的是哪一层（任务还是单机 `GovernanceTaskHost`）。
+
+建议顺序：1 → 2 → 3，4 看接入信任，5 做补丁治理闭环。
