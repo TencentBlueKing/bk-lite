@@ -14,7 +14,7 @@ import {
   VM_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues, normalizeCredentialPool, trimFormString } from '../hooks/formatTaskValues';
+import { formatTaskValues, normalizeCredentialPool, trimFormString, withTaskCredentialSource } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
 import { resolveCredentialHelp } from './credentialHelp';
@@ -83,7 +83,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
       return {
         ...baseData,
         instances: instance?.origin && [instance.origin],
-        credential,
+        credential: withTaskCredentialSource(credentialValue, credential),
       };
     },
   });
@@ -97,12 +97,12 @@ const VMTask: React.FC<VMTaskFormProps> = ({
       values.input_method === 0 ? ENTER_TYPE.AUTOMATIC : ENTER_TYPE.APPROVAL,
     accessPointId: values.access_point?.[0]?.id,
     organization: values.team || [],
-    credentialPool: [{
+    credentialPool: [withTaskCredentialSource(normalizeCredentialPool(values.credential)[0] || {}, {
       username: values.credential?.username,
       password: isCopy ? '' : PASSWORD_PLACEHOLDER,
       port: values.credential?.port || '443',
       ssl: values.credential?.ssl,
-    }],
+    })],
     instUuid: values.instances?.[0]?.inst_uuid,
   });
 
@@ -130,10 +130,13 @@ const VMTask: React.FC<VMTaskFormProps> = ({
 
   const validateCredentialPool = (_: any, value?: any[]) => {
     const credentialValue = normalizeCredentialPool(value)[0] || {};
-    if (!trimFormString(credentialValue.username)) {
+    if (credentialValue.credential_source === 'vault' && !credentialValue.vault_credential_id) {
+      return Promise.reject(new Error('请选择已有凭据'));
+    }
+    if (credentialValue.credential_source !== 'vault' && !trimFormString(credentialValue.username)) {
       return Promise.reject(new Error(`${t('common.inputMsg')}${t('Collection.VMTask.username')}`));
     }
-    if (!trimFormString(credentialValue.password)) {
+    if (credentialValue.credential_source !== 'vault' && !trimFormString(credentialValue.password)) {
       return Promise.reject(new Error(`${t('common.inputMsg')}${t('Collection.VMTask.password')}`));
     }
     if (!credentialValue.port) {
@@ -168,6 +171,8 @@ const VMTask: React.FC<VMTaskFormProps> = ({
             validateTrigger={[]}
           >
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="vm"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
               editMode={Boolean(editId)}

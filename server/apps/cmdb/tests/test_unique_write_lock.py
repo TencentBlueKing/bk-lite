@@ -1,3 +1,4 @@
+import hashlib
 import threading
 from datetime import timedelta
 
@@ -6,6 +7,25 @@ from django.utils.timezone import now
 
 from apps.cmdb.models.operation import CmdbUniqueWriteLock
 from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
+
+LOCK_KEY_MAX_LENGTH = CmdbUniqueWriteLock._meta.get_field("lock_key").max_length
+
+
+@pytest.mark.django_db
+def test_prefixed_source_lock_key_fits_column_and_still_serializes():
+    source = hashlib.sha256(b"vc-endpoint").hexdigest()
+    lock_key = "cmdb:vmware-source:" + source
+    other_key = "cmdb:vmware-source:" + hashlib.sha256(b"other-vc").hexdigest()
+    assert len(lock_key) > LOCK_KEY_MAX_LENGTH
+
+    assert UniqueWriteLockService.acquire(lock_key, owner_token="owner-1") is True
+    stored = list(CmdbUniqueWriteLock.objects.values_list("lock_key", flat=True))
+    assert stored
+    assert all(len(key) <= LOCK_KEY_MAX_LENGTH for key in stored)
+    assert UniqueWriteLockService.acquire(lock_key, owner_token="owner-2") is False
+    assert UniqueWriteLockService.acquire(other_key, owner_token="owner-3") is True
+    assert UniqueWriteLockService.release(lock_key, owner_token="owner-1") is True
+    assert UniqueWriteLockService.release(other_key, owner_token="owner-3") is True
 
 
 @pytest.mark.django_db

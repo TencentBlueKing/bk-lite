@@ -40,7 +40,7 @@
 ### 响应与错误契约
 
 - 内部代理调用统一 envelope：成功 `{"result": true, "data": ...}`；失败 `{"result": false, "code": "<枚举>", "message": "..."}`。外部透传服务的响应显式声明为透传、不在承诺内。
-- 机器可读错误码枚举与状态码映射一次定死（`AUTH_INVALID`/`PERM_MISSING`/`ROLE_REQUIRED`/`TEAM_OUT_OF_SCOPE`/`SCHEMA_INVALID`/`NOT_FOUND`/`RATE_LIMITED`/`UPSTREAM_UNREACHABLE`/`INTERNAL_ERROR`）。
+- 机器可读错误码枚举与状态码映射一次定死（`AUTH_INVALID`/`PERM_MISSING`/`SCOPE_DENIED`/`ROLE_REQUIRED`/`TEAM_OUT_OF_SCOPE`/`SCHEMA_INVALID`/`NOT_FOUND`/`RATE_LIMITED`/`UPSTREAM_UNREACHABLE`/`INTERNAL_ERROR`）。
 - 同一状态码跨组件响应体同构：ForwardAuth 视图与分发器共用错误序列化器；Traefik 原生错误经 `errors` 中间件替换为同构 JSON；429 携带 `Retry-After`。
 - 404 对无权限调用方与不存在路径返回一致，不泄漏资源存在性；未捕获异常映射 500，堆栈仅入日志。
 

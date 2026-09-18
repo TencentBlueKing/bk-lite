@@ -1219,6 +1219,7 @@
     "choiceSelected": "Selected",
     "choiceOrType": "Or type your answer",
     "choiceTextPlaceholder": "Type your answer...",
+    "replyToPendingChoice": "Reply to the question above...",
     "planningExecution": "Analyzing the task and planning execution steps…",
     "replanningExecution": "Replanning based on execution results…"
   },
@@ -1285,9 +1286,7 @@
       "manageGroup": "Management Organization",
       "usageGroup": "Usage Organization",
       "usageGroupTip": "Usage organizations can chat with / call this skill via API; management organizations are auto-included and cannot be removed.",
-      "forceWikiGrounded": "Force",
-      "forceWikiGroundedExtra": "When Force is on, answers come only from the knowledge base.",
-      "forceWikiGroundedNeedKb": "Select a knowledge base first"
+      "forceWikiGrounded": "Force"
     },
     "memory": {
       "title": "Memory",

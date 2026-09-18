@@ -16,6 +16,13 @@ class UniqueWriteLockService:
     DEFAULT_LEASE_SECONDS = 60
 
     @staticmethod
+    def _persistable_lock_key(lock_key: str) -> str:
+        max_length = CmdbUniqueWriteLock._meta.get_field("lock_key").max_length
+        if len(lock_key) <= max_length:
+            return lock_key
+        return hashlib.sha256(lock_key.encode("utf-8")).hexdigest()
+
+    @staticmethod
     def _has_value(value) -> bool:
         return value is not None and not (isinstance(value, str) and not value.strip())
 
@@ -50,9 +57,10 @@ class UniqueWriteLockService:
     def acquire(cls, lock_key: str, *, owner_token: str, lease_seconds: int | None = None) -> bool:
         current_time = now()
         lease_until = current_time + timedelta(seconds=max(1, lease_seconds or cls.DEFAULT_LEASE_SECONDS))
+        persistable_key = cls._persistable_lock_key(lock_key)
         try:
             _lock, created = CmdbUniqueWriteLock.objects.get_or_create(
-                lock_key=lock_key,
+                lock_key=persistable_key,
                 defaults={"owner_token": owner_token, "lease_expires_at": lease_until},
             )
         except IntegrityError:
@@ -60,14 +68,14 @@ class UniqueWriteLockService:
         if created:
             return True
         return bool(
-            CmdbUniqueWriteLock.objects.filter(lock_key=lock_key, lease_expires_at__lte=current_time).update(
+            CmdbUniqueWriteLock.objects.filter(lock_key=persistable_key, lease_expires_at__lte=current_time).update(
                 owner_token=owner_token, lease_expires_at=lease_until
             )
         )
 
-    @staticmethod
-    def release(lock_key: str, *, owner_token: str) -> bool:
-        deleted, _ = CmdbUniqueWriteLock.objects.filter(lock_key=lock_key, owner_token=owner_token).delete()
+    @classmethod
+    def release(cls, lock_key: str, *, owner_token: str) -> bool:
+        deleted, _ = CmdbUniqueWriteLock.objects.filter(lock_key=cls._persistable_lock_key(lock_key), owner_token=owner_token).delete()
         return bool(deleted)
 
     @classmethod

@@ -64,16 +64,19 @@ const CredentialDynamicField: React.FC<CredentialDynamicFieldProps> = ({
 }) => {
   const { t } = useTranslation();
   const label = fieldLabel(field);
-  const required = Boolean(field.required) && (field.kind !== 'secret' || field.widget === 'textarea');
-  const secretRequired = Boolean(field.required) && field.kind === 'secret' && field.widget !== 'textarea' && !readOnly && requireSecrets;
+  const isSecretInput = field.kind === 'secret' && field.widget !== 'textarea';
+  const required = isSecretInput
+    ? Boolean(field.required) && !readOnly && requireSecrets
+    : Boolean(field.required);
 
-  if (field.kind === 'secret' && field.widget !== 'textarea') {
+  if (isSecretInput) {
     return (
       <Form.Item
         name={['fields', field.id]}
         label={label}
         initialValue={field.default}
-        rules={secretRequired && !readOnly ? [{ required: true }] : undefined}
+        required={required}
+        rules={required ? [{ required: true }] : undefined}
       >
         <Input.Password
           disabled={readOnly}
@@ -94,6 +97,7 @@ const CredentialDynamicField: React.FC<CredentialDynamicFieldProps> = ({
         name={['fields', field.id]}
         label={label}
         initialValue={field.default}
+        required={required}
         rules={required ? [{ required: true, whitespace: true }] : undefined}
       >
         <Input.TextArea disabled={readOnly} rows={4} />
@@ -107,6 +111,7 @@ const CredentialDynamicField: React.FC<CredentialDynamicFieldProps> = ({
         name={['fields', field.id]}
         label={label}
         initialValue={field.default}
+        required={required}
         rules={required ? [{ required: true }] : undefined}
       >
         <Select
@@ -124,6 +129,7 @@ const CredentialDynamicField: React.FC<CredentialDynamicFieldProps> = ({
         name={['fields', field.id]}
         label={label}
         initialValue={typeof numericDefault === 'number' && Number.isFinite(numericDefault) ? numericDefault : undefined}
+        required={required}
         rules={required ? [{ required: true }] : undefined}
       >
         <InputNumber disabled={readOnly} className="w-full" />
@@ -136,6 +142,7 @@ const CredentialDynamicField: React.FC<CredentialDynamicFieldProps> = ({
       name={['fields', field.id]}
       label={label}
       initialValue={field.default}
+      required={required}
       rules={required ? [{ required: true, whitespace: true }] : undefined}
     >
       <Input disabled={readOnly} />

@@ -16,6 +16,7 @@ from apps.system_mgmt.viewset import (
     OpenAPIDocsViewSet,
     OperationLogViewSet,
     RoleViewSet,
+    SystemAPITokenViewSet,
     SystemSettingsViewSet,
     UserLoginLogViewSet,
     UserSyncSourceViewSet,
@@ -42,6 +43,7 @@ router.register(r"operation_log", OperationLogViewSet)
 router.register(r"error_log", ErrorLogViewSet)
 router.register(r"network_white_list", NetworkWhiteListViewSet)
 router.register(r"openapi_docs", OpenAPIDocsViewSet, basename="openapi_docs")
+router.register(r"system_api_token", SystemAPITokenViewSet)
 urlpatterns = router.urls
 
 try:

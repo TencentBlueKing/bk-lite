@@ -26,6 +26,9 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.cmdb.tests.test_openapi_instance_list::test_api_tenant_can_list_own_org_instances",
         "apps.cmdb.tests.test_openapi_instance_list::test_api_tenant_cannot_list_other_org_instances",
         "apps.cmdb.tests.test_openapi_instance_list::test_forged_team_is_rejected",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_can_list_own_org_instances",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_cannot_list_other_org_instances",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_forged_acting_team_is_rejected",
     ],
     "cmdb/classifications": [
         "apps.cmdb.tests.test_openapi_cmdb_catalog::test_api_tenant_can_list_own_classifications",
@@ -56,6 +59,8 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_api_tenant_can_create_instance_in_own_org",
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_api_tenant_create_does_not_belong_to_other_org",
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_instance_create_forged_team_is_rejected",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_can_create_instance_in_own_org",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_create_does_not_belong_to_other_org",
     ],
     "cmdb/instance": [
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_api_tenant_can_read_own_instance",

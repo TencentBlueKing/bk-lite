@@ -45,8 +45,8 @@ def get_patch_mgmt_module_data(..., *, team=None):
 
 | inject | 函数期待 | 网关注入 | 适用 |
 | --- | --- | --- | --- |
-| `team_list` | `*, team=None`（授权组织 id 集合） | API 令牌 → `[绑定组织]`；JWT → 用户全部直属组织 | 函数按注入集合精确过滤（patch_mgmt 型） |
-| `user_info` | `user_info=None`（`{user, domain, team, include_children}`） | 仅注入认证身份；组织锚点为业务参数（API 令牌下强制覆盖为绑定组织） | 函数自查 group_list 做级联展开（cmdb 型） |
+| `team_list` | `*, team=None`（授权组织 id 集合） | 个人令牌 → `[绑定组织]`；系统令牌 → `[Acting-Team]`；JWT → 用户全部直属组织 | 函数按注入集合精确过滤（patch_mgmt 型） |
+| `user_info` | `user_info=None`（`{user, domain, team, include_children}`） | 仅注入认证身份；组织锚点为业务参数（个人令牌强制覆盖为绑定组织，系统令牌强制为 Acting-Team） | 函数自查 group_list 做级联展开（cmdb 型） |
 
 无组织维度数据的公共元信息接口可声明 `team_free=True`（须附「响应不含
 组织字段」断言测试并经安全评审）。
@@ -57,7 +57,8 @@ def get_patch_mgmt_module_data(..., *, team=None):
 ### 3. 写双租户测试并登记（合并的硬性门禁）
 
 为端点编写双租户测试（两个组织身份分别调用，断言读隔离与写归属；
-测试基建见 `apps/core/openapi/testing.py`），然后登记到
+个人令牌用 `create_api_tenant`，系统 Token 用 `create_system_tenant` 构造 acting
+用户/组织，测试基建见 `apps/core/openapi/testing.py`），然后登记到
 `apps/core/openapi/tests/tenant_coverage.py`：
 
 ```python

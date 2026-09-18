@@ -614,11 +614,11 @@ export const getEnabledCompareModes = ({
     .filter((item) => !item.disabled)
     .map((item) => item.value);
 
-export type CompareModeSelectOption = {
+export interface CompareModeSelectOption {
   value: string;
   disabled: boolean;
   reasonKey?: string;
-};
+}
 
 export const getCompareModeSelectOptions = ({
   periodType,
@@ -686,9 +686,9 @@ export const groupAlgorithmOptions = <T extends { value?: string | number }>(
 export const coerceThresholdsForCompareMode = <
   T extends { method?: string | null }
 >(
-  compareMode: string,
-  thresholds: T[]
-): T[] => {
+    compareMode: string,
+    thresholds: T[]
+  ): T[] => {
   if (compareMode !== COMPARE_MODE_TIMELEFT) {
     return thresholds;
   }
@@ -738,9 +738,9 @@ export const recoveryConflictsWithThresholds = (
 export const coerceRecoveryForThresholds = <
   T extends { method?: string; value?: number | null }
 >(
-  recovery: T | null | undefined,
-  thresholds: Array<{ method?: string | null }> | null | undefined
-): T | { method: string; value: null } => {
+    recovery: T | null | undefined,
+    thresholds: Array<{ method?: string | null }> | null | undefined
+  ): T | { method: string; value: null } => {
   if (recoveryConflictsWithThresholds(recovery, thresholds)) {
     return { method: '', value: null };
   }

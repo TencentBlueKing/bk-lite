@@ -7,6 +7,13 @@ import {
 } from '../cloudCredentialConfig';
 
 describe('buildCloudRegionQueryParams', () => {
+  it('sends only the selected credential ID when using an existing credential', () => {
+    expect(buildCloudRegionQueryParams({
+      modelId: 'qcloud', cloudRegionId: 'collector',
+      vaultCredentialId: 'crd-1', accessKey: 'page-ak', accessSecret: 'page-sk', editId: 42,
+    })).toEqual({model_id: 'qcloud', cloud_id: 'collector', task_id: 42, vault_credential_id: 'crd-1'});
+  });
+
   it('reuses the saved task instead of sending masked secrets when editing', () => {
     expect(buildCloudRegionQueryParams({
       modelId: 'qcloud',

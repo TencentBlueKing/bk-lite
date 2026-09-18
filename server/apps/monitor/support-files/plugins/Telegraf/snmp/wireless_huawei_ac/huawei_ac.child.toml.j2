@@ -249,8 +249,6 @@
 
 [[processors.starlark]]
     namepass = ["wlan_ap"]
-    [processors.starlark.tagpass]
-        collect_type = ["snmp_huawei_ac"]
     source = '''
 def apply(metric):
     for field in ["environment_temperature", "cpu_temperature", "np_temperature"]:
@@ -259,11 +257,11 @@ def apply(metric):
             metric.fields.pop(field)
     return metric
 '''
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_huawei_ac"]
 
 [[processors.starlark]]
     namepass = ["device_power", "device_fan"]
-    [processors.starlark.tagpass]
-        collect_type = ["snmp_huawei_ac"]
     source = '''
 def apply(metric):
     for field in ["total", "used", "speed_pct"]:
@@ -272,11 +270,11 @@ def apply(metric):
             metric.fields.pop(field)
     return metric
 '''
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_huawei_ac"]
 
 [[processors.starlark]]
     namepass = ["optical"]
-    [processors.starlark.tagpass]
-        collect_type = ["snmp_huawei_ac"]
     source = '''
 def apply(metric):
     sentinel = 2147483647
@@ -286,6 +284,8 @@ def apply(metric):
             metric.fields.pop(field)
     return metric
 '''
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_huawei_ac"]
 [[processors.enum]]
     namepass = ["device_fan"]
     [processors.enum.tagpass]

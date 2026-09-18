@@ -32,6 +32,9 @@ export function createPlatformApiCredential(modelId: string): CredentialPoolItem
     password: '',
     port: getPlatformApiCredentialConfig(modelId).defaultPort,
     verify_tls: true,
+    ...(modelId === 'nacos' ? { scheme: 'http' } : {}),
+    ...(modelId === 'azure' ? { tenant_id: '', subscription_id: '' } : {}),
+    ...(modelId === 'openstack' ? { user_domain_name: 'Default', project_id: '' } : {}),
   };
 }
 
@@ -47,6 +50,9 @@ export function buildPlatformApiCredential(
     accessKey: username,
     port: Number(raw.port || getPlatformApiCredentialConfig(modelId).defaultPort),
     verify_tls: raw.verify_tls !== false,
+    ...(modelId === 'nacos' ? { scheme: raw.scheme || 'http' } : {}),
+    ...(modelId === 'azure' ? { tenant_id: raw.tenant_id || '', subscription_id: raw.subscription_id || '' } : {}),
+    ...(modelId === 'openstack' ? { user_domain_name: raw.user_domain_name || 'Default', project_id: raw.project_id || '' } : {}),
   };
   const password = String(raw.password || '').trim();
   if (password && password !== PASSWORD_PLACEHOLDER) {
@@ -83,16 +89,22 @@ export function restorePlatformApiCredential(
       || getPlatformApiCredentialConfig(modelId).defaultPort,
     ),
     verify_tls: raw.verify_tls !== false,
+    ...(modelId === 'nacos' ? { scheme: raw.scheme || 'http' } : {}),
+    ...(modelId === 'azure' ? { tenant_id: raw.tenant_id || '', subscription_id: raw.subscription_id || '' } : {}),
+    ...(modelId === 'openstack' ? { user_domain_name: raw.user_domain_name || 'Default', project_id: raw.project_id || '' } : {}),
   };
 }
 
 export function validatePlatformApiCredential(
   credential: CredentialPoolItem,
 ): 'username' | 'password' | 'port' | null {
-  if (!String(credential.username || '').trim()) {
+  if (credential.credential_source === 'vault' && !credential.vault_credential_id) {
     return 'username';
   }
-  if (!String(credential.password || '').trim()) {
+  if (credential.credential_source !== 'vault' && !String(credential.username || '').trim()) {
+    return 'username';
+  }
+  if (credential.credential_source !== 'vault' && !String(credential.password || '').trim()) {
     return 'password';
   }
   const port = Number(credential.port);

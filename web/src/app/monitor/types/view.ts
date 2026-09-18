@@ -59,6 +59,8 @@ export interface ViewDetailProps {
   monitorObjectId: React.Key;
   instanceId: string;
   monitorObjectName: string;
+  /** 对象展示名（如「云数据库 Redis」）；缺省时回退 monitorObjectName。 */
+  monitorObjectDisplayName?: string;
   idValues: string[];
   instanceName: string;
   /**

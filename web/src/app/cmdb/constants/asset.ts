@@ -1081,8 +1081,24 @@ export const CREDENTIAL_LIST: CredentialListItem[] = [
                     id: 0,
                   },
                   {
-                    name: 'SHA',
+                    name: 'SHA-1',
                     id: 1,
+                  },
+                  {
+                    name: 'SHA-224',
+                    id: 2,
+                  },
+                  {
+                    name: 'SHA-256',
+                    id: 3,
+                  },
+                  {
+                    name: 'SHA-384',
+                    id: 4,
+                  },
+                  {
+                    name: 'SHA-512',
+                    id: 5,
                   },
                 ],
                 editable: true,
@@ -1113,12 +1129,16 @@ export const CREDENTIAL_LIST: CredentialListItem[] = [
                     attr_type: 'enum',
                     option: [
                       {
-                        name: 'AES',
+                        name: 'AES-128',
                         id: 0,
                       },
                       {
-                        name: 'DES',
+                        name: 'AES-256',
                         id: 1,
+                      },
+                      {
+                        name: 'DES',
+                        id: 2,
                       },
                     ],
                     editable: true,

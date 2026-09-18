@@ -142,3 +142,27 @@ async def test_probe_host_redacts_credential_from_sdk_exception():
 
     assert "secret-value" not in result.detail
     assert "[REDACTED]" in result.detail
+
+
+def test_parser_accepts_sha256_and_aes256():
+    args = check.build_parser().parse_args(
+        [
+            "192.0.2.10",
+            "--version",
+            "v3",
+            "--username",
+            "ops",
+            "--level",
+            "authPriv",
+            "--integrity",
+            "sha256",
+            "--privacy",
+            "aes256",
+            "--auth-key",
+            "authkey1",
+            "--priv-key",
+            "privkey1",
+        ]
+    )
+    assert check.build_credential(args)["integrity"] == "sha256"
+    assert check.build_credential(args)["privacy"] == "aes256"

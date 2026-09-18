@@ -196,6 +196,7 @@ export interface FiltersConfig {
   level: string[];
   state: string[];
   alarm_source: string[];
+  push_source_ids: string[];
 }
 export interface ThresholdField {
   level: string;
@@ -440,6 +441,7 @@ export interface SearchFilterCondition {
 }
 export interface SearchFilterProps {
   onSearch: (condition: SearchFilterCondition, rawValue?: any) => void;
+  condition?: SearchFilterCondition | null;
   attrList: Array<{
     attr_id: string;
     attr_name: string;

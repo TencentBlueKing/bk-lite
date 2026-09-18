@@ -44,10 +44,17 @@ class BaseNodeParams(metaclass=ABCMeta):
         else:
             logger.warning(f"子类 {cls.__name__} 未正确设置 'supported_model_id' 或 'plugin_name' 属性，将不会被注册到 BaseNodeParams 中。")
 
-    def __init__(self, instance):
+    def __init__(self, instance, *, resolve_credentials=True, resolved_credentials=None):
         self.instance = instance
         self.model_id = instance.model_id  # 当出现多对象采集的时候这个model_id就不能准确的标识唯一的model_id
-        raw_credential = self.instance.decrypt_credentials or {}
+        if resolved_credentials is not None:
+            raw_credential = resolved_credentials
+        elif resolve_credentials:
+            from apps.cmdb.services.collect_vault_resolver import resolve_task_credential_pool
+
+            raw_credential = resolve_task_credential_pool(instance)
+        else:
+            raw_credential = instance.decrypt_credentials or {}
         self.credential_pool = raw_credential if isinstance(raw_credential, list) else ([raw_credential] if raw_credential else [])
         # 节点管理仍沿用“单凭据 + 一批目标”契约；多凭据任务下发配置时默认取首凭据保持兼容。
         if isinstance(raw_credential, list):

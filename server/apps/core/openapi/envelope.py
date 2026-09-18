@@ -2,7 +2,7 @@
 
 契约来源：specs/changes/openapi-unified-gateway/design.md 3.8 与第 8 章冻结清单。
 错误码为对外冻结契约：只允许新增（additive），不得改名、复用或删除。
-TIMEOUT 与 BUSINESS_REJECTED 为实现期增补项，见同目录实现备忘。
+TIMEOUT、BUSINESS_REJECTED、SCOPE_DENIED 为实现期增补项。
 """
 
 from django.http import JsonResponse
@@ -11,6 +11,7 @@ from django.http import JsonResponse
 class ErrorCode:
     AUTH_INVALID = "AUTH_INVALID"
     PERM_MISSING = "PERM_MISSING"
+    SCOPE_DENIED = "SCOPE_DENIED"
     ROLE_REQUIRED = "ROLE_REQUIRED"
     TEAM_OUT_OF_SCOPE = "TEAM_OUT_OF_SCOPE"
     SCHEMA_INVALID = "SCHEMA_INVALID"
@@ -25,6 +26,7 @@ class ErrorCode:
 ERROR_HTTP_STATUS = {
     ErrorCode.AUTH_INVALID: 401,
     ErrorCode.PERM_MISSING: 403,
+    ErrorCode.SCOPE_DENIED: 403,
     ErrorCode.ROLE_REQUIRED: 403,
     ErrorCode.TEAM_OUT_OF_SCOPE: 403,
     ErrorCode.SCHEMA_INVALID: 400,

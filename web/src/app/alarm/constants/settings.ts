@@ -56,11 +56,11 @@ export const ruleList = [
   },
   {
     name: 'source_id',
-    verbose_name: '告警源 (按 ID)',
+    verbose_name: '集成源 (按 ID)',
   },
   {
     name: 'source_name',
-    verbose_name: '告警源 (按名称)',
+    verbose_name: '集成源 (按名称)',
   },
   { name: 'level', verbose_name: '级别' },
   { name: 'resource_type', verbose_name: '类型对象' },

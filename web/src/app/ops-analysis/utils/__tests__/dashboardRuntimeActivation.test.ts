@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   activateAllRuntimeWidgets,
+  mergeRuntimeActivationStates,
   resolveRuntimeActivation,
   shouldCommitRuntimeStates,
 } from '@/app/ops-analysis/utils/dashboardRuntimeActivation';
@@ -43,7 +44,7 @@ describe('dashboard runtime activation', () => {
     });
   });
 
-  it('does not commit scroll-only distance changes', () => {
+  it('does not commit scroll-only distance or visibility changes', () => {
     const previous = {
       a: {
         active: true,
@@ -53,10 +54,39 @@ describe('dashboard runtime activation', () => {
     const next = {
       a: {
         active: true,
-        priority: { cause: 1, visibility: 1, distance: 180, order: 2 },
+        priority: { cause: 1, visibility: 0, distance: 180, order: 2 },
       },
     };
     expect(shouldCommitRuntimeStates(previous, next)).toBe(false);
+    expect(mergeRuntimeActivationStates(previous, next)).toBe(previous);
+  });
+
+  it('keeps unchanged widget state identity when one neighbor leaves the band', () => {
+    const previousA = {
+      active: true,
+      priority: { cause: 1, visibility: 0, distance: 0, order: 0 },
+    };
+    const previous = {
+      a: previousA,
+      b: {
+        active: true,
+        priority: { cause: 1, visibility: 0, distance: 0, order: 1 },
+      },
+    };
+    const next = {
+      a: {
+        active: true,
+        priority: { cause: 1, visibility: 1, distance: 40, order: 0 },
+      },
+      b: {
+        active: false,
+        priority: { cause: 1, visibility: 1, distance: 900, order: 1 },
+      },
+    };
+    const merged = mergeRuntimeActivationStates(previous, next);
+    expect(merged.a).toBe(previousA);
+    expect(merged.b.active).toBe(false);
+    expect(merged).not.toBe(previous);
   });
 
   it('commits when a widget enters or leaves the viewport band', () => {

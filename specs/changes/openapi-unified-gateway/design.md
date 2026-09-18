@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档状态 | 修订稿（已完成产品 / 开发 / 架构 / 外部契约四视角评审，v2.x 为按评审意见修订后的版本） |
-| 版本 | v2.2 |
-| 日期 | 2026-08-17 |
+| 版本 | v2.4（Scope 改为网关接口名单 / 全部；v2.3 系统 Token 凭据与个人令牌补齐经 2026-09-16 评审合入） |
+| 日期 | 2026-09-17（v2.3：2026-09-16；v2.2：2026-08-17） |
 | 适用仓库 | bk-lite（server / deploy）、WeOpsX（部署编排） |
 
 ---
@@ -30,7 +30,7 @@ BK-Lite 当前对外开放 API 的现状存在以下问题：
 
 以下内容明确不在本期范围内：
 
-- API 令牌的过期、轮转与作用域（scope）机制；
+- API 令牌的过期、轮转与作用域（scope）机制（**v2.3 起由 `specs/changes/openapi-system-token` 变更引入，不再是非目标**）；
 - 接口级细粒度授权（外部服务仅提供服务级粗粒度授权）；
 - 外部服务自注册；
 - 远端（边缘 Zone）能力的网关暴露；
@@ -40,7 +40,7 @@ BK-Lite 当前对外开放 API 的现状存在以下问题：
 ### 1.4 设计约束
 
 1. **不引入新进程**：不新增任何常驻服务或中间件，复用 Traefik 与 server。
-2. **不变更数据库表结构**：全程无 migration，注册数据存放于 NATS JetStream KV。
+2. **不变更数据库表结构**：全程无 migration，注册数据存放于 NATS JetStream KV。（该约束描述 v1 网关自身落地；v2.3 系统 Token 变更引入 `SystemAPIToken` 新表与 `UserAPISecret` 加列/删约束迁移，网关核心——注册表存 KV、不落库——不变。）
 3. **复用现有机制**：认证、权限、组织模型、配置分发均使用平台既有实现。
 
 ---
@@ -100,7 +100,7 @@ NATS JetStream KV（bucket: openapi_registry）：外部服务注册表
 | ① | 客户端 | 携带 `Authorization: Bearer <64 字符令牌>` 请求 `/openapi/v1/patch-mgmt/module-data` | — |
 | ② | Traefik | 命中 `/openapi/*` 静态路由：清除入站 `X-BK-*` 头 → 限流检查 → 转发 server 统一 invoke 端点（内部路由不挂 ForwardAuth） | 超限 429 |
 | ③ | server · 认证函数 | 凭据形态识别：64 字符十六进制 → API 令牌分支 → `UserAPISecret` 哈希查表并填充权限，结果做进程内短 TTL 缓存 | 无效 401 |
-| ④ | server · invoke 分发器 | 注册表查 path → 权限位检查 → schema 校验 | 404 / 403 / 400 |
+| ④ | server · invoke 分发器 | 注册表查 path → 钥匙名单（JWT 跳过；`mode=all` 跳过）→ 按人的权限位检查 → schema 校验 | 404 / 403 / 400 |
 | ⑤ | server · invoke 分发器 | 按装饰器 `inject` 注入（本例 `team_list`）：`team = [令牌绑定组织]`，请求体中身份字段丢弃 | — |
 | ⑥ | 暴露函数 | 进程内本地调用，函数按注入集合过滤数据；分发器包装响应并记结构化审计日志 | 软错误 400/403，异常 500 |
 
@@ -169,6 +169,8 @@ NATS JetStream KV（bucket: openapi_registry）：外部服务注册表
 
 **凭据判别演进规则（冻结项）**：判别优先级为「已注册前缀 > 形态」。64 字符十六进制与三段式 JWT 是仅有的两种无前缀历史形态，其判别归属永久保留；未来任何新增凭据类型（如 OAuth2 access token）必须携带可判别前缀（如 `bkoa_`），不得再依赖形态推断。
 
+**已注册前缀 `bksys_`（v2.3）**：`bksys_` + 64 字符十六进制 → **系统 Token**，走系统凭据认证（`SystemAPIToken` 哈希查表 + 业务主体头校验，见 3.2.4）。本条目是「已注册前缀 > 形态」演进规则的首次行使，且前缀判别必须**先于**形态匹配执行（`JWT_RE` 字符集含下划线，畸形串 `bksys_a.b.c` 可匹配 JWT 形态）；无前缀形态的判别语义不变。
+
 **认证缓存**：复用平台现有 `permission_cache` 的版本围栏机制（缓存 key 内嵌 `UserPermissionVersion`，撤权 / 吊销先推进版本号，缓存随之整体失效），不引入独立语义的新 TTL 层；如叠加进程内快缓存，TTL 上限 60 秒，并对外明示「凭据吊销最长延迟 = TTL」；认证失败结果不缓存。
 
 #### 3.2.2 调用场景与凭据矩阵
@@ -179,6 +181,8 @@ NATS JetStream KV（bucket: openapi_registry）：外部服务注册表
 | 浏览器（平台 / ITSM 前端） | JWT（显式 Authorization 头） | 注入用户全部授权组织（`group_list`）或认证身份（按 inject 形状，见 3.3.2） |
 | ITSM 后端 · 同步代用户调用 | 透传用户 JWT | 同上 |
 | ITSM 后端 · 异步节点 | 服务账号 API 令牌 | 注入服务账号绑定的组织；真实用户经 `X-On-Behalf-Of` 头仅记录审计 |
+| 第三方系统（ITSM 异步节点等，v2.3 / v2.4） | **系统 Token**（`bksys_` 前缀） | 注入经校验的业务主体：`X-Bklite-Acting-User` / `X-Bklite-Acting-Team` 传入的用户与组织；人的权限 = 该用户在该组织的现场权限；钥匙 Scope 只限制能碰哪些路由（见 3.2.4） |
+| 人（脚本 / 调试，v2.3 / v2.4） | 个人 API 令牌（64hex，补过期 / Scope / 多把） | 注入令牌绑定的用户与组织；Scope 语义与系统 Token 相同 |
 
 配套约束：
 
@@ -186,16 +190,41 @@ NATS JetStream KV（bucket: openapi_registry）：外部服务注册表
 2. 禁止 ITSM 持久化存储用户 JWT；异步场景一律使用服务账号令牌（写入集成规范）。
 3. 审计日志记录凭据类型；限流键按凭据主体（令牌 / 用户）区分，429 响应携带 `Retry-After` 头。
 4. `X-On-Behalf-Of` 头仅在服务账号令牌场景下被接受，其余场景在网关层丢弃；其值不参与任何鉴权判定，审计记录中标注为「自报、未经验证」，不与服务端验证过的身份混排。
+5. （v2.3）系统 Token 的业务主体头 `X-Bklite-Acting-*` **不是认证身份**而是受校验的业务参数：网关必须依次校验令牌有效、头齐全、用户存在且可用、用户属于该组织（**直属组织精确交集，无祖先/子孙级联**，口径同 3.3.2「锚点必须是直属组织」；用户只属父组织而传子组织 id 即拒绝），全部通过后才以该用户为主语构造认证上下文；任何一步失败即按 3.7 映射拒绝，**不存在回落到系统自身假用户的路径**。该头对个人令牌与 JWT 一律忽略；`X-Bklite-Acting-User` 值按 `rsplit("@", 1)` 解析（username 合法字符含 `@`）。
+6. （v2.4）不再因为钥匙有 Scope 把 `is_superuser` 强制打成假（含权限缓存读出的快照）。超管在人的权限层仍直通 `_check_permission`；不在钥匙名单内的路由，超管也 `403 SCOPE_DENIED`。权限缓存键 `username:domain:version:team` 与个人令牌共用，缓存值必须恒为**原始权限**，禁止把钥匙名单写回。
+7. （v2.3）第 2、4 条所述 ITSM 异步节点「服务账号 API 令牌 + `X-On-Behalf-Of` 自报审计」机制**升级为系统 Token + 受校验主体**；原机制不删除、语义不变，仅在集成规范中标注为 deprecated，存量集成迁移完成后再议下线。
+8. （v2.3）限流键口径（限流机制仍属已知边界未实现）：系统 Token 的凭据主体为 `system_id`（按系统分桶），非 acting user。
+9. （v2.3）已论证的用户枚举面：持有效系统 Token 者可经 401/403 差异区分用户存在性与组织成员关系。接受理由：系统 Token 仅由管理员发给受管系统，且集成方需区分这些错误做流程提示；匿名调用方无此探测面。404 存在性语义（冻结第 6 条）不变。
 
 #### 3.2.3 凭据发放（现有功能）
 
 API 令牌由系统管理「API 密钥」页面自助生成（`UserAPISecretViewSet`）：令牌为 64 字符随机十六进制串，仅生成时展示一次，数据库中存储其 SHA-256 哈希；令牌与「用户 × 组织」绑定，同一用户在每个组织下至多一把。
+
+**v2.4 补充**：系统 Token 由系统管理「系统凭据」页发放（独立权限位，仅管理员）：登记 `system_id`（命名规则同 service 段）与 Scope（文档同源的网关路由名单或全部：内部键 `METHOD service/sub_path`，外部键 `EXTERNAL {service}`，与前缀转发同粒度），令牌为 `bksys_` + 64hex，仅生成时展示一次，库存 SHA-256 哈希，记录 `created_by`；同一 `system_id` 允许多把并存以支持轮转，吊销即时生效；发放与吊销写系统管理操作日志。新建必须显式选择「全部」或非空名单。
+
+个人令牌解除「一用户一组织一把」限制，支持多把并存，新增 `name` / `expires_at` / `scope`。过期与吊销校验位于 `find_by_api_secret` 模型层查表咽喉，覆盖网关之外的既有直查路径（opspilot OpenAI 兼容令牌、嵌入式渠道）；Scope 仅在网关 invoke 与个人钥匙的 `_auth` 生效，非网关入口按其自身鉴权模型（边界写入密钥页文案）。存量空 Scope 与旧权限位 JSON 迁成 `mode=all`。
+
+#### 3.2.4 系统 Token 主体校验（v2.3）
+
+调用方以请求头传入业务主体：`X-Bklite-Acting-User: <user>@<domain>`（值格式同 `X-BK-User`）与 `X-Bklite-Acting-Team: <十进制组织 id>`。网关校验五步，顺序固定、任一步失败即终止：
+
+1. 令牌哈希命中、系统 `enabled`、未过期 → 否则 `401 AUTH_INVALID`（message 含 `invalid system token`）；
+2. 两个头齐全且格式合法 → 否则 `401 AUTH_INVALID`（message 含 `acting headers required`）；
+3. 用户存在且可用（`base.User.is_active` 且 `system_mgmt.User` 未禁用）→ 否则 `401 AUTH_INVALID`（message 含 `acting user not found or disabled`）；
+4. 组织成员校验（直属组织精确交集）→ 否则 `403 TEAM_OUT_OF_SCOPE`；
+5. 以「该用户 × 该组织」跑既有权限推导（复用权限缓存与 `permission_version` 围栏），得到现场权限，**不再与钥匙 Scope 求交**（超管口径与缓存契约见 3.2.2 配套约束 6）。钥匙名单检查发生在 invoke 分发器命中 endpoint 之后，以及个人钥匙的 `_auth`（见下）。
+
+失败传播：认证层异常携带错误码（现有实现将认证失败一律映射 `AUTH_INVALID` 401，须扩展），views 层按码映射状态；message 不属冻结契约，但上列子串承诺稳定，供集成方编程排障。
+
+forward-auth 路径（外部服务代理）对系统 Token 在名单与 `required_roles` 评估之前返回 `403 ROLE_REQUIRED`（本期不放行系统对系统调用）；「`required_roles: []` = 放行任意已认证身份」（冻结第 13 条）语义定义于既有凭据类型（api_token / JWT），系统 Token 自诞生即在其评估之前被拒，不构成收紧，锁定该语义的既有单测不得反转。个人钥匙在 `_auth` 按 `mode=all` 或 `EXTERNAL {service}` 查名单后再走 `required_roles`。外部服务路由的注入中间件须同时清除 `X-Bklite-Acting-*` 后再转发，防上游误消费未经其校验的主体头。
 
 ### 3.3 身份注入模型
 
 #### 3.3.1 统一不变式
 
 **身份（username / 授权组织集合）必须来自服务端认证结果；选择（组织锚点、业务组织参数）可以来自客户端，但必须被校验或被现有权限逻辑自然约束。** 客户端请求体中的身份字段一律丢弃。
+
+**v2.3 补充**：系统 Token 路径下，本不变式的口径为：`X-Bklite-Acting-*` 头是**主体选择输入**，经 3.2.4 五步校验后成为服务端认证结果的一部分；下游注入（`team_list` / `team_list_with_user` / `user_info`）与审计使用的均为校验后的主体，协议形状与字段名不变。`inject='user_info'` 的锚点收窄规则从「API 令牌 → 绑定组织」扩展为「API 令牌 → 绑定组织；系统 Token → 传入组织」。
 
 #### 3.3.2 两种注入形状
 
@@ -392,6 +421,7 @@ def gateway_identity_middleware(request):
 
 - `groups` 为**直属组织**（含 id 与名称，免第三方二次查询）；`anchor_scopes` 给出锚定每个直属组织后级联可见的完整组织集合——配合 3.3.2 的「锚点必须为直属组织」规则，第三方可自助判断锚点合法性与可见范围，避免对合法但非直属的组织 id 反复得到空结果而无从排查；
 - `services` 标注各 service 属「内部代理调用」（响应遵循 3.8 统一契约）还是「外部透传」（响应格式由被代理系统决定，网关仅保证认证与限流统一）；
+- **v2.3（additive 扩展）**：系统 Token 调 `_me` 同样走 3.2.4 五步校验，无「仅凭令牌返回系统自身信息」旁路；校验通过后 `user` / `domain` / `groups` 为 acting 主体口径，`credential_type` 新增枚举值 `system_token`，响应新增字段 `caller_system`（其余凭据类型不返回或为 null）。既有字段结构不变；
 - 文档聚合预留 `/openapi/v1/_docs`：基于装饰器注册表汇总内部接口清单与各自 JSON Schema（外部服务附 `doc_url` 链接），作为第三方的机器可读接口目录，最小可行版本随首批暴露一并交付。
 
 ### 3.7 错误码
@@ -408,6 +438,18 @@ def gateway_identity_middleware(request):
 
 同一状态码在不同组件产生时，响应体必须同构（见 3.8）：ForwardAuth 认证视图与 invoke 分发器复用同一错误序列化器；Traefik 原生错误（429 / 502 / 未匹配路由）经 `errors` 中间件替换为同构 JSON。404 的存在性语义：对无权限调用方与不存在的 path 返回一致（不泄漏资源存在性）。
 
+**v2.3 系统 Token 场景映射（复用既有枚举，不新增）**：
+
+| 场景 | code / 状态码 | message 稳定子串 |
+| --- | --- | --- |
+| 系统 Token 无效、过期、禁用 | `AUTH_INVALID` 401 | `invalid system token` |
+| 主体头缺失或格式非法 | `AUTH_INVALID` 401 | `acting headers required` |
+| 传入用户不存在或被禁用 | `AUTH_INVALID` 401 | `acting user not found or disabled` |
+| 传入用户不属于传入组织（直属口径） | `TEAM_OUT_OF_SCOPE` 403 | — |
+| 端点不在钥匙名单内 | `SCOPE_DENIED` 403 | `endpoint not in token scope` |
+| 人的权限位不满足已声明 `permission` | `PERM_MISSING` 403 | `permission denied` |
+| 系统 Token 经 forward-auth 调外部服务（本期不放行，先于 `required_roles` 评估） | `ROLE_REQUIRED` 403 | — |
+
 ### 3.8 对外契约规范
 
 本节各项均为**发布后不可变更**的对外契约，与 3.7 一并构成响应层契约。
@@ -415,7 +457,7 @@ def gateway_identity_middleware(request):
 1. **统一响应 envelope**（仅覆盖内部代理调用；外部透传服务的响应显式声明为透传、不在承诺内）：
    - 成功：`{"result": true, "data": ...}`
    - 失败：`{"result": false, "code": "<机器可读错误码>", "message": "<人类可读描述>"}`
-2. **机器可读错误码枚举**（与 HTTP 状态码映射一次定死）：`AUTH_INVALID`(401)、`PERM_MISSING`(403)、`ROLE_REQUIRED`(403)、`TEAM_OUT_OF_SCOPE`(403)、`SCHEMA_INVALID`(400)、`NOT_FOUND`(404)、`RATE_LIMITED`(429)、`UPSTREAM_UNREACHABLE`(502)、`INTERNAL_ERROR`(500)。403 的三种语义经 `code` 区分，第三方可编程处理。
+2. **机器可读错误码枚举**（与 HTTP 状态码映射一次定死，只允许 additive 新增）：`AUTH_INVALID`(401)、`PERM_MISSING`(403)、`SCOPE_DENIED`(403)、`ROLE_REQUIRED`(403)、`TEAM_OUT_OF_SCOPE`(403)、`SCHEMA_INVALID`(400)、`NOT_FOUND`(404)、`RATE_LIMITED`(429)、`UPSTREAM_UNREACHABLE`(502)、`INTERNAL_ERROR`(500)。403 的语义经 `code` 区分，第三方可编程处理。
 3. **分页规范**：参数名统一为 `page`（1-based）与 `page_size`；`page_size` 默认 20、硬上限 500，越限取钳制值；分页响应固定为 `data: {"count": <总数>, "items": [...]}`。符合本规范列入 3.4.2 注册硬性要求，首批函数以共享分页 serializer 基类改造。
 4. **参数位置规则**：GET 参数一律走 query string（数组编码为逗号分隔）；POST / PUT / DELETE 参数一律走 `application/json` 请求体；混用即返回 `SCHEMA_INVALID`。
 5. **身份头值格式**：`X-BK-User` 传 ASCII 安全的稳定标识（`user@domain`），显示名不进头；`X-BK-Team` 为逗号分隔十进制组织 id；`X-On-Behalf-Of` 与 `X-BK-User` 同格式。`X-BK-` 声明为网关保留头前缀。
@@ -480,7 +522,12 @@ def gateway_identity_middleware(request):
 13. `openapi_registry` 条目 schema：`schema_version=1`、字段清单、`required_roles: []` = 放行任意已认证身份、未知字段忽略 / 未知枚举跳过的演进规则、`gateway_versions` 缺省挂载全部活跃网关版本的语义（3.5.1）；
 14. 网关与外部服务间共享密钥头 `X-BK-Gateway-Auth` 的名称与校验方式（按服务隔离）（3.5.1、3.5.5）；
 15. `/openapi/v1/_me` 字段级结构（additive-only 演进）；`/_docs` 一旦上线其响应结构同样冻结（3.6）；
-16. 认证缓存的「凭据吊销最长延迟 = TTL」安全语义（3.2.1）。
+16. 认证缓存的「凭据吊销最长延迟 = TTL」安全语义（3.2.1）；
+17. （v2.3）系统 Token 凭据前缀 `bksys_`（前缀 + 64hex 形态，判别先于形态匹配）；业务主体头 `X-Bklite-Acting-User`（`user@domain`，同 `X-BK-User` 值格式，`rsplit("@", 1)` 解析）与 `X-Bklite-Acting-Team`（十进制组织 id）的名称、格式与「仅系统 Token 场景消费、其余凭据类型忽略」的语义。**该头不属于 `X-BK-` 保留前缀族，禁止被任何前缀清除规则波及**（内部路由不清除；外部服务路由由注入中间件清除后转发，防上游误消费）（3.2.2、3.2.4）；
+18. （v2.4）系统 Token 校验顺序与失败语义（3.2.4 五步 → 3.7 映射表，含 message 稳定子串）；鉴权分层为「钥匙名单（或全部）决定能否碰该路由，人的现场权限决定 `_check_permission`；超管在人的权限层直通；不在名单则超管也 `403 SCOPE_DENIED`；名单不落权限缓存」（3.2.2、3.2.4）；
+19. （v2.3）审计访问日志 `caller=<system_id>`（非系统 Token 为 `-`）以及 `token_id` /
+    `token_name`（JWT / 认证失败为 `-`）；`_me` 的 `credential_type=system_token` 枚举值与
+    `caller_system` 字段（3.6）。
 
 ---
 

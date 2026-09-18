@@ -635,6 +635,8 @@
         "noOptions": "暂无选项"
     },
     "Collection": {
+    "namespace": "命名空间",
+    "bucket": "Bucket",
         "cycleDeprecated": "定时执行和一次性执行功能已下线，请调整配置为周期执行",
         "fullTitle": "全面采集",
         "fullMessage": "您可以根据通过创建全面采集任务，针对批量的主机采集多数资产信息。",
@@ -688,7 +690,11 @@
         "ipRangeOrderInvalid": "起始 IP 不可大于结束 IP",
         "ipRangeTooLarge": "IP 范围不可超过 /21 网段（最多 2048 个地址）",
         "ipRangeCycleHint": "当前 IP 段地址数较多，单次采集耗时会明显增加，请评估是否需要拉长采集周期。",
-        "hostCredentialOptionalTip": "主机凭据（SSH / WMI）可不填：留空时将走 Agent 采集。用户名和密码均可为空。",
+        "hostCredentialOptionalTip": "JOB 采集仅在目标主机已接入可用 Agent 时可不填登录凭据；否则需填写远程登录账号和密码。选择“已有凭据”时需选定凭据。",
+        "legacyNetworkCredentialTip": "当前任务沿用已有的平台账户凭据。",
+        "legacyJobCredentialTip": "当前任务沿用已有的用户名密码凭据。",
+        "switchToSshCredential": "改用 SSH 凭据",
+        "deviceJobCredentialTip": "此插件通过 SSH 执行设备采集命令，请填写设备登录账号和密码，或选择已有凭据；端口在本任务中填写。",
         "chooseIp": "选择IP",
         "chooseAsset": "选择资产",
         "chooseHost": "选择主机",
@@ -1025,6 +1031,8 @@
         },
         "credentialPoolTip": "最多配置 3 个凭据，系统按顺序试探，命中后优先复用。",
         "credentialPool": {
+            "useManual": "改用手动录入",
+            "useExisting": "使用已有凭据",
             "configured": "已配置",
             "keepOne": "至少保留 1 个凭据",
             "remove": "删除凭据",
@@ -1059,6 +1067,11 @@
             "invalidPort": "请输入 1–65535 的有效端口"
         },
         "platformApiTask": {
+            "tenantId": "租户 ID",
+            "userDomainName": "用户域名称",
+            "projectId": "项目 ID",
+            "clientId": "应用 ID",
+            "clientSecret": "客户端密钥",
             "tlsWarning": "关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。"
         },
         "RedfishTask": {
@@ -1156,8 +1169,8 @@
                 "enablePassword": "特权密码"
             },
             "fields": {
-                "sshAccount": "可选。目标主机的操作系统登录用户名；不填则走 Agent 采集。填写时需具备执行只读采集命令的权限。",
-                "sshPassword": "可选。上述操作系统账户对应的登录密码；可不填。",
+                "sshAccount": "目标设备或主机的登录用户名，需具备执行采集命令的权限。是否允许留空取决于该插件的执行方式，见填写说明。",
+                "sshPassword": "上述登录账户对应的密码。使用远程登录采集时需填写。",
                 "transportProtocol": "选择 SSH（默认，TCP/22）或 Telnet（TCP/23）。Telnet 明文传输账号口令，不安全，仅设备只开放 Telnet 时使用。",
                 "sshPort": "目标设备 CLI 服务监听端口；SSH 默认 22，Telnet 默认 23。使用非标准端口时请按实际值修改。",
                 "databaseAccount": "可登录目标数据库并读取配置或元数据的数据库用户名。",
@@ -1168,9 +1181,9 @@
                 "snmpCommunity": "仅 V2/V2C 使用，相当于设备的访问口令；请填写设备实际配置的只读团体字。",
                 "snmpUsername": "仅 V3 使用，填写设备上创建的 SNMP V3 安全用户名。",
                 "snmpSecurityLevel": "V3 的 noAuthNoPriv、authNoPriv 或 authPriv；必须与设备用户配置一致。",
-                "snmpAuthAlgorithm": "authNoPriv/authPriv 使用，必须与设备用户配置的认证算法一致。",
+                "snmpAuthAlgorithm": "authNoPriv/authPriv 使用。可选 MD5、SHA-1、SHA-224、SHA-256、SHA-384、SHA-512，必须与设备 SNMP 用户一致。设备上写的 SHA 通常是 SHA-1，不是 SHA-256。",
                 "snmpAuthPassword": "authNoPriv/authPriv 使用，填写 SNMP V3 用户的认证密码。",
-                "snmpPrivacyAlgorithm": "仅 authPriv 使用，必须与设备用户配置的加密算法一致。",
+                "snmpPrivacyAlgorithm": "仅 authPriv 使用。可选 DES、AES-128、AES-256，必须与设备 SNMP 用户一致。设备上写的 AES 通常是 AES-128。",
                 "snmpPrivacyKey": "仅 authPriv 使用，填写 SNMP V3 用户的加密密钥。",
                 "snmpPort": "设备 SNMP Agent 监听的 UDP 端口。",
                 "influxProtocol": "选择 InfluxDB HTTP API 使用的协议；生产环境建议使用 HTTPS。",
@@ -1228,6 +1241,11 @@
                 "aws": "AWS SDK / API",
                 "genericCloud": "云平台 SDK / API",
                 "httpsApi": "HTTPS API",
+                "sapHana": "SAP HANA SQL",
+                "iris": "IRIS SuperServer",
+                "couchbase": "Couchbase",
+                "tongrds": "TongRDS",
+                "httpApi": "HTTP / HTTPS API",
                 "winrm": "WinRM（HTTPS / HTTP）",
                 "macosSsh": "SSH",
                 "winsphereApi": "WinSphere HTTPS API",
@@ -1257,7 +1275,8 @@
                 "networkDeviceAccount": "网络设备 CLI 账户"
             },
             "instruction": {
-                "ssh": "凭据可不填；留空时走 Agent 采集。填写时请提供可通过 SSH（Linux）或 WMI（Windows）登录目标主机并执行只读采集命令的账户。",
+                "ssh": "JOB 采集仅在目标主机已接入可用 Agent 时可不填登录凭据；否则需提供远程登录账户。留空不会自动安装或接入 Agent。选择“已有凭据”时需选定凭据。",
+                "deviceSsh": "通过 SSH 连接设备并执行采集命令。请填写设备登录账号和密码，或选择已有凭据；端口由任务填写。",
                 "database": "填写可连接目标实例并读取配置或元数据的数据库账户。",
                 "snmp": "V2/V2C 填写团体字；V3 authNoPriv 填写用户名、认证密码和哈希算法；authPriv 还需填写加密算法和加密密钥。",
                 "influxdb": "不填写 Token 时采集基础识别信息；填写后读取完整运行配置。Operator Token 具有实例级管理权限，请谨慎使用。",
@@ -1268,6 +1287,7 @@
                 "genericCloud": "填写该云平台的 API 凭据，并优先使用只读或最小权限策略。",
                 "fusionInsight": "填写可访问 FusionInsight Manager REST API 的用户名和密码，认证方式为 HTTP Basic。",
                 "oceanStor": "填写可登录 DeviceManager REST API 的用户名和密码，建议使用只读或最小权限账户。",
+                "httpApi": "使用平台账号密码登录 HTTP API；连接协议和端口由采集任务指定。",
                 "platformApi": "填写可访问目标平台管理 HTTPS API 的用户名和密码；建议使用只读或最小权限账户并开启证书校验。",
                 "winrm": "填写可通过 WinRM 登录目标 Windows 主机并读取系统信息的账户；优先使用 HTTPS 并启用证书校验。",
                 "macosSsh": "填写可通过 SSH 登录目标 macOS 主机并执行只读采集命令的账户，可使用密码或 PEM 私钥认证。",

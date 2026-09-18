@@ -1085,14 +1085,16 @@ def test_init_builtin_canvases_marks_existing_directory_builtin():
     from apps.system_mgmt.models.user import Group
 
     Group.objects.get_or_create(name="Default")
+    extra = Group.objects.create(name="Custom Org")
     _ensure_default_namespace()
-    # 预先存在同名根目录（非内置）
-    existing = Directory.objects.create(name="内置目录", parent=None, groups=[], created_by="u")
+    # 预先存在同名根目录（非内置），已配置组织可见性
+    existing = Directory.objects.create(name="内置目录", parent=None, groups=[extra.pk], created_by="u")
     call_command("init_builtin_canvases")
 
     existing.refresh_from_db()
     assert existing.is_build_in is True
     assert existing.build_in_key == "__builtin__"
+    assert existing.groups == [extra.pk]
 
 
 @pytest.mark.django_db

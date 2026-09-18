@@ -1,0 +1,2521 @@
+[
+  {
+    "id": "k8s_cluster",
+    "name": "K8S",
+    "model_id": "k8s_cluster",
+    "task_type": "k8s",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "k8s",
+    "edition": "社区版",
+    "original_form": "none",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": null,
+    "inline_fields": []
+  },
+  {
+    "id": "docker",
+    "name": "Docker",
+    "model_id": "docker",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "k8s",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "host/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "host/sql"
+  },
+  {
+    "id": "vmware_vc",
+    "name": "vCenter",
+    "model_id": "vmware_vc",
+    "task_type": "vm",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "社区版",
+    "original_form": "vmware",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "ssl"
+    ]
+  },
+  {
+    "id": "zstack",
+    "name": "ZStack",
+    "model_id": "zstack",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "h3c_cas",
+    "name": "华三 UIS",
+    "model_id": "h3c_cas",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "winsphere",
+    "name": "云宏 WinSphere",
+    "model_id": "winsphere",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "winsphere",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "user",
+      "password",
+      "https_port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "openstack",
+    "name": "OpenStack",
+    "model_id": "openstack",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/openstack",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls",
+      "user_domain_name",
+      "project_id"
+    ]
+  },
+  {
+    "id": "smartx",
+    "name": "SmartX",
+    "model_id": "smartx",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "manageone",
+    "name": "ManageOne",
+    "model_id": "manageone",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "fusioncompute",
+    "name": "FusionCompute",
+    "model_id": "fusioncompute",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "sangforhci",
+    "name": "深信服 HCI",
+    "model_id": "sangforhci",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "sangforscp",
+    "name": "深信服 SCP",
+    "model_id": "sangforscp",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "nutanixhci",
+    "name": "Nutanix HCI",
+    "model_id": "nutanixhci",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "inspurincloudrail",
+    "name": "浪潮 InCloud Rail",
+    "model_id": "inspurincloudrail",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "vmware",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "network",
+    "name": "NetWork",
+    "model_id": "network",
+    "task_type": "snmp",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "network",
+    "edition": "社区版",
+    "original_form": "snmp",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "network/snmp",
+    "inline_fields": [
+      "version",
+      "community",
+      "snmp_port",
+      "username",
+      "level",
+      "integrity",
+      "authkey",
+      "privacy",
+      "privkey"
+    ]
+  },
+  {
+    "id": "network_config_file",
+    "name": "网络设备配置文件",
+    "model_id": "network_config_file",
+    "task_type": "config_file",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "network",
+    "edition": "社区版",
+    "original_form": "network_config_file",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "network/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "transport_protocol",
+      "enable_password"
+    ],
+    "legacy_binding": "network/platform_api"
+  },
+  {
+    "id": "brocade_fc",
+    "name": "Brocade FC",
+    "model_id": "brocade_fc",
+    "task_type": "snmp",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "network",
+    "edition": "企业版",
+    "original_form": "snmp",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "network/ssh",
+    "inline_fields": [
+      "version",
+      "community",
+      "snmp_port",
+      "username",
+      "level",
+      "integrity",
+      "authkey",
+      "privacy",
+      "privkey"
+    ],
+    "effective_form": "ssh",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "correction_source": "用户要求按脚本修正；enterprise/plugins/inputs/brocade_fc/plugin.yml：SSHPlugin / job",
+    "legacy_binding": "network/sql"
+  },
+  {
+    "id": "cisco_fc",
+    "name": "Cisco FC",
+    "model_id": "cisco_fc",
+    "task_type": "snmp",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "network",
+    "edition": "企业版",
+    "original_form": "snmp",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "network/ssh",
+    "inline_fields": [
+      "version",
+      "community",
+      "snmp_port",
+      "username",
+      "level",
+      "integrity",
+      "authkey",
+      "privacy",
+      "privkey"
+    ],
+    "effective_form": "ssh",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "correction_source": "用户要求按脚本修正；enterprise/plugins/inputs/cisco_fc/plugin.yml：SSHPlugin / job",
+    "legacy_binding": "network/sql"
+  },
+  {
+    "id": "f5",
+    "name": "F5",
+    "model_id": "f5",
+    "task_type": "snmp",
+    "type": "protocol",
+    "credential_protocol": "snmp",
+    "credential_default_port": 161,
+    "category": "network",
+    "edition": "企业版",
+    "original_form": "snmp",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "network/snmp",
+    "inline_fields": [
+      "version",
+      "community",
+      "snmp_port",
+      "username",
+      "level",
+      "integrity",
+      "authkey",
+      "privacy",
+      "privkey"
+    ]
+  },
+  {
+    "id": "security_device",
+    "name": "安全设备",
+    "model_id": "security_device",
+    "task_type": "snmp",
+    "type": "protocol",
+    "credential_protocol": "snmp",
+    "credential_default_port": 161,
+    "category": "network",
+    "edition": "企业版",
+    "original_form": "snmp",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "network/snmp",
+    "inline_fields": [
+      "version",
+      "community",
+      "snmp_port",
+      "username",
+      "level",
+      "integrity",
+      "authkey",
+      "privacy",
+      "privkey"
+    ]
+  },
+  {
+    "id": "ip_discovery",
+    "name": "IP 发现",
+    "model_id": "ip",
+    "task_type": "ip",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "ipam",
+    "edition": "社区版",
+    "original_form": "none",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": null,
+    "inline_fields": []
+  },
+  {
+    "id": "mysql",
+    "name": "Mysql",
+    "model_id": "mysql",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "mysql",
+    "credential_default_port": 3306,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "sql",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ]
+  },
+  {
+    "id": "influxdb",
+    "name": "【BETA】InfluxDB",
+    "model_id": "influxdb",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "influxdb_http",
+    "credential_default_port": 8086,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "influxdb",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/token",
+    "inline_fields": [
+      "token",
+      "scheme",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "postgresql",
+    "name": "PostgreSQL",
+    "model_id": "postgresql",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "postgresql",
+    "credential_default_port": 5432,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "sql",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ]
+  },
+  {
+    "id": "mssql",
+    "name": "【BETA】MSSQL",
+    "model_id": "mssql",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "sql_server",
+    "credential_default_port": 1433,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "sql",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port",
+      "database"
+    ]
+  },
+  {
+    "id": "redis",
+    "name": "Redis",
+    "model_id": "redis",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "mongodb",
+    "name": "【BETA】MongoDB",
+    "model_id": "mongodb",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "es",
+    "name": "【BETA】Elasticsearch",
+    "model_id": "es",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "hbase",
+    "name": "【BETA】HBase",
+    "model_id": "hbase",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "databases",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "oceanbase",
+    "name": "OceanBase",
+    "model_id": "oceanbase",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "mysql",
+    "credential_default_port": 2881,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "highgo",
+    "name": "瀚高HighGo",
+    "model_id": "highgo",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "postgresql",
+    "credential_default_port": 5432,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "informix",
+    "name": "Informix",
+    "model_id": "informix",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "sybase",
+    "name": "Sybase",
+    "model_id": "sybase",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "couchbase",
+    "name": "Couchbase",
+    "model_id": "couchbase",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "couchbase",
+    "credential_default_port": 8091,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "effective_inline_fields": [
+      "user",
+      "password",
+      "port",
+      "bucket"
+    ]
+  },
+  {
+    "id": "mycat",
+    "name": "MyCAT",
+    "model_id": "mycat",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "sap_hana",
+    "name": "SAP HANA",
+    "model_id": "sap_hana",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "sap_hana_sql",
+    "credential_default_port": 30015,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ]
+  },
+  {
+    "id": "iris",
+    "name": "InterSystems IRIS",
+    "model_id": "iris",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "iris_sql",
+    "credential_default_port": 1972,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "effective_inline_fields": [
+      "user",
+      "password",
+      "port",
+      "namespace"
+    ]
+  },
+  {
+    "id": "redis_sentinel",
+    "name": "Redis Sentinel",
+    "model_id": "redis_sentinel",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "gbase8s",
+    "name": "GBase 8s",
+    "model_id": "gbase8s",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "oscar",
+    "name": "神通 Oscar",
+    "model_id": "oscar",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "tongrds",
+    "name": "TongRDS",
+    "model_id": "tongrds",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "tongrds",
+    "credential_default_port": 6379,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ]
+  },
+  {
+    "id": "tdsql",
+    "name": "TDSQL",
+    "model_id": "tdsql",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "mysql",
+    "credential_default_port": 3306,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ]
+  },
+  {
+    "id": "dameng",
+    "name": "达梦数据库",
+    "model_id": "dameng",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "db2",
+    "name": "DB2",
+    "model_id": "db2",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "tidb",
+    "name": "TiDB",
+    "model_id": "tidb",
+    "task_type": "db",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "database/sql"
+  },
+  {
+    "id": "gbase8a",
+    "name": "GBase 8a",
+    "model_id": "gbase8a",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ]
+  },
+  {
+    "id": "greenplum",
+    "name": "Greenplum",
+    "model_id": "greenplum",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "postgresql",
+    "credential_default_port": 5432,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "kingbase",
+    "name": "人大金仓",
+    "model_id": "kingbase",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "postgresql",
+    "credential_default_port": 5432,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "opengauss",
+    "name": "openGauss",
+    "model_id": "opengauss",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "postgresql",
+    "credential_default_port": 5432,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "vastbase",
+    "name": "Vastbase",
+    "model_id": "vastbase",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "postgresql",
+    "credential_default_port": 5432,
+    "category": "databases",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "database/sql",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "storage",
+    "name": "【BETA】华为存储",
+    "model_id": "storage",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "oceanstor_https",
+    "credential_default_port": 8088,
+    "category": "storage_device",
+    "edition": "社区版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "dell_unity",
+    "name": "【BETA】Dell Unity",
+    "model_id": "dell_unity",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "dell_unity_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "社区版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "netapp_ontap",
+    "name": "【BETA】NetApp ONTAP",
+    "model_id": "netapp_ontap",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "netapp_ontap_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "社区版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "ibm_storwize",
+    "name": "IBM Storwize",
+    "model_id": "ibm_storwize",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "ibm_storwize_https",
+    "credential_default_port": 7443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "ibm_ds",
+    "name": "IBM DS",
+    "model_id": "ibm_ds",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/cloud",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ]
+  },
+  {
+    "id": "emc_symmetrix",
+    "name": "EMC Symmetrix",
+    "model_id": "emc_symmetrix",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "emc_symmetrix_https",
+    "credential_default_port": 8443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "hds_vsp",
+    "name": "【BETA】Hitachi VSP",
+    "model_id": "hds_vsp",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "hds_vsp_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "macrosan",
+    "name": "宏杉存储",
+    "model_id": "macrosan",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "snmp",
+    "credential_default_port": 161,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/snmp",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "snmp",
+    "effective_inline_fields": [
+      "version",
+      "community",
+      "snmp_port",
+      "username",
+      "level",
+      "integrity",
+      "authkey",
+      "privacy",
+      "privkey"
+    ]
+  },
+  {
+    "id": "pure_array",
+    "name": "【BETA】Pure Storage",
+    "model_id": "pure_array",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "pure_array_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "netapp_cluster",
+    "name": "NetApp Cluster",
+    "model_id": "netapp_cluster",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "netapp_cluster_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "oraclezfs",
+    "name": "Oracle ZFS",
+    "model_id": "oraclezfs",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "oraclezfs_https",
+    "credential_default_port": 215,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "infinidat",
+    "name": "Infinidat",
+    "model_id": "infinidat",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "infinidat_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "tape_library",
+    "name": "磁带库",
+    "model_id": "tape_library",
+    "task_type": "snmp",
+    "type": "protocol",
+    "credential_protocol": "snmp",
+    "credential_default_port": 161,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "snmp",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/snmp",
+    "inline_fields": [
+      "version",
+      "community",
+      "snmp_port",
+      "username",
+      "level",
+      "integrity",
+      "authkey",
+      "privacy",
+      "privkey"
+    ]
+  },
+  {
+    "id": "xsky",
+    "name": "XSKY",
+    "model_id": "xsky",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/cloud",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ]
+  },
+  {
+    "id": "dell_powerstore",
+    "name": "【BETA】Dell PowerStore",
+    "model_id": "dell_powerstore",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "dell_powerstore_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "hp_3par",
+    "name": "【BETA】HPE 3PAR/Primera",
+    "model_id": "hp_3par",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "hp_3par_https",
+    "credential_default_port": 443,
+    "category": "storage_device",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "storage/platform_api",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "aliyun_account",
+    "name": "阿里云",
+    "model_id": "aliyun_account",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "aliyun_openapi",
+    "credential_default_port": null,
+    "category": "cloud",
+    "edition": "社区版",
+    "original_form": "cloud",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/cloud",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ]
+  },
+  {
+    "id": "qcloud",
+    "name": "腾讯云",
+    "model_id": "qcloud",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "tencentcloud_api",
+    "credential_default_port": null,
+    "category": "cloud",
+    "edition": "社区版",
+    "original_form": "cloud",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/cloud",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ]
+  },
+  {
+    "id": "hwcloud",
+    "name": "华为云【beta】",
+    "model_id": "hwcloud",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "huaweicloud_sdk",
+    "credential_default_port": null,
+    "category": "cloud",
+    "edition": "社区版",
+    "original_form": "cloud",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/cloud",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId",
+      "projectId"
+    ]
+  },
+  {
+    "id": "fusioninsight",
+    "name": "FusionInsight【beta】",
+    "model_id": "fusioninsight",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": "fusioninsight_https",
+    "credential_default_port": 443,
+    "category": "cloud",
+    "edition": "社区版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/platform_api",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "aws",
+    "name": "AWS",
+    "model_id": "aws",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "cloud",
+    "edition": "企业版",
+    "original_form": "cloud",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/cloud",
+    "inline_fields": [
+      "accessKey",
+      "accessSecret",
+      "regionId"
+    ]
+  },
+  {
+    "id": "azure",
+    "name": "Azure",
+    "model_id": "azure",
+    "task_type": "cloud",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "cloud",
+    "edition": "企业版",
+    "original_form": "platform_api",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "cloud/oauth_client",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls",
+      "tenant_id",
+      "subscription_id"
+    ]
+  },
+  {
+    "id": "host",
+    "name": "主机",
+    "model_id": "host",
+    "task_type": "host",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "host_manage",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "host/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "host/sql"
+  },
+  {
+    "id": "config_file",
+    "name": "配置文件",
+    "model_id": "config_file",
+    "task_type": "config_file",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "host_manage",
+    "edition": "社区版",
+    "original_form": "config_file",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "host/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "host/sql"
+  },
+  {
+    "id": "physcial_server",
+    "name": "物理服务器 SSH",
+    "model_id": "physcial_server",
+    "task_type": "host",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "host_manage",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "host/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "host/sql"
+  },
+  {
+    "id": "physcial_server_ipmi",
+    "name": "【BETA】物理服务器 IPMI",
+    "model_id": "physcial_server",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "ipmi",
+    "credential_default_port": 623,
+    "category": "host_manage",
+    "edition": "社区版",
+    "original_form": "ipmi",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "host/ipmi",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "privilege"
+    ]
+  },
+  {
+    "id": "physcial_server_redfish",
+    "name": "【BETA】物理服务器 Redfish",
+    "model_id": "physcial_server",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "redfish",
+    "credential_default_port": 443,
+    "category": "host_manage",
+    "edition": "社区版",
+    "original_form": "redfish",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "host/redfish",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "server_bmc",
+    "name": "服务器BMC",
+    "model_id": "server_bmc",
+    "task_type": "protocol",
+    "type": "protocol",
+    "credential_protocol": "redfish",
+    "credential_default_port": 443,
+    "category": "host_manage",
+    "edition": "企业版",
+    "original_form": "sql",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "host/redfish",
+    "inline_fields": [
+      "user",
+      "password",
+      "port"
+    ],
+    "effective_form": "redfish",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "hmc",
+    "name": "HMC",
+    "model_id": "hmc",
+    "task_type": "host",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "host_manage",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "host/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "host/sql"
+  },
+  {
+    "id": "pc",
+    "name": "PC发现",
+    "model_id": "pc",
+    "task_type": "host",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "host_manage",
+    "edition": "企业版",
+    "original_form": "winrm",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "host/winrm",
+    "inline_fields": [
+      "username",
+      "password",
+      "port",
+      "scheme",
+      "transport",
+      "certValidation"
+    ]
+  },
+  {
+    "id": "nginx",
+    "name": "Nginx",
+    "model_id": "nginx",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "minio",
+    "name": "【BETA】MinIO",
+    "model_id": "minio",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "zookeeper",
+    "name": "Zookeeper",
+    "model_id": "zookeeper",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "kafka",
+    "name": "Kafka",
+    "model_id": "kafka",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "consul",
+    "name": "Consul",
+    "model_id": "consul",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "etcd",
+    "name": "Etcd",
+    "model_id": "etcd",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "rabbitmq",
+    "name": "RabbitMQ",
+    "model_id": "rabbitmq",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "tomcat",
+    "name": "Tomcat",
+    "model_id": "tomcat",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "apache",
+    "name": "Apache",
+    "model_id": "apache",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "activemq",
+    "name": "ActiveMQ",
+    "model_id": "activemq",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "iis",
+    "name": "IIS",
+    "model_id": "iis",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "tuxedo",
+    "name": "Tuxedo",
+    "model_id": "tuxedo",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "memcached",
+    "name": "Memcached",
+    "model_id": "memcached",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "rocketmq",
+    "name": "RocketMQ",
+    "model_id": "rocketmq",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "openresty",
+    "name": "OpenResty",
+    "model_id": "openresty",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "squid",
+    "name": "Squid",
+    "model_id": "squid",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "haproxy",
+    "name": "HAProxy",
+    "model_id": "haproxy",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "keepalive",
+    "name": "KeepAlive【beta】",
+    "model_id": "keepalive",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "spark",
+    "name": "Spark",
+    "model_id": "spark",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": "ssh",
+    "credential_default_port": 22,
+    "category": "middleware",
+    "edition": "社区版",
+    "original_form": "ssh",
+    "form_source": "f68c495ca 已提交专用描述",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "nacos",
+    "name": "Nacos",
+    "model_id": "nacos",
+    "task_type": "middleware",
+    "type": "protocol",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/sql",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls",
+      "scheme"
+    ],
+    "correction_source": "2026-09-16：按真实采集器认证字段及端口修正，保留 original_form 历史证据"
+  },
+  {
+    "id": "ibmmq",
+    "name": "IBM MQ",
+    "model_id": "ibmmq",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "tonglinkq",
+    "name": "TongLINK/Q",
+    "model_id": "tonglinkq",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "tonggtp",
+    "name": "TongGTP",
+    "model_id": "tonggtp",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "ihs",
+    "name": "IBM HTTP Server",
+    "model_id": "ihs",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "cics",
+    "name": "IBM CICS",
+    "model_id": "cics",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "hdfs",
+    "name": "HDFS",
+    "model_id": "hdfs",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "yarn",
+    "name": "YARN",
+    "model_id": "yarn",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "storm",
+    "name": "Storm",
+    "model_id": "storm",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "ambari",
+    "name": "Ambari",
+    "model_id": "ambari",
+    "task_type": "middleware",
+    "type": "protocol",
+    "credential_protocol": "ambari_http",
+    "credential_default_port": 8080,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/sql",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "effective_form": "platform_api",
+    "effective_inline_fields": [
+      "username",
+      "password",
+      "port",
+      "verify_tls"
+    ]
+  },
+  {
+    "id": "bes",
+    "name": "BES",
+    "model_id": "bes",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "apusic",
+    "name": "Apusic",
+    "model_id": "apusic",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "inforsuite_as",
+    "name": "InforSuite AS",
+    "model_id": "inforsuite_as",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "ceph",
+    "name": "Ceph",
+    "model_id": "ceph",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "jboss",
+    "name": "JBoss",
+    "model_id": "jboss",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "jetty",
+    "name": "Jetty",
+    "model_id": "jetty",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "tongweb",
+    "name": "TongWeb",
+    "model_id": "tongweb",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "weblogic",
+    "name": "WebLogic",
+    "model_id": "weblogic",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  },
+  {
+    "id": "websphere",
+    "name": "WebSphere",
+    "model_id": "websphere",
+    "task_type": "middleware",
+    "type": "job",
+    "credential_protocol": null,
+    "credential_default_port": null,
+    "category": "middleware",
+    "edition": "企业版",
+    "original_form": "ssh",
+    "form_source": "b1a3fd34c 原通用 taskMap",
+    "binding": "middleware/ssh",
+    "inline_fields": [
+      "username",
+      "password",
+      "port"
+    ],
+    "legacy_binding": "middleware/sql"
+  }
+]

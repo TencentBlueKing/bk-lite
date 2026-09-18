@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 from langchain_core.runnables import RunnableConfig
 
+from apps.opspilot.metis.llm.common.tool_failure import wrap_tool_error_payload
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 
 _TRIGGER_SOURCE_LABELS = {
@@ -80,7 +81,7 @@ def wrap_success(data: Any) -> Dict[str, Any]:
 
 
 def wrap_error(message: str) -> Dict[str, Any]:
-    return {"success": False, "error": message}
+    return wrap_tool_error_payload(message)
 
 
 def unwrap_rpc_result(result: Any) -> Any:

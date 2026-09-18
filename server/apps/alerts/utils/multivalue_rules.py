@@ -45,7 +45,7 @@ def build_multivalue_q(field, operator, expected):
         members = Alert.events.through.objects.filter(alert_id=OuterRef("pk"))
         found = Exists(members.filter(event__source_id__in=expected))
         if operator not in {"any_of", "none_of"}:
-            raise ValueError("告警源仅支持候选值匹配")
+            raise ValueError("集成源仅支持候选值匹配")
         return Q(Exists(members)) & Q(~found if operator == "none_of" else found)
     exists = Q(**{f"{field}__isnull": False})
     if field not in {"source_id", "events__source_id"}:

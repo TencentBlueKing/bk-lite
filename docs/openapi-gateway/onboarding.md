@@ -3,10 +3,13 @@
 BK-Lite 统一网关把对外 API 收口到 `https://<平台地址>/openapi/v1/<服务名>/*`：调用方只面对一个入口、一种凭据，**认证与审计**由网关统一承担。
 
 > 能力边界（先看这里，避免错误预期）：
-> - **限流**目前只对外部服务生效（注册条目的 `rate_limit`），内部接口暂无限流；
+> - **限流**目前只对外部服务生效（注册条目的 `rate_limit`），内部接口暂无限流；系统 Token 的分桶主体预定为 `system_id`，不按 acting user；
 > - **调用超时**当前未启用（`OPENAPI_INVOKE_TIMEOUT` 尚未接入配置，属已知遗留），慢接口不会被网关中断；
-> - **API 令牌永不过期、无 scope**，令牌权限等于其生成账号的全部权限——务必用专属最小权限账号生成，详见 5.1；
-> - 网关本身不做接口级细粒度授权，只有服务级（`required_roles`）与内部端点的权限位。
+> - **两类凭据均可设过期与 Scope**：个人令牌绑定用户×组织；系统令牌（`bksys_`）调用时必须带
+>   `X-Bklite-Acting-User` / `X-Bklite-Acting-Team`。Scope 是网关路由名单（或全部），不与权限位求交。
+>   超管在权限位层仍直通，但名单外即使超管也 403。详见 5.1；
+> - 网关接口级授权分两层：钥匙名单决定能否碰该路由；人的权限位决定已声明 `permission` 的内部端点。
+>   `_me` / `_docs` / `_auth` 默认开放。系统 Token 不能调外部转发。
 
 接入分两条路径，按被接入方形态选择：
 
@@ -178,7 +181,7 @@ done
 | `shared_secret_ref` | 条件 | `trusted-header` 模式必填，形如 `credential:<凭据ID>` 或 `env:VAR`，**只存引用不存明文** |
 | `token_ref` | 条件 | `service-token` 模式必填，同上 |
 | `required_roles` | 否 | 服务级粗粒度授权；**空数组 = 放行任意已认证身份** |
-| `rate_limit` | 否 | `{average, burst}`，按调用方分桶 |
+| `rate_limit` | 否 | `{average, burst}`，按调用方凭据主体分桶。系统 Token 的凭据主体为 `system_id`（按系统分桶，不按 acting user）；个人令牌 / JWT 仍按令牌绑定用户。限流机制本身只对外部服务生效，属已知边界 |
 | `doc_url` | 否 | 该服务自身的接口文档地址，会出现在 `/openapi/v1/_docs` |
 | `gateway_versions` | 否 | 挂载的网关契约版本，缺省挂载全部活跃版本 |
 | `enabled` | 否 | 默认 `true`；置 `false` 即下线（一个拉取周期内生效） |
@@ -214,7 +217,7 @@ wxc openapi list                                # 确认已写入
 ### 步骤 4：验证生效
 
 ```bash
-TOKEN=<API 令牌>       # 在「系统管理 → API 密钥」页自助生成
+TOKEN=<个人或系统令牌>       # 在「平台设置 → 密钥」页生成；系统令牌另需 acting 头
 BASE=https://<平台地址>:<端口>
 
 # 目录里应出现该服务，kind=external
@@ -257,7 +260,7 @@ X-BK-Team: 2
 ```
 
 - `X-BK-User`：`用户名@域`，ASCII 稳定标识；
-- `X-BK-Team`：逗号分隔的组织 id。API 令牌为其绑定组织（单值）；登录态 JWT 为用户全部直属组织；
+- `X-BK-Team`：逗号分隔的组织 id。个人令牌为其绑定组织（单值）；系统令牌为 `X-Bklite-Acting-Team`（单值）；登录态 JWT 为用户全部直属组织；
 - `X-BK-Gateway-Auth`：网关与该服务之间的共享密钥，**上游的唯一信任根**。
 
 网关同时会**清空转发给上游的 `Authorization` 头**：上游按身份头识别用户即可，不应看到
@@ -307,6 +310,9 @@ def gateway_identity_middleware(request):
               on_behalf_verified=False)
 ```
 
+`X-On-Behalf-Of` 为 **deprecated**：共存期行为不变（仅个人令牌 `api_token` 场景网关继续回显该头），不参与鉴权。新集成应使用系统 Token + acting 头；同一集成方不得把本机制与系统 Token 混用于同一业务流。
+
+
 **三条禁令**
 
 1. 不得信任任何未通过 `X-BK-Gateway-Auth` 校验的 `X-BK-*` 头；
@@ -320,9 +326,9 @@ def gateway_identity_middleware(request):
 | 项 | 约定 |
 | --- | --- |
 | 入口 | `https://<平台地址>/openapi/v1/<服务名>/<上游路径>` |
-| 凭据 | `Authorization: Bearer <API 令牌 或 登录态 JWT>`，**不接受 Cookie** |
-| 令牌获取 | 「系统管理 → API 密钥」自助生成，绑定「用户 × 组织」，仅展示一次 |
-| 内省 | `GET /openapi/v1/_me` 返回自身身份、授权组织、可用服务清单 |
+| 凭据 | `Authorization: Bearer <个人令牌 / 系统令牌 / 登录态 JWT>`，**不接受 Cookie** |
+| 令牌获取 | 「平台设置 → 密钥」生成。个人令牌绑定「用户 × 组织」；系统令牌（`bksys_`）不绑定用户/组织，调用时必须带 `X-Bklite-Acting-User` / `X-Bklite-Acting-Team`。明文仅展示一次 |
+| 内省 | `GET /openapi/v1/_me` 返回自身身份、授权组织、可用服务清单；系统令牌下主体为 acting 用户，并带 `credential_type=system_token` 与 `caller_system` |
 | 目录 | `GET /openapi/v1/_docs` 返回接口目录（内部端点含 schema，外部服务给 `doc_url`） |
 
 **响应格式**：内部应用统一为 `{"result": true, "data": ...}` / `{"result": false, "code": "...", "message": "..."}`；
@@ -334,6 +340,7 @@ def gateway_identity_middleware(request):
 | --- | --- | --- | --- |
 | 401 | `AUTH_INVALID` | 凭据无效或缺失 | JSON 包络 |
 | 403 | `ROLE_REQUIRED` | 未满足该服务的 `required_roles` | JSON 包络 |
+| 403 | `SCOPE_DENIED` | 钥匙名单未覆盖该内部路由或外部服务 | JSON 包络 |
 | 403 | `PERM_MISSING` / `TEAM_OUT_OF_SCOPE` | 内部接口权限位不足 / 组织越界 | JSON 包络 |
 | 404 | `NOT_FOUND` | 服务未注册 / 路径不在 `paths` 白名单 / 端点不存在 | JSON 包络 |
 | 400 | `SCHEMA_INVALID` | 参数不合法或含未声明字段（仅内部接口） | JSON 包络 |
@@ -370,10 +377,15 @@ def gateway_identity_middleware(request):
 
 ### 5.1 凭据安全须知（务必转达客户安全评审）
 
-1. **API 令牌永不过期、无 scope**：平台不提供过期与自动轮转，只能删除重建；建议按客户安全策略定期（如季度）手工轮转。401 不会因"令牌过期"产生——出现 401 只可能是令牌被删除、格式错误或未用 `Authorization: Bearer`。
-2. **必须使用专属最小权限账号**：为每个集成方单独创建仅挂载所需权限的角色与账号，用它生成令牌。**禁止复用员工个人账号，尤其禁止用超管账号**——令牌继承生成者的全部权限位与超管标志。
-3. **超管令牌会绕过服务级闸门**：注册条目的 `required_roles` 与内部端点的 `permission` 对超管身份直接放行，因此这两道闸门不能用于限制超管令牌。
-4. **令牌泄漏的止损**：删除该令牌（系统管理 → API 密钥）即时失效（存在秒级缓存延迟）；审计日志可按 user / path 追溯调用记录。
+1. **两类凭据均可设过期与 Scope**，明文仅生成时展示一次，库内只存哈希。
+   - **个人令牌**（64 位十六进制）：身份即令牌绑定的用户与组织；`mode=all` 不收窄路由；过期、删除后 `401 AUTH_INVALID`。请求中的 `X-Bklite-Acting-*` 一律忽略。
+   - **系统令牌**（`bksys_` 前缀）：不绑定用户/组织；必须同时携带 `X-Bklite-Acting-User: <user>@<domain>` 与 `X-Bklite-Acting-Team: <组织id>`。名单决定能碰哪些网关路由；人的现场权限决定已声明 `permission` 的内部端点。系统 Token 不能走 `_auth` 外部转发（`403 ROLE_REQUIRED`）。
+   - **Scope 只约束 OpenAPI 网关**（invoke 名单 + 个人钥匙的 `_auth` 前缀）；OpsPilot 渠道等非网关入口不消费名单，需要收窄那些入口时用独立令牌并依赖渠道自身权限。过期与吊销在所有入口生效。
+2. **系统集成必须使用系统令牌**，为每个集成方单独收窄 Scope。**禁止把超管或员工个人令牌配给 worker**。
+3. **超管直通仅作用于人的权限位层**（JWT 与名单内的内部端点）。钥匙名单外即使超管也 `403 SCOPE_DENIED`。`required_roles` 对 JWT / 个人令牌超管仍放行；系统 Token 在评估角色前即拒绝。
+4. **令牌泄漏的止损**：删除或禁用该令牌（平台设置 → 密钥）即时失效（存在秒级缓存延迟）；应用访问日志可按 user / token_id / token_name / path / `caller=<system_id>` 追溯调用记录。
+5. **`X-On-Behalf-Of` 已 deprecated**：仅个人令牌场景网关继续回显该头供审计，不参与鉴权。系统集成不要再依赖它。
+6. **限流键口径**（限流机制本身未实现，属已知边界）：一旦对外部服务启用 `rate_limit`，系统 Token 按 `system_id` 分桶，不按 acting user；个人令牌 / JWT 按凭据绑定用户。
 
 ---
 
@@ -547,8 +559,8 @@ def get_patch_mgmt_module_data(module, child_module, page, page_size, group_id, 
 - `permission` 取该 json 内的 `<菜单id>-<操作>`，与视图上 `@HasPermission(...)` 用的是同一套值
   （如 `patch_target-View`）；
 - 声明 `permission` 却漏 `permission_app` 会在注册时报错（已加 fail-closed 校验），
-  但**取值填错不会报错**——超管账号测试也发现不了（超管直通），只有非超管调用才会暴露为
-  全量 `403 PERM_MISSING`。**务必用非超管账号实测一次**。
+  但**取值填错不会报错**——JWT 与 `mode=all` 的超管测试也发现不了（权限位层直通），
+  钥匙名单外即使超管也 403。**务必用非超管账号实测一次**。
 
 **③ 写双租户测试并登记**（合并的硬性门禁）
 
@@ -566,11 +578,13 @@ TENANT_ISOLATION_COVERAGE = {
 
 当前测试基建的两点限制，写测试前先知悉：
 
-- `testing.py` 只提供 **API 令牌**身份的构造 helper，没有 JWT 身份 helper。锚点式
-  （`user_info`）端点在 JWT 凭据下的行为（锚点由客户端指定、可级联子组织）**无法用现成
+- `testing.py` 提供 **`create_api_tenant`（个人令牌）** 与 **`create_system_tenant`（系统 Token
+  + 目标用户/组织）**。系统 Token 场景须以两个组织的 acting 用户分别调用，断言读隔离与写归属。
+  锚点式（`user_info`）端点在 JWT 凭据下的行为（锚点由客户端指定、可级联子组织）**无法用现成
   helper 覆盖**，需自行构造 `system_mgmt.User` 并签发 JWT（参考 `test_gateway.py` 的
   `make_jwt_tenant`）；
-- API 令牌路径下锚点被强制覆盖为绑定组织，因此只用令牌身份测不出"锚点选错"类问题。
+- 个人令牌路径下锚点被强制覆盖为绑定组织；系统令牌路径下锚点被强制覆盖为
+  `X-Bklite-Acting-Team`。只用令牌身份测不出 JWT 的「锚点选错」类问题。
 
 **④ 过命名与契约评审**（见 8.6 checklist）
 
@@ -580,7 +594,7 @@ TENANT_ISOLATION_COVERAGE = {
 
 | `inject` | 函数期待 | 网关注入 | 语义 |
 | --- | --- | --- | --- |
-| `team_list` | `*, team=None` | API 令牌 → `[绑定组织]`；JWT → 用户全部直属组织 | 函数按注入集合做精确成员校验（**不级联**子组织） |
+| `team_list` | `*, team=None` | 个人令牌 → `[绑定组织]`；系统令牌 → `[Acting-Team]`；JWT → 用户全部直属组织 | 函数按注入集合做精确成员校验（**不级联**子组织） |
 | `user_info` | `user_info=None`，实际收到 `{user, domain, team, include_children}` | 注入认证身份，**并把 serializer 中字面名为 `team` / `include_children` 的字段抽取合并进同一个 user_info dict** | 函数自查 `group_list` 并**级联展开**子组织 |
 
 锚点式有两条容易踩的硬约束：
@@ -597,7 +611,8 @@ TENANT_ISOLATION_COVERAGE = {
 - **可见范围口径不同**：同一用户经两类接口能看到的组织范围可能不同（历史实现差异，非有意的权限模型）；
 - **锚点式的锚点必须是调用者的直属组织**：传入真实存在但非直属的子组织 id 会**静默返回空结果**而非报错。
 
-API 令牌为单组织收窄凭据：锚点式下网关**强制覆盖**客户端传入的锚点为令牌绑定组织。
+个人令牌为单组织收窄凭据：锚点式下网关**强制覆盖**客户端传入的锚点为令牌绑定组织。
+系统令牌同样强制覆盖为 `X-Bklite-Acting-Team`（必须是该 acting 用户的直属组织）。
 
 ### 8.4 `team_free` 的适用与约束
 
@@ -647,7 +662,8 @@ curl -sk -H "Authorization: Bearer $TOKEN" $BASE/openapi/v1/_docs | jq '.data.se
 | server 启动即报 `ImproperlyConfigured` | 装饰器声明不完整：缺 schema / 缺 inject / 身份参数缺失 / path 非法 / 重复注册。错误信息直指函数名与缺失项 |
 | 调用返回 404 | 该函数未声明 `@openapi_expose`，或 path / method 不匹配 |
 | 返回 400 `SCHEMA_INVALID` | 请求含 schema 未声明的字段（含试图传 `team`、`user_info` 等身份字段——设计如此） |
-| 返回 403 `PERM_MISSING` | 未满足 `permission`；**先核对 `permission_app` 是否为菜单 `client_id`**（填错即全量 403，超管测不出，见 8.2） |
+| 返回 403 `SCOPE_DENIED` | 密钥 Scope 未覆盖该接口（内部 `METHOD path` 或外部 `EXTERNAL {service}`）；去密钥管理页勾选或改为全部 |
+| 返回 403 `PERM_MISSING` | 未满足 `permission`；**先核对 `permission_app` 是否为菜单 `client_id`**（填错即全量 403，未收窄超管测不出，见 8.2） |
 | 返回 403 `TEAM_OUT_OF_SCOPE` | 业务组织参数越出注入的授权集合 |
 | 返回 500 `INTERNAL_ERROR`，日志有 `TypeError` | schema 字段名与函数形参不匹配（注册时不校验），见 8.2 |
 | JWT 调用恒 400 `team is required`，API 令牌却正常 | 锚点式 serializer 未声明 `team` 字段（新版本已在注册时拦截） |

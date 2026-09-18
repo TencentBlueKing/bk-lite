@@ -40,6 +40,13 @@ VALID_AUTH_MODES = {"trusted-header", "service-token"}
 
 DEFAULT_REGISTRY_CACHE_TTL = 10.0
 
+# 外部服务注入中间件与 Authorization 同点清除，防止上游误消费未经其校验的主体头。
+# 不得放入 inbound openapi-clear-headers：否则 ForwardAuth 在认证前就看不到 acting 头。
+_ACTING_HEADER_CLEAR = {
+    "X-Bklite-Acting-User": "",
+    "X-Bklite-Acting-Team": "",
+}
+
 _lock = threading.Lock()
 _snapshot = {
     "config": None,
@@ -267,11 +274,19 @@ def render_traefik_config(entries: dict, internal_services=(), allowlist=None):
                         # 否则半可信上游可凭其冒充调用方回调平台。
                         # service-token 模式天然覆盖该头，无此问题。
                         "Authorization": "",
+                        **_ACTING_HEADER_CLEAR,
                     }
                 }
             }
         else:
-            middlewares[inject] = {"headers": {"customRequestHeaders": {"Authorization": f"Bearer {normalized['secrets']['service_token']}"}}}
+            middlewares[inject] = {
+                "headers": {
+                    "customRequestHeaders": {
+                        "Authorization": f"Bearer {normalized['secrets']['service_token']}",
+                        **_ACTING_HEADER_CLEAR,
+                    }
+                }
+            }
         chain.append(inject)
 
         services[f"openapi-{name}"] = {"loadBalancer": {"servers": [{"url": normalized["base_url"]}]}}

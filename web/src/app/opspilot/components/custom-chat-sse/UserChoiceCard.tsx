@@ -6,6 +6,7 @@ import {ClockCircleOutlined, LoadingOutlined} from '@ant-design/icons';
 import {useTranslation} from '@/utils/i18n';
 import {UserChoiceOption, UserChoiceRequest} from '@/app/opspilot/types/global';
 import {postUserChoice} from './submitUserChoice';
+import {isUserChoiceRequestClosed, normalizeUserChoiceOptions} from './userChoiceOptions';
 import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
 
 interface UserChoiceCardProps {
@@ -28,13 +29,18 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
     return Math.max(0, Math.floor(request.timeout_seconds - elapsed));
   });
 
+  const choiceOptions = useMemo(
+    () => normalizeUserChoiceOptions(request.options),
+    [request.options],
+  );
+
   const displayMode = useMemo(() => {
     if (request.display_hint === 'text') return 'text';
-    if (request.options.length === 0) return 'text';
+    if (choiceOptions.length === 0) return 'text';
     if (request.multiple) return 'checkbox';
     if (request.display_hint !== 'auto') return request.display_hint;
-    return request.options.length <= 8 ? 'buttons' : 'dropdown';
-  }, [request.multiple, request.display_hint, request.options.length]);
+    return choiceOptions.length <= 8 ? 'buttons' : 'dropdown';
+  }, [choiceOptions.length, request.display_hint, request.multiple]);
 
   useEffect(() => {
     if (request.status !== 'pending') return;
@@ -106,11 +112,10 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
     handleSubmit([textInput.trim()]);
   }, [handleSubmit, textInput]);
 
-  const isTimedOut = remainingSeconds <= 0 && request.status === 'pending';
-  const isPending = request.status === 'pending' && !isTimedOut;
-  const isCompleted = request.status === 'submitted' || request.status === 'timeout' || isTimedOut;
+  const isPending = request.status === 'pending';
+  const isCompleted = isUserChoiceRequestClosed(request.status);
 
-  // Completed: don't render standalone row — result is shown inline in tool call panel
+  // 已提交/后端宣告超时才收起。前端倒计时到 0 仍保持待选，避免卡片消失而后端还在 wait_for_choice。
   if (isCompleted) {
     return null;
   }
@@ -162,7 +167,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
 
   const renderButtons = () => (
     <div className="flex flex-col gap-1.5">
-      {request.options.map(option =>
+      {choiceOptions.map(option =>
         renderOptionCard(option, false, () => handleButtonClick(option.key))
       )}
     </div>
@@ -172,7 +177,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
     const canConfirm = selectedKeys.length >= request.min_select;
     return (
       <div className="flex flex-col gap-1.5">
-        {request.options.map(option =>
+        {choiceOptions.map(option =>
           renderOptionCard(
             option,
             selectedKeys.includes(option.key),
@@ -242,17 +247,23 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   const renderDropdown = () => (
     <Select
       size="middle"
+      showSearch
+      optionFilterProp="label"
       placeholder={t('chat.choicePlaceholder')}
       className="w-full"
       disabled={submitting}
       loading={submitting}
       onChange={handleDropdownChange}
-      options={request.options.map(option => ({
+      options={choiceOptions.map(option => ({
         value: option.key,
         label: option.label,
         disabled: option.disabled,
         title: option.description,
       }))}
+      getPopupContainer={() => document.body}
+      listHeight={320}
+      popupMatchSelectWidth={false}
+      styles={{ popup: { root: { zIndex: 11000 } } }}
     />
   );
 
@@ -292,8 +303,8 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           {displayMode === 'checkbox' && renderCheckboxes()}
           {/* Always show text input: user can click an option OR type freely */}
           {displayMode !== 'checkbox' && (
-            <div className={request.options.length > 0 && displayMode !== 'text' ? 'mt-2.5' : 'mt-0'}>
-              {request.options.length > 0 && displayMode !== 'text' && (
+            <div className={choiceOptions.length > 0 && displayMode !== 'text' ? 'mt-2.5' : 'mt-0'}>
+              {choiceOptions.length > 0 && displayMode !== 'text' && (
                 <div className="mb-1.5 text-[11px] text-[var(--color-text-4)]">
                   {t('chat.choiceOrType') || '或者自行输入'}
                 </div>
@@ -304,8 +315,8 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         </>
       )}
 
-      {/* Timer */}
-      {isPending && (
+      {/* Timer：倒计时仅作提示，到 0 不收起卡片 */}
+      {isPending && remainingSeconds > 0 && (
         <div className={[
           'mt-2.5 flex items-center gap-1 text-[11px]',
           remainingSeconds <= 10 ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-4)]',

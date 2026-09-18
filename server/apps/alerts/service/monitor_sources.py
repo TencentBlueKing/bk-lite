@@ -15,6 +15,12 @@ def collect_push_source_ids(events) -> list[str]:
     return normalize_push_source_ids(getattr(event, "push_source_id", None) for event in events)
 
 
+def remember_snapshot(alert):
+    from apps.alerts.service.push_source_catalog import default_catalog
+
+    default_catalog().observe(getattr(alert, "team", None) or [], getattr(alert, "push_source_ids", None) or [])
+
+
 def associate_event_with_monitor_sources(alert_pk, event) -> bool:
     """在同一行锁下关联事件并刷新来源，返回是否新增关联。"""
     with transaction.atomic():
@@ -25,4 +31,6 @@ def associate_event_with_monitor_sources(alert_pk, event) -> bool:
         sources = normalize_push_source_ids(alert.events.order_by().values_list("push_source_id", flat=True).distinct())
         if sources != alert.push_source_ids:
             Alert.objects.filter(pk=alert.pk).update(push_source_ids=sources)
-        return added
+            alert.push_source_ids = sources
+    remember_snapshot(alert)
+    return added

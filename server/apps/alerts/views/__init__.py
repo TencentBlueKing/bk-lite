@@ -33,6 +33,7 @@ from .open_api_k8s import K8sOpenAPIViewSet
 
 # 操作日志
 from .operator_log import SystemLogModelViewSet
+from .push_source_id import PushSourceIdViewSet
 
 # 接收器
 from .receiver import receiver_data, receiver_source_data, request_test
@@ -46,6 +47,7 @@ from .system_setting import SystemSettingModelViewSet
 __all__ = [
     # 告警源
     "AlertSourceModelViewSet",
+    "PushSourceIdViewSet",
     "K8sOpenAPIViewSet",
     # 告警
     "AlertModelViewSet",

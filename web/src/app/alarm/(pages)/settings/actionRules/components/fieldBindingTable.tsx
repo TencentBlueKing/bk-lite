@@ -41,7 +41,7 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
   // 复用 constants/settings.ts 中的 ruleList 作为 value 选项，确保与 actionRules/components/matchRule
   // 同一 EditModal 内的"可选 Key"集合一致。本组件进一步：
   //   - 过滤 source_id（只剩 source_name，按"用 name 不用 ID"）
-  //   - 把 source_name 的 verbose_name 简化为"告警源"
+  //   - 把 source_name 的 verbose_name 简化为"集成源"
   const valueOptions = [
     { label: '告警ID', value: 'alert_id' },
     ...ruleList
@@ -52,7 +52,7 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
           item.name !== 'service'
       )
       .map((item) => ({
-        label: item.name === 'source_name' ? '告警源' : item.verbose_name,
+        label: item.name === 'source_name' ? '集成源' : item.verbose_name,
         value: item.name,
       })),
   ];

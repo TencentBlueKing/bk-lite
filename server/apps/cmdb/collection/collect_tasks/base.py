@@ -125,6 +125,7 @@ class BaseCollect(object):
             data_cleanup_strategy=self.task.data_cleanup_strategy,
             plugin_kwargs=self.plugin_kwargs,
             reconcile_task_assets=True,
+            task=self.task,
         )
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)
@@ -141,6 +142,9 @@ class BaseCollect(object):
         if result.get("all", False) or result.get("all", False) == 0:
             all_count = result.pop("all")
         format_data = {"add": [], "update": [], "delete": [], "association": []}
+        blocked_reason = result.pop("__sync_blocked_reason__", None)
+        if blocked_reason:
+            format_data["__sync_blocked_reason__"] = blocked_reason
         for value in result.values():
             for operator, datas in value.items():
                 for status, data in datas.items():

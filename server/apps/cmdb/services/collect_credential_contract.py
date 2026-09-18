@@ -5,7 +5,6 @@
 
 from copy import deepcopy
 
-
 API_SECRET_MASK = "******"
 
 
@@ -89,22 +88,24 @@ def validate_collect_credential(
         raise CredentialContractError({"non_field_errors": "凭据格式错误"})
 
     if not contract["allow_multiple"] and len(pool) != 1:
-        raise CredentialContractError(
-            {"non_field_errors": "WinSphere 仅支持一组连接凭据"}
-        )
+        raise CredentialContractError({"non_field_errors": "WinSphere 仅支持一组连接凭据"})
     if len(pool) != 1 or not isinstance(pool[0], dict):
         raise CredentialContractError({"non_field_errors": "凭据格式错误"})
 
     credential = pool[0]
     existing = _first_credential(existing_credential)
     fields = {field["key"]: field for field in contract["fields"]}
-    allowed_fields = set(fields) | {"credential_id"}
+    allowed_fields = set(fields) | {"credential_id", "credential_source", "credential_version"}
     unknown_fields = sorted(set(credential) - allowed_fields)
     errors = {}
     if unknown_fields and not contract["allow_unknown_fields"]:
         errors["fields"] = f"不支持字段: {', '.join(unknown_fields)}"
 
     normalized = {}
+    if credential.get("credential_source"):
+        normalized["credential_source"] = credential["credential_source"]
+    if credential.get("credential_version"):
+        normalized["credential_version"] = credential["credential_version"]
     if credential.get("credential_id"):
         normalized["credential_id"] = credential["credential_id"]
     elif existing.get("credential_id"):
@@ -116,11 +117,7 @@ def validate_collect_credential(
             value = existing.get(key)
         if value is None and "default" in field:
             value = field.get("default")
-        if (
-            field["type"] == "password"
-            and value in (None, "")
-            and existing.get(key) not in (None, "")
-        ):
+        if field["type"] == "password" and value in (None, "") and existing.get(key) not in (None, ""):
             value = existing[key]
 
         error = _validate_field(field, value)
@@ -141,11 +138,7 @@ def validate_collect_credential(
 def _first_credential(raw_credential):
     if isinstance(raw_credential, dict):
         return raw_credential
-    if (
-        isinstance(raw_credential, list)
-        and len(raw_credential) == 1
-        and isinstance(raw_credential[0], dict)
-    ):
+    if isinstance(raw_credential, list) and len(raw_credential) == 1 and isinstance(raw_credential[0], dict):
         return raw_credential[0]
     return {}
 
@@ -168,10 +161,7 @@ def _validate_field(field, value):
         except (TypeError, ValueError):
             return f"{label}必须为整数"
         if parsed < field.get("min", parsed) or parsed > field.get("max", parsed):
-            return (
-                f"{label}必须在 {field.get('min')} 到 "
-                f"{field.get('max')} 之间"
-            )
+            return f"{label}必须在 {field.get('min')} 到 " f"{field.get('max')} 之间"
         return None
     if field_type == "boolean" and not isinstance(value, bool):
         return f"{label}必须为布尔值"

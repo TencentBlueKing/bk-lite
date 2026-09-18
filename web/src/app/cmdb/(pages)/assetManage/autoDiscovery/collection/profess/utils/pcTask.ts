@@ -10,6 +10,7 @@
  */
 import { PASSWORD_PLACEHOLDER } from '@/app/cmdb/constants/professCollection';
 import { CredentialPoolItem } from '@/app/cmdb/types/autoDiscovery';
+import { withTaskCredentialSource } from '../hooks/formatTaskValues';
 
 export type PCOSType = 'windows' | 'macos';
 export type PCCredentialShape = 'winrm' | 'macos_ssh';
@@ -119,13 +120,13 @@ export const buildPCSubmitPayload = (values: {
         winrm_transport: 'ntlm',
         winrm_cert_validation: Boolean(first.certValidation),
       },
-      credential: pool.map(normalizeWindowsCredential),
+      credential: pool.map((item) => withTaskCredentialSource(item, normalizeWindowsCredential(item))),
     };
   }
 
   return {
     params: { os_type: 'macos' },
-    credential: pool.map(normalizeMacosCredential),
+    credential: pool.map((item) => withTaskCredentialSource(item, normalizeMacosCredential(item))),
   };
 };
 
@@ -146,7 +147,7 @@ export const buildPCFormValues = (detail: any, isCopy: boolean) => {
 
   const credentialPool = pool
     .filter((item: any) => item && typeof item === 'object')
-    .map((item: any) => ({
+    .map((item: any) => withTaskCredentialSource(item, {
       ...item,
       scheme: params.winrm_scheme || 'https',
       transport: 'ntlm',

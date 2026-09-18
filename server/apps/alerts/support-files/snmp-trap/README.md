@@ -1,6 +1,6 @@
 # BK-Lite SNMP Trap Alert Source
 
-这是 BK-Lite 告警中心内置的 `snmp_trap` 告警源说明，用于通过独立 bridge 接收并处理规范化后的 SNMP Trap 事件。
+这是 BK-Lite 告警中心内置的 `snmp_trap` 集成源说明，用于通过独立 bridge 接收并处理规范化后的 SNMP Trap 事件。
 
 该方案复用现有 source-specific webhook 接入模式，不复用通用 `receiver_data` 接口，也不新增专用 `snmp_trap` receiver 路由。
 
@@ -11,7 +11,7 @@
 
 ## 方案说明
 
-`snmp_trap` 告警源的职责是：
+`snmp_trap` 集成源的职责是：
 
 1. 接收由独立 SNMP Trap bridge 转发的标准事件列表；
 2. 复用现有 `restful` adapter 与 `Event -> Recovery/Aggregation -> Alert` 生命周期；

@@ -48,6 +48,8 @@ class IMNotificationSyncRunStatusChoices(models.TextChoices):
 
 
 class IMNotificationChannel(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
+    CHANNEL_TYPE = "im_notification"
+
     name = models.CharField(max_length=100)
     integration_instance = models.ForeignKey("system_mgmt.IntegrationInstance", on_delete=models.CASCADE, related_name="im_notification_channels")
     enabled = models.BooleanField(default=True)

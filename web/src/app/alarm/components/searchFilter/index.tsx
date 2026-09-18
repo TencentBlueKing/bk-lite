@@ -1,20 +1,108 @@
-import React, { useState, useEffect } from 'react';
+'use client';
+
+import React, { useEffect, useRef, useState } from 'react';
 import searchFilterStyle from './index.module.scss';
-import { Select, Input } from 'antd';
+import { Button, Input, Select, Spin } from 'antd';
 import {
   SearchFilterProps,
   SearchFilterCondition,
 } from '@/app/alarm/types/alarms';
+import { useSourceApi } from '@/app/alarm/api/integration';
+import { normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
+import { useTranslation } from '@/utils/i18n';
 
-const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList }) => {
+const PUSH_SOURCE_MAX = 50;
+
+const PushSourceSearchValue = ({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (value: string[]) => void;
+}) => {
+  const { t } = useTranslation();
+  const { getPushSourceIdOptions } = useSourceApi();
+  const [catalog, setCatalog] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const loaded = useRef(false);
+  const pending = useRef(false);
+
+  const load = async () => {
+    if (pending.current || loaded.current) return;
+    pending.current = true;
+    setLoading(true);
+    setFailed(false);
+    try {
+      const rows = await getPushSourceIdOptions();
+      setCatalog(
+        Array.isArray(rows)
+          ? rows.filter((item): item is string => typeof item === 'string' && !!item.trim())
+          : [],
+      );
+      loaded.current = true;
+    } catch {
+      setFailed(true);
+    } finally {
+      pending.current = false;
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const publish = (next: string[]) => onChange(normalizeRuleTags(next).slice(0, PUSH_SOURCE_MAX));
+
+  return (
+    <Select<string[]>
+      allowClear
+      showSearch
+      mode="tags"
+      className="value"
+      style={{ width: 250 }}
+      maxCount={PUSH_SOURCE_MAX}
+      maxLength={256}
+      maxTagCount={2}
+      optionFilterProp="label"
+      aria-label={t('alarmCommon.pushSourceSelect')}
+      placeholder={t('alarmCommon.all')}
+      value={value}
+      loading={loading}
+      options={catalog.map((item) => ({ value: item, label: item }))}
+      onChange={(next) => publish(next)}
+      notFoundContent={
+        loading ? (
+          <Spin size="small" />
+        ) : failed ? (
+          <Button type="link" onClick={() => void load()}>
+            {t('alarmCommon.pushSourceOptionsRetry')}
+          </Button>
+        ) : (
+          t('alarmCommon.pushSourceEmpty')
+        )
+      }
+    />
+  );
+};
+
+const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList, condition }) => {
   const [searchAttr, setSearchAttr] = useState<string>('');
   const [searchValue, setSearchValue] = useState<any>('');
 
   useEffect(() => {
+    if (condition?.field) {
+      setSearchAttr(condition.field);
+      setSearchValue(
+        condition.value ?? (condition.type === 'push_source' ? [] : ''),
+      );
+      return;
+    }
     if (attrList.length) {
       setSearchAttr(attrList[0].attr_id);
     }
-  }, [attrList.length]);
+  }, [attrList.length, condition]);
 
   const onSearchValueChange = (value: any) => {
     setSearchValue(value);
@@ -29,7 +117,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList }) => {
 
   const onSearchAttrChange = (attr: string) => {
     setSearchAttr(attr);
-    setSearchValue('');
+    const nextType = attrList.find((item) => item.attr_id === attr)?.attr_type;
+    setSearchValue(nextType === 'push_source' ? [] : '');
   };
 
   const renderSearchInput = () => {
@@ -51,6 +140,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({ onSearch, attrList }) => {
               </Select.Option>
             ))}
           </Select>
+        );
+      case 'push_source':
+        return (
+          <PushSourceSearchValue
+            value={Array.isArray(searchValue) ? searchValue : []}
+            onChange={onSearchValueChange}
+          />
         );
       default:
         return (

@@ -11,6 +11,7 @@ from apps.cmdb.models.collect_model import (
     recommended_topology_interval_minutes,
 )
 from apps.cmdb.node_configs.network.network import NetworkNodeParams, NetworkTopoNodeParams
+from apps.cmdb.services.collect_vault_resolver import resolve_task_credential_pool
 from apps.core.logger import cmdb_logger as logger
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -54,10 +55,11 @@ def expected_network_node_configs(instance) -> list[dict]:
     """按期望集合生成节点配置 payload（device 必有；topology 视开关）。"""
     params = ensure_topology_interval_defaults(instance)
     instance.params = params
-    nodes = NetworkNodeParams(instance).push_params()
+    resolved_credentials = resolve_task_credential_pool(instance)
+    nodes = NetworkNodeParams(instance, resolved_credentials=resolved_credentials).push_params()
     contract = normalize_topology_contract(params)
     if contract["has_network_topo"]:
-        nodes.extend(NetworkTopoNodeParams(instance).push_params())
+        nodes.extend(NetworkTopoNodeParams(instance, resolved_credentials=resolved_credentials).push_params())
     return nodes
 
 

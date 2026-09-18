@@ -32,6 +32,7 @@ const IncidentsPage: React.FC = () => {
     level: [],
     state: [],
     alarm_source: [],
+    push_source_ids: [],
   });
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,

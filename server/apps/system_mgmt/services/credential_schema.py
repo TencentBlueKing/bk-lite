@@ -37,6 +37,18 @@ def _schema_fields(fields: list) -> list[dict]:
                 or len(set(enum_values)) != len(enum_values)
             ):
                 raise SchemaError(f"enum field {field_id} requires unique string values")
+            aliases = field.get("aliases")
+            if aliases is not None:
+                if (
+                    not isinstance(aliases, dict)
+                    or not aliases
+                    or any(not isinstance(key, str) or not isinstance(value, str) for key, value in aliases.items())
+                ):
+                    raise SchemaError(f"enum field {field_id} aliases must be a string map")
+                if any(value not in enum_values for value in aliases.values()):
+                    raise SchemaError(f"enum field {field_id} aliases must point to declared values")
+                if any(key in enum_values for key in aliases):
+                    raise SchemaError(f"enum field {field_id} aliases cannot overlap values")
 
     for field in fields:
         visible_when = field.get("visible_when")
@@ -46,16 +58,12 @@ def _schema_fields(fields: list) -> list[dict]:
             raise SchemaError(f"visible_when for {field['id']} must be an object")
         for referenced_id, condition in visible_when.items():
             if referenced_id not in ids:
-                raise SchemaError(
-                    f"visible_when for {field['id']} references unknown field {referenced_id}"
-                )
+                raise SchemaError(f"visible_when for {field['id']} references unknown field {referenced_id}")
             if isinstance(condition, str):
                 continue
             if not isinstance(condition, Mapping):
                 raise SchemaError(f"invalid visible_when condition for {field['id']}")
-            if condition.get("op") not in {"eq", "ne"} or not isinstance(
-                condition.get("value"), str
-            ):
+            if condition.get("op") not in {"eq", "ne"} or not isinstance(condition.get("value"), str):
                 raise SchemaError(f"invalid visible_when condition for {field['id']}")
 
     return [dict(field) for field in fields]
@@ -71,6 +79,17 @@ def secret_field_ids(fields: list) -> list[str]:
 
 def type_field_ids(fields) -> set[str]:
     return {field["id"] for field in fields or [] if isinstance(field, Mapping) and "id" in field}
+
+
+def apply_enum_aliases(type_fields, values: dict) -> dict:
+    schema_by_id = {field["id"]: field for field in type_fields or [] if isinstance(field, Mapping) and "id" in field}
+    rewritten = dict(values)
+    for field_id, value in list(rewritten.items()):
+        field = schema_by_id.get(field_id)
+        if not field or field.get("kind") != "enum":
+            continue
+        rewritten[field_id] = (field.get("aliases") or {}).get(value, value)
+    return rewritten
 
 
 def _condition_matches(condition: object, actual: object) -> bool:
@@ -92,9 +111,7 @@ def visible_field_ids(fields: list, values: dict) -> set[str]:
     for field in schema_fields:
         conditions = field.get("visible_when")
         if not conditions or all(
-            referenced_id in values
-            and _condition_matches(condition, values[referenced_id])
-            for referenced_id, condition in conditions.items()
+            referenced_id in values and _condition_matches(condition, values[referenced_id]) for referenced_id, condition in conditions.items()
         ):
             visible.add(field["id"])
     return visible
@@ -109,8 +126,10 @@ def _validate_value(field: dict, value: object) -> None:
     elif kind == "number":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise SchemaError(f"field {field_id} must be a number")
-    elif value not in field["values"]:
-        raise SchemaError(f"field {field_id} has an invalid enum value")
+    elif kind == "enum":
+        aliases = field.get("aliases") or {}
+        if value not in field["values"] and value not in aliases:
+            raise SchemaError(f"field {field_id} has an invalid enum value")
 
 
 def validate_instance_fields(*, type_fields, values, require_secrets: bool) -> dict:
@@ -121,9 +140,7 @@ def validate_instance_fields(*, type_fields, values, require_secrets: bool) -> d
     schema_by_id = {field["id"]: field for field in schema_fields}
     unknown_ids = set(values) - schema_by_id.keys()
     if unknown_ids:
-        raise SchemaError(
-            f"unknown field ids: {', '.join(sorted(map(str, unknown_ids)))}"
-        )
+        raise SchemaError(f"unknown field ids: {', '.join(sorted(map(str, unknown_ids)))}")
 
     working = dict(values)
     for field in schema_fields:
@@ -146,9 +163,9 @@ def validate_instance_fields(*, type_fields, values, require_secrets: bool) -> d
 
         value = working[field_id]
         _validate_value(field, value)
-        if field.get("required") and value == "" and (
-            require_secrets or field["kind"] != "secret"
-        ):
+        if field["kind"] == "enum":
+            value = (field.get("aliases") or {}).get(value, value)
+        if field.get("required") and value == "" and (require_secrets or field["kind"] != "secret"):
             raise SchemaError(f"field {field_id} is required")
         if require_secrets and field["kind"] == "secret" and field.get("required") and value == "":
             raise SchemaError(f"secret field {field_id} is required")

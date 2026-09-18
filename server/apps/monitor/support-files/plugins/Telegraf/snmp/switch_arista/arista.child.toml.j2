@@ -101,8 +101,6 @@
 
 [[processors.starlark]]
     namepass = ["device_memory"]
-    [processors.starlark.tagpass]
-        brand = ["arista"]
     source = '''
 def apply(metric):
     descr = metric.tags.get("descr") or ""
@@ -124,11 +122,11 @@ def apply(metric):
         metric.tags.pop("descr")
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["arista"]
 
 [[processors.starlark]]
     namepass = ["device_temperature"]
-    [processors.starlark.tagpass]
-        brand = ["arista"]
     source = '''
 def pow10(exp):
     result = 1.0
@@ -167,3 +165,5 @@ def apply(metric):
         metric.tags.pop("sensor_type")
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["arista"]
