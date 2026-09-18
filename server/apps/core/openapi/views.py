@@ -18,9 +18,28 @@ from django.views.decorators.http import require_http_methods
 from apps.core.logger import openapi_logger as logger
 from apps.core.openapi.dispatcher import dispatch
 from apps.core.openapi.envelope import ErrorCode, fail, ok
-from apps.core.openapi.identity import AuthenticationFailed, authenticate_request
+from apps.core.openapi.identity import (
+    CREDENTIAL_API_TOKEN,
+    CREDENTIAL_JWT,
+    CREDENTIAL_SYSTEM_TOKEN,
+    AuthenticationFailed,
+    authenticate_request,
+)
 from apps.core.openapi.registry import default_registry
+from apps.core.openapi.token_scope import allows_external
 from apps.core.utils.exempt import api_exempt
+
+
+def _auth_error_response(exc: AuthenticationFailed):
+    code = getattr(exc, "code", None) or ErrorCode.AUTH_INVALID
+    return fail(code, str(exc) or "authentication failed")
+
+
+def _try_authenticate(request):
+    try:
+        return authenticate_request(request), None
+    except AuthenticationFailed as exc:
+        return getattr(exc, "identity", None), _auth_error_response(exc)
 
 
 def _extract_payload(request):
@@ -38,17 +57,31 @@ def _extract_payload(request):
     return payload, None
 
 
+def _audit_label(value, limit=128):
+    if value is None:
+        return "-"
+    text = str(value).replace("\r", " ").replace("\n", " ").strip()
+    if not text:
+        return "-"
+    return text[:limit]
+
+
 def _audit(request, identity, response, started_at):
     try:
         team_ids = getattr(identity, "team_ids", None)
         request_digest = hashlib.sha256(request.body or b"").hexdigest()
+        token_id = getattr(identity, "token_id", None)
         logger.info(
-            "openapi_access user=%s domain=%s credential=%s team=%s method=%s "
-            "path=%s status=%s duration_ms=%d size=%d request_sha256=%s",
-            getattr(identity, "user", "-"),
-            getattr(identity, "domain", "-"),
-            getattr(identity, "credential_type", "-"),
+            "openapi_access user=%s domain=%s credential=%s token_id=%s token_name=%s "
+            "team=%s caller=%s method=%s path=%s status=%s duration_ms=%d size=%d "
+            "request_sha256=%s",
+            getattr(identity, "user", None) or "-",
+            getattr(identity, "domain", None) or "-",
+            getattr(identity, "credential_type", None) or "-",
+            token_id if token_id is not None else "-",
+            _audit_label(getattr(identity, "token_name", None)),
             ",".join(str(t) for t in team_ids) if team_ids else "-",
+            getattr(identity, "caller_system", None) or "-",
             request.method,
             request.path,
             getattr(response, "status_code", "-"),
@@ -78,11 +111,8 @@ def invoke_view(request, service, sub_path):
     identity = None
     response = None
     try:
-        try:
-            identity = authenticate_request(request)
-        except AuthenticationFailed as exc:
-            response = fail(ErrorCode.AUTH_INVALID, str(exc) or "authentication failed")
-        else:
+        identity, response = _try_authenticate(request)
+        if response is None:
             response = _invoke(request, service, sub_path, identity)
         return response
     finally:
@@ -96,11 +126,8 @@ def me_view(request):
     identity = None
     response = None
     try:
-        try:
-            identity = authenticate_request(request)
-        except AuthenticationFailed as exc:
-            response = fail(ErrorCode.AUTH_INVALID, str(exc) or "authentication failed")
-        else:
+        identity, response = _try_authenticate(request)
+        if response is None:
             response = ok(_build_me_payload(identity))
         return response
     finally:
@@ -138,10 +165,8 @@ def docs_view(request):
     identity = None
     response = None
     try:
-        try:
-            identity = authenticate_request(request)
-        except AuthenticationFailed as exc:
-            response = fail(ErrorCode.AUTH_INVALID, str(exc) or "authentication failed")
+        identity, response = _try_authenticate(request)
+        if response is not None:
             return response
 
         from apps.core.openapi.renderer import get_external_catalog
@@ -209,10 +234,8 @@ def forward_auth_view(request):
     identity = None
     response = None
     try:
-        try:
-            identity = authenticate_request(request)
-        except AuthenticationFailed as exc:
-            response = fail(ErrorCode.AUTH_INVALID, str(exc) or "authentication failed")
+        identity, response = _try_authenticate(request)
+        if response is not None:
             return response
 
         forwarded_uri = request.META.get("HTTP_X_FORWARDED_URI", "")
@@ -225,8 +248,18 @@ def forward_auth_view(request):
             response = fail(ErrorCode.NOT_FOUND, "no such endpoint")
             return response
 
+        if identity.credential_type == CREDENTIAL_SYSTEM_TOKEN:
+            response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
+            return response
+
+        if identity.credential_type != CREDENTIAL_JWT and not allows_external(
+            identity.token_scope, matched.group("service")
+        ):
+            response = fail(ErrorCode.SCOPE_DENIED, "endpoint not in token scope")
+            return response
+
         required = set(entry["required_roles"])
-        # 空列表语义（冻结）：放行任意已认证身份
+        # 空列表语义（冻结）：放行任意已认证身份（api_token / JWT）
         if required and not identity.is_superuser and not (required & set(identity.roles)):
             response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
             return response
@@ -235,7 +268,7 @@ def forward_auth_view(request):
         response["X-BK-User"] = f"{identity.user}@{identity.domain}"
         response["X-BK-Team"] = ",".join(str(t) for t in identity.team_ids)
         # X-On-Behalf-Of：仅服务账号（API 令牌）场景回显原值，其余场景覆盖清除
-        if identity.credential_type == "api_token":
+        if identity.credential_type == CREDENTIAL_API_TOKEN:
             response["X-On-Behalf-Of"] = request.META.get("HTTP_X_ON_BEHALF_OF", "")
         else:
             response["X-On-Behalf-Of"] = ""
@@ -293,4 +326,5 @@ def _build_me_payload(identity):
         "anchor_scopes": anchor_scopes,
         "roles": identity.roles,
         "services": services,
+        "caller_system": identity.caller_system,
     }
