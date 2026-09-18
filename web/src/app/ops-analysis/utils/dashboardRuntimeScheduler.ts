@@ -49,9 +49,12 @@ const bestPriority = <T,>(entry: RuntimeRequestEntry<T>) =>
     .map((consumer) => consumer.priority)
     .sort(comparePriority)[0];
 
+type OwnerLocationPriority = Pick<RuntimeRequestPriority, 'visibility' | 'distance' | 'order'>;
+
 export class DashboardRuntimeScheduler {
   private readonly concurrency: number;
   private readonly entries = new Map<string, RuntimeRequestEntry>();
+  private readonly ownerLocations = new Map<string, OwnerLocationPriority>();
   private running = 0;
   private destroyed = false;
 
@@ -70,12 +73,13 @@ export class DashboardRuntimeScheduler {
       return Promise.reject(new RuntimeRequestCancelledError());
     }
 
+    const resolvedPriority = this.applyRememberedLocation(ownerId, priority);
     const existing = this.entries.get(physicalKey) as RuntimeRequestEntry<T> | undefined;
     return new Promise<T>((resolve, reject) => {
       const consumer: RuntimeRequestConsumer<T> = {
         consumerId,
         ownerId,
-        priority,
+        priority: resolvedPriority,
         resolve,
         reject,
       };
@@ -91,7 +95,7 @@ export class DashboardRuntimeScheduler {
       const entry: RuntimeRequestEntry<T> = {
         physicalKey,
         state: 'queued',
-        priority,
+        priority: resolvedPriority,
         consumers: new Map([[consumerId, consumer]]),
         start,
       };
@@ -117,6 +121,7 @@ export class DashboardRuntimeScheduler {
   }
 
   updateOwnerPriority(ownerId: string, priority: RuntimeRequestPriority): void {
+    this.rememberOwnerLocation(ownerId, priority);
     this.entries.forEach((entry) => {
       if (entry.state !== 'queued') return;
       entry.consumers.forEach((consumer) => {
@@ -135,6 +140,7 @@ export class DashboardRuntimeScheduler {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.ownerLocations.clear();
     this.entries.forEach((entry, key) => {
       if (entry.state !== 'queued') return;
       entry.consumers.forEach((consumer) => {
@@ -151,6 +157,33 @@ export class DashboardRuntimeScheduler {
         (entry) => entry.state === 'queued',
       ).length,
       destroyed: this.destroyed,
+    };
+  }
+
+  private rememberOwnerLocation(
+    ownerId: string,
+    priority: RuntimeRequestPriority,
+  ): void {
+    this.ownerLocations.set(ownerId, {
+      visibility: priority.visibility,
+      distance: priority.distance,
+      order: priority.order,
+    });
+  }
+
+  private applyRememberedLocation(
+    ownerId: string,
+    priority: RuntimeRequestPriority,
+  ): RuntimeRequestPriority {
+    const location = this.ownerLocations.get(ownerId);
+    if (!location) {
+      return priority;
+    }
+    return {
+      cause: priority.cause,
+      visibility: location.visibility,
+      distance: location.distance,
+      order: location.order,
     };
   }
 
