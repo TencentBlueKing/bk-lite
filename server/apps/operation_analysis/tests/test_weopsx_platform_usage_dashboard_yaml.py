@@ -109,20 +109,20 @@ def test_weopsx_yaml_parses_and_binds_organization_and_time():
     assert "weopsx-cmdb-class-top" in widget_ids
     assert "weopsx-cmdb-coverage" in widget_ids
     cmdb_group = next(item for item in dashboard.view_sets if item["id"] == "group-cmdb")
-    assert [(c["id"], c["x"], c["w"]) for c in cmdb_group["subGridOpts"]["children"]] == [
-        ("weopsx-cmdb-classifications", 0, 2),
-        ("weopsx-cmdb-models", 2, 2),
-        ("weopsx-cmdb-instances", 4, 2),
-        ("weopsx-cmdb-coverage", 6, 2),
-        ("weopsx-cmdb-class-top", 8, 4),
+    assert [(c["id"], c["x"], c["y"], c["w"], c["h"]) for c in cmdb_group["subGridOpts"]["children"]] == [
+        ("weopsx-cmdb-classifications", 0, 0, 4, 3),
+        ("weopsx-cmdb-models", 4, 0, 4, 3),
+        ("weopsx-cmdb-instances", 8, 0, 4, 3),
+        ("weopsx-cmdb-coverage", 0, 3, 6, 5),
+        ("weopsx-cmdb-class-top", 6, 3, 6, 5),
     ]
     alert_group = next(item for item in dashboard.view_sets if item["id"] == "group-alert")
-    assert [(c["id"], c["x"], c["y"], c["w"]) for c in alert_group["subGridOpts"]["children"]] == [
-        ("weopsx-alert-active", 0, 0, 4),
-        ("weopsx-alert-sources", 4, 0, 4),
-        ("weopsx-alert-loop", 8, 0, 4),
-        ("weopsx-alert-source-top", 0, 5, 6),
-        ("weopsx-alert-rule-top", 6, 5, 6),
+    assert [(c["id"], c["x"], c["y"], c["w"], c["h"]) for c in alert_group["subGridOpts"]["children"]] == [
+        ("weopsx-alert-active", 0, 0, 6, 3),
+        ("weopsx-alert-sources", 6, 0, 6, 3),
+        ("weopsx-alert-loop", 0, 3, 3, 5),
+        ("weopsx-alert-source-top", 3, 3, 4, 5),
+        ("weopsx-alert-rule-top", 7, 3, 5, 5),
     ]
     loop = next(widget for widget in widgets if widget["id"] == "weopsx-alert-loop")
     assert loop["valueConfig"]["gaugeMax"] == 200
