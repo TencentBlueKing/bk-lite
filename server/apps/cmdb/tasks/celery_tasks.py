@@ -605,8 +605,10 @@ def sync_collect_task(  # noqa: C901
                     collect_digest["message"] = "未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间"
                 elif collect_success == 0 and collect_failed > 0:
                     collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
+                elif format_data.get("__sync_blocked_reason__"):
+                    collect_digest["message"] = "同步已停止：{}".format(format_data["__sync_blocked_reason__"])
                 else:
-                    collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
+                    collect_digest["message"] = "资产同步失败，请查看任务详情中的失败原因"
             elif decided == CollectRunStatusType.PARTIAL_SUCCESS:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
                 collect_digest["message"] = "部分采集或数据写入失败，请检查原始数据及错误数"

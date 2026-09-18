@@ -12,6 +12,10 @@ interface SkillMemorySettingsFieldsProps {
   loading?: boolean;
 }
 
+/** 与知识库行共用，保证两个 Select 同宽。 */
+export const SKILL_CAPABILITY_TRAILING_SLOT_CLASS =
+  'inline-flex w-28 shrink-0 items-center justify-end gap-1.5 whitespace-nowrap';
+
 const SkillMemorySettingsFields: React.FC<SkillMemorySettingsFieldsProps> = ({
   spaces,
   loading = false,
@@ -41,7 +45,7 @@ const SkillMemorySettingsFields: React.FC<SkillMemorySettingsFieldsProps> = ({
           <Link
             href="/opspilot/memory"
             target="_blank"
-            className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--color-primary)] hover:opacity-80"
+            className={`${SKILL_CAPABILITY_TRAILING_SLOT_CLASS} text-xs text-[var(--color-primary)] hover:opacity-80`}
           >
             <PlusOutlined className="text-[10px]" />
             {t('chatflow.nodeConfig.addMemorySpace')}

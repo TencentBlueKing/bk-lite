@@ -126,6 +126,7 @@ const findPluginTabByCollectType = (
 const MetricViews: React.FC<ViewDetailProps> = ({
   monitorObjectId,
   monitorObjectName,
+  monitorObjectDisplayName,
   instanceId,
   instanceName,
   idValues,
@@ -364,7 +365,10 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       }
 
       let _plugins: { label: string; value: string }[] =
-        formatMonitorViewPluginTabs(responseData);
+        formatMonitorViewPluginTabs(responseData, {
+          objectDisplayName:
+            monitorObjectDisplayName || monitorObjectName || '',
+        });
 
       let nextProcessObjectId = '';
       let nextProcessPluginId = '';

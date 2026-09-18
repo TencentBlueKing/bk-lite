@@ -61,7 +61,8 @@ function SecretForm({
 describe('CredentialFieldsBlock secret required', () => {
   it('rejects a blank required secret on create', async () => {
     const formRef: { current: FormInstance | null } = { current: null };
-    render(<SecretForm requireSecrets formRef={formRef} />);
+    const { container } = render(<SecretForm requireSecrets formRef={formRef} />);
+    expect(container.querySelector('.ant-form-item-required')).toBeTruthy();
     await expect(act(() => formRef.current!.validateFields())).rejects.toMatchObject({
       errorFields: expect.arrayContaining([
         expect.objectContaining({ name: ['fields', 'password'] }),
@@ -71,7 +72,8 @@ describe('CredentialFieldsBlock secret required', () => {
 
   it('allows a blank required secret when editing (leave blank to keep)', async () => {
     const formRef: { current: FormInstance | null } = { current: null };
-    render(<SecretForm requireSecrets={false} formRef={formRef} />);
+    const { container } = render(<SecretForm requireSecrets={false} formRef={formRef} />);
+    expect(container.querySelector('.ant-form-item-required')).toBeNull();
     await expect(act(() => formRef.current!.validateFields())).resolves.toEqual({ fields: {} });
   });
 

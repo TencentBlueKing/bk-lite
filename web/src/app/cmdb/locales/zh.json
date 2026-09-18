@@ -692,7 +692,6 @@
         "ipRangeCycleHint": "当前 IP 段地址数较多，单次采集耗时会明显增加，请评估是否需要拉长采集周期。",
         "hostCredentialOptionalTip": "JOB 采集仅在目标主机已接入可用 Agent 时可不填登录凭据；否则需填写远程登录账号和密码。选择“已有凭据”时需选定凭据。",
         "legacyNetworkCredentialTip": "当前任务沿用已有的平台账户凭据。",
-        "networkSshPasswordTip": "仅支持 SSH 密码凭据，可用于 SSH 或 Telnet 登录；特权密码在下方填写。",
         "legacyJobCredentialTip": "当前任务沿用已有的用户名密码凭据。",
         "switchToSshCredential": "改用 SSH 凭据",
         "deviceJobCredentialTip": "此插件通过 SSH 执行设备采集命令，请填写设备登录账号和密码，或选择已有凭据；端口在本任务中填写。",
