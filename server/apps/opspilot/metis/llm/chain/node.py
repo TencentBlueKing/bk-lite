@@ -2084,9 +2084,9 @@ class ToolsNodes(
         if kb_tool is not None:
             tools.append(kb_tool)
 
-        # 配置分析后的选择与修复报告属于后端确定性状态机，不向模型暴露。
-        # 双 capability 门禁、动态选项和报告派发统一由
-        # _run_pending_k8s_repair_workflow 执行，避免模型改写选项或打乱顺序。
+        # 澄清选择卡必须给模型；K8s 修复报告仍由后端状态机派发，不向模型暴露。
+        if not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
+            tools.append(self._build_choice_tool())
         return tools
 
     async def _run_pending_k8s_repair_workflow(
@@ -2320,6 +2320,7 @@ class ToolsNodes(
             """DeepAgent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
             # 惰性导入：避免 apps.opspilot.metis.llm.agent.__init__ → deep_agent → node 循环依赖
             from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+                MISSING_PARAMS_CHOICE_HINT,
                 TOOL_FAILURE_AUTHZ,
                 TOOL_FAILURE_CONFIG,
                 TOOL_FAILURE_INTERNAL,
@@ -2329,14 +2330,20 @@ class ToolsNodes(
                 ToolExecutionPlanner,
                 ToolPlanningError,
                 classify_tool_failure_kind,
+                drop_alternative_inventory_followups,
                 drop_k8s_followup_steps_after_unresolved_target,
                 extract_llm_upstream_request_id,
                 is_context_size_error,
                 is_llm_upstream_error,
+                is_missing_tool_params_failure,
                 is_non_replanable_tool_failure,
+                is_substitute_plan_message,
                 is_tool_result_failure,
                 llm_upstream_user_message,
                 merge_replanned_pending_steps,
+                step_has_unasked_missing_params,
+                tool_graph_failure_plain_text,
+                tool_graph_failure_user_prompt,
             )
 
             def _llm_upstream_failure_result(exc: BaseException, *, failed_stage: str) -> Dict[str, Any]:
@@ -2434,12 +2441,7 @@ class ToolsNodes(
                     if is_llm_upstream_error(_await_exc):
                         return _llm_upstream_failure_result(_await_exc, failed_stage="legacy_deepagent")
                     try:
-                        err_prompt = (
-                            f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"
-                            f" {str(_await_exc)[:800]}),请用中文告诉用户失败原因,"
-                            "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
-                            "或换其他可用工具)。不要再尝试调同样的命令。"
-                        )
+                        err_prompt = tool_graph_failure_user_prompt(_await_exc)
                         fallback_messages = await self._prepare_messages_for_llm(
                             original_messages + [HumanMessage(content=err_prompt)],
                             graph_request,
@@ -2447,20 +2449,10 @@ class ToolsNodes(
                         fallback_response = await llm.ainvoke(fallback_messages, config=config)
                         fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                         if not fallback_text:
-                            fallback_text = (
-                                f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
-                            )
+                            fallback_text = tool_graph_failure_plain_text(_await_exc)
                         return {"messages": [AIMessage(content=fallback_text)]}
                     except Exception:
-                        return {
-                            "messages": [
-                                AIMessage(
-                                    content=(
-                                        f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
-                                    )
-                                )
-                            ]
-                        }
+                        return {"messages": [AIMessage(content=tool_graph_failure_plain_text(_await_exc))]}
                 finally:
                     if sandbox_dir:
                         self._cleanup_sandbox(sandbox_dir)
@@ -2690,6 +2682,9 @@ class ToolsNodes(
                         return f"工具 {tool_name} 执行失败: {str(content)[:800]}"
                 return ""
 
+            def _without_substitute_plan_text(messages: List[BaseMessage]) -> List[BaseMessage]:
+                return [message for message in messages if not is_substitute_plan_message(message)]
+
             def _compact_agent_state_with_summaries(*, overflow: bool = False) -> Dict[str, Any]:
                 """用步骤摘要替换完整工具历史，避免 8K 窗口在后续步再次撑爆。"""
                 summary_lines = [f"- {item.objective}: {item.result[:400]}" for item in completed_steps]
@@ -2747,6 +2742,7 @@ class ToolsNodes(
                 while pending_steps:
                     step = pending_steps.pop(0)
                     step_index = len(completed_steps) + 1
+                    missing_params_nudged = False
                     active_tools[:] = _resolve_step_tools(step.tools)
                     visibility_middleware.include_always_visible = True
                     visible_names = [getattr(tool, "name", "") for tool in active_tools]
@@ -2917,6 +2913,36 @@ class ToolsNodes(
                                 agent_state = _compact_agent_state_with_summaries(overflow=True)
                                 step_finished = True
                                 break
+                            if is_missing_tool_params_failure(failure):
+                                if missing_params_nudged:
+                                    logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划: %s", failure[:400])
+                                    completed_steps.append(
+                                        CompletedExecutionStep(
+                                            objective=step.objective,
+                                            result="缺少必要查询参数，已停止替代排查。",
+                                        )
+                                    )
+                                    await _emit_step_boundary(
+                                        "planned_execution_step",
+                                        {
+                                            "phase": "end",
+                                            "step_index": step_index,
+                                            "total_steps": total_steps,
+                                            "objective": step.objective,
+                                            "tools": list(step.tools),
+                                            "status": "missing_params",
+                                        },
+                                    )
+                                    agent_state = _compact_agent_state_with_summaries(overflow=False)
+                                    step_finished = True
+                                    break
+                                missing_params_nudged = True
+                                logger.debug("DeepAgent 步骤因缺参改为向用户澄清: %s", failure[:400])
+                                step_payload = {
+                                    **agent_state,
+                                    "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
+                                }
+                                continue
                             if is_non_replanable_tool_failure(failure):
                                 await _abort_unrecoverable_step(failure)
                                 break
@@ -2927,6 +2953,38 @@ class ToolsNodes(
 
                         result_messages = list(step_result.get("messages") or [])
                         step_messages = result_messages[len(step_payload["messages"]) :]
+                        if step_has_unasked_missing_params(step_messages):
+                            if missing_params_nudged:
+                                logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划")
+                                _collect_output_messages(_without_substitute_plan_text(step_messages))
+                                completed_steps.append(
+                                    CompletedExecutionStep(
+                                        objective=step.objective,
+                                        result="缺少必要查询参数，已停止替代排查。",
+                                    )
+                                )
+                                await _emit_step_boundary(
+                                    "planned_execution_step",
+                                    {
+                                        "phase": "end",
+                                        "step_index": step_index,
+                                        "total_steps": total_steps,
+                                        "objective": step.objective,
+                                        "tools": list(step.tools),
+                                        "status": "missing_params",
+                                    },
+                                )
+                                agent_state = _compact_agent_state_with_summaries(overflow=False)
+                                step_finished = True
+                                break
+                            missing_params_nudged = True
+                            logger.debug("DeepAgent 步骤因缺参改为向用户澄清")
+                            agent_state = step_result
+                            step_payload = {
+                                **agent_state,
+                                "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
+                            }
+                            continue
                         limit_kind = detect_limit_kind(step_messages)
                         if limit_kind:
                             _collect_output_messages(step_messages)
@@ -3040,6 +3098,17 @@ class ToolsNodes(
                         # 仅在本步实际跑过配置分析时提前推进修复闭环，避免列表/诊断步后抢弹选择卡。
                         if "analyze_deployment_configurations" in (step.tools or []):
                             await _maybe_run_repair_workflow()
+                        remaining_inventory = drop_alternative_inventory_followups(
+                            current_tools=step.tools,
+                            pending_steps=pending_steps,
+                            messages=step_messages,
+                        )
+                        if len(remaining_inventory) < len(pending_steps):
+                            logger.info(
+                                "DeepAgent 资产清单已命中，跳过另一数据源兜底步骤 dropped=%s",
+                                len(pending_steps) - len(remaining_inventory),
+                            )
+                            pending_steps = remaining_inventory
                         completed_steps.append(
                             CompletedExecutionStep(
                                 objective=step.objective,
@@ -3132,12 +3201,7 @@ class ToolsNodes(
                     )
                     return {"messages": [AIMessage(content=("当前模型上下文窗口不足，无法完成本次带工具的诊断。" "请换用更大上下文的模型，或减少启用的工具类别后再试。"))]}
                 try:
-                    err_prompt = (
-                        f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"
-                        f" {str(_await_exc)[:800]}),请用中文告诉用户失败原因,"
-                        "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
-                        "或换其他可用工具)。不要再尝试调同样的命令。"
-                    )
+                    err_prompt = tool_graph_failure_user_prompt(_await_exc)
                     fallback_messages = await self._prepare_messages_for_llm(
                         original_messages + [HumanMessage(content=err_prompt)],
                         graph_request,
@@ -3145,16 +3209,10 @@ class ToolsNodes(
                     fallback_response = await llm.ainvoke(fallback_messages, config=config)
                     fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                     if not fallback_text:
-                        fallback_text = f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
+                        fallback_text = tool_graph_failure_plain_text(_await_exc)
                     return {"messages": [AIMessage(content=fallback_text)]}
                 except Exception:
-                    return {
-                        "messages": [
-                            AIMessage(
-                                content=f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
-                            )
-                        ]
-                    }
+                    return {"messages": [AIMessage(content=tool_graph_failure_plain_text(_await_exc))]}
             finally:
                 self._set_hide_planned_step_text(graph_request, False)
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录

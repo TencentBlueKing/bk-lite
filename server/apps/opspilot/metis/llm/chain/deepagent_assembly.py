@@ -374,6 +374,7 @@ class DeepAgentAssemblyMixin:
             "禁止改成「日志获取完成」「关键证据确认」要点列表。"
             "若步骤里已经写过完整答案，不要重写，最多一两句。"
             "禁止再贴互相矛盾的名单；累计 restart_count 不要写成时间窗次数。"
+            "若步骤因缺少必要参数未完成，不要编造 uvx、CLI 或白名单替代方案，一两句请用户补充即可。"
         )
 
     @classmethod
@@ -399,13 +400,24 @@ class DeepAgentAssemblyMixin:
         return (
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
-            "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。"
+            "工具已返回结构化结果（含空列表）即不要把空当失败反复换参。"
+            "monitor_list_object_instances 的 monitor_obj_id 只能来自 monitor_list_objects；"
+            "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
+            "空列表且用户未确认对象类型时，必须 request_user_choice 让用户选择类型，不要当成查无此实例。"
+            "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
+            "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
+            "monitor_query_metric_data 的 instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用 name 或 IP 代替。"
+            "monitor_query_metric_data 返回空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
             "日志工具对同一 Pod 只调用一次；返回截断、压缩、空日志或没有 previous 都是有效证据，禁止降低 lines 重试。"
             "resolve_k8s_target_from_alert 对同一参数只调用一次；返回 resolved=false、"
             "lookup_exhausted 或 namespace 为空时不要重试，直接结束本步。"
             "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
             "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
             "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"
+            "工具返回 Missing parameters、缺少必要参数或 metric/search/monitor_obj_id is required 时，"
+            "必须立即调用 request_user_choice 向用户澄清缺失项；"
+            "禁止编造 uvx/CLI/白名单替代方案，禁止换其他工具盲猜。"
+            "本步已用 CMDB 或监控列出主机后，不要再调另一数据源做「查不到再查」的兜底。"
             f"{tail}"
         )
 

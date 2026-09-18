@@ -1219,6 +1219,7 @@
     "choiceSelected": "Selected",
     "choiceOrType": "Or type your answer",
     "choiceTextPlaceholder": "Type your answer...",
+    "replyToPendingChoice": "Reply to the question above...",
     "planningExecution": "Analyzing the task and planning execution steps…",
     "replanningExecution": "Replanning based on execution results…"
   },
