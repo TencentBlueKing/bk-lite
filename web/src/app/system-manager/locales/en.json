@@ -1127,7 +1127,7 @@
         "namePlaceholder": "Enter a name",
         "descriptionPlaceholder": "Enter a description",
         "basicInfoTitle": "Basic Information",
-        "basicInfoDesc": "Maintain the name, integration instance, and description for the IM application notification channel.",
+        "basicInfoDesc": "Maintain the name, organization, integration instance, and description for the IM application notification channel.",
         "fieldMappingTitle": "Field Mapping",
         "fieldMappingDesc": "The system matches external IM users with platform users through this mapping before per-user delivery.",
         "syncOptionsTitle": "Sync Options",

@@ -9,7 +9,6 @@ import {
   Input,
   message,
   Popconfirm,
-  Space,
   Switch,
   Tag,
   Tooltip,
@@ -47,6 +46,7 @@ import type {
 } from '@/app/system-manager/types/im-notification';
 import {
   buildSchedulePayload,
+  coerceImNotificationTeamIds,
   getLatestSyncSummary,
   getSyncRunStatusText,
   isChannelSyncRunning,
@@ -282,7 +282,7 @@ const ImNotificationPage: React.FC = () => {
         external_receive_field: record.external_receive_field,
         schedule_enabled: parseScheduleConfig(record.schedule_config).scheduleEnabled,
         sync_time: parseScheduleConfig(record.schedule_config).syncTime,
-        team: record.team ?? [],
+        team: coerceImNotificationTeamIds(record.team),
       });
     } else {
       form.resetFields();
@@ -343,7 +343,7 @@ const ImNotificationPage: React.FC = () => {
         external_match_field: values.external_match_field,
         external_receive_field: values.external_receive_field,
         schedule_config: buildSchedulePayload(values.schedule_enabled ?? false, values.sync_time),
-        team: values.team ?? [],
+        team: coerceImNotificationTeamIds(values.team),
       };
       if (editing) {
         const updated = await updateChannel(editing.id, payload);
@@ -567,14 +567,16 @@ const ImNotificationPage: React.FC = () => {
       key: 'actions',
       dataIndex: 'actions',
       fixed: 'right',
-      width: 200,
+      width: 320,
       render: (_, record: IMNotificationChannel) => {
         const dependencyUnavailable = record.dependency_status?.available === false;
         const syncDisabled = dependencyUnavailable || isChannelSyncRunning(record.latest_sync_status);
+        const actionLinkClass = 'p-0';
         const syncButton = (
           <Button
             type="link"
             size="small"
+            className={actionLinkClass}
             onClick={() => handleSyncMappings(record)}
             disabled={syncDisabled}
           >
@@ -582,41 +584,43 @@ const ImNotificationPage: React.FC = () => {
           </Button>
         );
         return (
-        <Space wrap>
-          <PermissionWrapper requiredPermissions={['Edit']}>
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button
+                type="link"
+                size="small"
+                className={actionLinkClass}
+                onClick={() => openModal(record)}
+              >
+                {t('common.edit')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              {dependencyUnavailable ? (
+                <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${record.dependency_status.reason}`)}>
+                  <span>{syncButton}</span>
+                </Tooltip>
+              ) : syncButton}
+            </PermissionWrapper>
             <Button
               type="link"
               size="small"
-              onClick={() => openModal(record)}
+              className={actionLinkClass}
+              onClick={() => handleViewRecords(record)}
             >
-              {t('common.edit')}
+              {t('system.channel.imNotificationPage.viewRecords')}
             </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            {dependencyUnavailable ? (
-              <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${record.dependency_status.reason}`)}>
-                <span>{syncButton}</span>
-              </Tooltip>
-            ) : syncButton}
-          </PermissionWrapper>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => handleViewRecords(record)}
-          >
-            {t('system.channel.imNotificationPage.viewRecords')}
-          </Button>
-          <PermissionWrapper requiredPermissions={['Delete']}>
-            <Popconfirm
-              title={t('system.channel.imNotificationPage.deleteConfirm')}
-              onConfirm={() => handleDelete(record)}
-            >
-              <Button type="link" size="small" danger>
-                {t('common.delete')}
-              </Button>
-            </Popconfirm>
-          </PermissionWrapper>
-        </Space>
+            <PermissionWrapper requiredPermissions={['Delete']}>
+              <Popconfirm
+                title={t('system.channel.imNotificationPage.deleteConfirm')}
+                onConfirm={() => handleDelete(record)}
+              >
+                <Button type="link" size="small" danger className={actionLinkClass}>
+                  {t('common.delete')}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
+          </div>
         );
       },
     },

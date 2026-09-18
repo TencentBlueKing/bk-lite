@@ -1127,7 +1127,7 @@
         "namePlaceholder": "请输入名称",
         "descriptionPlaceholder": "请输入描述",
         "basicInfoTitle": "基础信息",
-        "basicInfoDesc": "维护 IM 应用通知渠道的名称、集成实例和说明信息。",
+        "basicInfoDesc": "维护 IM 应用通知渠道的名称、所属组织、集成实例和说明信息。",
         "fieldMappingTitle": "字段映射",
         "fieldMappingDesc": "系统会使用平台字段匹配外部 IM 用户字段，并基于匹配结果完成按用户发送。",
         "syncOptionsTitle": "同步选项",
