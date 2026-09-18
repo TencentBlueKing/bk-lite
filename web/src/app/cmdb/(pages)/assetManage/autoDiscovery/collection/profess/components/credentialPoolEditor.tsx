@@ -131,11 +131,18 @@ function renderVaultDynamicFields(
   onCloudRegionRefresh?: () => void,
   cloudRegionLoading?: boolean,
   collectModelId?: string,
+  cloudRegionOptions: { label: string; value: string }[] = [],
+  cloudCredentialLabels?: {
+    accessKey: string;
+    accessSecret: string;
+    projectId?: string;
+  },
 ): React.ReactNode {
   const known = new Set([
     'port', 'snmp_port', 'https_port', 'database', 'scheme', 'verify_tls',
     'transport_protocol', 'privilege', 'ssl', 'regionId', 'regionName',
     'source', 'user_type', 'subscription_id', 'enable_password', 'project_id',
+    'projectId',
   ]);
   const portKey = shape === 'snmp' ? 'snmp_port' : shape === 'winsphere' ? 'https_port' : 'port';
   const extras = Object.entries(item).filter(([key, value]) =>
@@ -144,17 +151,46 @@ function renderVaultDynamicFields(
   );
   return (
     <div className={styles.credentialFieldGrid}>
-      {(showPort || shape === 'snmp' || shape === 'winsphere') && (
+      {(shape !== 'cloud' && (showPort || shape === 'snmp' || shape === 'winsphere')) && (
         <InputRow label={t('Collection.port', '端口')}>
           <InputNumber className="!w-full" min={1} max={65535} value={item[portKey]}
             onChange={(next) => updateItem(index, { [portKey]: next ?? undefined })} />
         </InputRow>
       )}
+      {shape === 'cloud' && cloudCredentialLabels?.projectId && (
+        <InputRow label={cloudCredentialLabels.projectId}>
+          <Input
+            value={item.projectId}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, {
+              projectId: event.target.value,
+              regionId: undefined,
+              regionName: undefined,
+            })}
+          />
+        </InputRow>
+      )}
       {shape === 'cloud' && (
         <InputRow label={t('Collection.cloudTask.region', '区域')}>
-          <Input value={item.regionId} onChange={(event) => updateItem(index, { regionId: event.target.value })} />
-          {onCloudRegionRefresh && <Button icon={<SyncOutlined />} loading={cloudRegionLoading}
-            onClick={onCloudRegionRefresh}>{t('common.refresh', '刷新')}</Button>}
+          <div className={styles.credentialInlineControl}>
+            <Select
+              value={item.regionId}
+              onChange={(nextValue, option) => {
+                const label = Array.isArray(option) ? option[0]?.label : option?.label;
+                updateItem(index, { regionId: nextValue, regionName: typeof label === 'string' ? label : undefined });
+              }}
+              loading={cloudRegionLoading}
+              placeholder={t('common.selectTip', '请选择')}
+              options={cloudRegionOptions}
+            />
+            <Button
+              type="text"
+              aria-label={t('common.refresh')}
+              icon={<SyncOutlined spin={cloudRegionLoading} aria-hidden />}
+              onClick={onCloudRegionRefresh}
+              className={styles.credentialRefreshButton}
+            />
+          </div>
         </InputRow>
       )}
       {collectModelId === 'smartx' && (
@@ -1671,7 +1707,11 @@ export default function CredentialPoolEditor({
                   ) : <Alert type="warning" showIcon message="当前插件没有可用的内置凭据类型" />}
                 </div>
               )}
-              {source === 'vault' ? renderVaultDynamicFields(item, index, credentialShape, updateItem, t, showPort, onCloudRegionRefresh, cloudRegionLoading, collectModelId) : renderCredentialFields({
+              {source === 'vault' ? renderVaultDynamicFields(
+                item, index, credentialShape, updateItem, t, showPort,
+                onCloudRegionRefresh, cloudRegionLoading, collectModelId,
+                cloudRegionOptions, cloudCredentialLabels,
+              ) : renderCredentialFields({
                 item,
                 index,
                 shape: credentialShape,

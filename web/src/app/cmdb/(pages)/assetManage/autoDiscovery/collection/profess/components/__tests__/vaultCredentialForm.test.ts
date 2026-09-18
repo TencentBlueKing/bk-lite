@@ -24,7 +24,7 @@ describe('已有凭据表单负载', () => {
     });
   });
 
-  it('云平台已有凭据可手填 Region 并保留 Project ID', () => {
+  it('云平台已有凭据提交区域和 Project ID，不携带密钥', () => {
     const raw = { credential_source: 'vault' as const, vault_credential_id: 'crd-2', regionId: 'cn-north-1', projectId: 'project-1' };
     expect(validateCloudCredential('hwcloud', raw)).toBeNull();
     const result = withTaskCredentialSource(raw, buildCloudCredential('hwcloud', raw));

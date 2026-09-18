@@ -59,6 +59,47 @@ it.each<{ shape: CredentialPoolEditorProps['credentialShape']; type: string; ext
   expect(screen.queryByTestId('picker')).toBeNull();
 });
 
+it('云平台已有凭据不展示端口，区域与手动录入一样查询后下拉选择', () => {
+  const onRefresh = vi.fn();
+  render(<CredentialPoolEditor
+    credentialShape="cloud"
+    vaultCategory="cloud"
+    vaultTypeKeys={['access_key']}
+    cloudRegionOptions={[{ label: '华北1', value: 'cn-north-1' }]}
+    onCloudRegionRefresh={onRefresh}
+    value={[{
+      credential_source: 'vault', vault_type_key: 'access_key', vault_credential_id: 'crd-aliyun',
+      regionId: 'cn-north-1', regionName: '华北1',
+    }]}
+  />);
+  expect(screen.queryByText('端口')).toBeNull();
+  expect(screen.queryByRole('spinbutton')).toBeNull();
+  expect(screen.getByText('区域')).toBeTruthy();
+  expect(screen.queryByRole('textbox')).toBeNull();
+  expect(screen.getByRole('combobox')).toBeTruthy();
+  expect(screen.getByText('华北1')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'common.refresh' }));
+  expect(onRefresh).toHaveBeenCalled();
+});
+
+it('华为云已有凭据仍可填写项目 ID，区域同样为下拉', () => {
+  render(<CredentialPoolEditor
+    credentialShape="cloud"
+    vaultCategory="cloud"
+    vaultTypeKeys={['access_key']}
+    cloudRegionOptions={[{ label: '华北-北京一', value: 'cn-north-1' }]}
+    cloudCredentialLabels={{ accessKey: 'AK', accessSecret: 'SK', projectId: '项目 ID' }}
+    value={[{
+      credential_source: 'vault', vault_type_key: 'access_key', vault_credential_id: 'crd-hw',
+      projectId: 'proj-1', regionId: 'cn-north-1',
+    }]}
+  />);
+  expect(screen.queryByText('端口')).toBeNull();
+  expect(screen.getByText('项目 ID')).toBeTruthy();
+  expect(screen.getByDisplayValue('proj-1')).toBeTruthy();
+  expect(screen.getByRole('combobox')).toBeTruthy();
+});
+
 it('已有 SNMP 凭据的额外表单只展示动态端口', () => {
   render(<CredentialPoolEditor
     credentialShape="snmp"
