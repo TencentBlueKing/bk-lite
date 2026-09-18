@@ -867,7 +867,12 @@ def wiki_retry_markdown_import_task(
     return {"status": "success", **result}
 
 
-@shared_task(name="apps.opspilot.tasks.wiki_execute_markdown_import_task", queue="opspilot_wiki")
+@shared_task(
+    name="apps.opspilot.tasks.wiki_execute_markdown_import_task",
+    queue="opspilot_wiki",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def wiki_execute_markdown_import_task(
     kb_id,
     build_record_id,
@@ -876,7 +881,12 @@ def wiki_execute_markdown_import_task(
     filename="",
     operator="",
 ):
-    """Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker."""
+    """Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker.
+
+    acks_late + reject_on_worker_lost 让 worker 中途退出后按同一 celery_task_id 重投；
+    claim 只接受与 BuildRecord 中 fencing token 一致的任务。超时仍 running 的记录由
+    reclaim_stale_markdown_import_builds 按 TTL 释放。
+    """
     from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
     from apps.opspilot.services.wiki.markdown_import_governance_service import (
         _release_preflight_after_failure,

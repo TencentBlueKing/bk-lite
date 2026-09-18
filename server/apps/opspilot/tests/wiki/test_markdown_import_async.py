@@ -2,14 +2,17 @@ import hashlib
 import io
 import logging
 import zipfile
+from datetime import timedelta
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from apps.opspilot.models import BuildRecord, KnowledgePage, WikiGeneration, WikiImportPreflight, WikiKnowledgeBase
 from apps.opspilot.services.wiki.markdown_import_governance_service import (
     MarkdownImportGovernanceError,
     _bind_import_build,
+    claim_markdown_import_execution,
     enqueue_markdown_import,
     execute_markdown_import,
     markdown_import_celery_task_is_live,
@@ -51,6 +54,13 @@ def import_storage(monkeypatch):
         storage,
     )
     return storage
+
+
+def _age_markdown_import_build(build, *, hours=3):
+    aged = timezone.now() - timedelta(hours=hours)
+    BuildRecord.objects.filter(pk=build.pk).update(created_at=aged, updated_at=aged)
+    build.refresh_from_db()
+    return build
 
 
 def _ready_kb(wiki_factory):
@@ -128,6 +138,9 @@ def test_import_archive_staging_is_scoped_to_knowledge_base(import_storage):
 
 def test_execute_task_imports_staged_archive_and_deletes_it(wiki_factory, import_storage, monkeypatch):
     from apps.opspilot.tasks.wiki import wiki_execute_markdown_import_task
+
+    assert wiki_execute_markdown_import_task.acks_late is True
+    assert wiki_execute_markdown_import_task.reject_on_worker_lost is True
 
     monkeypatch.setattr(
         "apps.opspilot.tasks.wiki.wiki_enrich_markdown_import_search_task.delay",
@@ -292,7 +305,7 @@ def test_enqueue_redelivers_when_delay_never_happened(wiki_factory, import_stora
     assert not (build.inputs or {}).get("celery_task_id")
 
 
-def test_enqueue_does_not_redeliver_recorded_celery_task_id(wiki_factory, import_storage, monkeypatch):
+def test_enqueue_does_not_redeliver_recorded_celery_task_id(wiki_factory, import_storage):
     knowledge_base = _ready_kb(wiki_factory)
     content = "# 已投递\n\n正文。".encode("utf-8")
     preflight = preflight_markdown_import(
@@ -309,21 +322,6 @@ def test_enqueue_does_not_redeliver_recorded_celery_task_id(wiki_factory, import
         actor="admin",
     )
     assert persist_markdown_import_celery_task_id(payload["build_record_id"], first_dispatch["celery_task_id"])
-
-    class BoomInspect:
-        def __init__(self, *args, **kwargs):
-            raise TimeoutError("inspect timeout")
-
-        def active(self):
-            return None
-
-        def reserved(self):
-            return None
-
-        def scheduled(self):
-            return None
-
-    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: BoomInspect())
 
     again, again_dispatch = enqueue_markdown_import(
         knowledge_base,
@@ -442,38 +440,13 @@ def test_execute_task_skips_stale_celery_identity(wiki_factory, import_storage):
     assert not KnowledgePage.objects.filter(knowledge_base=knowledge_base).exists()
 
 
-def _boom_inspect(monkeypatch, *, inspect_factory):
-    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: inspect_factory())
-
-
-def test_recorded_celery_task_id_is_live_when_inspect_fails_or_returns_none(monkeypatch):
-    class TimeoutInspect:
-        def __init__(self, *args, **kwargs):
-            raise TimeoutError("inspect timeout")
-
-    class NoneInspect:
-        def active(self):
-            return None
-
-        def reserved(self):
-            return None
-
-        def scheduled(self):
-            return None
-
-    _boom_inspect(monkeypatch, inspect_factory=TimeoutInspect)
+def test_recorded_celery_task_id_is_live_without_inspect():
     assert markdown_import_celery_task_is_live("recorded-task") is True
     assert markdown_import_celery_task_is_live("") is False
     assert markdown_import_celery_task_is_live(None) is False
 
-    _boom_inspect(monkeypatch, inspect_factory=lambda: None)
-    assert markdown_import_celery_task_is_live("recorded-task") is True
 
-    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: NoneInspect())
-    assert markdown_import_celery_task_is_live("recorded-task") is True
-
-
-def test_reclaim_does_not_close_recorded_id_when_inspect_fails(wiki_factory, monkeypatch):
+def test_reclaim_does_not_close_fresh_recorded_id(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
     build = BuildRecord.objects.create(
         knowledge_base=knowledge_base,
@@ -483,20 +456,108 @@ def test_reclaim_does_not_close_recorded_id_when_inspect_fails(wiki_factory, mon
         inputs={"celery_task_id": "recorded-import-task"},
     )
 
-    class TimeoutInspect:
-        def __init__(self, *args, **kwargs):
-            raise TimeoutError("inspect timeout")
-
-    _boom_inspect(monkeypatch, inspect_factory=TimeoutInspect)
     assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 0
     build.refresh_from_db()
     assert build.status == "running"
     assert build.inputs["celery_task_id"] == "recorded-import-task"
 
-    monkeypatch.setattr("celery.app.control.Control.inspect", lambda *args, **kwargs: None)
-    assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 0
+
+def test_reclaim_closes_recorded_id_after_stale_timeout(wiki_factory):
+    knowledge_base = _ready_kb(wiki_factory)
+    build = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="markdown_import",
+        status="running",
+        stage="queued",
+        inputs={"celery_task_id": "aged-import-task", "preflight_id": None},
+    )
+    _age_markdown_import_build(build)
+
+    assert reclaim_stale_markdown_import_builds(knowledge_base.pk) == 1
     build.refresh_from_db()
-    assert build.status == "running"
+    assert build.status == "failed"
+    assert "markdown_import_stale" in build.errors[0]
+    assert build.inputs.get("celery_task_id")
+    assert build.inputs["celery_task_id"] != "aged-import-task"
+
+
+def test_enqueue_retries_after_recorded_id_goes_stale(wiki_factory, import_storage):
+    knowledge_base = _ready_kb(wiki_factory)
+    content = "# 超时重投\n\n正文。".encode("utf-8")
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="aged.md",
+        actor="admin",
+    )
+    payload, first_dispatch = enqueue_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="aged.md",
+        actor="admin",
+    )
+    assert persist_markdown_import_celery_task_id(payload["build_record_id"], first_dispatch["celery_task_id"])
+    stale = BuildRecord.objects.get(pk=payload["build_record_id"])
+    _age_markdown_import_build(stale)
+
+    again, again_dispatch = enqueue_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="aged.md",
+        actor="admin",
+    )
+    stale.refresh_from_db()
+    assert stale.status == "failed"
+    assert again_dispatch is not None
+    assert again["build_record_id"] != payload["build_record_id"]
+    fresh = BuildRecord.objects.get(pk=again["build_record_id"])
+    assert fresh.status == "running"
+    assert not (fresh.inputs or {}).get("celery_task_id")
+
+
+def test_rebuild_reclaims_stale_recorded_markdown_import(wiki_factory, api_client, monkeypatch):
+    from apps.opspilot import tasks
+
+    knowledge_base = _ready_kb(wiki_factory)
+    stale = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="markdown_import",
+        status="running",
+        stage="queued",
+        inputs={"celery_task_id": "aged-import-task"},
+    )
+    _age_markdown_import_build(stale)
+    calls = []
+
+    class Task:
+        @staticmethod
+        def delay(*args, **kwargs):
+            calls.append(args)
+
+    monkeypatch.setattr(tasks, "wiki_rebuild_kb_task", Task)
+    response = api_client.post(
+        f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{knowledge_base.id}/rebuild/",
+        {},
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    stale.refresh_from_db()
+    assert stale.status == "failed"
+    assert "markdown_import_stale" in stale.errors[0]
+    assert len(calls) == 1
+
+
+def test_claim_missing_build_returns_import_build_not_found(wiki_factory):
+    knowledge_base = _ready_kb(wiki_factory)
+    build, early = claim_markdown_import_execution(knowledge_base.pk, 9_999_999, "task-id")
+    assert build is None
+    assert early == {
+        "status": "failed",
+        "code": "markdown_import_build_not_found",
+        "retryable": False,
+    }
 
 
 def test_reclaim_then_old_worker_skips(wiki_factory, import_storage):

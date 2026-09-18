@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import os
 import re
 import secrets
 import stat
@@ -1545,6 +1546,7 @@ def _claim_preflight(knowledge_base, token, inspected, actor, preview, *, prefli
 
 
 _CELERY_TASK_ID_KEY = "celery_task_id"
+_MARKDOWN_IMPORT_STALE_SECONDS = int(os.environ.get("WIKI_MARKDOWN_IMPORT_STALE_SECONDS", str(2 * 3600)))
 
 
 def markdown_import_celery_task_is_live(task_id) -> bool:
@@ -1553,8 +1555,23 @@ def markdown_import_celery_task_is_live(task_id) -> bool:
     Empty id means apply_async never succeeded (or was never persisted). Inspect
     is not consulted: broker-queued but unreserved tasks are invisible to it, and
     inspect timeout/None must not look dead. Workers fence on the persisted id.
+    Age-stale recorded ids are reclaimed separately by markdown_import_build_is_stale.
     """
     return bool(str(task_id or "").strip())
+
+
+def _markdown_import_stale_cutoff():
+    return timezone.now() - timedelta(seconds=max(_MARKDOWN_IMPORT_STALE_SECONDS, 60))
+
+
+def markdown_import_build_is_stale(build) -> bool:
+    """Empty id is immediately reclaimable; recorded id only after the wall-clock TTL."""
+    if not markdown_import_celery_task_is_live((build.inputs or {}).get(_CELERY_TASK_ID_KEY)):
+        return True
+    stamp = getattr(build, "updated_at", None) or getattr(build, "created_at", None)
+    if stamp is None:
+        return True
+    return stamp < _markdown_import_stale_cutoff()
 
 
 def _new_markdown_import_celery_task_id() -> str:
@@ -1616,7 +1633,7 @@ def claim_markdown_import_execution(kb_id, build_record_id, current_task_id):
         if build is None:
             return None, {
                 "status": "failed",
-                "code": "knowledge_base_not_found",
+                "code": "markdown_import_build_not_found",
                 "retryable": False,
             }
         stored_task_id = str((build.inputs or {}).get(_CELERY_TASK_ID_KEY) or "").strip()
@@ -1640,21 +1657,29 @@ def claim_markdown_import_execution(kb_id, build_record_id, current_task_id):
                 "code": "knowledge_base_not_found",
                 "retryable": False,
             }
+        update_fields = []
         if not stored_task_id and current_task_id:
             inputs = dict(build.inputs or {})
             inputs[_CELERY_TASK_ID_KEY] = current_task_id
             build.inputs = inputs
-            build.save(update_fields=["inputs", "updated_at"])
+            update_fields.append("inputs")
+        if build.stage == "queued":
+            build.stage = "generating"
+            update_fields.append("stage")
+        if update_fields:
+            update_fields.append("updated_at")
+            build.save(update_fields=update_fields)
         return build, None
 
 
 def reclaim_stale_markdown_import_builds(kb_id) -> int:
-    """Fail running markdown_import records that never persisted a Celery task id.
+    """Fail running markdown_import records that never started or exceeded the TTL.
 
-    Caller must already hold the knowledge-base row lock. Only empty celery_task_id
-    may be reclaimed; rotate a fencing token so an in-flight worker must skip.
-    Lazy-imports the wiki task helper so this module does not import tasks.wiki
-    at load time.
+    Caller must already hold the knowledge-base row lock. Empty celery_task_id is
+    reclaimable immediately. A recorded id is still live until updated_at passes
+    WIKI_MARKDOWN_IMPORT_STALE_SECONDS; inspect is never consulted. Rotate a
+    fencing token so an in-flight worker must skip. Lazy-imports the wiki task
+    helper so this module does not import tasks.wiki at load time.
     """
     from apps.opspilot.tasks.wiki import _fail_wiki_task_build
 
@@ -1669,7 +1694,7 @@ def reclaim_stale_markdown_import_builds(kb_id) -> int:
         .order_by("id")
     )
     for build in running:
-        if markdown_import_celery_task_is_live((build.inputs or {}).get(_CELERY_TASK_ID_KEY)):
+        if not markdown_import_build_is_stale(build):
             continue
         _rotate_markdown_import_celery_task_id(build)
         _fail_wiki_task_build(
@@ -1759,9 +1784,10 @@ def enqueue_markdown_import(
                 .first()
             )
             if existing is not None and existing.status == "running":
-                if markdown_import_celery_task_is_live((existing.inputs or {}).get(_CELERY_TASK_ID_KEY)):
+                if not markdown_import_build_is_stale(existing):
                     return _accepted_import_payload(existing), None
-                return _accepted_import_payload(existing), _markdown_import_dispatch(existing)
+                if not markdown_import_celery_task_is_live((existing.inputs or {}).get(_CELERY_TASK_ID_KEY)):
+                    return _accepted_import_payload(existing), _markdown_import_dispatch(existing)
 
         if record.expires_at <= timezone.now():
             raise MarkdownImportGovernanceError("preflight_token_expired", "导入预检 token 已过期", status_code=409)
@@ -2006,6 +2032,7 @@ __all__ = [
     "execute_markdown_import",
     "inspect_markdown_archive",
     "claim_markdown_import_execution",
+    "markdown_import_build_is_stale",
     "markdown_import_celery_task_is_live",
     "persist_markdown_import_celery_task_id",
     "preflight_markdown_import",
