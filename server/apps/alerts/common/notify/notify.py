@@ -12,10 +12,11 @@ class Notify:
     This class should be extended by specific notification handlers.
     """
 
-    def __init__(self, username_list, channel_id, title, content, append_receivers=True):
+    def __init__(self, username_list, channel_id, title, content, append_receivers=True, channel_type=None):
         self.title = title
         self.content = content
         self.channel_id = channel_id
+        self.channel_type = channel_type
         self.append_receivers = append_receivers
         self.user_list = self.get_user_list(username_list)
 
@@ -39,13 +40,16 @@ class Notify:
         return emails
 
     def notify(self):
-        send_result = SystemMgmtUtils.send_msg_with_channel(
-            channel_id=self.channel_id,
-            title=self.title,
-            content=self.content,
-            receivers=[user["id"] for user in self.user_list],
-            append_receivers=self.append_receivers,
-        )
+        send_kwargs = {
+            "channel_id": self.channel_id,
+            "title": self.title,
+            "content": self.content,
+            "receivers": [user["id"] for user in self.user_list],
+            "append_receivers": self.append_receivers,
+        }
+        if self.channel_type:
+            send_kwargs["channel_type"] = self.channel_type
+        send_result = SystemMgmtUtils.send_msg_with_channel(**send_kwargs)
         if isinstance(send_result, dict) and send_result.get("result") is False:
             downstream_error_type = send_result.get("error_type")
             if not (

@@ -42,7 +42,12 @@ import {
   isCanvasType,
   type CanvasType,
 } from '@/app/ops-analysis/constants/canvasTypes';
-import { shouldShowCanvasCopyAction, collectDirectoryExpandKeys } from '@/app/ops-analysis/utils/canvasDirectoryCopy';
+import {
+  buildDirectoryEditPayload,
+  collectDirectoryExpandKeys,
+  isBuiltinDirectory,
+  shouldShowCanvasCopyAction,
+} from '@/app/ops-analysis/utils/canvasDirectoryCopy';
 import {
   SidebarProps,
   SidebarRef,
@@ -197,14 +202,14 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
 
         if (modalAction === 'edit') {
           if (!currentDir) return;
-          const updateData: Record<string, unknown> = {
+          const updateData = buildDirectoryEditPayload(currentDir, {
             name: values.name,
             desc: values.desc,
             groups: values.groups,
-          };
+          });
           // 网络拓扑编辑:支持改 base_url + 重置 token。
           // 占位符 `******` 或空串都表示不修改 token,后端会保留旧值。
-          if (targetItemType === 'networkTopology') {
+          if (targetItemType === 'networkTopology' && !isBuiltinDirectory(currentDir)) {
             if (values.baseUrl) updateData.base_url = values.baseUrl;
             if (values.token && values.token !== '******') {
               updateData.token = values.token;
@@ -214,8 +219,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           if (onDataUpdate) {
             const updatedItem = {
               ...currentDir,
-              name: values.name,
-              desc: values.desc,
+              name: isBuiltinDirectory(currentDir) ? currentDir.name : values.name,
+              desc: isBuiltinDirectory(currentDir) ? currentDir.desc : values.desc,
+              groups: values.groups,
             };
             onDataUpdate(updatedItem);
           }
@@ -449,8 +455,27 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         },
       ];
 
-      // 内置目录：不提供复制/新建；内置画布可复制为用户副本。
+      // 内置目录：有编辑权即可改所属组织；内置画布可复制为用户副本，内容仍只读。
       if (isBuiltIn) {
+        if (isCatalogue) {
+          return [
+            {
+              key: 'edit',
+              label: t('common.edit'),
+              permission: 'EditCatalogue',
+              onClick: () => {
+                if (!hasPermission(['EditCatalogue'])) return;
+                showModal(
+                  'edit',
+                  t('opsAnalysisSidebar.editGroup'),
+                  item.name,
+                  item,
+                  'directory',
+                );
+              },
+            },
+          ];
+        }
         return [
           ...(shouldShowCanvasCopyAction(item) ? canvasResourceActions() : []),
           { key: 'edit', label: t('common.edit'), disabled: true },
@@ -558,20 +583,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 className="max-w-[126px] whitespace-nowrap overflow-hidden text-ellipsis"
                 text={item.name || '--'}
               />
-              {item.is_build_in && item.type === 'directory' && (
+              {isBuiltinDirectory(item) && (
                 <span className="ml-1 text-[10px] text-gray-400">({t('common.builtIn')})</span>
               )}
             </span>
-            {(item.is_build_in && item.type === 'directory') ? (
-              <span />
-            ) : (
-              <MoreActionsDropdown
-                items={menuItemsFor(item, parentId)}
-                placement="bottomLeft"
-                stopPropagation
-                buttonClassName="flex-shrink-0"
-              />
-            )}
+            <MoreActionsDropdown
+              items={menuItemsFor(item, parentId)}
+              placement="bottomLeft"
+              stopPropagation
+              buttonClassName="flex-shrink-0"
+            />
           </span>
         ),
         children: item.children
@@ -883,7 +904,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               label={t('opsAnalysisSidebar.nameLabel')}
               rules={[{ required: true, message: t('common.inputMsg') }]}
             >
-              <Input placeholder={t('opsAnalysisSidebar.inputPlaceholder')} />
+              <Input
+                placeholder={t('opsAnalysisSidebar.inputPlaceholder')}
+                disabled={modalAction === 'edit' && isBuiltinDirectory(currentDir)}
+              />
             </Form.Item>
             {showNetworkTopologyConnectionTest && (
               <>

@@ -456,6 +456,7 @@ def sync_notify(params):
                 title=title,
                 content=content,
                 append_receivers=param.get("append_receivers", True),
+                channel_type=channel_type,
             )
             result = notify.notify()
         except Exception:

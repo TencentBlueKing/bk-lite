@@ -13,10 +13,11 @@ def test_alert_notify_disables_receiver_suffix_for_custom_template(monkeypatch):
     send = Mock(return_value={"result": True})
     monkeypatch.setattr("apps.alerts.common.notify.notify.SystemMgmtUtils.send_msg_with_channel", send)
 
-    Notify(["zhangsan"], 3, "标题", "正文", append_receivers=False).notify()
+    Notify(["zhangsan"], 3, "标题", "正文", append_receivers=False, channel_type="im_notification").notify()
 
     assert send.call_args.kwargs["receivers"] == [9]
     assert send.call_args.kwargs["append_receivers"] is False
+    assert send.call_args.kwargs["channel_type"] == "im_notification"
 
 
 @pytest.mark.django_db

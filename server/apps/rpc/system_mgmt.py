@@ -402,6 +402,7 @@ class SystemMgmt(object):
         *,
         internal_caller="",
         append_receivers=True,
+        channel_type=None,
     ):
         """
         通过指定通道发送消息
@@ -412,6 +413,7 @@ class SystemMgmt(object):
         :param attachments: 附件列表（仅email通道支持），格式为:
             [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
             注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
+        :param channel_type: 可选，用于区分 Channel 与 IM 应用通知的同号主键
         """
         request_payload = build_internal_event_payload("system_mgmt.send_msg_with_channel", locals())
         internal_auth = None
@@ -426,6 +428,8 @@ class SystemMgmt(object):
         request_payload["internal_auth"] = internal_auth
         if not append_receivers:
             request_payload["append_receivers"] = False
+        if channel_type:
+            request_payload["channel_type"] = channel_type
         return self.client.run("send_msg_with_channel", **request_payload)
 
     def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):

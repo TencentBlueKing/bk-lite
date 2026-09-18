@@ -10,17 +10,21 @@ describe('notification template channel formats', () => {
 
     expect(new Set(keys).size).toBe(keys.length);
     expect(getNotificationTemplateChannel('email')).toMatchObject({ editorMode: 'html', hasSubject: true });
+    expect(getNotificationTemplateChannel('enterprise_wechat')).toMatchObject({
+      editorMode: 'text',
+      hasSubject: false,
+    });
     expect(getNotificationTemplateChannel('enterprise_wechat_bot')).toMatchObject({
       editorMode: 'markdown',
       hasSubject: false,
     });
     expect(getNotificationTemplateChannel('dingtalk_bot')?.editorMode).toBe('markdown');
     expect(getNotificationTemplateChannel('feishu_bot')?.editorMode).toBe('markdown');
+    expect(getNotificationTemplateChannel('im_notification')).toMatchObject({
+      editorMode: 'markdown',
+      hasSubject: true,
+    });
     expect(getNotificationTemplateChannel('custom_webhook')?.editorMode).toBe('text');
     expect(getNotificationTemplateChannel('nats')?.editorMode).toBe('text');
-  });
-
-  it('does not advertise unsupported channel types', () => {
-    expect(getNotificationTemplateChannel('enterprise_wechat')).toBeUndefined();
   });
 });
