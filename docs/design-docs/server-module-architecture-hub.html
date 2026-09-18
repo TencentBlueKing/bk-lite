@@ -362,12 +362,21 @@
       { id: "job-mgmt", label: "JobMgmt", views: {
         current: ["现状架构", "job-mgmt-current.architecture.html"],
         core: ["执行生命周期", "job-mgmt-execution-lifecycle.dataflow.html"],
-        target: ["目标架构", "job-mgmt-target.architecture.html"]
+        target: ["目标架构", "job-mgmt-target.architecture.html"],
+        control: ["控制面与数据面", "job-mgmt-control-data-plane.dataflow.html"],
+        io: ["入参出参与存储", "job-mgmt-io-storage.dataflow.html"],
+        controlTarget: ["目标控制面", "job-mgmt-control-data-plane.target.dataflow.html"],
+        placement: ["Sidecar / Ansible 落点", "region-host-agent-placement.architecture.html"],
+        containers: ["涉及的容器", "job-mgmt-deploy-containers.architecture.html"]
       } },
       { id: "patch-mgmt", label: "PatchMgmt", views: {
         current: ["现状架构", "patch-mgmt-current.architecture.html"],
         core: ["治理数据流", "patch-mgmt-governance.dataflow.html"],
-        target: ["目标架构", "patch-mgmt-target.architecture.html"]
+        target: ["目标架构", "patch-mgmt-target.architecture.html"],
+        control: ["控制面与数据面", "patch-mgmt-control-data-plane.dataflow.html"],
+        io: ["入参出参与存储", "patch-mgmt-io-storage.dataflow.html"],
+        controlTarget: ["目标控制面", "patch-mgmt-control-data-plane.target.dataflow.html"],
+        params: ["入参服务与回写", "patch-mgmt-params-services-writeback.architecture.html"]
       } },
       { id: "log", label: "Log", views: {
         current: ["现状架构", "log-current.architecture.html"],

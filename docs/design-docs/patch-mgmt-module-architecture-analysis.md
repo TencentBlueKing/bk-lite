@@ -45,6 +45,10 @@ PatchTarget 与 JobMgmt Target 有重叠，但二者领域语义并不完全相�
 
 ## 3. 现状架构图
 
+学习笔记：[作业平台与补丁管理架构学习](job-patch-architecture-learning.md)
+
+总控新增 Tab（原三个未改）：[控制面与数据面](patch-mgmt-control-data-plane.dataflow.html) · [入参出参](patch-mgmt-io-storage.dataflow.html) · [目标控制面](patch-mgmt-control-data-plane.target.dataflow.html) · [入参服务与回写](patch-mgmt-params-services-writeback.architecture.html)
+
 - [PatchMgmt 现状架构（Archify HTML）](patch-mgmt-current.architecture.html)
 - [PatchMgmt 现状架构源文件](patch-mgmt-current.architecture.json)
 - [PatchMgmt 现状架构静态图](patch-mgmt-current.architecture.light.png)

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "作业平台涉及的容器",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "control",
+        "label": "控制面",
+        "focus": ["web", "server", "postgres", "nats"],
+        "note": "job_mgmt 在 server 里。同一容器起 uvicorn、Celery、nats_listener。"
+      },
+      {
+        "id": "ssh",
+        "label": "SSH 容器",
+        "focus": ["server", "natsExecutor"],
+        "note": "独立 compose nats-executor，NATS_INSTANCE_ID=default。MANUAL Linux SSH。"
+      },
+      {
+        "id": "fusion",
+        "label": "fusion-collector",
+        "focus": ["natsLocal", "ansible"],
+        "note": "一个 compose 容器。本机 nats-executor 和 ansible-executor 都是里面的进程。"
+      },
+      {
+        "id": "store",
+        "label": "存储",
+        "focus": ["postgres", "redis", "minio", "nats"],
+        "note": "postgres 存 JobExecution。redis 是 Celery broker。minio 桶 job-mgmt-private。"
+      }
+    ]
+  },
+  "components": [
+    { "id": "web", "type": "frontend", "label": "web", "sublabel": "Job UI", "pos": [36, 36], "size": [150, 56], "tag": "compose" },
+    { "id": "server", "type": "backend", "label": "server", "sublabel": "job_mgmt + Celery", "pos": [36, 120], "size": [150, 56], "tag": "compose" },
+    { "id": "postgres", "type": "database", "label": "postgres", "sublabel": "JobExecution", "pos": [36, 248], "size": [150, 56], "tag": "compose" },
+    { "id": "redis", "type": "database", "label": "redis", "sublabel": "Celery /3", "pos": [202, 248], "size": [120, 56], "tag": "compose" },
+    { "id": "nats", "type": "messagebus", "label": "nats", "sublabel": "RPC / callback", "pos": [240, 36], "size": [150, 56], "tag": "compose" },
+    { "id": "minio", "type": "cloud", "label": "minio", "sublabel": "job-mgmt-private", "pos": [336, 248], "size": [120, 56], "tag": "compose" },
+    { "id": "natsExecutor", "type": "backend", "label": "nats-executor", "sublabel": "INSTANCE_ID=default", "pos": [520, 36], "size": [168, 56], "tag": "compose 容器" },
+    { "id": "natsLocal", "type": "backend", "label": "nats-executor", "sublabel": "local bin", "pos": [520, 148], "size": [168, 56], "tag": "进程" },
+    { "id": "ansible", "type": "cloud", "label": "ansible-executor", "sublabel": "Playbook / WinRM", "pos": [520, 248], "size": [168, 56], "tag": "进程" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Platform compose", "wraps": ["web", "server", "postgres", "redis", "nats", "minio"] },
+    { "kind": "region", "label": "默认云区域 SSH", "wraps": ["natsExecutor"] },
+    { "kind": "region", "label": "fusion-collector 容器", "wraps": ["natsLocal", "ansible"] }
+  ],
+  "connections": [
+    { "id": "web-server", "from": "web", "to": "server", "label": "NEXTAPI", "variant": "emphasis", "labelAt": [70, 106] },
+    { "id": "server-nats", "from": "server", "to": "nats", "label": "RPC", "variant": "emphasis", "fromSide": "top", "labelAt": [200, 78] },
+    { "id": "server-pg", "from": "server", "to": "postgres", "label": "JobExecution", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelAt": [70, 212] },
+    { "id": "server-ssh", "from": "server", "to": "natsExecutor", "label": "SSH job", "variant": "emphasis", "fromSide": "right", "toSide": "bottom", "via": [[210, 148], [210, 108], [604, 108]], "labelAt": [360, 120] },
+    { "id": "server-local", "from": "server", "to": "natsLocal", "label": "local job", "variant": "emphasis", "labelAt": [360, 164] },
+    { "id": "server-ans", "from": "server", "to": "ansible", "label": "adhoc / playbook", "variant": "emphasis", "fromSide": "bottom", "toSide": "left", "via": [[111, 220], [480, 220], [480, 276]], "labelAt": [360, 208] }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "compose 容器",
+      "items": ["web / server / postgres / redis / nats / minio / nats-executor / fusion-collector"]
+    },
+    {
+      "dot": "cyan",
+      "title": "执行器",
+      "items": ["独立 nats-executor 做 SSH；fusion 内进程做 local / Ansible"]
+    },
+    {
+      "dot": "rose",
+      "title": "作业不用",
+      "items": ["stargazer / telegraf / Victoria* 会装，作业链路不经过"]
+    }
+  ]
+}

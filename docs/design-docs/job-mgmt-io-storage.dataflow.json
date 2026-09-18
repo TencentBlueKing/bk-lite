@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "作业平台入参出参与存储",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "default": { "label": "存储读写" },
+        "emphasis": { "label": "主路径 payload" },
+        "security": { "label": "token / 配置" },
+        "dashed": { "label": "retry / 直发兜底" },
+        "database": { "label": "DB 表" }
+      }
+    },
+    "views": [
+      {
+        "id": "io",
+        "label": "入参出参",
+        "focus": ["web", "policy", "jobexec", "consumers"],
+        "note": "IN: job_script_execute body。SYNC OUT: {task_id}。ASYNC OUT: callback payload / SSE。"
+      },
+      {
+        "id": "store",
+        "label": "DB / S3",
+        "focus": ["catalog", "jobexec", "outbox", "sidecar"],
+        "note": "job_execution 单行 results JSON；S3 file_key；Ansible 终态进 job_completion_outbox。"
+      },
+      {
+        "id": "retry",
+        "label": "retry / 兜底",
+        "focus": ["celery", "ansible", "outbox", "consumers"],
+        "note": "execute_*_task max_retries=0。虚线=Sidecar 直发。Outbox lease + Beat 每分钟重扫。"
+      }
+    ]
+  },
+  "stages": [
+    { "label": "入参" },
+    { "label": "校验 / 存储" },
+    { "label": "落库 / 派发" },
+    { "label": "执行写回" },
+    { "label": "出参 / 兜底" }
+  ],
+  "nodes": [
+    { "id": "web", "type": "frontend", "label": "HTTP / NATS 入参", "sublabel": "job_script_execute", "stage": 0, "row": 2, "width": 140, "tag": "sync task_id" },
+    { "id": "nats", "type": "security", "label": "JOB_* env", "sublabel": "workers / timeout", "stage": 0, "row": 4, "width": 140, "tag": "config.py" },
+    { "id": "catalog", "type": "cloud", "label": "S3 file_key", "sublabel": "distribution_file", "stage": 1, "row": 0, "width": 140, "tag": "job-mgmt-files" },
+    { "id": "policy", "type": "security", "label": "入参校验", "sublabel": "DangerousChecker", "stage": 1, "row": 2, "width": 140, "tag": "team / SSRF" },
+    { "id": "jobexec", "type": "database", "label": "job_execution", "sublabel": "status + results JSON", "stage": 2, "row": 2, "width": 150, "tag": "db_table" },
+    { "id": "celery", "type": "messagebus", "label": "Celery / Beat", "sublabel": "execute_*_task(id)", "stage": 2, "row": 4, "width": 150, "tag": "max_retries=0" },
+    { "id": "sidecar", "type": "backend", "label": "Sidecar Runner", "sublabel": "write results JSON", "stage": 3, "row": 2, "width": 150, "tag": "每批 ≤10" },
+    { "id": "ansible", "type": "backend", "label": "Ansible 异步", "sublabel": "callback token", "stage": 3, "row": 4, "width": 150, "tag": "fencing" },
+    { "id": "consumers", "type": "external", "label": "Webhook / NATS / SSE", "sublabel": "callback payload", "stage": 4, "row": 2, "width": 160 },
+    { "id": "outbox", "type": "database", "label": "job_completion_outbox", "sublabel": "lease / next_retry_at", "stage": 4, "row": 4, "width": 160, "tag": "max_attempts=12" }
+  ],
+  "flows": [
+    { "id": "web-policy", "from": "web", "to": "policy", "label": "IN body", "classification": "入参", "variant": "emphasis", "route": "straight", "labelDy": -28 },
+    { "id": "nats-policy", "from": "nats", "to": "policy", "label": "JOB_* timeout", "classification": "配置", "variant": "security" },
+    { "id": "catalog-policy", "from": "catalog", "to": "policy", "label": "files[].file_key", "classification": "对象存储", "variant": "default" },
+    { "id": "policy-jobexec", "from": "policy", "to": "jobexec", "label": "创建 PENDING", "classification": "落库", "variant": "emphasis", "route": "straight" },
+    { "id": "jobexec-celery", "from": "jobexec", "to": "celery", "label": "delay(execution_id)", "classification": "派发", "variant": "emphasis" },
+    { "id": "celery-sidecar", "from": "celery", "to": "sidecar", "label": "claim RUNNING", "classification": "数据面", "variant": "emphasis" },
+    { "id": "celery-ansible", "from": "celery", "to": "ansible", "label": "claim RUNNING", "classification": "数据面", "variant": "default", "route": "straight", "labelDy": 53 },
+    { "id": "sidecar-consumers", "from": "sidecar", "to": "consumers", "label": "send_callback", "classification": "无 Outbox", "variant": "dashed", "route": "straight", "labelAt": [850, 320] },
+    { "id": "ansible-outbox", "from": "ansible", "to": "outbox", "label": "enqueue Outbox", "classification": "可恢复终态", "variant": "security", "route": "straight", "labelDy": 53 },
+    { "id": "outbox-consumers", "from": "outbox", "to": "consumers", "label": "web/nats payload", "classification": "Beat retry", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "入参 / 同步出参",
+      "items": [
+        "IN: {name, team, target_list, script_content, callback_*}",
+        "SYNC OUT: {task_id}。ASYNC: callback payload / SSE"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "DB / S3 / 配置",
+      "items": [
+        "job_execution.results JSON；outbox.lease_token",
+        "S3 file_key；JOB_EXECUTION_MAX_WORKERS"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "出参与线条",
+      "items": [
+        "result: {target_key, status, stdout?}。web 无 stdout",
+        "虚线=Sidecar 直发。Outbox Beat retry。max_retries=0"
+      ]
+    }
+  ]
+}

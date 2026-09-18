@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "补丁管理控制面与数据面（现状）",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "default": { "label": "默认流" },
+        "emphasis": { "label": "主治理路径" },
+        "security": { "label": "冻结/fencing" },
+        "dashed": { "label": "事务后链路" },
+        "database": { "label": "持久化事实" }
+      }
+    },
+    "views": [
+      {
+        "id": "control-catalog",
+        "label": "控制面与目录",
+        "focus": ["console", "beat", "sourceSync", "catalog", "governance"],
+        "note": "HTTP 用当前团队建治理任务；周期扫描仍是全局 ScanSetting，一次装入全部 PatchTarget。"
+      },
+      {
+        "id": "data-execute",
+        "label": "数据面执行",
+        "focus": ["governance", "celery", "hostKernel", "remote", "taskHost"],
+        "note": "父任务扇出每主机 Celery 子任务；主机 claim 与 execution_token 挡住陈旧结果。"
+      },
+      {
+        "id": "recover",
+        "label": "收敛与后续",
+        "focus": ["remote", "taskHost", "followup"],
+        "note": "超时进入只读核验；通知有 durable intent，自动重启/验证仍在终态事务之后即时创建。"
+      }
+    ]
+  },
+  "stages": [
+    { "label": "控制面接入" },
+    { "label": "控制面编排" },
+    { "label": "数据面派发" },
+    { "label": "数据面执行" },
+    { "label": "收敛与后续" }
+  ],
+  "nodes": [
+    { "id": "sourceSync", "type": "cloud", "label": "补丁源同步", "sublabel": "Linux Repo / WSUS", "stage": 0, "row": 0, "width": 145, "tag": "布尔锁" },
+    { "id": "console", "type": "frontend", "label": "补丁管理 Web", "sublabel": "基线 / 风险 / 目标", "stage": 0, "row": 2, "width": 145, "tag": "登录用户" },
+    { "id": "beat", "type": "backend", "label": "Beat 周期扫描", "sublabel": "ScanSetting pk=1", "stage": 0, "row": 4, "width": 145, "tag": "跨团队聚合" },
+    { "id": "catalog", "type": "database", "label": "目录与基线", "sublabel": "Patch + 当前要求", "stage": 1, "row": 0, "width": 145, "tag": "无版本" },
+    { "id": "governance", "type": "security", "label": "治理命令", "sublabel": "锁定绑定 / 校验缺失", "stage": 1, "row": 2, "width": 145, "tag": "创建时重校验" },
+    { "id": "celery", "type": "messagebus", "label": "父任务扇出", "sublabel": "每目标一个子任务", "stage": 2, "row": 2, "width": 150, "tag": "非原子 claim" },
+    { "id": "hostKernel", "type": "backend", "label": "主机执行内核", "sublabel": "安装 / 评估 / 重启", "stage": 3, "row": 2, "width": 150, "tag": "多协议并置" },
+    { "id": "remote", "type": "external", "label": "远端主机与源", "sublabel": "SSH / WinRM / Ansible", "stage": 3, "row": 4, "width": 150 },
+    { "id": "taskHost", "type": "database", "label": "GovernanceTaskHost", "sublabel": "token / 心跳 / 日志", "stage": 4, "row": 2, "width": 165, "tag": "逐主机 fencing" },
+    { "id": "followup", "type": "messagebus", "label": "后续动作", "sublabel": "重启 / 验证 / 通知", "stage": 4, "row": 4, "width": 165, "tag": "仅通知可补偿" }
+  ],
+  "flows": [
+    { "id": "source-catalog", "from": "sourceSync", "to": "catalog", "label": "selected ingest", "classification": "目录写入", "variant": "emphasis", "route": "straight", "labelAt": [208, 100] },
+    { "id": "catalog-gov", "from": "catalog", "to": "governance", "label": "冻结当前要求", "classification": "计划冻结", "variant": "security" },
+    { "id": "console-gov", "from": "console", "to": "governance", "label": "HTTP 当前团队", "classification": "控制面", "variant": "emphasis", "route": "straight", "labelAt": [208, 320] },
+    { "id": "beat-gov", "from": "beat", "to": "governance", "label": "全部目标一条任务", "classification": "周期扫描", "variant": "security" },
+    { "id": "gov-celery", "from": "governance", "to": "celery", "label": "PENDING 扇出", "classification": "编排", "variant": "emphasis", "route": "straight" },
+    { "id": "celery-kernel", "from": "celery", "to": "hostKernel", "label": "领取 waiting 主机", "classification": "数据面", "variant": "emphasis", "route": "straight", "labelAt": [638, 320] },
+    { "id": "kernel-remote", "from": "hostKernel", "to": "remote", "label": "安装 / 扫描副作用", "classification": "远端命令", "variant": "emphasis" },
+    { "id": "kernel-host", "from": "hostKernel", "to": "taskHost", "label": "claim + 心跳", "classification": "逐主机事实", "variant": "default", "route": "straight", "labelAt": [849, 320] },
+    { "id": "remote-host", "from": "remote", "to": "taskHost", "label": "token 写回 / 核验", "classification": "fencing", "variant": "security" },
+    { "id": "host-followup", "from": "taskHost", "to": "followup", "label": "终态后创建子任务", "classification": "非原子链路", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "应保留的执行内核",
+      "items": [
+        "创建治理时锁定目标与基线绑定，确认补丁仍属于当前基线且状态确为缺失",
+        "GovernanceTaskHost 的 execution_token 挡住陈旧写回；超时进入 reconciling 只读核验"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "控制面范围与终态链路",
+      "items": [
+        "全局 ScanSetting 把所有团队目标合进一条周期评估任务",
+        "父任务终态提交后才即时创建自动重启/验证，崩溃会丢步骤；通知已有 durable intent"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "master 上已收口的读侧",
+      "items": [
+        "风险 API 已把授权主机 ID 传入 compute_risk_items，不再先算全库再过滤",
+        "补丁源连通性按 configuration revision 条件写回；Windows 上传与超时清理共用行锁"
+      ]
+    }
+  ]
+}

@@ -47,6 +47,10 @@ JobMgmt 已经具备作业平台的关键骨架，而不只是“Celery 调一�
 
 ## 3. 现状架构图
 
+学习笔记：[作业平台与补丁管理架构学习](job-patch-architecture-learning.md)
+
+总控新增 Tab（原三个未改）：[控制面与数据面](job-mgmt-control-data-plane.dataflow.html) · [入参出参](job-mgmt-io-storage.dataflow.html) · [目标控制面](job-mgmt-control-data-plane.target.dataflow.html) · [Sidecar / Ansible 落点](region-host-agent-placement.architecture.html) · [涉及的容器](job-mgmt-deploy-containers.architecture.html)
+
 - [JobMgmt 现状架构（Archify HTML）](job-mgmt-current.architecture.html)
 - [JobMgmt 现状架构源文件](job-mgmt-current.architecture.json)
 - [JobMgmt 现状架构静态图](job-mgmt-current.architecture.light.png)

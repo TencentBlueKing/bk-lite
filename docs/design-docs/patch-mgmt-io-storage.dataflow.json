@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "补丁管理入参出参与存储",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "default": { "label": "存储读写" },
+        "emphasis": { "label": "主路径 payload" },
+        "security": { "label": "token / 配置" },
+        "dashed": { "label": "retry / 事务后 delay" },
+        "database": { "label": "DB 表" }
+      }
+    },
+    "views": [
+      {
+        "id": "io",
+        "label": "入参出参",
+        "focus": ["console", "governance", "taskHost", "remote"],
+        "note": "HTTP create 返回 task id。主机出参在 patch_governance_task_host：stage / exit_code / can_retry。"
+      },
+      {
+        "id": "store",
+        "label": "DB / 源 / 配置",
+        "focus": ["sourceSync", "catalog", "governance", "taskHost"],
+        "note": "父任务、主机行、patch_source、ScanSetting pk=1。源同步写 sync_in_progress。"
+      },
+      {
+        "id": "retry",
+        "label": "retry / 兜底",
+        "focus": ["remote", "taskHost", "followup"],
+        "note": "超时进 reconciling 只读核验。通知 delivery 可 retry；重启/验证仍是终态后 delay。"
+      }
+    ]
+  },
+  "stages": [
+    { "label": "入参" },
+    { "label": "落库 / 配置" },
+    { "label": "派发" },
+    { "label": "执行写回" },
+    { "label": "出参 / 兜底" }
+  ],
+  "nodes": [
+    { "id": "sourceSync", "type": "cloud", "label": "patch_source + repo", "sublabel": "Linux / WSUS / S3", "stage": 0, "row": 0, "width": 145, "tag": "sync_in_progress" },
+    { "id": "console", "type": "frontend", "label": "HTTP 入参", "sublabel": "GovernanceTask create", "stage": 0, "row": 2, "width": 145, "tag": "当前 team" },
+    { "id": "beat", "type": "security", "label": "patch_scan_setting", "sublabel": "pk=1 singleton", "stage": 0, "row": 4, "width": 145, "tag": "frequency / tz" },
+    { "id": "catalog", "type": "database", "label": "Patch + Baseline", "sublabel": "patch_list snapshot", "stage": 1, "row": 0, "width": 145, "tag": "无版本" },
+    { "id": "governance", "type": "database", "label": "patch_governance_task", "sublabel": "target_list / risk_snapshot", "stage": 1, "row": 2, "width": 145, "tag": "db_table" },
+    { "id": "celery", "type": "messagebus", "label": "Celery 父任务扇出", "sublabel": "execute_governance_task", "stage": 2, "row": 2, "width": 150, "tag": "非原子 claim" },
+    { "id": "hostKernel", "type": "backend", "label": "主机执行内核", "sublabel": "install / reboot / scan", "stage": 3, "row": 2, "width": 150, "tag": "execution_token" },
+    { "id": "remote", "type": "external", "label": "SSH / WinRM / Ansible", "sublabel": "远端副作用", "stage": 3, "row": 4, "width": 150 },
+    { "id": "taskHost", "type": "database", "label": "patch_governance_task_host", "sublabel": "stage / log / heartbeat", "stage": 4, "row": 2, "width": 165, "tag": "can_retry" },
+    { "id": "followup", "type": "database", "label": "notification_delivery", "sublabel": "claim_token / retry", "stage": 4, "row": 4, "width": 165, "tag": "max_attempts=3" }
+  ],
+  "flows": [
+    { "id": "source-catalog", "from": "sourceSync", "to": "catalog", "label": "ingest patches", "classification": "源→目录", "variant": "emphasis", "route": "straight", "labelAt": [208, 100] },
+    { "id": "catalog-gov", "from": "catalog", "to": "governance", "label": "patch_list snapshot", "classification": "冻结", "variant": "security" },
+    { "id": "console-gov", "from": "console", "to": "governance", "label": "IN create body", "classification": "入参落库", "variant": "emphasis", "route": "straight", "labelAt": [208, 320] },
+    { "id": "beat-gov", "from": "beat", "to": "governance", "label": "periodic scan", "classification": "配置驱动", "variant": "security" },
+    { "id": "gov-celery", "from": "governance", "to": "celery", "label": "PENDING 扇出", "classification": "派发", "variant": "emphasis", "route": "straight" },
+    { "id": "celery-kernel", "from": "celery", "to": "hostKernel", "label": "fanout waiting 行", "classification": "数据面", "variant": "emphasis", "route": "straight", "labelAt": [638, 320] },
+    { "id": "kernel-remote", "from": "hostKernel", "to": "remote", "label": "execution_token", "classification": "fencing", "variant": "emphasis" },
+    { "id": "kernel-host", "from": "hostKernel", "to": "taskHost", "label": "INSERT host row", "classification": "逐主机落库", "variant": "default", "route": "straight", "labelAt": [849, 320] },
+    { "id": "remote-host", "from": "remote", "to": "taskHost", "label": "token 写回 / 核验", "classification": "写回", "variant": "security" },
+    { "id": "host-followup", "from": "taskHost", "to": "followup", "label": "终态后创建子任务", "classification": "事务后 / notify retry", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "入参 / 同步出参",
+      "items": [
+        "IN: {task_type, target_list, patch_list, reboot_policy}",
+        "SYNC OUT: task id。主机: {stage, exit_code, can_retry}"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "DB / 源 / 配置",
+      "items": [
+        "task + host 行；ScanSetting pk=1；sync_in_progress",
+        "notification_delivery claim_token max_attempts=3"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "retry / 兜底线",
+      "items": [
+        "虚线=重启/验证 delay + 通知 retry",
+        "超时 reconciling；can_retry 才人工 retry"
+      ]
+    }
+  ]
+}
