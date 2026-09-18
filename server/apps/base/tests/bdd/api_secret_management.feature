@@ -9,11 +9,12 @@ Feature: API Secret 管理
     Then 返回 201 状态码
     And 响应包含有效的 api_secret
 
-  Scenario: 用户不能重复创建 API Secret
+  Scenario: 同一组织允许多把 API Secret
     Given 一个已认证的用户属于团队 1
     And 该用户已有一个 API Secret
     When 用户请求创建 API Secret
-    Then 返回失败响应
+    Then 返回 201 状态码
+    And 响应包含有效的 api_secret
 
   Scenario: 用户只能查看自己的 API Secret
     Given 一个已认证的用户属于团队 1

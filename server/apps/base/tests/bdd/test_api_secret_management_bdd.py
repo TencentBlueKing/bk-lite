@@ -88,7 +88,16 @@ def given_user_has_secret_team2(ctx):
 
 @when("用户请求创建 API Secret")
 def when_user_creates_secret(ctx):
-    ctx["response"] = ctx["client"].post(BASE_URL, data={})
+    existing = UserAPISecret.objects.filter(
+        username=ctx["user"].username,
+        domain=ctx["user"].domain,
+        team=1,
+    ).count()
+    ctx["response"] = ctx["client"].post(
+        BASE_URL,
+        data={"name": f"bdd-{existing + 1}", "scope": {"mode": "all"}},
+        format="json",
+    )
     if ctx["response"].status_code == status.HTTP_201_CREATED:
         ctx["created_secret_id"] = ctx["response"].data.get("id")
 
