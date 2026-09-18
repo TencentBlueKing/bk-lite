@@ -9,9 +9,11 @@ import {
   message,
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { useUserInfoContext } from '@/context/userInfo';
 import GroupSelect from '@/components/group-tree-select';
 import OperateModal from '@/components/operate-drawer';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { mergeCurrentOrganization } from './utils';
 
 interface ModalRef {
   showModal: (config: {
@@ -28,6 +30,11 @@ interface BatchEditModalProps {
 const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
+    const { selectedGroup } = useUserInfoContext();
+    const lockedOrganizationIds = mergeCurrentOrganization(
+      undefined,
+      selectedGroup?.id
+    );
     const [form] = Form.useForm();
     const [visible, setVisible] = useState(false);
     const [columns, setColumns] = useState<any[]>([]);
@@ -188,6 +195,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
             <GroupSelect
               disabled={isDisabled}
               placeholder={column.widget_props?.placeholder}
+              lockedValues={isEnabled ? lockedOrganizationIds : []}
             />
           );
           break;
@@ -237,7 +245,10 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
             value !== '' &&
             !(Array.isArray(value) && value.length === 0)
           ) {
-            editedFields[key] = value;
+            editedFields[key] =
+              key === 'organizations'
+                ? mergeCurrentOrganization(value, selectedGroup?.id)
+                : value;
           }
         });
         if (uploadedFileName) {

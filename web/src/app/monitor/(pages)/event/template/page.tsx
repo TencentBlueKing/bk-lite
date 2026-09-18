@@ -544,6 +544,9 @@ const Template: React.FC = () => {
       <BulkApplyModal
         visible={bulkModalVisible}
         monitorObjectId={objectId as string | number}
+        monitorName={
+          objects.find((item) => String(item.id) === String(objectId))?.name
+        }
         selectedTemplates={selectedTemplates}
         onClose={() => setBulkModalVisible(false)}
         onSuccess={() => setSelectedTemplateKeys(clearTemplateSelection())}

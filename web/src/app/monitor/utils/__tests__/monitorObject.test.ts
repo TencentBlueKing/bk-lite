@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ObjectItem } from '@/app/monitor/types';
-import { filterVisibleMonitorObjects } from '@/app/monitor/utils/monitorObject';
+import { filterVisibleMonitorObjects, isPodMonitorObject } from '@/app/monitor/utils/monitorObject';
 
 const object = (
   overrides: Partial<ObjectItem> & Pick<ObjectItem, 'id' | 'name'>
@@ -40,5 +40,15 @@ describe('filterVisibleMonitorObjects', () => {
     expect(
       filterVisibleMonitorObjects([parent, pod]).map((item) => item.name)
     ).toEqual(['K3SCluster', 'K3SPod']);
+  });
+});
+
+describe('isPodMonitorObject', () => {
+  it('matches Kubernetes and K3s pod objects', () => {
+    expect(isPodMonitorObject('Pod')).toBe(true);
+    expect(isPodMonitorObject('K3SPod')).toBe(true);
+    expect(isPodMonitorObject('Host')).toBe(false);
+    expect(isPodMonitorObject('')).toBe(false);
+    expect(isPodMonitorObject(undefined)).toBe(false);
   });
 });
