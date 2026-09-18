@@ -9,6 +9,9 @@ from langchain_core.messages import AIMessage, ToolMessage
 from apps.opspilot.metis.llm.agent.tool_execution_planner import is_pod_restart_reason_query
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 
+# HITL/选择卡会进工具目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice"})
+
 
 class DeepAgentAssemblyMixin:
     """Mixin for ToolsNodes; extracted without behavior change."""
@@ -47,9 +50,14 @@ class DeepAgentAssemblyMixin:
         return names
 
     @staticmethod
+    def _catalog_has_business_tools(tools) -> bool:
+        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡不算。"""
+        return any((name := getattr(tool, "name", None)) and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES for tool in (tools or []))
+
+    @staticmethod
     def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
         """无业务工具且无技能包时走轻量直答，避免规划器 + DeepAgent 内置工具烧 token。"""
-        if any(getattr(tool, "name", None) for tool in (tools or [])):
+        if DeepAgentAssemblyMixin._catalog_has_business_tools(tools):
             return False
         return not bool(skill_sources)
 
@@ -404,6 +412,7 @@ class DeepAgentAssemblyMixin:
             "monitor_list_object_instances 的 monitor_obj_id 只能来自 monitor_list_objects；"
             "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
             "空列表且用户未确认对象类型时，必须 request_user_choice 让用户选择类型，不要当成查无此实例。"
+            "用户已声明主机/Pod/中间件时不要再问类型，直接用对应对象 id。"
             "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
             "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
             "monitor_query_metric_data 的 instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用 name 或 IP 代替。"
@@ -568,6 +577,7 @@ _select_visible_planned_messages = DeepAgentAssemblyMixin._select_visible_planne
 _set_hide_planned_step_text = DeepAgentAssemblyMixin._set_hide_planned_step_text
 _planned_tool_step_guidance = DeepAgentAssemblyMixin._planned_tool_step_guidance
 _should_use_lightweight_after_empty_plan = DeepAgentAssemblyMixin._should_use_lightweight_after_empty_plan
+_catalog_has_business_tools = DeepAgentAssemblyMixin._catalog_has_business_tools
 _should_use_lightweight_direct_reply = DeepAgentAssemblyMixin._should_use_lightweight_direct_reply
 _skill_only_step_guidance = DeepAgentAssemblyMixin._skill_only_step_guidance
 _skill_package_script_lines = DeepAgentAssemblyMixin._skill_package_script_lines

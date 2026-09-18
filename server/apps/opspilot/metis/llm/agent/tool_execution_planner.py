@@ -66,6 +66,7 @@ _MONITOR_CATALOG_HINT = (
     "list_object_metrics 与 query_metric_data 必须同一步，先按用户词 keyword 筛选 name/display_name 再查时序；"
     "metric 只能用 list_object_metrics 返回的 name，禁止猜测 cpu.util/system.cpu.util，列表非空禁止让用户手填指标名；"
     "用户只给名称、未说明是主机/Pod/中间件时：先 monitor_list_objects，再规划 request_user_choice；"
+    "用户已声明主机/Pod/中间件时不要规划 request_user_choice，直接用对应对象 id 列实例；"
     "request_user_choice 必须用 single_select，options 放入 list_objects 返回的全部对象 name，禁止纯文本列出类型；"
     "禁止根据名称形态（如 -default、collector）猜测 K8s Pod 或 Host；"
     "monitor_obj_id 只能用用户已确认类型在 list_objects 中的 id，禁止猜测或递增数字；"

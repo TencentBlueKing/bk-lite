@@ -31,6 +31,7 @@ from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F40
     _build_lightweight_system_prompt,
     _build_planned_execution_runtime_middleware,
     _build_planned_execution_tool_visibility,
+    _catalog_has_business_tools,
     _plan_is_skills_only,
     _planned_step_already_answered,
     _planned_tool_step_guidance,
@@ -119,6 +120,9 @@ try:
 except ImportError:
     PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
+
+MISSING_PARAMS_NUDGE_LOG = "DeepAgent 步骤因缺参改为向用户澄清: objective=%s error_type=%s failed_stage=%s"
+MISSING_PARAMS_ABORT_LOG = "DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划: objective=%s error_type=%s failed_stage=%s"
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
@@ -2084,8 +2088,9 @@ class ToolsNodes(
         if kb_tool is not None:
             tools.append(kb_tool)
 
-        # 澄清选择卡必须给模型；K8s 修复报告仍由后端状态机派发，不向模型暴露。
-        if not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
+        # 澄清卡只在本轮已有业务工具时注入；空目录寒暄走轻量直答。
+        # K8s 修复报告仍由后端状态机派发，不向模型暴露。
+        if self._catalog_has_business_tools(tools) and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
             tools.append(self._build_choice_tool())
         return tools
 
@@ -2915,7 +2920,12 @@ class ToolsNodes(
                                 break
                             if is_missing_tool_params_failure(failure):
                                 if missing_params_nudged:
-                                    logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划: %s", failure[:400])
+                                    logger.warning(
+                                        MISSING_PARAMS_ABORT_LOG,
+                                        step.objective,
+                                        type(step_exc).__name__,
+                                        "missing_params",
+                                    )
                                     completed_steps.append(
                                         CompletedExecutionStep(
                                             objective=step.objective,
@@ -2937,7 +2947,12 @@ class ToolsNodes(
                                     step_finished = True
                                     break
                                 missing_params_nudged = True
-                                logger.debug("DeepAgent 步骤因缺参改为向用户澄清: %s", failure[:400])
+                                logger.debug(
+                                    MISSING_PARAMS_NUDGE_LOG,
+                                    step.objective,
+                                    type(step_exc).__name__,
+                                    "missing_params",
+                                )
                                 step_payload = {
                                     **agent_state,
                                     "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
@@ -2955,7 +2970,12 @@ class ToolsNodes(
                         step_messages = result_messages[len(step_payload["messages"]) :]
                         if step_has_unasked_missing_params(step_messages):
                             if missing_params_nudged:
-                                logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划")
+                                logger.warning(
+                                    MISSING_PARAMS_ABORT_LOG,
+                                    step.objective,
+                                    "MissingToolParams",
+                                    "missing_params",
+                                )
                                 _collect_output_messages(_without_substitute_plan_text(step_messages))
                                 completed_steps.append(
                                     CompletedExecutionStep(
@@ -2978,7 +2998,12 @@ class ToolsNodes(
                                 step_finished = True
                                 break
                             missing_params_nudged = True
-                            logger.debug("DeepAgent 步骤因缺参改为向用户澄清")
+                            logger.debug(
+                                MISSING_PARAMS_NUDGE_LOG,
+                                step.objective,
+                                "MissingToolParams",
+                                "missing_params",
+                            )
                             agent_state = step_result
                             step_payload = {
                                 **agent_state,
