@@ -876,7 +876,13 @@ const ViewList: React.FC<ViewListProps> = ({
     const effectivePlugins = await getEffectivePlugins(objectId, {
       instance_id: row.instance_id
     });
-    setPlugins(formatMonitorViewPluginTabs(effectivePlugins || []));
+    const monitorItem = findByMonitorId(objects, objectId);
+    setPlugins(
+      formatMonitorViewPluginTabs(effectivePlugins || [], {
+        objectDisplayName:
+          monitorItem?.display_name || monitorItem?.name || ''
+      })
+    );
     viewRef.current?.showModal({
       title: t('monitor.views.indexView'),
       type: 'add',

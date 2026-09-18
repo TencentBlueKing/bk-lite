@@ -256,6 +256,16 @@ class InstanceSearch:
         elif monitor_obj_name in {"Docker Container"}:
             return InstanceSearch.get_parent_instance_list(monitor_object_id)
 
+        # 其余有 parent 的衍生对象（阿里云 Redis/RDS/ECS 等）：用库内父实例枚举，
+        # 否则列表「所属云」列只能显示裸 instance_id，顶栏筛选也没有选项。
+        child = None
+        if monitor_object_id not in (None, ""):
+            child = MonitorObject.objects.filter(id=monitor_object_id).only("id", "parent_id").first()
+        elif monitor_obj_name:
+            child = MonitorObject.objects.filter(name=monitor_obj_name).only("id", "parent_id").first()
+        if child and child.parent_id and child.id:
+            return InstanceSearch.get_parent_instance_list(child.id)
+
     def get_obj_metric_map(self):
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
