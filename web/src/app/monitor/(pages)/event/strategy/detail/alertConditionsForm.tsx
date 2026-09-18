@@ -76,6 +76,7 @@ interface AlertConditionsFormProps {
     value?: number | null;
   }) => void;
   metricLabel?: string | null;
+  monitorName?: string;
   countPredicate?: { method?: string; value?: number | null } | null;
   onCountPredicateChange?: (val: { method: string; value: number | null }) => void;
   isTrap: (getFieldValue: any) => boolean;
@@ -103,6 +104,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   forecastLookback,
   recoveryThreshold,
   metricLabel,
+  monitorName,
   countPredicate,
   onThresholdChange,
   onThresholdUnitChange,
@@ -522,6 +524,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 noDataAlertLevel={noDataAlertLevel}
                 noDataAlertName={noDataAlertName}
                 functionDelayTip={functionDelayTip}
+                monitorName={monitorName}
                 onNoDataAlertChange={onNoDataAlertChange}
                 onNoDataRecoveryChange={onNoDataRecoveryChange}
                 onNoDataAlertLevelChange={onNoDataAlertLevelChange}

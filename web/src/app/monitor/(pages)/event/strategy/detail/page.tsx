@@ -1537,6 +1537,7 @@ const StrategyOperation = () => {
                             metric ||
                             null
                           }
+                          monitorName={monitorName || undefined}
                           countPredicate={countPredicate}
                           onCountPredicateChange={setCountPredicate}
                           onEnableAlertsChange={setEnableAlerts}

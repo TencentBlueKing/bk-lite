@@ -5,6 +5,7 @@ import { Form, Input, InputNumber, Select, Space, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { StrategyFields } from '@/app/monitor/types/event';
+import { isPodMonitorObject } from '@/app/monitor/utils/monitorObject';
 
 const { Option } = Select;
 
@@ -40,6 +41,7 @@ interface AlertDurationFieldsProps {
   noDataAlertLevel: string;
   noDataAlertName: string;
   functionDelayTip?: string;
+  monitorName?: string;
   onNoDataAlertChange: (value: number | null) => void;
   onNoDataRecoveryChange: (value: number | null) => void;
   onNoDataAlertLevelChange: (val: string) => void;
@@ -102,6 +104,11 @@ const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
         <div className="mt-[10px] text-[var(--color-text-3)]">
           {t('monitor.events.noDataAlertTip')}
         </div>
+        {isPodMonitorObject(props.monitorName) ? (
+          <div className="mt-[8px] text-[12px] leading-[20px] text-[var(--color-text-3)]">
+            {t('monitor.events.noDataPodTip')}
+          </div>
+        ) : null}
       </Form.Item>
       {noDataEnabled ? <NoDataDetailFields {...props} /> : null}
     </>
