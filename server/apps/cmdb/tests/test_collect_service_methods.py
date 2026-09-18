@@ -177,6 +177,16 @@ class TestResolveCloudMeta:
         assert cloud == 7
         assert name == "区域7"
 
+    def test_字符串云id归一成整数(self):
+        cloud, name = CollectModelService._resolve_host_cloud_meta(
+            params={"cloud": "7", "cloud_name": "区域7"},
+            access_point=[],
+            instances=[],
+            prefer_access_point=False,
+        )
+        assert cloud == 7
+        assert name == "区域7"
+
     def test_access_point优先模式(self):
         cloud, name = CollectModelService._resolve_host_cloud_meta(
             params={"cloud": 7, "cloud_name": "区域7"},
@@ -260,6 +270,23 @@ class TestEnrichSnapshot:
         assert data["params"]["cloud_name"] == "区域11"
         assert data["instances"][0]["cloud"] == 11
         assert data["instances"][0]["cloud_name"] == "区域11"
+
+    def test_host字符串云id回写成整数(self, mocker):
+        mocker.patch.object(
+            CollectModelService,
+            "_resolve_host_cloud_meta",
+            return_value=("11", "区域11"),
+        )
+        data = {
+            "task_type": CollectPluginTypes.HOST,
+            "params": {},
+            "instances": [{"inst_name": "h1"}],
+            "access_point": [],
+        }
+        changed = CollectModelService.enrich_host_cloud_snapshot_payload(data)
+        assert changed is True
+        assert data["params"]["cloud"] == 11
+        assert data["instances"][0]["cloud"] == 11
 
     def test_host已有相同云信息_无变化(self, mocker):
         mocker.patch.object(

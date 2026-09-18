@@ -8,6 +8,7 @@ COLLECT_GROUP:
   cloud: Cloud Platform
   host_manage: Logical Host
   middleware: Middleware
+  certificate: Certificate
 COLLECT_PLUGIN:
   k8s_cluster:
     name: K8S
@@ -380,6 +381,9 @@ COLLECT_PLUGIN:
     name: '[BETA] Dell PowerStore'
     desc: Collect Dell PowerStore storage devices and their pools, disks, volumes
       (LUNs), Ethernet ports, and FC ports
+  ssl_cer:
+    name: SSL Certificate
+    desc: Handshake the domain of existing SSL certificate instances and collect issuer and validity
 COLLECT_TAG:
   国产: Domestic
   配置中心: Config Center

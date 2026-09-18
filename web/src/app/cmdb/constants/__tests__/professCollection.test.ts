@@ -9,6 +9,8 @@ import {
   recommendedTopologyIntervalMinutes,
   resolveIpDiscoveryFormTimeout,
   SNMP_FORM_INITIAL_VALUES,
+  SNMP_INTEGRITY_OPTIONS,
+  SNMP_PRIVACY_OPTIONS,
   TOPOLOGY_PROTOCOL_OPTIONS,
   validateNetworkConfigCommands,
 } from '../professCollection';
@@ -45,6 +47,24 @@ describe('SNMP topology interval seam', () => {
 
   it('defaults the SNMP collection timeout to 30 seconds', () => {
     expect(SNMP_FORM_INITIAL_VALUES.timeout).toBe(30);
+  });
+
+  it('labels SNMP v3 algorithms with explicit digest and key sizes', () => {
+    expect(SNMP_INTEGRITY_OPTIONS.map((item) => item.label)).toEqual([
+      'SHA-1',
+      'SHA-224',
+      'SHA-256',
+      'SHA-384',
+      'SHA-512',
+      'MD5',
+    ]);
+    expect(SNMP_PRIVACY_OPTIONS.map((item) => item.label)).toEqual([
+      'AES-128',
+      'AES-256',
+      'DES',
+    ]);
+    expect(SNMP_INTEGRITY_OPTIONS[0].value).toBe('sha');
+    expect(SNMP_PRIVACY_OPTIONS[0].value).toBe('aes');
   });
 
   it('calculates the recommended topology interval', () => {

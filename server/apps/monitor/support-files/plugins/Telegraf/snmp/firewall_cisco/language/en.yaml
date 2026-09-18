@@ -1,0 +1,48 @@
+Firewall Cisco SNMP:
+  name: Cisco ASA / Secure Firewall (Telegraf)
+  desc: SNMP monitoring template for Cisco ASA, ASA Virtual, and Secure Firewall.
+    It reports 5-minute CPU (optional 1-minute Rev), per-pool memory used/free
+    bytes (MEMPOOL_GLOBAL_SHARED dropped), and current-in-use sessions. Interface
+    traffic uses the built-in IF-MIB catalog; this plugin does not declare ifHC*.
+monitor_object:
+  Firewall: Firewall
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the device since the last restart.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Control-plane CPU utilization of the Cisco firewall as a 5-minute average
+        (CISCO-PROCESS-MIB cpmCPUTotal5minRev, 0-100). Dimension index is the SNMP
+        table row. Sustained high CPU may indicate inspection load or attack traffic.
+    device_cpu_usage_1min:
+      name: CPU Usage (1 min)
+      desc: Optional 1-minute CPU utilization (CISCO-PROCESS-MIB cpmCPUTotal1minRev)
+        when a shorter window than the 5-minute revised average is needed.
+    device_memory_used:
+      name: Memory Used
+      desc: Bytes currently in use in each Cisco memory pool (ciscoMemoryPoolUsed).
+        MEMPOOL_GLOBAL_SHARED is dropped because it dominates ASA memory accounting.
+    device_memory_free:
+      name: Memory Free
+      desc: Free bytes in each Cisco memory pool (ciscoMemoryPoolFree), excluding
+        MEMPOOL_GLOBAL_SHARED. Combined with used bytes this is the branch-2 utilization
+        model.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Per-pool memory utilization computed as used / (used + free) * 100 after
+        dropping MEMPOOL_GLOBAL_SHARED. High Processor or System pool usage can degrade
+        session handling.
+    firewall_active_sessions:
+      name: Active Sessions
+      desc: Connections currently in use on the Cisco firewall (CISCO-FIREWALL-MIB
+        cfwConnectionStatValue, Services protoIp(40) + ConnectionStat currentInUse(6)).
+        A rapid rise can indicate a connection flood or session-table pressure.
+monitor_object_metric_group:
+  Firewall:
+    Base: Base
+    Firewall: Firewall
+    Memory: Memory

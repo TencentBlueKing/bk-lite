@@ -1,91 +1,180 @@
 import uuid
 
 import django.db.models.deletion
-from django.db import migrations, models
+from django.db import migrations, models, transaction
+from django.db.models import Q
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+_BACKFILL_CHUNK_SIZE = 500
 
-def backfill_owned_events(apps, schema_editor):
-    ApmAlert = apps.get_model("apm", "ApmAlert")
-    ApmEvent = apps.get_model("apm", "ApmEvent")
-    ApmAlertOutbox = apps.get_model("apm", "ApmAlertOutbox")
-    ApmPolicy = apps.get_model("apm", "ApmPolicy")
-    ApmService = apps.get_model("apm", "ApmService")
 
-    for outbox in ApmAlertOutbox.objects.order_by("created_at", "id").iterator():
-        payload = outbox.payload if isinstance(outbox.payload, dict) else {}
-        external_id = str(payload.get("external_id") or outbox.event_key.split(":", 1)[0])
-        action = str(payload.get("action") or "created")
-        occurred_at = parse_datetime(str(payload.get("occurred_at") or "")) or outbox.created_at
-        policy_id = str(payload.get("rule_id") or "")
-        resource_id = str(payload.get("resource_id") or "")
-        try:
-            policy = ApmPolicy.objects.filter(id=policy_id).first() if policy_id else None
-        except (TypeError, ValueError):
-            policy = None
-        try:
-            service = ApmService.objects.filter(id=resource_id).first() if resource_id else None
-        except (TypeError, ValueError):
-            service = None
+def _coerce_uuid(value):
+    if not value:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
-        labels = payload.get("labels") if isinstance(payload.get("labels"), dict) else {}
-        organizations = payload.get("organizations") if isinstance(payload.get("organizations"), list) else []
-        status = "recovered" if action == "recovery" else "firing"
-        alert, _ = ApmAlert.objects.get_or_create(
-            external_id=external_id,
-            defaults={
-                "policy": policy,
-                "service": service,
-                "policy_id_snapshot": policy_id,
-                "policy_name": str(labels.get("policy_name") or ""),
-                "service_namespace": str(labels.get("service_namespace") or ""),
-                "service_name": str(payload.get("service") or labels.get("service_name") or ""),
-                "environment": str(labels.get("environment") or ""),
-                "metric_type": str(payload.get("item") or "error_rate"),
-                "severity": str(payload.get("severity") or "warning"),
-                "status": status,
-                "current_value": payload.get("value"),
-                "organizations": organizations,
-                "started_at": occurred_at,
-                "ended_at": occurred_at if action == "recovery" else None,
-                "last_event_at": occurred_at,
-            },
+
+def _parse_outbox(outbox):
+    payload = outbox.payload if isinstance(outbox.payload, dict) else {}
+    labels = payload.get("labels") if isinstance(payload.get("labels"), dict) else {}
+    organizations = payload.get("organizations") if isinstance(payload.get("organizations"), list) else []
+    action = str(payload.get("action") or "created")
+    return {
+        "outbox": outbox,
+        "payload": payload,
+        "labels": labels,
+        "organizations": organizations,
+        "external_id": str(payload.get("external_id") or outbox.event_key.split(":", 1)[0]),
+        "action": action,
+        "occurred_at": parse_datetime(str(payload.get("occurred_at") or "")) or outbox.created_at,
+        "policy_id": str(payload.get("rule_id") or ""),
+        "resource_id": str(payload.get("resource_id") or ""),
+        "status": "recovered" if action == "recovery" else "firing",
+    }
+
+
+def _iter_outbox_chunks(outbox_model):
+    last_created_at = None
+    last_id = None
+    while True:
+        queryset = outbox_model.objects.order_by("created_at", "id")
+        if last_id is not None:
+            queryset = queryset.filter(Q(created_at__gt=last_created_at) | Q(created_at=last_created_at, id__gt=last_id))
+        chunk = list(queryset[:_BACKFILL_CHUNK_SIZE])
+        if not chunk:
+            break
+        yield chunk
+        last_created_at = chunk[-1].created_at
+        last_id = chunk[-1].id
+
+
+def _apply_latest_alert(alert, row):
+    if row["occurred_at"] < alert.last_event_at:
+        return False
+    alert.status = row["status"]
+    alert.current_value = row["payload"].get("value")
+    alert.organizations = row["organizations"]
+    alert.last_event_at = row["occurred_at"]
+    if row["action"] == "recovery":
+        alert.ended_at = row["occurred_at"]
+    return True
+
+
+def _backfill_chunk(apps, rows, now):
+    apm_alert = apps.get_model("apm", "ApmAlert")
+    apm_event = apps.get_model("apm", "ApmEvent")
+    apm_outbox = apps.get_model("apm", "ApmAlertOutbox")
+    apm_policy = apps.get_model("apm", "ApmPolicy")
+    apm_service = apps.get_model("apm", "ApmService")
+
+    policy_ids = {item for item in (_coerce_uuid(row["policy_id"]) for row in rows) if item}
+    service_ids = {item for item in (_coerce_uuid(row["resource_id"]) for row in rows) if item}
+    policies = {str(policy.id): policy for policy in apm_policy.objects.filter(id__in=policy_ids)} if policy_ids else {}
+    services = {str(service.id): service for service in apm_service.objects.filter(id__in=service_ids)} if service_ids else {}
+    alerts = {
+        alert.external_id: alert
+        for alert in apm_alert.objects.filter(external_id__in={row["external_id"] for row in rows})
+    }
+    events = {
+        event.event_id: event
+        for event in apm_event.objects.filter(event_id__in={row["outbox"].event_key for row in rows})
+    }
+
+    alerts_to_create = []
+    alerts_to_update = {}
+    for row in rows:
+        policy = policies.get(str(_coerce_uuid(row["policy_id"]) or ""))
+        service = services.get(str(_coerce_uuid(row["resource_id"]) or ""))
+        alert = alerts.get(row["external_id"])
+        if alert is None:
+            alert = apm_alert(
+                external_id=row["external_id"],
+                policy=policy,
+                service=service,
+                policy_id_snapshot=row["policy_id"],
+                policy_name=str(row["labels"].get("policy_name") or ""),
+                service_namespace=str(row["labels"].get("service_namespace") or ""),
+                service_name=str(row["payload"].get("service") or row["labels"].get("service_name") or ""),
+                environment=str(row["labels"].get("environment") or ""),
+                metric_type=str(row["payload"].get("item") or "error_rate"),
+                severity=str(row["payload"].get("severity") or "warning"),
+                status=row["status"],
+                current_value=row["payload"].get("value"),
+                organizations=row["organizations"],
+                started_at=row["occurred_at"],
+                ended_at=row["occurred_at"] if row["action"] == "recovery" else None,
+                last_event_at=row["occurred_at"],
+            )
+            alerts[row["external_id"]] = alert
+            alerts_to_create.append(alert)
+        elif _apply_latest_alert(alert, row) and getattr(alert, "pk", None):
+            alerts_to_update[alert.pk] = alert
+
+    if alerts_to_create:
+        apm_alert.objects.bulk_create(alerts_to_create, batch_size=_BACKFILL_CHUNK_SIZE)
+    if alerts_to_update:
+        for alert in alerts_to_update.values():
+            alert.updated_at = now
+        apm_alert.objects.bulk_update(
+            list(alerts_to_update.values()),
+            ["status", "current_value", "organizations", "last_event_at", "ended_at", "updated_at"],
+            batch_size=_BACKFILL_CHUNK_SIZE,
         )
-        if occurred_at >= alert.last_event_at:
-            alert.status = status
-            alert.current_value = payload.get("value")
-            alert.organizations = organizations
-            alert.last_event_at = occurred_at
-            if action == "recovery":
-                alert.ended_at = occurred_at
-            alert.save()
 
-        event, _ = ApmEvent.objects.get_or_create(
-            event_id=outbox.event_key,
-            defaults={
-                "alert": alert,
-                "action": action,
-                "title": str(payload.get("title") or ""),
-                "description": str(payload.get("description") or ""),
-                "severity": str(payload.get("severity") or "warning"),
-                "service": str(payload.get("service") or labels.get("service_name") or ""),
-                "item": str(payload.get("item") or "error_rate"),
-                "value": payload.get("value"),
-                "resource_id": resource_id,
-                "resource_name": str(payload.get("resource_name") or ""),
-                "policy_id": policy_id,
-                "environment": str(labels.get("environment") or ""),
-                "organizations": organizations,
-                "occurred_at": occurred_at,
-                "ended_at": occurred_at if action == "recovery" else None,
-            },
-        )
+    events_to_create = []
+    outboxes_to_update = []
+    for row in rows:
+        event = events.get(row["outbox"].event_key)
+        if event is None:
+            event = apm_event(
+                event_id=row["outbox"].event_key,
+                alert=alerts[row["external_id"]],
+                action=row["action"],
+                title=str(row["payload"].get("title") or ""),
+                description=str(row["payload"].get("description") or ""),
+                severity=str(row["payload"].get("severity") or "warning"),
+                service=str(row["payload"].get("service") or row["labels"].get("service_name") or ""),
+                item=str(row["payload"].get("item") or "error_rate"),
+                value=row["payload"].get("value"),
+                resource_id=row["resource_id"],
+                resource_name=str(row["payload"].get("resource_name") or ""),
+                policy_id=row["policy_id"],
+                environment=str(row["labels"].get("environment") or ""),
+                organizations=row["organizations"],
+                occurred_at=row["occurred_at"],
+                ended_at=row["occurred_at"] if row["action"] == "recovery" else None,
+            )
+            events[row["outbox"].event_key] = event
+            events_to_create.append(event)
+        outbox = row["outbox"]
         outbox.event = event
         # 旧投递箱没有用户选择的渠道 ID，不能继续猜测目的地；
         # 领域事件保留后停止旧任务重试。
         outbox.delivery_status = "delivered"
         outbox.next_retry_at = None
-        outbox.save(update_fields=("event", "delivery_status", "next_retry_at", "updated_at"))
+        outbox.updated_at = now
+        outboxes_to_update.append(outbox)
+
+    if events_to_create:
+        apm_event.objects.bulk_create(events_to_create, batch_size=_BACKFILL_CHUNK_SIZE)
+    if outboxes_to_update:
+        apm_outbox.objects.bulk_update(
+            outboxes_to_update,
+            ["event", "delivery_status", "next_retry_at", "updated_at"],
+            batch_size=_BACKFILL_CHUNK_SIZE,
+        )
+
+
+def backfill_owned_events(apps, schema_editor):
+    apm_outbox = apps.get_model("apm", "ApmAlertOutbox")
+    for chunk in _iter_outbox_chunks(apm_outbox):
+        now = timezone.now()
+        with transaction.atomic():
+            _backfill_chunk(apps, [_parse_outbox(outbox) for outbox in chunk], now)
 
 
 class Migration(migrations.Migration):

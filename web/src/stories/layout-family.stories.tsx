@@ -890,7 +890,7 @@ const FamilyOverview = () => {
                       surface: 'panel',
                       style: { width: 236, height: 'calc(100vh - 146px)' },
                     }}
-                    contentClassName="w-[calc(100vw-236px)] min-w-[520px] bg-[var(--color-bg-1)] p-5"
+                    contentClassName="min-w-0 flex-1 bg-[var(--color-bg-1)] p-5"
                   >
                     <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
                       Fixed sidebar workspace content

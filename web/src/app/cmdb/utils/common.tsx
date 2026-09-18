@@ -37,6 +37,9 @@ import {
 } from '@/app/cmdb/types/assetManage';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import {
+  isCloudRegionAttr,
+} from '@/app/cmdb/utils/cloudRegion';
+import {
   getCollectTaskLinkMeta,
 } from '@/app/cmdb/utils/collectTask';
 import TableFieldEditor from './tableFieldEditor';
@@ -674,10 +677,9 @@ const getCloudRegionDisplayName = (
   }
 
   if (
-    !(
-      (attrId === 'cloud' && modelId === 'host') ||
-      (attrId === 'cloud_id' && modelId === 'subnet')
-    )
+    !isCloudRegionAttr(attrId) ||
+    (attrId === 'cloud' && modelId !== 'host') ||
+    (attrId === 'cloud_id' && modelId !== 'subnet')
   ) {
     return null;
   }
@@ -721,7 +723,7 @@ export const getFieldItem = (config: {
           }}
         >
           {cloudOptions.map((opt: any) => (
-            <Select.Option key={String(opt.proxy_id)} value={String(opt.proxy_id)}>
+            <Select.Option key={String(opt.proxy_id)} value={Number(opt.proxy_id)}>
               {opt.proxy_name}
             </Select.Option>
           ))}

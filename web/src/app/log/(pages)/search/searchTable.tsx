@@ -229,7 +229,7 @@ const SearchTable: React.FC<SearchTableProps> = ({
 
   return (
     <CustomTable
-      className="w-[calc(100vw-300px)] min-w-[980px]"
+      className="w-full min-w-0 max-w-full"
       columns={activeColumns}
       dataSource={dataSource}
       loading={loading}

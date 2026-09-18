@@ -115,7 +115,7 @@ def test_refresh_replaces_baselines_on_successful_query(obj, policy):
 
     fake_metrics = {"data": {"result": [{"metric": {"instance_id": "i1"}}]}}
     fake_query_svc = MagicMock()
-    fake_query_svc.query_aggregation_metrics.return_value = fake_metrics
+    fake_query_svc.query_existence_metrics.return_value = fake_metrics
 
     with patch(
         "apps.monitor.tasks.services.policy_scan.metric_query.MetricQueryService",

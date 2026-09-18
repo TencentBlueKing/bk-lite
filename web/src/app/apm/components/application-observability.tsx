@@ -25,6 +25,7 @@ import {
   expandServiceRows,
   indexEnabledSlos,
   isTimeWindow,
+  lookupActiveAlert,
   metricKey,
   timeWindowRange,
   type TimeWindow,
@@ -195,6 +196,7 @@ export default function ApplicationObservability({
     if (!application) return;
     const { startedAt, endedAt } = timeWindowRange(timeWindow);
     setTopologyState((current) => (current === 'ready' ? current : 'loading'));
+    let active = true;
     getTopology({
       started_at: startedAt.toISOString(),
       ended_at: endedAt.toISOString(),
@@ -203,16 +205,21 @@ export default function ApplicationObservability({
       application_id: application.application_id,
     })
       .then((topology) => {
+        if (!active) return;
         const focused = focusApplicationTopology(topology, application.application_id).graph;
         setGraph(focused);
         setTopologyError(undefined);
         setTopologyState(focused.nodes.length ? 'ready' : 'empty');
       })
       .catch((error) => {
+        if (!active) return;
         setGraph({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
         setTopologyError(error);
         setTopologyState(catalogErrorKind(error));
       });
+    return () => {
+      active = false;
+    };
   }, [application, getTopology, timeWindow, topologyRefreshKey]);
 
   const rows = useMemo(() => expandServiceRows(services), [services]);
@@ -264,7 +271,7 @@ export default function ApplicationObservability({
   const alertCounts = useMemo(() => countActiveAlerts(events), [events]);
   const sloByServiceEnv = useMemo(() => indexEnabledSlos(slos), [slos]);
   const applicationAlertCount = useMemo(
-    () => rows.reduce((sum, row) => sum + (alertCounts.get(`${row.serviceName}::${row.environment}`)?.count ?? 0), 0),
+    () => rows.reduce((sum, row) => sum + (lookupActiveAlert(alertCounts, row.serviceId, row.serviceName, row.environment)?.count ?? 0), 0),
     [alertCounts, rows],
   );
   const applicationSloCount = useMemo(

@@ -96,7 +96,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_rx_power",
-      "query": "10 * log10(device_optical_rx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_rx_power{instance_type='switch', __$labels__} > 0)",
+      "query": "10 * log10(device_optical_rx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_rx_power{instance_type='switch', __$labels__} > 0) and (device_optical_rx_power{instance_type='switch', __$labels__} != 2147483647)",
       "display_name": "SFP RX Power",
       "data_type": "Number",
       "unit": "counts",
@@ -114,7 +114,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_tx_power",
-      "query": "10 * log10(device_optical_tx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_tx_power{instance_type='switch', __$labels__} > 0)",
+      "query": "10 * log10(device_optical_tx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_tx_power{instance_type='switch', __$labels__} > 0) and (device_optical_tx_power{instance_type='switch', __$labels__} != 2147483647)",
       "display_name": "SFP TX Power",
       "data_type": "Number",
       "unit": "counts",

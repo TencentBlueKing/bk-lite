@@ -3,10 +3,10 @@ from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error
+from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, to_monitor_epoch_ms, wrap_error
 
 
-@tool(description=("【主机告警】查询BK-Lite当前活跃告警。" "可按monitor_obj_id/instance_ids/级别过滤；排查主机告警用此工具。"))
+@tool(description=("【主机告警】查询BK-Lite当前活跃告警。" "可按monitor_obj_id/instance_ids/级别过滤；instance_ids须用监控instance_id、实例名或IP，禁止CMDB的inst_uuid/_id。"))
 def monitor_list_active_alerts(
     config: RunnableConfig = None,
     monitor_obj_id: Optional[str] = None,
@@ -48,10 +48,15 @@ def monitor_query_alert_segments(
         return wrap_error("start is required")
     if end in (None, ""):
         return wrap_error("end is required")
+    try:
+        start_ms = to_monitor_epoch_ms(start)
+        end_ms = to_monitor_epoch_ms(end)
+    except ValueError as exc:
+        return wrap_error(str(exc))
     query_data = {
         "monitor_obj_id": monitor_obj_id,
-        "start": start,
-        "end": end,
+        "start": start_ms,
+        "end": end_ms,
         "instance_ids": instance_ids or [],
         "status": status,
         "level": level,

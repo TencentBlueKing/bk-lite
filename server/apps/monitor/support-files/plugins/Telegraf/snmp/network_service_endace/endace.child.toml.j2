@@ -32,11 +32,16 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
+    # ---- Endace systemVersion (ENDACE-SYSTEM, PEN 18418, DisplayString, optional tag) ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.1.1.0"
+        name = "systemVersion"
+        is_tag = true
 
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
-        inherit_tags = ["source"]
+        inherit_tags = ["source", "systemVersion"]
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.1"
         name = "ifDescr"
@@ -47,3 +52,53 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+    # ---- Endace CPU (PEN 18418, cpuUtil1 1.3.6.1.4.1.18418.1.1.1.2.4.0 → cpu_usage_percent / device_cpu_usage, 直接%, scalar) ----
+    # table.field 按列 OID walk，标量去掉末尾 .0，避免 walk ...0.* 采空。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source", "systemVersion"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.1.2.4"
+        name = "usage"
+    # ---- Endace CPU load (cpuLoad1/5/15 …2.1/2/3.0, hundredths, metrics.json 查询 /100) ----
+    [[inputs.snmp.table]]
+        name = "cpu"
+        inherit_tags = ["source", "systemVersion"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.1.2.1"
+        name = "load_1"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.1.2.2"
+        name = "load_5"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.1.2.3"
+        name = "load_15"
+    # ---- Endace disk (mountBytesPercentFree 表, mountPoint 维度 → disk_free_percent) ----
+    # 不设私有表根：采集节点通常无厂商 MIB，表级 oid 会触发 snmptable「Was that a table?」并阻断整路 SNMP 初始化；只 walk 列 OID。
+    [[inputs.snmp.table]]
+        name = "disk"
+        inherit_tags = ["source", "systemVersion"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.1.5.1.7"
+        name = "mountPoint"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.1.5.1.4"
+        name = "free_percent"
+    # ---- Endace RAID (raidStatusCode 1.3.6.1.4.1.18418.1.1.3.0, 有则采; ok(0) 下方 enum 归 1, 其余归 2) ----
+    [[inputs.snmp.table]]
+        name = "device_raid"
+        inherit_tags = ["source", "systemVersion"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18418.1.1.3"
+        name = "state"
+        conversion = "int"
+# ---- 内存：ENDACE-SYSTEM 无私有内存使用率标量（仅 memUtilization 陷阱），不编造 mem%。温度/风扇/电源本模板未采 → N/A。不扩展 IF 错误/operStatus。----
+
+[[processors.enum]]
+    namepass = ["device_raid"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1

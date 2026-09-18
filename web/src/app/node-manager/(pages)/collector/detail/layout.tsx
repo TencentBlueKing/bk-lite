@@ -61,7 +61,7 @@ const CollectorLayout = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <div className="w-full">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <SubLayout
         layoutType={'sideMenu'}
         topSection={<Topsection></Topsection>}

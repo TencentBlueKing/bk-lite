@@ -9,13 +9,18 @@ from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
 
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
-from apps.core.utils.current_team_scope import resolve_current_team_data_scope
+from apps.core.utils.current_team_scope import build_request_push_actor_scope
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
-from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, IngestEnvelope, PushTargetStatus
+from apps.node_mgmt.services.module_push_contract import (
+    EVENT_LIFECYCLE,
+    EVENT_UPSERT,
+    IngestEnvelope,
+    PushTargetStatus,
+    ingest_auth_kwargs,
+)
 from apps.rpc.cmdb import CMDB
 from apps.rpc.monitor import Monitor
 
@@ -48,15 +53,7 @@ class MonitorLinkage:
 
 def build_module_push_actor_scope(request) -> dict[str, Any]:
     """从请求鉴权上下文构造跨模块推送 actor_scope。"""
-    operator = getattr(getattr(request, "user", None), "username", "") or ""
-    try:
-        scope = resolve_current_team_data_scope(request)
-        return {
-            "allowed_org_ids": list(scope.data_team_ids),
-            "operator": scope.username or operator,
-        }
-    except BaseAppException:
-        return {"allowed_org_ids": [], "operator": operator}
+    return build_request_push_actor_scope(request)
 
 
 def parse_retire_linked_flag(request) -> bool:
@@ -107,8 +104,7 @@ class ModulePushService:
             return 0
         payload = {
             "targets": normalized,
-            "allowed_org_ids": list(actor_scope.get("allowed_org_ids") or []),
-            "operator": actor_scope.get("operator") or "",
+            **ingest_auth_kwargs(actor_scope),
         }
         remembered = 0
         for node in nodes:
@@ -152,10 +148,7 @@ class ModulePushService:
         return cls.best_effort_push_node(
             node_id,
             targets=targets,
-            actor_scope={
-                "allowed_org_ids": list(payload.get("allowed_org_ids") or []),
-                "operator": payload.get("operator") or "",
-            },
+            actor_scope=ingest_auth_kwargs(payload),
         )
 
     @classmethod
@@ -185,10 +178,7 @@ class ModulePushService:
             if result.get(InstallerConstants.MODULE_PUSH_CONSUMED_KEY):
                 continue
             result[InstallerConstants.MODULE_PUSH_TARGETS_KEY] = payload["targets"]
-            result[InstallerConstants.MODULE_PUSH_ACTOR_SCOPE_KEY] = {
-                "allowed_org_ids": payload["allowed_org_ids"],
-                "operator": payload["operator"],
-            }
+            result[InstallerConstants.MODULE_PUSH_ACTOR_SCOPE_KEY] = ingest_auth_kwargs(payload)
             task_node.result = result
             task_node.save(update_fields=["result"])
 
@@ -231,8 +221,7 @@ class ModulePushService:
                 if payload is None:
                     payload = {
                         "targets": targets,
-                        "allowed_org_ids": list(scope.get("allowed_org_ids") or []),
-                        "operator": scope.get("operator") or "",
+                        **ingest_auth_kwargs(scope),
                     }
                 result[InstallerConstants.MODULE_PUSH_CONSUMED_KEY] = True
                 task_node.result = result
@@ -330,8 +319,7 @@ class ModulePushService:
         attempts_limit = max(1, int(attempts_limit))
 
         node = Node.objects.select_related("cloud_region").get(id=node_id)
-        allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
-        operator = actor_scope.get("operator") or ""
+        auth = ingest_auth_kwargs(actor_scope)
 
         push_status = dict(node.push_status or {})
         results: dict[str, Any] = {}
@@ -342,22 +330,14 @@ class ModulePushService:
             if target == "cmdb":
                 status = cls._push_with_retries(
                     target="cmdb",
-                    push_fn=lambda env=envelope: CmdbLinkage().ingest_from_source(
-                        **env,
-                        allowed_org_ids=allowed_org_ids,
-                        operator=operator,
-                    ),
+                    push_fn=lambda env=envelope, auth=auth: CmdbLinkage().ingest_from_source(**env, **auth),
                     max_attempts=attempts_limit,
                     on_success=lambda result: cls._backfill_id(node, "cmdb_id", result),
                 )
             elif target == "monitor":
                 status = cls._push_with_retries(
                     target="monitor",
-                    push_fn=lambda env=envelope: MonitorLinkage().ingest_from_source(
-                        **env,
-                        allowed_org_ids=allowed_org_ids,
-                        operator=operator,
-                    ),
+                    push_fn=lambda env=envelope, auth=auth: MonitorLinkage().ingest_from_source(**env, **auth),
                     max_attempts=attempts_limit,
                     on_success=lambda result: cls._backfill_id(node, "monitor_id", result),
                 )
@@ -398,18 +378,16 @@ class ModulePushService:
         attempts_limit = max(1, int(attempts_limit))
 
         envelope = cls._build_lifecycle_envelope(node)
-        allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
-        operator = actor_scope.get("operator") or ""
+        auth = ingest_auth_kwargs(actor_scope)
         results: dict[str, Any] = {}
 
         for target in targets:
             if target == "cmdb":
                 status = cls._push_with_retries(
                     target="cmdb",
-                    push_fn=lambda: CmdbLinkage().ingest_from_source(
+                    push_fn=lambda auth=auth: CmdbLinkage().ingest_from_source(
                         **envelope,
-                        allowed_org_ids=allowed_org_ids,
-                        operator=operator,
+                        **auth,
                     ),
                     max_attempts=attempts_limit,
                     on_success=lambda _result: None,
@@ -417,10 +395,9 @@ class ModulePushService:
             elif target == "monitor":
                 status = cls._push_with_retries(
                     target="monitor",
-                    push_fn=lambda: MonitorLinkage().ingest_from_source(
+                    push_fn=lambda auth=auth: MonitorLinkage().ingest_from_source(
                         **envelope,
-                        allowed_org_ids=allowed_org_ids,
-                        operator=operator,
+                        **auth,
                     ),
                     max_attempts=attempts_limit,
                     on_success=lambda _result: None,
@@ -493,26 +470,17 @@ class ModulePushService:
             return
 
         envelope = cls._build_envelope(node)
-        allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
-        operator = actor_scope.get("operator") or ""
+        auth = ingest_auth_kwargs(actor_scope)
         attempts_limit = max(1, int(max_attempts))
 
         for target, push_fn in (
             (
                 "cmdb",
-                lambda: CmdbLinkage().ingest_from_source(
-                    **envelope,
-                    allowed_org_ids=allowed_org_ids,
-                    operator=operator,
-                ),
+                lambda: CmdbLinkage().ingest_from_source(**envelope, **auth),
             ),
             (
                 "monitor",
-                lambda: MonitorLinkage().ingest_from_source(
-                    **envelope,
-                    allowed_org_ids=allowed_org_ids,
-                    operator=operator,
-                ),
+                lambda: MonitorLinkage().ingest_from_source(**envelope, **auth),
             ),
         ):
             status = cls._push_with_retries(

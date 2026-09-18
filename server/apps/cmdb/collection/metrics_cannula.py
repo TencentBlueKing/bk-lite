@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Type
+
 from django.utils import timezone
+
 from apps.cmdb.collection.common import Management
 from apps.cmdb.constants.constants import INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -19,7 +21,10 @@ class MetricsCannula:
         filter_collect_task=True,
         data_cleanup_strategy: str = None,
         plugin_kwargs: dict = None,
+        reconcile_task_assets: bool = False,
+        task=None,
     ):
+        self.task = task
         self.inst_id = inst_id
         self.organization = organization
         self.task_id = str(task_id)
@@ -28,6 +33,7 @@ class MetricsCannula:
         self.collect_plugin = collect_plugin
         self.plugin_kwargs = plugin_kwargs or {}
         self.filter_collect_task = filter_collect_task
+        self.reconcile_task_assets = reconcile_task_assets
         self.data_cleanup_strategy = data_cleanup_strategy or DataCleanupStrategy.NO_CLEANUP
         self.collect_data = {}
         self.collect_params = {}
@@ -69,10 +75,53 @@ class MetricsCannula:
                 delete_list.append(info)
         return add_list, update_list, delete_list
 
+    def _query_task_assets(self, ag, model_id, metrics):
+        """当前任务资产参与清理；本轮命中的同组织无任务资产只参与接管。"""
+        base_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        old_by_id = {}
+        # 历史数据同时存在整数和字符串任务 ID。
+        for field_type, task_id in (("str=", self.task_id), ("int=", int(self.task_id))):
+            rows, _ = ag.query_entity(INSTANCE, base_params + [{"field": "collect_task", "type": field_type, "value": task_id}])
+            old_by_id.update((row["_id"], row) for row in rows)
+
+        organizations = {str(value) for value in (self.organization or [])}
+        conflicts = {}
+        names = list(dict.fromkeys(row["inst_name"] for row in metrics))
+        for start in range(0, len(names), 200):
+            candidates, _ = ag.query_entity(INSTANCE, base_params + [{"field": "inst_name", "type": "str[]", "value": names[start : start + 200]}])
+            for row in candidates:
+                owner = row.get("collect_task")
+                if str(owner) == self.task_id:
+                    old_by_id[row["_id"]] = row
+                elif owner not in (None, ""):
+                    conflicts[row["inst_name"]] = "已有资产属于其他采集任务，无法自动接管"
+                elif not organizations.intersection(str(value) for value in (row.get("organization") or [])):
+                    conflicts[row["inst_name"]] = "已有资产不在当前采集组织范围内，无法自动接管"
+                else:
+                    old_by_id[row["_id"]] = row
+
+        accepted, failed = [], []
+        for row in metrics:
+            error = conflicts.get(row["inst_name"])
+            if error:
+                failed.append({"instance_info": {"model_id": model_id, "inst_name": row["inst_name"]}, "error": error})
+            else:
+                accepted.append(row)
+        old_data = [row for row in old_by_id.values() if row["inst_name"] not in conflicts]
+        return old_data, accepted, failed
+
     def collect_controller(self) -> dict:
+        if self.reconcile_task_assets and getattr(self.task, "model_id", None) == "vmware_vc":
+            from apps.cmdb.collection.vmware_reconciliation import collect_vmware
+
+            return collect_vmware(self)
+        return self._collect_models()
+
+    def _collect_models(self) -> dict:
         result = {}
         all_count = 0
         for model_id, metrics in self.collection_metrics.items():
+            all_count += len(metrics)
             params = [
                 {"field": "model_id", "type": "str=", "value": model_id},
             ]
@@ -80,7 +129,11 @@ class MetricsCannula:
                 params.append({"field": "collect_task", "type": "str=", "value": self.task_id})
 
             with GraphClient() as ag:
-                already_data, _ = ag.query_entity(INSTANCE, params)
+                conflicts = []
+                if self.reconcile_task_assets:
+                    already_data, metrics, conflicts = self._query_task_assets(ag, model_id, metrics)
+                else:
+                    already_data, _ = ag.query_entity(INSTANCE, params)
                 management = Management(
                     self.organization,
                     self.inst_name,
@@ -90,13 +143,10 @@ class MetricsCannula:
                     ["inst_name"],
                     self.now_time,
                     self.task_id,
-                    collect_plugin=(
-                        self.collect_plugin_instance
-                        or self.collect_plugin
-                    ),
+                    collect_plugin=(self.collect_plugin_instance or self.collect_plugin),
                     data_cleanup_strategy=self.data_cleanup_strategy,
+                    reconcile_task_assets=self.reconcile_task_assets,
                 )
-                all_count = all_count + len(metrics)
                 if self.manual:
                     self.add_list.extend(management.add_list)
                     self.delete_list.extend(management.delete_list)
@@ -104,6 +154,7 @@ class MetricsCannula:
                     collect_result = management.update()
                 else:
                     collect_result = management.controller()
+                collect_result["update"]["failed"].extend(conflicts)
                 result[model_id] = collect_result
         result["__raw_data__"] = self.raw_data
         result["all"] = all_count

@@ -1,8 +1,8 @@
 Wireless LigoWave SNMP:
   name: LigoWave (Telegraf)
-  desc: SNMP monitoring template for LigoWave wireless device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 32750).
+  desc: SNMP monitoring template for LigoWave wireless device. It reports Radio3 antenna-0
+    RSSI, receive noise, antenna-0 SNR, optional transmit power, per-port inbound
+    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 32750).
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
@@ -56,9 +56,40 @@ monitor_object_metric:
         with no scaling. Only models equipped with a temperature sensor report a real
         value; fanless access points return 0. High temperatures can indicate cooling
         failure or poor airflow and risk thermal shutdown.
+    rx_signal_level_0:
+      name: Antenna 0 RSSI
+      desc: Radio3 antenna-0 last receive signal level from ligoRdo3RxLastSigLevel0.
+        Indexed by ifIndex and endpoint. Integer32 with no scaling. A dropping RSSI
+        is an early sign of path fade, antenna misalignment or radio degradation.
+    rx_noise:
+      name: Receive Noise
+      desc: Radio3 receive noise from ligoRdo3RxNoise. Indexed by ifIndex and endpoint.
+        Integer32 with no scaling. Rising noise reduces SNR and link margin.
+    rx_snr_0:
+      name: Antenna 0 SNR
+      desc: Radio3 antenna-0 last signal-to-noise ratio from ligoRdo3RxLastSnr0. Indexed
+        by ifIndex and endpoint. Integer32 with no scaling. A dropping SNR is an early
+        sign of path fade or interference.
+    tx_power:
+      name: Transmit Power
+      desc: Optional Radio3 transmit power from ligoRdo3TxPower. Indexed by ifIndex
+        and endpoint. Gauge32 with no scaling. Missing rows on some firmware revisions
+        are skipped. Unexpectedly low transmit power can indicate radio mute, hardware
+        fault or configuration change.
+    rx_signal_level_1:
+      name: Antenna 1 RSSI
+      desc: Optional Radio3 antenna-1 last receive signal level from ligoRdo3RxLastSigLevel1.
+        Indexed by ifIndex and endpoint. Integer32 with no scaling. Missing antenna
+        columns are skipped.
+    rx_signal_level_2:
+      name: Antenna 2 RSSI
+      desc: Optional Radio3 antenna-2 last receive signal level from ligoRdo3RxLastSigLevel2.
+        Indexed by ifIndex and endpoint. Integer32 with no scaling. Missing antenna
+        columns are skipped.
 monitor_object_metric_group:
   Wireless:
     Base: Base
     Traffic: Traffic
     Wireless: Wireless
     Temperature: Temperature
+    Radio: Radio

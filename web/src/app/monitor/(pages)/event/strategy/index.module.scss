@@ -2,12 +2,18 @@
     display: flex;
     overflow: hidden;
     width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    flex: 1 1 0%;
 
     .assetTree {
         display: flex;
         flex-direction: column;
         width: 100%;
-        height: calc(100vh - 146px);
+        height: 100%;
+        min-height: 0;
         padding: 20px 10px;
         background-color: var(--color-bg-1);
         overflow-y: auto;
@@ -19,16 +25,25 @@
     }
 
     .table {
-        flex: 1;
+        display: flex;
+        flex: 1 1 0%;
+        flex-direction: column;
         min-width: 0;
+        max-width: 100%;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
         background: var(--color-bg-1);
-        height: calc(100vh - 146px);
         padding: 20px;
         margin-left: 10px;
 
         .search {
             display: flex;
+            flex-shrink: 0;
+            min-width: 0;
+            align-items: center;
             justify-content: space-between;
+            gap: 12px;
             margin-bottom: 20px;
         }
     }
@@ -53,7 +68,9 @@
 
     .form {
         height: calc(100vh - 230px);
+        overflow-x: hidden;
         overflow-y: auto;
+        min-width: 0;
         padding: 10px;
 
         .clusterLabel {

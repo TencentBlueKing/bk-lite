@@ -1,6 +1,8 @@
 .customTable {
   position: relative;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
 
   .setting {
     position: absolute;
@@ -10,6 +12,18 @@
     transform: translateY(-50%);
     cursor: pointer;
   }
+}
+
+.customTable :global(.ant-table-wrapper),
+.customTable :global(.ant-spin-nested-loading),
+.customTable :global(.ant-spin-container),
+.customTable :global(.ant-table) {
+  width: 100%;
+  min-width: 0;
+}
+
+.customTable :global(.ant-table table) {
+  width: 100%;
 }
 
 .customTable :global(.ant-btn-link) {

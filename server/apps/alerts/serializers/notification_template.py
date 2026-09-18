@@ -10,13 +10,15 @@ from apps.system_mgmt.models.channel import Channel
 
 SUPPORTED_CHANNEL_TYPES = {
     "email",
+    "enterprise_wechat",
     "enterprise_wechat_bot",
     "dingtalk_bot",
     "feishu_bot",
     "custom_webhook",
     "nats",
+    "im_notification",
 }
-SUBJECT_CHANNEL_TYPES = {"email", "dingtalk_bot", "feishu_bot"}
+SUBJECT_CHANNEL_TYPES = {"email", "dingtalk_bot", "feishu_bot", "im_notification"}
 
 
 class NotificationTemplateContentSerializer(serializers.ModelSerializer):

@@ -107,6 +107,15 @@
       "template": "sum by (instance_id) (rate(influxdb_httpd_writeReq{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:03bfc51e",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_psu_state{__$labels__} and (device_psu_present{__$labels__} == 1)) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:03c7ef3b",
       "object_names": [
         "Active Directory"
@@ -553,6 +562,15 @@
         "K3SCluster"
       ],
       "template": "count(count(prometheus_remote_write_kube_pod_info{instance_type=\"k3s\",__$labels__}) by (namespace))"
+    },
+    {
+      "id": "dashboard:v1:15fa733f",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max((device_voltage_volts{__$labels__} != 65535) / 1000) by (instance_id) or max(device_voltage_volts{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:164ec0ca",
@@ -1513,6 +1531,15 @@
       "template": "100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"memory\",__$labels__}) by (instance_id,pod) )"
     },
     {
+      "id": "dashboard:v1:3a71e903",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "min(10 * log10(device_optical_tx_power{__$labels__} / 1000) and (device_optical_tx_power{__$labels__} > 0) and (device_optical_tx_power{__$labels__} != 2147483647)) by (instance_id) or min(device_optical_tx_power{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:3af524ce",
       "object_names": [
         "Apache"
@@ -1679,6 +1706,15 @@
         "Mysql"
       ],
       "template": "rate(mysql_innodb_buffer_pool_reads{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:41e262e2",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_fan_state{__$labels__, entPhysicalClass='7'}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:41f1de7e",
@@ -2426,13 +2462,6 @@
       "template": "rate(sqlserver_performance_value{counter=\"Number of Deadlocks/sec\", __$labels__}[__$window__])"
     },
     {
-      "id": "dashboard:v1:6188de37",
-      "object_names": [
-        "Router"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
-    },
-    {
       "id": "dashboard:v1:619c6393",
       "object_names": [
         "Process"
@@ -2480,6 +2509,15 @@
         "Active Directory"
       ],
       "template": "win_ad_DS_Notify_Queue_Size{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:633b06f1",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "min((device_optical_rx_power{__$labels__} != -10000) / 100) by (instance_id) or min(device_optical_rx_power{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:638cb2dc",
@@ -2959,13 +2997,6 @@
       "template": "processes_zombies{instance_type=\"os\", __$labels__} or processes_zombies_gauge{instance_type=\"os\", __$labels__} or processes_zombies_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
     },
     {
-      "id": "dashboard:v1:7be92b55",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "min((device_optical_tx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)"
-    },
-    {
       "id": "dashboard:v1:7c7235e5",
       "object_names": [
         "Exchange"
@@ -3256,6 +3287,15 @@
       "template": "sum by (instance_id) (rate(minio_api_requests_rejected_auth_total_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_requests_rejected_auth_total_counter{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:8759e6d3",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "min(10 * log10(device_optical_rx_power{__$labels__} / 1000) and (device_optical_rx_power{__$labels__} > 0) and (device_optical_rx_power{__$labels__} != 2147483647)) by (instance_id) or min(device_optical_rx_power{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:87a1a5a2",
       "object_names": [
         "Cluster"
@@ -3443,13 +3483,6 @@
         "Docker"
       ],
       "template": "count({instance_type='docker', collect_type='docker', __$labels__}) by (instance_id)"
-    },
-    {
-      "id": "dashboard:v1:915ccf13",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "min((device_optical_rx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)"
     },
     {
       "id": "dashboard:v1:91755901",
@@ -4093,6 +4126,13 @@
       "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
     },
     {
+      "id": "dashboard:v1:aed37e56",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
       "id": "dashboard:v1:af0b870f",
       "object_names": [
         "Postgres"
@@ -4112,6 +4152,15 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (rate(haproxy_wretr{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:b054d875",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "min((device_optical_rx_power{__$labels__} != -2147483648) / 100) by (instance_id) or min(device_optical_rx_power{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:b073d379",
@@ -4273,6 +4322,15 @@
         "K3SCluster"
       ],
       "template": "100 * sum(prometheus_remote_write_kube_statefulset_status_replicas_ready{instance_type=\"k3s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k3s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:b687d5a2",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_psu_state{__$labels__, entPhysicalClass='6'}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:b6c1e647",
@@ -4576,6 +4634,15 @@
       "template": "sqlserver_schedulers_runnable_tasks_count{__$labels__}"
     },
     {
+      "id": "dashboard:v1:c3bee604",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_temperature_celsius{__$labels__} != 65535) by (instance_id) or max(device_temperature_celsius{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:c48e0e04",
       "object_names": [
         "Apache"
@@ -4779,6 +4846,15 @@
       "template": "count(count by (topic) (kafka_topic_partitions_gauge{__$labels__}))"
     },
     {
+      "id": "dashboard:v1:cc5f399d",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "min((device_optical_tx_power{__$labels__} != -10000) / 100) by (instance_id) or min(device_optical_tx_power{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:ccce066f",
       "object_names": [
         "Exchange"
@@ -4847,6 +4923,15 @@
         "Ping"
       ],
       "template": "avg(ping_result_code{__$labels__} == bool 1) * 100"
+    },
+    {
+      "id": "dashboard:v1:ce8c83e1",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_temperature_celsius{__$labels__} != 128 != -128) by (instance_id) or max(device_temperature_celsius{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:ce9653ec",
@@ -5024,6 +5109,13 @@
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\") or label_replace(rate({__name__=\"vllm:request_prompt_tokens_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
+      "id": "dashboard:v1:d6425958",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "min(device_optical_rx_power{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:d6c3e36d",
       "object_names": [
         "Consul"
@@ -5036,6 +5128,13 @@
         "VLLM"
       ],
       "template": "sum by (instance_id) (rate(vllm:request_prompt_tokens_sum{__$labels__}[5m])) / sum by (instance_id) (rate(vllm:request_prompt_tokens_count{__$labels__}[5m]))"
+    },
+    {
+      "id": "dashboard:v1:d6d50caa",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "min(device_optical_tx_power{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:d7af4c8b",
@@ -5358,6 +5457,15 @@
         "Website"
       ],
       "template": "avg(http_response_result_code{__$labels__} == bool 2) * 100"
+    },
+    {
+      "id": "dashboard:v1:e5bb5b40",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max(device_fan_state{__$labels__} and (device_fan_present{__$labels__} == 1)) by (instance_id)"
     },
     {
       "id": "dashboard:v1:e5e98cdd",
@@ -5694,6 +5802,15 @@
         "nginx"
       ],
       "template": "nginx_writing{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f619de15",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "min((device_optical_tx_power{__$labels__} != -2147483648) / 100) by (instance_id) or min(device_optical_tx_power{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:f62099bd",

@@ -48,6 +48,53 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
         "winrm_cert_validation",
     }
 
+    def get_serializer(self, *args, **kwargs):
+        instance = args[0] if args else kwargs.get("instance")
+        if kwargs.get("many") and instance is not None and kwargs.get("data") is None:
+            instances = list(instance)
+            if args:
+                args = (instances, *args[1:])
+            else:
+                kwargs["instance"] = instances
+            context = kwargs.setdefault("context", self.get_serializer_context())
+            self._inject_list_status_context(context, instances)
+        return super().get_serializer(*args, **kwargs)
+
+    @staticmethod
+    def _inject_list_status_context(context, instances):
+        from django.db.models import Count
+
+        from apps.patch_mgmt.models import BaselineRequirement
+        from apps.patch_mgmt.services.governance_convergence import (
+            project_latest_assessment_failure_reasons,
+            project_target_assessment_statuses,
+            target_has_effective_active_tasks,
+        )
+
+        target_ids = [obj.id for obj in instances if getattr(obj, "id", None) is not None]
+        context["assessment_status_by_target"] = project_target_assessment_statuses(target_ids)
+        context["active_task_by_target"] = target_has_effective_active_tasks(target_ids)
+        failed_ids = []
+        need_requirement_counts = []
+        for obj in instances:
+            binding = getattr(obj, "baseline_binding", None)
+            if binding is None:
+                continue
+            if binding.compliance_status == "failed":
+                failed_ids.append(obj.id)
+            if binding.missing_count is None and binding.baseline_id:
+                need_requirement_counts.append(binding.baseline_id)
+        context["assessment_failure_reason_by_target"] = project_latest_assessment_failure_reasons(failed_ids)
+        counts = {}
+        if need_requirement_counts:
+            rows = (
+                BaselineRequirement.objects.filter(baseline_id__in=need_requirement_counts)
+                .values("baseline_id")
+                .annotate(total=Count("id"))
+            )
+            counts = {row["baseline_id"]: row["total"] for row in rows}
+        context["baseline_requirement_counts"] = counts
+
     @HasPermission("patch_target-View")
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset_by_permission(request, self.get_queryset())

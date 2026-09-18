@@ -172,15 +172,42 @@ def test_send_msg_with_channel_missing_and_unsupported():
     missing = nats_api.send_msg_with_channel(999999, "t", "c", [1])
     assert missing == {"result": False, "message": "Channel not found"}
 
+
+def test_send_msg_wechat_app_uses_usernames_as_userids():
     channel = Channel.objects.create(
         name="wechat",
         channel_type=ChannelChoices.ENTERPRISE_WECHAT,
-        config={},
+        config={"corp_id": "ww", "secret": "s", "agent_id": 1},
         description="",
         team=[1],
     )
-    unsupported = nats_api.send_msg_with_channel(channel.id, "t", "c", [1])
-    assert unsupported == {"result": False, "message": "Unsupported channel type"}
+    user = _user(username="wx-alice")
+    empty = nats_api.send_msg_with_channel(channel.id, "t", "c", [])
+    assert empty == {"result": False, "message": "No valid recipients found"}
+    with patch("apps.system_mgmt.nats.channels.send_wechat", return_value={"result": True}) as send:
+        ok = nats_api.send_msg_with_channel(channel.id, "t", "body", [user.id], channel_type="enterprise_wechat")
+    assert ok == {"result": True}
+    send.assert_called_once()
+    _, content, user_list = send.call_args.args
+    assert content == "body"
+    assert list(user_list.values_list("username", flat=True)) == ["wx-alice"]
+
+
+def test_send_msg_im_notification_routes_by_channel_type_even_when_channel_id_collides():
+    channel = Channel.objects.create(
+        name="mail",
+        channel_type=ChannelChoices.EMAIL,
+        config={"host": "smtp"},
+        description="",
+        team=[1],
+    )
+    with patch("apps.system_mgmt.nats.channels.send_im_notification", return_value={"result": True, "message": "ok"}) as send, patch(
+        "apps.system_mgmt.nats.channels.send_email"
+    ) as send_email:
+        ok = nats_api.send_msg_with_channel(channel.id, "t", "c", [1], channel_type="im_notification")
+    assert ok == {"result": True, "message": "ok"}
+    send.assert_called_once_with(channel.id, "t", "c", [1])
+    send_email.assert_not_called()
 
 
 def test_send_msg_email_requires_recipients_and_delegates():

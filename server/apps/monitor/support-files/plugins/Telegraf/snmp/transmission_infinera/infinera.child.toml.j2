@@ -32,18 +32,39 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # ---- LUM-SYSINFO board load (PEN 8708): Unix-style load averages, NOT 0-100 CPU% ----
+    # sysinfoBoardLoadLoad1Min/5Min/15Min → load_1m/load_5m/load_15m
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "load"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
+        oid = "1.3.6.1.4.1.8708.2.71.2.2.1.1.3"
+        name = "1m"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.8708.2.71.2.2.1.1.4"
+        name = "5m"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.8708.2.71.2.2.1.1.5"
+        name = "15m"
+    # ---- LUM-SYSINFO board memory (PEN 8708) ----
+    # sysinfoBoardMemoryUsageMemPercent → memory_usage_percent (direct 0-100)
+    # optional MemTotal/MemFree/MemAvailable → memory_total/memory_free/memory_available
+    [[inputs.snmp.table]]
+        name = "memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.8708.2.71.2.3.1.1.6"
+        name = "usage_percent"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.8708.2.71.2.3.1.1.3"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.8708.2.71.2.3.1.1.4"
+        name = "free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.8708.2.71.2.3.1.1.5"
+        name = "available"
+# ---- 温度/风扇/电源：LUM-SYSINFO 本轮仅确认单板负载均值与内存对象；无私有温度/风扇/电源状态标量 → N/A 不采。负载不得映射为 CPU%。----

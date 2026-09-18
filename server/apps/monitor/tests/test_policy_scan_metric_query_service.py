@@ -26,6 +26,8 @@ def _policy(**kwargs):
         metric_unit="",
         calculation_unit="",
         threshold_unit="",
+        compare_mode="absolute",
+        compare_value_kind="",
         last_run_time=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     )
     base.update(kwargs)
@@ -123,28 +125,83 @@ class TestSetMonitorObjInstanceKey:
 
 
 class TestQueryAggregationMetrics:
-    def test_calls_method_with_computed_range(self, mocker):
+    def test_calls_query_range_with_compiled_comparison_query(self, mocker):
         svc = MetricQueryService(_policy(algorithm="max", group_by=["instance_id"]), {})
-        fake = mocker.patch.dict(
-            "apps.monitor.tasks.services.policy_scan.metric_query.METHOD",
-            {"max": mocker.Mock(return_value={"data": {"result": []}})},
-            clear=False,
+        vm = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
         )
-        result = svc.query_aggregation_metrics({"type": "min", "value": 5})
+        vm.return_value.query_range.return_value = {"data": {"result": []}}
+        result = svc.query_comparison_metrics({"type": "min", "value": 5})
         assert result == {"data": {"result": []}}
-        method = fake["max"]
-        args = method.call_args.args
-        # query, start, end, step, group_by
-        assert args[0] == "up"
+        args = vm.return_value.query_range.call_args.args
+        assert args[0] == "max_over_time((max(up) by (instance_id))[5m:10s])"
         assert args[3] == "5m"
-        assert args[4] == "instance_id"
-        # end - start == 300 秒
         assert args[2] - args[1] == 300
+
+    def test_existence_query_ignores_compare_mode(self, mocker):
+        svc = MetricQueryService(
+            _policy(
+                algorithm="p95_over_time",
+                group_algorithm="avg",
+                compare_mode="offset_1h",
+                compare_value_kind="percent",
+                group_by=["instance_id"],
+            ),
+            {},
+        )
+        vm = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
+        )
+        vm.return_value.query_range.return_value = {"data": {"result": []}}
+        svc.query_existence_metrics({"type": "min", "value": 5})
+        args = vm.return_value.query_range.call_args.args
+        assert args[0] == (
+            "quantile_over_time(0.95, ((avg(up) by (instance_id))[5m:10s]))"
+        )
+        assert "offset" not in args[0]
+
+    def test_existence_rate_uses_last_over_time(self, mocker):
+        svc = MetricQueryService(
+            _policy(
+                algorithm="rate",
+                group_algorithm="avg",
+                group_by=["instance_id"],
+            ),
+            {},
+        )
+        vm = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
+        )
+        vm.return_value.query_range.return_value = {"data": {"result": []}}
+        svc.query_existence_metrics({"type": "min", "value": 5})
+        args = vm.return_value.query_range.call_args.args
+        assert args[0] == "last_over_time((avg(up) by (instance_id))[5m:10s])"
+        assert "rate(" not in args[0]
+
+    def test_comparison_query_applies_offset_percent(self, mocker):
+        svc = MetricQueryService(
+            _policy(
+                algorithm="avg_over_time",
+                group_algorithm="avg",
+                compare_mode="offset_1h",
+                compare_value_kind="percent",
+                group_by=["instance_id"],
+            ),
+            {},
+        )
+        vm = mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
+        )
+        vm.return_value.query_range.return_value = {"data": {"result": []}}
+        svc.query_comparison_metrics({"type": "min", "value": 5})
+        query = vm.return_value.query_range.call_args.args[0]
+        window = "avg_over_time((avg(up) by (instance_id))[5m:10s])"
+        assert query == f"({window} - {window} offset 1h) / ({window} offset 1h) * 100"
 
     def test_invalid_algorithm_raises(self):
         svc = MetricQueryService(_policy(algorithm="bogus"), {})
         with pytest.raises(BaseAppException):
-            svc.query_aggregation_metrics({"type": "min", "value": 5})
+            svc.query_comparison_metrics({"type": "min", "value": 5})
 
 
 class TestQueryRawMetrics:
@@ -181,12 +238,60 @@ class TestConvertMetricValues:
         assert float(vals[0][1]) == pytest.approx(2.0)
         assert float(vals[1][1]) == pytest.approx(1.0)
 
-    def test_convertible_skips_non_finite_values(self):
-        svc = MetricQueryService(_policy(metric_unit="bytes", calculation_unit="kibibytes"), {})
-        data = {"data": {"result": [{"values": [[100, "inf"]]}]}}
+    def test_percent_skips_metric_unit_conversion(self):
+        svc = MetricQueryService(
+            _policy(
+                metric_unit="bytes",
+                calculation_unit="kibibytes",
+                compare_mode="offset_1h",
+                compare_value_kind="percent",
+            ),
+            {},
+        )
+        data = {"data": {"result": [{"values": [[100, "2048"]]}]}}
         out = svc.convert_metric_values(data)
+        assert out["data"]["result"][0]["values"] == [[100, "2048"]]
+        assert svc.get_effective_calculation_unit() == "percent"
+        assert svc.convert_thresholds(
+            [{"level": "critical", "method": ">", "value": 50}]
+        )[0]["value"] == 50
 
-        assert out["data"]["result"][0]["values"] == [[100, "inf"]]
+    def test_mid_series_conversion_failure_keeps_all_original_values(self, mocker):
+        svc = MetricQueryService(_policy(metric_unit="bytes", calculation_unit="kibibytes"), {})
+        data = {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "a"}, "values": [[100, "2048"]]},
+                    {"metric": {"instance_id": "b"}, "values": [[100, "2048"]]},
+                    {"metric": {"instance_id": "c"}, "values": [[100, "2048"]]},
+                ]
+            }
+        }
+        original_values = [[[100, "2048"]], [[100, "2048"]], [[100, "2048"]]]
+        calls = {"n": 0}
+
+        def _convert_values(values, _source_unit, _target_unit):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise ValueError("conversion failed on second series")
+            return [value / 1024 for value in values]
+
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.metric_query.UnitConverter.convert_values",
+            side_effect=_convert_values,
+        )
+
+        out = svc.convert_metric_values(data)
+        result_values = [item["values"][0][1] for item in out["data"]["result"]]
+        has_converted = any(float(value) == pytest.approx(2.0) for value in result_values)
+        has_raw = any(float(value) == pytest.approx(2048) for value in result_values)
+
+        assert not (has_converted and has_raw), f"mixed units: {result_values}"
+        for result, expected in zip(out["data"]["result"], original_values):
+            assert result["values"] == expected
+        assert data["data"]["result"][0]["values"] == [[100, "2048"]]
+        assert data["data"]["result"][1]["values"] == [[100, "2048"]]
+        assert data["data"]["result"][2]["values"] == [[100, "2048"]]
 
 
 class TestConvertThresholds:

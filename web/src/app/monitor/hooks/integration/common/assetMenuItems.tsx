@@ -30,6 +30,17 @@ export const useAssetMenuItems = (): MenuProps['items'] => {
         key: 'batchDelete',
         danger: true,
       },
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['Edit']}
+          >
+            {t('monitor.integrations.batchUpdateCollectConfig')}
+          </PermissionWrapper>
+        ),
+        key: 'batchUpdateCollectConfig',
+      },
     ],
     [t]
   );

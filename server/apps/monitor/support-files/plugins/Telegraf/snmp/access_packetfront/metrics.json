@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_packetfront",
   "plugin": "Access PacketFront SNMP",
-  "plugin_desc": "Baseline SNMP child template for PacketFront DRG and access CPE devices under the PacketFront private MIB tree. The current MIB facts confirm the PacketFront DRG and SMI roots, but no reliable row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — PacketFront DRG and access CPE devices that expose standard IF-MIB.",
+  "plugin_desc": "PacketFront access-device SNMP collection under enterprise PEN 9303. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it walks chassis environment tables for sensor temperature (hundredths of a degree Celsius, scaled by /100), fan RPM, and optional board voltage (millivolts, scaled by /1000 to volts). CPU and memory are not collected because no private CPU or memory leaves were confirmed. HOST-RESOURCES and DRG config or product leaves are not bound as health metrics. Optical transceiver readings are not used as the health set. Supported brands/models - PacketFront access devices that expose the PEN 9303 environment tables and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_packetfront'}) by (instance_id)",
   "name": "Access",
@@ -14,9 +14,78 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_fan_rpm",
+    "device_voltage_volts"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='access', __$labels__} / 100",
+      "display_name": "Chassis Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Temperature sensor index"
+        },
+        {
+          "name": "sensor",
+          "description": "Temperature sensor number"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor chassis temperature from the PEN 9303 environment temperature table. The Integer32 value is hundredths of a degree Celsius and is scaled by /100 in the query."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_rpm",
+      "query": "device_fan_rpm{instance_type='access', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index"
+        },
+        {
+          "name": "fan",
+          "description": "Fan number"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed in revolutions per minute from the PEN 9303 environment fan table. Persistently low or zero RPM can indicate a stalled fan or cooling failure."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "device_voltage_volts{instance_type='access', __$labels__} / 1000",
+      "display_name": "Board Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Voltage channel index"
+        },
+        {
+          "name": "channel",
+          "description": "Voltage channel number"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional per-channel board voltage from the PEN 9303 environment voltage table. The Integer32 value is millivolts and is scaled by /1000 in the query to volts. Empty voltage tables yield no rows."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

@@ -77,30 +77,16 @@ const ViewDetail = () => {
           </span>
         </div>
         <div className={detailStyle.menu}>
-          <div className={detailStyle.menuBody}>
-            <Segmented
-              vertical
-              value={activeMenu}
-              className="custom-tabs"
-              options={[
-                { value: 'metrics', label: t('monitor.views.metrics') }
-                //   { value: 'overview', label: t('monitor.views.overview') },
-              ]}
-              onChange={onTabChange}
-            />
-          </div>
-          <button
-            type="button"
-            className={detailStyle.backLink}
-            onClick={onBackButtonClick}
-            title={backLabel}
-          >
-            <ArrowLeftOutlined className="mr-2 shrink-0" />
-            <EllipsisWithTooltip
-              className="min-w-0 truncate"
-              text={backLabel}
-            />
-          </button>
+          <Segmented
+            vertical
+            value={activeMenu}
+            className="custom-tabs"
+            options={[
+              { value: 'metrics', label: t('monitor.views.metrics') }
+              //   { value: 'overview', label: t('monitor.views.overview') },
+            ]}
+            onChange={onTabChange}
+          />
         </div>
       </div>
       <div className={detailStyle.rightSide}>
@@ -122,6 +108,7 @@ const ViewDetail = () => {
             idValues={idValues}
             monitorObjectId={monitorObjectId}
             monitorObjectName={monitorObjectName}
+            monitorObjectDisplayName={monitorObjDisplayName}
             instanceId={instanceId}
             instanceName={instanceName}
           />
@@ -130,6 +117,7 @@ const ViewDetail = () => {
             idValues={idValues}
             monitorObjectId={monitorObjectId}
             monitorObjectName={monitorObjectName}
+            monitorObjectDisplayName={monitorObjDisplayName}
             instanceId={instanceId}
             instanceName={instanceName}
           />

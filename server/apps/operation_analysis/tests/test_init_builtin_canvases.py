@@ -71,10 +71,10 @@ def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_wi
 
     assert screen["view_sets"]["items"] == [
         {
-            "h": 1080,
+            "h": 1000,
             "w": 1920,
             "x": 0,
-            "y": 0,
+            "y": 80,
             "id": "builtin-application3d-main",
             "type": "widget",
             "title": "3D应用",
@@ -1053,10 +1053,10 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert application3d_screen.view_sets["decorations"] == {"title": "全景应用墙", "showClock": True, "showTitle": True}
     assert application3d_screen.view_sets["items"] == [
         {
-            "h": 1080,
+            "h": 1000,
             "w": 1920,
             "x": 0,
-            "y": 0,
+            "y": 80,
             "id": "builtin-application3d-main",
             "type": "widget",
             "title": "3D应用",
@@ -1085,14 +1085,16 @@ def test_init_builtin_canvases_marks_existing_directory_builtin():
     from apps.system_mgmt.models.user import Group
 
     Group.objects.get_or_create(name="Default")
+    extra = Group.objects.create(name="Custom Org")
     _ensure_default_namespace()
-    # 预先存在同名根目录（非内置）
-    existing = Directory.objects.create(name="内置目录", parent=None, groups=[], created_by="u")
+    # 预先存在同名根目录（非内置），已配置组织可见性
+    existing = Directory.objects.create(name="内置目录", parent=None, groups=[extra.pk], created_by="u")
     call_command("init_builtin_canvases")
 
     existing.refresh_from_db()
     assert existing.is_build_in is True
     assert existing.build_in_key == "__builtin__"
+    assert existing.groups == [extra.pk]
 
 
 @pytest.mark.django_db

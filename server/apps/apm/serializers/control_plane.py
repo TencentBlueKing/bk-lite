@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.apm.models import ApmApplication, ApmDeploymentEvent, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.identity import normalize_identity
+from apps.apm.services.policies import MAX_POLICY_TARGETS
 from apps.apm.services.query import MAX_METRIC_WINDOW
 from apps.apm.services.status import catalog_status
 
@@ -70,6 +71,7 @@ class CatalogListQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    unassigned = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
         started_at = attrs.get("started_at")
@@ -88,6 +90,7 @@ class InstanceCatalogListQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    unassigned = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
@@ -562,6 +565,12 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"versions": "指定版本模式必须至少选择一个版本。"})
         if version_mode != ApmPolicy.VersionMode.SPECIFIC and attrs["versions"]:
             raise serializers.ValidationError({"versions": "只有指定版本模式可以配置版本列表。"})
+        if version_mode == ApmPolicy.VersionMode.SPECIFIC:
+            combination_count = max(1, len(attrs["endpoints"])) * len(attrs["versions"])
+            if combination_count > MAX_POLICY_TARGETS:
+                raise serializers.ValidationError(
+                    {"endpoints": f"指定版本模式下，端点与版本组合数不能超过 {MAX_POLICY_TARGETS}。"}
+                )
 
         no_data_after = attrs.get("no_data_after", getattr(self.instance, "no_data_after", None))
         no_data_severity = attrs.get("no_data_severity", getattr(self.instance, "no_data_severity", ""))

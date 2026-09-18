@@ -33,6 +33,8 @@
         name = "source"
         is_tag = true
 
+    # Chassis IF pattern: ifXTable 64-bit HC only. Do not expand ifInErrors,
+    # ifOperStatus, or 32-bit octet counters.
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
@@ -47,3 +49,37 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+    # ---- POLYCOM-DMA stResources（IANA PEN 13885，按 server 行）----
+    # stRsrcCPUUsageCPUUtilizationPct 1.3.6.1.4.1.13885.13.2.2.1.4.1.1.3：已是 0-100%，映射为 cpu_usage_percent。
+    [[inputs.snmp.table]]
+        name = "cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13885.13.2.2.1.4.1.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13885.13.2.2.1.4.1.1.3"
+        name = "usage_percent"
+
+    # stRsrcMemUsageTotalMemory ...1.4.2.1.3（MB）+ stRsrcMemUsageUsed ...1.4.2.1.5；
+    # 可选 stRsrcMemUsageFree ...1.4.2.1.6。利用率在查询侧按 used/total 计算。
+    [[inputs.snmp.table]]
+        name = "memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13885.13.2.2.1.4.2.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13885.13.2.2.1.4.2.1.3"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13885.13.2.2.1.4.2.1.5"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13885.13.2.2.1.4.2.1.6"
+        name = "free"

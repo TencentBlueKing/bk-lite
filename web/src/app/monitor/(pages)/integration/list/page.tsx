@@ -54,6 +54,7 @@ import {
   buildIntegrationConfigureUrl,
   resolveIntegrationEntryContext
 } from '@/app/monitor/utils/integrationEntryContext';
+import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 import { downloadPluginConfig } from './exportDownload';
 
 const { confirm } = Modal;
@@ -407,8 +408,8 @@ const Integration = () => {
       cancelText: t('common.cancel'),
       centered: true,
       onOk() {
-        return restoreBuiltinPlugin(app.id).then(() => {
-          message.success(t('monitor.integrations.restoreBuiltinSuccess'));
+        return restoreBuiltinPlugin(app.id).then((result: any) => {
+          const staleCount = Number(result?.stale_instance_count) || 0;
           invalidateMonitorPluginCache(objectId);
           getPluginList({
             monitor_object_id: objectId,
@@ -416,6 +417,28 @@ const Integration = () => {
             keyword: searchText,
             page: pagination.current
           });
+          if (staleCount > 0) {
+            Modal.success({
+              title: t('monitor.integrations.restoreBuiltinSuccess'),
+              content: t('monitor.integrations.restoreBuiltinStaleHint', '', {
+                count: staleCount
+              }),
+              okText: t('monitor.integrations.goToStaleAssets'),
+              onOk: () => {
+                router.push(
+                  buildCollectNeedUpdateAssetUrl({
+                    monitorObjectId:
+                      result?.monitor_object_id ||
+                      app.parent_monitor_object ||
+                      objectId,
+                    pluginId: result?.plugin_id || app.id
+                  })
+                );
+              }
+            });
+            return;
+          }
+          message.success(t('monitor.integrations.restoreBuiltinSuccess'));
         });
       }
     });
@@ -436,9 +459,9 @@ const Integration = () => {
   ];
 
   return (
-    <div className="w-full flex overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 gap-2.5 overflow-hidden">
       <ResizableSidebar collapseStorageKey="monitor.integration.list.sidebarCollapsed">
-        <div className="h-[calc(100vh-146px)] pt-5 px-2.5 pb-2.5 bg-[var(--color-bg-1)] overflow-y-auto">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-y-auto overflow-x-hidden bg-[var(--color-bg-1)] px-2.5 py-5">
           <TreeSelector
             showAllMenu
             allowParentSelect
@@ -457,8 +480,8 @@ const Integration = () => {
           />
         </div>
       </ResizableSidebar>
-      <div className="flex-1 min-w-0 bg-[var(--color-bg-1)] p-5">
-        <div className="mb-[20px] flex items-start justify-between gap-[16px]">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
+        <div className="mb-4 flex min-w-0 shrink-0 items-start justify-between gap-3">
           <div className="flex flex-1 items-start">
             <Input
               className="w-[400px]"
@@ -492,15 +515,18 @@ const Integration = () => {
             </Button>
           </Permission>
         </div>
-        <Spin spinning={pageLoading}>
+        <Spin
+          spinning={pageLoading}
+          wrapperClassName="flex min-h-0 flex-1 flex-col [&>.ant-spin-container]:flex [&>.ant-spin-container]:h-full [&>.ant-spin-container]:min-h-0 [&>.ant-spin-container]:flex-1 [&>.ant-spin-container]:flex-col"
+        >
           {!pluginList.length && !pageLoading ? (
             <CompactEmptyState description={t('common.noData')} />
           ) : !pluginList.length ? (
-            <div className="h-[calc(100vh-280px)]" />
+            <div className="min-h-0 flex-1" />
           ) : (
-            <>
+            <div className="flex min-h-0 flex-1 flex-col">
               <div
-                className="grid gap-4 w-full h-[calc(100vh-280px)] overflow-y-auto"
+                className="grid min-h-0 w-full flex-1 gap-4 overflow-y-auto"
                 style={{
                   gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
                   alignContent: 'start'
@@ -511,6 +537,10 @@ const Integration = () => {
                     (item) => sameMonitorId(item.id, app.parent_monitor_object)
                   );
                   const objectName = parentObject?.name || '';
+                  const staleCount = Number(app.stale_instance_count) || 0;
+                  const packVersionText = app.pack_version
+                    ? app.pack_version
+                    : t('monitor.integrations.builtinPack');
 
                   return (
                     <div
@@ -550,17 +580,48 @@ const Integration = () => {
                             </Tag>
                             <Tooltip
                               title={
-                                app.pack_version
-                                  ? t('monitor.integrations.pinnedPackHint', '', {
-                                    version: app.pack_version
+                                staleCount > 0
+                                  ? t('monitor.integrations.staleInstanceHint', '', {
+                                    count: staleCount,
+                                    version: packVersionText
                                   })
-                                  : t('monitor.integrations.builtinPackHint')
+                                  : app.pack_version
+                                    ? t('monitor.integrations.pinnedPackHint', '', {
+                                      version: app.pack_version
+                                    })
+                                    : t('monitor.integrations.builtinPackHint')
                               }
                             >
-                              <Tag className="mt-[4px] ml-[6px]">
-                                {app.pack_version
-                                  ? app.pack_version
-                                  : t('monitor.integrations.builtinPack')}
+                              <Tag
+                                color={staleCount > 0 ? 'warning' : undefined}
+                                className={`mt-[4px] ml-[6px]${staleCount > 0 ? ' cursor-pointer' : ''}`}
+                                onClick={
+                                  staleCount > 0
+                                    ? (e) => {
+                                      e.stopPropagation();
+                                      const result =
+                                        resolveIntegrationEntryContext(
+                                          app,
+                                          objects
+                                        );
+                                      router.push(
+                                        buildCollectNeedUpdateAssetUrl({
+                                          monitorObjectId: result.ok
+                                            ? result.context.objectId
+                                            : app.parent_monitor_object ||
+                                              String(objectId),
+                                          pluginId: app.id,
+                                          needUpdate: true
+                                        })
+                                      );
+                                    }
+                                    : undefined
+                                }
+                              >
+                                {packVersionText}
+                                {staleCount > 0
+                                  ? ` · ${t('monitor.integrations.needUpdate')} ${staleCount}`
+                                  : ''}
                               </Tag>
                             </Tooltip>
                             {app.is_custom && (
@@ -626,7 +687,7 @@ const Integration = () => {
                   );
                 })}
               </div>
-              <div className="mt-4 flex justify-end">
+              <div className="mt-4 flex shrink-0 justify-end">
                 <AntPagination
                   current={pagination.current}
                   pageSize={pagination.pageSize}
@@ -638,7 +699,7 @@ const Integration = () => {
                   onChange={handlePageChange}
                 />
               </div>
-            </>
+            </div>
           )}
         </Spin>
       </div>

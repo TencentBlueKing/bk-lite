@@ -69,6 +69,7 @@
   "interaction": [
     { "component": "chart-dimension-filter", "reason": "通用图表维度筛选交互", "contractStory": "charts-family.stories.tsx" },
     { "component": "chart-drag-selection", "reason": "通用图表拖拽框选交互", "contractStory": "charts-family.stories.tsx" },
+    { "component": "catalog-scope-segmented", "reason": "通用目录当前组织/未归属视图切换", "contractStory": "toolbar-family.stories.tsx" },
     { "component": "filter-toolbar", "reason": "通用筛选工具栏交互", "contractStory": "toolbar-family.stories.tsx" },
     { "component": "search-combination-toolbar", "reason": "通用组合搜索工具栏", "contractStory": "toolbar-family.stories.tsx" },
     { "component": "selectable-card-grid", "reason": "通用可选择卡片网格", "contractStory": "selection-family.stories.tsx" },

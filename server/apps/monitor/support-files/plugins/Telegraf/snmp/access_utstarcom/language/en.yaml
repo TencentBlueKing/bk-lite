@@ -1,8 +1,9 @@
 Access UTStarcom SNMP:
   name: Access UTStarcom SNMP
-  desc: SNMP monitoring template for UTStarcom access device. It reports per-port
+  desc: SNMP monitoring template for UTStarcom BBS4000/EPON4000 access device. It
+    reports per-board CPU utilization, memory utilization, board temperature, per-port
     inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 4666).
+    PEN 1949).
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -41,9 +42,9 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the access device, reported directly as a percentage
-        by a private scalar. Sustained high usage indicates OLT control-plane or management-plane
-        pressure.
+      desc: Per-board CPU utilization of the access device. The SNMP Integer32 is 0-1000
+        tenths of a percent; the query divides by 10 to report percent. Sustained high
+        usage indicates OLT control-plane or management-plane pressure.
     device_memory_total:
       name: Memory Total
       desc: Total physical memory capacity reported by the access device in bytes.
@@ -55,14 +56,15 @@ monitor_object_metric:
         or service tables.
     device_memory_usage:
       name: Memory Usage
-      desc: System memory utilization of the access device, reported directly as a
-        percentage by a private scalar. Sustained high memory can indicate forwarding
-        table, ONU management table, or control-service pressure.
+      desc: Per-board memory utilization of the access device. The SNMP Integer32 is
+        0-1000 tenths of a percent; the query divides by 10 to report percent. Sustained
+        high memory can indicate forwarding table, ONU management table, or control-service
+        pressure.
     device_temperature_celsius:
-      name: System Temperature
-      desc: System temperature of the access device in degrees Celsius. Persistently
-        high values may indicate cooling problems, high ambient temperature, or excessive
-        device load.
+      name: Board Temperature
+      desc: Per-board temperature of the access device in degrees Celsius. Persistently
+        high values may indicate cooling problems, high ambient temperature, or
+        excessive board load.
     device_card_temperature_level:
       name: Card Temperature Level
       desc: Relative card temperature level of the access device. Values 1-10 indicate

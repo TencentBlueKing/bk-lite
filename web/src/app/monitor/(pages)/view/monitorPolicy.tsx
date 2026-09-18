@@ -21,7 +21,9 @@ import {
 const MonitorPolicy: React.FC<ViewModalProps> = ({
   monitorObject,
   monitorName,
-  form = INIT_VIEW_MODAL_FORM
+  form = INIT_VIEW_MODAL_FORM,
+  readOnly = false,
+  fillContainer = false,
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
@@ -49,11 +51,14 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
       title: t('common.name'),
       dataIndex: 'name',
       key: 'name',
-      render: (_, record) => (
-        <Button type="link" className="px-0" onClick={() => linkToStrategyDetail(record)}>
-          {record.name || '--'}
-        </Button>
-      )
+      render: (_, record) =>
+        !readOnly ? (
+          <Button type="link" className="px-0" onClick={() => linkToStrategyDetail(record)}>
+            {record.name || '--'}
+          </Button>
+        ) : (
+          <span>{record.name || '--'}</span>
+        )
     },
     {
       title: t('monitor.events.enableStatus'),
@@ -178,9 +183,9 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   };
 
   return (
-    <div className="w-full">
+    <div className={fillContainer ? 'flex h-full min-h-0 w-full flex-col' : 'w-full'}>
       <CustomTable
-        scroll={{ y: 'calc(100vh - 360px)', x: 890 }}
+        scroll={fillContainer ? { x: 890 } : { y: 'calc(100vh - 360px)', x: 890 }}
         columns={columns}
         dataSource={tableData}
         pagination={pagination}

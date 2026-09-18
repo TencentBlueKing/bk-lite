@@ -1,6 +1,6 @@
 NetworkService EfficientIP SNMP:
   name: EfficientIP（Telegraf）
-  desc: 面向 EfficientIP 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 EfficientIP 网络服务设备的 SNMP 监控模板,可采集 CPU 负载、内存使用、DNS/DHCP 服务状态、每端口入向流量速率等主要指标（企业号 PEN 2440）。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -27,18 +27,36 @@ monitor_object_metric:
     device_cpu_usage:
       name: CPU 使用率
       desc: 网络服务设备的整机 CPU 使用率（设备直接上报的百分比）。持续偏高表示节点的流量转发与过滤处理已接近处理能力上限。
+    cpu_load:
+      name: CPU 负载
+      desc: EfficientIP 设备的每核 CPU load average。设备以 load×100 的整数上报，采集查询除以 100 后还原为负载值。持续高于 1 表示相对 CPU 核数已经过载。
     device_memory_usage:
       name: 内存使用率
       desc: 网络服务设备的系统内存使用率（设备直接上报的百分比）。持续偏高可能表示设备上的映射/流表存在内存压力。
+    memory_used:
+      name: 内存使用
+      desc: EfficientIP 设备已用物理内存百分比。持续偏高可能表示 DDI 服务存在内存压力。
     device_temperature_celsius:
       name: 温度
       desc: 网络服务设备的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+    device_psu_state:
+      name: 电源状态
+      desc: 电源 1 运行状态，统一归一为 1=正常、2=异常。
     network_service_dns_service_state:
       name: DNS 服务状态
       desc: DNS 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_dns_cpu:
+      name: DNS 服务 CPU
+      desc: DNS 服务 CPU 使用率（设备直接上报的百分比）。
     network_service_dhcp_service_state:
       name: DHCP 服务状态
       desc: DHCP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_dhcp_cpu:
+      name: DHCP 服务 CPU
+      desc: DHCP 服务 CPU 使用率（设备直接上报的百分比）。
+    network_service_database_cpu:
+      name: 数据库服务 CPU
+      desc: 数据库服务 CPU 使用率（设备直接上报的百分比）。
     network_service_ntp_service_state:
       name: NTP 服务状态
       desc: NTP 服务运行状态，统一归一为 1=正常、2=异常。

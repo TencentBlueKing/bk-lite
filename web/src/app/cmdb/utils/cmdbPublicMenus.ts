@@ -1,12 +1,7 @@
 import type { AppWidgetKey } from '@/context/appCapabilities/widgets';
-import { canShowCrossModulePublicWidget } from '@/context/appCapabilities/crossModuleEmbed';
 
 export interface CmdbPublicMenuItem {
-  key:
-    | 'monitorView'
-    | 'alertList'
-    | 'networkStatusTopology'
-    | 'application3D';
+  key: 'monitorView' | 'alertList' | 'monitorPolicy' | 'nodeStatus';
   widgetKey: AppWidgetKey;
   titleKey: string;
   url: string;
@@ -15,23 +10,16 @@ export interface CmdbPublicMenuItem {
 const DETAIL_BASE = '/cmdb/assetData/detail';
 
 export function resolveCmdbPublicMenuItems(input: {
-  instUuid: string;
   modelId: string;
   monitorId: string;
-  isNetworkDevice: boolean;
-  hasOpsAnalysis: boolean;
+  nodeId: string;
   widgets: Partial<Record<AppWidgetKey, boolean>>;
 }): CmdbPublicMenuItem[] {
-  const instUuid = input.instUuid.trim();
   const monitorId = input.monitorId.trim();
+  const nodeId = input.nodeId.trim();
   const items: CmdbPublicMenuItem[] = [];
-  const canShow = (widgetKey: AppWidgetKey) =>
-    canShowCrossModulePublicWidget({
-      hostApp: 'cmdb',
-      widgetKey,
-      hasOpsAnalysis: input.hasOpsAnalysis,
-      providerDeclared: Boolean(input.widgets[widgetKey]),
-    });
+  // 提供方未购 / 无模块级访问时目录探测不到该键，declared 即为 false。
+  const canShow = (widgetKey: AppWidgetKey) => Boolean(input.widgets[widgetKey]);
 
   if (monitorId && canShow('monitor.monitorView')) {
     items.push({
@@ -49,23 +37,20 @@ export function resolveCmdbPublicMenuItems(input: {
       url: `${DETAIL_BASE}/alertList`,
     });
   }
-  if (!instUuid) {
-    return items;
-  }
-  if (input.isNetworkDevice && canShow('ops-analysis.networkStatusTopology')) {
+  if (monitorId && canShow('monitor.monitorPolicy')) {
     items.push({
-      key: 'networkStatusTopology',
-      widgetKey: 'ops-analysis.networkStatusTopology',
-      titleKey: 'Model.publicNetworkStatusTopology',
-      url: `${DETAIL_BASE}/networkStatusTopology`,
+      key: 'monitorPolicy',
+      widgetKey: 'monitor.monitorPolicy',
+      titleKey: 'Model.publicMonitorPolicy',
+      url: `${DETAIL_BASE}/monitorPolicy`,
     });
   }
-  if (input.modelId === 'system' && canShow('ops-analysis.application3D')) {
+  if (input.modelId === 'host' && nodeId && canShow('node.nodeStatus')) {
     items.push({
-      key: 'application3D',
-      widgetKey: 'ops-analysis.application3D',
-      titleKey: 'Model.publicApplication3D',
-      url: `${DETAIL_BASE}/application3D`,
+      key: 'nodeStatus',
+      widgetKey: 'node.nodeStatus',
+      titleKey: 'Model.publicNodeStatus',
+      url: `${DETAIL_BASE}/nodeStatus`,
     });
   }
   return items;

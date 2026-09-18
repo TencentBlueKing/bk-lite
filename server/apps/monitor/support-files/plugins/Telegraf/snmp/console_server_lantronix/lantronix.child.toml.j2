@@ -33,6 +33,8 @@
         name = "source"
         is_tag = true
 
+    # Console-server IF floor: 64-bit IF-MIB HC counters (ifXTable). Full Switch/Router
+    # IF chassis (32-bit octets, ifOperStatus, ifSpeed) is not injected for ConsoleServer.
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
@@ -47,3 +49,77 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+    # LANTRONIX-SLC-MIB (PEN 244) chassis health scalars.
+    # slcSystemInternalTemp Integer32 Celsius; 9999 means a read error and is dropped below.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.244.1.1.6.25.0"
+        name = "device_temperature_celsius"
+    # slcDevPowerSupplyA INTEGER { up(1), down(2) }
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.244.1.1.4.4.2.0"
+        name = "psu_a_status"
+    # slcDevPowerSupplyB INTEGER { up(1), down(2), notInstalled(3) }
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.244.1.1.4.4.3.0"
+        name = "psu_b_status"
+    # Optional slcConnNumber: count of rows in the connections table.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.244.1.1.5.1.0"
+        name = "active_sessions"
+
+    # Optional per-port sensor temperature/humidity (DisplayString; empty when N/A).
+    # conversion=float skips empty or non-numeric values. CPU/memory gauges are not present
+    # on LANTRONIX-SLC-MIB and are not faked.
+    [[inputs.snmp.table]]
+        name = "lantronix_port"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.244.1.1.4.2.2.2.1.2"
+        name = "port_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.244.1.1.4.2.2.2.1.73"
+        name = "temperature_celsius"
+        conversion = "float"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.244.1.1.4.2.2.2.1.76"
+        name = "humidity_percent"
+        conversion = "float"
+
+# Shared device_psu_state is 1=healthy, >1=fault. PSU B notInstalled(3) is not a fault.
+[[processors.enum]]
+    [processors.enum.tagpass]
+        brand = ["lantronix"]
+    [[processors.enum.mapping]]
+        field = "psu_a_status"
+        dest = "psu_a_status"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1
+    [[processors.enum.mapping]]
+        field = "psu_b_status"
+        dest = "psu_b_status"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1
+            3 = 1
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    temp = metric.fields.get("device_temperature_celsius")
+    if temp == 9999:
+        metric.fields.pop("device_temperature_celsius")
+    states = []
+    for key in ("psu_a_status", "psu_b_status"):
+        if metric.fields.get(key) != None:
+            states.append(metric.fields[key])
+    if states:
+        metric.fields["device_psu_state"] = max(states)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["lantronix"]

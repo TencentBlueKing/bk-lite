@@ -13,7 +13,6 @@ from apps.apm.services.contracts import (
     IssueSampleTrace,
     SpanDetail,
     SpanSummary,
-    TraceDetail,
 )
 from apps.apm.services.query import DjangoTelemetryQueryService
 
@@ -80,14 +79,9 @@ class DjangoTelemetryIssueService:
         self.query_service = query_service
 
     def project(self, summaries: Iterable[SpanSummary], *, next_cursor: str | None) -> IssuePage:
-        occurrences: list[_IssueOccurrence] = []
-        details: dict[str, TraceDetail | None] = {}
-        for summary in summaries:
-            if summary.trace_id not in details:
-                details[summary.trace_id] = self.query_service.get_trace(summary.trace_id)
-            detail = details[summary.trace_id]
-            span = next((item for item in detail.spans if item.span_id == summary.span_id), None) if detail is not None else None
-            occurrences.append(self._occurrence(summary, span))
+        items = tuple(summaries)
+        details = self.query_service.get_span_details(tuple((item.trace_id, item.span_id) for item in items))
+        occurrences = [self._occurrence(summary, details.get((summary.trace_id, summary.span_id))) for summary in items]
 
         groups: dict[str, list[_IssueOccurrence]] = {}
         for occurrence in occurrences:

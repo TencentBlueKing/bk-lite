@@ -46,7 +46,7 @@ const ControllerInstall: React.FC<ControllerInstallProps> = ({ cancel }) => {
   ];
 
   return (
-    <div className="w-[calc(100vw-280px)]">
+    <div className="w-full min-w-0 max-w-full">
       <div className="w-full">
         <div className="p-[10px]">
           <div className="mb-8 px-[20px]">

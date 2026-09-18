@@ -43,7 +43,8 @@ import {
   buildAlertSnapshotChartModel,
   decorateAlertSnapshotChartData,
   resolveAlertDetailChartUnit,
-  resolveAlertDetailMetric
+  resolveAlertDetailMetric,
+  type AlertSnapshotOverlay
 } from './alertDetailUtils';
 import { buildAlertDetailPageContext } from './alertDetail.context';
 
@@ -70,6 +71,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       [number, number] | null
     >(null);
     const [chartUnit, setChartUnit] = useState<string>('');
+    const [chartOverlay, setChartOverlay] = useState<AlertSnapshotOverlay>();
     const [trapData, setTrapData] = useState<TableDataItem>({});
     const [activeTab, setActiveTab] = useState<string>('information');
     const [loading, setLoading] = useState<boolean>(false);
@@ -162,6 +164,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
         setChartUnit(
           resolveAlertDetailChartUnit(form, responseData?.chart_unit)
         );
+        setChartOverlay(snapshotChart.overlay);
         const config = [
           {
             instance_id_values: form.instance_id_values,
@@ -322,6 +325,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setChartData([]);
       setChartXAxisDomain(null);
       setChartUnit('');
+      setChartOverlay(undefined);
       setTrapData({});
       setEventData([]);
       setFormData({});
@@ -483,7 +487,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
               </div>
               {/* Content area — fills remaining height */}
               <div
-                className={`flex-1 min-h-0 ${isInformation ? 'overflow-auto' : 'overflow-hidden'}`}
+                className={`flex flex-col flex-1 min-h-0 ${isInformation ? 'overflow-auto' : 'overflow-hidden'}`}
               >
                 {isInformation ? (
                   <Spin className="w-full" spinning={loading}>
@@ -497,6 +501,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                       chartData={chartData}
                       chartXAxisDomain={chartXAxisDomain}
                       chartUnit={chartUnit}
+                      chartOverlay={chartOverlay}
                     />
                   </Spin>
                 ) : (

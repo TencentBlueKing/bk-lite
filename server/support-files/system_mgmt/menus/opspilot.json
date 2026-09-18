@@ -12,21 +12,6 @@
   "description": "app.opspilot",
   "menus": [
     {
-      "name": "Knowledge Base",
-      "children": [
-        {
-          "id": "wiki_list",
-          "name": "Knowledge Base list",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        }
-      ]
-    },
-    {
       "name": "Studio",
       "children": [
         {
@@ -101,15 +86,15 @@
       ]
     },
     {
-      "name": "Model",
+      "name": "Knowledge Base",
       "children": [
         {
-          "id": "provide_list",
-          "name": "Model list",
+          "id": "wiki_list",
+          "name": "Knowledge Base list",
           "operation": [
-            "Add",
             "View",
-            "Setting",
+            "Add",
+            "Edit",
             "Delete"
           ]
         }
@@ -144,6 +129,21 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Model",
+      "children": [
+        {
+          "id": "provide_list",
+          "name": "Model list",
+          "operation": [
+            "Add",
+            "View",
+            "Setting",
+            "Delete"
+          ]
+        }
+      ]
     }
   ],
   "roles": [
@@ -156,15 +156,16 @@
       "name": "normal",
       "role_name": "opspilot_normal",
       "menus": [
-        "wiki_list-View",
         "bot_list-View",
         "bot_settings-View",
         "bot_conversation_log-View",
-        "provide_list-View",
         "skill_list-View",
         "skill_setting-View",
         "skill_channel-View",
-        "memory_list-View"
+        "wiki_list-View",
+        "tool_list-View",
+        "memory_list-View",
+        "provide_list-View"
       ]
     }
   ]

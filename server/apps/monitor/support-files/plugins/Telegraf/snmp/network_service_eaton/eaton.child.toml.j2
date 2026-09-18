@@ -33,6 +33,14 @@
         name = "source"
         is_tag = true
 
+    # XUPS battery charge % and output load % (PEN 534). Interface traffic stays on the existing IF-MIB HC floor.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.534.1.2.4.0"
+        name = "network_service_eaton_battery_capacity"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.534.1.4.1.0"
+        name = "network_service_eaton_output_load"
+
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"

@@ -11,7 +11,7 @@ import fieldOperatorContract from '../../../../../../specs/changes/alert-rule-ty
 const api = vi.hoisted(() => ({
   getChannelList: vi.fn(), getNotificationTemplateOptions: vi.fn(),
   createAssignment: vi.fn(), updateAssignment: vi.fn(), createShield: vi.fn(), updateShield: vi.fn(),
-  getAlertSourceOptions: vi.fn(),
+  getAlertSourceOptions: vi.fn(), getPushSourceIdOptions: vi.fn(),
   createCorrelationRule: vi.fn(), updateCorrelationRule: vi.fn(), createEnrichment: vi.fn(), updateEnrichment: vi.fn(),
   createActionRule: vi.fn(), updateActionRule: vi.fn(), getActionJobScripts: vi.fn(), getActionJobScript: vi.fn(),
 }));
@@ -41,6 +41,7 @@ beforeEach(() => {
   api.getChannelList.mockResolvedValue([{ id: 1, name: '邮件', channel_type: 'email' }]);
   api.getNotificationTemplateOptions.mockResolvedValue([]);
   api.getAlertSourceOptions.mockResolvedValue([]);
+  api.getPushSourceIdOptions.mockResolvedValue([]);
   api.getActionJobScripts.mockResolvedValue([{id:1,name:'脚本'}]);
   api.getActionJobScript.mockResolvedValue({id:1,params:[]});
   for (const save of [api.createCorrelationRule,api.updateCorrelationRule,api.createEnrichment,api.updateEnrichment,api.createActionRule,api.updateActionRule]) save.mockResolvedValue({});
@@ -87,6 +88,18 @@ describe('五个正式配置页面的类型化保存', () => {
       fireEvent.mouseDown(input);
       fireEvent.click(await screen.findByText(context === 'event' ? '事件预警' : '告警预警', { selector: '.ant-select-item-option-content' }));
       expectedValue = ['1', '2'];
+    } else if (key === 'source_name' || key === 'source_names') {
+      api.getAlertSourceOptions.mockResolvedValue([{id:7,name:`${key}:A`},{id:8,name:`${key}:B,生产`}]);
+      const input = await screen.findByRole('combobox', { name: 'alarmCommon.sourceSelect' });
+      fireEvent.mouseDown(input);
+      fireEvent.click(await screen.findByText(`${key}:B,生产 (ID: 8)`));
+      fireEvent.keyDown(input, { key: 'Escape', keyCode: 27 });
+      expectedValue = [`${key}:A`, `${key}:B,生产`];
+    } else if (key === 'push_source_id' || key === 'push_source_ids') {
+      const input = await screen.findByRole('combobox', { name: 'alarmCommon.pushSourceInput' });
+      fireEvent.change(input, { target: { value: `${key}:B,生产` } });
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 });
+      expectedValue = [`${key}:A`, `${key}:B,生产`];
     } else if (multi) {
       const input = await screen.findByRole('combobox', { name: 'alarmCommon.multiValueInput' });
       fireEvent.change(input, { target: { value: `${key}:B,生产` } });
@@ -100,7 +113,7 @@ describe('五个正式配置页面的类型化保存', () => {
     await waitFor(() => expect(update).toHaveBeenCalledOnce());
     const saved = update.mock.calls[0][1];
     expect(saved.match_rules).toEqual([[{ key, operator, value: expectedValue }]]);
-    expect(api.getAlertSourceOptions).not.toHaveBeenCalled();
+    expect(api.getAlertSourceOptions).toHaveBeenCalledTimes(key === 'source_name' || key === 'source_names' ? 1 : 0);
     modal.unmount();
     const reopened = { ...props, currentRow: { ...props.currentRow, ...saved, id: 42 } };
     render(React.createElement(Component as React.ComponentType<typeof reopened>, reopened));
@@ -147,7 +160,7 @@ describe('五个正式配置页面的类型化保存', () => {
     const condition={key:'push_source_ids',operator:'all_of',value:['a','b']};
     const props={open:true,currentRow:{...structuredClone(row),...extra,...(edit?{id:42}:{}),match_rules:[[condition]]},onClose:vi.fn(),onSuccess:vi.fn()};
     render(React.createElement(Component as React.ComponentType<typeof props>,props));
-    const input=await screen.findByRole('combobox',{name:'alarmCommon.multiValueInput'});
+    const input=await screen.findByRole('combobox',{name:'alarmCommon.pushSourceInput'});
     fireEvent.change(input,{target:{value:'001'}});fireEvent.keyDown(input,{key:'Enter',keyCode:13});fireEvent.keyUp(input,{key:'Enter',keyCode:13});
     fireEvent.click(screen.getByRole('button',{name:submit}));
     const save=edit?update:create;
@@ -155,7 +168,7 @@ describe('五个正式配置页面的类型化保存', () => {
     expect(save.mock.calls[0][edit?1:0].match_rules).toEqual([[{...condition,value:['a','b','001']}]]);
   });
 
-  it.each(allCases.flatMap(item => [false,true].map(edit=>({...item,edit}))))('$name 告警源多名称新增/编辑提交，编辑=$edit', async ({name,Component,create,update,submit,extra,edit}) => {
+  it.each(allCases.flatMap(item => [false,true].map(edit=>({...item,edit}))))('$name 集成源多名称新增/编辑提交，编辑=$edit', async ({name,Component,create,update,submit,extra,edit}) => {
     const key=['分派','处理'].includes(name)?'source_names':'source_name';
     const condition={key,operator:'any_of',value:['平台A']};
     const newEnrichment=name==='丰富'&&!edit;
@@ -169,14 +182,17 @@ describe('五个正式配置页面的类型化保存', () => {
       fireEvent.mouseDown(screen.getAllByRole('combobox')[2]);
       fireEvent.click(await screen.findByText('alarmCommon.candidateOperators.any_of',{selector:'.ant-select-item-option-content'}));
     }
-    const input=await screen.findByRole('combobox',{name:'alarmCommon.multiValueInput'});
-    if(newEnrichment){fireEvent.change(input,{target:{value:'平台A'}});fireEvent.keyDown(input,{key:'Enter',keyCode:13});}
-    fireEvent.change(input,{target:{value:'平台B,生产'}});fireEvent.keyDown(input,{key:'Enter',keyCode:13});
+    api.getAlertSourceOptions.mockResolvedValue([{id:7,name:'平台A',source_id:'a'},{id:8,name:'平台B,生产',source_id:'b'}]);
+    const input=await screen.findByRole('combobox',{name:'alarmCommon.sourceSelect'});
+    fireEvent.mouseDown(input);
+    if(newEnrichment) fireEvent.click(await screen.findByText('平台A (ID: 7)'));
+    fireEvent.click(await screen.findByText('平台B,生产 (ID: 8)'));
+    fireEvent.keyDown(input,{key:'Escape',keyCode:27});
     fireEvent.click(screen.getByRole('button',{name:submit}));
     const save=edit?update:create;
     await waitFor(()=>expect(save).toHaveBeenCalledOnce());
     expect(save.mock.calls[0][edit?1:0].match_rules).toEqual([[{...condition,value:['平台A','平台B,生产']}]]);
-    expect(api.getAlertSourceOptions).not.toHaveBeenCalled();
+    expect(api.getAlertSourceOptions).toHaveBeenCalledOnce();
   });
 
 });

@@ -24,6 +24,18 @@ export const WALL_FILTER_MOTION = {
   startScale: 0.98,
 } as const;
 
+export const WALL_PAGE_TURN_MOTION = {
+  durationMs: 320,
+  /** World X offset: next comes from right (+), prev comes from left (-). */
+  offsetX: 1.6,
+  /** World Z offset: cards start slightly deeper into the scene for 3D depth perception. */
+  offsetZ: -0.7,
+  /** Y-axis tilt in degrees: subtle yaw towards view center during slide. */
+  rotateYDeg: 2.2,
+  /** Subtle column-based stagger to create a refined wave effect without delaying completion. */
+  columnStaggerMs: 14,
+} as const;
+
 export const FOCUS_MOTION = {
   durationMs: 380,
   liftZ: 0.42,

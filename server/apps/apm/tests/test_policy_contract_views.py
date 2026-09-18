@@ -114,3 +114,37 @@ def test_policy_preview_queries_real_adapter_without_persisting_a_policy(apm_api
     assert response.data["threshold"]["severity"] == "error"
     assert ApmPolicy.objects.count() == 0
     assert service.test_query.call_args.args[0].environment == "production"
+
+
+def test_policy_contract_accepts_legal_target_combinations_and_rejects_oversized_specific(apm_api_client):
+    service = _service()
+    payload = _payload(service)
+    payload["endpoints"] = [f"GET /e{i}" for i in range(10)]
+    payload["versions"] = [f"v{i}" for i in range(10)]
+
+    created = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+    assert created.status_code == 201
+    assert len(created.data["endpoints"]) == 10
+    assert len(created.data["versions"]) == 10
+
+    patched = apm_api_client.patch(
+        f"/api/v1/apm/policies/{created.data['id']}/",
+        {"endpoints": payload["endpoints"], "versions": payload["versions"]},
+        format="json",
+    )
+    assert patched.status_code == 200
+
+    oversized = {
+        **payload,
+        "endpoints": ["GET /a", "GET /b"],
+        "versions": [f"v{i}" for i in range(100)],
+    }
+    rejected_create = apm_api_client.post("/api/v1/apm/policies/", oversized, format="json")
+    assert rejected_create.status_code == 400
+
+    rejected_patch = apm_api_client.patch(
+        f"/api/v1/apm/policies/{created.data['id']}/",
+        {"endpoints": oversized["endpoints"], "versions": oversized["versions"]},
+        format="json",
+    )
+    assert rejected_patch.status_code == 400

@@ -7,8 +7,7 @@ from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.collection.plugins.base import bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
-import json
-import codecs
+
 
 class ProtocolCollectMetrics(CollectBase):
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
@@ -19,14 +18,15 @@ class ProtocolCollectMetrics(CollectBase):
         plugin_cls = get_collection_plugin(CollectPluginTypes.PROTOCOL, self.model_id)
         return list(getattr(plugin_cls, "metric_names", ()))
 
-
-
     def get_inst_name(self, data):
         return f"{data['ip_addr']}-{self.model_id}-{data['port']}"
 
     @property
     def model_field_mapping(self):
         plugin_cls = get_collection_plugin(CollectPluginTypes.PROTOCOL, self.model_id)
+        mappings = getattr(plugin_cls, "field_mappings", None)
+        if mappings:
+            return {model_id: bind_collection_mapping(self, mapping) for model_id, mapping in mappings.items()}
         return {self.model_id: bind_collection_mapping(self, getattr(plugin_cls, "field_mapping", {}))}
 
     def format_data(self, data):
@@ -41,13 +41,13 @@ class ProtocolCollectMetrics(CollectBase):
                 else:
                     self.timestamp_gt = True
             result_data = {}
-            if index_data["metric"].get("collect_status", 'failed') == 'failed':
+            if index_data["metric"].get("collect_status", "failed") == "failed":
                 continue
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,
                 **index_data["metric"],
-                **result_data, # 将解析后的JSON数据合并到index_dict中
+                **result_data,  # 将解析后的JSON数据合并到index_dict中
             )
             self.collection_metrics_dict[metric_name].append(index_dict)
 
@@ -55,7 +55,8 @@ class ProtocolCollectMetrics(CollectBase):
         """格式化数据"""
         for metric_key, metrics in self.collection_metrics_dict.items():
             result = []
-            mapping = self.model_field_mapping.get(self.model_id, {})
+            model_id = metric_key[: -len("_info_gauge")] if metric_key.endswith("_info_gauge") else self.model_id
+            mapping = self.model_field_mapping.get(model_id, self.model_field_mapping.get(self.model_id, {}))
             for index_data in metrics:
                 data = {}
                 for field, key_or_func in mapping.items():
@@ -65,6 +66,9 @@ class ProtocolCollectMetrics(CollectBase):
                         data[field] = key_or_func(index_data)
                     else:
                         data[field] = index_data.get(key_or_func, "")
-                if data:
+                if model_id == self.model_id:
+                    if data:
+                        result.append(data)
+                elif data.get("inst_name"):
                     result.append(data)
-            self.result[self.model_id] = result
+            self.result[model_id] = result

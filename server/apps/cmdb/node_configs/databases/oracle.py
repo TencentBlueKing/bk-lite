@@ -18,7 +18,8 @@ class OracleNodeParams(DirectPasswordNodeParamsMixin, BaseNodeParams):
 
     def build_extra_credential_fields(self, credential):
         payload = {}
-        service_name = credential.get("service_name", "")
-        if service_name:
-            payload["service_name"] = service_name
+        for key in ("service_name", "sid", "connect_type"):
+            value = credential.get(key, "")
+            if value:
+                payload[key] = value
         return payload

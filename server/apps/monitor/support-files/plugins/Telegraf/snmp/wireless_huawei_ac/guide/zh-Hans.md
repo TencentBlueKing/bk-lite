@@ -50,14 +50,25 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 
 - `snmp_uptime` 持续增长。
 - `device_cpu_usage`、`device_memory_usage` 有实体维度读数。
+- 机箱功耗可见 `device_power_used` / `device_power_total`（`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`，单位瓦特）。无效值（`-1` / 空）会被丢弃。
+- 有风扇机型可见 `device_fan_state` / `device_fan_speed_pct`（满速百分比），维度为风扇槽位与序列号。无风扇机型风扇表可为空。
 - `wlan_cur_joint_ap_num`、`wlan_cur_assoc_sta_num` 与现场规模大致相符。
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` 在上联口上有速率。
+- 已插光模块时会出现光模块 DDM 序列（`optical_temp_c`、`optical_voltage_mV`、`optical_bias_uA`、`optical_rx_dbm`、`optical_tx_dbm`）。
 
 ## 常见问题
 
 ### 只有 uptime 和接口，没有 CPU/内存
 
 设备 SNMP 视图可能未授权实体健康对象。请确认只读视图包含 `1.3.6.1.4.1.2011.5.25.31`。
+
+### 没有机箱已用/总功耗指标
+
+请确认只读视图包含 `1.3.6.1.4.1.2011.5.25.31.3`。这些标量单位为瓦特（`device_power_used` / `device_power_total`）。缺少机箱功耗不代表实体 CPU/内存或 IF-MIB 采集失败。
+
+### 没有风扇转速或风扇状态
+
+无风扇机型 `hwFanStatusTable` 为空是预期行为，不代表采集失败。有风扇机型请确认只读视图包含 `1.3.6.1.4.1.2011.5.25.31.1.1.10`。风扇转速 `device_fan_speed_pct` 是满速百分比，不是 RPM。无效值（`-1` / 空）会被丢弃。
 
 ### 没有 AP、终端或射频数据
 
@@ -74,3 +85,7 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 ### 全局无线速率单位
 
 `wlan_global_up_speed` / `wlan_global_down_speed`（`hwWlanGlobalUpSpeed` / `hwWlanGlobalDownSpeed`）按 MIB 以 Kbps 采集，平台单位为 `kbitps`，不做 bit/s 换算。
+
+### 没有光模块 DDM 序列
+
+机箱未插光模块时 `hwOpticalModuleInfoTable` 为空是预期行为。无效读数 `2147483647` 会丢弃。Rx/Tx 功率按 dBm×100 存储，查询侧除以 100 显示为 dBm。电压原始单位为毫伏，查询侧除以 1000 显示为伏特。

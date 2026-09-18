@@ -640,8 +640,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {
-      if (!content) return null;
-      // Check if content has inline markers
+      // 规划执行时正文常为空，仍要渲染 userChoice / approval 卡片
       const markerPattern = /<!--(CONFIG_DIFF|CONFIG_ANALYSIS|USER_CHOICE):([^>]+)-->/g;
       const hasMarkers = markerPattern.test(replacedContent);
 
@@ -924,7 +923,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <Input.TextArea
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题...') : (placeholder || t('chat.inputPlaceholder') || '请输入消息...')}
+            placeholder={pendingChoice ? t('chat.replyToPendingChoice', '回复上面的问题...') : (placeholder || t('chat.inputPlaceholder') || '请输入消息...')}
             autoSize={{ minRows: 2, maxRows: 6 }}
             bordered={false}
             className="!p-0 text-[13px] leading-relaxed resize-none bg-transparent placeholder:text-[var(--color-text-4)] focus:shadow-none"

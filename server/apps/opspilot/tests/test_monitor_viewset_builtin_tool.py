@@ -19,3 +19,7 @@ def test_skill_tools_list_includes_builtin_monitor_tool(mocker):
     assert response.status_code == 200
     monitor_tool = next(item for item in response.data if item["name"] == "monitor")
     assert monitor_tool["params"]["kwargs"] == []
+    for name in ("cmdb", "alerts", "log"):
+        tool = next(item for item in response.data if item["name"] == name)
+        assert tool["params"]["kwargs"] == []
+        assert tool["params"]["url"] == f"langchain:{name}"

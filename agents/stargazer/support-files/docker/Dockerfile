@@ -1,4 +1,4 @@
-FROM python:3.12
+FROM python:3.12 AS community
 
 ARG NEXUS_PYTHON_REPOSITY
 
@@ -16,14 +16,6 @@ WORKDIR /app
 
 ADD . .
 
-# Enterprise 只能来自 Makefile 校验过的主仓库子模块 named context；主 context
-# 中的同名忽略目录不会进入镜像，避免历史副本静默覆盖 gitlink 版本。
-COPY --from=enterprise_src . ./enterprise
-
-ARG ENTERPRISE_SHA
-RUN test -n "$ENTERPRISE_SHA" && printf '%s\n' "$ENTERPRISE_SHA" > /app/enterprise/.source-git-sha
-LABEL com.weops.stargazer.enterprise.revision="$ENTERPRISE_SHA"
-
 ADD support-files/supervisor/service.conf /etc/supervisor/conf.d/service.conf
 
 RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
@@ -33,8 +25,18 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 
 RUN pip3 install -e ".[dev,aliyun,qcloud,huawei,vmware,openstack,qingyun,snmp]"
 
+RUN apt-get reinstall -y supervisor
+CMD ["supervisord", "-n"]
+
+# 社区版使用 --target community；企业版保持默认的最后一个构建阶段。
+FROM community AS enterprise
+
+# Enterprise 通过 named context 注入，主 context 中的同名目录由 .dockerignore 排除。
+COPY --from=enterprise_src . ./enterprise
+
+ARG ENTERPRISE_SHA
+RUN test -n "$ENTERPRISE_SHA" && printf '%s\n' "$ENTERPRISE_SHA" > /app/enterprise/.source-git-sha
+LABEL com.weops.stargazer.enterprise.revision="$ENTERPRISE_SHA"
+
 # 构建期即验证本次事故涉及的 Enterprise 插件入口，禁止坏镜像进入仓库。
 RUN python3 -c "import enterprise.plugins.inputs.sangforhci.sangforhci_info; import enterprise.plugins.inputs.sangforscp.sangforscp_info"
-
-RUN apt-get reinstall -y supervisor 
-CMD ["supervisord", "-n"]

@@ -32,6 +32,7 @@ const IncidentsPage: React.FC = () => {
     level: [],
     state: [],
     alarm_source: [],
+    push_source_ids: [],
   });
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -217,7 +218,7 @@ const IncidentsPage: React.FC = () => {
         />
       </div>
       <div className={alertStyle.content}>
-        <div className="flex items-center justify-between space-x-2 mb-[16px]">
+        <div className="flex items-center justify-between space-x-2 mb-[16px] shrink-0">
           <Input
             allowClear
             className="w-[300px]"
@@ -233,15 +234,17 @@ const IncidentsPage: React.FC = () => {
             onRefresh={handleRefresh}
           />
         </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
         <CustomTable
           rowKey="id"
-          scroll={{ y: 'calc(100vh - 280px)', x: 'max-content' }}
+          scroll={{ x: 'max-content' }}
           columns={columns}
           dataSource={data}
           pagination={pagination}
           loading={loading}
           onChange={onTableChange}
         />
+        </div>
       </div>
     </div>
   );
@@ -249,7 +252,12 @@ const IncidentsPage: React.FC = () => {
 
 const Incidents = () => {
   return (
-    <KeepAlive id="/alarm/incidents" name="/alarm/incidents">
+    <KeepAlive
+      id="/alarm/incidents"
+      name="/alarm/incidents"
+      wrapperProps={{ className: 'flex h-full min-h-0 w-full flex-1 flex-col' }}
+      contentProps={{ className: 'flex h-full min-h-0 w-full flex-1 flex-col' }}
+    >
       <IncidentsPage />
     </KeepAlive>
   );

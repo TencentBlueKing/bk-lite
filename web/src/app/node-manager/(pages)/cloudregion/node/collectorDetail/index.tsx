@@ -108,7 +108,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const [inputValue, setInputValue] = useState<string>('');
 
     useImperativeHandle(ref, () => ({
-      showModal: ({ row }) => {
+      showModal: ({ row, focusCollectorName }) => {
         setVisible(true);
         const filteredCollectors: TableDataItem[] = listNodeHostedCollectors(
           row
@@ -136,7 +136,15 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             const priorityB = STATUS_CODE_PRIORITY[b.status] || 999;
             return priorityA - priorityB;
           });
-          const firstCollector = sortedCollectors[0];
+          const focusedName = String(focusCollectorName || '').trim();
+          const focusedCollector = focusedName
+            ? sortedCollectors.find(
+              (item) =>
+                String(item.collector_name || item.name || '').trim() ===
+                  focusedName
+            )
+            : null;
+          const firstCollector = focusedCollector || sortedCollectors[0];
           // 处理message为对象的情况
           if (
             firstCollector.message &&

@@ -1,9 +1,16 @@
-from typing import Any, Dict, Optional
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Tuple
 
 from langchain_core.runnables import RunnableConfig
 
+from apps.opspilot.metis.llm.common.tool_failure import wrap_tool_error_payload
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.rpc.monitor import MonitorOperationAnaRpc
+
+_UNIX_SECONDS_MIN = 1_000_000_000
+_UNIX_MS_MIN = 100_000_000_000
+_DEFAULT_METRIC_LOOKBACK_MS = 3_600_000
 
 _TRIGGER_SOURCE_LABELS = {
     "unattended": "定时任务/无人值守触发",
@@ -88,8 +95,66 @@ def wrap_success(data: Any) -> Dict[str, Any]:
     return {"success": True, "data": data}
 
 
+def to_monitor_epoch_ms(value: Any) -> Any:
+    """Normalize LLM timestamps to the millisecond epoch the monitor RPC expects."""
+    if value in (None, ""):
+        return value
+    if isinstance(value, bool):
+        raise ValueError("timestamp must not be a boolean")
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+    if isinstance(value, (int, float)):
+        number = int(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return value
+        if text.isdigit() or (text[0] in "+-" and text[1:].isdigit()):
+            number = int(text)
+        else:
+            iso = text.replace("Z", "+00:00")
+            try:
+                dt = datetime.fromisoformat(iso)
+            except ValueError:
+                try:
+                    dt = datetime.strptime(text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                except ValueError as exc:
+                    raise ValueError("timestamp must be unix seconds, milliseconds, or ISO datetime") from exc
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp() * 1000)
+    else:
+        raise ValueError("timestamp must be unix seconds, milliseconds, or ISO datetime")
+    abs_number = abs(number)
+    if abs_number >= _UNIX_MS_MIN:
+        return number
+    if abs_number >= _UNIX_SECONDS_MIN:
+        return number * 1000
+    return number
+
+
+def default_metric_window_ms() -> Tuple[int, int]:
+    end_ms = int(time.time() * 1000)
+    return end_ms - _DEFAULT_METRIC_LOOKBACK_MS, end_ms
+
+
+def resolve_metric_window(start: Any, end: Any) -> Tuple[int, int]:
+    has_start = start not in (None, "")
+    has_end = end not in (None, "")
+    if not has_start and not has_end:
+        return default_metric_window_ms()
+    start_ms = to_monitor_epoch_ms(start) if has_start else None
+    end_ms = to_monitor_epoch_ms(end) if has_end else None
+    if start_ms is None:
+        return int(end_ms) - _DEFAULT_METRIC_LOOKBACK_MS, int(end_ms)
+    if end_ms is None:
+        return int(start_ms), int(start_ms) + _DEFAULT_METRIC_LOOKBACK_MS
+    return int(start_ms), int(end_ms)
+
+
 def wrap_error(message: str) -> Dict[str, Any]:
-    return {"success": False, "error": message}
+    return wrap_tool_error_payload(message)
 
 
 def call_monitor_rpc(

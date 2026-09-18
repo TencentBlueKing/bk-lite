@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_liebert",
   "plugin": "NetworkService Liebert PDU UPS Environmental SNMP",
-  "plugin_desc": "Liebert and Vertiv PDU, UPS and environmental monitor SNMP baseline child template for network-service devices under Liebert Global Products PEN 476.1.42. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm rack PDU, MPX, MPH, RPC2, power measurement, power line, DC power, threshold, load circuit, temperature, humidity and remote sensor tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU/environmental business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "Liebert and Vertiv PDU and environmental SNMP child template for network-service devices under Liebert Global Products PEN 476.1.42. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven private increments are lgpEnvTemperatureMeasurementDegC as env_temperature_celsius from the Celsius table (not Fahrenheit), lgpEnvHumidityMeasurementRel as env_humidity_percent, and PDU phase line current as pdu_line_current_amps from lgpPduPsLineEntryEcHundredths scaled by /100 or lgpPduPsLineEntryEc scaled by /10. CPU and memory scalars are not invented. The UPS power tree is not collected in this pass. Supported brands/models - Liebert and Vertiv PDU and environmental monitors that expose LIEBERT-GP-ENVIRONMENTAL and LIEBERT-GP-PDU under PEN 476.1.42 and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_liebert'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,70 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "env_temperature_celsius",
+    "env_humidity_percent",
+    "pdu_line_current_amps"
   ],
   "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "env_temperature_celsius{instance_type='network_service', __$labels__}",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Temperature sensor index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor environment temperature in degrees Celsius from lgpEnvTemperatureMeasurementDegC (1.3.6.1.4.1.476.1.42.3.4.1.3.3.1.3). This child uses the Celsius table only and does not walk the Fahrenheit measurement table. Empty temperature tables yield no rows."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "env_humidity_percent{instance_type='network_service', __$labels__}",
+      "display_name": "Environment Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Humidity sensor index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor relative humidity in percent from lgpEnvHumidityMeasurementRel (1.3.6.1.4.1.476.1.42.3.4.2.2.3.1.3). The SNMP value is already 0-100 percent. Empty humidity tables yield no rows."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_line_current_amps",
+      "query": "(pdu_line_current_amps{instance_type='network_service', __$labels__} / 100) or (pdu_line_current_ec{instance_type='network_service', __$labels__} / 10)",
+      "display_name": "PDU Line Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "PDU line index"
+        },
+        {
+          "name": "line",
+          "description": "PDU phase/line"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PDU phase or line current in amperes from LIEBERT-GP-PDU. Prefer lgpPduPsLineEntryEcHundredths (1.3.6.1.4.1.476.1.42.3.8.30.40.1.22) scaled by /100; fall back to lgpPduPsLineEntryEc (1.3.6.1.4.1.476.1.42.3.8.30.40.1.21) scaled by /10. Optional lgpPduPsLineEntryLine is the phase label. Empty line tables yield no rows."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +94,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +112,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
       "metric_group": "Base",

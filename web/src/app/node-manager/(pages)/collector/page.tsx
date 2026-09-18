@@ -14,6 +14,7 @@ import PermissionWrapper from '@/components/permission';
 import { useCollectorMenuItem } from '@/app/node-manager/hooks/collector';
 import { useCommon } from '@/app/node-manager/context/common';
 import { buildCollectorPackStatusTag } from '@/app/node-manager/utils/collectorConfig';
+import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 import { cloneDeep } from 'lodash';
 const { Search } = Input;
 const { confirm } = Modal;
@@ -237,9 +238,29 @@ const Collector = () => {
       cancelText: t('common.cancel'),
       centered: true,
       onOk() {
-        return restoreCollectorRelease(collectorName).then(() => {
-          message.success(t('node-manager.packetManage.restoreSuccess'));
+        return restoreCollectorRelease(collectorName).then((result: any) => {
           fetchCollectorData({ searchValue: search });
+          const staleCount = Number(result?.stale_instance_count) || 0;
+          if (staleCount > 0) {
+            Modal.success({
+              title: t('node-manager.packetManage.restoreSuccess'),
+              content: t('node-manager.packetManage.restoreBuiltinStaleHint', '', {
+                count: staleCount
+              }),
+              okText: t('node-manager.packetManage.goToStaleAssets'),
+              onOk: () => {
+                router.push(
+                  buildCollectNeedUpdateAssetUrl({
+                    monitorObjectId: result?.monitor_object_id,
+                    pluginId: result?.plugin_id,
+                    needUpdate: true
+                  })
+                );
+              }
+            });
+            return;
+          }
+          message.success(t('node-manager.packetManage.restoreSuccess'));
         });
       }
     });

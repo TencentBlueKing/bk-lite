@@ -7,7 +7,8 @@ from neo4j import GraphDatabase, Query
 from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
-from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector
+from apps.cmdb.display_field import ExcludeFieldsCache
+from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal, coerce_cloud_id_properties
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -17,6 +18,9 @@ load_dotenv()
 
 
 class Neo4jClient:
+    # 与 FalkorDBClient 对齐：全文检索权限条件走参数化 Cypher。
+    ENABLE_PARAMETERIZATION = True
+
     def __init__(self):
         self.driver = GraphDatabase.driver(
             os.getenv("NEO4J_URI"),
@@ -46,7 +50,7 @@ class Neo4jClient:
 
     def entity_to_dict(self, data: tuple):
         """将使用single查询的结果转换成字典类型"""
-        return dict(_id=data[0].id, _label=list(data[0].labels)[0], **data[0]._properties)
+        return dict(_id=data[0].id, _label=list(data[0].labels)[0], **coerce_cloud_id_properties(dict(data[0]._properties)))
 
     def edge_to_list(self, data: iter, return_entity: bool):
         """将使用fetchall查询的结果转换成列表类型"""
@@ -103,7 +107,7 @@ class Neo4jClient:
 
         for exist_item in exist_items:
             for attr in check_attrs:
-                if exist_item[attr] == item[attr]:
+                if attr_values_equal(attr, exist_item[attr], item[attr]):
                     not_only_attr.add(attr)
 
         if not not_only_attr:
@@ -299,7 +303,13 @@ class Neo4jClient:
             results.append(result)
         return results
 
-    def format_search_params(self, params: list, param_type: str = "AND", collector: ParameterCollector = None):
+    def format_search_params(
+        self,
+        params: list,
+        param_type: str = "AND",
+        collector: ParameterCollector = None,
+        param_collector: ParameterCollector = None,
+    ):
         """
         参数化查询格式化（使用 FORMAT_TYPE_PARAMS 消除 Cypher 注入风险）。
 
@@ -311,6 +321,8 @@ class Neo4jClient:
         str=: {"field": "name", "type": "str=", "value": "host"} -> "n.name = $str1"
         id=:  {"field": "id",   "type": "id=",  "value": 115}   -> "ID(n) = $id1"
         """
+        if collector is None:
+            collector = param_collector
         if collector is None:
             collector = ParameterCollector()
 
@@ -368,9 +380,7 @@ class Neo4jClient:
                     [{"field": organization_field, "type": "list[]", "value": [organization_id]}],
                     collector=collector,
                 )
-                scoped_params, _ = self.format_search_params(
-                    query_list, param_type="OR", collector=collector
-                )
+                scoped_params, _ = self.format_search_params(query_list, param_type="OR", collector=collector)
                 parts = [part for part in (organization_params, scoped_params) if part]
                 if parts:
                     permission_filters.append(f"({' AND '.join(parts)})")
@@ -508,10 +518,13 @@ class Neo4jClient:
         check_attr_map: dict,
         exist_items: list,
         check: bool = True,
+        attrs: list = None,
     ):
         """
         设置实体属性
         """
+        from apps.cmdb.constants.constants import INSTANCE
+
         if check:
             # 校验唯一属性
             self.check_unique_attr(
@@ -534,6 +547,14 @@ class Neo4jClient:
 
             # 取出可编辑属性
             properties = self.get_editable_attr(properties, check_attr_map.get("editable", {}))
+
+        if label == INSTANCE and attrs:
+            from apps.cmdb.validators import FieldValidator
+
+            validation_errors = FieldValidator.validate_instance_data(properties, attrs)
+            if validation_errors:
+                error_msg = "; ".join([f"{err['field_name']}: {err['error']}" for err in validation_errors])
+                raise BaseAppException(f"字段校验失败: {error_msg}")
 
         nodes = self.batch_update_node_properties(label, entity_ids, properties)
         return self.entity_to_list(nodes)
@@ -570,9 +591,7 @@ class Neo4jClient:
             return []
 
         query = (
-            f"UNWIND $property_values AS row "
-            f"MATCH (n:{validated_label}) WHERE id(n) = row.id "
-            f"SET n.{validated_field} = row.value RETURN n"
+            f"UNWIND $property_values AS row " f"MATCH (n:{validated_label}) WHERE id(n) = row.id " f"SET n.{validated_field} = row.value RETURN n"
         )
         result = self.session.run(query, property_values=validated_property_values)
         return self.entity_to_list(result)
@@ -669,11 +688,8 @@ class Neo4jClient:
             "ID(dev2) AS peer_id, dev2.inst_name AS peer_name, dev2.model_id AS peer_model, "
             "ID(e2) AS rel_id"
         )
-        objs = self.session.run(
-            query, inst_id=int(inst_id), belong=belong_asst_id, connect=connect_asst
-        )
-        keys = ["dev_id", "dev_name", "dev_model", "local_if", "peer_if",
-                "peer_id", "peer_name", "peer_model", "rel_id"]
+        objs = self.session.run(query, inst_id=int(inst_id), belong=belong_asst_id, connect=connect_asst)
+        keys = ["dev_id", "dev_name", "dev_model", "local_if", "peer_if", "peer_id", "peer_name", "peer_model", "rel_id"]
         return [{k: record[k] for k in keys} for record in objs]
 
     def format_topo_lite(self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None):
@@ -1004,6 +1020,133 @@ class Neo4jClient:
         data = self.session.run(count_sql, **combined_collector.get_params())
 
         return {i[group_by_attr]: i["count"] for i in data}
+
+    @staticmethod
+    def _build_exclude_fields_list(exclude_fields: list) -> str:
+        if not exclude_fields:
+            return "[]"
+        validated_fields = []
+        for field in exclude_fields:
+            try:
+                validated_fields.append(f"'{CQLValidator.validate_field(field)}'")
+            except Exception as exc:
+                logger.warning("event=cmdb_neo4j_exclude_field_skipped error_type=%s", type(exc).__name__)
+                continue
+        return "[" + ", ".join(validated_fields) + "]"
+
+    def _full_text_where(
+        self,
+        *,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
+        extra_conditions: list | None = None,
+        extra_params: dict | None = None,
+        permission_params_dict: dict | None = None,
+    ) -> tuple[str, dict]:
+        query_params = dict(permission_params_dict or {})
+        if extra_params:
+            query_params.update(extra_params)
+        conditions = []
+        or_filters = [item for item in (permission_params, inst_name_params) if item]
+        if or_filters:
+            conditions.append(f"({' OR '.join(or_filters)})")
+        if created:
+            query_params["created_by"] = created
+            conditions.append("n._creator = $created_by")
+        exclude_list_str = self._build_exclude_fields_list(ExcludeFieldsCache.get_exclude_fields())
+        query_params["search_term"] = search
+        if case_sensitive:
+            search_condition = (
+                f"ANY(key IN keys(n) WHERE "
+                f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
+                f"n[key] IS NOT NULL AND "
+                f"toString(n[key]) = $search_term)"
+            )
+        else:
+            search_condition = (
+                f"ANY(key IN keys(n) WHERE "
+                f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
+                f"n[key] IS NOT NULL AND "
+                f"toLower(toString(n[key])) CONTAINS toLower($search_term))"
+            )
+        conditions.append(search_condition)
+        if extra_conditions:
+            conditions.extend(extra_conditions)
+        return " AND ".join(conditions) if conditions else "true", query_params
+
+    def full_text_stats(
+        self,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
+    ) -> dict:
+        where_clause, query_params = self._full_text_where(
+            search=search,
+            permission_params=permission_params,
+            inst_name_params=inst_name_params,
+            created=created,
+            case_sensitive=case_sensitive,
+            permission_params_dict=permission_params_dict,
+        )
+        query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n.model_id AS model_id, COUNT(n) AS count ORDER BY count DESC"
+        rows = self.session.run(query, **query_params)
+        model_stats = []
+        total = 0
+        for row in rows:
+            count = int(row["count"] or 0)
+            model_stats.append({"model_id": row["model_id"], "count": count})
+            total += count
+        return {"total": total, "model_stats": model_stats}
+
+    def full_text_by_model(
+        self,
+        search: str,
+        model_id: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        page: int = 1,
+        page_size: int = 10,
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
+    ) -> dict:
+        if not model_id:
+            raise BaseAppException("model_id is required")
+        page = int(page)
+        page_size = int(page_size)
+        if page < 1:
+            raise BaseAppException("page must be >= 1")
+        if page_size < 1 or page_size > 100:
+            raise BaseAppException("page_size must be between 1 and 100")
+        where_clause, query_params = self._full_text_where(
+            search=search,
+            permission_params=permission_params,
+            inst_name_params=inst_name_params,
+            created=created,
+            case_sensitive=case_sensitive,
+            extra_conditions=["n.model_id = $model_id"],
+            extra_params={"model_id": model_id},
+            permission_params_dict=permission_params_dict,
+        )
+        count_query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN COUNT(n) AS total"
+        count_row = self.session.run(count_query, **query_params).single()
+        total = int(count_row["total"] or 0) if count_row else 0
+        skip = (page - 1) * page_size
+        data_query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n ORDER BY ID(n) SKIP {skip} LIMIT {page_size}"
+        data = self.entity_to_list(self.session.run(data_query, **query_params))
+        return {
+            "model_id": model_id,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "data": data,
+        }
 
     def full_text(self, search: str, permission_params: str = "", instance_permission_params: dict = None, created: str = ""):
         """全文检索"""

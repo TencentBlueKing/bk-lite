@@ -32,9 +32,13 @@
         name = "source"
         is_tag = true
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
         name = "interface"
         inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
@@ -51,7 +55,7 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.31648.3.15.1.0"
+        oid = "1.3.6.1.4.1.31648.3.15.1"
         name = "usage"
     # ---- DPtech 内存 (内存使用率, 直接%, scalar；无 used/free 字节) ----
     # DPtech 私有 MIB 内存使用率 1.3.6.1.4.1.31648.3.15.5（直报%）。
@@ -59,6 +63,6 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.31648.3.15.5.0"
+        oid = "1.3.6.1.4.1.31648.3.15.5"
         name = "usage"
 # ---- 温/风/电/会话：DPtech 31648 私有 MIB 本模板仅采 CPU/内存利用率(直接%), 温度/风扇/电源/会话 OID → N/A。----

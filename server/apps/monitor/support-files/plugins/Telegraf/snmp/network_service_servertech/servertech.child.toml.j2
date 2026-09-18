@@ -32,18 +32,96 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # Sentry3-MIB under PEN 1718.3 only. Do not collect the Sentry4 private tree.
+    # Do not invent CPU% or memory. Do not bind HOST-RESOURCES or UCD.
+    # systemTotalPower, Watts. Negative means unavailable and is dropped in query.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "pdu_active_power"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.1718.3.1.6"
+        name = "watts"
+    # infeedName plus infeedLoadValue (hundredths A, /100 in query), optional
+    # infeedVoltage (tenths V, /10 in query) and infeedPower (Watts).
+    [[inputs.snmp.table]]
+        name = "pdu_infeed"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.2.1.3"
+        name = "infeed"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.1718.3.2.2.1.7"
+        name = "current_amps"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.1718.3.2.2.1.11"
+        name = "voltage_volts"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.2.1.12"
+        name = "power_watts"
+    # outletName plus outletLoadValue (hundredths A, /100 in query).
+    [[inputs.snmp.table]]
+        name = "pdu_outlet"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.3.1.3"
+        name = "outlet"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.3.1.7"
+        name = "current_amps"
+    # tempHumidSensorTempValue is tenths of a degree in tempHumidSensorTempScale
+    # (celsius=0, fahrenheit=1). Query divides by 10 and converts F to C.
+    [[inputs.snmp.table]]
+        name = "env_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.5.1.3"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.5.1.13"
+        name = "temp_scale"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.5.1.6"
+        name = "celsius"
+    # tempHumidSensorHumidValue, relative humidity percent 0-100. Negative is unavailable.
+    [[inputs.snmp.table]]
+        name = "env_humidity"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.5.1.3"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.5.1.10"
+        name = "percent"
+    # towerStatus. normal(0) is healthy; any other code is treated as an alarm.
+    [[inputs.snmp.table]]
+        name = "pdu_tower"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.1.1.3"
+        name = "tower"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1718.3.2.1.1.4"
+        name = "state"
+
+[[processors.enum]]
+    namepass = ["pdu_tower"]
+    [processors.enum.tagpass]
+        brand = ["servertech"]
+    [[processors.enum.mapping]]
+        field = "state"
+        dest = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            0 = 1

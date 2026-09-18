@@ -5,9 +5,9 @@
 
 import pytest
 
+from apps.cmdb.graph.format_type import ParameterCollector
 from apps.cmdb.graph.neo4j import Neo4jClient
 from apps.core.exceptions.base_app_exception import BaseAppException
-
 
 # --------------------------------------------------------------------------
 # fake neo4j objects
@@ -60,26 +60,32 @@ class FakeRunResult:
 
 
 class FakeSession:
-    def __init__(self, result_records=None):
+    def __init__(self, result_records=None, result_factory=None):
         self._records = result_records if result_records is not None else []
+        self._result_factory = result_factory
         self.last_query = None
         self.last_params = {}
         self.calls = []
 
     def run(self, query, *args, **kwargs):
+        params = dict(kwargs)
+        if args and isinstance(args[0], dict):
+            params.update(args[0])
         self.last_query = query
-        self.last_params = kwargs
-        self.calls.append((query, kwargs))
+        self.last_params = params
+        self.calls.append((query, params))
+        if self._result_factory is not None:
+            return FakeRunResult(self._result_factory(query, params))
         return FakeRunResult(self._records)
 
     def close(self):
         pass
 
 
-def _client(records=None):
+def _client(records=None, result_factory=None):
     c = Neo4jClient.__new__(Neo4jClient)
     c.driver = None
-    c.session = FakeSession(records)
+    c.session = FakeSession(records, result_factory=result_factory)
     return c
 
 
@@ -95,6 +101,13 @@ def test_entity_to_dict():
     assert out["_id"] == 1
     assert out["_label"] == "instance"
     assert out["inst_name"] == "h1"
+
+
+def test_entity_to_dict_coerces_legacy_string_cloud():
+    c = _client()
+    node = FakeNode(1, ["instance"], {"inst_name": "h1", "cloud": "1"})
+    out = c.entity_to_dict((node,))
+    assert out["cloud"] == 1
 
 
 def test_entity_to_list():
@@ -157,6 +170,11 @@ def test_format_properties_remove():
     assert "old" in out
 
 
+def test_neo4j_client_exposes_parameterization_flag():
+    assert Neo4jClient.ENABLE_PARAMETERIZATION is True
+    assert _client().ENABLE_PARAMETERIZATION is True
+
+
 def test_format_search_params_str_eq():
     """format_search_params 返回 (str, dict) 元组，str 使用 $placeholder 不含原始值。"""
     c = _client()
@@ -165,6 +183,22 @@ def test_format_search_params_str_eq():
     # 参数化：原始值在 query_params 中，不在 CQL 字符串内
     assert "h" not in params_str
     assert "h" in query_params.values()
+
+
+def test_format_search_params_accepts_param_collector_alias():
+    c = _client()
+    collector = ParameterCollector()
+    first, _ = c.format_search_params(
+        [{"field": "organization", "type": "list[]", "value": [1]}],
+        param_collector=collector,
+    )
+    second, query_params = c.format_search_params(
+        [{"field": "inst_name", "type": "str[]", "value": ["host-a"]}],
+        param_collector=collector,
+    )
+    assert first
+    assert second
+    assert len(query_params) >= 2
 
 
 def test_format_search_params_supports_node_id_cursor():
@@ -189,6 +223,7 @@ def test_format_search_params_injection_value():
 def test_format_search_params_injection_field():
     """非法 field 名（含注入字符）应被 CQLValidator 拒绝。"""
     from apps.core.exceptions.base_app_exception import BaseAppException
+
     c = _client()
     with pytest.raises((BaseAppException, Exception)):
         c.format_search_params([{"field": "name'] RETURN n //", "type": "str=", "value": "v"}])
@@ -235,6 +270,12 @@ def test_check_unique_attr_conflict():
     c = _client()
     with pytest.raises(BaseAppException):
         c.check_unique_attr({"name": "h"}, {"name": "名称"}, [{"name": "h"}])
+
+
+def test_check_unique_attr_cloud_int_matches_legacy_string():
+    c = _client()
+    with pytest.raises(BaseAppException):
+        c.check_unique_attr({"cloud": 1}, {"cloud": "云区域"}, [{"cloud": "1"}])
 
 
 def test_check_required_attr_missing():
@@ -373,6 +414,25 @@ def test_find_entity_by_id():
     assert c.find_entity_by_id(99, entities) is None
 
 
+def test_set_entity_properties_accepts_attrs_kwarg():
+    c = _client()
+    c.check_unique_attr = lambda *args, **kwargs: None
+    c.check_unique_rules = lambda *args, **kwargs: None
+    c.check_required_attr = lambda *args, **kwargs: None
+    c.get_editable_attr = lambda properties, _editable: properties
+    c.batch_update_node_properties = lambda label, entity_ids, properties: [(FakeNode(entity_ids[0], [label], properties),)]
+    out = c.set_entity_properties(
+        "instance",
+        [1],
+        {"inst_name": "renamed"},
+        {},
+        [],
+        check=False,
+        attrs=[],
+    )
+    assert out[0]["inst_name"] == "renamed"
+
+
 def test_create_node():
     c = _client()
     entity = {"_id": 1, "model_id": "host", "inst_name": "h1"}
@@ -380,3 +440,79 @@ def test_create_node():
     edges = [{"src_inst_id": 1, "dst_inst_id": 2, "model_asst_id": "conn", "asst_id": "a1"}]
     node = c.create_node(entity, edges, entities, entity_is_src=True)
     assert node["children"][0]["_id"] == 2
+
+
+def test_full_text_stats_groups_by_model(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.graph.neo4j.ExcludeFieldsCache.get_exclude_fields", lambda: ["organization"])
+    c = _client([{"model_id": "host", "count": 3}, {"model_id": "switch", "count": 2}])
+    out = c.full_text_stats("fusion-collector-default")
+    assert out == {
+        "total": 5,
+        "model_stats": [
+            {"model_id": "host", "count": 3},
+            {"model_id": "switch", "count": 2},
+        ],
+    }
+    query, params = c.session.calls[0]
+    assert "fusion-collector-default" not in query
+    assert params["search_term"] == "fusion-collector-default"
+    assert "CONTAINS" in query
+    assert "organization" in query
+
+
+def test_full_text_stats_merges_permission_params(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.graph.neo4j.ExcludeFieldsCache.get_exclude_fields", lambda: [])
+    c = _client([])
+    out = c.full_text_stats(
+        "host-a",
+        permission_params="n.organization IN $org1",
+        permission_params_dict={"org1": [1]},
+        created="alice",
+        case_sensitive=True,
+    )
+    assert out == {"total": 0, "model_stats": []}
+    query, params = c.session.calls[0]
+    assert "n.organization IN $org1" in query
+    assert params["org1"] == [1]
+    assert params["created_by"] == "alice"
+    assert "toString(n[key]) = $search_term" in query
+
+
+def test_full_text_by_model_paginates(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.graph.neo4j.ExcludeFieldsCache.get_exclude_fields", lambda: [])
+    node = FakeNode(1, ["instance"], {"inst_name": "h1", "model_id": "host"})
+
+    def factory(query, _params):
+        if "COUNT(n)" in query:
+            return [{"total": 1}]
+        return [(node,)]
+
+    c = _client(result_factory=factory)
+    out = c.full_text_by_model("h1", "host", page=1, page_size=10)
+    assert out["total"] == 1
+    assert out["page"] == 1
+    assert out["data"][0]["inst_name"] == "h1"
+    count_query, count_params = c.session.calls[0]
+    data_query, data_params = c.session.calls[1]
+    assert count_params["model_id"] == "host"
+    assert data_params["search_term"] == "h1"
+    assert "SKIP 0 LIMIT 10" in data_query
+    assert "n.model_id = $model_id" in count_query
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"model_id": ""},
+        {"page": 0},
+        {"page_size": 0},
+        {"page_size": 101},
+    ],
+)
+def test_full_text_by_model_rejects_bad_paging(monkeypatch, kwargs):
+    monkeypatch.setattr("apps.cmdb.graph.neo4j.ExcludeFieldsCache.get_exclude_fields", lambda: [])
+    c = _client()
+    payload = {"search": "h", "model_id": "host", "page": 1, "page_size": 10}
+    payload.update(kwargs)
+    with pytest.raises(BaseAppException):
+        c.full_text_by_model(payload["search"], payload["model_id"], page=payload["page"], page_size=payload["page_size"])

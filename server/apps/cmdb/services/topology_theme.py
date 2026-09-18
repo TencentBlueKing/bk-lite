@@ -5,11 +5,12 @@
 network 主题：模型拥有 interface --belong--> <model> 的模型关联即视为网络设备。
 """
 from apps.cmdb.constants.constants import (
-    TOPO_THEME_NETWORK,
-    TOPO_THEME_IPAM,
-    TOPO_THEME_APP_OVERVIEW,
-    NETWORK_INTERFACE_MODEL,
     NETWORK_INTERFACE_BELONG_ASST,
+    NETWORK_INTERFACE_MODEL,
+    TOPO_THEME_APP_OVERVIEW,
+    TOPO_THEME_IPAM,
+    TOPO_THEME_NETWORK,
+    TOPO_THEME_SERVICE_TREE,
 )
 from apps.cmdb.services.model import ModelManage
 
@@ -38,4 +39,6 @@ def get_topo_themes(model_id: str) -> list:
         themes.append(TOPO_THEME_IPAM)
     if model_id in {"system", "application"}:
         themes.append(TOPO_THEME_APP_OVERVIEW)
+    if model_id == "system":
+        themes.append(TOPO_THEME_SERVICE_TREE)
     return themes

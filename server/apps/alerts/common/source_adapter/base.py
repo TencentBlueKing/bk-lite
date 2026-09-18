@@ -25,7 +25,7 @@ from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.alerts.utils.util import decode_team_secret, split_list
 
 INTEGRATION_SECRET_PLACEHOLDER = "{{TEAM_SECRET}}"
-MONITOR_IDENTITY_FIELDS = {"monitor_id", "cmdb_id"}
+MONITOR_IDENTITY_FIELDS = {"monitor_id", "cmdb_id", "node_id"}
 
 
 class InvalidMonitorIdentity(ValueError):
@@ -581,10 +581,16 @@ class AlertSourceAdapter(ABC):
 
         # 2. 优化：立即查询返回带 pk 的对象（1 次查询）
         # 避免后续 event_operator 需要用 event_id 再查一遍
-        created_events = Event.objects.filter(event_id__in=all_event_ids)
+        created_events = Event.objects.filter(event_id__in=all_event_ids).select_related("source")
 
         # 3. 重新分批返回（保持与原来相同的数据结构）
         created_events_list = list(created_events)
+        try:
+            from apps.alerts.service.push_source_counts import remember_event_counts
+
+            remember_event_counts(created_events_list)
+        except Exception as exc:
+            logger.warning("push source counts remember failed: error_type=%s", type(exc).__name__)
         result = split_list(created_events_list, 100)
 
         logger.debug("[AlertSource] 重新加载 %s 条带 pk 的事件", len(created_events_list))

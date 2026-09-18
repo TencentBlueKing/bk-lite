@@ -36,7 +36,17 @@ export const isAlertStatusFilter = (value: string | null): value is AlertStatusF
 );
 
 export const metricKey = (serviceId: string, environment: string) => `${serviceId}:${environment}`;
-export const alertKey = (serviceName: string, environment: string) => `${serviceName}::${environment}`;
+export const alertKey = (identity: string, environment: string) => `${identity}::${environment}`;
+
+export function lookupActiveAlert(
+  counts: Map<string, { count: number; level: number }>,
+  serviceId: string,
+  serviceName: string,
+  environment: string,
+) {
+  return counts.get(alertKey(serviceId, environment))
+    ?? counts.get(alertKey(serviceName, environment));
+}
 
 const severityRank: Record<string, number> = {
   critical: 1,
@@ -86,7 +96,7 @@ export function countActiveAlerts(events: ApmEvent[]) {
   const counts = new Map<string, { count: number; level: number }>();
   events.forEach((event) => {
     if (event.status !== 'active') return;
-    const key = alertKey(event.service, event.environment || '');
+    const key = alertKey(event.resource_id || event.service, event.environment || '');
     const current = counts.get(key) ?? { count: 0, level: 5 };
     const level = severityRank[event.severity] ?? 4;
     counts.set(key, {

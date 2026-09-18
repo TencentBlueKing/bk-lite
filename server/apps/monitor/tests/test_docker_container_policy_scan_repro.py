@@ -53,12 +53,15 @@ def _mq(agg):
             instance_id_keys=["instance_id", "container_name"],
             dimensions=[],
         ),
-        query_aggregation_metrics=lambda period, points=1: agg,
+        query_comparison_metrics=lambda period, points=1: agg,
+        query_existence_metrics=lambda period, points=1: agg,
         convert_metric_values=lambda data: data,
         format_aggregation_metrics=lambda data: {},
         get_display_unit=lambda: "%",
         get_enum_value_map=lambda: {},
         convert_thresholds=lambda thresholds: thresholds,
+        query_overlay_last_values=lambda: ({}, {}),
+        get_source_display_unit=lambda: "%",
     )
 
 
@@ -83,7 +86,7 @@ def test_incomplete_groupby_two_containers_same_host_drops_alerts():
         _mq(agg),
     )
 
-    alerts, infos = detector.detect_threshold_alerts()
+    alerts, infos, _ = detector.detect_threshold_alerts()
 
     # 用户症状：预览 24%>10% 应告警，但实际 0 条
     assert alerts == [], f"expected no alerts due to ambiguity, got {alerts}"
@@ -102,7 +105,7 @@ def test_incomplete_groupby_single_container_still_matches():
     }
     detector = AlertDetector(_policy(), instances, {}, [], _mq(agg))
 
-    alerts, _ = detector.detect_threshold_alerts()
+    alerts, _, _ = detector.detect_threshold_alerts()
 
     assert len(alerts) == 1
     assert alerts[0]["monitor_instance_id"] == "('host1', 'c1')"
@@ -136,7 +139,7 @@ def test_full_groupby_triggers_even_with_sibling_containers():
         _mq(agg),
     )
 
-    alerts, _ = detector.detect_threshold_alerts()
+    alerts, _, _ = detector.detect_threshold_alerts()
 
     assert len(alerts) == 1
     assert alerts[0]["monitor_instance_id"] == "('host1', 'c1')"

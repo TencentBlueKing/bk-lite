@@ -17,6 +17,7 @@ from apps.cmdb.views.port_fingerprint import PortFingerprintViewSet
 from apps.cmdb.views.public_enum_library import PublicEnumLibraryViewSet
 from apps.cmdb.views.scan import ScanTaskViewSet
 from apps.cmdb.views.scene_view import SceneViewViewSet
+from apps.cmdb.views.service_tree import ServiceTreeViewSet
 from apps.cmdb.views.subscription import SubscriptionViewSet
 from apps.cmdb.views.user_personal_config import UserPersonalConfigViewSet
 
@@ -28,6 +29,7 @@ router.register(r"api/change_record", ChangeRecordViewSet, basename="change_reco
 router.register(r"api/collect", CollectModelViewSet, basename="collect")
 router.register(r"api/scan", ScanTaskViewSet, basename="scan")
 router.register(r"api/scene_views", SceneViewViewSet, basename="scene_views")
+router.register(r"api/service_tree", ServiceTreeViewSet, basename="service_tree")
 router.register(r"api/config_file_versions", ConfigFileVersionViewSet, basename="config_file_versions")
 router.register(r"api/oid", OidModelViewSet, basename="oid")
 router.register(r"api/port_fingerprint", PortFingerprintViewSet, basename="port_fingerprint")

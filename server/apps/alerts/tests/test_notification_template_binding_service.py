@@ -116,6 +116,42 @@ def test_assignment_rejects_forged_channel_type(authenticated_user):
 
 
 @pytest.mark.django_db
+def test_assignment_accepts_im_notification_when_channel_id_collides(authenticated_user):
+    from apps.alerts.serializers.assignment_shield import AlertAssignmentModelSerializer
+    from apps.system_mgmt.models import User
+    from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
+    from apps.system_mgmt.models.integration_instance import IntegrationInstance
+
+    authenticated_user.is_superuser = True
+    User.objects.create(username="testuser", display_name="Test", email="test@example.com", password="x", group_list=[1])
+    template = _template("im_notification")
+    _channel("email")
+    instance = IntegrationInstance.objects.create(
+        name="feishu-im",
+        provider_key="feishu",
+        enabled=True,
+        status="ready",
+        capability_status={"im_notification": "ready"},
+        config={},
+    )
+    IMNotificationChannel.objects.create(
+        id=5,
+        name="值班飞书",
+        integration_instance=instance,
+        enabled=True,
+        team=[1],
+    )
+    request = APIRequestFactory().post("/")
+    force_authenticate(request, authenticated_user)
+    request.user = authenticated_user
+    request.COOKIES["current_team"] = "1"
+
+    serializer = AlertAssignmentModelSerializer(data=_assignment_payload(template.id, "im_notification"), context={"request": request})
+
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
 def test_assignment_rejects_alert_operation_builtin_template(authenticated_user):
     from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
     from apps.alerts.serializers.assignment_shield import AlertAssignmentModelSerializer

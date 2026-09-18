@@ -277,7 +277,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
     };
 
     return (
-      <div>
+      <>
         <OperateModal
           width={600}
           title={title}
@@ -420,7 +420,7 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
             </Form.Item>
           </Form>
         </OperateModal>
-      </div>
+      </>
     );
   }
 );

@@ -1,6 +1,7 @@
 Switch Kyland SNMP:
   name: Kyland（Telegraf）
-  desc: 面向 Kyland 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 26067）。
+  desc: 面向 Kyland 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、主备电源状态、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 26067）。部分型号可能未实现
+    devMemoryUtilRate / devRingLoadRate。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -161,6 +162,9 @@ monitor_object_metric:
     device_psu_temperature_celsius:
       name: 电源温度
       desc: 采集 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），单位摄氏度。用于监测电源模块工作温度，过高温度可能提示散热不良、风扇故障或环境过热，存在触发热保护或硬件损坏风险。
+    device_psu_state_backup:
+      name: 备用电源状态
+      desc: 设备备用电源模块的运行状态，统一归一为正常或异常。
 monitor_object_metric_group:
   Switch:
     Base: 基础
@@ -181,3 +185,4 @@ monitor_object_metric_group:
     Application Port: 应用端口
     Endpoint: 端点
     Conversation: 会话
+    Power: 电源

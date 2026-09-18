@@ -148,9 +148,21 @@ export interface IpamEditPayload {
   ip_allocated_status: string;
   ip_status?: string;
   ip_type?: string;
-  ip_user?: string[];
+  ip_user?: number[];
   mac?: string;
   description?: string;
+}
+
+export function normalizeUserIds(value: unknown): number[] {
+  const items = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+  const ids: number[] = [];
+  for (const item of items) {
+    if (item == null || item === '') continue;
+    const id = Number(item);
+    if (!Number.isInteger(id)) continue;
+    ids.push(id);
+  }
+  return ids;
 }
 
 export function buildIpamEditPayload(input: {
@@ -159,7 +171,7 @@ export function buildIpamEditPayload(input: {
   allocatedStatus: string;
   ipStatus?: string;
   ipType?: string;
-  ipUser?: string[];
+  ipUser?: unknown;
   mac?: string;
   description?: string;
 }): IpamEditPayload {
@@ -169,7 +181,7 @@ export function buildIpamEditPayload(input: {
     ip_allocated_status: input.allocatedStatus,
     ip_status: input.ipStatus || '',
     ip_type: input.ipType || '',
-    ip_user: input.ipUser || [],
+    ip_user: normalizeUserIds(input.ipUser),
     mac: input.mac || '',
     description: input.description || '',
   };

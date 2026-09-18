@@ -3,6 +3,7 @@ import type { Pagination, TableDataItem } from '@/app/alarm/types/types';
 export interface MonitorObjectSnapshot {
   monitor_id: string;
   cmdb_id: string | null;
+  node_id?: string | null;
   resource_type: string | null;
   resource_name: string | null;
 }
@@ -195,6 +196,7 @@ export interface FiltersConfig {
   level: string[];
   state: string[];
   alarm_source: string[];
+  push_source_ids: string[];
 }
 export interface ThresholdField {
   level: string;
@@ -376,7 +378,7 @@ export interface AlarmTableProps {
   dataSource: TableDataItem[];
   pagination?: Pagination;
   loading: boolean;
-  tableScrollY: string;
+  tableScrollY?: string;
   selectedRowKeys: React.Key[];
   onChange: (pag: any) => void;
   onRefresh: () => void;
@@ -439,6 +441,7 @@ export interface SearchFilterCondition {
 }
 export interface SearchFilterProps {
   onSearch: (condition: SearchFilterCondition, rawValue?: any) => void;
+  condition?: SearchFilterCondition | null;
   attrList: Array<{
     attr_id: string;
     attr_name: string;

@@ -8,6 +8,8 @@ import { useCommon } from '@/app/alarm/context/common';
 import { type RuleScope, type RuleCondition, ruleFields, ruleField, operatorTranslation, invalidRuleCondition, isMultiOperator, normalizeRuleTags } from '@/app/alarm/utils/multivalueRules';
 import { MatchRuleValue } from './matchRuleValue';
 import MatchRuleHelp from './matchRuleHelp';
+import SourceNameSelect from './sourceNameSelect';
+import PushSourceSelect from './pushSourceSelect';
 
 interface PolicyItem { key: string | undefined; operator: string | undefined; value: MatchRuleValue }
 export interface MatchRuleProps {
@@ -58,7 +60,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange, scope: supplied
             return <div key={conditionIndex}>
               <div className="flex flex-wrap items-start gap-2">
                 <div className="w-36 shrink-0">
-                  <Select className="w-full" popupMatchSelectWidth={220} allowClear value={field?.key}
+                  <Select className="w-full" popupMatchSelectWidth={220} allowClear virtual={false} value={field?.key}
                     status={condition.key && !field ? 'error' : undefined} placeholder={t('common.selectTip')}
                     options={ruleFields(scope).map(item => ({ value: item.key, label: t(`alarmCommon.ruleFields.${item.key}`) }))}
                     onChange={key => change(groupIndex, conditionIndex, { key, operator: undefined, value: undefined })} />
@@ -75,6 +77,13 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange, scope: supplied
                     placeholder={t('common.selectTip')} status={invalid && !missing ? 'error' : undefined}
                     options={levelOptions.map(level => ({ value: String(level.level_id), label: level.level_display_name }))}
                     onChange={updateValue} />
+                  : field?.key === 'source_name' || field?.key === 'source_names' ? <SourceNameSelect
+                    disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
+                    status={invalid && !missing ? 'error' : undefined} onChange={updateValue} />
+                  : field?.key === 'push_source_id' || field?.key === 'push_source_ids' ? <PushSourceSelect
+                    disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
+                    status={invalid && !missing ? 'error' : undefined}
+                    onChange={values => updateValue(normalizeRuleTags(values))} />
                   : multi ? <Select className="w-full" mode="tags" open={false} suffixIcon={null} options={[]} aria-label={t('alarmCommon.multiValueInput')}
                     disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
                     maxCount={50} maxLength={256} placeholder={t('alarmCommon.multiValuePlaceholder')}

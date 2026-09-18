@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_fortinet",
   "plugin": "Firewall Fortinet SNMP",
-  "plugin_desc": "Fortinet-specific SNMP collection template for FortiGate firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects FORTINET-FORTIGATE-MIB private OIDs for device health (CPU utilization, memory utilization and capacity) and firewall-specific state (IPv4 active sessions, active IPsec VPN tunnels and HA mode). Supported brands/models — Fortinet FortiGate firewalls (FortiOS).",
+  "plugin_desc": "Fortinet-specific SNMP collection template for FortiGate firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects FORTINET-FORTIGATE-MIB private OIDs for device health (CPU utilization, memory utilization and capacity) and firewall-specific state (IPv4 active sessions, session setup rate, active IPsec VPN tunnels and HA mode). Supported brands/models — Fortinet FortiGate firewalls (FortiOS).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_fortinet'}) by (instance_id)",
   "name": "Firewall",
@@ -18,6 +18,7 @@
     "device_cpu_usage",
     "device_memory_usage",
     "firewall_active_sessions",
+    "firewall_session_rate",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -86,6 +87,19 @@
         "instance_id"
       ],
       "description": "This metric reports the number of active IPv4 sessions currently tracked by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly rising session count can indicate a connection flood or session-table exhaustion risk."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_session_rate",
+      "query": "firewall_session_rate{instance_type='firewall', __$labels__}",
+      "display_name": "Session Setup Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the average session setup rate of the FortiGate firewall over the past minute in sessions per second (FORTINET-FORTIGATE-MIB fgSysSesRate1). A sudden spike can indicate a connection flood."
     },
     {
       "metric_group": "Firewall",

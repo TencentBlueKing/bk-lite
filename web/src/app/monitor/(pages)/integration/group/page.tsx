@@ -303,9 +303,9 @@ const GroupPage = () => {
   };
 
   return (
-    <div className="w-full flex overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 gap-2.5 overflow-hidden">
       <ResizableSidebar collapseStorageKey="monitor.integration.group.sidebarCollapsed">
-        <div className="flex flex-col h-[calc(100vh-146px)] overflow-y-auto overflow-x-hidden p-[20px_10px] bg-[var(--color-bg-1)]">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-y-auto overflow-x-hidden bg-[var(--color-bg-1)] px-2.5 py-5">
           <TreeSelector
             showAllMenu
             data={treeData}
@@ -315,11 +315,11 @@ const GroupPage = () => {
           />
         </div>
       </ResizableSidebar>
-      <div className="flex-1 min-w-0 bg-[var(--color-bg-1)] h-[calc(100vh-146px)] p-[20px]">
-        <div className="flex items-center justify-between mb-[10px]">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
+        <div className="mb-4 flex min-w-0 shrink-0 items-center justify-between gap-3">
           <Input
             allowClear
-            className="w-[320px]"
+            className="w-full max-w-[320px] min-w-0"
             placeholder={t('monitor.integrations.searchRuleName')}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -337,15 +337,17 @@ const GroupPage = () => {
             </Button>
           </Permission>
         </div>
-        <CustomTable
-          scroll={{ y: 'calc(100vh - 330px)', x: 'calc(100vw - 320px)' }}
-          columns={columns}
-          dataSource={ruleList}
-          pagination={pagination}
-          loading={ruleLoading}
-          rowKey="id"
-          onChange={handleTableChange}
-        />
+        <div className="min-h-0 min-w-0 flex-1">
+          <CustomTable
+            scroll={{ x: 'max-content' }}
+            columns={columns}
+            dataSource={ruleList}
+            pagination={pagination}
+            loading={ruleLoading}
+            rowKey="id"
+            onChange={handleTableChange}
+          />
+        </div>
       </div>
       <RuleModal
         ref={ruleRef}

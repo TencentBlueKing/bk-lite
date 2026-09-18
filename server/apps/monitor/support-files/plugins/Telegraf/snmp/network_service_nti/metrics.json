@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_nti",
   "plugin": "NetworkService NTI ENVIROMUX SNMP",
-  "plugin_desc": "NTI ENVIROMUX environmental monitor and remote sensor network-service SNMP baseline child template for devices under NTI PEN 3699. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm internal, auxiliary, external and IP sensor tables, ACLM power tables, dry-contact, relay, message and alarm objects, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private environment, sensor and relay business counters are not promoted into shared device-health metrics.",
+  "plugin_desc": "NTI ENVIROMUX SNMP collection for environmental monitors under NTI PEN 3699. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds internal temperature and humidity from the 16D scalars plus the MICRO internal sensor table. Shared CPU, memory, fan and power-health scalars are not claimed.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_nti'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,37 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "network_service_nti_temperature",
+    "network_service_nti_humidity"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_nti_temperature",
+      "query": "max(network_service_nti_temperature{instance_type='network_service', __$labels__} or network_service_nti_sensor_value{instance_type='network_service', intSensorType=~'1|temperature', __$labels__}) by (instance_id)",
+      "display_name": "NTI Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ENVIROMUX internal temperature from the 16D scalar, coalesced with MICRO sensor-table rows whose type is temperature."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_nti_humidity",
+      "query": "max(network_service_nti_humidity{instance_type='network_service', __$labels__} or network_service_nti_sensor_value{instance_type='network_service', intSensorType=~'2|humidity', __$labels__}) by (instance_id)",
+      "display_name": "NTI Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ENVIROMUX internal relative humidity from the 16D scalar, coalesced with MICRO sensor-table rows whose type is humidity."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +61,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average inbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCInOctets counter."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +79,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average outbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCOutOctets counter."
     },
     {
       "metric_group": "Base",
@@ -64,7 +92,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }

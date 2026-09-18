@@ -8,6 +8,7 @@ import type {
   SnmpCredential,
   CollectToolPrefillResponse,
 } from '@/app/cmdb/types/collectTool';
+import { SNMP_INTEGRITY_OPTIONS, SNMP_PRIVACY_OPTIONS } from '@/app/cmdb/constants/professCollection';
 import { useCollectTool } from '../hooks/useCollectTool';
 import ResultPanel from './resultPanel';
 import OidModal from './oidModal';
@@ -270,12 +271,7 @@ const SnmpTool: React.FC<SnmpToolProps> = ({
                     { required: true, message: t('CollectTool.required') },
                   ]}
                 >
-                  <Select
-                    options={[
-                      { value: 'sha', label: 'SHA' },
-                      { value: 'md5', label: 'MD5' },
-                    ]}
-                  />
+                  <Select options={[...SNMP_INTEGRITY_OPTIONS]} />
                 </Form.Item>
 
                 <Form.Item
@@ -302,12 +298,7 @@ const SnmpTool: React.FC<SnmpToolProps> = ({
                         { required: true, message: t('CollectTool.required') },
                       ]}
                     >
-                      <Select
-                        options={[
-                          { value: 'aes', label: 'AES' },
-                          { value: 'des', label: 'DES' },
-                        ]}
-                      />
+                      <Select options={[...SNMP_PRIVACY_OPTIONS]} />
                     </Form.Item>
 
                     <Form.Item

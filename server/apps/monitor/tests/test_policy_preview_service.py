@@ -152,11 +152,9 @@ class TestPreviewEndToEnd:
             "algorithm": "max",
             "group_by": ["instance_id"],
         })
-        mocker.patch.dict(
-            "apps.monitor.services.policy_preview.METHOD",
-            {"max": mocker.Mock(return_value={"status": "success", "data": {"result": []}})},
-            clear=False,
-        )
+        mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value.query_range.return_value = {"status": "success", "data": {"result": []}}
         out = svc.preview()
         assert "by (instance_id)" in out["query"]
         assert out["data"]["data"]["result"] == []
@@ -181,11 +179,9 @@ class TestPreviewEndToEnd:
                 "threshold": threshold,
             }
         )
-        mocker.patch.dict(
-            "apps.monitor.services.policy_preview.METHOD",
-            {"max": mocker.Mock(return_value=vm_response)},
-            clear=False,
-        )
+        mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value.query_range.return_value = vm_response
 
         out = svc.preview()
 
@@ -223,9 +219,8 @@ class TestPreviewEndToEnd:
             ),
         )
         mocker.patch(
-            "apps.monitor.services.policy_preview.query_formula_policy_metrics",
-            return_value=vm_response,
-        )
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value.query_range.return_value = vm_response
 
         out = svc.preview()
 
@@ -241,3 +236,103 @@ class TestPreviewEndToEnd:
         })
         with pytest.raises(BaseAppException):
             svc.preview()
+
+
+    def test_preview_overlay_tags_current_and_baseline(self, mocker):
+        current = {
+            "status": "success",
+            "data": {"result": [{"metric": {"instance_id": "h1"}, "values": [[1, "120"]]}]},
+        }
+        baseline = {
+            "status": "success",
+            "data": {"result": [{"metric": {"instance_id": "h1"}, "values": [[1, "80"]]}]},
+        }
+        api = mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value
+        api.query_range.side_effect = [current, baseline]
+        svc = PolicyPreviewService({
+            "query_condition": {"type": "pmq", "query": "up"},
+            "period": {"type": "min", "value": 5},
+            "algorithm": "avg_over_time",
+            "group_algorithm": "avg",
+            "group_by": ["instance_id"],
+            "compare_mode": "offset_1h",
+            "compare_value_kind": "percent",
+        })
+        out = svc.preview()
+        assert out["overlay"] is True
+        roles = {item["metric"]["compare_role"] for item in out["data"]["data"]["result"]}
+        assert roles == {"current", "baseline"}
+        window = "avg_over_time((avg(up) by (instance_id))[5m:10s])"
+        assert out["query"] == f"({window} - {window} offset 1h) / ({window} offset 1h) * 100"
+        assert out["warnings"] == []
+        assert out["result_unit"] == "percent"
+
+    def test_preview_overlay_keeps_source_unit_when_compare_is_percent(self, mocker):
+        current = {
+            "status": "success",
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[1, "8192"]]}
+                ]
+            },
+        }
+        baseline = {
+            "status": "success",
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "h1"}, "values": [[1, "4096"]]}
+                ]
+            },
+        }
+        api = mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value
+        api.query_range.side_effect = [current, baseline]
+        svc = PolicyPreviewService(
+            {
+                "query_condition": {"type": "pmq", "query": "nvidia_smi_memory_total"},
+                "period": {"type": "min", "value": 5},
+                "algorithm": "last_over_time",
+                "group_algorithm": "avg",
+                "group_by": ["instance_id"],
+                "metric_unit": "mebibytes",
+                "calculation_unit": "mebibytes",
+                "threshold_unit": "percent",
+                "compare_mode": "offset_1h",
+                "compare_value_kind": "percent",
+                "threshold": [{"level": "critical", "method": ">", "value": 10}],
+            }
+        )
+        out = svc.preview()
+        assert out["overlay"] is True
+        assert out["result_unit"] == "percent"
+        assert out["chart_unit"] == "mebibytes"
+        assert out["data"]["data"]["result"][0]["values"] == [[1, "8192"]]
+        assert out["warnings"] == []
+
+    def test_preview_overlay_warns_when_baseline_missing(self, mocker):
+        current = {
+            "status": "success",
+            "data": {"result": [{"metric": {"instance_id": "h1"}, "values": [[1, "120"]]}]},
+        }
+        baseline = {"status": "success", "data": {"result": []}}
+        api = mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        ).return_value
+        api.query_range.side_effect = [current, baseline]
+        svc = PolicyPreviewService({
+            "query_condition": {"type": "pmq", "query": "up"},
+            "period": {"type": "min", "value": 5},
+            "algorithm": "avg_over_time",
+            "group_algorithm": "avg",
+            "group_by": ["instance_id"],
+            "compare_mode": "offset_30d",
+            "compare_value_kind": "percent",
+        })
+        out = svc.preview()
+        assert out["overlay"] is True
+        assert out["data"]["data"]["result"][0]["metric"]["compare_role"] == "current"
+        assert "对照缺失或留存不足" in "".join(out["warnings"])
+        assert all(item["metric"].get("compare_role") != "baseline" for item in out["data"]["data"]["result"])

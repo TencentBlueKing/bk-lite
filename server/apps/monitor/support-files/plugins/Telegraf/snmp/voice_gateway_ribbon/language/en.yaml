@@ -1,7 +1,8 @@
 VoiceGateway Ribbon SNMP:
   name: Ribbon (Telegraf)
-  desc: SNMP monitoring template for Ribbon voice gateway. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Ribbon voice gateway. It reports CPU usage, memory
+    usage, optional power-supply and disk status, fan speed, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:
@@ -42,13 +43,33 @@ monitor_object_metric:
       name: Device Temperature
       desc: Voice gateway device temperature in degrees Celsius, used to detect cooling
         problems, blocked airflow, or overheating risk.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Current-interval CPU utilization of the Ribbon/Sonus voice gateway, walked
+        as a table keyed by CE and CPU and reported directly as a percentage. The
+        dashboard value is the maximum across cores.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Current-interval memory utilization of the Ribbon/Sonus voice gateway,
+        walked as a table keyed by CE and reported directly as a percentage. The dashboard
+        value is the maximum across CEs.
     device_psu_state:
       name: PSU State
-      desc: Voice gateway power-source state normalized so 1 means healthy and 2 means
-        fault.
+      desc: Voice gateway power-supply state from present and power-fault TruthValues,
+        normalized so 1 means healthy and 2 means fault. Absent supplies are omitted.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Optional fan rotation speed in RPM. Abnormally low or zero RPM can indicate
+        a stalled fan.
+    device_disk_state:
+      name: Disk State
+      desc: Optional hard-disk status normalized so 1 means online/healthy and 2 means
+        missing, failed, unknown, or any other value.
 monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status

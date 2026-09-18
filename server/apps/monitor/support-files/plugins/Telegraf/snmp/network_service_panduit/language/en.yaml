@@ -1,7 +1,8 @@
 NetworkService Panduit iPDU SNMP:
   name: Panduit iPDU (Telegraf)
-  desc: SNMP monitoring template for Panduit iPDU network service device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Panduit G5 iPDU network service device. It
+    reports PDU outlet current, environment temperature and humidity, per-port inbound
+    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 19536).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -15,14 +16,14 @@ monitor_object_metric:
         device stability and identify unexpected reboots or failures.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
-      desc: This metric indicates the average rate of bytes received over the past
-        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+      desc: This metric indicates the average rate of inbound bytes received over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
         counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
         ifInOctets on high-speed ports, keeping the rate accurate.
     interface_ifHCOutOctets:
       name: Interface Outgoing Traffic Rate
-      desc: This metric calculates the average rate of bytes sent over the past 5
-        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+      desc: This metric calculates the average rate of outbound bytes sent over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
         counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
         ifOutOctets on high-speed ports, keeping the rate accurate.
     device_total_incoming_traffic:
@@ -100,8 +101,25 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    pdu_outlet_current_amps:
+      name: PDU Outlet Current
+      desc: Per-outlet load current in amperes from PANDUIT-MIB pdug5OutletCurrent.
+        The SNMP value is hundredths of an amp and is scaled by /100. Empty outlet
+        tables yield no rows.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Per-sensor environment temperature in degrees Celsius from PANDUIT-MIB
+        pdug5TemperatureValue. The SNMP value is already in degrees. When pdug5TemperatureScale
+        is present, 1 is Celsius and 2 is converted from Fahrenheit. Empty temperature
+        tables yield no rows.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Per-sensor relative humidity in percent from PANDUIT-MIB pdug5HumidityValue.
+        The SNMP value is already %RH. Empty humidity tables yield no rows.
 monitor_object_metric_group:
   NetworkService:
     Base: Base
     Traffic: Traffic
     NetworkService: NetworkService
+    Power: Power
+    Environment: Environment

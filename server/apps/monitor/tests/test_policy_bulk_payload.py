@@ -219,3 +219,28 @@ def test_build_bulk_policy_payloads_prefers_config_trigger_count_then_template_d
         config={},
     )
     assert template_payload[0]["trigger_count"] == 2
+
+
+def test_build_bulk_policy_payloads_keeps_rate_and_defaults_new_fields():
+    payloads = build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "网卡入字节速率",
+                "metric_id": 101,
+                "algorithm": "rate",
+                "collect_type": 9,
+            }
+        ],
+        assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
+        config={},
+    )
+    payload = payloads[0]
+    assert payload["group_algorithm"] == "avg"
+    assert payload["algorithm"] == "rate"
+    assert payload["compare_mode"] == "absolute"
+    assert payload["compare_value_kind"] == ""
+    assert payload["count_predicate"] == {}
+    assert payload["forecast_target"] is None
+    assert payload["forecast_lookback"] == {}
+    assert payload["recovery_threshold"] == {}

@@ -3,13 +3,7 @@
 from rest_framework import serializers
 
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
-from apps.patch_mgmt.models import (
-    BaselineRequirement,
-    GovernanceTask,
-    GovernanceTaskHost,
-    HostBaselineBinding,
-    HostComplianceSnapshot,
-)
+from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.utils.i18n import serializer_message
 
@@ -84,38 +78,18 @@ class GovernanceTaskHostSerializer(serializers.ModelSerializer):
 
     def get_requirements(self, obj: GovernanceTaskHost) -> list[dict]:
         """返回该主机对应的基线要求及最新合规快照。"""
-        binding = HostBaselineBinding.objects.filter(
-            target_id=obj.target_id,
-        ).select_related("baseline").first()
-        if not binding:
-            return []
+        index = self.context.get("host_requirement_index")
+        if index is None:
+            from apps.patch_mgmt.services.execution_record_service import (
+                build_host_requirement_projection,
+            )
 
-        qs = BaselineRequirement.objects.filter(baseline=binding.baseline).select_related("patch")
-        task = obj.task
-        if task and task.task_type == GovernanceTaskType.INSTALL and task.patch_list:
-            qs = qs.filter(patch_id__in=task.patch_list)
-
-        # 取每个要求最新的快照（assess 成功时会全量替换）
-        latest_snapshots = {}
-        for snap in HostComplianceSnapshot.objects.filter(
-            binding=binding,
-        ).select_related("requirement").order_by("-evaluated_at"):
-            if snap.requirement_id not in latest_snapshots:
-                latest_snapshots[snap.requirement_id] = snap
-
-        return [
-            {
-                "baseline_name": binding.baseline.name,
-                "patch_id": req.patch_id,
-                "patch_title": req.patch.title,
-                "condition": req.condition,
-                "satisfied": latest_snapshots.get(req.id).satisfied if latest_snapshots.get(req.id) else None,
-                "status": latest_snapshots.get(req.id).status if latest_snapshots.get(req.id) else None,
-                "reason": latest_snapshots.get(req.id).reason if latest_snapshots.get(req.id) else "",
-                "evidence": latest_snapshots.get(req.id).evidence if latest_snapshots.get(req.id) else {},
-            }
-            for req in qs
-        ]
+            task = obj.task
+            patch_ids = None
+            if task and task.task_type == GovernanceTaskType.INSTALL and task.patch_list:
+                patch_ids = task.patch_list
+            index = build_host_requirement_projection([obj.target_id], patch_ids=patch_ids)
+        return list(index.get(int(obj.target_id), []))
 
 
 class GovernanceTaskListSerializer(PatchPermissionSerializer):
@@ -336,8 +310,21 @@ class GovernanceTaskDetailSerializer(GovernanceTaskListSerializer):
         return build_risk_item_summaries(obj)
 
     def get_host_results(self, obj):
+        hosts = self._visible_hosts(obj)
+        if "host_requirement_index" not in self.context:
+            from apps.patch_mgmt.services.execution_record_service import (
+                build_host_requirement_projection,
+            )
+
+            patch_ids = None
+            if obj.task_type == GovernanceTaskType.INSTALL and obj.patch_list:
+                patch_ids = obj.patch_list
+            self.context["host_requirement_index"] = build_host_requirement_projection(
+                [host.target_id for host in hosts],
+                patch_ids=patch_ids,
+            )
         return GovernanceTaskHostSerializer(
-            self._visible_hosts(obj), many=True, context=self.context
+            hosts, many=True, context=self.context
         ).data
 
     class Meta(GovernanceTaskListSerializer.Meta):

@@ -94,15 +94,18 @@ const AlertListWidget = ({ monitorId }: AlertListWidgetProps) => {
   }
 
   return (
-    <MonitorAlarm
-      monitorObject={context.monitorObject}
-      monitorName={context.monitorName}
-      plugins={context.plugins}
-      form={context.form}
-      metrics={metrics}
-      objects={context.objects}
-      readOnly
-    />
+    <div className="h-full min-h-[280px] min-w-0">
+      <MonitorAlarm
+        monitorObject={context.monitorObject}
+        monitorName={context.monitorName}
+        plugins={context.plugins}
+        form={context.form}
+        metrics={metrics}
+        objects={context.objects}
+        readOnly
+        fillContainer
+      />
+    </div>
   );
 };
 

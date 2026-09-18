@@ -32,18 +32,27 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # RITTAL-CMC-III-MIB cmcIIIVarTable under PEN 2606.7.
+    # Walk column OIDs only. Do not hardcode a row index such as .1.5.
+    # Exact cmcIIIVarName varies by sensor config; queries map by Unit/Name.
+    # Do not invent CPU% or memory. Do not collect CMC-III control/command trees.
+    # 不设私有表根：采集节点通常无厂商 MIB，表级 oid 会触发 snmptable「Was that a table?」并阻断整路 SNMP 初始化；只 walk 列 OID。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "cmcIIIVar"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.2606.7.4.2.2.1.3"
+        name = "cmcIIIVarName"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.2606.7.4.2.2.1.5"
+        name = "cmcIIIVarUnit"
+        is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.2606.7.4.2.2.1.10"
+        name = "cmcIIIVarValueStr"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2606.7.4.2.2.1.11"
+        name = "cmcIIIVarValueInt"

@@ -121,32 +121,49 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+async function openAlertEventTab() {
+  const ref = createRef<ModalRef>();
+  render(
+    <AlertDetail ref={ref} objects={[]} userList={[]} onSuccess={vi.fn()} />
+  );
+
+  await act(async () => {
+    ref.current?.showModal({
+      type: 'alert',
+      title: '告警详情',
+      form: {
+        id: 1,
+        status: 'new',
+        level: 'critical',
+        content: 'CPU 超阈值',
+        alert_type: 'alert',
+        updated_at: '2026-01-01 12:00:00',
+        policy: {
+          query_condition: { type: 'metric' }
+        }
+      }
+    });
+  });
+
+  await screen.findByText('CPU 超阈值');
+  await userEvent.click(screen.getByText('事件'));
+  expect(await screen.findByText('触发')).toBeTruthy();
+}
+
+function eventTimelineFillsRemainingHeight() {
+  const list = document.querySelector('.rc-virtual-list');
+  const container = list?.closest('.ant-spin-nested-loading')?.parentElement;
+  const parent = container?.parentElement;
+  if (!container || !parent) return false;
+  return (
+    container.classList.contains('h-full') ||
+    (parent.classList.contains('flex') && parent.classList.contains('flex-col'))
+  );
+}
+
 describe('告警详情事件时间线', { timeout: 15000 }, () => {
   it('展示动作文案，且不再按 Event 计数渲染热力图', async () => {
-    const ref = createRef<ModalRef>();
-    render(
-      <AlertDetail ref={ref} objects={[]} userList={[]} onSuccess={vi.fn()} />
-    );
-
-    await act(async () => {
-      ref.current?.showModal({
-        type: 'alert',
-        title: '告警详情',
-        form: {
-          id: 1,
-          status: 'new',
-          level: 'critical',
-          content: 'CPU 超阈值',
-          alert_type: 'alert',
-          updated_at: '2026-01-01 12:00:00',
-          policy: {
-            query_condition: { type: 'metric' }
-          }
-        }
-      });
-    });
-
-    await screen.findByText('CPU 超阈值');
+    await openAlertEventTab();
 
     await waitFor(() => {
       expect(getMonitorEventDetail).toHaveBeenCalledWith(
@@ -155,12 +172,15 @@ describe('告警详情事件时间线', { timeout: 15000 }, () => {
       );
     });
 
-    await userEvent.click(screen.getByText('事件'));
-    expect(await screen.findByText('触发')).toBeTruthy();
     expect(await screen.findByText('认领')).toBeTruthy();
     expect(await screen.findByText('分派')).toBeTruthy();
     expect(screen.getAllByText('严重').length).toBeGreaterThanOrEqual(2);
     expect(document.querySelector('svg.heatmap, .event-heat-map')).toBeNull();
     expect(screen.queryByText('monitor.events.eventTriggered')).toBeNull();
+  });
+
+  it('事件时间线容器吃到详情剩余高度，避免虚拟列表按内容高度坍缩', async () => {
+    await openAlertEventTab();
+    expect(eventTimelineFillsRemainingHeight()).toBe(true);
   });
 });

@@ -32,29 +32,105 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns: ifInOctets/ifOutOctets/ifInErrors/ifOutErrors/ifInDiscards/ifOutDiscards/ifInUcastPkts/ifOutUcastPkts/ifSpeed/ifAdminStatus/ifOperStatus) ----
-    [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
-        name = "interface"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- CPU usage (HOST-RESOURCES hrProcessorLoad, per-core %) ----
-    # 来源：6WIND VSR 确认标准 HOST-RESOURCES 可用；hrProcessorLoad 表各行均为 CPU 负载，无需行级类型过滤。
+# @bk_include_ifmib_table
+    # ---- CPU (UCD-SNMP 1.3.6.1.4.1.2021; primary host health) ----
+    # ssCpuIdle 1.3.6.1.4.1.2021.11.11.0 → cpu_usage_percent = 100−idle；缺 idle 时用 ssCpuUser+ssCpuSystem。
     [[inputs.snmp.table]]
         name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.11.11"
+        name = "idle"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.11.9"
+        name = "user"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.11.10"
+        name = "system"
+    # ---- Memory (UCD-SNMP memTotalReal/memAvailReal, kB; memory_usage_percent=(total-avail)/total) ----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.4.5"
+        name = "total"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.4.6"
+        name = "free"
+        conversion = "int"
+    # ---- Optional HOST-RESOURCES CPU fallback (hrProcessorLoad, per-core %, 1.3.6.1.2.1.25) ----
+    [[inputs.snmp.table]]
+        name = "device_cpu_hr"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.3.3.1.2"
         name = "usage"
-# ---- 内存/温度/风扇/电源：6WIND VSR（企业号 7336）内存经 hrStorage 混表（RAM/Flash 行索引不固定）暴露，inputs.snmp 无法按行过滤；未确认跨版本稳定的厂商私有设备健康标量 → 内存/温度/风扇/电源 N/A。CPU 经 HOST-RESOURCES hrProcessorLoad 已采。----
+    # ---- Optional HOST-RESOURCES physical-memory fallback (hrStorage RAM rows only) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.25.2.3"
+        name = "device_memory_hr"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.2"
+        name = "storage_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.3"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.4"
+        name = "allocation_units"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.5"
+        name = "size"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.6"
+        name = "used"
+        conversion = "int"
+# ---- 温度/风扇/电源 N/A 不采。企业号 7336 的 IPsec/License 私有对象不是本轮最小健康集，不采。----
+
+[[processors.starlark]]
+    namepass = ["device_cpu"]
+    source = '''
+def apply(metric):
+    idle = metric.fields.get("idle")
+    user = metric.fields.get("user")
+    system = metric.fields.get("system")
+    if idle != None:
+        metric.fields["usage"] = 100 - idle
+    elif user != None and system != None:
+        metric.fields["usage"] = user + system
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["6wind"]
+
+[[processors.starlark]]
+    namepass = ["device_memory_hr"]
+    source = '''
+def apply(metric):
+    storage_type = metric.tags.get("storage_type", "")
+    descr = metric.tags.get("descr", "").lower()
+    normalized = storage_type.lstrip(".")
+    is_ram = normalized == "1.3.6.1.2.1.25.2.1.2" or descr == "physical memory" or descr == "real memory" or descr == "ram"
+    if not is_ram:
+        return None
+    units = metric.fields.get("allocation_units")
+    size = metric.fields.get("size")
+    used = metric.fields.get("used")
+    if units == None or size == None:
+        return None
+    metric.fields["total"] = size * units
+    if used != None:
+        metric.fields["used"] = used * units
+        metric.fields["free"] = (size - used) * units
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["6wind"]

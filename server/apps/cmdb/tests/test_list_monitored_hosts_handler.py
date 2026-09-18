@@ -149,7 +149,7 @@ def test_list_host_uuids_for_systems_omits_unauthorized_and_expands(monkeypatch)
     monkeypatch.setattr(nats.InstanceManage, "instance_list", fake_instance_list)
     monkeypatch.setattr(
         nats,
-        "expand_systems_to_host_uuids",
+        "expand_systems_to_host_uuids_via_service_tree",
         lambda selected, **kw: ["h1", "h2"] if selected == ["s1"] else [],
     )
 
@@ -218,7 +218,7 @@ def test_list_monitored_hosts_for_systems_returns_rows_and_expanded_count(monkey
 
     monkeypatch.setattr(nats, "_build_nats_permission_map", lambda user_info, **kw: {"ok": True})
     monkeypatch.setattr(nats.InstanceManage, "instance_list", fake_instance_list)
-    monkeypatch.setattr(nats, "expand_systems_to_host_uuids", lambda selected, **kw: ["h1", "h2", "h3"])
+    monkeypatch.setattr(nats, "expand_systems_to_host_uuids_via_service_tree", lambda selected, **kw: ["h1", "h2", "h3"])
     monkeypatch.setattr(nats.InstanceManage, "query_entity_by_uuids", fake_entities)
     monkeypatch.setattr(nats.InstanceManage, "_has_topology_view_permission", lambda *a, **k: True)
 
@@ -268,7 +268,7 @@ def test_list_monitored_hosts_for_systems_drops_unauthorized_hosts(monkeypatch):
         "instance_list",
         lambda *args, **kw: ([{"inst_uuid": "s1", "inst_name": "sys-ecom"}], 1),
     )
-    monkeypatch.setattr(nats, "expand_systems_to_host_uuids", lambda selected, **kw: ["h1", "h2"])
+    monkeypatch.setattr(nats, "expand_systems_to_host_uuids_via_service_tree", lambda selected, **kw: ["h1", "h2"])
     monkeypatch.setattr(
         nats.InstanceManage,
         "query_entity_by_uuids",

@@ -113,6 +113,24 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
         blank=True,
         verbose_name="告警阈值单位",
     )
+    compare_mode = models.CharField(
+        max_length=32,
+        default="absolute",
+        blank=True,
+        verbose_name="比较基准",
+    )
+    compare_value_kind = models.CharField(
+        max_length=16,
+        default="",
+        blank=True,
+        verbose_name="比较值类型",
+    )
+    count_predicate = models.JSONField(default=dict, verbose_name="条件计数内阈")
+    forecast_target = models.FloatField(
+        blank=True, null=True, verbose_name="容量线目标"
+    )
+    forecast_lookback = models.JSONField(default=dict, verbose_name="斜率回看窗")
+    recovery_threshold = models.JSONField(default=dict, verbose_name="恢复阈值")
 
     no_data_period = models.JSONField(default=dict, verbose_name="无数据告警的数据周期（eg:10m内无数据）")
     no_data_level = models.CharField(max_length=20, default="", verbose_name="无数据告警级别")

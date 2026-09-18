@@ -31,6 +31,7 @@ import {
   CmdbInstanceOption,
   toCmdbInstanceOptions,
 } from '@/app/cmdb/utils/instanceOption';
+import { buildHostCloudQueryList } from '@/app/cmdb/utils/cloudRegion';
 
 import {
   CYCLE_OPTIONS,
@@ -224,12 +225,14 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       return current.every((item, index) => item === next[index]);
     };
 
-    const supportsIpSelection = !singleInstanceOnly && IP_SELECTION_TASK_TYPES.includes(
-      normalizedTaskType
-    );
-    const supportsAssetOnlySelection = ASSET_ONLY_SELECTION_TASK_TYPES.includes(
-      normalizedTaskType
-    );
+    const isSslCerTask = modelId === 'ssl_cer';
+    const supportsIpSelection =
+      !singleInstanceOnly &&
+      !isSslCerTask &&
+      IP_SELECTION_TASK_TYPES.includes(normalizedTaskType);
+    const supportsAssetOnlySelection =
+      ASSET_ONLY_SELECTION_TASK_TYPES.includes(normalizedTaskType) ||
+      isSslCerTask;
 
     const requiresSingleInstanceSelect = singleInstanceOnly
       || SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType);
@@ -318,17 +321,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       if (!isHostTask || !hasSelectedAccessPointCloudRegion) {
         return [];
       }
-
-      const rawCloudRegion = selectedAccessPointCloudRegion;
-      const cloudRegionString = String(rawCloudRegion).trim();
-
-      return [
-        {
-          field: 'cloud',
-          type: 'str=',
-          value: cloudRegionString,
-        },
-      ];
+      return buildHostCloudQueryList(selectedAccessPointCloudRegion);
     };
 
     useEffect(() => {

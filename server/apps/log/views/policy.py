@@ -21,13 +21,9 @@ from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.permission import PermissionConstants
 from apps.log.filters.policy import AlertFilter, EventFilter, EventRawDataFilter, PolicyFilter
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
-from apps.log.serializers.policy import (
-    AlertSerializer,
-    AssignHandlersSerializer,
-    EventRawDataSerializer,
-    EventSerializer,
-    PolicySerializer,
-)
+from apps.log.serializers.policy import AlertSerializer, AssignHandlersSerializer, EventRawDataSerializer, EventSerializer, PolicySerializer
+from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.services.alert_access import visible_log_alerts
 from apps.log.services.alert_handlers import (
     AlertHandlerConflict,
     AlertHandlerForbidden,
@@ -38,8 +34,6 @@ from apps.log.services.alert_handlers import (
     is_my_alert_query,
     record_closed_events,
 )
-from apps.log.services.access_scope import LogAccessScopeService
-from apps.log.services.alert_access import visible_log_alerts
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -642,11 +636,7 @@ class AlertViewSet(viewsets.ModelViewSet):
     @staticmethod
     def _deliver_closed_event(alert_id, closed_at):
         try:
-            alert = (
-                Alert.objects.select_related("policy", "collect_type")
-                .prefetch_related("policy__policyorganization_set")
-                .get(id=alert_id)
-            )
+            alert = Alert.objects.select_related("policy", "collect_type").prefetch_related("policy__policyorganization_set").get(id=alert_id)
             notifier = LogAlertLifecycleNotifier(alert.policy)
             if not alert.policy.notice or not notifier.is_alert_center_channel():
                 return
@@ -894,11 +884,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         # 已有 max_buckets 保护，活跃全量统计不会再触发无界 bucket 膨胀。
         start_time_param = request.query_params.get("start_time", "")
         end_time_param = request.query_params.get("end_time", "")
-        if (
-            status != AlertConstants.STATUS_NEW
-            and not start_time_param
-            and not end_time_param
-        ):
+        if status != AlertConstants.STATUS_NEW and not start_time_param and not end_time_param:
             default_end = datetime.now(timezone.utc)
             default_start = default_end - timedelta(days=7)
             queryset = queryset.filter(created_at__gte=default_start)
@@ -998,7 +984,8 @@ class AlertViewSet(viewsets.ModelViewSet):
                         "event_id": "xxx",
                         "event_time": "2025-11-19T...",
                         "snapshot_time": "2025-11-19T...",
-                        "raw_data": {...}
+                        "raw_data": {...},
+                        "query_clue": {...}
                     },
                     ...
                 ]
@@ -1108,10 +1095,7 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
         return (
             EventRawData.objects.select_related("event", "event__alert", "event__policy")
             .filter(event__alert_id__in=visible_alerts.values("id"))
-            .filter(
-                Q(event__policy_id=models.F("event__alert__policy_id"))
-                | Q(event__policy_id__isnull=True, event__alert__policy_id__isnull=True)
-            )
+            .filter(Q(event__policy_id=models.F("event__alert__policy_id")) | Q(event__policy_id__isnull=True, event__alert__policy_id__isnull=True))
             .order_by("-event__event_time", "-id")
         )
 

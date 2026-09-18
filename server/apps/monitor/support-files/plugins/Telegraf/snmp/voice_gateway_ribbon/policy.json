@@ -1,5 +1,52 @@
 {
   "object": "VoiceGateway",
   "plugin": "VoiceGateway Ribbon SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Ribbon语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Ribbon/Sonus 语音网关当前间隔 CPU 使用率（按 CE+CPU 表取最高核），当持续高于阈值时触发告警，提示控制平面过载或拥塞风险。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ribbon语音网关内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 Ribbon/Sonus 语音网关当前间隔内存使用率（按 CE 表取最高值），当超过阈值时触发告警，便于发现会话表压力或容量不足。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ribbon语音网关电源异常",
+      "alert_name": "语音网关${resource_name} 电源状态异常",
+      "description": "监控 Ribbon/Sonus 语音网关电源在位与电源故障（归一后 1=正常，>1=异常），当任一在位电源故障时触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+      ]
+    },
+    {
+      "name": "Ribbon语音网关磁盘异常",
+      "alert_name": "语音网关${resource_name} 磁盘状态异常",
+      "description": "监控 Ribbon/Sonus 语音网关硬盘状态（归一后 1=在线正常，>1=缺失/失败/未知），当任一磁盘异常时触发告警。",
+      "metric_name": "device_disk_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+      ]
+    }
+  ]
 }

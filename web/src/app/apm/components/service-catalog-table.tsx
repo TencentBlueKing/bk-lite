@@ -16,9 +16,9 @@ import {
 import MetricValue from '@/app/apm/components/metric-value';
 import MiniTrend from '@/app/apm/components/mini-trend';
 import {
-  alertKey,
   alertStatusFromLevel,
   alertStatusMeta,
+  lookupActiveAlert,
   metricKey,
   type ServiceEnvironmentRow,
   type TimeWindow,
@@ -103,7 +103,7 @@ export default function ServiceCatalogTable({
       width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       render: (_, item) => {
-        const status = alertStatusFromLevel(alertCounts.get(alertKey(item.serviceName, item.environment))?.level);
+        const status = alertStatusFromLevel(lookupActiveAlert(alertCounts, item.serviceId, item.serviceName, item.environment)?.level);
         const presentation = alertStatusMeta[status];
         const label = t(presentation.id, presentation.fallback);
         return (
@@ -125,7 +125,7 @@ export default function ServiceCatalogTable({
       align: 'center',
       responsive: ['md'],
       render: (_, item) => {
-        const alert = alertCounts.get(alertKey(item.serviceName, item.environment));
+        const alert = lookupActiveAlert(alertCounts, item.serviceId, item.serviceName, item.environment);
         const count = alert?.count ?? 0;
         const dangerous = count > 0 && (alert?.level ?? 5) <= 2;
         const eventsHref = `/apm/events/alerts?service=${encodeURIComponent(item.serviceName)}${
@@ -281,7 +281,7 @@ export default function ServiceCatalogTable({
         ? value.map((id) => (
           <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
         ))
-        : <Typography.Text type="secondary">—</Typography.Text>,
+        : t('common.unassigned'),
     },
     {
       title: t('apm.common.operation', '操作'),

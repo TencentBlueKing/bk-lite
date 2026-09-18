@@ -13,13 +13,18 @@ from apps.monitor.services.chart_unit import (
     resolve_chart_unit,
 )
 from apps.monitor.tasks.utils.policy_methods import (
-    METHOD,
-    build_formula_policy_query,
-    build_policy_query,
+    COMPARE_MODE_ABSOLUTE,
+    OVERLAY_ROLE_BASELINE,
+    OVERLAY_ROLE_CURRENT,
+    OVERLAY_ROLE_LABEL,
+    compile_baseline_query,
+    compile_policy_query,
+    compile_window_query,
     period_to_seconds,
-    query_formula_policy_metrics,
+    resolve_result_unit,
 )
 from apps.monitor.utils.unit_converter import UnitConverter
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class PolicyPreviewService:
@@ -31,8 +36,7 @@ class PolicyPreviewService:
     def preview(self):
         query_condition = self._require_dict("query_condition")
         period = self._require_dict("period")
-        algorithm = self._require_value("algorithm")
-        group_algorithm = self.payload.get("group_algorithm")
+        self._require_value("algorithm")
         step = self._format_period(period)
         if query_condition.get("type") == "formula":
             compiled_formula = build_formula_query(
@@ -42,30 +46,62 @@ class PolicyPreviewService:
             metric_query = compiled_formula.query
             group_by = compiled_formula.group_by
             self.warnings.extend(compiled_formula.warnings)
-            query = build_formula_policy_query(algorithm, metric_query, step)
         else:
             group_by = self._require_string_list("group_by")
             metric_query = self._build_metric_query(query_condition)
-            query = build_policy_query(algorithm, metric_query, step, ",".join(group_by), group_algorithm)
 
         group_by_clause = ",".join(group_by)
-        method = METHOD.get(algorithm)
-        if not method:
-            raise BaseAppException(f"invalid algorithm method: {algorithm}")
-
+        query = compile_policy_query(self.payload, metric_query, step, group_by_clause)
         end = int(time.time())
         points = self._preview_points()
         start = end - period_to_seconds(period) * points
-        if query_condition.get("type") == "formula":
-            data = query_formula_policy_metrics(algorithm, metric_query, start, end, step)
-        else:
-            data = method(metric_query, start, end, step, group_by_clause, group_algorithm)
-        self._raise_for_vm_error(data)
-        chart_unit = self._chart_unit()
-        source_unit = self._chart_source_unit(query_condition.get("type"))
-        data = convert_vm_result_copy(
-            data, source_unit or chart_unit, chart_unit
+        compare_mode = self.payload.get("compare_mode") or COMPARE_MODE_ABSOLUTE
+        result_unit = resolve_result_unit(self.payload)
+        overlay_enabled = compare_mode not in (
+            "",
+            COMPARE_MODE_ABSOLUTE,
+            "timeleft",
         )
+
+        if overlay_enabled:
+            current_query = compile_window_query(
+                self.payload, metric_query, step, group_by_clause
+            )
+            baseline_query = compile_baseline_query(
+                self.payload, metric_query, step, group_by_clause
+            )
+            current_data = VictoriaMetricsAPI().query_range(
+                current_query, start, end, step
+            )
+            baseline_data = VictoriaMetricsAPI().query_range(
+                baseline_query, start, end, step
+            )
+            self._raise_for_vm_error(current_data)
+            self._raise_for_vm_error(baseline_data)
+            chart_unit = self._overlay_chart_unit(query_condition.get("type"))
+            source_unit = self._chart_source_unit(query_condition.get("type"))
+            current_data, chart_unit = self._convert_preview_chart(
+                current_data, source_unit, chart_unit
+            )
+            baseline_data, _ = self._convert_preview_chart(
+                baseline_data, source_unit, chart_unit
+            )
+            data = self._merge_overlay_series(current_data, baseline_data)
+            if self._has_series(current_data) and not self._has_series(baseline_data):
+                self.warnings.append("对照缺失或留存不足，未画出对照曲线")
+        else:
+            data = VictoriaMetricsAPI().query_range(query, start, end, step)
+            self._raise_for_vm_error(data)
+            chart_unit = self._comparison_chart_unit(result_unit)
+            source_unit = (
+                chart_unit
+                if not result_unit.conversion_enabled
+                else self._chart_source_unit(query_condition.get("type"))
+            )
+            data, chart_unit = self._convert_preview_chart(
+                data, source_unit, chart_unit
+            )
+
         data["unit"] = (
             UnitConverter.get_display_unit(chart_unit) if chart_unit else ""
         )
@@ -74,9 +110,63 @@ class PolicyPreviewService:
             "query": query,
             "data": data,
             "chart_unit": chart_unit,
+            "result_unit": result_unit.unit,
+            "overlay": overlay_enabled,
             "threshold": self._preview_thresholds(),
             "warnings": self.warnings,
         }
+
+    @staticmethod
+    def _tag_overlay_role(data, role):
+        tagged = deepcopy(data)
+        for result in tagged.get("data", {}).get("result", []):
+            metric = dict(result.get("metric") or {})
+            metric[OVERLAY_ROLE_LABEL] = role
+            result["metric"] = metric
+        return tagged
+
+    @staticmethod
+    def _has_series(data):
+        return bool((data or {}).get("data", {}).get("result"))
+
+    def _merge_overlay_series(self, current_data, baseline_data):
+        current = self._tag_overlay_role(current_data, OVERLAY_ROLE_CURRENT)
+        baseline = self._tag_overlay_role(baseline_data, OVERLAY_ROLE_BASELINE)
+        merged = deepcopy(current) if current else {"data": {"result": []}}
+        results = list((merged.get("data") or {}).get("result") or [])
+        results.extend((baseline.get("data") or {}).get("result") or [])
+        merged.setdefault("data", {})["result"] = results
+        return merged
+
+    def _comparison_chart_unit(self, result_unit):
+        if not result_unit.conversion_enabled:
+            return result_unit.unit or ""
+        return self._chart_unit()
+
+    def _overlay_chart_unit(self, query_type):
+        # 叠对照画的是当前窗 / 对照窗的原始汇聚，必须用指标量纲。
+        # percent / ratio 是比较结果单位，不能拿来换算时间序列。
+        source_unit = self._chart_source_unit(query_type)
+        calculation_unit = self.payload.get("calculation_unit") or ""
+        if calculation_unit and (
+            not source_unit
+            or calculation_unit == source_unit
+            or UnitConverter.is_convertible(source_unit, calculation_unit)
+        ):
+            return calculation_unit
+        return source_unit or ""
+
+    def _convert_preview_chart(self, data, source_unit, chart_unit):
+        source = source_unit or chart_unit or ""
+        target = chart_unit or source
+        if (
+            source
+            and target
+            and source != target
+            and not UnitConverter.is_convertible(source, target)
+        ):
+            target = source
+        return convert_vm_result_copy(data, source, target), target
 
     @staticmethod
     def _raise_for_vm_error(data):

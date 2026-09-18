@@ -9,6 +9,7 @@ import { usePostgresqlConfig } from './collectTypes/postgresql';
 import { useRedisConfig } from './collectTypes/redis';
 import { useMongodbConfig } from './collectTypes/mongodb';
 import { useKafkaConfig } from './collectTypes/kafka';
+import { useKafkaSubscribeConfig } from './collectTypes/kafkaSubscribe';
 import { useRabbitmqConfig } from './collectTypes/rabbitmq';
 import { useElasticsearchConfig } from './collectTypes/elasticsearch';
 import { useWinlogbeatConfig } from './collectTypes/winlogbeat';
@@ -26,6 +27,7 @@ export const useCollectTypeConfig = () => {
   const redisConfig = useRedisConfig();
   const mongodbConfig = useMongodbConfig();
   const kafkaConfig = useKafkaConfig();
+  const kafkaSubscribeConfig = useKafkaSubscribeConfig();
   const rabbitmqConfig = useRabbitmqConfig();
   const elasticsearchConfig = useElasticsearchConfig();
   const winlogbeatConfig = useWinlogbeatConfig();
@@ -44,6 +46,7 @@ export const useCollectTypeConfig = () => {
       redis: redisConfig,
       mongodb: mongodbConfig,
       kafka: kafkaConfig,
+      kafka_subscribe: kafkaSubscribeConfig,
       rabbitmq: rabbitmqConfig,
       elasticsearch: elasticsearchConfig,
       winlogbeat: winlogbeatConfig,

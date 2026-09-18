@@ -128,9 +128,9 @@ const FamilyOverview = () => {
                   instruction: 'V3 authPriv requires separate authentication and privacy algorithms and secrets.',
                   defaultPort: 'UDP 161',
                   fields: [
-                    { name: 'Authentication algorithm', description: 'Must match the device user.', defaultValue: 'SHA' },
+                    { name: 'Authentication algorithm', description: 'Must match the device user.', defaultValue: 'SHA-1' },
                     { name: 'Authentication password', description: 'Secret used to authenticate the V3 user.' },
-                    { name: 'Privacy algorithm', description: 'Required for authPriv.', defaultValue: 'AES' },
+                    { name: 'Privacy algorithm', description: 'Required for authPriv.', defaultValue: 'AES-128' },
                     { name: 'Privacy key', description: 'Secret used to encrypt authPriv traffic.' },
                   ],
                 }}

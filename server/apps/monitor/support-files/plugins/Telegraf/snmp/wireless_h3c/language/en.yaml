@@ -1,0 +1,57 @@
+Wireless H3C SNMP:
+  name: H3C (Telegraf)
+  desc: SNMP monitoring template for H3C wireless AC. It reports CPU utilization, memory
+    utilization, AP counts, and station counts (IANA PEN 25506).
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the wireless controller since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand device stability
+        and identify unexpected reboots.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the CPU utilization of the H3C wireless AC control plane
+        (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage), as a 0-100 percentage per physical entity.
+        Most entities return 0 and the CPU-bearing board carries the real value. Sustained high
+        CPU usage can indicate heavy AP or station management load.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports memory utilization of the H3C wireless AC (HH3C-ENTITY-EXT-MIB
+        hh3cEntityExtMemUsage, a direct percent value) per physical entity. High memory pressure
+        can affect AP join handling and station roaming.
+    wlan_ap_connect_count:
+      name: Connected AP Count
+      desc: Current number of APs connected to this H3C wireless AC (HH3C-DOT11-ACMT-MIB
+        hh3cDot11APConnectCount). A sudden drop means APs went offline from the controller.
+    wlan_station_connect_count:
+      name: Connected STA Count
+      desc: Current number of stations connected through this H3C wireless AC (HH3C-DOT11-ACMT-MIB
+        hh3cDot11StationConnectCount). Sudden drops can indicate RF, authentication, or controller
+        faults.
+    wlan_max_ap_num_permitted:
+      name: Max AP Number Permitted
+      desc: Maximum AP number permitted on this H3C wireless AC (HH3C-DOT11-ACMT-MIB
+        hh3cDot11MaxAPNumPermitted). This scalar is optional and may be absent on some software
+        versions. Connected AP count approaching this value means the controller is near license
+        or scale capacity.
+    wlan_master_ap_count:
+      name: Master AP Count
+      desc: Number of master APs reported by this H3C wireless AC (HH3C-DOT11-ACMT-MIB
+        hh3cDot11MasterAPCount). Use it with connected AP count to understand fit-AP role mix
+        on the controller.
+    wlan_total_ap_connected:
+      name: Total APs Connected
+      desc: Total AP connected count reported by this H3C wireless AC (HH3C-DOT11-ACMT-MIB
+        hh3cDot11TotalAPconnected). Compare with the current connected AP count to spot inventory
+        or join-state drift.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Wireless: Wireless

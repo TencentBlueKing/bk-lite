@@ -111,9 +111,8 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
             if (password && password !== PASSWORD_PLACEHOLDER) {
               credential.password = password;
             }
-            if (enablePassword && enablePassword !== PASSWORD_PLACEHOLDER) {
-              credential.enable_password = enablePassword;
-            }
+            // 空串表示清空；编辑占位符交给后端保留原特权密码。
+            credential.enable_password = enablePassword ?? '';
             if (item.port !== undefined && item.port !== null && item.port !== '') {
               credential.port = item.port;
             }
@@ -149,7 +148,7 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
         ? 'telnet'
         : 'ssh',
       password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-      enable_password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      enable_password: isCopy || !item.enable_password ? '' : PASSWORD_PLACEHOLDER,
     })),
     ...getCleanupFormValues(values),
     ...getCycleFormValues(values),
@@ -253,6 +252,8 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
 
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="network_config_file"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
               editMode={Boolean(editId)}

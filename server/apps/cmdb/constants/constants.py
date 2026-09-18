@@ -54,6 +54,7 @@ INSTANCE_ASSOCIATION = "instance_association"
 TOPO_THEME_NETWORK = "network"
 TOPO_THEME_IPAM = "ipam"
 TOPO_THEME_APP_OVERVIEW = "app_overview"
+TOPO_THEME_SERVICE_TREE = "service_tree"
 # 网络设备判定：存在 interface --belong--> <model> 的模型关联即视为网络设备
 NETWORK_INTERFACE_MODEL = "interface"
 NETWORK_INTERFACE_BELONG_ASST = "belong"
@@ -871,6 +872,22 @@ COLLECT_OBJ_TREE = [
                 "desc": "发现与采集Spark基础配置信息",
                 "encrypted_fields": ["password"],
             },
+        ],
+    },
+    {
+        "id": "certificate",
+        "name": "证书许可",
+        "children": [
+            {
+                "id": "ssl_cer",
+                "model_id": "ssl_cer",
+                "name": "SSL证书",
+                "task_type": CollectPluginTypes.PROTOCOL,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "TLS"],
+                "desc": "对已录入 SSL 证书实例的域名做 TLS 握手，采集颁发者与有效期",
+                "encrypted_fields": [],
+            }
         ],
     },
 ]

@@ -54,6 +54,10 @@ export const resolveTableDimensions = ({
   const paginationHeight = hasPagination ? 56 : 0;
   const fixedHeight = headerHeight + paginationHeight;
 
+  if (scrollY === 'auto') {
+    return { tableHeight: undefined, containerHeight: undefined };
+  }
+
   if (scrollY !== undefined && scrollY !== null) {
     const parsedHeight = parseScrollY(scrollY, viewportHeight);
     if (parsedHeight === undefined) {
@@ -71,13 +75,13 @@ export const resolveTableDimensions = ({
     return { tableHeight: undefined, containerHeight: undefined };
   }
 
-  const tableHeight = Math.max(
-    MIN_TABLE_BODY_HEIGHT,
-    parentHeight - fixedHeight
-  );
+  if (parentHeight <= 0) {
+    return { tableHeight: undefined, containerHeight: undefined };
+  }
+
   return {
-    tableHeight,
-    containerHeight: Math.max(parentHeight, tableHeight + fixedHeight),
+    tableHeight: Math.max(0, parentHeight - fixedHeight),
+    containerHeight: parentHeight,
   };
 };
 

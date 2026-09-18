@@ -72,7 +72,7 @@ const ImportModal = forwardRef<ModalRef, ModalConfig>(({ onSuccess }, ref) => {
   };
 
   return (
-    <div>
+    <>
       <OperateModal
         title={title}
         visible={groupVisible}
@@ -109,7 +109,7 @@ const ImportModal = forwardRef<ModalRef, ModalConfig>(({ onSuccess }, ref) => {
           </p>
         </Dragger>
       </OperateModal>
-    </div>
+    </>
   );
 });
 

@@ -51,8 +51,17 @@ const filterSource = readFileSync(
   'utf8',
 );
 assert.match(filterSource, /visibleSearchableFilterAttrs/);
+assert.match(filterSource, /isMultiIpSearchAttr/);
+assert.match(filterSource, /FilterBar\.multiIpPlaceholder/);
 assert.doesNotMatch(filterSource, /Select\.OptGroup/);
 assert.doesNotMatch(filterSource, /FilterBar\.moreFields/);
+
+const filterBarSource = readFileSync(
+  resolve(process.cwd(), 'src/app/cmdb/(pages)/assetData/list/filterBar.tsx'),
+  'utf8',
+);
+assert.match(filterBarSource, /type === 'str\[\]'/);
+assert.match(filterBarSource, /resolveMultiIpSearch/);
 
 const zh = JSON.parse(
   readFileSync(resolve(process.cwd(), 'src/app/cmdb/locales/zh.json'), 'utf8'),
@@ -62,5 +71,15 @@ const en = JSON.parse(
 );
 assert.equal(zh.FilterBar.moreFields, undefined);
 assert.equal(en.FilterBar.moreFields, undefined);
+assert.equal(
+  zh.FilterBar.multiIpPlaceholder,
+  '多个IP可用逗号、空格或换行分隔',
+);
+assert.equal(
+  en.FilterBar.multiIpPlaceholder,
+  'Separate IPs with commas, spaces, or new lines',
+);
+assert.equal(zh.FilterBar.multiIpNoValid, '没有可搜索的合法IP');
+assert.equal(en.FilterBar.multiIpNoValid, 'No valid IP to search');
 
 console.log('cmdb asset search filter attrs tests passed');

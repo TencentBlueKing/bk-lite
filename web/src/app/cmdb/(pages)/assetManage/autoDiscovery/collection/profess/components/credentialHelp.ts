@@ -110,7 +110,9 @@ export function resolveCredentialHelp(
     };
   }
   return resolveDescriptorHelp(
-    descriptor,
+    descriptor.formKind === 'ssh' && ['brocade_fc', 'cisco_fc'].includes(model.model_id || '')
+      ? { ...descriptor, instructionKey: 'deviceSsh' }
+      : descriptor,
     t,
     model.credential_default_port,
   );

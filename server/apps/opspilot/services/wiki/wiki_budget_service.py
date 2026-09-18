@@ -14,6 +14,8 @@ _DEFAULTS = {
     "WIKI_QA_MAX_OUTPUT_TOKENS": 4000,
     "WIKI_BUILD_MAX_LLM_CALLS_PER_MATERIAL": 64,
     "WIKI_BUILD_MAX_TOTAL_TOKENS_PER_MATERIAL": 60000,
+    "WIKI_ALIAS_ENRICH_MAX_LLM_CALLS": 256,
+    "WIKI_ALIAS_ENRICH_MAX_TOTAL_TOKENS": 400000,
 }
 
 
@@ -35,6 +37,8 @@ class WikiBudgetConfig:
     qa_max_output_tokens: int
     build_max_llm_calls_per_material: int
     build_max_total_tokens_per_material: int
+    alias_enrich_max_llm_calls: int
+    alias_enrich_max_total_tokens: int
 
     def snapshot(self):
         return asdict(self)
@@ -68,6 +72,8 @@ def load_wiki_budget_config(*, force_reload=False):
             qa_max_output_tokens=_positive_int_env("WIKI_QA_MAX_OUTPUT_TOKENS"),
             build_max_llm_calls_per_material=_positive_int_env("WIKI_BUILD_MAX_LLM_CALLS_PER_MATERIAL"),
             build_max_total_tokens_per_material=_positive_int_env("WIKI_BUILD_MAX_TOTAL_TOKENS_PER_MATERIAL"),
+            alias_enrich_max_llm_calls=_positive_int_env("WIKI_ALIAS_ENRICH_MAX_LLM_CALLS"),
+            alias_enrich_max_total_tokens=_positive_int_env("WIKI_ALIAS_ENRICH_MAX_TOTAL_TOKENS"),
         )
         return _cached_config
 
@@ -271,6 +277,22 @@ def new_query_call_budget():
     )
 
 
+def new_alias_enrich_call_budget(*, window_tokens=None, scene_output_default=2000):
+    config = load_wiki_budget_config()
+    derived = derive_llm_working_budget(
+        DEFAULT_CONTEXT_WINDOW_TOKENS if window_tokens is None else int(window_tokens),
+        scene_output_default=scene_output_default,
+    )
+    return LLMCallBudget(
+        max_calls=config.alias_enrich_max_llm_calls,
+        max_total_tokens=None,
+        soft_total_tokens=config.alias_enrich_max_total_tokens,
+        max_context_tokens_per_call=derived.input_working_tokens + derived.output_reserve_tokens,
+        scope="wiki_alias_enrich",
+        config_snapshot=config.snapshot(),
+    )
+
+
 def new_material_call_budget(material_id=None, *, window_tokens=None, scene_output_default=6000):
     config = load_wiki_budget_config()
     scope = "wiki_material" if material_id is None else f"wiki_material:{material_id}"
@@ -295,6 +317,7 @@ __all__ = [
     "WikiBudgetExceeded",
     "estimate_tokens",
     "load_wiki_budget_config",
+    "new_alias_enrich_call_budget",
     "new_material_call_budget",
     "new_query_call_budget",
 ]

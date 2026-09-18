@@ -1,6 +1,6 @@
 NetworkService Eaton UPS PDU Environmental SNMP:
   name: Eaton UPS PDU Environmental（Telegraf）
-  desc: 面向 Eaton 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Eaton 网络服务设备的 SNMP 监控模板,可采集 电池剩余容量、输出负载、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -78,6 +78,12 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP 层级
       desc: Spectracom NTP 当前 stratum 层级。
+    network_service_eaton_battery_capacity:
+      name: Eaton 电池剩余容量
+      desc: XUPS 电池剩余容量，按满电百分比上报。
+    network_service_eaton_output_load:
+      name: Eaton 输出负载
+      desc: XUPS 当前输出负载，按额定容量百分比上报。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础

@@ -5,15 +5,17 @@ import re
 
 from rest_framework import serializers
 
+from apps.core.utils.snmp_usm import normalize_integrity, normalize_privacy
+
 
 class SnmpCredentialSerializer(serializers.Serializer):
     version = serializers.ChoiceField(choices=["v2", "v2c", "v3"])
     community = serializers.CharField(required=False, allow_blank=True)
     username = serializers.CharField(required=False, allow_blank=True)
     level = serializers.ChoiceField(choices=["authNoPriv", "authPriv"], required=False)
-    integrity = serializers.ChoiceField(choices=["sha", "md5"], required=False)
+    integrity = serializers.CharField(required=False, allow_blank=True)
     authkey = serializers.CharField(required=False, allow_blank=True)
-    privacy = serializers.ChoiceField(choices=["aes", "des"], required=False)
+    privacy = serializers.CharField(required=False, allow_blank=True)
     privkey = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
@@ -29,11 +31,19 @@ class SnmpCredentialSerializer(serializers.Serializer):
                 raise serializers.ValidationError("SNMP v3 需要填写 level")
             if not data.get("integrity"):
                 raise serializers.ValidationError("SNMP v3 需要填写 integrity")
+            integrity = normalize_integrity(data.get("integrity"))
+            if integrity is None:
+                raise serializers.ValidationError("SNMP v3 integrity 不支持该算法")
+            data["integrity"] = integrity
             if not data.get("authkey"):
                 raise serializers.ValidationError("SNMP v3 需要填写 authkey")
             if level == "authPriv":
                 if not data.get("privacy"):
                     raise serializers.ValidationError("SNMP v3 authPriv 需要填写 privacy")
+                privacy = normalize_privacy(data.get("privacy"))
+                if privacy is None:
+                    raise serializers.ValidationError("SNMP v3 privacy 不支持该算法")
+                data["privacy"] = privacy
                 if not data.get("privkey"):
                     raise serializers.ValidationError("SNMP v3 authPriv 需要填写 privkey")
         return data
@@ -79,6 +89,11 @@ class CollectToolExecuteSerializer(serializers.Serializer):
 
         # Validate credential
         credential = data.get("credential", {})
+        if credential.get("credential_source") == "vault":
+            credential_id = credential.get("vault_credential_id")
+            if not isinstance(credential_id, str) or not credential_id.strip():
+                raise serializers.ValidationError({"credential": "请选择已有凭据"})
+            return data
         if protocol == "snmp":
             cred_serializer = SnmpCredentialSerializer(data=credential)
             cred_serializer.is_valid(raise_exception=True)

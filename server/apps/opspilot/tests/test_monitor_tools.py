@@ -17,6 +17,7 @@ def _runtime_config(identity=CALLER_IDENTITY, **legacy_configurable):
 
 def _monitor_tools():
     from apps.opspilot.metis.llm.tools.monitor import (
+        monitor_get_host_resource_snapshot,
         monitor_list_active_alerts,
         monitor_list_instance_metrics,
         monitor_list_object_instances,
@@ -34,6 +35,7 @@ def _monitor_tools():
         monitor_query_metric_data,
         monitor_list_active_alerts,
         monitor_query_alert_segments,
+        monitor_get_host_resource_snapshot,
     ]
 
 
@@ -56,10 +58,29 @@ def test_monitor_tool_descriptions_guide_host_metric_queries():
     assert "CPU" in query
     assert "instance_ids" in query
     assert "top" in query or "htop" in query or "SSH" in query
+    assert "空矩阵" in query or "无时序" in query
+    assert "禁止" in query and ("重试" in query or "换" in query)
+    assert "instance_id" in query
+    assert "禁止用" in query or "不要用" in query
 
     instances = tools["monitor_list_object_instances"].description
     assert "第2步" in instances
     assert "主机名" in instances or "名称" in instances or "boxxxxx" in instances
+    assert "IP" in instances
+    assert "只调一次" in instances
+    assert "禁止猜测" in instances or "递增" in instances
+    assert "request_user_choice" in instances
+    assert "instance_id" in instances
+    assert "禁止用 name" in instances or "禁止用实例名" in instances
+
+    objects = tools["monitor_list_objects"].description
+    assert "request_user_choice" in objects
+    assert "猜" in objects
+
+    metrics = tools["monitor_list_object_metrics"].description
+    assert "第3步" in metrics
+    assert "keyword" in metrics
+    assert "猜测" in metrics or "cpu.util" in metrics
 
 
 def test_monitor_constructor_has_no_identity_params():
@@ -220,7 +241,9 @@ def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
         ),
     )
 
-    assert result == {"success": True, "data": [{"id": "host"}]}
+    assert result["success"] is True
+    assert result["data"] == [{"id": "host"}]
+    assert "request_user_choice" in result["_next_step_hint"]
     rpc.monitor_objects.assert_called_once_with(
         user_info={
             "user": "alice",
@@ -229,6 +252,81 @@ def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
             "include_children": True,
         }
     )
+
+
+def test_monitor_list_objects_keeps_identity_fields_and_drops_plugin_blobs(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    rpc = mocker.Mock()
+    rpc.monitor_objects.return_value = {
+        "result": True,
+        "data": [
+            {
+                "id": "host",
+                "name": "Host",
+                "type": 1,
+                "plugin_config": {"huge": "x" * 50},
+                "default_metric": {"promql": "up"},
+            }
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_objects.invoke({}, config=_runtime_config())
+
+    assert result["success"] is True
+    assert result["data"] == [{"id": "host", "name": "Host", "type": 1}]
+    assert "plugin_config" not in result["data"][0]
+    assert "request_user_choice" in result["_next_step_hint"]
+    assert "Host" in result["_next_step_hint"]
+
+
+def test_monitor_list_objects_choice_hint_uses_real_type_names(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    rpc = mocker.Mock()
+    rpc.monitor_objects.return_value = {
+        "result": True,
+        "data": [
+            {"id": "12", "name": "Host"},
+            {"id": "8", "name": "K8S Pod"},
+            {"id": "9", "name": "Redis"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_objects.invoke({}, config=_runtime_config())
+
+    hint = result["_next_step_hint"]
+    assert "禁止根据名称形态猜测" in hint
+    assert "K8s Pod" in hint or "K8S Pod" in hint
+    assert "Host" in hint
+    assert "Redis" in hint
+    assert "single_select" in hint
+    assert "text" in hint.lower() or "不要用 text" in hint
+    assert result["data"][0]["id"] == "12"
+
+
+def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    rpc = mocker.Mock()
+    rpc.monitor_objects.return_value = {
+        "result": True,
+        "data": [{"id": str(i), "name": f"Type-{i}"} for i in range(10)],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_objects.invoke({}, config=_runtime_config())
+
+    hint = result["_next_step_hint"]
+    assert "共 10 类" in hint
+    assert "single_select" in hint
+    assert "不要用 text" in hint
+    assert "Type-0" not in hint
 
 
 @pytest.mark.parametrize(
@@ -331,6 +429,12 @@ def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
                 }
             },
         ),
+        (
+            7,
+            {"instance_ids": ["host-1", "host-2"]},
+            "get_host_resource_snapshot",
+            {"instance_ids": ["host-1", "host-2"]},
+        ),
     ],
     ids=[
         "list-objects",
@@ -340,6 +444,7 @@ def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
         "query-metric-data",
         "list-active-alerts",
         "query-alert-segments",
+        "host-resource-snapshot",
     ],
 )
 def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
@@ -352,12 +457,34 @@ def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
     from apps.opspilot.metis.llm.tools.monitor import utils
 
     rpc = mocker.Mock()
-    getattr(rpc, rpc_method).return_value = {"result": True, "data": {"rpc_method": rpc_method}}
+    if rpc_method == "monitor_object_instances":
+        rpc_data = [{"id": "h1", "name": "web-01", "instance_id": "h1"}]
+    elif rpc_method == "monitor_metrics":
+        rpc_data = [{"name": "cpu_usage_total", "display_name": "CPU使用率", "query": "huge"}]
+    else:
+        rpc_data = {"rpc_method": rpc_method}
+    getattr(rpc, rpc_method).return_value = {"result": True, "data": rpc_data}
     mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
 
     result = _monitor_tools()[tool_index].invoke(tool_input, config=_runtime_config())
 
-    assert result == {"success": True, "data": {"rpc_method": rpc_method}}
+    if rpc_method == "monitor_object_instances":
+        assert result["success"] is True
+        assert result["data"] == [{"id": "h1", "name": "web-01", "ip": None, "instance_id": "h1"}]
+        assert "h1" in result["_next_step_hint"]
+        assert "instance_id" in result["_next_step_hint"]
+        assert "禁止用 name" in result["_next_step_hint"] or "禁止用实例名" in result["_next_step_hint"]
+    elif rpc_method == "monitor_metrics":
+        assert result["success"] is True
+        assert result["data"] == [{"name": "cpu_usage_total", "display_name": "CPU使用率"}]
+        assert "cpu.util" in result["_next_step_hint"]
+    else:
+        assert result["success"] is True
+        assert result["data"] == {"rpc_method": rpc_method}
+        if rpc_method == "monitor_objects":
+            assert "request_user_choice" in result["_next_step_hint"]
+        else:
+            assert "_next_step_hint" not in result
     getattr(rpc, rpc_method).assert_called_once_with(
         user_info={
             "user": "alice",
@@ -367,6 +494,239 @@ def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
         },
         **rpc_kwargs,
     )
+
+
+def _instance_rpc_rows():
+    return [
+        {"id": "h1", "name": "web-01", "ip": "10.0.0.1", "instance_id": "h1", "interval": 60},
+        {
+            "id": "('MTVmOTFiYTM5ODZk',)",
+            "name": "local",
+            "ip": "10.10.41.149",
+            "instance_id": "MTVmOTFiYTM5ODZk",
+            "permission": ["View"],
+        },
+        {"id": "h3", "name": "db-01", "ip": "10.0.0.2"},
+    ]
+
+
+def test_monitor_list_object_instances_filters_keyword_locally(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "web"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert result["data"] == [{"id": "h1", "name": "web-01", "ip": "10.0.0.1", "instance_id": "h1"}]
+    assert result["_next_step_hint"].count("h1") >= 1
+    assert "instance_id" in result["_next_step_hint"]
+    assert "web-01" not in result["_next_step_hint"]
+    rpc.monitor_object_instances.assert_called_once_with(
+        user_info={
+            "user": "alice",
+            "domain": "tenant-a.com",
+            "team": 12,
+            "include_children": True,
+        },
+        monitor_obj_id="host",
+    )
+
+
+def test_monitor_list_object_instances_matches_ip_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "10.10.41.149"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert result["data"] == [
+        {
+            "id": "MTVmOTFiYTM5ODZk",
+            "name": "local",
+            "ip": "10.10.41.149",
+            "instance_id": "MTVmOTFiYTM5ODZk",
+        }
+    ]
+    assert "MTVmOTFiYTM5ODZk" in result["_next_step_hint"]
+    assert "local" not in result["_next_step_hint"]
+
+
+def test_monitor_list_object_instances_matches_asset_ip_fact(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {
+        "result": True,
+        "data": [
+            {"id": "h2", "name": "local", "ip": None, "summary_facts": {"asset.ip": "10.10.41.149"}},
+            {"id": "h3", "name": "db-01", "ip": "10.0.0.2"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "10.10.41.149"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert result["data"] == [{"id": "h2", "name": "local", "ip": None}]
+    assert "h2" in result["_next_step_hint"]
+
+
+def test_monitor_list_object_instances_keeps_ip_without_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert result["data"] == [
+        {"id": "h1", "name": "web-01", "ip": "10.0.0.1", "instance_id": "h1"},
+        {
+            "id": "MTVmOTFiYTM5ODZk",
+            "name": "local",
+            "ip": "10.10.41.149",
+            "instance_id": "MTVmOTFiYTM5ODZk",
+        },
+        {"id": "h3", "name": "db-01", "ip": "10.0.0.2"},
+    ]
+    assert "MTVmOTFiYTM5ODZk" in result["_next_step_hint"]
+    assert "web-01" not in result["_next_step_hint"]
+
+
+def test_monitor_list_object_instances_unmatched_keyword_is_terminal(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {
+        "result": True,
+        "data": [
+            {"id": "h1", "name": "id-mismatch-sz-app-01", "ip": "10.88.1.11", "instance_id": "h1"},
+            {"id": "h2", "name": "id-mismatch-other-01", "ip": "10.88.9.91", "instance_id": "h2"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "12", "keyword": "not-a-host"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert result["data"] == []
+    assert result["keyword"] == "not-a-host"
+    assert "不要把空列表当成最终结论" in result["message"]
+    assert "request_user_choice" in result["message"]
+    assert "request_user_choice" in result["_next_step_hint"]
+    assert "id-mismatch-sz-app-01" in result["available_names"]
+    rpc.monitor_object_instances.assert_called_once()
+
+
+def test_monitor_list_object_instances_hint_requires_listed_instance_id(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {
+        "result": True,
+        "data": [
+            {
+                "id": "MDw4DkyHjgDTc1",
+                "name": "fusion-collector-default",
+                "ip": "172.18.0.20",
+                "instance_id": "MDw4DkyHjgDTc1",
+            }
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "12", "keyword": "fusion-collector-default"},
+        config=_runtime_config(),
+    )
+
+    assert result["data"][0]["instance_id"] == "MDw4DkyHjgDTc1"
+    hint = result["_next_step_hint"]
+    assert "MDw4DkyHjgDTc1" in hint
+    assert "fusion-collector-default" not in hint
+    assert "172.18.0.20" not in hint
+    assert "instance_id" in hint
+    assert "monitor_query_metric_data" in hint
+    assert "禁止用 name" in hint or "禁止用实例名" in hint
+
+
+def test_monitor_list_object_instances_coerces_non_list_payload(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": {}}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "14", "keyword": "sz-app-01"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert result["data"] == []
+    assert "没有实例" in result["message"]
+    assert "request_user_choice" in result["message"]
+    assert "request_user_choice" in result["_next_step_hint"]
+    assert "禁止猜测" in result["message"] or "猜测其他 ID" in result["message"]
+
+
+def test_monitor_list_object_instances_reads_nested_items(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {
+        "result": True,
+        "data": {"items": [{"id": "h1", "name": "id-mismatch-sz-app-01", "ip": "10.88.1.11", "instance_id": "h1"}]},
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "12", "keyword": "sz-app-01"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert result["data"] == [
+        {
+            "id": "h1",
+            "name": "id-mismatch-sz-app-01",
+            "ip": "10.88.1.11",
+            "instance_id": "h1",
+        }
+    ]
+    assert "h1" in result["_next_step_hint"]
+    assert "id-mismatch-sz-app-01" not in result["_next_step_hint"]
 
 
 def test_monitor_call_rpc_preserves_monitor_error_response(mocker):
@@ -404,11 +764,10 @@ def test_monitor_call_rpc_wraps_rpc_exception(mocker):
         (3, {"monitor_obj_id": "host", "instance_id": ""}, "instance_id is required"),
         (4, {"metric": "cpu", "start": 100, "end": 200}, "monitor_obj_id is required"),
         (4, {"monitor_obj_id": "host", "start": 100, "end": 200}, "metric is required"),
-        (4, {"monitor_obj_id": "host", "metric": "cpu", "end": 200}, "start is required"),
-        (4, {"monitor_obj_id": "host", "metric": "cpu", "start": 100}, "end is required"),
         (6, {"start": 100, "end": 200}, "monitor_obj_id is required"),
         (6, {"monitor_obj_id": "host", "end": 200}, "start is required"),
         (6, {"monitor_obj_id": "host", "start": 100}, "end is required"),
+        (7, {}, "instance_ids is required"),
     ],
 )
 def test_monitor_tools_keep_existing_business_required_validation(mocker, tool_index, tool_input, error):
@@ -417,8 +776,182 @@ def test_monitor_tools_keep_existing_business_required_validation(mocker, tool_i
 
     result = tool.invoke(tool_input, config=_runtime_config())
 
-    assert result == {"success": False, "error": error}
+    assert result["success"] is False
+    assert result["error"] == error
+    assert "request_user_choice" in result["_next_step_hint"]
+    assert "禁止编造 uvx" in result["_next_step_hint"]
     rpc_call.assert_not_called()
+
+
+def test_monitor_list_object_metrics_filters_cpu_and_forbids_guessing(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
+
+    rpc = mocker.Mock()
+    rpc.monitor_metrics.return_value = {
+        "result": True,
+        "data": [
+            {"name": "cpu_usage_total", "display_name": "CPU使用率", "unit": "percent", "query": "huge"},
+            {"name": "mem_used", "display_name": "内存使用量", "unit": "bytes", "description": "RSS"},
+            {"name": "cpu_usage_iowait_total", "display_name": "CPU等待IO占比", "unit": "percent"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_metrics.invoke(
+        {"monitor_obj_id": "12", "keyword": "CPU"},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    names = [item["name"] for item in result["data"]]
+    assert names == ["cpu_usage_total", "cpu_usage_iowait_total"]
+    assert "query" not in result["data"][0]
+    hint = result["_next_step_hint"]
+    assert "cpu_usage_total" in hint
+    assert "cpu.util" in hint
+    assert "不要 request_user_choice" in hint
+    assert "手填" in hint or "猜测" in hint
+
+
+def test_monitor_list_object_metrics_empty_keyword_keeps_catalog_hint(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
+
+    rpc = mocker.Mock()
+    rpc.monitor_metrics.return_value = {
+        "result": True,
+        "data": [{"name": "mem_used", "display_name": "内存使用量", "unit": "bytes"}],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_metrics.invoke({"monitor_obj_id": "12"}, config=_runtime_config())
+
+    assert [item["name"] for item in result["data"]] == ["mem_used"]
+    assert "keyword" in result["_next_step_hint"]
+    assert "cpu.util" in result["_next_step_hint"]
+
+
+def test_monitor_query_metric_data_empty_matrix_is_terminal(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
+
+    rpc = mocker.Mock()
+    rpc.query_monitor_data_by_metric.return_value = {
+        "result": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": []},
+            "stats": {"seriesMatched": "0", "executionTimeMs": 0},
+        },
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_query_metric_data.invoke(
+        {"monitor_obj_id": "12", "metric": "cpu_usage_total", "instance_ids": ["fusion-collector-default"]},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    hint = result["_next_step_hint"]
+    assert "有效结论" in hint
+    assert "禁止" in hint
+    assert "instance_ids" in hint
+    assert "dimensions" in hint
+    assert "重试" in hint
+    assert "request_user_choice" not in hint
+
+
+def test_monitor_query_metric_data_with_series_does_not_stop_as_empty(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
+
+    rpc = mocker.Mock()
+    rpc.query_monitor_data_by_metric.return_value = {
+        "result": True,
+        "data": {
+            "status": "success",
+            "data": {"resultType": "matrix", "result": [{"metric": {"instance": "web-1"}, "values": [[1, "1"]]}]},
+            "stats": {"seriesMatched": "1"},
+        },
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_query_metric_data.invoke(
+        {"monitor_obj_id": "12", "metric": "cpu_usage_total", "instance_ids": ["web-1"]},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert "_next_step_hint" not in result
+
+
+def test_monitor_query_metric_data_unknown_metric_lists_catalog_not_user(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
+
+    rpc = mocker.Mock()
+    rpc.query_monitor_data_by_metric.return_value = {"result": False, "data": [], "message": "监控对象或指标不存在"}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_query_metric_data.invoke(
+        {"monitor_obj_id": "12", "metric": "cpu.util", "instance_ids": ["web-1"]},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is False
+    assert result["error"] == "监控对象或指标不存在"
+    hint = result["_next_step_hint"]
+    assert "monitor_list_object_metrics" in hint
+    assert "cpu.util" in hint
+    assert "不要 request_user_choice" in hint
+
+
+def test_monitor_query_metric_data_defaults_last_hour_window(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
+
+    mocker.patch.object(utils.time, "time", return_value=1_789_200_000.0)
+    rpc = mocker.Mock()
+    rpc.query_monitor_data_by_metric.return_value = {"result": True, "data": {"series": []}}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_query_metric_data.invoke(
+        {"monitor_obj_id": "12", "metric": "cpu_usage_user_total", "instance_ids": ["web-1"]},
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    assert "有效结论" in result["_next_step_hint"]
+    query_data = rpc.query_monitor_data_by_metric.call_args.kwargs["query_data"]
+    assert query_data["start"] == 1_789_200_000_000 - 3_600_000
+    assert query_data["end"] == 1_789_200_000_000
+    assert query_data["instance_ids"] == ["web-1"]
+
+
+def test_monitor_query_metric_data_converts_unix_seconds_to_ms(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
+
+    rpc = mocker.Mock()
+    rpc.query_monitor_data_by_metric.return_value = {"result": True, "data": {"series": []}}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_query_metric_data.invoke(
+        {
+            "monitor_obj_id": "12",
+            "metric": "cpu_usage_user_total",
+            "start": 1_789_200_000,
+            "end": 1_789_203_600,
+            "instance_ids": ["web-1"],
+        },
+        config=_runtime_config(),
+    )
+
+    assert result["success"] is True
+    query_data = rpc.query_monitor_data_by_metric.call_args.kwargs["query_data"]
+    assert query_data["start"] == 1_789_200_000_000
+    assert query_data["end"] == 1_789_203_600_000
 
 
 def test_builtin_monitor_tool_descriptor_shape():

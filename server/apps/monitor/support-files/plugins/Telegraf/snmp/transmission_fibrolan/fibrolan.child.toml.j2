@@ -32,18 +32,30 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # ---- FIBROLAN-DEVICE (PEN 4467) CPU: flDeviceCpuUtilization, direct 0-100% ----
+    # OID 1.3.6.1.4.1.4467.1000.10.1.120.1.2.<idx>. Index is often 0; walk the column, do not hardcode a non-0 index.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "cpu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
+        oid = "1.3.6.1.4.1.4467.1000.10.1.120.1.2"
+        name = "usage_percent"
+    # ---- FIBROLAN-DEVICE DRAM: flDeviceMemoryUtilization → memory_usage_percent (direct 0-100%) ----
+    [[inputs.snmp.table]]
+        name = "memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.4467.1000.10.1.120.1.3"
+        name = "usage_percent"
+    # ---- optional NV memory utilization (FIBROLAN-DEVICE …120.1.4.<idx>); some revisions omit this column ----
+    [[inputs.snmp.table]]
+        name = "nv_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.4467.1000.10.1.120.1.4"
+        name = "usage_percent"
+# ---- 温度/风扇/电源：FIBROLAN-DEVICE 本轮仅确认 CPU/DRAM/可选 NV 使用率；无私有温度/风扇/电源状态标量 → N/A 不采。----

@@ -1,4 +1,8 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
+import {
+  DEVICE_TEMPERATURE_CHART_GUIDE,
+  DEVICE_TEMPERATURE_KPI_GUIDE
+} from '../common/device-temperature-guide';
 
 // 共享路由器仪表盘：覆盖 bk-lite Router 对象下所有品牌 SNMP 插件（首品牌 Juniper MX）。
 // 品牌间 CPU/内存指标名一致（device_cpu_usage/device_memory_usage，品牌私有 OID 已在各插件归一），
@@ -33,17 +37,17 @@ export const ROUTER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_memory_usage',
       display_name: '内存使用率',
       description:
-        '路由器内存使用率（百分比）。品牌自适应：①设备直报利用率（Juniper jnxOperatingBuffer）；②(总量-空闲)/总量。',
+        '路由器内存使用率（百分比）。品牌自适应：①设备直报利用率（Juniper jnxOperatingBuffer）；②已用/(已用+空闲)（思科内存池）；③(总量-空闲)/总量。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
       color: '#ff8a1f'
     },
     {
       name: 'device_temperature_celsius',
       display_name: '最高温度',
       description:
-        '路由器机箱最高温度（摄氏度）。品牌自适应：仅暴露温度 OID 的型号有值（华为 AR 走 HUAWEI-ENTITY-EXTENT hwEntityTemperature，已过滤 -1 未支持哨兵），软件路由（Vyatta）等无硬件传感器显示「--」。异常升高多为风扇故障或散热不良。',
+        '路由器机箱最高温度（摄氏度）。品牌自适应：仅暴露温度 OID 的型号有值；哨兵语义由 collect_type 契约注入。软件路由（Vyatta）等无硬件传感器显示「--」。异常升高多为风扇故障或散热不良。',
       unit: 'celsius',
       query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
       color: '#f5222d'
@@ -125,7 +129,7 @@ export const ROUTER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'health',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '最高温度', detail: '机箱所有传感器中的最高温度。异常升高可能是风扇故障或散热不良；无硬件传感器的型号显示「--」。' }]
+      guide: DEVICE_TEMPERATURE_KPI_GUIDE
     },
     {
       title: '入向总流量',
@@ -170,7 +174,7 @@ export const ROUTER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '机箱温度趋势',
       subtitle: '最高温度（℃）',
       metric: 'device_temperature_celsius',
-      guide: [{ label: '机箱温度', detail: '机箱最高温度随时间变化（摄氏度）。持续升高需排查风扇/散热；无硬件传感器的型号显示空。' }],
+      guide: DEVICE_TEMPERATURE_CHART_GUIDE,
       series: [
         { metric: 'device_temperature_celsius', label: '最高温度', color: '#f5222d', unit: 'celsius' }
       ]

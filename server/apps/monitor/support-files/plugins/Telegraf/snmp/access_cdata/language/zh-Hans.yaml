@@ -1,6 +1,6 @@
 Access C-Data SNMP:
   name: C-Data（Telegraf）
-  desc: 面向 C-Data 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 C-Data 接入设备的 SNMP 监控模板,可采集 CPU 使用率、机箱温度、电源 A/B 接通位、风扇状态位图、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 34592）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:
@@ -51,6 +51,15 @@ monitor_object_metric:
     device_fan_state:
       name: 风扇状态
       desc: 接入设备风扇运行状态。正常值归一为 1，异常或未知状态归一为 2，表示散热能力可能下降。
+    psu_a_on:
+      name: 电源 A 接通
+      desc: 机箱电源状态位图中电源 A 的接通位。值为 1 表示电源 A 接通，0 表示关闭。
+    psu_b_on:
+      name: 电源 B 接通
+      desc: 机箱电源状态位图中电源 B 的接通位。值为 1 表示电源 B 接通，0 表示关闭。
+    fan_status_bitmap:
+      name: 风扇状态位图
+      desc: 机箱风扇状态位图。bit0 为风扇 1、bit1 为风扇 2、bit2 为风扇 3、bit3 为风扇 4，各位为 1 表示接通。
     device_disk_usage:
       name: 磁盘使用率
       desc: 接入设备磁盘卷使用率，按设备取最高卷使用率。持续偏高可能导致日志、配置或运行文件写入风险。

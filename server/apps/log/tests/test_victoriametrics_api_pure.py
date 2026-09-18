@@ -171,7 +171,18 @@ def test_all_field_names_returns_response_json(mocker):
     out = api.all_field_names("level:error", "s", "e")
     assert out == {"values": [{"value": "host"}]}
     assert get.call_args.args[0] == "http://vm:9428/select/logsql/field_names"
-    assert get.call_args.kwargs["params"]["ignore_pipes"] == 1
+    assert "ignore_pipes" not in get.call_args.kwargs["params"]
+
+
+def test_all_field_names_forwards_extract_pipes(mocker):
+    api = _api(mocker)
+    resp = _FakeResponse([], json_data={"values": [{"value": "target"}]})
+    get = mocker.patch("apps.log.utils.query_log.requests.get", return_value=resp)
+    query = 'message:"flow" | extract "flow <source>:<source_port> -> <target>:<target_port>" from message'
+    api.all_field_names(query, "s", "e")
+    params = get.call_args.kwargs["params"]
+    assert params["query"] == query
+    assert "ignore_pipes" not in params
 
 
 def test_all_field_names_uses_wildcard_when_query_empty(mocker):

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_nomadix",
   "plugin": "NetworkService Nomadix SNMP",
-  "plugin_desc": "Nomadix hospitality and MDU network-gateway SNMP baseline collection for devices under Nomadix PEN 3309. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. No stable public private health leaf OIDs are collected in this pass.",
+  "plugin_desc": "Nomadix hospitality and MDU network-gateway SNMP collection for devices under Nomadix PEN 3309. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor. This child walks the current-subscriber table (aaaSubCurrTable) and aggregates the row count as active_subscribers, and optionally walks the current DAT session table (datSessionTable) as active_dat_sessions. CPU, memory and temperature are not collected because no stable private scalar leaves are confirmed. AAA and billing configuration tables are not treated as health. Supported brands/models — Nomadix AG-series hospitality and MDU network gateways that expose PEN 3309 current-subscriber objects and standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_nomadix'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,36 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "active_subscribers"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "active_subscribers",
+      "query": "count(active_subscribers{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Active Subscribers",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of current online subscribers from aaaSubCurrTable (PEN 3309, 1.3.6.1.4.1.3309.1.3.2.18.1). Each table row is one online subscriber. This is not the authorization configuration table at 1.3.6.1.4.1.3309.1.3.2.18.2."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "active_dat_sessions",
+      "query": "count(active_dat_sessions{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Active DAT Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of current DAT sessions from datSessionTable (PEN 3309, 1.3.6.1.4.1.3309.1.3.8.1). Each table row is one active session."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

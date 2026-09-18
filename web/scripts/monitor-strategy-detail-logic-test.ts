@@ -15,6 +15,9 @@ import {
   isVacantThresholdUnit,
   pruneNoticeUsers,
   collectMetricQueryTexts,
+  queriesContainRateFunction,
+  rateAlgorithmConflictsWithQuery,
+  mapQuantityToRateUnit,
   resolveFunctionDelayMinutes,
   scheduleValueToMinutes,
   resolveFormulaResultUnit,
@@ -27,6 +30,31 @@ import {
   restoreCalculationUnitState,
   shouldRequireNoticeUsers,
   shouldShowThresholdUnitSelector,
+  getEnabledCompareModes,
+  getCompareModeSelectOptions,
+  getSceneChipStates,
+  matchSceneChipId,
+  applySceneChip,
+  buildPolicyRestatement,
+  coerceThresholdsForCompareMode,
+  coerceRecoveryForThresholds,
+  groupAlgorithmOptions,
+  formatAlgorithmDisplayLabel,
+  getAlgorithmShortName,
+  shouldAnnotatePerSecond,
+  formatUnitLabelWithRateSuffix,
+  resolveCompareFieldsForSave,
+  resolveRecoveryThresholdForSave,
+  resolveNoDataPeriodsForSave,
+  resolvePolicyResultUnit,
+  resolveThresholdUnitBase,
+  shouldDrawPreviewThreshold,
+  formatDryRunHitCountCopy,
+  resolveDryRunReason,
+  formatDryRunNumber,
+  formatDryRunThreshold,
+  DRY_RUN_VERDICT_I18N,
+  timeleftRequiresLowSideThresholds,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
   resolveMetricExpressionUnits,
@@ -831,5 +859,484 @@ assert.deepEqual(
   }),
   ['rate(cpu[5m])']
 );
+
+assert.equal(queriesContainRateFunction(['cpu_usage_total']), false);
+assert.equal(queriesContainRateFunction(['rate(if_octets[5m])']), true);
+assert.equal(queriesContainRateFunction(['irate(if_octets[1m])']), true);
+assert.equal(queriesContainRateFunction(['increase(if_octets[5m])', 'cpu']), true);
+assert.equal(
+  rateAlgorithmConflictsWithQuery('rate', ['rate(if_octets[5m])']),
+  true
+);
+assert.equal(
+  rateAlgorithmConflictsWithQuery('avg_over_time', ['rate(if_octets[5m])']),
+  false
+);
+assert.equal(mapQuantityToRateUnit('bytes'), 'byteps');
+assert.equal(mapQuantityToRateUnit('kibibytes'), 'kibyteps');
+assert.equal(mapQuantityToRateUnit('bits'), 'bitps');
+assert.equal(mapQuantityToRateUnit('counts'), 'cps');
+assert.equal(mapQuantityToRateUnit('byteps'), 'byteps');
+assert.equal(mapQuantityToRateUnit('percent'), 'percent');
+assert.deepEqual(
+  resolvePolicyResultUnit({
+    calculationUnit: 'kibibytes',
+    metricUnit: 'bytes',
+    algorithm: 'rate',
+  }),
+  { unit: 'byteps', conversionEnabled: false }
+);
+assert.equal(
+  resolveThresholdUnitBase({
+    calculationUnit: 'percent',
+    metricUnit: 'bytes',
+    algorithm: 'deriv',
+  }),
+  'byteps'
+);
+assert.equal(
+  resolveThresholdUnitBase({
+    calculationUnit: 'percent',
+    metricUnit: 'percent',
+    algorithm: 'rate',
+  }),
+  'percent'
+);
+
+assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5 }), [
+  'absolute',
+  'previous_window',
+  'offset_1h',
+  'offset_24h',
+  'offset_7d',
+  'offset_30d',
+  'baseline_4w',
+  'timeleft',
+]);
+assert.ok(!getEnabledCompareModes({ periodType: 'hour', periodValue: 1 }).includes('offset_1h'));
+assert.ok(!getEnabledCompareModes({ periodType: 'day', periodValue: 1 }).includes('offset_24h'));
+assert.ok(getEnabledCompareModes({ periodType: 'min', periodValue: 60 }).every((mode) => mode !== 'offset_1h'));
+assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5, algorithm: 'count_if_over_time' }), [
+  'absolute',
+]);
+assert.ok(!getEnabledCompareModes({ periodType: 'min', periodValue: 5, algorithm: 'p95_over_time' }).includes('timeleft'));
+assert.ok(
+  timeleftRequiresLowSideThresholds('absolute', [{ method: '>' }])
+);
+assert.ok(
+  timeleftRequiresLowSideThresholds('timeleft', [{ method: '<' }])
+);
+assert.ok(
+  timeleftRequiresLowSideThresholds('timeleft', [{ method: '<=' }])
+);
+assert.ok(
+  !timeleftRequiresLowSideThresholds('timeleft', [{ method: '>' }])
+);
+
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: true,
+    compareMode: 'offset_1h',
+    compareValueKind: 'percent',
+  }),
+  {
+    compare_mode: 'absolute',
+    compare_value_kind: '',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_lookback: {},
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'previous_window',
+    compareValueKind: 'percent',
+  }),
+  {
+    compare_mode: 'previous_window',
+    compare_value_kind: 'percent',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_lookback: {},
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'timeleft',
+    compareValueKind: 'hours',
+    forecastTarget: 90,
+    forecastLookback: { type: 'hour', value: 4 },
+  }),
+  {
+    compare_mode: 'timeleft',
+    compare_value_kind: 'hours',
+    count_predicate: {},
+    forecast_target: 90,
+    forecast_lookback: { type: 'hour', value: 4 },
+  }
+);
+
+assert.deepEqual(
+  resolvePolicyResultUnit({ compareValueKind: 'percent', calculationUnit: 'bytes' }),
+  { unit: 'percent', conversionEnabled: false }
+);
+assert.deepEqual(
+  resolvePolicyResultUnit({ compareValueKind: 'ratio', calculationUnit: 'bytes' }),
+  { unit: null, conversionEnabled: false }
+);
+assert.equal(
+  resolveThresholdUnitBase({ compareValueKind: 'percent', calculationUnit: 'bytes' }),
+  'percent'
+);
+assert.equal(
+  resolveThresholdUnitBase({ compareValueKind: 'ratio', calculationUnit: 'bytes' }),
+  null
+);
+assert.equal(
+  resolveThresholdUnitBase({
+    compareValueKind: '',
+    calculationUnit: 'percent',
+    algorithm: 'count_if_over_time',
+  }),
+  'count'
+);
+assert.equal(
+  resolveThresholdUnitBase({
+    compareValueKind: 'hours',
+    calculationUnit: 'percent',
+    algorithm: 'last_over_time',
+  }),
+  'hour'
+);
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: false,
+    calculationUnit: resolveThresholdUnitBase({
+      compareValueKind: 'ratio',
+      calculationUnit: 'bytes',
+    }),
+    unitList: [],
+  }),
+  false
+);
+assert.equal(shouldDrawPreviewThreshold(), true);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, compareValueKind: 'percent' }),
+  false
+);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, compareValueKind: 'ratio' }),
+  false
+);
+assert.equal(
+  shouldDrawPreviewThreshold({ overlay: true, compareValueKind: 'delta' }),
+  true
+);
+
+assert.equal(formatDryRunHitCountCopy(1, 1), null);
+assert.equal(formatDryRunHitCountCopy(2, 2), null);
+assert.equal(
+  formatDryRunHitCountCopy(1, 3),
+  '本轮命中 1/3，现网不会建告警'
+);
+assert.equal(
+  resolveDryRunReason({
+    verdict: 'ok',
+    reason: '对照缺失或留存不足',
+    hit_count: 1,
+    trigger_count: 3,
+  }),
+  '对照缺失或留存不足'
+);
+assert.equal(
+  resolveDryRunReason({
+    verdict: 'ok',
+    reason: '',
+    hit_count: 1,
+    trigger_count: 2,
+  }),
+  ''
+);
+assert.equal(formatDryRunNumber(null), '—');
+assert.equal(formatDryRunNumber(90), '90');
+assert.equal(formatDryRunThreshold({ method: '>', value: 80, level: 'critical' }), '> 80 critical');
+assert.equal(DRY_RUN_VERDICT_I18N.would_trigger, 'monitor.events.dryRunVerdictWouldTrigger');
+assert.equal(DRY_RUN_VERDICT_I18N.no_data, 'monitor.events.dryRunVerdictNoData');
+assert.equal(DRY_RUN_VERDICT_I18N.missing_baseline, 'monitor.events.dryRunVerdictMissingBaseline');
+assert.equal(DRY_RUN_VERDICT_I18N.insufficient_samples, 'monitor.events.dryRunVerdictInsufficientSamples');
+assert.equal(DRY_RUN_VERDICT_I18N.would_recover, 'monitor.events.dryRunVerdictWouldRecover');
+assert.equal(DRY_RUN_VERDICT_I18N.hold, 'monitor.events.dryRunVerdictHold');
+
+assert.deepEqual(
+  resolveRecoveryThresholdForSave({
+    isTrap: false,
+    recoveryThreshold: { method: '<', value: 70 },
+  }),
+  { method: '<', value: 70 }
+);
+assert.deepEqual(
+  resolveRecoveryThresholdForSave({
+    isTrap: false,
+    recoveryThreshold: { method: '<', value: null },
+  }),
+  {}
+);
+assert.deepEqual(
+  resolveRecoveryThresholdForSave({
+    isTrap: true,
+    recoveryThreshold: { method: '<', value: 70 },
+  }),
+  {}
+);
+assert.deepEqual(
+  resolveNoDataPeriodsForSave({
+    enabled: true,
+    detectionValue: 10,
+    detectionUnit: 'min',
+    recoveryValue: 2,
+    recoveryUnit: 'min',
+  }),
+  {
+    no_data_period: { type: 'min', value: 10 },
+    no_data_recovery_period: { type: 'min', value: 2 },
+  }
+);
+assert.deepEqual(
+  resolveNoDataPeriodsForSave({
+    enabled: false,
+    detectionValue: 10,
+    detectionUnit: 'min',
+    recoveryValue: 2,
+    recoveryUnit: 'min',
+  }),
+  {
+    no_data_period: { type: 'min', value: 10 },
+    no_data_recovery_period: { type: 'min', value: 10 },
+  }
+);
+
+const offset1hOption = getCompareModeSelectOptions({
+  periodType: 'hour',
+  periodValue: 1,
+}).find((item) => item.value === 'offset_1h');
+assert.equal(offset1hOption?.disabled, true);
+assert.equal(
+  offset1hOption?.reasonKey,
+  'monitor.events.compareModeDisabledPeriod'
+);
+assert.ok(
+  getCompareModeSelectOptions({ periodType: 'hour', periodValue: 1 }).some(
+    (item) => item.value === 'offset_1h'
+  )
+);
+
+const countIfCompare = getCompareModeSelectOptions({
+  algorithm: 'count_if_over_time',
+});
+assert.equal(
+  countIfCompare.find((item) => item.value === 'absolute')?.disabled,
+  false
+);
+assert.equal(
+  countIfCompare.find((item) => item.value === 'offset_1h')?.disabled,
+  true
+);
+assert.equal(
+  countIfCompare.find((item) => item.value === 'offset_1h')?.reasonKey,
+  'monitor.events.compareModeDisabledCountIf'
+);
+
+assert.deepEqual(
+  coerceThresholdsForCompareMode('timeleft', [
+    { level: 'critical', method: '>', value: 24 },
+    { level: 'error', method: '>=', value: 48 },
+  ]),
+  [
+    { level: 'critical', method: '<', value: 24 },
+    { level: 'error', method: '<=', value: 48 },
+  ]
+);
+assert.deepEqual(
+  coerceRecoveryForThresholds({ method: '<', value: 70 }, [{ method: '<' }]),
+  { method: '', value: null }
+);
+assert.deepEqual(
+  coerceRecoveryForThresholds({ method: '<', value: 70 }, [{ method: '>' }]),
+  { method: '<', value: 70 }
+);
+
+assert.equal(
+  matchSceneChipId({
+    algorithm: 'p95_over_time',
+    compareMode: 'absolute',
+    compareValueKind: '',
+  }),
+  'p95_absolute'
+);
+assert.equal(
+  matchSceneChipId({
+    algorithm: 'avg_over_time',
+    compareMode: 'offset_7d',
+    compareValueKind: 'percent',
+  }),
+  'yoy_week'
+);
+assert.equal(
+  matchSceneChipId({
+    algorithm: 'avg_over_time',
+    compareMode: 'offset_7d',
+    compareValueKind: 'ratio',
+  }),
+  null
+);
+
+const yoyApplied = applySceneChip({
+  chipId: 'yoy_week',
+  algorithm: 'p95_over_time',
+  compareMode: 'absolute',
+  compareValueKind: '',
+  thresholds: [{ level: 'critical', method: '>', value: 50 }],
+  recoveryThreshold: { method: '>', value: 40 },
+  countPredicate: { method: '>', value: 0 },
+});
+assert.equal(yoyApplied?.algorithm, 'avg_over_time');
+assert.equal(yoyApplied?.compareMode, 'offset_7d');
+assert.equal(yoyApplied?.compareValueKind, 'percent');
+assert.equal(yoyApplied?.thresholds[0]?.value, 50);
+assert.deepEqual(yoyApplied?.recoveryThreshold, { method: '', value: null });
+
+const diskApplied = applySceneChip({
+  chipId: 'disk_timeleft',
+  thresholds: [{ level: 'critical', method: '>', value: 24 }],
+  recoveryThreshold: { method: '<', value: 8 },
+});
+assert.equal(diskApplied?.algorithm, 'last_over_time');
+assert.equal(diskApplied?.compareMode, 'timeleft');
+assert.equal(diskApplied?.thresholds[0]?.method, '<');
+assert.deepEqual(diskApplied?.recoveryThreshold, { method: '', value: null });
+
+const countIfApplied = applySceneChip({
+  chipId: 'count_if_n',
+  thresholds: [{ level: 'warning', method: '>=', value: 3 }],
+  countPredicate: { method: '', value: null },
+});
+assert.equal(countIfApplied?.algorithm, 'count_if_over_time');
+assert.deepEqual(countIfApplied?.countPredicate, { method: '>', value: 0 });
+assert.equal(countIfApplied?.thresholds[0]?.value, 3);
+
+const hourPeriodChips = getSceneChipStates({
+  periodType: 'hour',
+  periodValue: 1,
+});
+assert.equal(
+  hourPeriodChips.find((item) => item.id === 'offset_1h_up')?.disabled,
+  true
+);
+assert.equal(
+  hourPeriodChips.find((item) => item.id === 'p95_absolute')?.disabled,
+  false
+);
+assert.equal(
+  getSceneChipStates({ isEnumMetric: true }).find(
+    (item) => item.id === 'p95_absolute'
+  )?.disabled,
+  true
+);
+
+const t = (
+  _key: string,
+  fallback = _key,
+  vars: Record<string, string | number> = {}
+) =>
+  Object.entries(vars).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
+    fallback
+  );
+
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU 使用率',
+    algorithmLabel: 'P95',
+    algorithm: 'p95_over_time',
+    compareMode: 'offset_1h',
+    compareValueKind: 'percent',
+    compareModeLabel: '1 小时前同窗',
+    thresholdMethod: '>',
+    thresholdValue: 50,
+  }),
+  '这条策略在判断：CPU 使用率的P95，比 1 小时前高出 50%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU使用率',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'previous_window',
+    compareValueKind: 'percent',
+    compareModeLabel: '相对上一等长窗',
+    thresholdMethod: '>',
+    thresholdValue: 0,
+  }),
+  '这条策略在判断：CPU使用率的平均，比 上一等长窗高出 0%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘用量',
+    algorithmLabel: '末值',
+    algorithm: 'last_over_time',
+    compareMode: 'timeleft',
+    compareValueKind: 'hours',
+    thresholdMethod: '<',
+    thresholdValue: 24,
+  }),
+  '这条策略在判断：磁盘用量距容量线还剩不足 24 小时（请填写容量线）。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    algorithm: 'count_if_over_time',
+    compareMode: 'absolute',
+    thresholdMethod: '>=',
+    thresholdValue: 3,
+    thresholdUnitLabel: 'count',
+    countPredicateMethod: '>',
+    countPredicateValue: 0,
+  }),
+  '这条策略在判断：窗口内满足 > 0 的点数 >= 3 count。'
+);
+
+assert.equal(shouldAnnotatePerSecond('percent', 'rate'), true);
+assert.equal(shouldAnnotatePerSecond('bytes', 'rate'), false);
+assert.equal(shouldAnnotatePerSecond('byteps', 'rate'), false);
+assert.equal(formatUnitLabelWithRateSuffix('%', 'percent', 'rate'), '%/s');
+assert.equal(formatUnitLabelWithRateSuffix('B/s', 'byteps', 'rate'), 'B/s');
+
+assert.deepEqual(
+  groupAlgorithmOptions([
+    { value: 'avg_over_time' },
+    { value: 'p95_over_time' },
+    { value: 'rate' },
+    { value: 'changes' },
+  ]).map((group) => ({
+    key: group.key,
+    values: group.options.map((item) => item.value),
+  })),
+  [
+    { key: 'window', values: ['avg_over_time', 'p95_over_time'] },
+    { key: 'change', values: ['rate', 'changes'] },
+  ]
+);
+
+assert.equal(formatAlgorithmDisplayLabel('平均', 'avg_over_time'), '平均（AVG_OVER_TIME）');
+assert.equal(formatAlgorithmDisplayLabel('最大', 'max_over_time'), '最大（MAX_OVER_TIME）');
+assert.equal(formatAlgorithmDisplayLabel('P95', 'p95_over_time'), 'P95（P95_OVER_TIME）');
+assert.equal(formatAlgorithmDisplayLabel('速率', 'rate'), '速率（RATE）');
+assert.equal(getAlgorithmShortName('count_if_over_time'), 'COUNT_IF_OVER_TIME');
 
 console.log('monitor-strategy-detail logic validation passed');

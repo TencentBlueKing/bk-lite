@@ -19,6 +19,7 @@ ROLLING_WINDOW = timedelta(minutes=30)
 INFERRED_RETENTION = timedelta(days=90)
 BACKFILL_LOOKBACK = timedelta(days=7)
 MAX_SILENT_CONVERGE = 500
+_BACKFILL_WRITE_BATCH = 500
 
 
 def _version_rank(version: str) -> tuple[int, ...]:
@@ -267,6 +268,11 @@ def _version_windows(items: Iterable[ObservedVersion]) -> dict[str, tuple[dateti
     return windows
 
 
+def _iter_batches(items: list[ApmDeploymentEvent], size: int) -> Iterable[list[ApmDeploymentEvent]]:
+    for index in range(0, len(items), size):
+        yield items[index : index + size]
+
+
 def backfill_inferred_deployment_events(
     metric_store: MetricStore,
     *,
@@ -276,8 +282,7 @@ def backfill_inferred_deployment_events(
     ended_at = observed_at or timezone.now()
     releases = metric_store.deployment_releases(DeploymentReleaseQuery(started_at=ended_at - lookback, ended_at=ended_at))
     annotated = annotate_inferred_deployment_status(releases, observed_at=ended_at)
-    created = 0
-    updated = 0
+    candidates: dict[tuple[str, str, str, str], tuple[datetime, str]] = {}
     for release, status in annotated:
         namespace = normalize_identity(release.service_namespace)
         name = normalize_identity(release.service_name)
@@ -285,34 +290,83 @@ def backfill_inferred_deployment_events(
         version = normalize_identity(release.version)
         if not name or not version:
             continue
-        service = ApmService.objects.filter(normalized_namespace=namespace, normalized_name=name).first()
+        key = (namespace, name, environment, version)
+        previous = candidates.get(key)
+        if previous is None or release.first_seen_at < previous[0]:
+            candidates[key] = (release.first_seen_at, status)
+    if not candidates:
+        return DeploymentRecordResult()
+
+    services = ApmService.objects.filter(
+        normalized_namespace__in={key[0] for key in candidates},
+        normalized_name__in={key[1] for key in candidates},
+    )
+    service_by_identity = {(service.normalized_namespace, service.normalized_name): service for service in services}
+    resolved: list[tuple[ApmService, str, str, datetime, str]] = []
+    for (namespace, name, environment, version), (first_seen_at, status) in candidates.items():
+        service = service_by_identity.get((namespace, name))
         if service is None:
             continue
-        with transaction.atomic():
-            existing = (
-                ApmDeploymentEvent.objects.select_for_update()
-                .filter(
+        resolved.append((service, environment, version, first_seen_at, status))
+    if not resolved:
+        return DeploymentRecordResult()
+
+    existing_by_key: dict[tuple[UUID, str, str], ApmDeploymentEvent] = {}
+    existing_events = ApmDeploymentEvent.objects.filter(
+        service_id__in={item[0].id for item in resolved},
+        source=ApmDeploymentEvent.Source.INFERRED,
+    ).order_by("deployed_at", "id")
+    for event in existing_events:
+        key = (event.service_id, event.environment, event.version)
+        if key not in existing_by_key:
+            existing_by_key[key] = event
+
+    to_create: list[ApmDeploymentEvent] = []
+    to_update: list[ApmDeploymentEvent] = []
+    for service, environment, version, first_seen_at, status in resolved:
+        existing = existing_by_key.get((service.id, environment, version))
+        if existing is None:
+            to_create.append(
+                ApmDeploymentEvent(
                     service=service,
                     environment=environment,
                     version=version,
-                    source=ApmDeploymentEvent.Source.INFERRED,
-                )
-                .order_by("deployed_at", "id")
-                .first()
-            )
-            if existing is None:
-                ApmDeploymentEvent.objects.create(
-                    service=service,
-                    environment=environment,
-                    version=version,
-                    deployed_at=release.first_seen_at,
+                    deployed_at=first_seen_at,
                     status=status,
                     source=ApmDeploymentEvent.Source.INFERRED,
                 )
-                created += 1
-                continue
-            if release.first_seen_at < existing.deployed_at:
-                existing.deployed_at = release.first_seen_at
-                existing.save(update_fields=("deployed_at", "updated_at"))
-                updated += 1
+            )
+            continue
+        if first_seen_at < existing.deployed_at:
+            existing.deployed_at = first_seen_at
+            to_update.append(existing)
+
+    created = 0
+    updated = 0
+    touched_at = timezone.now()
+    for batch in _iter_batches(to_update, _BACKFILL_WRITE_BATCH):
+        with transaction.atomic():
+            locked = {
+                event.id: event
+                for event in ApmDeploymentEvent.objects.select_for_update().filter(id__in=[item.id for item in batch])
+            }
+            persistable: list[ApmDeploymentEvent] = []
+            for event in batch:
+                current = locked.get(event.id)
+                if (
+                    current is None
+                    or current.source != ApmDeploymentEvent.Source.INFERRED
+                    or event.deployed_at >= current.deployed_at
+                ):
+                    continue
+                current.deployed_at = event.deployed_at
+                current.updated_at = touched_at
+                persistable.append(current)
+            if persistable:
+                ApmDeploymentEvent.objects.bulk_update(persistable, ["deployed_at", "updated_at"])
+                updated += len(persistable)
+    for batch in _iter_batches(to_create, _BACKFILL_WRITE_BATCH):
+        with transaction.atomic():
+            ApmDeploymentEvent.objects.bulk_create(batch)
+            created += len(batch)
     return DeploymentRecordResult(created=created, updated=updated)

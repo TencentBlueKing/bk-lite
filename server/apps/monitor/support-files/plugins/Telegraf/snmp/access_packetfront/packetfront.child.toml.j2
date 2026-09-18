@@ -32,18 +32,42 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # Chassis environment tables (PEN 9303). Walk full tables; empty tables yield no rows.
+    # Do not invent CPU% or memory.
+    # Temperature Integer32 is hundredths of a degree Celsius; metric query uses /100.
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "device_temperature"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.9303.4.1.2.1.1.1"
+        name = "sensor"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.9303.4.1.2.1.1.2"
+        name = "celsius"
+    # Fan RPM Integer32, INDEX fan number.
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.9303.4.1.2.3.1.1"
+        name = "fan"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9303.4.1.2.3.1.2"
+        name = "rpm"
+    # Optional board voltage Integer32 millivolts; metric query uses /1000 to volts.
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9303.4.1.2.2.1.1"
+        name = "channel"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9303.4.1.2.2.1.3"
+        name = "volts"

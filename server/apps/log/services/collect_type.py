@@ -256,6 +256,8 @@ class CollectTypeService:
                 instance.name = name
                 instance.save()
             if organizations is not None:
+                if not organizations:
+                    raise BaseAppException("至少保留一个组织")
                 instance.collectinstanceorganization_set.all().delete()
                 creates = [CollectInstanceOrganization(collect_instance_id=instance_id, organization=org) for org in organizations]
                 CollectInstanceOrganization.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)

@@ -24,6 +24,6 @@ class NodeParamsFactory:
         return params_cls
 
     @staticmethod
-    def get_node_params(instance):
+    def get_node_params(instance, *, resolve_credentials=True):
         params_cls = NodeParamsFactory.get_params_class(instance.model_id, instance.driver_type)
-        return params_cls(instance)
+        return params_cls(instance, resolve_credentials=resolve_credentials)

@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.db.models.query import QuerySet
 from django.utils import timezone
 
 from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
@@ -18,8 +19,10 @@ class StubMetricStore:
         self.slo_rate = slo_rate
         self.fail_names: set[str] = set()
         self.deployment_release_calls = 0
+        self.service_red_calls: list[tuple[str, str]] = []
 
     def service_red(self, query):
+        self.service_red_calls.append((query.service_name, query.environment))
         if query.service_name in self.fail_names:
             raise RuntimeError("vt down")
         return self.red_by_name[query.service_name]
@@ -289,3 +292,58 @@ def test_dashboard_slo_overview_skips_unavailable_evaluations(mocker):
     assert payload["slos"]["status"] == "ok"
     assert len(payload["slos"]["data"]["items"]) == 1
     assert payload["slos"]["data"]["items"][0]["service_name"] == "checkout"
+
+
+def test_dashboard_caps_red_queries_but_counts_all_visible_services_in_kpis(monkeypatch):
+    now = timezone.now()
+    red_by_name = {}
+    for index in range(41):
+        name = f"svc-{index}"
+        _service(namespace=f"ns-{index}", name=name, last_seen_at=now - timedelta(seconds=index))
+        red_by_name[name] = _red()
+    store = StubMetricStore(red_by_name)
+    materialized_counts = {ApmService: [], ApmServiceInstance: []}
+    original_fetch_all = QuerySet._fetch_all
+
+    def _fetch_all(self):
+        original_fetch_all(self)
+        if self.model in materialized_counts and self._result_cache is not None:
+            materialized_counts[self.model].append(len(self._result_cache))
+
+    monkeypatch.setattr(QuerySet, "_fetch_all", _fetch_all)
+
+    payload = ApmDashboardService(metric_store=store, now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert payload["empty"] is False
+    assert len(store.service_red_calls) <= 40
+    assert max(materialized_counts[ApmService] or [0]) <= 40
+    assert max(materialized_counts[ApmServiceInstance] or [0]) <= 40
+    assert payload["kpis"]["status"] == "ok"
+    assert payload["kpis"]["data"]["application_count"] == 41
+    assert payload["kpis"]["data"]["service_count"] == 41
+
+
+def test_dashboard_keeps_both_environments_of_one_service_within_target_cap():
+    now = timezone.now()
+    checkout = _service(name="checkout", last_seen_at=now)
+    ApmServiceInstance.objects.create(
+        service=checkout,
+        instance_id="checkout-2",
+        normalized_instance_id="checkout-2",
+        environment="staging",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    red_by_name = {"checkout": _red()}
+    for index in range(39):
+        name = f"svc-{index}"
+        _service(name=name, last_seen_at=now - timedelta(minutes=index + 1))
+        red_by_name[name] = _red()
+    store = StubMetricStore(red_by_name)
+
+    payload = ApmDashboardService(metric_store=store, now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    checkout_environments = {environment for name, environment in store.service_red_calls if name == "checkout"}
+    assert payload["empty"] is False
+    assert checkout_environments == {"production", "staging"}
+    assert len(store.service_red_calls) <= 40

@@ -33,6 +33,30 @@
         name = "source"
         is_tag = true
 
+    # BCN-DNS oper/query (PEN 13315) plus UCD-SNMP CPU/mem per vendor monitoring docs.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.13315.3.1.2.2.1.1.0"
+        name = "network_service_bluecat_dns_state"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.13315.3.1.2.2.2.1.1.0"
+        name = "network_service_bluecat_dns_query_success"
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.11.11"
+        name = "idle"
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.4.5"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.4.11"
+        name = "free"
+
+
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
@@ -47,3 +71,14 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+[[processors.enum]]
+    namepass = ["snmp"]
+    [processors.enum.tagpass]
+        brand = ["bluecat"]
+    [[processors.enum.mapping]]
+        field = "network_service_bluecat_dns_state"
+        dest = "network_service_bluecat_dns_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1

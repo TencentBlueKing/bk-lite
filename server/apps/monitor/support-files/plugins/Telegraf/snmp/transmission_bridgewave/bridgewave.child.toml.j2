@@ -32,18 +32,45 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
+# @bk_include_ifmib_table
+    # ---- BRWAVE-RADIO (PEN 6080) brwaveRadioUnitTemperature ----
+    # 1.3.6.1.4.1.6080.3.1.3.2.0 → temperature_celsius
+    # Integer32，百分之一摄氏度（例如 3650 表示 36.50 °C），查询侧 /100。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
+        oid = "1.3.6.1.4.1.6080.3.1.3.2"
+        name = "celsius"
+        conversion = "int"
+    # ---- brwaveRadioTxTemperature ----
+    # 1.3.6.1.4.1.6080.3.1.3.3.0 → tx_temperature_celsius
+    # Integer32，百分之一摄氏度，查询侧 /100。不得套用到 RSL/电压。
+    [[inputs.snmp.table]]
+        name = "tx_temperature"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.6080.3.1.3.3"
+        name = "celsius"
+        conversion = "int"
+    # ---- brwaveRadioRSL ----
+    # 1.3.6.1.4.1.6080.3.1.3.4.0 → rsl
+    # Integer32 接收信号电平（dBm 整数），不对温度规则做 /100。
+    [[inputs.snmp.table]]
+        name = "rsl"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.6080.3.1.3.4"
+        name = "rsl"
+        conversion = "int"
+    # ---- 可选 brwaveRadioInVoltage ----
+    # 1.3.6.1.4.1.6080.3.1.3.1.0 → in_voltage
+    # Integer32 输入电压原始整数。仅温度对象已确认百分之一换算，电压不做 /100，也不提升为共享电源健康。
+    [[inputs.snmp.table]]
+        name = "device"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6080.3.1.3.1"
+        name = "in_voltage"
+        conversion = "int"
+# ---- CPU/内存/风扇/电源：BRWAVE-RADIO 已确认机组温度、发射机温度、RSL 与可选输入电压标量。无稳定、无需行级过滤的 CPU%/内存% 共享健康对象 → N/A，不臆造。----

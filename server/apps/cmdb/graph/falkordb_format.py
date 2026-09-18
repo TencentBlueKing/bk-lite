@@ -5,6 +5,8 @@
 import json
 from typing import Any, Dict, List
 
+from apps.cmdb.graph.format_type import coerce_cloud_id_properties
+
 
 class FormatDBResult:
     """
@@ -177,7 +179,7 @@ class FormatDBResult:
             properties = dict(value.properties) if hasattr(value, "properties") else {}
             properties["_id"] = _id
             properties["_labels"] = labels[0] if labels else ""
-            return properties
+            return coerce_cloud_id_properties(properties)
 
         # 处理路径对象
         if hasattr(value, "nodes") and hasattr(value, "edges"):
@@ -215,11 +217,11 @@ class FormatDBResult:
                 if _nodes:
                     src_properties = dict(getattr(_nodes[0], "properties", {}) or {})
                     src_properties["_id"] = getattr(_nodes[0], "id", 0)
-                    edge_info["src"] = src_properties
+                    edge_info["src"] = coerce_cloud_id_properties(src_properties)
                 if len(_nodes) > 1:
                     dst_properties = dict(getattr(_nodes[1], "properties", {}) or {})
                     dst_properties["_id"] = getattr(_nodes[1], "id", 0)
-                    edge_info["dst"] = dst_properties
+                    edge_info["dst"] = coerce_cloud_id_properties(dst_properties)
 
                 result.append(edge_info)
 

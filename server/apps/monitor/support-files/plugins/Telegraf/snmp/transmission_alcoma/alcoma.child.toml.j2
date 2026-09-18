@@ -24,6 +24,7 @@
         collect_type = "snmp_alcoma"
         config_type = "alcoma"
         brand = "alcoma"
+
     [[inputs.snmp.field]]
         oid = "1.3.6.1.2.1.1.3.0"
         name = "uptime"
@@ -31,21 +32,42 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Alcoma 微波传输设备健康(CPU/内存/温度/风扇/电源/射频/链路等) → N/A ----
-    # 状态源确认 ALCOMA-MIB/PEN 12140 可用,但当前工作树无 raw MIB 正文可核对具体健康 OID 与是否无需行级过滤。
-    # 为避免伪造私有健康指标,本插件仅采 IF-MIB ifXTable 64位 HC 接口流量(ifHCInOctets/ifHCOutOctets)
-    # 与运行时长(uptime),私有微波/链路健康指标待原始 MIB 对象核验后再增量补充。
+# @bk_include_ifmib_table
+    # ---- ALCOMA alMP (PEN 12140) 微波健康标量 ----
+    # alMPTemperature 1.3.6.1.4.1.12140.2.3.9.0 → temperature_celsius
+    # Integer32 摄氏度；-1 表示离线，查询侧跳过。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.31.1.1"
-        name = "interface"
+        name = "temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.1"
-        name = "ifDescr"
-        is_tag = true
+        oid = "1.3.6.1.4.1.12140.2.3.9"
+        name = "celsius"
+        conversion = "int"
+    # alMPRX-Level 1.3.6.1.4.1.12140.2.3.4.0 → rx_level_db
+    # Integer32 dB；-128 表示离线，查询侧跳过。
+    [[inputs.snmp.table]]
+        name = "rx_level"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.12140.2.3.4"
+        name = "db"
+        conversion = "int"
+    # alMPTX-PWR 1.3.6.1.4.1.12140.2.3.3.0 → tx_power_db
+    # Integer32 dB；-128 表示离线，查询侧跳过。
+    [[inputs.snmp.table]]
+        name = "tx_power"
+        inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+        oid = "1.3.6.1.4.1.12140.2.3.3"
+        name = "db"
+        conversion = "int"
+    # 可选 alMPSNR 1.3.6.1.4.1.12140.2.4.2.0 → snr_db
+    # Integer32 dB。部分固件缺省时该表为空。
+    [[inputs.snmp.table]]
+        name = "snr"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12140.2.4.2"
+        name = "db"
+        conversion = "int"
+# ---- CPU/内存/风扇/电源：alMP 无稳定、无需行级过滤的共享健康对象 → N/A，不臆造 CPU%/内存%。----

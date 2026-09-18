@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_meinberg",
   "plugin": "NetworkService Meinberg LANTIME SNMP",
-  "plugin_desc": "Meinberg LANTIME time-server SNMP collection for appliances under Meinberg PEN 5597. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The public LANTIME MIB confirms NTP and PTP service objects, but stable shared CPU, memory, temperature, fan and power health scalars with conservative status semantics are not proven in the current MIB facts, so service indicators are not promoted into shared device-health metrics.",
+  "plugin_desc": "Meinberg LANTIME SNMP collection for time servers under Meinberg PEN 5597. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds LANTIME NG NTP state, stratum and internal temperature, with classic LANTIME NTP state and stratum as fallback. Shared CPU, memory, fan and power-health scalars are not claimed.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_meinberg'}) by (instance_id)",
   "name": "NetworkService",
@@ -14,9 +14,50 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "network_service_meinberg_ntp_state",
+    "network_service_meinberg_ntp_stratum"
   ],
   "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_meinberg_ntp_state",
+      "query": "max(network_service_meinberg_ntp_state{instance_type='network_service', __$labels__} or network_service_meinberg_classic_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Meinberg NTP Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "LANTIME NG NTP synchronization state, falling back to classic LANTIME. Value 1 is synchronized; every other value is treated as fault."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_meinberg_ntp_stratum",
+      "query": "max(network_service_meinberg_ntp_stratum{instance_type='network_service', __$labels__} or network_service_meinberg_classic_ntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Meinberg NTP Stratum",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "LANTIME NG NTP stratum, falling back to classic LANTIME stratum."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_meinberg_temperature",
+      "query": "max(network_service_meinberg_temperature{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Meinberg Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "LANTIME NG internal temperature in degrees Celsius."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -33,7 +74,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average inbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCInOctets counter."
     },
     {
       "metric_group": "Traffic",
@@ -51,7 +92,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+      "description": "Average outbound interface bytes per second over five minutes from the 64-bit IF-MIB ifHCOutOctets counter."
     },
     {
       "metric_group": "Base",
@@ -64,7 +105,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+      "description": "Device uptime since the last restart, derived from sysUpTime."
     }
   ]
 }

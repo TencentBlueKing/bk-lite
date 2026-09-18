@@ -1,5 +1,56 @@
 {
   "object": "Loadbalance",
   "plugin": "Loadbalance RELIANOID SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "RELIANOID负载均衡CPU使用率过高",
+      "alert_name": "负载均衡${resource_name} CPU 使用率过高",
+      "description": "监控 RELIANOID 负载均衡的整机 CPU 使用率（UCD-SNMP ssCpuIdle 换算为 100−idle，缺 idle 时用 user+system），当持续高于阈值时触发告警，提示可能存在流量处理负载过高，避免转发与管理响应受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "RELIANOID负载均衡内存使用率过高",
+      "alert_name": "负载均衡${resource_name} 内存使用率过高",
+      "description": "监控 RELIANOID 负载均衡的系统内存使用率（UCD-SNMP memTotalReal 与 memAvailReal，按 (总量−空闲)/总量 计算），当超过阈值时触发告警，便于及时发现内存压力导致连接处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

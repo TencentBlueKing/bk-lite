@@ -626,7 +626,7 @@ const FamilyOverview = () => {
                 style: { width: 236, height: 'calc(100vh - 146px)' },
                 onNodeSelect: () => undefined,
               }}
-              contentClassName="w-[calc(100vw-236px)] min-w-[1040px] bg-[var(--color-bg-1)] p-5"
+              contentClassName="min-w-0 flex-1 bg-[var(--color-bg-1)] p-5"
               searchProps={{
                 allowClear: true,
                 className: 'w-[320px]',
@@ -750,7 +750,7 @@ const FamilyOverview = () => {
                 style: { width: 236, height: 'calc(100vh - 146px)' },
                 onNodeSelect: () => undefined,
               }}
-              contentClassName="w-[calc(100vw-236px)] min-w-[1040px] bg-[var(--color-bg-1)] p-5"
+              contentClassName="min-w-0 flex-1 bg-[var(--color-bg-1)] p-5"
               searchProps={{
                 allowClear: true,
                 className: 'w-[320px]',

@@ -187,6 +187,8 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
             validateTrigger={[]}
           >
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="winsphere"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
               credentialSchema={credentialSchema}

@@ -27,6 +27,8 @@ export interface ViewModalProps {
   objects?: ObjectItem[];
   preferredMetricKey?: string;
   readOnly?: boolean;
+  // 嵌入宿主时按容器实测高度铺满，替代主场的 100vh 偏移量。
+  fillContainer?: boolean;
 }
 
 export interface ViewListProps {
@@ -57,6 +59,8 @@ export interface ViewDetailProps {
   monitorObjectId: React.Key;
   instanceId: string;
   monitorObjectName: string;
+  /** 对象展示名（如「云数据库 Redis」）；缺省时回退 monitorObjectName。 */
+  monitorObjectDisplayName?: string;
   idValues: string[];
   instanceName: string;
   /**

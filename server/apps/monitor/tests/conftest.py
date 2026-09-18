@@ -13,6 +13,7 @@ MONITOR_ADMIN_WRITE_PERMISSIONS = {
     "strategy_list-Add",
     "strategy_list-Edit",
     "strategy_list-Delete",
+    "search-View",
 }
 
 
@@ -24,3 +25,6 @@ def grant_monitor_admin_write_permissions(request):
     user = request.getfixturevalue("authenticated_user")
     if "admin" in (getattr(user, "roles", None) or []):
         user.permission = {"monitor": set(MONITOR_ADMIN_WRITE_PERMISSIONS)}
+    from apps.system_mgmt.models import Group
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})

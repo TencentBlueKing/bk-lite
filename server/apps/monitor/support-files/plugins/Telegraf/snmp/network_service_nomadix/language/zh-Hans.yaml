@@ -1,12 +1,18 @@
 NetworkService Nomadix SNMP:
   name: Nomadix（Telegraf）
-  desc: 面向 Nomadix 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Nomadix 网络服务设备的 SNMP 监控模板,可采集当前在线用户数、DAT 会话数、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
   Network Device: 网络设备
 monitor_object_metric:
   NetworkService:
+    active_subscribers:
+      name: 当前在线用户数
+      desc: 来自当前在线用户表（aaaSubCurrTable）的行数汇总，每一行代表一名在线用户。不是授权配置表。
+    active_dat_sessions:
+      name: 当前 DAT 会话数
+      desc: 来自 DAT 会话表（datSessionTable）的行数汇总，每一行代表一个当前会话。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。

@@ -1,6 +1,6 @@
 Switch H3C SNMP:
   name: H3C（Telegraf）
-  desc: 面向 H3C 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  desc: 面向 H3C / HPE Comware 交换机的 SNMP 监控模板。设备健康来自 HH3C-ENTITY-EXT-MIB；接口流量使用内置 IF-MIB 底座。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -10,6 +10,9 @@ monitor_object_metric:
     device_voltage_volts:
       name: 输入电压
       desc: 该指标报告设备输入电压读数，单位伏特。电压偏离额定范围可能意味着供电不稳，存在硬件风险。
+    device_power_watts:
+      name: 功耗
+      desc: 该指标报告厂商功耗表中的当前功耗读数，单位瓦特。这是功耗值，不是电源健康状态。
     device_optical_rx_power:
       name: 光模块接收功率
       desc: 该指标报告光模块（SFP/SFP+）接收光功率读数。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常，可能导致丢包或链路中断。
@@ -70,6 +73,12 @@ monitor_object_metric:
       name: CPU 使用率
       desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
         SNMP OID，并归一化为 0-100 的百分比。
+    device_cpu_usage_1min:
+      name: CPU 使用率（1 分钟）
+      desc: 设备控制平面近 1 分钟 CPU 使用率，单位为百分比。取厂商 1 分钟 CPU 对象（若设备支持）。
+    device_cpu_usage_5min:
+      name: CPU 使用率（5 分钟）
+      desc: 设备控制平面近 5 分钟 CPU 使用率，单位为百分比。取厂商 5 分钟 CPU 对象（若设备支持）。
     device_memory_usage:
       name: 内存使用率
       desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP

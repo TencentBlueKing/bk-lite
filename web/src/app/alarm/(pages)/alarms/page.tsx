@@ -135,6 +135,7 @@ const Alert: React.FC = () => {
         ? initialStatus.split(',').filter(Boolean)
         : stateFilters || ['pending', 'processing'],
       alarm_source: [],
+      push_source_ids: [],
     };
   });
 
@@ -142,10 +143,6 @@ const Alert: React.FC = () => {
     const { showChart } = getSettings();
     return showChart !== undefined ? showChart : true;
   });
-
-  const tableScrollY = showChart
-    ? 'calc(100vh - 500px)'
-    : 'calc(100vh - 400px)';
 
   const isActiveAlarms = activeTab === 'activeAlarms';
 
@@ -181,6 +178,7 @@ const Alert: React.FC = () => {
     filters.level,
     filters.state,
     filters.alarm_source,
+    filters.push_source_ids,
     pagination.current,
     pagination.pageSize,
     myAlarms,
@@ -197,6 +195,7 @@ const Alert: React.FC = () => {
     filters.level,
     filters.state,
     filters.alarm_source,
+    filters.push_source_ids,
     pagination.current,
     pagination.pageSize,
     myAlarms,
@@ -212,6 +211,7 @@ const Alert: React.FC = () => {
     filters.state,
     filters.level,
     filters.alarm_source,
+    filters.push_source_ids,
     myAlarms,
     searchCondition,
   ]);
@@ -236,6 +236,7 @@ const Alert: React.FC = () => {
       status: filters.state.join(','),
       level: filters.level.join(','),
       source_names: filters.alarm_source.length ? JSON.stringify(filters.alarm_source) : undefined,
+      push_source_ids: filters.push_source_ids.length ? JSON.stringify(filters.push_source_ids) : undefined,
       page: pagination.current,
       page_size: pagination.pageSize,
       created_at_after: queryTimeRange[0]
@@ -393,7 +394,7 @@ const Alert: React.FC = () => {
   );
 
   return (
-    <div className="h-full min-h-0 min-w-0 w-full">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col">
       <div className={alertStyle.alert}>
         <AlarmFilters
           filters={filters}
@@ -452,8 +453,8 @@ const Alert: React.FC = () => {
             </div>
           </Spin>
           <div className={alertStyle.table}>
-            <Tabs activeKey={activeTab} items={tabList} onChange={changeTab} />
-            <div className="mb-[16px] flex min-w-0 flex-wrap items-center justify-between gap-y-2">
+            <Tabs className="shrink-0" activeKey={activeTab} items={tabList} onChange={changeTab} />
+            <div className="mb-[16px] flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-y-2">
               <div className="flex items-center space-x-4">
                 <SearchFilter
                   attrList={alarmAttrList}
@@ -487,16 +488,17 @@ const Alert: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
             <AlarmTable
               dataSource={tableData}
               pagination={pagination}
               loading={tableLoading}
-              tableScrollY={tableScrollY}
               selectedRowKeys={selectedRowKeys}
               onSelectionChange={setSelectedRowKeys}
               onChange={handleTableChange}
               onRefresh={onRefresh}
             />
+            </div>
           </div>
         </div>
       </div>

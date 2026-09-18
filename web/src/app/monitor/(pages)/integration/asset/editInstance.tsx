@@ -90,7 +90,7 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   };
 
   return (
-    <div>
+    <>
       <OperateModal
         width={600}
         title={title}
@@ -129,7 +129,7 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
           </Form.Item>
         </Form>
       </OperateModal>
-    </div>
+    </>
   );
 });
 EditInstance.displayName = 'EditInstance';

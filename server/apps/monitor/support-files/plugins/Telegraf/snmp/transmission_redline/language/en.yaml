@@ -1,8 +1,8 @@
 Transmission Redline SNMP:
   name: Redline (Telegraf)
-  desc: SNMP monitoring template for Redline transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 10728).
+  desc: SNMP monitoring template for Redline AN80i transmission device. It reports
+    average SINADR, PMP downlink RSSI, optional PMP uplink RSSI, per-port inbound
+    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 10728).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -39,6 +39,21 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
+    sinadr:
+      name: SINADR
+      desc: AN80i average SINADR (signal to interference, noise and distortion ratio)
+        from the an80iIfAvrSinAdr scalar. Integer32 with no scaling. PMP-only radios
+        that omit the scalar skip the row.
+    dl_rssi:
+      name: PMP Downlink RSSI
+      desc: AN80i PMP downlink received signal strength from an80iIfPmpLinkDLRssi,
+        indexed by an80iIfPmpLinkId. Integer32 with no scaling. The collector walks
+        the PMP link identifier first, then reads the DL RSSI column.
+    ul_rssi:
+      name: PMP Uplink RSSI
+      desc: Optional AN80i PMP uplink received signal strength from an80iIfPmpLinkULRssi,
+        indexed by an80iIfPmpLinkId. Integer32 with no scaling. Missing rows on some
+        firmware revisions are skipped.
     device_cpu_usage:
       name: CPU Usage
       desc: CPU utilization of the transmission device reported directly as a 0-100
@@ -72,3 +87,4 @@ monitor_object_metric_group:
     Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Radio: Radio

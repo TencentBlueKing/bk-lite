@@ -1,6 +1,7 @@
 NetworkService Rittal CMC III SNMP:
   name: Rittal CMC III（Telegraf）
-  desc: 面向 Rittal CMC III 网络服务设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Rittal CMC III 网络服务设备的 SNMP 监控模板，通过走访 CMC-III 变量表采集环境摄氏温度、相对湿度、PDU
+    有功功率、PDU 电流、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:
@@ -16,7 +17,7 @@ monitor_object_metric:
         位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
     interface_ifHCOutOctets:
       name: 接口发送流量速率
-      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
         位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     device_total_incoming_traffic:
       name: 设备接收总流量速率
@@ -78,8 +79,22 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP 层级
       desc: Spectracom NTP 当前 stratum 层级。
+    env_temperature_celsius:
+      name: 环境温度
+      desc: 来自 CMC-III 变量表的逐传感器环境温度，单位为摄氏度。按变量单位（degree C）和名称中的温度读数映射，不假定固定行号。
+    env_humidity_percent:
+      name: 环境湿度
+      desc: 来自 CMC-III 变量表的逐传感器相对湿度，单位为百分比。按变量单位（%）和名称中的湿度读数映射，不假定固定行号。
+    pdu_active_power_watts:
+      name: PDU 有功功率
+      desc: 来自 CMC-III 变量表的 PDU 有功功率，单位为瓦特。按变量单位（W）和名称中的功率读数映射，不假定固定行号。
+    pdu_current_amps:
+      name: PDU 电流
+      desc: 来自 CMC-III 变量表的 PDU 电流，单位为安培。按变量单位（A）和名称中的电流读数映射，不假定固定行号。
 monitor_object_metric_group:
   NetworkService:
     Base: 基础
     Traffic: 流量
     NetworkService: 网络服务
+    Power: 功率
+    Environment: 环境

@@ -279,7 +279,7 @@ const AutoAssociationRulesPage: React.FC = () => {
   ];
 
   return (
-    <div>
+    <div className="min-w-0 w-full">
       <Alert className="mb-[12px]" type="info" showIcon banner message={t('Model.autoAssociationRuleTip')} />
       <div className="flex justify-end mb-[16px]">
         <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>

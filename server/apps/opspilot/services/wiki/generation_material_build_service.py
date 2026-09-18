@@ -28,11 +28,13 @@ from apps.opspilot.services.wiki.build_service import (
     prepare_page_data_with_contact_facts,
     published_pages_missing_contact_facts,
 )
+from apps.opspilot.services.wiki.colloquial_alias_service import enrich_generation_colloquial_aliases_safely
 from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
 from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
 from apps.opspilot.services.wiki.generation_wikilink_enrichment_service import apply_generation_wikilink_trace, enrich_generation_pages_wikilinks
 from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildCancelled
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
+from apps.opspilot.services.wiki.title_service import retitle_unrelated_page
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.title_service import title_identity_key
 from apps.opspilot.services.wiki.update_service import _validate_frozen_generation_identity
@@ -83,8 +85,16 @@ def _log_material_build_token_usage(*, material, build, budget, status, llm_mode
 
 def _existing_pages(knowledge_base):
     result = {}
-    for page in KnowledgePage.objects.filter(knowledge_base=knowledge_base).select_related("current_version").order_by("id"):
-        result.setdefault(title_identity_key(page.title), page)
+    if not knowledge_base.active_generation_id:
+        return result
+    members = (
+        WikiGeneration.objects.get(pk=knowledge_base.active_generation_id)
+        .page_members.filter(page_status="active")
+        .select_related("page", "page__current_version")
+        .order_by("page_id")
+    )
+    for member in members:
+        result.setdefault(title_identity_key(member.page.title), member.page)
     return result
 
 
@@ -212,13 +222,20 @@ def build_material_with_generation(
                     pk=comparison.get("old_page_id"),
                     knowledge_base=knowledge_base,
                 ).first()
-                if comparison.get("same_subject") is True and comparison_page is not None:
+                if comparison.get("relation") == "unrelated":
+                    occupied = {title_identity_key(item.title) for item in existing.values()}
+                    if comparison_page is not None:
+                        occupied.add(title_identity_key(comparison_page.title))
+                    page_data = retitle_unrelated_page(page_data, occupied)
+                    title = page_data.get("title") or title
+                    page = existing.get(title_identity_key(title))
+                    if page is not None and comparison_page is not None and page.pk == comparison_page.pk:
+                        page = None
+                elif comparison.get("same_subject") is True and comparison_page is not None:
                     page = comparison_page
                     title = comparison_page.title
                     page_data = {**page_data, "title": title}
                     page_data = prepare_page_data_with_contact_facts(text, page_data)
-                elif comparison.get("relation") in {"conflict", "unresolved"} and comparison_page is not None and page is None:
-                    page = comparison_page
 
             identity_ambiguous = bool(
                 page is not None and comparison is not None and comparison.get("old_page_id") == page.pk and comparison.get("relation") == "unrelated"
@@ -366,6 +383,14 @@ def build_material_with_generation(
         apply_generation_wikilink_trace(
             source_trace["page_actions"],
             enrichment_results,
+        )
+        source_trace["colloquial_aliases"] = enrich_generation_colloquial_aliases_safely(
+            context.candidate_generation_id,
+            enrichment_page_ids,
+            llm_model_id=llm_model_id,
+            invoke_llm=_invoke_llm,
+            budget=budget,
+            llm_when="if_empty",
         )
 
         published_build = None

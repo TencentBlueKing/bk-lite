@@ -118,7 +118,7 @@ NETWORK_TOPOLOGY_FACTS = "network_topology_facts_info_gauge"
 PROTOCOL_METRIC_MAP = {
     "mysql": ["mysql_info_gauge"],
     "postgresql": ["postgresql_info_gauge"],
-    "oracle": ["oracle_info_gauge"],
+    "oracle": ["oracle_info_gauge", "oracle_instance_info_gauge", "oracle_pdb_info_gauge"],
     "mssql": ["mssql_info_gauge"],
 }
 

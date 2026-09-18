@@ -32,20 +32,108 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns: ifInOctets/ifOutOctets/ifInErrors/ifOutErrors/ifInDiscards/ifOutDiscards/ifInUcastPkts/ifOutUcastPkts/ifSpeed/ifAdminStatus/ifOperStatus) ----
+# @bk_include_ifmib_table
+    # ---- PSU LED (hardwareStatusTable) ----
+    # Primary model path jetnet5010G = managedFESwitch leaf 1
+    # (1.3.6.1.4.1.24062.2.2.1). Other JetNet models may use a different
+    # managedFESwitch leaf; swap that leaf on every private OID below.
+    # Walk hardwareStatusTable. LED ENUM on(1)/blinkNormal(2)/blinkFast(3)/off(4).
+    # ledPower1Status …11.6.1.1.2 → psu1_status
+    # ledPower2Status …11.6.1.1.3 → psu2_status
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
-        name = "interface"
+        name = "psu1"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
+        oid = "1.3.6.1.4.1.24062.2.2.1.11.6.1.1.2"
+        name = "status"
+    [[inputs.snmp.table]]
+        name = "psu2"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.24062.2.2.1.11.6.1.1.3"
+        name = "status"
+    # ---- SFP DDM (portSfpTable) ----
+    # portSfpDdmTempatureCurrent …3.2.2.1.5 → temperature_celsius (DisplayString, parse °C)
+    # portSfpDdmTxPowerCurrent    …1.7 → tx_power
+    # portSfpDdmRxPowerCurrent    …1.9 → rx_power
+    # Optional portSfpDdmStatus   …1.4 used only to skip disabled / empty rows.
+    [[inputs.snmp.table]]
+        name = "sfp"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.24062.2.2.1.3.2.2.1.1"
+        name = "portSfpIndex"
         is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.24062.2.2.1.3.2.2.1.4"
+        name = "ddm_status"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-# ---- CPU/内存/温度/风扇/电源：Korenix JetNet 工业以太网交换机为无风扇导热式被动散热设计，其温度、双路电源输入与继电器告警等环境量由厂商私有 MIB（企业号 24062）承载，未以无需行级过滤的标量形式公开暴露 → CPU/内存/温度/风扇/电源 N/A 不采。本基线模板仅采集标准 MIB-II 运行时长与 IF-MIB（含 64 位 HC）接口指标，干净可采。----
+        oid = "1.3.6.1.4.1.24062.2.2.1.3.2.2.1.5"
+        name = "temperature_celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.24062.2.2.1.3.2.2.1.7"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.24062.2.2.1.3.2.2.1.9"
+        name = "rx_power"
+# ---- CPU/内存：私有 MIB 无整机 CPU%/内存% 标量 → 不臆造，不采。----
+
+[[processors.starlark]]
+    namepass = ["sfp"]
+    source = '''
+def parse_numeric(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int":
+        return float(raw)
+    if t == "float":
+        return raw
+    text = str(raw).strip()
+    if text == "" or text == "N/A" or text == "n/a" or text == "NA" or text == "na" or text == "--" or text == "-":
+        return None
+    digits = ""
+    started = False
+    sign = ""
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if (c == "-" or c == "+") and not started and digits == "":
+            sign = c
+        elif c >= "0" and c <= "9":
+            digits += c
+            started = True
+        elif c == "." and started:
+            if "." not in digits:
+                digits += c
+        elif started:
+            break
+        i += 1
+    if digits == "" or digits == ".":
+        return None
+    return float(sign + digits)
+
+def apply(metric):
+    status = metric.fields.get("ddm_status")
+    if "ddm_status" in metric.fields:
+        metric.fields.pop("ddm_status")
+    if status == 2 or status == "2":
+        return None
+    kept = 0
+    for key in ("temperature_celsius", "tx_power", "rx_power"):
+        parsed = parse_numeric(metric.fields.get(key))
+        if parsed == None:
+            if key in metric.fields:
+                metric.fields.pop(key)
+        else:
+            metric.fields[key] = parsed
+            kept += 1
+    if kept == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["korenix"]

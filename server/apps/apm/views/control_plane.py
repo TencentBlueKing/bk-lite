@@ -15,12 +15,15 @@ from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
     ApmApplication,
+    ApmApplicationOrganization,
     ApmEventSnapshot,
     ApmPolicy,
     ApmPolicyOrganization,
     ApmPolicyNotificationTarget,
     ApmService,
     ApmServiceInstance,
+    ApmServiceInstanceOrganization,
+    ApmServiceOrganization,
     ApmSlo,
 )
 from apps.apm.pagination import ApmCatalogPagination
@@ -62,7 +65,7 @@ from apps.apm.services import (
     NotificationChannelDirectory,
 )
 from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
-from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations, visible_organization_ids
+from apps.apm.services.access import current_organization_id, filter_current_organization, scope_catalog_queryset, validate_assignable_organizations, visible_organization_ids
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
@@ -175,11 +178,17 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
     service = DjangoApmApplicationService()
 
     def get_queryset(self) -> QuerySet[ApmApplication]:
-        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True))
-        organization_ids = visible_organization_ids(self.request)
-        if not organization_ids:
-            return queryset.none()
-        return queryset.filter(organization_links__organization__in=organization_ids, is_builtin=False).distinct()
+        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True)).filter(
+            is_builtin=False
+        )
+        return scope_catalog_queryset(
+            queryset,
+            self.request,
+            "organization_links",
+            ApmApplicationOrganization,
+            fk_name="application_id",
+            for_list=self.action == "list",
+        )
 
     @HasPermission("applications-View,integration_add-View,services-View,integration_instances-View")
     def list(self, request, *args, **kwargs):
@@ -352,7 +361,14 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 )
         elif self.action != "restore" and self.request.query_params.get("include_archived") != "true":
             queryset = queryset.filter(archived_at__isnull=True)
-        return filter_current_organization(queryset, self.request, "organization_links").distinct().order_by("-last_seen_at", "id")
+        return scope_catalog_queryset(
+            queryset,
+            self.request,
+            "organization_links",
+            ApmServiceOrganization,
+            fk_name="service_id",
+            for_list=self.action == "list",
+        ).order_by("-last_seen_at", "id")
 
     @HasPermission("services-View")
     def list(self, request, *args, **kwargs):
@@ -603,7 +619,14 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                         "version",
                     ),
                 )
-        return filter_current_organization(queryset, self.request, "organization_links").order_by("-last_seen_at", "id")
+        return scope_catalog_queryset(
+            queryset,
+            self.request,
+            "organization_links",
+            ApmServiceInstanceOrganization,
+            fk_name="instance_id",
+            for_list=self.action == "list",
+        ).order_by("-last_seen_at", "id")
 
     @HasPermission("integration_instances-View")
     def list(self, request, *args, **kwargs):
@@ -652,10 +675,14 @@ class ApmSloViewSet(viewsets.GenericViewSet):
         )
         return get_object_or_404(queryset, id=service_id)
 
-    def _serialize(self, slo):
+    def _serialize(self, slo, *, evaluation=None, evaluated_at=None, service=None):
         data = self.get_serializer(slo).data
+        evaluated_at = evaluated_at or timezone.now()
         try:
-            evaluation = self._service().evaluate(slo, evaluated_at=timezone.now())
+            if evaluation is None:
+                evaluation = (service or self._service()).evaluate(slo, evaluated_at=evaluated_at)
+            if isinstance(evaluation, Exception):
+                raise evaluation
             data.update(asdict(evaluation))
         except (TelemetryStoreUnavailable, ValueError) as exc:
             data.update(
@@ -664,7 +691,7 @@ class ApmSloViewSet(viewsets.GenericViewSet):
                     "budget_remaining": None,
                     "data_state": "unavailable",
                     "started_at": None,
-                    "ended_at": timezone.now(),
+                    "ended_at": evaluated_at,
                     "reason": str(exc),
                 }
             )
@@ -672,7 +699,16 @@ class ApmSloViewSet(viewsets.GenericViewSet):
 
     @HasPermission("services-View")
     def list(self, request, *args, **kwargs):
-        return Response([self._serialize(slo) for slo in self.get_queryset()[:200]])
+        slos = list(self.get_queryset()[:200])
+        service = self._service()
+        evaluated_at = timezone.now()
+        evaluations = service.evaluate_many(slos, evaluated_at=evaluated_at)
+        return Response(
+            [
+                self._serialize(slo, evaluation=evaluations.get(slo.id), evaluated_at=evaluated_at, service=service)
+                for slo in slos
+            ]
+        )
 
     @HasPermission("services-View")
     def retrieve(self, request, *args, **kwargs):

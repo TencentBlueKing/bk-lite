@@ -1,7 +1,8 @@
 NetworkService BlueCat SNMP:
   name: BlueCat (Telegraf)
-  desc: SNMP monitoring template for BlueCat network service device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for BlueCat network service device. It reports DNS status, DNS
+    successful query rate, CPU usage, memory usage, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -100,6 +101,12 @@ monitor_object_metric:
     network_service_spectracom_ntp_stratum:
       name: Spectracom NTP Stratum
       desc: Current Spectracom NTP stratum level.
+    network_service_bluecat_dns_state:
+      name: BlueCat DNS Status
+      desc: BCN-DNS operational state, normalized to 1=healthy and 2=fault.
+    network_service_bluecat_dns_query_success:
+      name: BlueCat DNS Successful Queries
+      desc: Rate of BCN-DNS queries that resulted in a successful answer.
 monitor_object_metric_group:
   NetworkService:
     Base: Base

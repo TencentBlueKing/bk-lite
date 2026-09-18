@@ -1,6 +1,6 @@
 Loadbalance RELIANOID SNMP:
   name: RELIANOID（Telegraf）
-  desc: 面向 RELIANOID 负载均衡器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 RELIANOID 负载均衡器的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、可选负载均值、每端口入向流量速率、每端口出向流量速率和运行时长。
 monitor_object:
   Loadbalance: 负载均衡
 monitor_object_type:
@@ -18,20 +18,30 @@ monitor_object_metric:
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
     device_memory_free:
       name: 空闲内存
-      desc: 该指标报告设备当前空闲的物理内存字节数。空闲内存持续偏低可能意味着内存压力上升。
+      desc: 该指标报告 RELIANOID 负载均衡器当前空闲的物理内存字节数（UCD-SNMP memAvailReal，原始单位 kB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 F5 BIG-IP 负载均衡器的整体 CPU 使用率（F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s，5
-        秒采样）。持续偏高说明流量处理或 SSL 卸载负载吃紧。
+      desc: 该指标报告 RELIANOID 负载均衡器的整体 CPU 使用率，由 UCD-SNMP ssCpuIdle 按 100−idle 计算；缺 idle
+        时回退为 ssCpuUser+ssCpuSystem。持续偏高说明流量处理负载吃紧。
     device_memory_total:
       name: 内存总量
-      desc: 该指标报告 F5 BIG-IP 的物理内存总容量（F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal），单位为字节。
+      desc: 该指标报告 RELIANOID 负载均衡器的物理内存总量（UCD-SNMP memTotalReal，原始单位 kB，已换算为字节）。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告 F5 BIG-IP 当前已使用的内存字节数（F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed）。
+      desc: 该指标报告 RELIANOID 负载均衡器当前已使用的内存字节数，按 memTotalReal − memAvailReal 计算并由 kB 换算为字节。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 F5 BIG-IP 整体内存使用率，按 已用/总量 计算（100*used/total）。持续偏高可能由连接表过大或内存泄漏导致。
+      desc: 该指标报告 RELIANOID 负载均衡器整体内存使用率，按 (memTotalReal − memAvailReal) / memTotalReal
+        × 100 计算。持续偏高可能影响连接处理性能。
+    device_load1:
+      name: 1 分钟负载
+      desc: RELIANOID 负载均衡器可选的 1 分钟平均负载（UCD-SNMP laLoad.1）。
+    device_load5:
+      name: 5 分钟负载
+      desc: RELIANOID 负载均衡器可选的 5 分钟平均负载（UCD-SNMP laLoad.2）。
+    device_load15:
+      name: 15 分钟负载
+      desc: RELIANOID 负载均衡器可选的 15 分钟平均负载（UCD-SNMP laLoad.3）。
     lb_current_connections:
       name: 当前连接数
       desc: 该指标报告 F5 BIG-IP 当前的客户端活动连接数（F5-BIGIP-SYSTEM-MIB sysStatClientCurConns）。连接数快速攀升可能意味着流量洪泛或连接表压力。

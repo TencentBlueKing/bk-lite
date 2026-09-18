@@ -245,8 +245,9 @@ class DjangoApmTopologyService:
             identity = _identity(target.service_namespace, target.service_name, target.environment)
             visible[identity] = target
             languages_by_identity[identity] = target.language
+        selected_names = {target.service_name for target in selected_targets if target.service_name}
         service_names = (
-            tuple(dict.fromkeys(name for name in sample_service_names if name))
+            tuple(dict.fromkeys(name for name in sample_service_names if name and name in selected_names))
             if sample_service_names is not None
             else tuple(dict.fromkeys(target.service_name for target in selected_targets if target.service_name))
         )

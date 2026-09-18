@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_infinera",
   "plugin": "Transmission Infinera SNMP",
-  "plugin_desc": "Infinera optical transport SNMP baseline child template. This child template relies on the shared Transmission SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "Infinera optical transport SNMP child template (LUM-SYSINFO, enterprise PEN 8708). Beyond the shared Transmission SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects per-board Unix-style load averages (sysinfoBoardLoadLoad1Min/5Min/15Min mapped as load_1m/load_5m/load_15m). These are load averages, not 0-100 CPU percent, and must not be treated as CPU utilization. It also collects per-board memory utilization (sysinfoBoardMemoryUsageMemPercent mapped as memory_usage_percent, reported directly as a 0-100 percentage) plus optional board memory total/free/available counters when the device returns them. Temperature, fan and power-supply health are not exposed as stable shared scalars in this pass, so they are N/A. Supported brands/models — Infinera optical transport platforms under enterprise 8708.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_infinera'}) by (instance_id)",
   "name": "Transmission",
@@ -14,9 +14,102 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "load_1m",
+    "memory_usage_percent"
   ],
   "metrics": [
+    {
+      "metric_group": "Load",
+      "name": "load_1m",
+      "query": "max(load_1m{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Load Average 1m",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "1-minute Unix-style load average of each Infinera board (LUM-SYSINFO sysinfoBoardLoadLoad1Min under enterprise PEN 8708). This is a load average, not a 0-100 CPU percent. The query takes the maximum across boards."
+    },
+    {
+      "metric_group": "Load",
+      "name": "load_5m",
+      "query": "max(load_5m{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Load Average 5m",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "5-minute Unix-style load average of each Infinera board (LUM-SYSINFO sysinfoBoardLoadLoad5Min under enterprise PEN 8708). This is a load average, not a 0-100 CPU percent. The query takes the maximum across boards."
+    },
+    {
+      "metric_group": "Load",
+      "name": "load_15m",
+      "query": "max(load_15m{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Load Average 15m",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "15-minute Unix-style load average of each Infinera board (LUM-SYSINFO sysinfoBoardLoadLoad15Min under enterprise PEN 8708). This is a load average, not a 0-100 CPU percent. The query takes the maximum across boards."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_usage_percent",
+      "query": "max(memory_usage_percent{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of each Infinera board (LUM-SYSINFO sysinfoBoardMemoryUsageMemPercent under enterprise PEN 8708), reported directly as a 0-100 percentage. The query takes the maximum across boards."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_total",
+      "query": "sum(memory_total{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional total board memory reported by LUM-SYSINFO sysinfoBoardMemoryUsageMemTotal (enterprise PEN 8708). Some revisions omit this column. The value is the MIB counter as returned."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_free",
+      "query": "sum(memory_free{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional free board memory reported by LUM-SYSINFO sysinfoBoardMemoryUsageMemFree (enterprise PEN 8708). Some revisions omit this column. The value is the MIB counter as returned."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_available",
+      "query": "sum(memory_available{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Memory Available",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional available board memory reported by LUM-SYSINFO sysinfoBoardMemoryUsageMemAvailable (enterprise PEN 8708). Some revisions omit this column. The value is the MIB counter as returned."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

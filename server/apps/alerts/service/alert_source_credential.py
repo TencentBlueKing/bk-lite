@@ -27,7 +27,7 @@ class AlertSourceCredentialService:
         if getattr(user, "is_superuser", False):
             return team_id
         if team_id not in cls._team_ids(user):
-            raise PermissionDenied("无权管理该组织的告警源密钥")
+            raise PermissionDenied("无权管理该组织的集成源密钥")
         return team_id
 
     @classmethod
@@ -90,7 +90,7 @@ class AlertSourceCredentialService:
             try:
                 source = AlertSource.objects.select_for_update().get(pk=source_id)
             except AlertSource.DoesNotExist as error:
-                raise NotFound("告警源不存在") from error
+                raise NotFound("集成源不存在") from error
 
             if source.source_id == SNMP_TRAP_SOURCE_ID:
                 raise ValidationError({"detail": "SNMP Trap 不支持组织密钥"})

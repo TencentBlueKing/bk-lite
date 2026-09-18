@@ -68,3 +68,33 @@ def test_混合请求仅保留授权部分():
         {"id": 5, "name": "mysql", "kwargs": []},
         {"name": "fileupload", "kwargs": []},
     ]
+
+
+def test_身份类内置负id即使展示名不同也保留():
+    """前端把 display_name 放进 name、canonical 名放进 rawName；负 ID 仍须按 Skill 授权放行。"""
+    skill_tools = [
+        {"id": 14, "name": "monitor", "kwargs": []},
+        {"id": -7, "name": "cmdb", "kwargs": []},
+        {"id": -8, "name": "alerts", "kwargs": []},
+        {"id": -9, "name": "log", "kwargs": []},
+    ]
+    request_tools = [
+        {"id": 14, "name": "监控", "rawName": "monitor", "kwargs": []},
+        {"id": -7, "name": "CMDB", "rawName": "cmdb", "kwargs": []},
+        {"id": -8, "name": "告警中心", "rawName": "alerts", "kwargs": []},
+        {"id": -9, "name": "日志中心", "rawName": "log", "kwargs": []},
+    ]
+    assert resolve_request_tools(request_tools, skill_tools) == request_tools
+
+
+def test_伪造负id即使name命中也不放行():
+    """负 ID 同样只认 ID，避免用已授权 name + 伪造内置 ID 注入未授权工具。"""
+    skill_tools = [{"id": -7, "name": "cmdb", "kwargs": []}]
+    request_tools = [{"id": -99, "name": "cmdb", "rawName": "cmdb", "kwargs": []}]
+    assert resolve_request_tools(request_tools, skill_tools) == []
+
+
+def test_无id时按rawName授权内置工具():
+    skill_tools = [{"id": -7, "name": "cmdb", "kwargs": []}]
+    request_tools = [{"name": "CMDB", "rawName": "cmdb", "kwargs": []}]
+    assert resolve_request_tools(request_tools, skill_tools) == request_tools

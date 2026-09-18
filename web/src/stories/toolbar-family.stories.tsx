@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import { Button, Dropdown, Input, Radio, Select, Segmented, Space, Typography } from 'antd';
+import { Button, Dropdown, Input, Select, Segmented, Space, Typography } from 'antd';
 import {
   DownOutlined,
   PlusOutlined,
@@ -18,7 +18,36 @@ import SearchCombinationToolbar from '@/components/search-combination-toolbar';
 import SelectableTagFilterGroup from '@/components/selectable-tag-filter-group';
 import TimeSelector from '@/components/time-selector';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
-import type { TimeSelectorRef } from '@/types';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
+import { UserInfoContext } from '@/context/userInfo';
+import type { TimeSelectorRef, UserInfoContextType } from '@/types';
+
+const SUPERUSER_STUB: UserInfoContextType = {
+  loading: false,
+  roles: [],
+  groups: [],
+  groupTree: [],
+  selectedGroup: null,
+  flatGroups: [],
+  isSuperUser: true,
+  isFirstLogin: false,
+  userId: 'story',
+  username: 'story',
+  displayName: 'story',
+  setSelectedGroup: () => undefined,
+  refreshUserInfo: async () => undefined,
+};
+
+const CatalogScopeStoryControl = () => {
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  return (
+    <CatalogScopeSegmented
+      unassignedOnly={unassignedOnly}
+      onChange={setUnassignedOnly}
+      count={3}
+    />
+  );
+};
 
 const FamilyOverview = () => {
   return (
@@ -31,15 +60,13 @@ const FamilyOverview = () => {
           <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-2)] p-4">
             <ToolbarSplitShell
               leading={(
-                <Radio.Group defaultValue="file">
-                  <Radio.Button value="file">Local file (12)</Radio.Button>
-                  <Radio.Button value="web">Web link (4)</Radio.Button>
-                  <Radio.Button value="manual">Manual text (8)</Radio.Button>
-                </Radio.Group>
+                <Input.Search allowClear className="w-60" placeholder="Search knowledge source" />
               )}
               trailing={(
                 <>
-                  <Input.Search allowClear className="w-60" placeholder="Search knowledge source" />
+                  <UserInfoContext.Provider value={SUPERUSER_STUB}>
+                    <CatalogScopeStoryControl />
+                  </UserInfoContext.Provider>
                   <Button icon={<ReloadOutlined />} />
                   <Button type="primary" icon={<PlusOutlined />}>
                     Add source

@@ -92,8 +92,21 @@ class CollectorReleasePluginService:
         hash_metrics.pop("_mark_objects_builtin", None)
 
         templates = payload.get("templates") or []
+        previous_fingerprint = ""
         try:
             with transaction.atomic():
+                existing = MonitorPlugin.objects.filter(name=plugin_name).only("pack_content_sha256", "pack_version").first()
+                previous_fingerprint = (existing.pack_content_sha256 or "") if existing else ""
+                previous_version = (existing.pack_version or "") if existing else ""
+                # 导入新包前，把仍匹配旧指纹且未记录版本的配置钉上旧包版本，避免界面把「当前」当成新版本。
+                if existing and previous_fingerprint and previous_version:
+                    from apps.monitor.models import CollectConfig
+
+                    CollectConfig.objects.filter(
+                        monitor_plugin=existing,
+                        applied_content_sha256=previous_fingerprint,
+                        applied_pack_version="",
+                    ).update(applied_pack_version=previous_version)
                 MonitorPluginService.import_monitor_plugin(metrics)
                 plugin = MonitorPlugin.objects.get(name=plugin_name)
                 plugin.pack_version = version
@@ -129,7 +142,12 @@ class CollectorReleasePluginService:
 
         PluginGuideService.clear_plugin_dir_cache()
         clear_ui_file_overlay_cache()
-        return {"plugin": plugin_name, "pack_version": version}
+        return {
+            "plugin": plugin_name,
+            "pack_version": version,
+            "previous_fingerprint": previous_fingerprint,
+            "pack_content_sha256": plugin.pack_content_sha256,
+        }
 
     @staticmethod
     def current_plugin_fingerprint(plugin_name: str) -> dict:
@@ -162,16 +180,55 @@ class CollectorReleasePluginService:
             raise BaseAppException(f"未找到内置插件 {plugin_name}")
 
         plugin = MonitorPlugin.objects.filter(name=plugin_name).first()
+        previous_fingerprint = (plugin.pack_content_sha256 or "") if plugin else ""
+        previous_version = (plugin.pack_version or "") if plugin else ""
+        metrics_payload = {}
+        try:
+            metrics_payload = json.loads(Path(matched[0]).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, IndexError):
+            metrics_payload = {}
         if plugin:
+            if previous_fingerprint and previous_version:
+                from apps.monitor.models import CollectConfig
+
+                CollectConfig.objects.filter(
+                    monitor_plugin=plugin,
+                    applied_content_sha256=previous_fingerprint,
+                    applied_pack_version="",
+                ).update(applied_pack_version=previous_version)
             plugin.pack_version = ""
-            plugin.pack_content_sha256 = ""
-            plugin.save(update_fields=["pack_version", "pack_content_sha256"])
+            plugin.save(update_fields=["pack_version"])
 
         _import_plugins_from_files(matched)
         plugins_dict = _load_plugins_to_memory()
         all_config_templates, all_ui_templates = _load_templates_to_memory()
         templates_data = _collect_templates_to_process(matched, plugins_dict, all_config_templates, all_ui_templates)
         _batch_save_templates(templates_data)
+        plugin = MonitorPlugin.objects.filter(name=plugin_name).first()
+        builtin_fp = ""
+        if plugin:
+            ui_obj = MonitorPluginUITemplate.objects.filter(plugin=plugin).first()
+            templates = list(
+                MonitorPluginConfigTemplate.objects.filter(plugin=plugin).values(
+                    "type",
+                    "config_type",
+                    "file_type",
+                    "content",
+                )
+            )
+            builtin_fp = CollectorReleasePluginService.content_sha256(
+                metrics_payload,
+                ui_obj.content if ui_obj else {},
+                templates,
+            )
+            plugin.pack_version = ""
+            plugin.pack_content_sha256 = builtin_fp
+            plugin.save(update_fields=["pack_version", "pack_content_sha256"])
         PluginGuideService.clear_plugin_dir_cache()
         clear_ui_file_overlay_cache()
-        return {"plugin": plugin_name, "pack_version": ""}
+        return {
+            "plugin": plugin_name,
+            "pack_version": "",
+            "previous_fingerprint": previous_fingerprint,
+            "pack_content_sha256": builtin_fp,
+        }

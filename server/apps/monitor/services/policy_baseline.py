@@ -154,7 +154,7 @@ class PolicyBaselineService:
             metric_query_service = MetricQueryService(self.policy, instances_map)
             metric_query_service.set_monitor_obj_instance_key()
 
-            metrics = metric_query_service.query_aggregation_metrics(self.policy.period)
+            metrics = metric_query_service.query_existence_metrics(self.policy.period)
 
             result = {}
             group_by_keys = self._get_result_group_by(metric_query_service)

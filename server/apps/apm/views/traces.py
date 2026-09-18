@@ -110,7 +110,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
                 filter_items=lambda items: self.access.filter_summaries(items, organization_ids),
                 cursor=query.cursor,
                 limit=query.limit,
-                encode_cursor=lambda item: _encode_cursor(item.started_at),
+                encode_cursor=lambda item: _encode_cursor(item.started_at, item.trace_id),
             )
         except ValueError as exc:
             return Response(
@@ -130,6 +130,9 @@ class ApmTraceViewSet(viewsets.ViewSet):
         except TelemetryStoreUnavailable as exc:
             return Response(telemetry_error_payload(exc), status=status.HTTP_503_SERVICE_UNAVAILABLE)
         organization_ids = visible_organization_ids(request)
-        if detail is None or not organization_ids or not self.access.can_view_detail(detail, organization_ids):
+        if detail is None or not organization_ids:
             raise Http404
-        return Response(_detail_data(detail))
+        visible = self.access.filter_detail(detail, organization_ids)
+        if visible is None:
+            raise Http404
+        return Response(_detail_data(visible))

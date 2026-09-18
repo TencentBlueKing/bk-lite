@@ -193,6 +193,29 @@ def test_push_monitor_calls_monitor_linkage_without_notimplemented(mocker, node)
 
 
 @pytest.mark.django_db
+def test_push_monitor_forwards_user_info(mocker, node):
+    monitor = mocker.patch("apps.node_mgmt.services.module_push.MonitorLinkage")
+    monitor.return_value.ingest_from_source.return_value = {
+        "id": "mon-1",
+        "created": True,
+        "updated": False,
+        "ignored": False,
+        "claimed": False,
+    }
+    from apps.node_mgmt.services.module_push import ModulePushService
+
+    user_info = {"user": "alice", "domain": "domain.com", "team": 1, "include_children": False}
+    ModulePushService.push_node(
+        node.id,
+        targets=["monitor"],
+        actor_scope={"allowed_org_ids": [1], "operator": "alice", "user_info": user_info},
+    )
+
+    kwargs = monitor.return_value.ingest_from_source.call_args.kwargs
+    assert kwargs["user_info"] == user_info
+
+
+@pytest.mark.django_db
 def test_push_monitor_with_existing_cmdb_id_carries_link(mocker, node):
     node.cmdb_id = "1704"
     node.save(update_fields=["cmdb_id"])

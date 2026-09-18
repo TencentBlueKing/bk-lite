@@ -32,20 +32,86 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns: ifInOctets/ifOutOctets/ifInErrors/ifOutErrors/ifInDiscards/ifOutDiscards/ifInUcastPkts/ifOutUcastPkts/ifSpeed/ifAdminStatus/ifOperStatus) ----
+# @bk_include_ifmib_table
+    # ---- 系统内存（juniSystemMemUtilPct，Integer32 %；-1 为未知，丢弃该字段，不当作 0%）----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.2.1.2.2"
-        name = "interface"
+        name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.1.3"
+        name = "usage"
+    # ---- 模块 CPU（juniSystemModuleSoftwareTable，INDEX slot.level，整表 walk，不写死行）----
+    # juniSystemModuleCpuUtilPct → device_cpu_usage；可选 1 分钟 / 5 分钟平均。-1 为未知，丢弃。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.3.5.1.3"
+        name = "usage"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-# ---- CPU/内存/温度/风扇/电源：Unisphere Networks / Juniper E-series（ERX）边缘路由器的私有 MIB（企业号 4064 / Juniper-Unisphere 4874）未以无需行级过滤的稳定标量形式公开可靠轮询的 CPU/内存/温度/风扇/电源设备健康量 → 全部 N/A 不采。本基线模板仅采集标准 MIB-II 运行时长与 IF-MIB（含 64 位 HC）接口指标，干净可采。----
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.3.5.1.10"
+        name = "usage_1min"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.3.5.1.11"
+        name = "usage_5min"
+    # ---- 模块内存（juniSystemModuleMemUtilPct，按卡辅助；主内存仍用系统标量）----
+    [[inputs.snmp.table]]
+        name = "device_module_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.3.5.1.4"
+        name = "usage"
+    # ---- 温度（juniSystemTempValue，℃，INDEX tempIndex）----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.9.4.1.3"
+        name = "celsius"
+    # ---- 电源状态（juniSystemPowerStatus，up(3) 为正常，其余归一为异常）----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.8.2.1.2"
+        name = "state"
+    # ---- 风扇状态（juniSystemFanStatus，up(3) 为正常，其余归一为异常）----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.9.2.1.2"
+        name = "state"
+
+[[processors.starlark]]
+    namepass = ["device_cpu", "device_memory", "device_module_memory"]
+    source = '''
+def apply(metric):
+    for key in ("usage", "usage_1min", "usage_5min"):
+        value = metric.fields.get(key)
+        if value == -1:
+            metric.fields.pop(key)
+    if metric.fields.get("usage") == None and metric.fields.get("usage_1min") == None and metric.fields.get("usage_5min") == None:
+        return None
+    return metric
+'''
+
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "3" = 1
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "3" = 1

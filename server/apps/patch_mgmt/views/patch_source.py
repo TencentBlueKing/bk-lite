@@ -95,30 +95,27 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
         log_source_changed(request, "update", instance.name)
         if changed_connection:
             from apps.patch_mgmt.constants import ConnectivityStatus
+            from apps.patch_mgmt.services.patch_source_service import PatchSourceService
 
-            instance.connectivity_status = ConnectivityStatus.UNKNOWN
-            instance.last_checked_at = None
-            instance.save(
-                update_fields=[
-                    "connectivity_status",
-                    "last_checked_at",
-                    "updated_at",
-                ]
-            )
-            self._enqueue_connectivity_probe(instance.id)
+            with transaction.atomic():
+                PatchSourceService.reset_connectivity_after_config_change(instance)
+            self._enqueue_connectivity_probe(instance.id, instance.connectivity_revision)
             response.data["connectivity_status"] = ConnectivityStatus.UNKNOWN
             response.data["last_checked_at"] = None
         return response
 
     @staticmethod
-    def _enqueue_connectivity_probe(source_id):
+    def _enqueue_connectivity_probe(source_id, revision=None):
         """提交后台连通性探测，保存接口不等待外部网络。"""
         if not source_id:
             return
         try:
             from apps.patch_mgmt.tasks import check_patch_source_connectivity
 
-            check_patch_source_connectivity.delay(source_id)
+            if revision is None:
+                check_patch_source_connectivity.delay(source_id)
+            else:
+                check_patch_source_connectivity.delay(source_id, revision)
         except Exception as exc:  # noqa: BLE001
             logger.warning("提交连通性探测失败 source_id=%s: %s", source_id, exc)
 
@@ -132,7 +129,9 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
             source = PatchSource.objects.get(pk=source_id)
             result = probe_source(source)
             if result is not None:
-                SourceSyncService.record_connectivity_result(source, result.reachable)
+                SourceSyncService.record_connectivity_result(
+                    source, result.reachable, revision=source.connectivity_revision
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("连通性探测失败 source_id=%s: %s", source_id, exc)
 
@@ -427,7 +426,7 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
         for source_id in requested_source_ids:
             try:
                 source = self.get_queryset().get(pk=source_id)
-                check_patch_source_connectivity(source.id)
+                check_patch_source_connectivity(source.id, source.connectivity_revision)
                 source.refresh_from_db()
                 results.append({
                     "source_id": source.id,

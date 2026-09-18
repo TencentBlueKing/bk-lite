@@ -1,7 +1,9 @@
 Switch Kyland SNMP:
   name: Kyland (Telegraf)
-  desc: SNMP monitoring template for Kyland switch. It reports per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime (IANA PEN 26067).
+  desc: SNMP monitoring template for Kyland switch. It reports CPU utilization, memory
+    utilization, master and backup power state, per-port inbound traffic rate, per-port
+    outbound traffic rate, and system uptime (IANA PEN 26067). Some models may not
+    implement devMemoryUtilRate / devRingLoadRate.
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -258,6 +260,9 @@ monitor_object_metric:
         power module operating temperature; abnormally high values may indicate blocked
         airflow, failing fans or excessive ambient heat, which can trigger thermal
         protection or hardware damage if left unaddressed.
+    device_psu_state_backup:
+      name: PSU Backup State
+      desc: Operational state of the device backup power supply unit, normalized to normal or abnormal.
 monitor_object_metric_group:
   Switch:
     Base: Base
@@ -278,3 +283,4 @@ monitor_object_metric_group:
     Application Port: Application Port
     Endpoint: Endpoint
     Conversation: Conversation
+    Power: Power
