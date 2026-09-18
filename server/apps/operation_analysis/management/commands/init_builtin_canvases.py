@@ -12,7 +12,7 @@ support-files/zombie_host_report.yaml 中的内置定义，
 - 命名空间冲突复用已有对象，内置数据源按稳定 key 覆盖更新
 - 内置画布按 build_in_key 原位同步，保留主键和组织可见性
 - 新增画布遇到用户同名对象时跳过，避免覆盖用户数据
-- 新建内置画布/目录默认属于 Default 组织；存量 groups 作为运营配置保留
+- 新建内置画布/目录默认属于 Default 组织；存量与认领同名目录的 groups 作为运营配置保留
 - 新建内置数据源 groups=[]（全员可见）；存量仅 Default 的名单清成空，已收口名单保留
 """
 
@@ -82,11 +82,10 @@ def _get_or_create_builtin_directory(groups):
     # 处理同名目录冲突（name+parent 有唯一约束，parent=None）
     existing_by_name = Directory.objects.filter(name=BUILTIN_DIRECTORY_NAME, parent=None).first()
     if existing_by_name:
-        # 已有同名根目录但非内置，标记为内置
+        # 已有同名根目录但非内置，标记为内置；组织可见性是运营配置，初始化不得覆盖。
         existing_by_name.is_build_in = True
         existing_by_name.build_in_key = BUILTIN_DIRECTORY_KEY
-        existing_by_name.groups = groups
-        existing_by_name.save(update_fields=["is_build_in", "build_in_key", "groups"])
+        existing_by_name.save(update_fields=["is_build_in", "build_in_key"])
         return existing_by_name
 
     directory = Directory.objects.create(

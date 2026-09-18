@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest';
 import type { DirItem } from '@/app/ops-analysis/types';
 import {
   buildCopyDirectoryTree,
+  buildDirectoryEditPayload,
   collectDirectoryChainGroupIds,
   collectDirectoryExpandKeys,
   convergeCopyGroups,
   defaultCopyGroups,
   filterGroupTreeByAllowedIds,
   getSidebarCanvasMenuKeys,
+  getSidebarDirectoryMenuKeys,
+  isBuiltinDirectory,
   shouldShowCanvasCopyAction,
 } from '../canvasDirectoryCopy';
 
@@ -56,6 +59,34 @@ const tree: DirItem[] = [
     ],
   },
 ];
+
+describe('builtin directory visibility edit', () => {
+  it('treats only builtin directories as organization-editable builtins', () => {
+    expect(isBuiltinDirectory({ type: 'directory', is_build_in: true })).toBe(true);
+    expect(isBuiltinDirectory({ type: 'directory', is_build_in: false })).toBe(false);
+    expect(isBuiltinDirectory({ type: 'dashboard', is_build_in: true })).toBe(false);
+  });
+
+  it('offers only edit on builtin directories', () => {
+    expect(getSidebarDirectoryMenuKeys({ type: 'directory', is_build_in: true })).toEqual(['edit']);
+    expect(getSidebarDirectoryMenuKeys({ type: 'dashboard', is_build_in: true })).toEqual([]);
+  });
+
+  it('submits only groups when editing a builtin directory', () => {
+    expect(
+      buildDirectoryEditPayload(
+        { type: 'directory', is_build_in: true },
+        { name: '内置目录', desc: '不可改', groups: [1, 2] },
+      ),
+    ).toEqual({ groups: [1, 2] });
+    expect(
+      buildDirectoryEditPayload(
+        { type: 'directory' },
+        { name: '自定义目录', desc: '说明', groups: [1] },
+      ),
+    ).toEqual({ name: '自定义目录', desc: '说明', groups: [1] });
+  });
+});
 
 describe('canvas copy menu', () => {
   it('offers copy on ordinary and builtin canvases, not directories', () => {
