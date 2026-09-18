@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import {
   Button,
   Form,
-  Input,
   message,
   Popconfirm,
   Space,
@@ -22,6 +21,7 @@ import {
 } from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PageLayout from '@/components/page-layout';
 import SearchActionBar from '@/components/search-action-bar';
 import TopSection from '@/components/top-section';
@@ -88,11 +88,11 @@ function renderSyncPeriod(
 
   if (!scheduleEnabled) {
     return (
-      <div className="leading-6">
-        <div className="text-base font-semibold text-[var(--color-text-1)]">
+      <div className="min-w-0 leading-6">
+        <div className="truncate text-base font-semibold text-[var(--color-text-1)]">
           {t('system.channel.imNotificationPage.syncPeriodManualTitle')}
         </div>
-        <div className="font-xs text-[var(--color-text-3)]">
+        <div className="truncate text-xs text-[var(--color-text-3)]">
           {t('system.channel.imNotificationPage.syncPeriodManualDesc')}
         </div>
       </div>
@@ -100,13 +100,13 @@ function renderSyncPeriod(
   }
 
   return (
-    <div className="leading-6">
-      <div className="text-base font-semibold text-[var(--color-text-1)]">
+    <div className="min-w-0 leading-6">
+      <div className="truncate text-base font-semibold text-[var(--color-text-1)]">
         {syncTime
           ? `${t('system.channel.imNotificationPage.syncPeriodDailyTitle')} ${syncTime}`
           : t('system.channel.imNotificationPage.syncPeriodDailyTitle')}
       </div>
-      <div className="text-xs text-[var(--color-text-3)]">
+      <div className="truncate text-xs text-[var(--color-text-3)]">
         {t('system.channel.imNotificationPage.syncPeriodDailyDesc')}
       </div>
     </div>
@@ -482,12 +482,15 @@ const ImNotificationPage: React.FC = () => {
       key: 'name',
       title: t('system.channel.imNotificationPage.name'),
       dataIndex: 'name',
-      render: (_, record) => {
-        return (<>
-          <p className='font-semibold'>{record.name}</p>
-          <span className='text-xs text-[var(--color-text-3)]'>{record.description || '--'}</span>
-        </>)
-      }
+      render: (_, record) => (
+        <div className="min-w-0">
+          <EllipsisWithTooltip text={record.name} className="truncate font-semibold" />
+          <EllipsisWithTooltip
+            text={record.description || '--'}
+            className="truncate text-xs text-[var(--color-text-3)]"
+          />
+        </div>
+      ),
     },
     {
       key: 'integration_instance_name',
@@ -496,11 +499,14 @@ const ImNotificationPage: React.FC = () => {
       render: (_, record) => {
         const dependencyStatus = record.dependency_status;
         return (
-          <div className="flex items-center gap-2">
-            <span>{record.integration_instance_name} / {record.provider_name || record.provider_key}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <EllipsisWithTooltip
+              className="min-w-0 flex-1 truncate"
+              text={`${record.integration_instance_name} / ${record.provider_name || record.provider_key}`}
+            />
             {dependencyStatus?.available === false ? (
               <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${dependencyStatus.reason}`)}>
-                <Tag color="warning">{t('system.channel.imNotificationPage.dependencyPaused')}</Tag>
+                <Tag className="shrink-0" color="warning">{t('system.channel.imNotificationPage.dependencyPaused')}</Tag>
               </Tooltip>
             ) : null}
           </div>
@@ -515,7 +521,7 @@ const ImNotificationPage: React.FC = () => {
         const status = record.display_sync_status;
         if (status === 'never_synced' || !status) {
           return (
-            <div className="leading-6">
+            <div className="min-w-0 leading-6">
               <span className="text-base font-semibold text-[var(--color-text-3)]">
                 {t('system.channel.imNotificationPage.latestSyncEmpty')}
               </span>
@@ -527,14 +533,14 @@ const ImNotificationPage: React.FC = () => {
         const summary = getLatestSyncSummary(record, t);
 
         return (
-          <div className="leading-6">
-            <div className="text-base font-semibold text-[var(--color-text-1)]">
+          <div className="min-w-0 leading-6">
+            <div className="truncate text-base font-semibold text-[var(--color-text-1)]">
               {latestSyncTime ? renderTime(latestSyncTime) : '--'}
             </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--color-text-3)]">
-              {getSyncRunStatusText(status, t)}
+            <div className="flex min-w-0 items-center gap-2 text-xs text-[var(--color-text-3)]">
+              <span className="shrink-0">{getSyncRunStatusText(status, t)}</span>
               {summary ? (
-                <span>{summary}</span>
+                <EllipsisWithTooltip text={summary} className="min-w-0 truncate" />
               ) : null}
             </div>
           </div>
@@ -582,41 +588,41 @@ const ImNotificationPage: React.FC = () => {
           </Button>
         );
         return (
-        <Space wrap>
-          <PermissionWrapper requiredPermissions={['Edit']}>
+          <Space wrap className="max-w-full">
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => openModal(record)}
+              >
+                {t('common.edit')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              {dependencyUnavailable ? (
+                <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${record.dependency_status.reason}`)}>
+                  <span>{syncButton}</span>
+                </Tooltip>
+              ) : syncButton}
+            </PermissionWrapper>
             <Button
               type="link"
               size="small"
-              onClick={() => openModal(record)}
+              onClick={() => handleViewRecords(record)}
             >
-              {t('common.edit')}
+              {t('system.channel.imNotificationPage.viewRecords')}
             </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            {dependencyUnavailable ? (
-              <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${record.dependency_status.reason}`)}>
-                <span>{syncButton}</span>
-              </Tooltip>
-            ) : syncButton}
-          </PermissionWrapper>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => handleViewRecords(record)}
-          >
-            {t('system.channel.imNotificationPage.viewRecords')}
-          </Button>
-          <PermissionWrapper requiredPermissions={['Delete']}>
-            <Popconfirm
-              title={t('system.channel.imNotificationPage.deleteConfirm')}
-              onConfirm={() => handleDelete(record)}
-            >
-              <Button type="link" size="small" danger>
-                {t('common.delete')}
-              </Button>
-            </Popconfirm>
-          </PermissionWrapper>
-        </Space>
+            <PermissionWrapper requiredPermissions={['Delete']}>
+              <Popconfirm
+                title={t('system.channel.imNotificationPage.deleteConfirm')}
+                onConfirm={() => handleDelete(record)}
+              >
+                <Button type="link" size="small" danger>
+                  {t('common.delete')}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
+          </Space>
         );
       },
     },
@@ -636,9 +642,9 @@ const ImNotificationPage: React.FC = () => {
         />
       )}
       rightSection={(
-        <div className="w-full">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <div className="flex items-center">
+        <div className="flex h-full min-h-0 min-w-0 w-full max-w-full flex-col overflow-hidden">
+          <div className="mb-4 flex min-w-0 items-center justify-between gap-2">
+            <div className="flex shrink-0 items-center">
               <Button
                 color="default"
                 variant="link"
@@ -648,6 +654,7 @@ const ImNotificationPage: React.FC = () => {
             </div>
             <SearchActionBar
               spacing="flush"
+              className="min-w-0"
               searchClassName="!w-[280px]"
               searchProps={{
                 placeholder: t('system.channel.imNotificationPage.search'),
@@ -682,23 +689,21 @@ const ImNotificationPage: React.FC = () => {
             />
           </div>
 
-          <div className="flex h-full">
-            <div className="min-h-0 flex-1 bg-[var(--color-bg)] p-1">
-              <CustomTable
-                rowKey="id"
-                scroll={{ y: 'calc(100vh - 385px)' }}
-                loading={loading}
-                dataSource={filteredChannels}
-                columns={columns}
-                pagination={{
-                  ...pagination,
-                  onChange: (current: number, pageSize: number) => {
-                    const nextPage = pageSize !== pagination.pageSize ? 1 : current;
-                    fetchChannels(nextPage, pageSize);
-                  },
-                }}
-              />
-            </div>
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--color-bg)] p-1">
+            <CustomTable
+              rowKey="id"
+              scroll={{ y: 'calc(100vh - 385px)' }}
+              loading={loading}
+              dataSource={filteredChannels}
+              columns={columns}
+              pagination={{
+                ...pagination,
+                onChange: (current: number, pageSize: number) => {
+                  const nextPage = pageSize !== pagination.pageSize ? 1 : current;
+                  fetchChannels(nextPage, pageSize);
+                },
+              }}
+            />
           </div>
 
           <IMNotificationConfigModal
