@@ -39,6 +39,7 @@ import {
   applyIpAsDefaultNodeName,
   applyWinrmCertificateValidation,
   DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+  mergeCurrentOrganization,
   pickLatestPackage
 } from './utils';
 import { buildOrganizationOptions } from './excelImportUtils';
@@ -117,7 +118,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   );
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const { confirm } = Modal;
-  const { renderTableColumn, renderActionColumn } = useTableRenderer();
+  const currentOrganizationId = commonContext.selectedGroup?.id;
+  const lockedOrganizationIds = useMemo(
+    () => mergeCurrentOrganization(undefined, currentOrganizationId),
+    [currentOrganizationId]
+  );
+  const { renderTableColumn, renderActionColumn } = useTableRenderer(
+    lockedOrganizationIds
+  );
 
   useEffect(() => {
     form.setFieldsValue({ push_targets: soldPushTargets });
@@ -130,7 +138,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     ) => ({
       key: uuidv4(),
       ip: null,
-      organizations: [commonContext.selectedGroup?.id],
+      organizations: mergeCurrentOrganization(undefined, currentOrganizationId),
       port: targetOS === 'windows' ? defaultWinrmPort(scheme) : 22,
       username: targetOS === 'windows' ? 'Administrator' : 'root',
       auth_type: 'password',
@@ -143,7 +151,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           : targetOS !== 'windows',
       node_name: null
     }),
-    [commonContext.selectedGroup?.id]
+    [currentOrganizationId]
   );
   const INFO_ITEM = useMemo(
     () => createInfoItem(os, winrmCertValidation, winrmScheme),
@@ -396,7 +404,15 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           rowWithIpDefault.node_name !== item.node_name;
         const updatedRow = {
           ...rowWithIpDefault,
-          ...editedFields
+          ...editedFields,
+          ...(Object.prototype.hasOwnProperty.call(editedFields, 'organizations')
+            ? {
+                organizations: mergeCurrentOrganization(
+                  editedFields.organizations,
+                  currentOrganizationId
+                )
+              }
+            : {})
         };
         if (
           nodeNameWasSynced ||
@@ -459,6 +475,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       const newRows = importedData.map((row) => ({
         ...createInfoItem(os, winrmCertValidation, winrmScheme),
         ...row,
+        organizations: mergeCurrentOrganization(
+          row.organizations,
+          currentOrganizationId
+        ),
         winrm_scheme: winrmScheme,
         key: uuidv4()
       }));
@@ -658,7 +678,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           ip: item.ip,
           os: os,
           cpu_architecture: cpuArchitecture,
-          organizations: item.organizations,
+          organizations: mergeCurrentOrganization(
+            item.organizations,
+            currentOrganizationId
+          ),
           port: item.port,
           username: item.username,
           password: item.private_key ? '' : item.password,
@@ -671,7 +694,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       } else {
         params.nodes = tableData.map((item) => ({
           ip: item.ip,
-          organizations: item.organizations,
+          organizations: mergeCurrentOrganization(
+            item.organizations,
+            currentOrganizationId
+          ),
           node_name: item.node_name,
           node_id: item.key
         }));
@@ -691,7 +717,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           nodes: tableData.map((item) => ({
             ip: item.ip,
             node_name: item.node_name,
-            organizations: item.organizations,
+            organizations: mergeCurrentOrganization(
+              item.organizations,
+              currentOrganizationId
+            ),
             node_id: item.key as string,
             cpu_architecture: cpuArchitecture
           }))

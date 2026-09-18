@@ -509,7 +509,7 @@ def test_controller_install_rejects_unassignable_organization_batch_without_side
                         "ip": "10.0.3.2",
                         "node_name": "unassignable",
                         "os": "linux",
-                        "organizations": [2],
+                        "organizations": [1, 2],
                         "port": 22,
                         "username": "root",
                     },
@@ -555,7 +555,7 @@ def test_controller_install_allows_assignment_to_authorized_sibling_organization
                         "ip": "10.0.3.3",
                         "node_name": "authorized-sibling",
                         "os": "linux",
-                        "organizations": [2],
+                        "organizations": [1, 2],
                         "port": 22,
                         "username": "root",
                     }
@@ -566,7 +566,7 @@ def test_controller_install_allows_assignment_to_authorized_sibling_organization
     )
 
     assert response.status_code == 200
-    assert installed[0][0][3][0]["organizations"] == [2]
+    assert installed[0][0][3][0]["organizations"] == [1, 2]
     assert delayed == [((1,), {})]
 
 
@@ -595,6 +595,7 @@ def test_controller_manual_install_rejects_empty_organizations(monkeypatch):
     assert response.status_code == 400
 
 
+@pytest.mark.django_db
 def test_get_install_command_rejects_unassignable_organization_before_token(
     monkeypatch,
 ):
@@ -615,7 +616,7 @@ def test_get_install_command_rejects_unassignable_organization_before_token(
                 "cpu_architecture": "x86_64",
                 "package_id": 1,
                 "cloud_region_id": 1,
-                "organizations": [2],
+                "organizations": [1, 2],
             },
             permissions=("cloud_region_node-Edit",),
         )
@@ -662,6 +663,39 @@ def _installer_payload(action, organizations, *, node_id="strict-install-node"):
         "cloud_region_id": 1,
         "organizations": organizations,
     }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "action",
+    ["controller_install", "controller_manual_install", "get_install_command"],
+)
+def test_installer_endpoints_reject_organizations_without_current_team(monkeypatch, action):
+    monkeypatch.setattr(_ScopedSystemMgmt, "assignable_team_ids", [1, 2])
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    business_calls = []
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "install_controller",
+        lambda *args, **kwargs: business_calls.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "get_install_command",
+        lambda *args, **kwargs: business_calls.append((args, kwargs)) or "command",
+    )
+    monkeypatch.setattr(installer_view.install_controller, "delay", lambda *args, **kwargs: None)
+
+    response = installer_view.InstallerViewSet.as_view({"post": action})(
+        _request(
+            _installer_payload(action, [2], node_id="missing-current-org-node"),
+            permissions=("cloud_region_node-Edit",),
+        )
+    )
+
+    assert response.status_code == 403
+    assert json.loads(response.content)["message"] == installer_view.CURRENT_ORGANIZATION_REQUIRED
+    assert business_calls == []
 
 
 @pytest.mark.django_db

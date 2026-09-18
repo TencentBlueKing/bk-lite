@@ -21,6 +21,7 @@ import {
 } from './excelImportUtils';
 import type { OrganizationOption } from './excelImportUtils';
 import { findInstallIpUniquenessError } from './ipUniqueness';
+import { mergeCurrentOrganization } from './utils';
 
 interface ExcelImportModalProps {
   onSuccess: (data: any[]) => void;
@@ -199,7 +200,10 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
                       cellValue,
                       groupList
                     );
-                    rowData[column.name] = resolution.ids;
+                    rowData[column.name] = mergeCurrentOrganization(
+                      resolution.ids,
+                      userContext?.selectedGroup?.id
+                    );
                     resolution.issues.forEach((issue) => {
                       organizationIssues.push({
                         ...issue,

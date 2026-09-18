@@ -6,6 +6,12 @@ vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({ t: (key: string) => key })
 }));
 
+vi.mock('@/components/group-tree-select', () => ({
+  default: ({ lockedValues }: { lockedValues?: number[] }) => (
+    <div data-testid="group-select" data-locked-values={JSON.stringify(lockedValues)} />
+  )
+}));
+
 const ipColumn = {
   name: 'ip',
   label: 'IP address',
@@ -68,5 +74,28 @@ describe('controller install table IP editing', () => {
         node_name: 'production-node'
       }
     ]);
+  });
+});
+
+describe('controller install table organization locking', () => {
+  it('locks the current organization in the organization select', () => {
+    const { result } = renderHook(() => useTableRenderer([7]));
+    const column = result.current.renderTableColumn(
+      {
+        name: 'organizations',
+        label: 'Organization',
+        type: 'group_select',
+        required: true,
+        widget_props: { placeholder: 'Select organization' }
+      },
+      [{ key: 'node-1', organizations: [7] }],
+      vi.fn()
+    );
+
+    render(column.render(null, { key: 'node-1', organizations: [7] }, 0));
+
+    expect(screen.getByTestId('group-select').getAttribute('data-locked-values')).toBe(
+      '[7]'
+    );
   });
 });
