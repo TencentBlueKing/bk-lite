@@ -80,8 +80,7 @@ import {
   coerceThresholdsForCompareMode,
   defaultCompareValueKind,
   getCompareModeSelectOptions,
-  getCompareValueKinds,
-  type SceneChipApplyResult
+  getCompareValueKinds
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import {
@@ -1043,16 +1042,6 @@ const StrategyOperation = () => {
     }
   };
 
-  const handleSceneChipApply = (payload: SceneChipApplyResult) => {
-    setAlgorithm(payload.algorithm);
-    form.setFieldsValue({ algorithm: payload.algorithm });
-    setCompareMode(payload.compareMode);
-    setCompareValueKind(payload.compareValueKind);
-    setThreshold(payload.thresholds as ThresholdField[]);
-    setRecoveryThreshold(payload.recoveryThreshold);
-    setCountPredicate(payload.countPredicate);
-  };
-
   const handleNodataUnitChange = (val: string) => {
     setNodataUnit(val);
     setNoDataAlert(null);
@@ -1548,10 +1537,8 @@ const StrategyOperation = () => {
                             metric ||
                             null
                           }
-                          disableRateAlgorithm={disableRateAlgorithm}
                           countPredicate={countPredicate}
                           onCountPredicateChange={setCountPredicate}
-                          onSceneChipApply={handleSceneChipApply}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onThresholdUnitChange={handleThresholdUnitChange}
