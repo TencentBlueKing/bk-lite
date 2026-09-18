@@ -54,6 +54,8 @@ def _check_permission(identity: CallerIdentity, endpoint: Endpoint) -> bool:
         return True
     if identity.is_superuser:
         return True
+    if endpoint.permission_app and f"{endpoint.permission_app}--admin" in (identity.roles or []):
+        return True
     required = {p.strip() for p in endpoint.permission.split(",") if p.strip()}
     granted = identity.permission.get(endpoint.permission_app, set())
     if not isinstance(granted, set):
