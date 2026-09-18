@@ -428,7 +428,22 @@ def test_real_plugin_replacement_preserves_root_child_uuids_and_relationships(gr
     assert duplicate.exec_status == CollectRunStatusType.ERROR
     assert duplicate.collect_digest["add"] == 0
     assert duplicate.collect_digest["update_error"] == 4
+    assert duplicate.collect_digest["message"] == "同步已停止：此 vCenter 已有资产属于其他采集任务，无法自动接管，请使用原任务或先删除原任务"
     assert all("其他采集任务" in row["_error"] for row in duplicate.format_data["update"])
+    assert graph.rows == before_rows and graph.writes == []
+
+    # 真正的根写入失败仍保留原始详情，不能沿用上一轮的归属冲突摘要。
+    duplicate.delete()
+    graph.fail_root = True
+    graph.rows[root["_id"]]["vc_version"] = "previous version"
+    before_rows = copy.deepcopy(graph.rows)
+    sync_collect_task(new.id, execution_id="vc-root-write-failure-test")
+    new.refresh_from_db()
+    assert new.exec_status == CollectRunStatusType.ERROR
+    assert new.collect_digest["message"] == "资产同步失败，请查看任务详情中的失败原因"
+    assert new.collect_digest["update_error"] == 4
+    assert any("root write failed" in row["_error"] for row in new.format_data["update"])
+    assert "__sync_blocked_reason__" not in new.format_data
     assert graph.rows == before_rows and graph.writes == []
 
 
@@ -485,3 +500,51 @@ def test_legacy_ipv6_spelling_does_not_create_a_second_vc_task(graph, monkeypatc
     s = serializer(new, {"name": "edited"}, monkeypatch)
     assert not s.is_valid()
     assert "其他采集任务" in str(s.errors)
+
+
+@pytest.mark.parametrize("selected_task", ["original", "duplicate"])
+def test_worker_summary_explains_mixed_ownership_without_reporting_write_failure(graph, monkeypatch, selected_task):
+    from apps.cmdb.constants.constants import CollectRunStatusType
+    from apps.cmdb.tasks.celery_tasks import sync_collect_task
+
+    class Collection:
+        def query(self, sql, **kwargs):
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"__name__": "vmware_vc_info_gauge", "collect_status": "success", "inst_name": "remote vc", "vc_version": "8"},
+                            "value": [9999999999, "1"],
+                        },
+                        {
+                            "metric": {
+                                "__name__": "vmware_vm_info_gauge",
+                                "collect_status": "success",
+                                "inst_name": "vm[vm-1]",
+                                "resource_id": "vm-1",
+                                "vmware_esxi": "",
+                                "vmware_ds": "",
+                            },
+                            "value": [9999999999, "1"],
+                        },
+                    ]
+                }
+            }
+
+    monkeypatch.setattr("apps.cmdb.collection.collect_plugin.base.Collection", Collection)
+    root = graph.insert("original", ip_addr="192.0.2.10")
+    alias = graph.insert("duplicate", ip_addr="192.0.2.10")
+    original = task(root, "original")
+    duplicate = task(alias, "duplicate")
+    graph.insert("vm[vm-1]", "vmware_vm", str(original.id))
+    graph.rows[alias["_id"]]["collect_task"] = str(duplicate.id)
+    current = original if selected_task == "original" else duplicate
+    before = copy.deepcopy(graph.rows)
+    sync_collect_task(current.id, execution_id="mixed-ownership-summary-" + selected_task)
+    current.refresh_from_db()
+    assert current.exec_status == CollectRunStatusType.ERROR
+    assert current.collect_digest["message"] == "同步已停止：此 vCenter 存在多个采集任务的混合归属，请先处理冲突"
+    assert current.collect_digest["add"] == 0
+    assert current.collect_digest["update_error"] == 2
+    assert all("混合归属" in row["_error"] for row in current.format_data["update"])
+    assert graph.rows == before and graph.writes == []

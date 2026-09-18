@@ -53,6 +53,7 @@ def collect_vmware(cannula):
                 result.update(cannula._collect_models())
     except VmwareScopeError as error:
         result = rejected(original, error)
+        result["__sync_blocked_reason__"] = str(error)
     finally:
         cannula.collection_metrics = original
         cannula.manual = original_manual
