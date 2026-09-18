@@ -1,5 +1,6 @@
 'use client';
 
+import './register-detail-pilot';
 import React, { useState } from 'react';
 import { Breadcrumb, Button, Segmented } from 'antd';
 import { useTranslation } from '@/utils/i18n';

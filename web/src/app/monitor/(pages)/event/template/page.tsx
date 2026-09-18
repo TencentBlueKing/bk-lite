@@ -1,4 +1,5 @@
 'use client';
+import './register-template-pilot';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Checkbox, Dropdown, Input, message, Modal, Spin, Tag, Tooltip, Upload } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';

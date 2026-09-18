@@ -22,6 +22,24 @@ describe('generate-ai-pilots', () => {
     expect(pathnamePrefixFromPilotFile('monitor/(pages)/event/alert/alert.pilot.ts')).toBe(
       '/monitor/event/alert/',
     );
+    expect(pathnamePrefixFromPilotFile('monitor/(pages)/view/view.pilot.ts')).toBe(
+      '/monitor/view/',
+    );
+    expect(pathnamePrefixFromPilotFile('monitor/(pages)/search/search.pilot.ts')).toBe(
+      '/monitor/search/',
+    );
+    expect(pathnamePrefixFromPilotFile('monitor/(pages)/event/strategy/strategy.pilot.ts')).toBe(
+      '/monitor/event/strategy/',
+    );
+    expect(pathnamePrefixFromPilotFile('monitor/(pages)/event/strategy/detail/strategyDetail.pilot.ts')).toBe(
+      '/monitor/event/strategy/detail/',
+    );
+    expect(pathnamePrefixFromPilotFile('monitor/(pages)/integration/list/list.pilot.ts')).toBe(
+      '/monitor/integration/list/',
+    );
+    expect(pathnamePrefixFromPilotFile('monitor/(pages)/integration/asset/asset.pilot.ts')).toBe(
+      '/monitor/integration/asset/',
+    );
     expect(pathnamePrefixFromPilotFile('alarm/(pages)/alarms/alarms.pilot.ts')).toBe(
       '/alarm/alarms/',
     );

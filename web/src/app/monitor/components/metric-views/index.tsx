@@ -37,6 +37,11 @@ import {
   MAX_CONCURRENT_METRIC_REQUESTS,
   executeMetricViewRequest,
 } from '@/app/monitor/components/metric-views/metricRequestSlot';
+import { useAiPageContext } from '@/components/ai-page-context';
+import {
+  buildMetricCatalogLines,
+  metricCatalogSections,
+} from '@/components/ai-page-context/metricCatalog';
 import { isHostMonitorObject,
   isHostProcessMetricsTab,
   resolveHostProcessMetricsTarget,
@@ -963,6 +968,23 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     const url = `/monitor/event/strategy/detail?${queryString}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
+
+  useAiPageContext(() => {
+    const built = buildMetricCatalogLines(metricData);
+    const pluginLabel = plugins.find((item) => item.value === activeTab)?.label || '';
+    return {
+      app: 'monitor',
+      url: window.location.href,
+      title: document.title,
+      sections: metricCatalogSections(built, [
+        '正在查看全量指标',
+        monitorObjectName ? `对象: ${monitorObjectName}` : '',
+        instanceName ? `实例: ${instanceName}` : '',
+        pluginLabel ? `插件: ${pluginLabel}` : '',
+      ]),
+      images: [],
+    };
+  });
 
   return (
     <div className="w-full h-full">

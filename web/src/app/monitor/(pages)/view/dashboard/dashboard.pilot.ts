@@ -173,6 +173,18 @@ const applyDashboardLabel = async (
   };
 };
 
+export const isDashboardMetricsMode = (): boolean => {
+  const selected = document.querySelector('[class*="modeSegmented"] .ant-segmented-item-selected');
+  const label = cleanLabel(selected?.textContent || '');
+  if (/全量指标/.test(label) || /full\s*metrics/i.test(label)) return true;
+  if (/监控仪表盘/.test(label)) return false;
+  const heading = cleanLabel(
+    document.querySelector('[class*="pageTitleRow"] h1, [class*="titleControlsRow"] h1')?.textContent
+    || document.title,
+  );
+  return /全量指标/.test(heading);
+};
+
 const dashboardIdentity = () => {
   const params = new URLSearchParams(window.location.search);
   const segments = window.location.pathname.split('/').filter(Boolean);
@@ -241,7 +253,14 @@ export const readDashboardPageDataStamp = (): DashboardPageDataStamp => {
 };
 
 export const buildDashboardCurrentTime = (stamp: DashboardPageDataStamp): string =>
-  [stamp.timeRangeLabel, stamp.kpiFingerprint, stamp.collectionStatus, stamp.uptimeState, stamp.rankFingerprint]
+  [
+    isDashboardMetricsMode() ? 'metrics' : 'dashboard',
+    stamp.timeRangeLabel,
+    stamp.kpiFingerprint,
+    stamp.collectionStatus,
+    stamp.uptimeState,
+    stamp.rankFingerprint,
+  ]
     .filter(Boolean)
     .join('::');
 
@@ -265,6 +284,7 @@ const dashboardTextSections = (
     identity.monitorObjId ? `monitorObjId: ${identity.monitorObjId}` : '',
     identity.instanceName ? `实例: ${identity.instanceName}` : '',
     `视图: ${identity.view}`,
+    `展示模式: ${isDashboardMetricsMode() ? '全量指标' : '监控仪表盘'}`,
     stamp.timeRangeLabel ? `时间筛选: ${stamp.timeRangeLabel}` : '',
     dataUpdatedAt ? `页面数据指纹: ${dataUpdatedAt}` : '',
   ].filter(Boolean);
@@ -328,6 +348,14 @@ export async function getContext(
   const stamp = readDashboardPageDataStamp();
   const dataUpdatedAt = buildDashboardCurrentTime(stamp);
   const base = getTextContext();
+  if (isDashboardMetricsMode()) {
+    console.info('[ai-page-context] page data updated at', dataUpdatedAt, {
+      timeRange: stamp.timeRangeLabel || '(unknown)',
+      displayMode: 'metrics',
+      kpi: stamp.kpiFingerprint,
+    });
+    return { ...base, images: [] };
+  }
 
   const nodes = Array.from(document.querySelectorAll<HTMLElement>('[_echarts_instance_]')).filter(
     (dom) => !isDecorativeDashboardChart(dom),

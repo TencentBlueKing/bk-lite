@@ -5,6 +5,14 @@ import { CHART_SNAPSHOT_MAX_IMAGES, CHART_SNAPSHOT_TARGET_WIDTH } from './types'
 
 export type { ChartSnapshot } from './types';
 export { CHART_SNAPSHOT_MAX_IMAGES, CHART_SNAPSHOT_TARGET_WIDTH } from './types';
+export { captureRechartsFromDoms, captionFromRechartsRoot } from './recharts';
+export {
+  sparklineFromChartRows,
+  sparklineFromValueSeries,
+  downsampleValues,
+  formatSparklineNumber,
+} from './sparkline';
+export type { MetricSparkline, SparklinePoint } from './sparkline';
 
 const asArray = <T>(value: T | T[] | undefined | null): T[] => {
   if (!value) return [];
