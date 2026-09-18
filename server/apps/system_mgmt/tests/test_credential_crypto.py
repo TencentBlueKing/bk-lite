@@ -1,11 +1,7 @@
 import pytest
 
 from apps.core.mixinx import EncryptMixin
-from apps.system_mgmt.services.credential_crypto import (
-    decrypt_instance_fields,
-    encrypt_instance_fields,
-    public_instance_fields,
-)
+from apps.system_mgmt.services.credential_crypto import decrypt_instance_fields, encrypt_instance_fields, public_instance_fields
 
 pytestmark = pytest.mark.unit
 
@@ -124,3 +120,25 @@ def test_blank_secret_keeps_ciphertext_including_passphrase_when_private_key_rot
     decrypted = decrypt_instance_fields(FIELDS, replaced)
     assert decrypted["private_key"] == "new-key"
     assert decrypted["passphrase"] == "new-pp"
+
+
+def test_public_and_decrypt_rewrite_legacy_snmp_algorithm_aliases():
+    fields = [
+        {"id": "auth_protocol", "kind": "enum", "values": ["SHA-1", "SHA-256"], "aliases": {"SHA": "SHA-1"}},
+        {"id": "priv_protocol", "kind": "enum", "values": ["AES-128", "AES-256"], "aliases": {"AES": "AES-128"}},
+        {"id": "auth_password", "kind": "secret"},
+    ]
+    encrypted_values = {
+        "auth_protocol": "SHA",
+        "priv_protocol": "AES",
+        "auth_password": encrypted_secret("secret", "auth_password"),
+    }
+
+    assert public_instance_fields(fields, encrypted_values) == {
+        "auth_protocol": "SHA-1",
+        "priv_protocol": "AES-128",
+    }
+    decrypted = decrypt_instance_fields(fields, encrypted_values)
+    assert decrypted["auth_protocol"] == "SHA-1"
+    assert decrypted["priv_protocol"] == "AES-128"
+    assert decrypted["auth_password"] == "secret"

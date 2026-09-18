@@ -107,6 +107,8 @@ SQLite 内存数据库、项目 Python 3.12、Node 24。后端业务逻辑、ORM
 
 ## 复现
 
+修改筛选字段或查询类型时**优先跑** [spec 中的短命令](spec.md#修改筛选时优先跑)：先 `ruleFieldOperatorCatalog.test.tsx`（中文目录与查询类型），再本报告的交叉矩阵。
+
 仓库根目录进入 server：
 
 ```bash
@@ -120,9 +122,9 @@ DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true
 
 ```bash
 cd web
-pnpm exec vitest run src/app/alarm/components/__tests__/field-operator-cross-product.test.tsx src/app/alarm/components/__tests__/monitor-source-settings-chain.test.tsx --maxWorkers=1 --no-file-parallelism
+pnpm exec vitest run src/app/alarm/components/__tests__/ruleFieldOperatorCatalog.test.tsx src/app/alarm/components/__tests__/field-operator-cross-product.test.tsx src/app/alarm/components/__tests__/monitor-source-settings-chain.test.tsx --maxWorkers=1 --no-file-parallelism
 pnpm type-check
-pnpm exec eslint src/app/alarm/components/__tests__/field-operator-cross-product.test.tsx src/app/alarm/components/__tests__/monitor-source-settings-chain.test.tsx
+pnpm exec eslint src/app/alarm/components/__tests__/ruleFieldOperatorCatalog.test.tsx src/app/alarm/components/__tests__/field-operator-cross-product.test.tsx src/app/alarm/components/__tests__/monitor-source-settings-chain.test.tsx
 ```
 
 独立矩阵与生产目录做双向一致性断言：以后新增或减少字段/条件，须同时审查业务清单和测试，不能仅改生产配置后自动生成“永远通过”的期望。

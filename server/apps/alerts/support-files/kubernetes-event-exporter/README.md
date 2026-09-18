@@ -2,7 +2,7 @@
 
 这是一个基于 `kubernetes-event-exporter` 的示例部署，用于把 Kubernetes 原生 `Event` 推送到 BK-Lite 告警中心。
 
-该方案使用 BK-Lite 内置的 `k8s` 告警源，底层仍通过现有接收接口提交事件：
+该方案使用 BK-Lite 内置的 `k8s` 集成源，底层仍通过现有接收接口提交事件：
 
 - 接口地址：`/api/v1/alerts/api/receiver_data/`
 - 请求方法：`POST`
@@ -43,8 +43,8 @@
 
 ## 前置条件
 
-1. BK-Lite 告警中心中已经初始化内置 `k8s` 告警源。
-2. 你已经拿到了该告警源对应的：
+1. BK-Lite 告警中心中已经初始化内置 `k8s` 集成源。
+2. 你已经拿到了该集成源对应的：
    - `source_id`
    - `secret`
 3. Kubernetes 集群可以访问 BK-Lite 服务地址。

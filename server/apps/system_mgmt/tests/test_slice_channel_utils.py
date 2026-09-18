@@ -409,3 +409,28 @@ def test_send_nats_message_异常(mocker):
     result = channel_utils.send_nats_message(ch, {})
     assert result["result"] is False
     assert "nats down" in result["message"]
+
+
+def test_send_wechat_uses_username_as_userid(mocker):
+    from apps.system_mgmt.models import User
+
+    user = User.objects.create(username="wx-alice", display_name="Alice", email="a@example.com", password="x")
+    ch = _make_channel(
+        ChannelChoices.ENTERPRISE_WECHAT,
+        {"corp_id": "wwid", "secret": "s", "agent_id": 100},
+    )
+    client = mocker.Mock()
+    mocker.patch("apps.system_mgmt.utils.channel_utils.WeChatClient", return_value=client)
+
+    result = channel_utils.send_wechat(ch, "hello", User.objects.filter(pk=user.pk))
+
+    assert result == {"result": True, "message": "Successfully sent WeChat message"}
+    client.message.send_text.assert_called_once_with(agent_id=100, user_ids=["wx-alice"], content="hello")
+
+
+def test_send_wechat_rejects_empty_recipients():
+    ch = _make_channel(ChannelChoices.ENTERPRISE_WECHAT, {"corp_id": "wwid", "secret": "s", "agent_id": 100})
+    from apps.system_mgmt.models import User
+
+    result = channel_utils.send_wechat(ch, "hello", User.objects.none())
+    assert result == {"result": False, "message": "No valid recipients found"}

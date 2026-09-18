@@ -4,8 +4,8 @@ import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
+import pytest
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -54,12 +54,11 @@ def test_remaining_plugin_manifests_exist_and_point_to_collectors():
             assert hasattr(module, collector["class"])
 
 
-def test_remaining_protocol_collector_returns_model_metric():
-    from enterprise.plugins.inputs.xsky.xsky_info import XskyInfo
-
-    collector = XskyInfo({"model_id": "xsky", "host": "10.0.0.1", "port": "443"})
-    result = collector.list_all_resources()
-
-    assert result["success"] is True
-    assert result["result"]["xsky"][0]["ip_addr"] == "10.0.0.1"
-    assert result["result"]["xsky"][0]["port"] == 443
+def test_remaining_protocol_collector_does_not_fake_model_metric():
+    source = REPO_ROOT / "enterprise/agents/stargazer/enterprise/plugins/inputs/xsky/xsky_info.py"
+    spec = spec_from_file_location("source_xsky", source)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    collector = module.XskyInfo({"model_id": "xsky", "host": "192.0.2.10", "port": "443"})
+    with pytest.raises(NotImplementedError, match="authentication contract"):
+        collector.list_all_resources()

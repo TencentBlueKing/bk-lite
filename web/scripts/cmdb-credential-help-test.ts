@@ -158,11 +158,11 @@ assert.deepEqual(
 );
 assert.equal(
   snmp.fields?.find((field) => field.name === '认证算法')?.defaultValue,
-  'SHA',
+  'SHA-1',
 );
 assert.equal(
   snmp.fields?.find((field) => field.name === '加密算法')?.defaultValue,
-  'AES',
+  'AES-128',
 );
 
 const windows = buildPCCredentialHelp('windows', t);

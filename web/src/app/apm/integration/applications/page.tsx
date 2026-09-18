@@ -12,6 +12,7 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import { formatDateTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import GroupTreeSelect from '@/components/group-tree-select';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -36,6 +37,7 @@ export default function ApmApplicationsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [state, setState] = useState<PageState>('loading');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
 
   const groupNames = useMemo(
     () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
@@ -46,14 +48,14 @@ export default function ApmApplicationsPage() {
     if (isLoading) return;
     setState('loading');
     try {
-      const items = await getApplications();
+      const items = await getApplications(unassignedOnly ? { params: { unassigned: true } } : {});
       const visible = items.filter((item) => !item.is_builtin);
       setApplications(visible);
       setState(visible.length ? 'ready' : 'empty');
     } catch (error) {
       setState(catalogErrorKind(error));
     }
-  }, [getApplications, isLoading]);
+  }, [getApplications, isLoading, unassignedOnly]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -141,7 +143,7 @@ export default function ApmApplicationsPage() {
       render: (values: number[]) => (
         <EllipsisWithTooltip
           className="truncate"
-          text={values.map((id) => groupNames.get(id) ?? `#${id}`).join('、') || '—'}
+          text={values?.length ? values.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : t('common.unassigned')}
         />
       ),
     },
@@ -198,9 +200,18 @@ export default function ApmApplicationsPage() {
         <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder={t('apm.applications.searchPlaceholder', '搜索应用 ID / 名称')} value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
-            <Permission className="ml-auto" requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-              <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>{t('apm.applications.create', '创建应用')}</Button>
-            </Permission>
+            <div className="ml-auto flex items-center gap-2">
+              <CatalogScopeSegmented
+                unassignedOnly={unassignedOnly}
+                onChange={(checked) => {
+                  setUnassignedOnly(checked);
+                  setPage(1);
+                }}
+              />
+              <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
+                <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>{t('apm.applications.create', '创建应用')}</Button>
+              </Permission>
+            </div>
           </FilterToolbar>
           {state === 'ready' ? (
             <ApmDataTable

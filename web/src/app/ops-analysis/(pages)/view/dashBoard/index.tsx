@@ -142,12 +142,18 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     selectedOrganizationIdRef.current = selectedOrganizationId;
     const previousOrganizationIdRef = useRef(selectedOrganizationId);
     const themeName = renderMode ? 'light' : resolveOpsChartThemeName();
-    const chartTheme = getOpsChartTheme(themeName);
+    const chartTheme = useMemo(() => getOpsChartTheme(themeName), [themeName]);
     const isDarkTheme = themeName === 'dark';
     const { getDashboardDetail, saveDashboard } = useDashBoardApi();
     const { updateItem } = useDirectoryApi();
     const { hasPermission } = useBtnPermissions();
     const dataSourceManager = useDataSourceManager();
+    const findDataSourceRef = useRef(dataSourceManager.findDataSource);
+    findDataSourceRef.current = dataSourceManager.findDataSource;
+    const dataSourceResolver = useCallback(
+      (dataSource?: string | number) => findDataSourceRef.current(dataSource),
+      [dataSourceManager.dataSources],
+    );
     const { namespaceList, loadCanvasNamespaces } = useOpsAnalysis();
     const { syncCanvasResources } = useCanvasResources();
     const [isEditMode, setIsEditMode] = useState(false);
@@ -757,11 +763,42 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       }
     }, [collapsedGroups, layout]);
 
-    const openAddModal = (groupId?: string) => {
+    const canvasActionStateRef = useRef({
+      layout,
+      isEditMode,
+      shareMode,
+      definitions,
+      filterValues,
+      appliedFilterValues,
+      editingGroupId,
+      t,
+      buildFiltersFromLayout,
+      syncLayoutFilterBindings,
+      syncFilterValuesWithDefinitions,
+      syncDashboardCanvasResources,
+      syncFilterStateAfterLayoutChange,
+    });
+    canvasActionStateRef.current = {
+      layout,
+      isEditMode,
+      shareMode,
+      definitions,
+      filterValues,
+      appliedFilterValues,
+      editingGroupId,
+      t,
+      buildFiltersFromLayout,
+      syncLayoutFilterBindings,
+      syncFilterValuesWithDefinitions,
+      syncDashboardCanvasResources,
+      syncFilterStateAfterLayoutChange,
+    };
+
+    const openAddModal = useCallback((groupId?: string) => {
       setIsEditMode(true);
       setPendingNewWidgetGroupId(groupId ?? null);
       setAddModalVisible(true);
-    };
+    }, []);
 
     const closeAddModal = () => {
       setAddModalVisible(false);
@@ -1091,35 +1128,46 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       closeGroupNameModal();
     };
 
-    const removeLayoutItems = (idsToRemove: Set<string>) => {
-      const nextLayout = layout.filter((item) => !idsToRemove.has(item.i));
-      const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
-      const syncedLayout = syncLayoutFilterBindings(
+    const removeLayoutItems = useCallback((idsToRemove: Set<string>) => {
+      const {
+        layout: currentLayout,
+        definitions: currentDefinitions,
+        filterValues: currentFilterValues,
+        appliedFilterValues: currentAppliedFilterValues,
+        buildFiltersFromLayout: buildFilters,
+        syncLayoutFilterBindings: syncBindings,
+        syncFilterValuesWithDefinitions: syncValues,
+        syncDashboardCanvasResources: syncResources,
+        syncFilterStateAfterLayoutChange: syncFilterState,
+      } = canvasActionStateRef.current;
+      const nextLayout = currentLayout.filter((item) => !idsToRemove.has(item.i));
+      const nextDefinitions = buildFilters(nextLayout, currentDefinitions);
+      const syncedLayout = syncBindings(
         nextLayout,
         nextDefinitions,
       );
-      const nextFilterValues = syncFilterValuesWithDefinitions(
+      const nextFilterValues = syncValues(
         nextDefinitions,
-        filterValues,
+        currentFilterValues,
       );
-      const nextAppliedValues = syncFilterValuesWithDefinitions(
+      const nextAppliedValues = syncValues(
         nextDefinitions,
-        appliedFilterValues,
+        currentAppliedFilterValues,
       );
 
       setLayout(syncedLayout);
-      void syncDashboardCanvasResources(syncedLayout).then(() => {
-        syncFilterStateAfterLayoutChange(
+      void syncResources(syncedLayout).then(() => {
+        syncFilterState(
           nextDefinitions,
           nextFilterValues,
           nextAppliedValues,
         );
       });
-    };
+    }, []);
 
-    const removeWidget = (id: string) => {
+    const removeWidget = useCallback((id: string) => {
       removeLayoutItems(new Set([id]));
-    };
+    }, [removeLayoutItems]);
 
     const handleAddGroup = () => {
       setIsCreatingGroupName(true);
@@ -1128,8 +1176,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setGroupNameModalVisible(true);
     };
 
-    const handleRenameGroup = (groupId: string) => {
-      const groupItem = layout.find((item) => item.i === groupId);
+    const handleRenameGroup = useCallback((groupId: string) => {
+      const groupItem = canvasActionStateRef.current.layout.find((item) => item.i === groupId);
 
       if (!groupItem || !isDashboardGroupItem(groupItem)) {
         return;
@@ -1139,7 +1187,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setIsCreatingGroupName(false);
       setGroupNameDraft(groupItem.name);
       setGroupNameModalVisible(true);
-    };
+    }, []);
 
     const handleGroupNameConfirm = () => {
       const nextName = groupNameDraft.trim();
@@ -1182,35 +1230,48 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       closeGroupNameModal();
     };
 
-    const handleRemoveGroup = (groupId: string) => {
+    const handleRemoveGroup = useCallback((groupId: string) => {
+      const { t: translate } = canvasActionStateRef.current;
       Modal.confirm({
-        title: t('dashboard.unGroup'),
-        content: t('dashboard.unGroupConfirm'),
-        okText: t('common.confirm'),
-        cancelText: t('common.cancel'),
+        title: translate('dashboard.unGroup'),
+        content: translate('dashboard.unGroupConfirm'),
+        okText: translate('common.confirm'),
+        cancelText: translate('common.cancel'),
         centered: true,
         onOk: async () => {
-          const nextLayout = removeDashboardGroupHeader(layout, groupId);
-          const nextDefinitions = buildFiltersFromLayout(
+          const {
+            layout: currentLayout,
+            definitions: currentDefinitions,
+            filterValues: currentFilterValues,
+            appliedFilterValues: currentAppliedFilterValues,
+            editingGroupId: currentEditingGroupId,
+            buildFiltersFromLayout: buildFilters,
+            syncLayoutFilterBindings: syncBindings,
+            syncFilterValuesWithDefinitions: syncValues,
+            syncDashboardCanvasResources: syncResources,
+            syncFilterStateAfterLayoutChange: syncFilterState,
+          } = canvasActionStateRef.current;
+          const nextLayout = removeDashboardGroupHeader(currentLayout, groupId);
+          const nextDefinitions = buildFilters(
             nextLayout,
-            definitions,
+            currentDefinitions,
           );
-          const syncedLayout = syncLayoutFilterBindings(
+          const syncedLayout = syncBindings(
             nextLayout,
             nextDefinitions,
           );
-          const nextFilterValues = syncFilterValuesWithDefinitions(
+          const nextFilterValues = syncValues(
             nextDefinitions,
-            filterValues,
+            currentFilterValues,
           );
-          const nextAppliedValues = syncFilterValuesWithDefinitions(
+          const nextAppliedValues = syncValues(
             nextDefinitions,
-            appliedFilterValues,
+            currentAppliedFilterValues,
           );
 
           setLayout(syncedLayout);
-          void syncDashboardCanvasResources(syncedLayout).then(() => {
-            syncFilterStateAfterLayoutChange(
+          void syncResources(syncedLayout).then(() => {
+            syncFilterState(
               nextDefinitions,
               nextFilterValues,
               nextAppliedValues,
@@ -1227,23 +1288,28 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             return next;
           });
 
-          if (editingGroupId === groupId) {
+          if (currentEditingGroupId === groupId) {
             closeGroupNameModal();
           }
         },
       });
-    };
+    }, [closeGroupNameModal]);
 
-    const handleDeleteEntireGroup = (groupId: string) => {
+    const handleDeleteEntireGroup = useCallback((groupId: string) => {
+      const { t: translate } = canvasActionStateRef.current;
       Modal.confirm({
-        title: t('dashboard.deleteEntireGroup'),
-        content: t('dashboard.deleteEntireGroupConfirm'),
-        okText: t('common.confirm'),
-        cancelText: t('common.cancel'),
+        title: translate('dashboard.deleteEntireGroup'),
+        content: translate('dashboard.deleteEntireGroupConfirm'),
+        okText: translate('common.confirm'),
+        cancelText: translate('common.cancel'),
         centered: true,
         onOk: async () => {
+          const {
+            layout: currentLayout,
+            editingGroupId: currentEditingGroupId,
+          } = canvasActionStateRef.current;
           removeLayoutItems(
-            new Set([groupId, ...getDashboardGroupWidgetIds(layout, groupId)]),
+            new Set([groupId, ...getDashboardGroupWidgetIds(currentLayout, groupId)]),
           );
           setCollapsedGroups((previous) => {
             if (!previous[groupId]) {
@@ -1255,15 +1321,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             return next;
           });
 
-          if (editingGroupId === groupId) {
+          if (currentEditingGroupId === groupId) {
             closeGroupNameModal();
           }
         },
       });
-    };
+    }, [closeGroupNameModal, removeLayoutItems]);
 
-    const handleEdit = (id: string) => {
-      const item = layout.find((i) => i.i === id);
+    const handleEdit = useCallback((id: string) => {
+      const item = canvasActionStateRef.current.layout.find((i) => i.i === id);
       if (!item || !isDashboardWidgetItem(item)) {
         return;
       }
@@ -1271,7 +1337,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setCurrentConfigItem(item);
       setIsNewComponentConfig(false);
       setConfigDrawerVisible(true);
-    };
+    }, []);
 
     const handleOpenConfig = (item: ComponentSelectorConfigItem) => {
       setAddModalVisible(false);
@@ -1430,52 +1496,66 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setAppliedFilterValues(snapshot.appliedFilterValues);
     };
 
-    const handleCopy = (id: string) => {
-      if (!isEditMode || shareMode) return;
-      const nextLayout = copyDashboardWidget(layout, id);
-      if (nextLayout === layout) return;
+    const handleCopy = useCallback((id: string) => {
+      const {
+        layout: currentLayout,
+        isEditMode: currentIsEditMode,
+        shareMode: currentShareMode,
+        definitions: currentDefinitions,
+        filterValues: currentFilterValues,
+        appliedFilterValues: currentAppliedFilterValues,
+        buildFiltersFromLayout: buildFilters,
+        syncLayoutFilterBindings: syncBindings,
+        syncFilterValuesWithDefinitions: syncValues,
+        syncDashboardCanvasResources: syncResources,
+        syncFilterStateAfterLayoutChange: syncFilterState,
+      } = canvasActionStateRef.current;
+      if (!currentIsEditMode || currentShareMode) return;
+      const nextLayout = copyDashboardWidget(currentLayout, id);
+      if (nextLayout === currentLayout) return;
 
-      const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
-      const syncedLayout = syncLayoutFilterBindings(
+      const nextDefinitions = buildFilters(nextLayout, currentDefinitions);
+      const syncedLayout = syncBindings(
         nextLayout,
         nextDefinitions,
       );
-      const nextFilterValues = syncFilterValuesWithDefinitions(
+      const nextFilterValues = syncValues(
         nextDefinitions,
-        filterValues,
+        currentFilterValues,
       );
-      const nextAppliedValues = syncFilterValuesWithDefinitions(
+      const nextAppliedValues = syncValues(
         nextDefinitions,
-        appliedFilterValues,
+        currentAppliedFilterValues,
       );
 
       setLayout(syncedLayout);
-      void syncDashboardCanvasResources(syncedLayout).then(() => {
-        syncFilterStateAfterLayoutChange(
+      void syncResources(syncedLayout).then(() => {
+        syncFilterState(
           nextDefinitions,
           nextFilterValues,
           nextAppliedValues,
         );
       });
-    };
+    }, []);
 
-    const handleDelete = (id: string) => {
+    const handleDelete = useCallback((id: string) => {
+      const { t: translate } = canvasActionStateRef.current;
       Modal.confirm({
-        title: t('common.delConfirm'),
-        content: t('common.delConfirmCxt'),
-        okText: t('common.confirm'),
-        cancelText: t('common.cancel'),
+        title: translate('common.delConfirm'),
+        content: translate('common.delConfirmCxt'),
+        okText: translate('common.confirm'),
+        cancelText: translate('common.cancel'),
         okButtonProps: { danger: true },
         centered: true,
         onOk: async () => {
           try {
             removeWidget(id);
           } catch {
-            console.error(t('common.operateFailed'));
+            console.error(translate('common.operateFailed'));
           }
         },
       });
-    };
+    }, [removeWidget]);
 
     const handleShare = () => {
       void openShare(selectedDashboard?.data_id);
@@ -1546,7 +1626,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           dashboardReloadVersion={dashboardReloadVersion}
           refreshCause={refreshCause}
           widgetReloadVersions={widgetReloadVersions}
-          dataSourceResolver={dataSourceManager.findDataSource}
+          dataSourceResolver={dataSourceResolver}
           appliedFilterValues={appliedFilterValues}
           appliedFilterDefinitions={appliedFilterDefinitions}
           appliedNamespaceId={appliedNamespaceId}

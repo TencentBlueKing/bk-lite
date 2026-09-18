@@ -9,7 +9,7 @@ metadata:
   - webserver
   - nginx
   cloud_protocol: false
-  model_id: mysql
+  model_id: nginx
 executors:
   job:
     type: job

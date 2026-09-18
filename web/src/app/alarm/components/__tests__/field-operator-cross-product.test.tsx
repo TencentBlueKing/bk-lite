@@ -10,8 +10,10 @@ vi.mock('@/app/alarm/context/common', () => ({ useCommon: () => ({ levelMeta: {
   event: { list: [{ level_id: 1, level_display_name: '事件严重' }, { level_id: 2, level_display_name: '事件预警' }] },
   alert: { list: [{ level_id: 1, level_display_name: '告警严重' }, { level_id: 2, level_display_name: '告警预警' }] },
 } }) }));
-vi.mock('@/app/alarm/api/integration', () => ({ useSourceApi: () => ({ getAlertSourceOptions: async () =>
-  ['source_name', 'source_names'].flatMap(key => [{id:7,name:`${key}:A`},{id:8,name:`${key}:B,生产`}])
+vi.mock('@/app/alarm/api/integration', () => ({ useSourceApi: () => ({
+  getAlertSourceOptions: async () =>
+    ['source_name', 'source_names'].flatMap(key => [{id:7,name:`${key}:A`},{id:8,name:`${key}:B,生产`}]),
+  getPushSourceIdOptions: async () => [],
 }) }));
 afterEach(cleanup);
 beforeAll(() => { window.matchMedia = vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }); });
@@ -63,6 +65,12 @@ describe('独立业务矩阵：五入口 × 每个字段 × 每种条件', () =>
       fireEvent.mouseDown(input);
       fireEvent.click(await screen.findByText(`${key}:B,生产 (ID: 8)`));
       expectedValue = [`${key}:A`, `${key}:B,生产`];
+    } else if (key === 'push_source_id' || key === 'push_source_ids') {
+      const input = screen.getByRole('combobox', { name: 'alarmCommon.pushSourceInput' });
+      fireEvent.change(input, { target: { value: `${key}:B,生产` } });
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 });
+      expectedValue = [`${key}:A`, `${key}:B,生产`];
+      expect(input.getAttribute('aria-expanded')).toBe('false');
     } else if (multi) {
       expect(document.querySelectorAll('.ant-select-multiple')).toHaveLength(1);
       const input = screen.getByRole('combobox', { name: 'alarmCommon.multiValueInput' });

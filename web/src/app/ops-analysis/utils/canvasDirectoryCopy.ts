@@ -21,6 +21,35 @@ export const shouldShowCanvasCopyAction = (item: {
   type: DirectoryType;
 }): boolean => isCanvasType(item.type);
 
+export const isBuiltinDirectory = (item?: {
+  type?: DirectoryType;
+  is_build_in?: boolean;
+}): boolean => item?.type === 'directory' && Boolean(item.is_build_in);
+
+export const getSidebarDirectoryMenuKeys = (item: {
+  type: DirectoryType;
+  is_build_in?: boolean;
+}): string[] => {
+  if (!isBuiltinDirectory(item)) {
+    return [];
+  }
+  return ['edit'];
+};
+
+export const buildDirectoryEditPayload = (
+  item: { type?: DirectoryType; is_build_in?: boolean },
+  values: { name?: string; desc?: string; groups?: number[] },
+): Record<string, unknown> => {
+  if (isBuiltinDirectory(item)) {
+    return { groups: values.groups ?? [] };
+  }
+  return {
+    name: values.name,
+    desc: values.desc,
+    groups: values.groups,
+  };
+};
+
 export const getSidebarCanvasMenuKeys = (item: {
   type: DirectoryType;
   is_build_in?: boolean;

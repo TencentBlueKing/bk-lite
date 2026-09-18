@@ -323,7 +323,7 @@ const CustomTable = <T extends object>({
   return (
     <div
       ref={containerRef}
-      className={`relative ${customTableStyle.customTable}${hasPagination && scrollY !== 'auto' ? ' h-full' : ''}`}
+      className={`relative min-h-0 ${customTableStyle.customTable}${hasPagination && scrollY !== 'auto' ? ' h-full' : ''}`}
       style={{
         height: lockVerticalSize
           ? `${containerHeight}px`

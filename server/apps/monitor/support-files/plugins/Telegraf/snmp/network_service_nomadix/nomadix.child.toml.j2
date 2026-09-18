@@ -36,8 +36,8 @@
     # Current online subscribers (aaaSubCurrTable). Do not walk the
     # authorization config table 1.3.6.1.4.1.3309.1.3.2.18.2.
     # Row count is aggregated as active_subscribers; subIndex/subMac tag the raw series.
+    # 不设私有表根：采集节点通常无厂商 MIB，表级 oid 会触发 snmptable「Was that a table?」并阻断整路 SNMP 初始化；只 walk 列 OID。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.3309.1.3.2.18.1"
         name = "active"
         inherit_tags = ["source"]
         index_as_tag = true
@@ -53,8 +53,8 @@
         oid = "1.3.6.1.4.1.3309.1.3.2.18.1.1.1"
         name = "subscribers"
     # Optional current DAT sessions (datSessionTable). First column is the session index.
+    # 不设私有表根：采集节点通常无厂商 MIB，表级 oid 会触发 snmptable「Was that a table?」并阻断整路 SNMP 初始化；只 walk 列 OID。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.3309.1.3.8.1"
         name = "active_dat"
         inherit_tags = ["source"]
         index_as_tag = true

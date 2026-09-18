@@ -869,6 +869,9 @@ class BuildRecordSerializer(serializers.ModelSerializer):
         inputs = obj.inputs or {}
         if inputs.get("material_name"):
             return inputs["material_name"]
+        filename = str(inputs.get("filename") or "").strip()
+        if filename:
+            return filename
         mid = inputs.get("material_id")
         if mid:
             m = Material.objects.filter(id=mid).only("name").first()

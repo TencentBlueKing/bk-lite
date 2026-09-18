@@ -818,6 +818,16 @@ async def test_planner_catalog_prepends_monitor_capability_hint():
     assert "禁止返回空 steps" in prompt
     assert "monitor_list_objects→monitor_list_object_instances" in prompt
     assert "必须规划对应 monitor_* 步骤" in prompt
+    assert "禁止猜测或递增数字" in prompt
+    assert "禁止截断后按台循环" in prompt
+    assert "request_user_choice" in prompt
+    assert "禁止根据名称形态" in prompt
+    assert "K8s Pod" in prompt
+    assert "list_object_metrics 与 query_metric_data 必须同一步" in prompt
+    assert "cpu.util" in prompt
+    assert "空矩阵" in prompt
+    assert "禁止用实例名" in prompt or "禁止用 name" in prompt
+    assert "也可传入" not in prompt
     assert "联动规则" not in prompt
 
 
@@ -849,6 +859,9 @@ async def test_planner_catalog_prepends_cmdb_monitor_linkage_hint():
     assert "禁止把 cmdb_search_instances" in prompt
     assert "cmdb_get_monitor_ids" in prompt
     assert "monitor_list_object_instances" in prompt
+    assert "不要再截断主机名去猜 monitor_obj_id" in prompt
+    assert "纳管多少台" in prompt
+    assert "查不到再查" in prompt
 
 
 def test_parse_tool_execution_plan_payload_accepts_markdown_and_step_list():
@@ -1071,6 +1084,52 @@ def test_classify_tool_failure_kind_separates_auth_from_retryable():
     assert not is_non_replanable_tool_failure(app_previous_log)
 
 
+def test_missing_query_params_ask_user_instead_of_cli_fallback():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import is_missing_tool_params_failure
+    from apps.opspilot.metis.llm.common.tool_failure import (
+        MISSING_PARAMS_CHOICE_HINT,
+        is_substitute_plan_message,
+        step_has_unasked_missing_params,
+        tool_graph_failure_plain_text,
+        tool_graph_failure_user_prompt,
+        wrap_tool_error_payload,
+    )
+
+    assert is_missing_tool_params_failure('{"error": "metric is required"}')
+    assert is_missing_tool_params_failure("Missing parameters")
+    assert is_missing_tool_params_failure("缺少必要的检索参数")
+    assert is_missing_tool_params_failure("search is required")
+    assert not is_missing_tool_params_failure("namespace is required", status="error")
+    assert not is_missing_tool_params_failure("MySQL host is required", status="error")
+
+    payload = wrap_tool_error_payload("metric is required")
+    assert payload["success"] is False
+    assert payload["error"] == "metric is required"
+    assert "request_user_choice" in payload["_next_step_hint"]
+    assert "uvx" in payload["_next_step_hint"]
+    assert wrap_tool_error_payload("nope") == {"success": False, "error": "nope"}
+
+    missing = ToolMessage(content='{"error": "metric is required"}', name="monitor_query_metric_data", tool_call_id="c1")
+    uvx_reply = AIMessage(content="建议采用替代方案：uvx fusion-monitor --target fusion-")
+    choice = ToolMessage(content="用户回答: CPU使用率", name="request_user_choice", tool_call_id="c2")
+    assert step_has_unasked_missing_params([missing, uvx_reply])
+    assert not step_has_unasked_missing_params([missing, choice])
+    assert is_substitute_plan_message(uvx_reply)
+    assert not is_substitute_plan_message(choice)
+
+    missing_exc = ValueError("Missing parameters")
+    prompt = tool_graph_failure_user_prompt(missing_exc)
+    assert "request_user_choice" in prompt
+    assert "禁止编造" in prompt
+    assert "并给出可执行的替代方案" not in prompt
+    assert "uvx" not in tool_graph_failure_plain_text(missing_exc)
+    sandbox_exc = PermissionError("command not in whitelist")
+    assert "uvx" in tool_graph_failure_user_prompt(sandbox_exc)
+    assert MISSING_PARAMS_CHOICE_HINT in prompt
+
+
 def test_resolve_planned_execution_compact_limits_scales_with_working_budget():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import (
         planned_execution_compact_limits_for_request,
@@ -1253,6 +1312,53 @@ def test_compact_analyze_deployment_keeps_parseable_issues_detail_under_budget()
     assert compact.get("_deployments_full_omitted") is True
     assert "不要因 workloads 列表缩短而重跑" in compact["_next_step_hint"]
     assert len(out[0].content) <= 1500
+
+
+def test_enforce_list_metrics_with_query_keeps_catalog_visible():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_list_metrics_with_query
+
+    plan = ToolExecutionPlan(
+        goal="查CPU",
+        steps=[ToolExecutionStep(objective="查询时序", tools=["monitor_query_metric_data"])],
+    )
+    fixed = enforce_list_metrics_with_query(
+        plan,
+        {"monitor_list_object_metrics", "monitor_query_metric_data"},
+        max_tools_per_step=4,
+    )
+    assert fixed.steps[0].tools == ["monitor_list_object_metrics", "monitor_query_metric_data"]
+
+    already = ToolExecutionPlan(
+        goal="查CPU",
+        steps=[
+            ToolExecutionStep(
+                objective="列指标并查询",
+                tools=["monitor_list_object_metrics", "monitor_query_metric_data"],
+            )
+        ],
+    )
+    unchanged = enforce_list_metrics_with_query(
+        already,
+        {"monitor_list_object_metrics", "monitor_query_metric_data"},
+        max_tools_per_step=4,
+    )
+    assert unchanged.steps[0].tools == ["monitor_list_object_metrics", "monitor_query_metric_data"]
+
+
+@pytest.mark.asyncio
+async def test_planner_injects_list_metrics_into_query_only_step():
+    tools = [
+        _tool("monitor_list_object_metrics", "列指标"),
+        _tool("monitor_query_metric_data", "查时序"),
+    ]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content='{"goal":"查CPU","steps":[{"objective":"查询时序","tools":["monitor_query_metric_data"]}]}')
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("查 fusion-collector 的CPU", tools)
+    assert plan.steps[0].tools[0] == "monitor_list_object_metrics"
+    assert "monitor_query_metric_data" in plan.steps[0].tools
 
 
 def test_enforce_k8s_namespace_lookup_first_prepends_resolve_step():
@@ -1565,6 +1671,76 @@ def test_drop_k8s_followup_steps_after_unresolved_target():
         ]
     )
     assert [step.tools for step in kept] == [["generate_attachment_file"]]
+
+
+def test_drop_alternative_inventory_followups_skips_monitor_after_cmdb_hit():
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionStep,
+        drop_alternative_inventory_followups,
+        step_has_host_inventory_data,
+    )
+
+    cmdb_hit = [
+        ToolMessage(
+            content='{"success": true, "data": [{"name": "fusion-collector", "inst_uuid": "u1"}]}',
+            name="cmdb_search_instances",
+            tool_call_id="cmdb-1",
+        )
+    ]
+    assert step_has_host_inventory_data(cmdb_hit, ["cmdb_search_instances"])
+    skipped = drop_alternative_inventory_followups(
+        current_tools=["cmdb_search_instances"],
+        pending_steps=[
+            ToolExecutionStep(objective="若CMDB无数据则查监控", tools=["monitor_list_objects"]),
+            ToolExecutionStep(objective="列出监控主机", tools=["monitor_list_object_instances"]),
+        ],
+        messages=cmdb_hit,
+    )
+    assert skipped == []
+
+    empty = [
+        ToolMessage(
+            content='{"success": true, "data": []}',
+            name="cmdb_search_instances",
+            tool_call_id="cmdb-empty",
+        )
+    ]
+    pending = [ToolExecutionStep(objective="查监控", tools=["monitor_list_object_instances"])]
+    assert (
+        drop_alternative_inventory_followups(
+            current_tools=["cmdb_search_instances"],
+            pending_steps=pending,
+            messages=empty,
+        )
+        == pending
+    )
+
+
+def test_drop_alternative_inventory_followups_keeps_metric_chain():
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionStep, drop_alternative_inventory_followups
+
+    cmdb_hit = [
+        ToolMessage(
+            content='{"success": true, "data": [{"inst_uuid": "u1", "monitor_id": "m1"}]}',
+            name="cmdb_search_instances",
+            tool_call_id="cmdb-1",
+        )
+    ]
+    pending = [
+        ToolExecutionStep(objective="查CPU", tools=["monitor_query_metric_data"]),
+    ]
+    assert (
+        drop_alternative_inventory_followups(
+            current_tools=["cmdb_search_instances"],
+            pending_steps=pending,
+            messages=cmdb_hit,
+        )
+        == pending
+    )
 
 
 def test_merge_replanned_pending_steps_keeps_uncovered_followups():

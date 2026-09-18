@@ -48,9 +48,9 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 **v3 专用**
 - `username`：SNMP v3 用户名。
 - `level`：安全级别，可选 `authNoPriv`（仅认证不加密）或 `authPriv`（认证 + 加密）。
-- `integrity`：认证算法，可选 `md5` 或 `sha`。
+- `integrity`：认证算法，可选 `sha`（SHA-1）、`sha224`、`sha256`、`sha384`、`sha512`、`md5`。历史值 `SHA` 等同 SHA-1。
 - `authkey`：认证密钥，长度需 ≥ 8 位。落库自动加密。
-- `privacy`：加密算法，可选 `des` 或 `aes`（仅 `level=authPriv` 时使用）。
+- `privacy`：加密算法，可选 `aes`（AES-128）、`aes256`、`des`（仅 `level=authPriv` 时使用）。历史值 `AES` 等同 AES-128。
 - `privkey`：加密密钥，长度需 ≥ 8 位（仅 `level=authPriv` 时使用）。落库自动加密。
 
 ### 参数说明

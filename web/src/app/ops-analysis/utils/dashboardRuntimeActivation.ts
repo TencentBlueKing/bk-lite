@@ -53,7 +53,7 @@ export const activateAllRuntimeWidgets = (
   }, {});
 
 const runtimeStateRenderKey = (state: RuntimeActivationState) =>
-  `${Number(state.active)}:${state.priority.visibility}:${state.priority.order}`;
+  Number(state.active);
 
 export const shouldCommitRuntimeStates = (
   previous: Record<string, RuntimeActivationState>,
@@ -72,4 +72,24 @@ export const shouldCommitRuntimeStates = (
     }
     return runtimeStateRenderKey(previousState) !== runtimeStateRenderKey(nextState);
   });
+};
+
+export const mergeRuntimeActivationStates = (
+  previous: Record<string, RuntimeActivationState>,
+  next: Record<string, RuntimeActivationState>,
+): Record<string, RuntimeActivationState> => {
+  if (!shouldCommitRuntimeStates(previous, next)) {
+    return previous;
+  }
+
+  const merged: Record<string, RuntimeActivationState> = {};
+  Object.keys(next).forEach((id) => {
+    const previousState = previous[id];
+    const nextState = next[id];
+    merged[id] =
+      previousState && previousState.active === nextState.active
+        ? previousState
+        : nextState;
+  });
+  return merged;
 };

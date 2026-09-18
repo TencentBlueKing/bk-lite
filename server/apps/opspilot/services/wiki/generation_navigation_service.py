@@ -20,6 +20,8 @@ _MAX_HEADINGS = 64
 _MAX_KEYWORDS = 32
 _MAX_ENTITIES = 32
 _MAX_OVERVIEW_PAGES = 100
+MAX_BODY_INDEX_CHARS = 2000
+BODY_INDEX_SEP = "\n<!--wiki-body-index-->\n"
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _WORD_RE = re.compile(r"[\w\-]{2,}", re.UNICODE)
 _PAGE_REF_RE = re.compile(r"\[(\d+)\]")
@@ -94,6 +96,28 @@ def _normalize_summary(meta, body):
     return summary
 
 
+def page_version_summary(version):
+    """页面用于导航与向量索引的摘要：优先 meta.summary，否则正文首段有意义段落。"""
+    meta = dict(getattr(version, "meta_snapshot", None) or {})
+    return _normalize_summary(meta, getattr(version, "body", "") or "")
+
+
+def indexable_body_excerpt(body):
+    """Compact body text for keyword recall. Title/alias fields stay separately weighted."""
+    text = " ".join(str(body or "").split())
+    if not text:
+        return ""
+    return text[:MAX_BODY_INDEX_CHARS].casefold()
+
+
+def split_index_search_text(search_text):
+    text = search_text or ""
+    nav, separator, body = text.partition(BODY_INDEX_SEP)
+    if not separator:
+        return text, ""
+    return nav, body
+
+
 def _keywords(title, tags, headings, meta):
     explicit = _bounded_strings((meta or {}).get("keywords"), limit=_MAX_KEYWORDS, max_chars=64)
     candidates = [*explicit, *tags]
@@ -137,7 +161,9 @@ def _index_payload(member):
         "summary": summary,
         "body_hash": hashlib.sha256((version.body or "").encode("utf-8")).hexdigest(),
     }
-    search_text = "\n".join(part for part in [title, *aliases, page_type, *tags, *headings, *keywords, *entities, summary] if part).casefold()
+    nav_text = "\n".join(part for part in [title, *aliases, page_type, *tags, *headings, *keywords, *entities, summary] if part).casefold()
+    body_excerpt = indexable_body_excerpt(version.body)
+    search_text = f"{nav_text}{BODY_INDEX_SEP}{body_excerpt}" if body_excerpt else nav_text
     return {
         "generation": member.generation,
         "page": page,

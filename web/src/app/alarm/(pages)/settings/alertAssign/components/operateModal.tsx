@@ -26,6 +26,7 @@ import {
   NotificationTemplateOption,
 } from './notificationTemplateBinding';
 import { getNotificationTemplateChannel } from '@/app/alarm/utils/notificationTemplateChannels';
+import { channelOptionValue } from '@/app/alarm/utils/channelIdentity';
 import {
   Tag,
   Form,
@@ -91,12 +92,12 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       setChannelList(data);
       const options: NotifyOption[] = data.map((channel: ChannelItem) => ({
         label: channel.name,
-        value: channel.id.toString(),
+        value: channelOptionValue(channel),
       }));
       setNotifyOptions(options);
       if (!currentRow && data.length > 0) {
         form.setFieldsValue({
-          notify_channels: [data[0].id.toString()],
+          notify_channels: [channelOptionValue(data[0])],
         });
       }
     } catch {
@@ -136,7 +137,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
 
       if (currentRow) {
         const notifyChannelIds = (currentRow.notify_channels || []).map(
-          (ch: any) => ch.id.toString(),
+          (ch: any) => channelOptionValue(ch),
         );
 
         const targetFormValue = getNotificationTargetFormValue(
@@ -169,7 +170,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                     l.personnel,
                   ),
                   notify_channels: (l.notify_channels || []).map((ch: any) =>
-                    ch.id.toString()
+                    channelOptionValue(ch)
                   ),
                 })
               ),
@@ -435,7 +436,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
             </div>
             <div className="flex flex-col gap-3">
               {selectedChannelIds.map((channelId) => {
-                const channel = channelList.find((item) => item.id.toString() === channelId);
+                const channel = channelList.find((item) => channelOptionValue(item) === channelId);
                 if (!channel) return null;
                 const channelConfig = getNotificationTemplateChannel(channel.channel_type);
                 const options = templateOptions[channel.channel_type] || [];

@@ -31,8 +31,8 @@ const pickerMessages = {
 };
 
 const OPTIONS = [
-  { label: '生产跳板机 SSH - SSH (crd-ssh-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)', value: 'crd-ssh-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
-  { label: '生产 MySQL 只读 - SQL (crd-sql-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)', value: 'crd-sql-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+  { label: '生产跳板机 SSH', value: 'crd-ssh-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+  { label: '生产 MySQL 只读', value: 'crd-sql-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
 ];
 
 const SSH_TYPE: CredentialTypeItem = {

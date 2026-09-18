@@ -46,7 +46,7 @@ describe('告警详情监控源', () => {
     expect(screen.queryByRole('button', { name: '复制监控源' })).toBeNull();
   });
 
-  it.each(['page', 'component'])('%s 告警源展示派生名称而非单值快照', variant => {
+  it.each(['page', 'component'])('%s 集成源展示派生名称而非单值快照', variant => {
     const detail = { source_names: ['平台A', '平台B,生产'], source_name: '旧快照' };
     render(<SessionProvider session={null}>{variant === 'page' ? <BaseInfo detail={detail as AlarmTableDataItem} /> : <AlarmBaseInfo detail={detail} />}</SessionProvider>);
     expect(screen.getByText('平台A')).toBeTruthy();

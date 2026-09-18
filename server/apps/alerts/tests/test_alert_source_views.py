@@ -226,11 +226,16 @@ def test_integration_view_only_allows_overview_queries(permission_user, event_le
         _request("get", f"/alert_source/{src.id}/integration-guide/", permission_user),
         pk=str(src.id),
     )
+    push_stats_response = AlertSourceModelViewSet.as_view({"get": "push_source_stats"})(
+        _request("get", f"/alert_source/{src.id}/push_source_stats/", permission_user),
+        pk=str(src.id),
+    )
 
     assert list_response.status_code == status.HTTP_200_OK
     assert stats_response.status_code == status.HTTP_200_OK
     assert retrieve_response.status_code == status.HTTP_403_FORBIDDEN
     assert guide_response.status_code == status.HTTP_403_FORBIDDEN
+    assert push_stats_response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db
@@ -246,9 +251,14 @@ def test_integration_detail_allows_detail_and_guide(permission_user, event_level
         _request("get", f"/alert_source/{src.id}/integration-guide/", permission_user),
         pk=str(src.id),
     )
+    push_stats_response = AlertSourceModelViewSet.as_view({"get": "push_source_stats"})(
+        _request("get", f"/alert_source/{src.id}/push_source_stats/", permission_user),
+        pk=str(src.id),
+    )
 
     assert retrieve_response.status_code == status.HTTP_200_OK
     assert guide_response.status_code == status.HTTP_200_OK
+    assert push_stats_response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
@@ -258,6 +268,7 @@ def test_integration_detail_allows_detail_and_guide(permission_user, event_level
         ("get", "list", "/alert_source/", {}),
         ("get", "retrieve", "/alert_source/{id}/", {"pk": "{id}"}),
         ("get", "integration_guide", "/alert_source/{id}/integration-guide/", {"pk": "{id}"}),
+        ("get", "push_source_stats", "/alert_source/{id}/push_source_stats/", {"pk": "{id}"}),
         ("get", "daily_event_stats", "/alert_source/daily_event_stats/", {}),
     ],
 )

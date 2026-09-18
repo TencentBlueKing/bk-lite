@@ -830,6 +830,8 @@ class MonitorObjectService:
 
         # 更新组织信息
         if organizations is not None:
+            if not organizations:
+                raise BaseAppException("至少保留一个组织")
             instance.monitorinstanceorganization_set.all().delete()
             for org in organizations:
                 instance.monitorinstanceorganization_set.create(organization=org)
@@ -840,7 +842,21 @@ class MonitorObjectService:
         if not instance_ids or not organizations:
             return
 
-        MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids, organization__in=organizations).delete()
+        with transaction.atomic():
+            existing = list(
+                MonitorInstanceOrganization.objects.select_for_update()
+                .filter(monitor_instance_id__in=instance_ids)
+                .values_list("monitor_instance_id", "organization")
+            )
+            remaining = {}
+            remove_set = set(organizations)
+            for instance_id, organization in existing:
+                if organization not in remove_set:
+                    remaining[str(instance_id)] = remaining.get(str(instance_id), 0) + 1
+            for instance_id in instance_ids:
+                if remaining.get(str(instance_id), 0) < 1:
+                    raise BaseAppException("不能移除最后一个组织")
+            MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids, organization__in=organizations).delete()
 
     @staticmethod
     def add_instances_organizations(instance_ids, organizations):
@@ -859,7 +875,8 @@ class MonitorObjectService:
         """设置监控对象实例组织"""
         if not instance_ids:
             return
-        organizations = organizations or []
+        if not organizations:
+            raise BaseAppException("至少保留一个组织")
 
         with transaction.atomic():
             # 删除旧的组织关联

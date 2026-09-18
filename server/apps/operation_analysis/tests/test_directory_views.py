@@ -179,6 +179,29 @@ def test_directory_partial_update_builtin_rejects_non_integer_group_ids(authenti
 
 @pytest.mark.django_db
 @pytest.mark.integration
+def test_directory_partial_update_builtin_visibility_allows_operator(authenticated_user):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"view-EditCatalogue"}}
+    authenticated_user.group_list = [{"id": 1, "name": "Default"}, {"id": 2, "name": "Other"}]
+    builtin = Directory.objects.create(
+        name="内置目录操作员可见性",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="visibility-directory-operator",
+    )
+    request = _request("patch", f"/directory/{builtin.id}/", authenticated_user, data={"groups": [1, 2]})
+
+    response = view_module.DirectoryModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert builtin.name == "内置目录操作员可见性"
+    assert builtin.groups == [1, 2]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
 def test_directory_partial_update_builtin_visibility_requires_edit_permission(authenticated_user):
     builtin = Directory.objects.create(
         name="内置目录权限边界",

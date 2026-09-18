@@ -8,6 +8,28 @@
 
 完整字段矩阵与业务边界见 [实施文档](implementation-plan.md)，本轮证据见 [业务匹配测试报告](business-matching-test-results.md)。此前 [测试记录](test-results.md) 属于被取代的旧契约，不能作为本轮验收依据。
 
+2026-09-15 字段与查询类型核对：五入口字段、操作符、中文文案和值控件与契约一致；新增界面目录测试，修改本功能时优先跑下面命令。
+
+## 修改筛选时优先跑
+
+改 `rule_fields.json`、操作符、匹配语义、`matchRule` 编辑器或五入口保存回显时，**先跑这组**，不要只改生产目录。先改 [独立契约](field-operator-test-matrix.json) 和目录测试里的中文期望，再改实现。
+
+前端（目录测试最快暴露字段或查询类型错误）：
+
+```bash
+cd web
+pnpm exec vitest run src/app/alarm/components/__tests__/ruleFieldOperatorCatalog.test.tsx src/app/alarm/components/__tests__/field-operator-cross-product.test.tsx
+```
+
+后端（须覆盖 addopts，避免复用旧测试库）：
+
+```bash
+cd server
+DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true uv run pytest apps/alerts/tests/test_field_operator_cross_product_service.py apps/alerts/tests/test_multivalue_completeness_service.py --nomigrations -o addopts= --no-cov
+```
+
+完整交叉、正式表单和 alerts 全量见 [交叉测试报告](cross-product-test-results.md)。
+
 ## 当前契约
 
 五个入口共用字段目录：相关性、屏蔽、丰富匹配 Event；分派、处理匹配 Alert。实际字段为单值，不妨碍条件输入多个候选值。

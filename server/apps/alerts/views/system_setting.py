@@ -205,19 +205,32 @@ class SystemSettingModelViewSet(ModelViewSet):
     def get_channel_list(self, request):
         """
         获取告警通知通道列表: 排除普通 nats（内部直推），但并入 OpsPilot 托管的 NATS 触发通道。
+        企微应用消息与已启用的 IM 应用通知一并作为分派/模板候选。
         """
         from apps.system_mgmt.models.channel import Channel
+        from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
 
         result = []
 
         team_ids = get_query_group_ids(request)
-        channel_list = apply_team_scope_with_group_ids(Channel.objects.exclude(channel_type__in=["nats", "enterprise_wechat"]), team_ids)
+        channel_list = apply_team_scope_with_group_ids(Channel.objects.exclude(channel_type="nats"), team_ids)
         for channel in channel_list:
             result.append(
                 {
                     "id": channel.id,
                     "name": f"{channel.name}【{channel.get_channel_type_display()}】",
                     "channel_type": channel.channel_type,
+                    "team": channel.team,
+                }
+            )
+
+        im_list = apply_team_scope_with_group_ids(IMNotificationChannel.objects.filter(enabled=True), team_ids)
+        for channel in im_list:
+            result.append(
+                {
+                    "id": channel.id,
+                    "name": f"{channel.name}【IM Notification】",
+                    "channel_type": IMNotificationChannel.CHANNEL_TYPE,
                     "team": channel.team,
                 }
             )

@@ -614,11 +614,11 @@ export const getEnabledCompareModes = ({
     .filter((item) => !item.disabled)
     .map((item) => item.value);
 
-export type CompareModeSelectOption = {
+export interface CompareModeSelectOption {
   value: string;
   disabled: boolean;
   reasonKey?: string;
-};
+}
 
 export const getCompareModeSelectOptions = ({
   periodType,
@@ -686,9 +686,9 @@ export const groupAlgorithmOptions = <T extends { value?: string | number }>(
 export const coerceThresholdsForCompareMode = <
   T extends { method?: string | null }
 >(
-  compareMode: string,
-  thresholds: T[]
-): T[] => {
+    compareMode: string,
+    thresholds: T[]
+  ): T[] => {
   if (compareMode !== COMPARE_MODE_TIMELEFT) {
     return thresholds;
   }
@@ -738,9 +738,9 @@ export const recoveryConflictsWithThresholds = (
 export const coerceRecoveryForThresholds = <
   T extends { method?: string; value?: number | null }
 >(
-  recovery: T | null | undefined,
-  thresholds: Array<{ method?: string | null }> | null | undefined
-): T | { method: string; value: null } => {
+    recovery: T | null | undefined,
+    thresholds: Array<{ method?: string | null }> | null | undefined
+  ): T | { method: string; value: null } => {
   if (recoveryConflictsWithThresholds(recovery, thresholds)) {
     return { method: '', value: null };
   }
@@ -796,7 +796,7 @@ export type SceneChipId =
   | 'disk_timeleft'
   | 'count_if_n';
 
-export type SceneChipDefinition = {
+export interface SceneChipDefinition {
   id: SceneChipId;
   labelKey: string;
   algorithm: string;
@@ -804,7 +804,7 @@ export type SceneChipDefinition = {
   compareValueKind: string;
   thresholdMethod?: string;
   countPredicate?: { method: string; value: number };
-};
+}
 
 export const SCENE_CHIPS: SceneChipDefinition[] = [
   {
@@ -926,14 +926,14 @@ export const matchSceneChipId = ({
   return matched?.id || null;
 };
 
-export type SceneChipApplyResult = {
+export interface SceneChipApplyResult {
   algorithm: string;
   compareMode: string;
   compareValueKind: string;
   thresholds: Array<{ level?: string; method?: string; value?: number | null }>;
   recoveryThreshold: { method: string; value: number | null };
   countPredicate: { method: string; value: number | null };
-};
+}
 
 export const applySceneChip = ({
   chipId,

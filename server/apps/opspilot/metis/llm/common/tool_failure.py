@@ -170,6 +170,96 @@ def is_non_replanable_tool_failure(content: Any, status: str = "") -> bool:
 
 UNRECOVERABLE_SKILL_RESULT_HINT = f"{SKILL_RESULT_MARKER} 连接、凭据、权限或脚本实现失败，禁止重试。" "把错误原样告诉用户并结束，不要改参，不要 read_file。"
 
+MISSING_PARAMS_CHOICE_HINT = (
+    "工具因缺少必要参数失败，这不是系统故障。" "必须立即调用 request_user_choice，用选项让用户补全缺失信息" "（查询对象、时间范围、看 CPU/内存/磁盘还是告警等）。" "禁止编造 uvx、python -m、白名单命令或其他替代排查方案，禁止换其他工具盲猜。"
+)
+
+# 查询缺参：走选择器。namespace 仍留给 K8s 反查重规划；host/url 走配置失败。
+_MISSING_PARAMS_RE = re.compile(
+    r"missing parameters|missing required|field required|"
+    r"缺少必要(?:的)?(?:检索)?参数|"
+    r"\b(?:monitor_obj_id|metric|instance_id|instance_ids|search|model_id|"
+    r"start|end|query|alert_id)\s+is required\b",
+    re.I,
+)
+
+_SUBSTITUTE_PLAN_MARKERS = ("uvx", "白名单内的命令", "替代执行方案", "python -m")
+
+
+def is_missing_tool_params_failure(content: Any, status: str = "") -> bool:
+    """工具/校验因查询必填参数缺失失败，应问用户而不是换工具或编 CLI。"""
+    if is_non_replanable_tool_failure(content, status):
+        return False
+    text = _tool_failure_text(content)
+    if not text:
+        return False
+    return bool(_MISSING_PARAMS_RE.search(text))
+
+
+def wrap_tool_error_payload(message: str) -> dict[str, Any]:
+    payload = {"success": False, "error": message}
+    if is_missing_tool_params_failure(message):
+        payload["_next_step_hint"] = MISSING_PARAMS_CHOICE_HINT
+    return payload
+
+
+def _message_is_user_choice(message: Any) -> bool:
+    name = str(getattr(message, "name", "") or "")
+    if name == "request_user_choice":
+        return True
+    for call in getattr(message, "tool_calls", None) or []:
+        call_name = call.get("name") if isinstance(call, dict) else getattr(call, "name", "")
+        if str(call_name or "") == "request_user_choice":
+            return True
+    return False
+
+
+def _message_is_tool_result(message: Any) -> bool:
+    if getattr(message, "type", "") == "tool":
+        return True
+    return type(message).__name__ == "ToolMessage"
+
+
+def step_has_unasked_missing_params(messages: list[Any] | tuple[Any, ...] | None) -> bool:
+    """步骤里出现查询缺参，且尚未调用 request_user_choice。"""
+    saw_missing = False
+    saw_choice = False
+    for message in messages or ():
+        if _message_is_user_choice(message):
+            saw_choice = True
+        if not _message_is_tool_result(message):
+            continue
+        status = str(getattr(message, "status", "") or "")
+        if is_missing_tool_params_failure(getattr(message, "content", None), status):
+            saw_missing = True
+    return saw_missing and not saw_choice
+
+
+def is_substitute_plan_message(message: Any) -> bool:
+    """模型在缺参后编造的 uvx/白名单替代方案，不应展示给用户。"""
+    msg_type = str(getattr(message, "type", "") or "")
+    cls_name = type(message).__name__
+    if msg_type not in {"ai", "AIMessage"} and cls_name not in {"AIMessage", "AIMessageChunk"}:
+        return False
+    text = str(getattr(message, "content", "") or "").casefold()
+    if not text:
+        return False
+    return any(marker.casefold() in text for marker in _SUBSTITUTE_PLAN_MARKERS)
+
+
+def tool_graph_failure_user_prompt(exc: BaseException) -> str:
+    detail = f"{type(exc).__name__}: {str(exc)[:800]}"
+    if is_missing_tool_params_failure(str(exc)):
+        return f"上一轮工具调用因缺少必要参数失败({detail})。{MISSING_PARAMS_CHOICE_HINT}"
+    return f"上一轮工具执行失败(异常 {detail}),请用中文告诉用户失败原因," "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m," "或换其他可用工具)。不要再尝试调同样的命令。"
+
+
+def tool_graph_failure_plain_text(exc: BaseException) -> str:
+    detail = f"{type(exc).__name__}: {str(exc)[:400]}"
+    if is_missing_tool_params_failure(str(exc)):
+        return "查询缺少必要参数。请补充查询对象、时间范围或要查看的指标后重试。"
+    return f"工具执行失败:{detail}\n请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
+
 
 def unrecoverable_skill_result_hint(text: str) -> str | None:
     """技能脚本 stdout 若是凭据/配置/实现异常，返回禁止重试提示。"""

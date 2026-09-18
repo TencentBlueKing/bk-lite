@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from typing import Literal
 
 from langchain_core.callbacks import adispatch_custom_event, dispatch_custom_event
 from langchain_core.runnables import RunnableConfig
@@ -12,6 +13,8 @@ from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.k8s_report_tools import build_a2ui_report_contract
+from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
+from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
 from apps.opspilot.services.approval import wait_for_approval
 from apps.opspilot.utils.user_choice import wait_for_choice
 
@@ -83,32 +86,28 @@ class ApprovalToolsMixin:
 
     def _build_choice_tool(self):
         """构建 request_user_choice 工具，供 LLM 需要向用户提问时调用"""
-        from typing import List, Literal, Optional
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
 
         class AskUserInput(PydanticBaseModel):
             question: str = PydanticField(description="完整的一句问句，具体、引用用户原话或当前上下文里的关键词。脱离上下文用户也能看懂。")
             question_type: Literal["single_select", "multi_select", "confirm", "text"] = PydanticField(
                 description="single_select=N选1; multi_select=N选若干; confirm=是/否; text=开放式输入"
             )
-            options: Optional[List[str]] = PydanticField(
+            options: list[str] | None = PydanticField(
                 default=None,
-                description="single_select/multi_select 必填，2~4项，每项不超40字符。confirm/text 必须为 None。",
+                description="single_select/multi_select 必填，选项必须来自真实查询结果，至少 2 项；类型很多时也要全部放入，前端会显示下拉框。confirm/text 必须为 None。禁止用纯文本列出选项。",
             )
 
         async def _ask_user(
             question: str,
             question_type: str,
-            options: Optional[List[str]] = None,
+            options: list[str] | None = None,
             config: RunnableConfig = None,
         ) -> str:
-            from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
-            from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
-
-            configurable = getattr(_ask_user, "_configurable", {}) or {}
+            configurable = {}
+            if isinstance(config, dict):
+                configurable = dict(config.get("configurable") or {})
+            if not configurable:
+                configurable = dict(getattr(_ask_user, "_configurable", {}) or {})
             guard = build_kubernetes_cluster_choice_guard(
                 question=question,
                 options=options,
@@ -124,8 +123,10 @@ class ApprovalToolsMixin:
                 return guard_message
 
             choice_id = str(uuid.uuid4())[:8]
-            execution_id = getattr(_ask_user, "_execution_id", "") or str(int(time.time() * 1000))
-            node_id = getattr(_ask_user, "_node_id", "skill_test")
+            execution_id = (
+                str(configurable.get("execution_id") or "").strip() or getattr(_ask_user, "_execution_id", "") or str(int(time.time() * 1000))
+            )
+            node_id = str(configurable.get("node_id") or "").strip() or getattr(_ask_user, "_node_id", "") or "skill_test"
 
             # Convert to internal options format based on question_type
             if question_type == "confirm":
@@ -235,7 +236,9 @@ class ApprovalToolsMixin:
                 "1. 存在多个目标/实例且用户未明确指定范围时（必须先通过搜索/查询工具确认有多个结果，再让用户选择。不能跳过查询直接问）\n"
                 "2. 请求存在多种合理解读，选错会导致返工\n"
                 "3. 需要只有用户掌握的信息（偏好、业务规则、场景背景）\n"
-                "4. 任务完成后让用户选择下一步操作\n\n"
+                "4. 任务完成后让用户选择下一步操作\n"
+                "5. 工具因缺少必填参数失败（Missing parameters / is required）时，立刻用选项问用户补全；禁止编造 uvx/CLI 替代方案\n"
+                "6. 监控查询只给了实例名、未说明是主机/K8s Pod/中间件时，先 monitor_list_objects，再用真实对象类型名问用户；禁止按名称形态猜测类型\n\n"
                 "━━━ 禁止调用的场景 ━━━\n"
                 "A. 自己能查到答案的不要问（用工具查）\n"
                 "B. 用户原始消息里已经给过约束的不要再问\n"
@@ -246,7 +249,7 @@ class ApprovalToolsMixin:
                 "G. 用户没有提出 K8s/技术操作需求时，不要主动问是否要做检查\n\n"
                 "━━━ 参数选择 ━━━\n"
                 "能让用户点按钮就别让用户打字。\n"
-                "- single_select: N选1，options 2~4项\n"
+                "- single_select: N选1，options 必须来自查询结果；类型很多时也全部放入，不要截成 2~4 项\n"
                 "- multi_select: N选若干\n"
                 "- confirm: 是/否（options 设为 None）\n"
                 "- text: 开放式输入（options 设为 None）\n\n"

@@ -23,6 +23,7 @@ describe('Redfish credential TLS verification', () => {
       port: '443',
       verify_tls: false,
     })).toEqual({
+      credential_source: 'inline',
       username: 'Administrator',
       password: ' secret ',
       port: 443,

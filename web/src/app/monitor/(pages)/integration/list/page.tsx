@@ -538,6 +538,9 @@ const Integration = () => {
                   );
                   const objectName = parentObject?.name || '';
                   const staleCount = Number(app.stale_instance_count) || 0;
+                  const packVersionText = app.pack_version
+                    ? app.pack_version
+                    : t('monitor.integrations.builtinPack');
 
                   return (
                     <div
@@ -577,17 +580,48 @@ const Integration = () => {
                             </Tag>
                             <Tooltip
                               title={
-                                app.pack_version
-                                  ? t('monitor.integrations.pinnedPackHint', '', {
-                                    version: app.pack_version
+                                staleCount > 0
+                                  ? t('monitor.integrations.staleInstanceHint', '', {
+                                    count: staleCount,
+                                    version: packVersionText
                                   })
-                                  : t('monitor.integrations.builtinPackHint')
+                                  : app.pack_version
+                                    ? t('monitor.integrations.pinnedPackHint', '', {
+                                      version: app.pack_version
+                                    })
+                                    : t('monitor.integrations.builtinPackHint')
                               }
                             >
-                              <Tag className="mt-[4px] ml-[6px]">
-                                {app.pack_version
-                                  ? app.pack_version
-                                  : t('monitor.integrations.builtinPack')}
+                              <Tag
+                                color={staleCount > 0 ? 'warning' : undefined}
+                                className={`mt-[4px] ml-[6px]${staleCount > 0 ? ' cursor-pointer' : ''}`}
+                                onClick={
+                                  staleCount > 0
+                                    ? (e) => {
+                                      e.stopPropagation();
+                                      const result =
+                                        resolveIntegrationEntryContext(
+                                          app,
+                                          objects
+                                        );
+                                      router.push(
+                                        buildCollectNeedUpdateAssetUrl({
+                                          monitorObjectId: result.ok
+                                            ? result.context.objectId
+                                            : app.parent_monitor_object ||
+                                              String(objectId),
+                                          pluginId: app.id,
+                                          needUpdate: true
+                                        })
+                                      );
+                                    }
+                                    : undefined
+                                }
+                              >
+                                {packVersionText}
+                                {staleCount > 0
+                                  ? ` · ${t('monitor.integrations.needUpdate')} ${staleCount}`
+                                  : ''}
                               </Tag>
                             </Tooltip>
                             {app.is_custom && (
@@ -595,40 +629,6 @@ const Integration = () => {
                                 {t('monitor.integrations.selfBuilt')}
                               </Tag>
                             )}
-                            {staleCount > 0 ? (
-                              <Tooltip
-                                title={t(
-                                  'monitor.integrations.staleInstanceHint',
-                                  '',
-                                  { count: staleCount }
-                                )}
-                              >
-                                <Tag
-                                  color="warning"
-                                  className="mt-[4px] ml-[6px] cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const result = resolveIntegrationEntryContext(
-                                      app,
-                                      objects
-                                    );
-                                    router.push(
-                                      buildCollectNeedUpdateAssetUrl({
-                                        monitorObjectId: result.ok
-                                          ? result.context.objectId
-                                          : app.parent_monitor_object ||
-                                            String(objectId),
-                                        pluginId: app.id,
-                                        needUpdate: true
-                                      })
-                                    );
-                                  }}
-                                >
-                                  {t('monitor.integrations.needUpdate')}{' '}
-                                  {staleCount}
-                                </Tag>
-                              </Tooltip>
-                            ) : null}
                           </div>
                         </div>
                         <p

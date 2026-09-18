@@ -313,6 +313,7 @@
     "importMarkdownDone": "Markdown 导入完成",
     "importMarkdownFailed": "Markdown 导入失败,请检查文件后重试",
     "exportMarkdown": "导出 Markdown",
+    "exportOkf": "导出 OKF",
     "reindexKnowledgeBase": "重建索引",
     "reindexKnowledgeBaseTip": "重建该知识库全部启用知识页面的页面索引与分块索引,并记录构建结果用于诊断。",
     "reindexKnowledgeBaseConfirm": "确定重建该知识库的全部索引?",
@@ -569,6 +570,9 @@
       "markdownImportRepreflightRequired": "请重新预检后再导入。",
     "markdownImportExecute": "确认导入",
     "markdownImportExecuteFailed": "Markdown 导入未完成，请重新预检后重试。",
+    "markdownImportAccepted": "导入还在后台执行，请稍候",
+    "markdownImportRunning": "导入还在后台执行，请稍候",
+    "markdownImportBackgroundHint": "导入继续在后台执行，可在构建记录中查看进度。",
     "markdownImportDone": "导入完成：新建 {created}，更新 {updated}，冲突候选 {candidate}。",
     "okfImportTitle": "导入 OKF Bundle",
     "okfImportDropHint": "拖拽或点击选择 OKF ZIP 归档",
@@ -612,6 +616,8 @@
     "okfImportCreateFoldersHint": "默认在「未分类」下按 bundle 文件夹创建子目录，不改动知识库已配置的结构目录。关闭后改走自动或分类路由。切换后必须重新预检。",
     "exportMarkdownDone": "Markdown 导出已开始下载",
     "exportMarkdownFailed": "Markdown 导出失败,请稍后重试",
+    "exportOkfDone": "OKF 导出已开始下载",
+    "exportOkfFailed": "OKF 导出失败,请稍后重试",
     "skipped": "已跳过",
     "settings": "设置",
     "knowledge": "知识",
@@ -770,6 +776,7 @@
     "triggerMaterialQueue": "批量构建",
     "triggerMaterialQueueItem": "排队构建",
     "triggerRebuild": "重建知识库",
+    "triggerMarkdownImport": "导入 Markdown / OKF",
     "stageDone": "完成",
     "stageFailed": "失败",
     "stageGenerating": "生成中",
@@ -1218,6 +1225,7 @@
     "choiceSelected": "已选择",
     "choiceOrType": "或者自行输入",
     "choiceTextPlaceholder": "输入你的回答...",
+    "replyToPendingChoice": "回复上面的问题...",
     "planningExecution": "正在分析任务并规划执行步骤…",
     "replanningExecution": "正在根据执行结果重新规划…"
   },
@@ -1284,9 +1292,7 @@
       "manageGroup": "管理组织",
       "usageGroup": "使用组织",
       "usageGroupTip": "使用组织可调用该智能体进行对话/接口请求；管理组织会自动加入且不可移除",
-      "forceWikiGrounded": "强制",
-      "forceWikiGroundedExtra": "开启强制后会只按知识库回答",
-      "forceWikiGroundedNeedKb": "请先选择知识库"
+      "forceWikiGrounded": "强制"
     },
     "memory": {
       "title": "记忆",

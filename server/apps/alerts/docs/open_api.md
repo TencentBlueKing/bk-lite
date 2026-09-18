@@ -140,7 +140,7 @@ Query 参数：
 | `my_alert` | string | 否 | 空 | 传入 `1` / `true` / `yes` 时，仅返回当前绑定用户为处理人的告警；仍受绑定组织约束 |
 | `level` | string | 否 | 空 | 告警级别，多个值用英文逗号分隔 |
 | `status` | string | 否 | 空 | 告警状态，多个值用英文逗号分隔 |
-| `source_name` | string | 否 | 空 | 告警源名称，多个值用英文逗号分隔 |
+| `source_name` | string | 否 | 空 | 集成源名称，多个值用英文逗号分隔 |
 | `created_at_after` | string | 否 | 空 | 创建时间下限（含），格式与系统存储一致 |
 | `created_at_before` | string | 否 | 空 | 创建时间上限（含），格式与系统存储一致 |
 | `incident_id` | string | 否 | 空 | 关联事故 ID，精确匹配 |
@@ -167,7 +167,7 @@ Query 参数：
 | `content` | string | 告警内容 |
 | `status` | string | 告警状态，例如 `pending`、`processing`、`closed` |
 | `level` | string | 告警级别 |
-| `source_name` | string | 告警源名称 |
+| `source_name` | string | 集成源名称 |
 | `operator` | array[string] | 当前处理人列表 |
 | `item` | string | 监控项 |
 | `resource_id` | string | 资源 ID |
@@ -227,8 +227,8 @@ Query 参数：
 | `level` | string | 事件级别 |
 | `action` | string | 事件动作 |
 | `status` | string | 事件状态 |
-| `source` | integer | 告警源 ID，无来源时为 `null` |
-| `source_name` | string | 告警源名称 |
+| `source` | integer | 集成源 ID，无来源时为 `null` |
+| `source_name` | string | 集成源名称 |
 | `resource_id` | string | 资源 ID |
 | `resource_type` | string | 资源类型 |
 | `resource_name` | string | 资源名称 |

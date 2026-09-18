@@ -2,6 +2,10 @@ import { PASSWORD_PLACEHOLDER } from '@/app/cmdb/constants/professCollection';
 import type { CredentialSchema } from '@/app/cmdb/types/autoDiscovery';
 
 export interface WinSphereCredential {
+  credential_id?: string;
+  credential_source?: 'inline' | 'vault';
+  vault_credential_id?: string;
+  vault_type_key?: string;
   user?: string;
   password?: string;
   https_port?: number | string;
@@ -54,6 +58,14 @@ export const buildWinSphereCredential = (
         : trim(rawValue);
     credential[key] = normalized as never;
   });
+  credential.credential_source = value.credential_source || 'inline';
+  credential.credential_id = value.credential_id;
+  if (credential.credential_source === 'vault') {
+    delete credential.user;
+    delete credential.password;
+    credential.vault_credential_id = value.vault_credential_id;
+    credential.vault_type_key = value.vault_type_key;
+  }
   return credential;
 };
 
@@ -61,9 +73,9 @@ export const restoreWinSphereCredential = (
   value: WinSphereCredential | WinSphereCredential[] | undefined,
   isCopy: boolean,
   schema: CredentialSchema,
-): Required<WinSphereCredential> => {
+): WinSphereCredential => {
   const item = getCredentialItem(value);
-  const restored = createWinSphereCredential(schema);
+  const restored: WinSphereCredential = { ...createWinSphereCredential(schema) };
   schema.fields.forEach((field) => {
     const key = field.key as keyof WinSphereCredential;
     const rawValue = item[key];
@@ -77,6 +89,14 @@ export const restoreWinSphereCredential = (
       restored[key] = trim(rawValue) as never;
     }
   });
+  restored.credential_source = item.credential_source || 'inline';
+  restored.credential_id = item.credential_id;
+  if (restored.credential_source === 'vault') {
+    delete restored.user;
+    delete restored.password;
+    restored.vault_credential_id = item.vault_credential_id;
+    restored.vault_type_key = item.vault_type_key;
+  }
   return restored;
 };
 
@@ -84,7 +104,13 @@ export const validateWinSphereCredential = (
   value: WinSphereCredential,
   schema: CredentialSchema,
 ): string | null => {
+  if (value.credential_source === 'vault' && !value.vault_credential_id) {
+    return 'vault_credential_id';
+  }
   for (const field of schema.fields) {
+    if (value.credential_source === 'vault' && (field.key === 'user' || field.key === 'password')) {
+      continue;
+    }
     const rawValue = value[field.key as keyof WinSphereCredential];
     if (field.required && field.type !== 'boolean' && !trim(rawValue)) {
       return field.key;

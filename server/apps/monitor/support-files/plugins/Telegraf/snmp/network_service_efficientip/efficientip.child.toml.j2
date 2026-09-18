@@ -54,7 +54,7 @@
         name = "cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.14.8.1.0"
+        oid = "1.3.6.1.4.1.2440.1.14.8.1"
         name = "load"
 
     # eipHwMemUsed：已用物理内存百分比，字段 memory_used。
@@ -62,7 +62,7 @@
         name = "memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.14.9.1.0"
+        oid = "1.3.6.1.4.1.2440.1.14.9.1"
         name = "used"
 
     # eipHwTempCpu：CPU 温度（摄氏度）。
@@ -70,7 +70,7 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.14.3.1.0"
+        oid = "1.3.6.1.4.1.2440.1.14.3.1"
         name = "celsius"
 
     # eipHwPsu1Status：电源 1 状态。0=无电源, 1=AC 已接(正常), 2=在位未接电, 3=不在位。
@@ -78,7 +78,7 @@
         name = "device_psu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.14.5.2.0"
+        oid = "1.3.6.1.4.1.2440.1.14.5.2"
         name = "state"
 
     # ---- EfficientIP 服务标量 (PEN 2440 / eipSvc*) ----
@@ -87,35 +87,35 @@
         name = "network_service_dns_service"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.16.8.1.0"
+        oid = "1.3.6.1.4.1.2440.1.16.8.1"
         name = "state"
 
     [[inputs.snmp.table]]
         name = "network_service_dns"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.16.8.2.0"
+        oid = "1.3.6.1.4.1.2440.1.16.8.2"
         name = "cpu"
 
     [[inputs.snmp.table]]
         name = "network_service_dhcp_service"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.16.6.1.0"
+        oid = "1.3.6.1.4.1.2440.1.16.6.1"
         name = "state"
 
     [[inputs.snmp.table]]
         name = "network_service_dhcp"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.16.6.2.0"
+        oid = "1.3.6.1.4.1.2440.1.16.6.2"
         name = "cpu"
 
     [[inputs.snmp.table]]
         name = "network_service_database"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2440.1.16.5.2.0"
+        oid = "1.3.6.1.4.1.2440.1.16.5.2"
         name = "cpu"
 
 # ---- 状态归一：1=running/ok → 1(正常)，其余含未知码 default=2(异常)。----

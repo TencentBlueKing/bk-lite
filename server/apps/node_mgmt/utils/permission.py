@@ -3,6 +3,9 @@ from django.db.models import Q
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import (
     _normalize_organization_ids,
+    assert_unassigned_catalog_access,
+    is_persisted_superuser,
+    missing_organization_q,
     resolve_assignable_organization_ids,
     resolve_current_team_data_scope,
     scope_permission_queryset,
@@ -12,7 +15,7 @@ from apps.core.utils.permission_utils import get_instance_permission_map, get_pe
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models.sidecar import ChildConfig, CollectorConfiguration, Node
+from apps.node_mgmt.models.sidecar import ChildConfig, CollectorConfiguration, Node, NodeOrganization
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -92,6 +95,13 @@ def get_authorized_node_queryset(request, permission=None):
         team_key="nodeorganization__organization__in",
         id_key="id__in",
     )
+
+
+def get_catalog_node_queryset(request, permission=None):
+    permission = permission or get_node_permission(request)
+    if assert_unassigned_catalog_access(request):
+        return Node.objects.filter(missing_organization_q(NodeOrganization, fk_name="node_id"))
+    return get_authorized_node_queryset(request, permission)
 
 
 def get_authorized_collector_configuration_queryset(request, permission=None):
@@ -193,14 +203,30 @@ def authorize_node_ids(request, node_ids, required_permission="Operate"):
         return None, WebUtils.response_error(error_message="node does not exist")
 
     permission = get_node_permission(request)
+    user = get_request_user(request)
     nodes = list(
         get_authorized_node_queryset(request, permission=permission).filter(id__in=normalized_ids).prefetch_related("nodeorganization_set").distinct()
     )
     node_map = {str(node.id): node for node in nodes}
+    missing_ids = [node_id for node_id in normalized_ids if node_id not in node_map]
+    if missing_ids and is_persisted_superuser(user):
+        extra_nodes = list(
+            Node.objects.filter(id__in=missing_ids)
+            .filter(missing_organization_q(NodeOrganization, fk_name="node_id"))
+            .prefetch_related("nodeorganization_set")
+        )
+        for node in extra_nodes:
+            node_map[str(node.id)] = node
     if any(node_id not in node_map for node_id in normalized_ids):
         return None, WebUtils.response_403("User does not have permission to operate this node")
 
-    unauthorized_ids = [node_id for node_id in normalized_ids if required_permission not in get_node_permissions(node_map[node_id], permission)]
+    unauthorized_ids = []
+    for node_id in normalized_ids:
+        node = node_map[node_id]
+        if is_persisted_superuser(user) and not get_node_organizations(node):
+            continue
+        if required_permission not in get_node_permissions(node, permission):
+            unauthorized_ids.append(node_id)
     if unauthorized_ids:
         return None, WebUtils.response_403("User does not have permission to operate this node")
 

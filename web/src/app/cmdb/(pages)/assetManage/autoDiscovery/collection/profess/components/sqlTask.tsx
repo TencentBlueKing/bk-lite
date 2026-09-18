@@ -45,10 +45,11 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
   const { model_id: modelId } = modelItem;
   const isMssql = modelItem.credential_protocol === 'sql_server'
     || modelId === 'mssql';
-  const defaultPort = getCredentialDefaultPort(modelItem) ?? 3306;
+  const defaultPort = getCredentialDefaultPort(modelItem);
+  const extraFields = modelId === 'iris' ? { namespace: 'USER' } : modelId === 'couchbase' ? { bucket: '' } : {};
   const initialFormValues = {
     ...SQL_FORM_INITIAL_VALUES,
-    port: String(defaultPort),
+    port: defaultPort == null ? '' : String(defaultPort),
     ...(isMssql ? { database: 'master' } : {}),
   };
 
@@ -114,6 +115,9 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
           if (item.port !== undefined && item.port !== null && item.port !== '') {
             credential.port = item.port;
           }
+          for (const key of Object.keys(extraFields)) {
+            credential[key] = item[key] ?? extraFields[key as keyof typeof extraFields];
+          }
           if (isMssql) {
             credential.database = trimFormString(item.database);
           }
@@ -127,6 +131,7 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
   const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => {
     return {
       credentialPool: normalizeCredentialPool(values.credential).map((item) => ({
+        ...extraFields,
         ...item,
         user: item.user || item.username,
         password: isCopy ? '' : PASSWORD_PLACEHOLDER,
@@ -167,7 +172,7 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
       } else {
         form.setFieldsValue({
           ...initialFormValues,
-          credentialPool: [{ port: initialFormValues.port, ...(isMssql ? { database: 'master' } : {}) }],
+          credentialPool: [{ ...extraFields, port: initialFormValues.port, ...(isMssql ? { database: 'master' } : {}) }],
         });
       }
     };
@@ -196,8 +201,11 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
         >
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="sql"
-              defaultPort={defaultPort}
+              defaultPort={defaultPort ?? ''}
+              collectModelId={modelId}
               editMode={Boolean(editId)}
               showDatabase={isMssql}
               credentialHelp={resolveCredentialHelp(modelItem, t)}

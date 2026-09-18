@@ -2,10 +2,14 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from django.db.models import Exists, Model, OuterRef, Q
+
+from apps.core.exceptions.base_app_exception import BaseAppException, ForbiddenException
 from apps.core.utils.permission_utils import permission_filter
 from apps.core.utils.team_utils import get_current_team
 from apps.rpc.system_mgmt import SystemMgmt
+
+UNASSIGNED_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 @dataclass(frozen=True)
@@ -210,3 +214,44 @@ def validate_assignable_organizations(request, organization_ids):
     if not requested_organization_ids.issubset(assignable_organization_ids):
         raise BaseAppException("organization_ids 包含无权分配的组织")
     return requested_organization_ids
+
+
+def is_persisted_superuser(user) -> bool:
+    return bool(getattr(user, "is_superuser", False))
+
+
+def unassigned_catalog_requested(request) -> bool:
+    raw = None
+    for source_name in ("query_params", "GET"):
+        source = getattr(request, source_name, None)
+        if source is None:
+            continue
+        getter = getattr(source, "get", None)
+        if not callable(getter):
+            continue
+        raw = getter("unassigned")
+        if raw not in (None, ""):
+            break
+    else:
+        data = getattr(request, "data", None)
+        if isinstance(data, dict):
+            raw = data.get("unassigned")
+
+    if isinstance(raw, bool):
+        return raw
+    if raw in (None, ""):
+        return False
+    return str(raw).strip().lower() in UNASSIGNED_TRUE_VALUES
+
+
+def assert_unassigned_catalog_access(request) -> bool:
+    """Return True when the unassigned catalog should replace the current-org list."""
+    if not unassigned_catalog_requested(request):
+        return False
+    if not is_persisted_superuser(getattr(request, "user", None)):
+        raise ForbiddenException("仅超级用户可查看未归属对象")
+    return True
+
+
+def missing_organization_q(related_model: type[Model], *, fk_name: str) -> Q:
+    return ~Exists(related_model.objects.filter(**{fk_name: OuterRef("pk")}))

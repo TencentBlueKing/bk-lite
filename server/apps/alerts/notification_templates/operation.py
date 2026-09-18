@@ -10,6 +10,7 @@ from apps.system_mgmt.models.channel import Channel, ChannelChoices
 OPERATION_TEMPLATE_KEY_PREFIX = "alert_operation:"
 SUPPORTED_CHANNEL_TYPES = {
     ChannelChoices.EMAIL,
+    ChannelChoices.ENTERPRISE_WECHAT,
     ChannelChoices.ENTERPRISE_WECHAT_BOT,
     ChannelChoices.DINGTALK_BOT,
     ChannelChoices.FEISHU_BOT,

@@ -65,13 +65,12 @@ from apps.system_mgmt.utils.channel_utils import (
     send_email,
     send_email_to_user,
     send_nats_message,
+    send_wechat,
 )
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.pwd_policy_cache import get_pwd_policy_settings as _get_pwd_policy_settings
 from apps.system_mgmt.utils.token_blacklist import blacklist_token, is_blacklisted
-
-
 
 
 def _collect_ancestor_group_ids(seed_ids):
@@ -88,10 +87,7 @@ def _collect_ancestor_group_ids(seed_ids):
     if not seed_ids:
         return set()
     # 一次查询获取活动组织的 (id, parent_id, allow_inherit_roles)，仅传输轻量列
-    all_meta = {
-        row[0]: (row[1], row[2])
-        for row in GroupUtils.active_queryset().values_list("id", "parent_id", "allow_inherit_roles")
-    }
+    all_meta = {row[0]: (row[1], row[2]) for row in GroupUtils.active_queryset().values_list("id", "parent_id", "allow_inherit_roles")}
     result = set()
     stack = list(seed_ids)
     while stack:
@@ -126,10 +122,7 @@ def get_user_all_roles(user):
     if user.group_list:
         # 先收集祖先组 ID（轻量查询），再按需加载完整对象（含角色关联）
         ancestor_ids = _collect_ancestor_group_ids(user.group_list)
-        all_groups = {
-            g.id: g
-            for g in GroupUtils.active_queryset(id__in=ancestor_ids).prefetch_related("roles")
-        }
+        all_groups = {g.id: g for g in GroupUtils.active_queryset(id__in=ancestor_ids).prefetch_related("roles")}
 
         visited = set()
 
@@ -188,10 +181,7 @@ def _verify_token(token):
     user_info = jwt.decode(token, key=secret_key, algorithms=[algorithm], options={"verify_exp": False})
     # Render JWT 只能经 AuthMiddleware + Render Scope 白名单使用，不得作为
     # 普通登录 / api_exempt / NATS verify_token 凭证。
-    if (
-        user_info.get("token_type") == "dashboard_report_render"
-        or "render_execution_id" in user_info
-    ):
+    if user_info.get("token_type") == "dashboard_report_render" or "render_execution_id" in user_info:
         raise Exception("Render token is not accepted as a login credential")
     time_now = int(time.time())
 

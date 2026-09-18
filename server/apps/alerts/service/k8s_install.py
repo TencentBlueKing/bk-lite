@@ -175,7 +175,7 @@ class K8sInstallService:
     def normalize_push_source_id(push_source_id: str | None) -> str:
         value = (push_source_id or "k8s").strip()
         if not value:
-            raise BaseAppException("推送来源不能为空")
+            raise BaseAppException("监控源不能为空")
         return value
 
     @classmethod
