@@ -2674,7 +2674,7 @@ class ToolsNodes(
                     additional_kwargs={"opspilot_planned_execution": True},
                 )
 
-            def _step_failure(messages: List[BaseMessage]) -> str:
+            def _step_failure(messages: List[BaseMessage]) -> tuple[str, bool]:
                 for message in reversed(messages):
                     if not isinstance(message, ToolMessage):
                         continue
@@ -2682,10 +2682,11 @@ class ToolsNodes(
                     content = message.content
                     # 技能脚本失败带 [OPSPILOT_SKILL_RESULT]，不算 is_tool_result_failure，
                     # 但仍按与业务工具同一套分型收口凭据/配置/实现异常。
-                    if is_non_replanable_tool_failure(content, status) or is_tool_result_failure(content, status):
+                    unrecoverable = is_non_replanable_tool_failure(content, status)
+                    if unrecoverable or is_tool_result_failure(content, status):
                         tool_name = str(getattr(message, "name", "") or "未知工具")
-                        return f"工具 {tool_name} 执行失败: {str(content)[:800]}"
-                return ""
+                        return f"工具 {tool_name} 执行失败: {str(content)[:800]}", unrecoverable
+                return "", False
 
             def _without_substitute_plan_text(messages: List[BaseMessage]) -> List[BaseMessage]:
                 return [message for message in messages if not is_substitute_plan_message(message)]
@@ -3053,7 +3054,7 @@ class ToolsNodes(
                             step_finished = True
                             break
 
-                        failure = _step_failure(step_messages)
+                        failure, unrecoverable_failure = _step_failure(step_messages)
                         agent_state = step_result
                         if k8s_target_lookup_exhausted_from_messages(step_messages):
                             _collect_output_messages(step_messages)
@@ -3111,7 +3112,7 @@ class ToolsNodes(
                                 agent_state = _compact_agent_state_with_summaries(overflow=True)
                                 step_finished = True
                                 break
-                            if is_non_replanable_tool_failure(failure):
+                            if unrecoverable_failure or is_non_replanable_tool_failure(failure):
                                 await _abort_unrecoverable_step(failure, extra_messages=step_messages)
                                 break
                             if replan_count >= 2:

@@ -1875,7 +1875,7 @@ class TestBuildDeepagentNodes:
             self._run_wrapper(node, req, captured, plan_payload={"goal": "x", "steps": []})
 
         assert "planner_calls" not in captured
-        assert [tool.name for tool in captured["create_kwargs"]["tools"]] == ["shell", "k8s"]
+        _assert_registered_tool_names(captured["create_kwargs"]["tools"], ["shell", "k8s"])
         middleware = captured["create_kwargs"].get("middleware") or []
         assert not any(isinstance(item, ToolVisibilityMiddleware) for item in middleware)
         assert len(captured["ainvoke_messages"]) == 1
