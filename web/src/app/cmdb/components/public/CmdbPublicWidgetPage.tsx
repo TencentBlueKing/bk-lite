@@ -6,81 +6,84 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
-import {
-  canShowCrossModulePublicWidget,
-  hasAppAccess,
-  useAppWidget,
-  useLazyAppWidget,
-} from '@/context/appCapabilities';
+import { useAppWidget, useLazyAppWidget } from '@/context/appCapabilities';
 import type { AppWidgetKey } from '@/context/appCapabilities';
-import { useClientData } from '@/context/client';
 import { useInstanceApi } from '@/app/cmdb/api';
 
 type InstUuidWidget = React.ComponentType<{ instUuid: string }>;
 type MonitorIdWidget = React.ComponentType<{ monitorId: string }>;
+type NodeIdWidget = React.ComponentType<{ nodeId: string }>;
 
 export function CmdbPublicWidgetPage({
   widgetKey,
   identifierProp,
 }: {
   widgetKey: AppWidgetKey;
-  identifierProp: 'instUuid' | 'monitorId';
+  identifierProp: 'instUuid' | 'monitorId' | 'nodeId';
 }) {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { clientData } = useClientData();
-  const hasOpsAnalysis = hasAppAccess(clientData, 'ops-analysis');
   const instUuid = resolveCmdbInstUuid(searchParams.get('inst_uuid')) || '';
   const widget = useAppWidget(widgetKey);
   const { getInstanceDetail } = useInstanceApi();
   const getInstanceDetailRef = useRef(getInstanceDetail);
   getInstanceDetailRef.current = getInstanceDetail;
   const [monitorId, setMonitorId] = useState('');
-  const [resolvingMonitorId, setResolvingMonitorId] = useState(
-    identifierProp === 'monitorId',
+  const [nodeId, setNodeId] = useState('');
+  const [resolvingIdentifier, setResolvingIdentifier] = useState(
+    identifierProp === 'monitorId' || identifierProp === 'nodeId',
   );
 
   useEffect(() => {
-    if (identifierProp !== 'monitorId') {
-      setResolvingMonitorId(false);
+    if (identifierProp === 'instUuid') {
+      setResolvingIdentifier(false);
       setMonitorId('');
+      setNodeId('');
       return;
     }
     if (!instUuid) {
-      setResolvingMonitorId(false);
+      setResolvingIdentifier(false);
       setMonitorId('');
+      setNodeId('');
       return;
     }
     let cancelled = false;
-    setResolvingMonitorId(true);
+    setResolvingIdentifier(true);
     getInstanceDetailRef.current(instUuid)
-      .then((detail: { monitor_id?: string }) => {
-        if (!cancelled) setMonitorId(String(detail?.monitor_id || '').trim());
+      .then((detail: { monitor_id?: string; node_id?: string }) => {
+        if (!cancelled) {
+          setMonitorId(String(detail?.monitor_id || '').trim());
+          setNodeId(String(detail?.node_id || '').trim());
+        }
       })
       .catch(() => {
-        if (!cancelled) setMonitorId('');
+        if (!cancelled) {
+          setMonitorId('');
+          setNodeId('');
+        }
       })
       .finally(() => {
-        if (!cancelled) setResolvingMonitorId(false);
+        if (!cancelled) setResolvingIdentifier(false);
       });
     return () => {
       cancelled = true;
     };
   }, [identifierProp, instUuid]);
 
-  const identifier = identifierProp === 'instUuid' ? instUuid : monitorId;
-  const canUsePublic = canShowCrossModulePublicWidget({
-    hostApp: 'cmdb',
-    widgetKey,
-    hasOpsAnalysis,
-    providerDeclared: widget.declared,
-  });
+  const identifier =
+    identifierProp === 'instUuid'
+      ? instUuid
+      : identifierProp === 'monitorId'
+        ? monitorId
+        : nodeId;
+  // 提供方未购 / 无模块级访问时目录探测不到该键，declared 即为 false。
+  const canUsePublic = widget.declared;
   const { Widget, loadFailed } = useLazyAppWidget({
     loadWidget: widget.loadWidget,
     active: canUsePublic && Boolean(identifier),
   });
 
-  if (widget.status === 'loading' || resolvingMonitorId) {
+  if (widget.status === 'loading' || resolvingIdentifier) {
     return (
       <div className="flex h-full min-h-[280px] items-center justify-center">
         <Spin />
@@ -108,8 +111,10 @@ export function CmdbPublicWidgetPage({
     <div className="h-full min-h-[280px] min-w-0">
       {identifierProp === 'instUuid' ? (
         <InstUuidMount Widget={Widget as InstUuidWidget} instUuid={identifier} />
-      ) : (
+      ) : identifierProp === 'monitorId' ? (
         <MonitorIdMount Widget={Widget as MonitorIdWidget} monitorId={identifier} />
+      ) : (
+        <NodeIdMount Widget={Widget as NodeIdWidget} nodeId={identifier} />
       )}
     </div>
   );
@@ -133,4 +138,14 @@ function MonitorIdMount({
   monitorId: string;
 }) {
   return <Widget monitorId={monitorId} />;
+}
+
+function NodeIdMount({
+  Widget,
+  nodeId,
+}: {
+  Widget: NodeIdWidget;
+  nodeId: string;
+}) {
+  return <Widget nodeId={nodeId} />;
 }

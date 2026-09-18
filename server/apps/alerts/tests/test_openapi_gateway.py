@@ -478,3 +478,55 @@ def test_batch_action_forged_team_is_rejected(tenants):
     )
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_system_token_all_scope_still_requires_alarms_view():
+    from apps.core.openapi.tests.test_system_token_auth import (
+        _acting,
+        _create_acting_user,
+        _create_system_token,
+    )
+
+    user = _create_acting_user(210)
+    token = _create_system_token(scope={"mode": "all"})
+    response = APIClient().get(LIST_URL, **_acting(token, user, 210))
+    assert response.status_code == 403, response.json()
+    assert response.json()["code"] == "PERM_MISSING"
+    assert response.json()["message"] == "permission denied"
+
+
+def test_system_token_all_scope_admin_bypasses_alarms_menu():
+    from apps.core.openapi.tests.test_system_token_auth import (
+        _acting,
+        _create_acting_user,
+        _create_system_token,
+    )
+    from apps.core.openapi.tests.test_system_token_permission import _grant_admin_role
+
+    user = _create_acting_user(211)
+    _grant_admin_role(user)
+    token = _create_system_token(scope={"mode": "all"})
+    response = APIClient().get(LIST_URL, **_acting(token, user, 211))
+    assert response.status_code == 200, response.json()
+    assert response.json()["result"] is True
+    assert response.json()["data"]["count"] == 0
+
+
+def test_system_token_alarm_admin_bypasses_empty_alarms_menu():
+    from apps.core.openapi.tests.test_system_token_auth import (
+        _acting,
+        _create_acting_user,
+        _create_system_token,
+    )
+
+    user = _create_acting_user(212)
+    role, _ = Role.objects.get_or_create(name="admin", app="alarm", defaults={"menu_list": []})
+    if role.menu_list:
+        role.menu_list = []
+        role.save(update_fields=["menu_list"])
+    SystemUser.objects.filter(username=user.username, domain=user.domain).update(role_list=[role.id])
+    token = _create_system_token(scope={"mode": "all"})
+    response = APIClient().get(LIST_URL, **_acting(token, user, 212))
+    assert response.status_code == 200, response.json()
+    assert response.json()["result"] is True
+    assert response.json()["data"]["count"] == 0

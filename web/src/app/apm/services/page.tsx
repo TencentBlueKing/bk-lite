@@ -28,6 +28,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import FilterToolbar from '@/components/filter-toolbar';
 import Permission from '@/components/permission';
 import dayjs from 'dayjs';
@@ -136,6 +137,7 @@ export default function ApmServicesPage() {
   const [metricRefreshKey, setMetricRefreshKey] = useState(0);
   const [state, setState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [organizationTargets, setOrganizationTargets] = useState<ApmService[]>([]);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -180,8 +182,11 @@ export default function ApmServicesPage() {
     let active = true;
     setState('loading');
     Promise.all([
-      getApplications(),
-      getServices({ include_archived: true }),
+      getApplications(unassignedOnly ? { params: { unassigned: true } } : {}),
+      getServices({
+        include_archived: true,
+        ...(unassignedOnly ? { unassigned: true } : {}),
+      }),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
       getSlos().catch(() => [] as ApmSlo[]),
       getEvents({ limit: 100 }).catch(() => [] as ApmEvent[]),
@@ -204,7 +209,7 @@ export default function ApmServicesPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getApplications, getEvents, getHealth, getServices, getSlos, refreshKey]);
+  }, [authLoading, getApplications, getEvents, getHealth, getServices, getSlos, refreshKey, unassignedOnly]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
     if (!organizationTargets.length) return;
@@ -585,6 +590,13 @@ export default function ApmServicesPage() {
             </Dropdown>
           </Permission>
         ) : null}
+        <CatalogScopeSegmented
+          unassignedOnly={unassignedOnly}
+          onChange={(checked) => {
+            setUnassignedOnly(checked);
+            setSelectedRowKeys([]);
+          }}
+        />
         {perspective === 'service' ? (
           <Button
             icon={<InboxOutlined aria-hidden="true" />}

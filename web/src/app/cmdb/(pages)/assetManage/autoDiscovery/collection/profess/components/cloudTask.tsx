@@ -13,7 +13,7 @@ import {
   getCloudFormInitialValues,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues, normalizeCredentialPool, trimFormString } from '../hooks/formatTaskValues';
+import { formatTaskValues, normalizeCredentialPool, trimFormString, withTaskCredentialSource } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
 import {
@@ -98,7 +98,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         (item) => item.value === values.instUuid
       );
 
-      const credential = buildCloudCredential(
+      const credential = withTaskCredentialSource(credentialValue, buildCloudCredential(
         modelId,
         {
           ...credentialValue,
@@ -106,7 +106,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
           accessSecret,
         },
         regionItem,
-      );
+      ));
 
       return {
         ...baseData,
@@ -123,7 +123,10 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       ...values,
       taskName: isCopy ? '' : values.name,
       credentialPool: [
-        restoreCloudCredential(modelId, values.credential || {}, isCopy),
+        withTaskCredentialSource(
+          normalizeCredentialPool(values.credential)[0] || {},
+          restoreCloudCredential(modelId, values.credential || {}, isCopy),
+        ),
       ],
       organization: values.team || [],
       timeout: values.timeout,
@@ -140,9 +143,10 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     host?: string,
     projectId?: string,
     savedTaskId: number | null = taskId,
+    vaultCredentialId?: string,
   ) => {
     const canUseSavedTask = Boolean(savedTaskId);
-    if ((!accessKey || !accessSecret) && !canUseSavedTask) return;
+    if ((!accessKey || !accessSecret) && !canUseSavedTask && !vaultCredentialId) return;
     if (!cloudRegionId) return;
     setLoadingRegions(true);
     try {
@@ -152,6 +156,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         accessKey,
         accessSecret,
         editId: savedTaskId,
+        vaultCredentialId,
         host,
         projectId,
       });
@@ -177,6 +182,9 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       accessSecret: trimFormString(credentialValue.accessSecret),
       projectId: trimFormString(credentialValue.projectId),
     };
+    const vaultCredentialId = credentialValue.credential_source === 'vault'
+      ? trimFormString(credentialValue.vault_credential_id)
+      : undefined;
 
     form.setFieldValue('credentialPool', [{
       ...credentialValue,
@@ -196,14 +204,14 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       Boolean(taskId)
       && isAbsentSecret(values.accessKey) !== isAbsentSecret(values.accessSecret);
 
-    if (hasMixedCredentialState) {
+    if (!vaultCredentialId && hasMixedCredentialState) {
       message.error(
         `${t('common.inputMsg')}${t('Collection.cloudTask.accessKey')} / ${t('Collection.cloudTask.accessSecret')}`
       );
       return;
     }
 
-    if ((!values.accessKey || !values.accessSecret) && !isCredentialUnchanged) {
+    if (!vaultCredentialId && (!values.accessKey || !values.accessSecret) && !isCredentialUnchanged) {
       const msg = !values.accessKey
         ? t('Collection.cloudTask.accessKey')
         : t('Collection.cloudTask.accessSecret');
@@ -242,6 +250,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       host,
       values.projectId,
       taskId,
+      vaultCredentialId,
     );
   };
 
@@ -291,6 +300,9 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 
   const validateCredentialPool = (_: any, value?: any[]) => {
     const credentialValue = normalizeCredentialPool(value)[0] || {};
+    if (credentialValue.credential_source === 'vault' && !credentialValue.vault_credential_id) {
+      return Promise.reject(new Error('请选择已有凭据'));
+    }
     const invalidField = validateCloudCredential(modelId, credentialValue);
     if (invalidField) {
       const label = invalidField === 'accessKey'
@@ -335,6 +347,9 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
             validateTrigger={[]}
           >
             <CredentialPoolEditor
+              collectModelId={modelId}
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="cloud"
               editMode={Boolean(editId)}
               maxCount={1}

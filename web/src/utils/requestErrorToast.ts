@@ -7,7 +7,7 @@ let messageConfigured = false;
 const ensureMessageConfig = () => {
   if (messageConfigured) return;
   message.config({
-    top: 80,
+    top: 100,
     maxCount: 2,
     duration: 3,
   });

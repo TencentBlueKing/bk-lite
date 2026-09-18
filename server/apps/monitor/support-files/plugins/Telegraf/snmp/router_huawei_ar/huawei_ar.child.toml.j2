@@ -25,8 +25,8 @@
         config_type = "huawei_ar"
         brand = "huawei_ar"
     # ---- sysObjectID model dictionary (huaweiProducts.ar = 1.3.6.1.4.1.2011.2.224) ----
-    # Identity only; this template does not collect extra private metrics.
-    # Interface traffic uses built-in IF-MIB; do not expand IF here.
+    # Identity only. Interface traffic uses built-in IF-MIB; do not expand IF here.
+    # Device health adds entity voltage (mV→V), board power (watts), and chassis DevicePowerInfo (watts); milliwatt energy is a separate ENERGY table.
     # 340 AR8140-12G10XG
     # 341 AR8140-T-12G10XG
     # 349 AR720
@@ -104,7 +104,33 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
         name = "celsius"
+    # ---- Entity voltage (hwEntityVoltage, mV; query /1000 -> V) ----
+    # Same hwEntityStateTable index as CPU/Mem/Temp (entPhysicalIndex).
+    # descr = ENTITY-MIB entPhysicalName. Distinct from optical hwEntityOpticalVoltage (...3.1.6).
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.13"
+        name = "volts"
+    # ---- Entity board power (hwEntityBoardPower, watts) ----
+    # Same hwEntityStateTable index; descr = entPhysicalName. Absent leaves yield an empty table.
+    [[inputs.snmp.table]]
+        name = "device_entity"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.24"
+        name = "board_power"
     # 待现网核验：风扇状态 hwEntityFanState 1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7。
+    # 风扇转速 hwEntityFanSpeed ...10.1.5，Integer32，单位为满速百分比；与 state 同 hwFanStatusTable 索引。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -112,6 +138,9 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.5"
+        name = "speed"
     # 待现网核验：电源状态按同族实体状态表采集，状态码经 enum 归一为 1=正常/2=异常。
     [[inputs.snmp.table]]
         name = "device_psu"
@@ -120,6 +149,78 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.20.1.7"
         name = "state"
+    # ---- Huawei AR SFP optical DDM (HUAWEI-ENTITY-EXTENT-MIB hwOpticalModuleInfoTable, index=entPhysicalIndex) ----
+    # RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9。
+    # TEMP=hwEntityOpticalTemperature ...3.1.5（°C）/ VOLT=hwEntityOpticalVoltage ...3.1.6（mV）/
+    # BIAS=hwEntityOpticalBiasCurrent ...3.1.7（µA）。descr=entPhysicalName。
+    # 线侧光功率是 µW（MIB 文本常误标 dBm）；查询侧 10*log10(µW/1000)→dBm，与 switch_huawei 对齐。
+    # 无效哨兵 2147483647；无模块/无效功率常为 <=0。电压查询侧 /1000 → V。不做 starlark 换算。
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.5"
+        name = "temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.7"
+        name = "bias"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.6"
+        name = "voltage"
+    # ---- Chassis/board energy (hwCurrentPower / hwBoardCurrentPower, milliwatts) ----
+    # 线侧为毫瓦，展示可 ÷1000 为瓦特。仅 HUAWEI-ENERGYMNGT-MIB 1.3.6.1.4.1.2011.6.157。
+    # hwCurrentPower ...6.157.1.6 / hwAveragePower ...1.3 / hwRatedPower ...1.4
+    # 板卡表 hwBoardName ...2.1.1.3 / hwBoardCurrentPower ...2.1.1.4 / hwBoardRatedPower ...2.1.1.5
+    # 板卡无效值（-1 / 空 hwBoardName）在查询侧丢弃。
+    [[inputs.snmp.table]]
+        name = "device_energy"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.1.6"
+        name = "current_power_mw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.1.3"
+        name = "average_power_mw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.1.4"
+        name = "rated_power_mw"
+    [[inputs.snmp.table]]
+        name = "device_board"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.2.1.1.3"
+        name = "hwBoardName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.2.1.1.4"
+        name = "current_power_mw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.6.157.2.1.1.5"
+        name = "rated_power_mw"
+    # ---- Chassis used/total power (hwDevicePowerInfoUsedPower / TotalPower, watts) ----
+    # hwDevicePowerInfoUsedPower  1.3.6.1.4.1.2011.5.25.31.3.2
+    # hwDevicePowerInfoTotalPower ...5.25.31.3.1
+    # Integer32; wire unit is watts. Metric names device_power_used / device_power_total.
+    # Distinct from device_energy_*_mw milliwatt energy gauges.
+    [[inputs.snmp.table]]
+        name = "device_power"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.2"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.3.1"
+        name = "total"
 # ---- BGP 邻居走 BGP4-MIB bgpPeerTable(per-peer walk,需聚合计数)→本轮 N/A,后续可补 BGP peer 数。----
 
 [[processors.enum]]

@@ -70,7 +70,7 @@ def test_search_filters_by_name_org_and_cloud_region(monkeypatch):
     monkeypatch.setattr(node_view, "get_node_permission", lambda request: {"team": [1], "instance": []})
     monkeypatch.setattr(
         node_view,
-        "get_authorized_node_queryset",
+        "get_catalog_node_queryset",
         lambda request, permission=None: Node.objects.filter(id__in=[keep.id, other.id]),
     )
     monkeypatch.setattr(node_view.NodeService, "process_node_data", staticmethod(lambda data: data))
@@ -98,7 +98,7 @@ def test_search_paginates_when_page_size_set(monkeypatch):
     monkeypatch.setattr(node_view, "get_node_permission", lambda request: {})
     monkeypatch.setattr(
         node_view,
-        "get_authorized_node_queryset",
+        "get_catalog_node_queryset",
         lambda request, permission=None: Node.objects.filter(id__in=[keep.id, other.id]),
     )
     monkeypatch.setattr(node_view.NodeService, "process_node_data", staticmethod(lambda data: data))

@@ -10,7 +10,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 
 import { getCleanupFormValues, useTaskForm } from '../hooks/useTaskForm';
-import { formatTaskValues, normalizeCredentialPool } from '../hooks/formatTaskValues';
+import { formatTaskValues, normalizeCredentialPool, withTaskCredentialSource } from '../hooks/formatTaskValues';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import CredentialPoolEditor from './credentialPoolEditor';
 import { buildPlatformApiCredentialHelp } from './credentialHelp';
@@ -85,7 +85,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
       return {
         ...baseData,
         instances: instance?.origin ? [instance.origin] : [],
-        credential: [buildPlatformApiCredential(modelId, credential)],
+        credential: [withTaskCredentialSource(credential, buildPlatformApiCredential(modelId, credential))],
       };
     },
   });
@@ -98,7 +98,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
     accessPointId: values.access_point?.[0]?.id,
     instUuid: values.instances?.[0]?.inst_uuid,
     credentialPool: [
-      restorePlatformApiCredential(
+      withTaskCredentialSource(normalizeCredentialPool(values.credential)[0] || {}, restorePlatformApiCredential(
         modelId,
         normalizeCredentialPool(values.credential)[0]
           || createPlatformApiCredential(modelId),
@@ -106,7 +106,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
         values.instances?.[0]?.endpoint
           || values.instances?.[0]?.ip_addr
           || values.instances?.[0]?.host,
-      ),
+      )),
     ],
   });
 
@@ -125,6 +125,17 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
   const validateCredential = (_: unknown, value: any[]) => {
     const credential = normalizeCredentialPool(value)[0]
       || createPlatformApiCredential(modelId);
+    if (modelId === 'azure'
+      && !String(credential.subscription_id || '').trim()) {
+      return Promise.reject(new Error(t('common.inputMsg') + t('Collection.azureTask.subscriptionId', '订阅 ID')));
+    }
+    if (credential.credential_source !== 'vault') {
+      const field = modelId === 'azure' ? 'tenant_id' : modelId === 'openstack' ? 'user_domain_name' : null;
+      if (field && !String(credential[field] || '').trim()) {
+        return Promise.reject(new Error(t('common.inputMsg') + (field === 'tenant_id'
+          ? t('Collection.platformApiTask.tenantId', '租户 ID') : t('Collection.platformApiTask.userDomainName', '用户域名称'))));
+      }
+    }
     const invalidField = validatePlatformApiCredential(credential);
     if (!invalidField) {
       return Promise.resolve();
@@ -158,6 +169,9 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
             validateTrigger={[]}
           >
             <CredentialPoolEditor
+              collectModelId={modelId}
+              vaultCategory={modelItem.credential_category}
+              vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="platform_api"
               editMode={Boolean(editId)}
               maxCount={1}

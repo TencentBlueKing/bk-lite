@@ -6,12 +6,13 @@ from apps.alerts.open_api.auth import AlertsOpenAPIContext
 from apps.alerts.open_api.errors import AlertsOpenAPIError
 
 
-def _request(*, api_pass=True, groups=None, permissions=None, is_superuser=False):
+def _request(*, api_pass=True, groups=None, permissions=None, is_superuser=False, roles=None):
     user = SimpleNamespace(
         username="api-user",
         group_list=groups if groups is not None else [{"id": 7}],
         permission={"alarm": set(permissions or [])},
         is_superuser=is_superuser,
+        roles=list(roles or []),
         locale="zh-CN",
     )
     return SimpleNamespace(api_pass=api_pass, user=user)
@@ -47,3 +48,20 @@ def test_require_feature_checks_alarm_permission_key():
 def test_require_feature_superuser_bypass():
     ctx = AlertsOpenAPIContext.from_request(_request(permissions=set(), is_superuser=True))
     ctx.require_feature("Alarms-Edit")
+
+
+def test_require_feature_alarm_admin_bypasses_empty_menus():
+    ctx = AlertsOpenAPIContext.from_request(
+        _request(permissions=set(), roles=["alarm--admin"]),
+    )
+    ctx.require_feature("Alarms-View")
+    ctx.require_feature("Alarms-Edit")
+
+
+def test_require_feature_other_app_admin_still_denied():
+    ctx = AlertsOpenAPIContext.from_request(
+        _request(permissions=set(), roles=["cmdb--admin"]),
+    )
+    with pytest.raises(AlertsOpenAPIError) as exc:
+        ctx.require_feature("Alarms-View")
+    assert exc.value.code == "alerts.permission.denied"

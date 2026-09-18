@@ -32,6 +32,7 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import normalize_inst_uuid
 from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance, validate_commands, validate_network_config_instance
 from apps.cmdb.services.pc_collect_policy import validate_pc_collect_task
+from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope, VmwareScopeError
 from apps.cmdb.services.winsphere_endpoint import normalize_winsphere_management_address
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
@@ -354,6 +355,7 @@ class CollectModelSerializer(AuthSerializer):
         allowed_fields = {
             "credential_id",
             "credential_version",
+            "credential_source",
             "scheme",
             "port",
             "verify_tls",
@@ -432,6 +434,7 @@ class CollectModelSerializer(AuthSerializer):
             allowed_fields = {
                 "credential_id",
                 "credential_version",
+                "credential_source",
                 "username",
                 "user",
                 "password",
@@ -467,7 +470,9 @@ class CollectModelSerializer(AuthSerializer):
             if not 1 <= port <= 65535:
                 item_errors["port"] = "端口必须在 1 到 65535 之间"
 
-            normalized = {key: value for key, value in credential.items() if key in {"credential_id", "credential_version", "password"}}
+            normalized = {
+                key: value for key, value in credential.items() if key in {"credential_id", "credential_version", "credential_source", "password"}
+            }
             if isinstance(username, str):
                 normalized["username"] = username.strip()
             normalized["port"] = port
@@ -531,6 +536,7 @@ class CollectModelSerializer(AuthSerializer):
             credential["password"] = legacy_password
         allowed_fields = {
             "credential_id",
+            "credential_source",
             "username",
             "password",
             "port",
@@ -603,6 +609,54 @@ class CollectModelSerializer(AuthSerializer):
         instance["endpoint"] = f"https://{management_address}:{https_port}"
         attrs["instances"] = [instance]
 
+    def _validate_vault_dynamic_credential(self, attrs, model_id):
+        """仓库认证字段下发时查询；此处只校验任务保存的连接参数。"""
+        pool = CollectCredentialPoolService.normalize_pool(self._get_attr_or_instance_value(attrs, "credential"))
+        if model_id in {"winsphere", "influxdb", "hwcloud", "fusioninsight", "storage", "sangforhci"} and len(pool) != 1:
+            raise serializers.ValidationError({"credential": "此插件仅支持一组连接凭据"})
+        errors = {}
+        for index, item in enumerate(pool):
+            if item.get("credential_source") != "vault":
+                continue
+            entry_errors = {}
+            for port_field in ("port", "ipmi_port", "snmp_port", "https_port"):
+                value = item.get(port_field)
+                if value in (None, ""):
+                    continue
+                try:
+                    port = int(value)
+                except (TypeError, ValueError):
+                    port = 0
+                if not 1 <= port <= 65535:
+                    entry_errors[port_field] = "端口必须在 1 到 65535 之间"
+                else:
+                    item[port_field] = port
+            if model_id == "physcial_server" and self._get_attr_or_instance_value(attrs, "driver_type") == CollectDriverTypes.PROTOCOL:
+                params = self._get_effective_params(attrs)
+                protocol = normalize_physical_server_protocol(params.get("collection_protocol"))
+                if protocol not in PHYSICAL_SERVER_PROTOCOLS:
+                    raise serializers.ValidationError({"params": {"collection_protocol": "物理服务器协议仅支持 ipmi 或 redfish"}})
+                params["collection_protocol"] = protocol
+                attrs["params"] = params
+                if protocol == "ipmi" and item.get("privilege") and item["privilege"] not in {"callback", "user", "operator", "administrator"}:
+                    entry_errors["privilege"] = "IPMI 权限级别无效"
+            if model_id == "winsphere" and not item.get("https_port"):
+                entry_errors["https_port"] = "请输入 HTTPS 端口"
+            if model_id == "hwcloud" and not str(item.get("project_id") or "").strip():
+                entry_errors["project_id"] = "请输入华为云 Project ID"
+            if model_id == "azure" and not str(item.get("subscription_id") or "").strip():
+                entry_errors["subscription_id"] = "请输入 Azure 订阅 ID"
+            if model_id == "influxdb" and str(item.get("scheme") or "http").lower() not in {"http", "https"}:
+                entry_errors["scheme"] = "仅支持 HTTP 或 HTTPS"
+            for boolean_field in ("verify_tls",):
+                if boolean_field in item and not isinstance(item[boolean_field], bool):
+                    entry_errors[boolean_field] = "证书校验开关必须为布尔值"
+            if entry_errors:
+                errors[index] = entry_errors
+        if errors:
+            raise serializers.ValidationError({"credential": errors})
+        attrs["credential"] = pool
+
     def _validate_ssl_cer_task(self, attrs):
         if self._get_attr_or_instance_value(attrs, "ip_range"):
             raise serializers.ValidationError({"ip_range": "SSL 证书任务不支持 IP 范围"})
@@ -629,6 +683,9 @@ class CollectModelSerializer(AuthSerializer):
     def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
+        raw_credential = self._get_attr_or_instance_value(attrs, "credential")
+        candidate_pool = raw_credential if isinstance(raw_credential, list) else ([raw_credential] if isinstance(raw_credential, dict) else [])
+        has_vault = any(item.get("credential_source") == "vault" for item in candidate_pool if isinstance(item, dict))
         self._validate_ip_discovery_timeout(attrs, task_type)
 
         if "instances" in attrs:
@@ -662,9 +719,11 @@ class CollectModelSerializer(AuthSerializer):
         ):
             raise serializers.ValidationError({"model_id": "当前版本未启用该采集能力"})
         self._reject_masked_secrets_on_create(attrs, model_id)
-        if model_id == "physcial_server":
+        if model_id == "physcial_server" and not has_vault:
             self._normalize_physical_server_protocol(attrs)
-        if credential_contract:
+        if has_vault:
+            self._validate_vault_dynamic_credential(attrs, model_id)
+        elif credential_contract:
             self._validate_registered_credential(attrs, model_id)
         elif model_id == "influxdb":
             self._validate_influxdb_credential(attrs)
@@ -673,16 +732,37 @@ class CollectModelSerializer(AuthSerializer):
         elif model_id in {"fusioninsight", "storage", "sangforhci"}:
             self._validate_platform_api_credential(attrs)
 
+        if model_id == "vmware_vc":
+            target = {
+                field: self._get_attr_or_instance_value(attrs, field) for field in ("model_id", "instances", "access_point", "credential", "params")
+            }
+            target["id"] = self.instance.pk if self.instance is not None else None
+            try:
+                source = VmwareCollectionScope.validate_task(target)
+            except VmwareScopeError as err:
+                raise serializers.ValidationError({"instances": str(err)}) from err
+            attrs["params"] = {**self._get_effective_params(attrs), "vmware_source_key": source}
+
         if model_id == "winsphere":
             self._normalize_winsphere_instances(attrs)
 
         if model_id == "pc":
             params = self._get_effective_params(attrs)
             instance_params = dict(getattr(self.instance, "params", None) or {}) if self.instance is not None else {}
+            credential_for_policy = self._get_attr_or_instance_value(attrs, "credential")
+            if has_vault:
+                policy_pool = copy.deepcopy(credential_for_policy if isinstance(credential_for_policy, list) else [credential_for_policy])
+                for item in policy_pool:
+                    if item.get("credential_source") != "vault":
+                        continue
+                    item["username"] = "vault-validation-placeholder"
+                    # 仓库的 SSH 类型可为密码或私钥；此处只验证连接参数，认证互斥由仓库与下发解析负责。
+                    item["password"] = "vault-validation-placeholder"
+                credential_for_policy = policy_pool
             try:
                 attrs["params"] = validate_pc_collect_task(
                     params,
-                    credential=self._get_attr_or_instance_value(attrs, "credential"),
+                    credential=credential_for_policy,
                     timeout=self._get_attr_or_instance_value(attrs, "timeout"),
                     instance_params=instance_params,
                 )
@@ -787,6 +867,7 @@ class CollectModelSerializer(AuthSerializer):
         for item in credential:
             if not isinstance(item, dict):
                 continue
+            item.pop("vault_actor_context", None)
             for encrypted_field in encrypted_fields:
                 if encrypted_field in item:
                     item[encrypted_field] = "******"

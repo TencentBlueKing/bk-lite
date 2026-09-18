@@ -466,26 +466,14 @@ class AlertDetector:
         no_data_alerts = [alert for alert in self.active_alerts if alert.alert_type == "no_data"]
         logger.debug(f"Policy {self.policy.id}: found {len(no_data_alerts)} active no_data alerts")
 
-        baseline_keys = self._get_baseline_keys()
-        missing_monitor_instance_ids = {
-            self._resolve_baseline_monitor_instance_id(metric_instance_id)
-            for metric_instance_id in baseline_keys - metric_instance_ids_with_data
-        }
-
         alerts_to_recover = []
         for alert in no_data_alerts:
             alert_metric_id = self._get_alert_metric_instance_id(alert)
+            should_recover = alert_metric_id in metric_instance_ids_with_data
             logger.debug(
                 f"Policy {self.policy.id}: alert {alert.id} metric_id={alert_metric_id}, "
-                f"in_data_set={alert_metric_id in metric_instance_ids_with_data}"
+                f"in_data_set={should_recover}"
             )
-            if baseline_keys:
-                should_recover = (
-                    alert.monitor_instance_id not in missing_monitor_instance_ids
-                )
-            else:
-                # 兼容没有策略基准的历史告警。
-                should_recover = alert_metric_id in metric_instance_ids_with_data
             if should_recover:
                 alerts_to_recover.append(alert)
 

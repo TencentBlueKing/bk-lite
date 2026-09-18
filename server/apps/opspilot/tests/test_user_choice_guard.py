@@ -1,13 +1,8 @@
 import pytest
 
 from apps.opspilot.metis.llm.chain.node import ToolsNodes
-from apps.opspilot.metis.llm.tools.common.user_choice_guard import (
-    ChoiceOptionGuard,
-    validate_user_choice_options,
-)
-from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import (
-    build_kubernetes_cluster_choice_guard,
-)
+from apps.opspilot.metis.llm.tools.common.user_choice_guard import ChoiceOptionGuard, validate_user_choice_options
+from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
 
 
 def test_common_guard_blocks_fabricated_options_for_any_target_type():
@@ -274,8 +269,8 @@ async def test_choice_tool_blocks_single_k8s_instance_fabricated_cluster_options
         ]
     }
 
-    dispatch_mock = mocker.patch("apps.opspilot.metis.llm.chain.node.dispatch_custom_event")
-    wait_mock = mocker.patch("apps.opspilot.metis.llm.chain.node.wait_for_choice")
+    dispatch_mock = mocker.patch("apps.opspilot.metis.llm.chain.approval_tools.dispatch_custom_event")
+    wait_mock = mocker.patch("apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice")
 
     result = await choice_func(
         question="当前环境下有多个 Kubernetes 集群，请选择需要检查配置健康的集群：",
@@ -288,3 +283,15 @@ async def test_choice_tool_blocks_single_k8s_instance_fabricated_cluster_options
     assert "Kubernetes - 1" in result
     dispatch_mock.assert_not_called()
     wait_mock.assert_not_called()
+
+
+def test_choice_tool_type_hints_resolve_for_langgraph_toolnode():
+    """DeepAgent 建图时 ToolNode 会 get_type_hints；future annotations 下 Optional 必须在模块全局。"""
+    from typing import get_type_hints
+
+    from langgraph.prebuilt import ToolNode
+
+    choice_tool = ToolsNodes()._build_choice_tool()
+    hints = get_type_hints(choice_tool.coroutine, include_extras=True)
+    assert "options" in hints
+    ToolNode([choice_tool])

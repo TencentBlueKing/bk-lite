@@ -10,10 +10,12 @@ RRF 融合关键词序与语义序。只需对小候选集调用嵌入服务,无
 import math
 import re
 
-from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import KnowledgePage, PageChunk, PageVersion
 from django.db import transaction
 from openai import OpenAI
+
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.models import KnowledgePage, PageChunk, PageVersion
+from apps.opspilot.services.wiki.generation_navigation_service import page_version_summary
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
@@ -77,15 +79,15 @@ def rrf_fuse(rank_lists, k=60, top_k=None):
 
 
 def index_version(version, embed_provider, embed_fn=None):
-    """为页面版本生成并存储正文嵌入(语义索引)。返回是否成功写入。
+    """为页面版本生成并存储摘要嵌入(语义索引)。返回是否成功写入。
 
-    无 provider/正文为空/嵌入失败时静默跳过(置空),不影响主流程。embed_fn 可注入测试。
+    无 provider/摘要为空/嵌入失败时静默跳过(置空),不影响主流程。embed_fn 可注入测试。
     """
-    body = (getattr(version, "body", "") or "").strip()
-    if not body:
+    summary = page_version_summary(version).strip()
+    if not summary:
         return False
     embed = embed_fn or (lambda texts: embed_texts(texts, embed_provider))
-    vecs = embed([body])
+    vecs = embed([summary])
     if not vecs or not vecs[0]:
         return False
     version.embedding = vecs[0]
@@ -149,15 +151,16 @@ def semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
 
 
 def reindex_page_chunks(page, embed_provider, embed_fn=None):
-    """重建某页面当前版本的分块索引:删旧块 → 切块 → 批量嵌入 → 落库。返回建索引的块数。"""
+    """重建某页面当前版本的分块索引:删旧块 → 以摘要为单块嵌入 → 落库。返回建索引的块数。"""
     cv = page.current_version
     if not cv:
         return 0
-    chunks = chunk_markdown(cv.body or "")
-    if not chunks:
+    summary = page_version_summary(cv).strip()
+    if not summary:
         with transaction.atomic():
             PageChunk.objects.filter(page=page).delete()
         return 0
+    chunks = [{"idx": 0, "text": summary, "heading_path": ""}]
     embed = embed_fn or (lambda texts: embed_texts(texts, embed_provider))
     vecs = embed([c["text"] for c in chunks])
     if not vecs or len(vecs) != len(chunks):

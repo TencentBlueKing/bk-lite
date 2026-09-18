@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SearchOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
@@ -58,6 +59,7 @@ export default function ApmIntegrationInstancesPage() {
   const [pageSize, setPageSize] = useState(20);
   const [state, setState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [organizationInstance, setOrganizationInstance] = useState<ApmServiceInstance | null>(null);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
 
@@ -83,6 +85,7 @@ export default function ApmIntegrationInstancesPage() {
         started_at: startedAt?.toISOString(),
         ended_at: startedAt ? endedAt.toISOString() : undefined,
         keyword: appliedKeyword.trim() || undefined,
+        ...(unassignedOnly ? { unassigned: true } : {}),
       }),
       getApplications(),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
@@ -114,6 +117,7 @@ export default function ApmIntegrationInstancesPage() {
     refreshKey,
     status,
     timeRange,
+    unassignedOnly,
   ]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
@@ -189,7 +193,7 @@ export default function ApmIntegrationInstancesPage() {
       render: (value: number[]) => (
         <EllipsisWithTooltip
           className="truncate text-xs"
-          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : t('apm.instances.unassigned', '未分配')}
+          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : t('common.unassigned')}
         />
       ),
     },
@@ -282,6 +286,13 @@ export default function ApmIntegrationInstancesPage() {
             <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
               {t('apm.instances.connectedCount', '已接入 {count} 个实例', { count: total })}
             </Typography.Text>
+            <CatalogScopeSegmented
+              unassignedOnly={unassignedOnly}
+              onChange={(checked) => {
+                setUnassignedOnly(checked);
+                setPage(1);
+              }}
+            />
             <Radio.Group
               aria-label={t('apm.instances.reportRange', '接入上报时间范围')}
               buttonStyle="solid"
@@ -326,6 +337,7 @@ export default function ApmIntegrationInstancesPage() {
                 setEnvironment('');
                 setStatus('active');
                 setTimeRange('1d');
+                setUnassignedOnly(false);
                 setPage(1);
               }}>{t('apm.common.clearFilters', '清除筛选')}</Button>}
             />

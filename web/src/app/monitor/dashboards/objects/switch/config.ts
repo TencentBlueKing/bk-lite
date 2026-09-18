@@ -1,4 +1,8 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
+import {
+  DEVICE_TEMPERATURE_CHART_GUIDE,
+  DEVICE_TEMPERATURE_KPI_GUIDE
+} from '../common/device-temperature-guide';
 
 export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'switch',
@@ -54,7 +58,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'device_temperature_celsius',
       display_name: '最高温度',
-      description: '设备各温度传感器读数中的最高值（摄氏度），用于一眼判断散热风险。',
+      description: '设备各温度传感器读数中的最高值（摄氏度）。品牌哨兵语义由 collect_type 契约注入，未命中契约时按普通最高温聚合。',
       unit: 'celsius',
       query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
       color: '#f5222d'
@@ -94,17 +98,17 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'device_optical_rx_power',
       display_name: 'SFP 接收光功率',
-      description: '设备各光口中最弱的接收光功率（dBm，取最小值=最易劣化的光口）。已过滤无模块哨兵值。RX 持续下降是光模块/光纤劣化或脏污的最早信号；逼近接收灵敏度下限会出现链路误码。仅暴露 DDM 的品牌有值。',
+      description: '设备各光口中最弱的接收光功率（dBm，取最小值）。换算与无模块哨兵按 collect_type 契约选用，禁止跨品牌 OR。RX 持续下降是光模块/光纤劣化或脏污的最早信号。',
       unit: 'none',
-      query: 'min((device_optical_rx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)',
+      query: 'min(device_optical_rx_power{__$labels__}) by (instance_id)',
       color: '#08979c'
     },
     {
       name: 'device_optical_tx_power',
       display_name: 'SFP 发送光功率',
-      description: '设备各光口中最弱的发送光功率（dBm，取最小值）。已过滤无模块哨兵值。TX 异常偏低表示激光器/光模块即将失效并断链。仅暴露 DDM 的品牌有值。',
+      description: '设备各光口中最弱的发送光功率（dBm，取最小值）。换算与无模块哨兵按 collect_type 契约选用。TX 异常偏低表示激光器/光模块即将失效并断链。',
       unit: 'none',
-      query: 'min((device_optical_tx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)',
+      query: 'min(device_optical_tx_power{__$labels__}) by (instance_id)',
       color: '#13c2c2'
     },
     {
@@ -197,7 +201,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'health',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '最高温度', detail: '所有传感器中的最高温度。异常升高可能是风扇故障或散热不良。' }]
+      guide: DEVICE_TEMPERATURE_KPI_GUIDE
     },
     {
       title: '入向总流量',
@@ -242,7 +246,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '温度趋势',
       subtitle: '最高传感器温度',
       metric: 'device_temperature_celsius',
-      guide: [{ label: '温度', detail: '设备最高传感器温度随时间变化，持续上升需关注散热。' }],
+      guide: DEVICE_TEMPERATURE_CHART_GUIDE,
       series: [
         { metric: 'device_temperature_celsius', label: '最高温度', color: '#f5222d', unit: 'celsius' }
       ]

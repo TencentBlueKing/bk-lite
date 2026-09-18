@@ -95,8 +95,6 @@
 
 [[processors.starlark]]
     namepass = ["snmp"]
-    [processors.starlark.tagpass]
-        brand = ["wti"]
     source = '''
 def apply(metric):
     states = []
@@ -110,3 +108,5 @@ def apply(metric):
     metric.fields["device_psu_state"] = max(states)
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["wti"]

@@ -48,9 +48,9 @@ SNMP credentials differ by version. Determine `version` first, then fill in the 
 **v3 only**
 - `username`: SNMP v3 username.
 - `level`: Security level, `authNoPriv` (auth only, no encryption) or `authPriv` (auth + encryption).
-- `integrity`: Auth algorithm, `md5` or `sha`.
+- `integrity`: Auth algorithm: `sha` (SHA-1), `sha224`, `sha256`, `sha384`, `sha512`, or `md5`. Legacy `SHA` means SHA-1.
 - `authkey`: Auth key, length must be ≥ 8. Encrypted at rest.
-- `privacy`: Encryption algorithm, `des` or `aes` (used only when `level=authPriv`).
+- `privacy`: Encryption algorithm: `aes` (AES-128), `aes256`, or `des` (used only when `level=authPriv`). Legacy `AES` means AES-128.
 - `privkey`: Privacy key, length must be ≥ 8 (used only when `level=authPriv`). Encrypted at rest.
 
 ### Parameter Description

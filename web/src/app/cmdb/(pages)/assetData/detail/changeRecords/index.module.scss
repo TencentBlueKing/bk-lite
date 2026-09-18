@@ -6,6 +6,29 @@
     overflow: hidden;
     font-size: 12px;
 
+    &.embedded {
+        height: 100%;
+        min-height: 0;
+        flex-direction: column;
+
+        .timelineCol,
+        .detailCol {
+            flex: 1 1 100%;
+            min-width: 0;
+            min-height: 0;
+            max-width: none;
+            border: none;
+        }
+
+        .timelineCol {
+            padding: 0;
+        }
+
+        .detailCol {
+            padding: 12px 16px;
+        }
+    }
+
     .timelineCol {
         flex: 0 0 56%;
         min-width: 360px;
@@ -239,6 +262,10 @@
         font-weight: 500;
         color: var(--color-text-1);
         margin-bottom: 2px;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
     }
 
     .timelineOperator {

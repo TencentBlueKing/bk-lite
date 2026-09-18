@@ -23,8 +23,9 @@ const useNodeApi = () => {
     filters?: SearchFilters;
     page?: number;
     page_size?: number;
+    unassigned?: boolean;
   }) => {
-    const { page, page_size, ...bodyParams } = params;
+    const { page, page_size, unassigned, ...bodyParams } = params;
     // 构建 URL 查询参数
     const queryParams = new URLSearchParams();
     if (page !== undefined) {
@@ -32,6 +33,9 @@ const useNodeApi = () => {
     }
     if (page_size !== undefined) {
       queryParams.append('page_size', page_size.toString());
+    }
+    if (unassigned) {
+      queryParams.append('unassigned', 'true');
     }
     const queryString = queryParams.toString();
     const url = queryString

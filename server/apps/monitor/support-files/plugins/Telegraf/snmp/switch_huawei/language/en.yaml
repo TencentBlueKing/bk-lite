@@ -1,10 +1,15 @@
 Switch Huawei SNMP:
   name: Huawei (Telegraf)
   desc: SNMP monitoring for Huawei campus, chassis, and CloudEngine switches. It
-    reports per-entity CPU, memory, temperature, and fan health; power-supply presence
-    and operating state; optical-module DDM (receive/transmit power, temperature,
-    voltage, and laser bias); stack/CSS member and port health; and, when M-LAG is
-    enabled, M-LAG port state and member heartbeat. Supported models include
+    reports per-entity CPU, memory, temperature, and voltage (millivolts converted
+    to volts); fan health (state, presence, and speed as a percent of full speed);
+    chassis used/total power and per-entity board power in watts;
+    chassis and board energy in milliwatts (divide by 1000 for watts);
+    power-supply presence, operating state, current in milliamperes, voltage in
+    millivolts, and module rated power in watts; optical-module DDM (receive/transmit
+    power, temperature, module voltage, and laser bias); stack/CSS member and port
+    health; and, when M-LAG is enabled, M-LAG port state and member heartbeat.
+    Supported models include
     S5700/S6700/S7700/S8700/S9300/S9700/S12700/S12700E/S12700H/S16700 and CloudEngine
     CE series SKUs such as CE6881/CE5881. S12700H and S16700 are V600-generation
     chassis and use this same plugin and Switch object.
@@ -16,8 +21,11 @@ monitor_object_metric:
   Switch:
     device_voltage_volts:
       name: Input Voltage
-      desc: Device input voltage reading in volts. Values outside the rated range
-        may indicate unstable power and hardware risk.
+      desc: Per-entity input voltage of the Huawei switch (hwEntityVoltage). The
+        device reports millivolts; the query divides by 1000 to display volts.
+        Dimension descr is entPhysicalName. Distinct from optical-module voltage
+        device_optical_voltage (hwEntityOpticalVoltage). Values outside the rated
+        range may indicate unstable power and hardware risk.
     device_optical_rx_power:
       name: SFP RX Power
       desc: Per-module optical receive power in dBm (campus switches report µW; query converts
@@ -42,7 +50,8 @@ monitor_object_metric:
     device_optical_voltage:
       name: Optical Module Voltage
       desc: Supply voltage of each optical module (hwEntityOpticalVoltage). The device
-        reports millivolts; the query divides by 1000 to display volts and drops 2147483647. Out-of-range
+        reports millivolts; the query divides by 1000 to display volts and drops 2147483647.
+        Distinct from per-entity device_voltage_volts (hwEntityVoltage). Out-of-range
         voltage can cause unstable optics.
     snmp_uptime:
       name: System Uptime
@@ -185,6 +194,75 @@ monitor_object_metric:
       name: Power Supply Present
       desc: Presence of each power supply (hwEntityPwrPresent). On-wire values are
         present(1) and absent(2). Absent means the slot is empty or the module was pulled.
+    device_psu_current_mA:
+      name: PSU Current
+      desc: Output current of each installed power supply (hwEntityPwrCurrent), in
+        milliamperes (mA) as reported on the wire, not amperes. Empty slots are
+        dropped via present(1). Divide by 1000 to read amperes. Dimension descr is
+        hwEntityPwrSlot.
+    device_psu_voltage_mV:
+      name: PSU Voltage
+      desc: Output voltage of each installed power supply (hwEntityPwrVoltage), in
+        millivolts (mV) as reported on the wire, not volts. Empty slots are dropped
+        via present(1). Divide by 1000 to read volts. Dimension descr is hwEntityPwrSlot.
+    device_psu_rated_power_watts:
+      name: PSU Rated Power
+      desc: Rated power of each installed power-supply module (hwEntityPwrPower), in
+        watts. This is the module nameplate rating, not chassis instantaneous used
+        power. Empty slots are dropped via present(1). Dimension descr is hwEntityPwrSlot.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Fan speed of each installed cooling fan as a percentage of full speed
+        (hwEntityFanSpeed). Shares hwFanStatusTable with fan state; dimension
+        descr is hwEntityFanSlot. Empty slots are dropped via present(1). Persistently
+        high speed can indicate thermal compensation; a drop toward 0% with a healthy
+        state may still mean a stalled rotor.
+    device_fan_present:
+      name: Fan Present
+      desc: Presence of each cooling fan (hwEntityFanPresent). On-wire values are
+        present(1) and absent(2). Absent means the slot is empty or the fan tray was
+        pulled.
+    device_power_used:
+      name: Chassis Used Power
+      desc: Chassis-level used power (hwDevicePowerInfoUsedPower), in watts. Rising
+        used power against a stable total budget indicates growing load or a hardware
+        inefficiency.
+    device_power_total:
+      name: Chassis Total Power
+      desc: Chassis-level total power capacity (hwDevicePowerInfoTotalPower), in watts.
+        Used as the denominator when judging how close the chassis is to its power
+        budget.
+    device_entity_board_power:
+      name: Board Power
+      desc: Board power consumption of each entity (hwEntityBoardPower), in watts.
+        Dimension descr is entPhysicalName. Distinct from ENERGYMNGT milliwatt
+        series device_board_current_power_mw / device_board_rated_power_mw.
+        Unexpected rise can indicate a failing board, abnormal traffic load, or a
+        cooling problem that increases power draw.
+    device_energy_current_power_mw:
+      name: Chassis Current Energy (mW)
+      desc: Instantaneous chassis energy (hwCurrentPower), in milliwatts. Divide by
+        1000 to display watts. Distinct from device_power_used, which is chassis used
+        power in watts from hwDevicePowerInfoUsedPower.
+    device_energy_average_power_mw:
+      name: Chassis Average Energy (mW)
+      desc: Period-average chassis energy (hwAveragePower), in milliwatts. Divide by
+        1000 to display watts. Distinct from device_power_used (watts).
+    device_energy_rated_power_mw:
+      name: Chassis Rated Energy (mW)
+      desc: Rated chassis energy (hwRatedPower), in milliwatts. Divide by 1000 to
+        display watts. Distinct from device_power_total, which is chassis total power
+        in watts from hwDevicePowerInfoTotalPower.
+    device_board_current_power_mw:
+      name: Board Current Energy (mW)
+      desc: Instantaneous energy of each board (hwBoardCurrentPower), in milliwatts.
+        Divide by 1000 to display watts. Dimension hwBoardName is the board name.
+        Distinct from chassis watts metrics device_power_used / device_power_total
+        and from entity watts metric device_entity_board_power (hwEntityBoardPower).
+    device_board_rated_power_mw:
+      name: Board Rated Energy (mW)
+      desc: Rated energy of each board (hwBoardRatedPower), in milliwatts. Divide by
+        1000 to display watts. Dimension hwBoardName is the board name.
     device_stack_member_role:
       name: Stack Member Role
       desc: Role of each iStack or CloudEngine stack member (hwMemberStackRole).
@@ -213,13 +291,6 @@ monitor_object_metric:
       desc: Heartbeat of the local M-LAG member (hwLocalHeartBeatState). On-wire values
         are ok(1) and lost(2). Lost means the dual-active control channel between
         M-LAG peers is down. Consistency-check objects are traps and are not polled.
-    device_fan_speed:
-      name: Fan Speed
-      desc: This metric reports the fan rotation speed (RPM) of the device, taken
-        as the maximum across fans. Abnormally low or zero RPM indicates a stalled
-        or failed fan and a risk of overheating; abnormally high RPM may indicate
-        the device is compensating for high temperature. For devices that expose only
-        fan speed without a fan-state enum, speed is the only signal of fan health.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
       desc: Total device traffic rate estimated from Flow records according to the

@@ -8,14 +8,17 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { applyIpAsDefaultNodeName } from './utils';
+import { applyIpAsDefaultNodeName, mergeCurrentOrganization } from './utils';
 import { isWinrmSchemePortMismatch } from '@/app/node-manager/utils/winrm';
 
 /**
  * 表格渲染器 - 用于渲染控制器安装表格的列
  */
-export const useTableRenderer = () => {
+export const useTableRenderer = (
+  lockedOrganizationIds: Array<string | number> = []
+) => {
   const { t } = useTranslation();
+  const lockedValues = mergeCurrentOrganization(lockedOrganizationIds);
 
   const renderTableColumn = (
     columnConfig: any,
@@ -215,6 +218,7 @@ export const useTableRenderer = () => {
                   value={record[name]}
                   mode={widget_props.mode}
                   placeholder={widget_props.placeholder}
+                  lockedValues={lockedValues}
                   onChange={(value) => handleChange(value, record, index)}
                 />
               </div>

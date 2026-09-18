@@ -994,3 +994,62 @@ def test_third_party_markdown_zip_still_skips_images(wiki_factory):
     assert inspected.archive_kind == "third_party"
     assert inspected.documents[0]["body"].strip().endswith("![a](./x.png)")
     assert inspected.skipped_entries >= 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_okf_import_enriches_colloquial_aliases_into_index(monkeypatch, wiki_factory):
+    from apps.opspilot.models import KnowledgePage, LLMModel, WikiGenerationIndexEntry
+    from apps.opspilot.services.wiki.markdown_import_governance_service import execute_markdown_import, preflight_markdown_import
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    llm = LLMModel.objects.create(name="okf-alias-enrich", model="m")
+    knowledge_base = wiki_factory.knowledge_base(llm_model=llm)
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    knowledge_base.refresh_from_db()
+
+    def fake_invoke(_model_id, prompt, **_kwargs):
+        assert "员工口语" in prompt
+        return '{"aliases":["向日葵","提单","不存在的系统"]}'
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.markdown_import_governance_service._invoke_llm",
+        fake_invoke,
+    )
+    content = _okf_zip(
+        **{
+            "guides/remote.md": "\n".join(
+                [
+                    "---",
+                    "type: concept",
+                    "title: 远程协助",
+                    "tags: 远程控制",
+                    "---",
+                    "",
+                    "连不上时员工常用向日葵，提单找谁批。",
+                ]
+            )
+        }
+    )
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="okf.zip",
+        actor="admin",
+        options={"import_format": "okf"},
+    )
+    result = execute_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="okf.zip",
+        actor="admin",
+    )
+    page = KnowledgePage.objects.get(knowledge_base=knowledge_base, title="远程协助")
+    aliases = page.current_version.meta_snapshot.get("aliases") or []
+    assert "向日葵" in aliases
+    assert "提单" in aliases
+    assert "远程控制" in aliases
+    assert "不存在的系统" not in aliases
+    entry = WikiGenerationIndexEntry.objects.get(generation_id=result["generation_id"], page=page)
+    assert "向日葵" in entry.aliases
+    assert "远程控制" in entry.aliases

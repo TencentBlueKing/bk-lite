@@ -14,9 +14,11 @@ import {
   Modal,
   Tooltip,
   Tag,
-  Dropdown
+  Dropdown,
+  Alert
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
@@ -42,6 +44,7 @@ import ControllerInstall from './controllerInstall';
 import ControllerUninstall from './controllerUninstall';
 import CollectorOperation from './collectorOperation';
 import { useSearchParams } from 'next/navigation';
+import { useScreenAwareRouter } from '@/console-layout';
 import PermissionWrapper from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
@@ -53,7 +56,16 @@ import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
-import { listNodeHostedCollectors } from '@/app/node-manager/utils/collectorConfig';
+import {
+  listNodeHostedCollectors,
+  listNodeUpgradeableCollectors,
+  listCollectorUpdateHints,
+  parseCollectorQueryNames,
+  isSameCollectorName,
+  collectorDisplayName
+} from '@/app/node-manager/utils/collectorConfig';
+import { MODULE_OBJECT_QUERY_PARAM } from '@/app/monitor/utils/monitorObjectQuery';
+import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -61,6 +73,7 @@ type TableRowSelection<T extends object = object> =
 
 const Node = () => {
   const { t } = useTranslation();
+  const router = useScreenAwareRouter();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
@@ -73,6 +86,18 @@ const Node = () => {
   const nodeStateEnum = commonContext?.nodeStateEnum || {};
   const name = searchParams.get('name') || '';
   const notDeployed = searchParams.get('not_deployed');
+  const packCollectorNames = parseCollectorQueryNames(searchParams.get('collector'));
+  const packCollectorNamesRef = useRef(packCollectorNames);
+  packCollectorNamesRef.current = packCollectorNames;
+  const packObjectId = searchParams.get(MODULE_OBJECT_QUERY_PARAM) || '';
+  const packPluginId = searchParams.get('plugin_id') || '';
+  const packAlignAssetUrl = packObjectId
+    ? buildCollectNeedUpdateAssetUrl({
+      monitorObjectId: packObjectId,
+      pluginId: packPluginId || null,
+      needUpdate: true
+    })
+    : '';
   const collectorRef = useRef<ModalRef>(null);
   const controllerRef = useRef<ModalRef>(null);
   const collectorDetailRef = useRef<any>(null);
@@ -96,6 +121,7 @@ const Node = () => {
   >();
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -217,7 +243,7 @@ const Node = () => {
 
   useEffect(() => {
     if (!isLoading) getNodes(searchFilters);
-  }, [pagination.current, pagination.pageSize]);
+  }, [pagination.current, pagination.pageSize, unassignedOnly]);
 
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'uninstallController') {
@@ -271,7 +297,13 @@ const Node = () => {
       type: e.key,
       ids: selectedRowKeys as string[],
       selectedsystem: selection.operatingSystem,
-      selectedArchitecture: selection.cpuArchitecture
+      selectedArchitecture: selection.cpuArchitecture,
+      updateHints: listCollectorUpdateHints(
+        selectedNodes,
+        packCollectorNamesRef.current
+      ),
+      focusCollectorNames: packCollectorNamesRef.current,
+      selectedNodes
     });
   };
 
@@ -312,7 +344,8 @@ const Node = () => {
       const params: any = {
         cloud_region_id: cloudId,
         page: pagination.current,
-        page_size: pagination.pageSize
+        page_size: pagination.pageSize,
+        ...(unassignedOnly ? { unassigned: true } : {})
       };
 
       if (filters && Object.keys(filters).length > 0) {
@@ -551,10 +584,62 @@ const Node = () => {
               );
             }
           );
-          return statusTags.length > 0 ? (
-            <div className="flex flex-nowrap gap-1">{statusTags}</div>
-          ) : (
-            <span>--</span>
+          const upgradeableCollectors = listNodeUpgradeableCollectors(record);
+          const upgradeableIds = new Set(
+            upgradeableCollectors.map((item) => item.componentId)
+          );
+          const upgradeableTags = upgradeableCollectors.map((item) => (
+            <Tag
+              key={`up-${item.componentId}`}
+              color="processing"
+              className="cursor-pointer py-1 px-2"
+              onClick={() =>
+                handleCollectorTagClick(record, allCollectors, item.name)
+              }
+            >
+              {item.name}
+              {` · ${t('node-manager.cloudregion.node.collectorUpgradeable', '', {
+                version: item.latestVersion
+              })}`}
+            </Tag>
+          ));
+          const focusTags = packCollectorNamesRef.current
+            .map((collectorName) => {
+              const matched = allCollectors.find((collector: any) =>
+                isSameCollectorName(collector, collectorName)
+              );
+              if (!matched) return null;
+              if (upgradeableIds.has(String(matched.collector_id))) {
+                return null;
+              }
+              return (
+                <Tag
+                  key={`pack-${collectorName}`}
+                  color="processing"
+                  className="cursor-pointer py-1 px-2"
+                  onClick={() =>
+                    handleCollectorTagClick(record, allCollectors, collectorName)
+                  }
+                >
+                  {collectorDisplayName(matched) || collectorName}
+                  {` · ${t('node-manager.cloudregion.node.justImportedCollector')}`}
+                </Tag>
+              );
+            })
+            .filter(Boolean);
+          if (
+            statusTags.length === 0 &&
+            upgradeableTags.length === 0 &&
+            focusTags.length === 0
+          ) {
+            return <span>--</span>;
+          }
+          return (
+            <div className="flex flex-nowrap gap-1">
+              {upgradeableTags}
+              {focusTags}
+              {statusTags}
+            </div>
           );
         }
       }
@@ -563,11 +648,13 @@ const Node = () => {
 
   const handleCollectorTagClick = (
     record: TableDataItem,
-    collectors: any[]
+    collectors: any[],
+    focusCollectorName?: string
   ) => {
     collectorDetailRef.current?.showModal({
       collectors,
-      row: record
+      row: record,
+      focusCollectorName
     });
   };
 
@@ -616,13 +703,48 @@ const Node = () => {
           {showNodeTable && (
             <div className={`${nodeStyle.node} w-full h-full`}>
               <div className="overflow-hidden">
-                <div className="flex items-center justify-between mb-4">
-                  <SearchCombination
-                    fieldConfigs={fieldConfigs}
-                    onChange={handleSearchChange}
-                    className="mr-[8px]"
+                {packCollectorNames.length ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    className="mb-4"
+                    message={t(
+                      'node-manager.packetManage.nodeImportCollectorHint',
+                      '',
+                      { collector: packCollectorNames.join(' / ') }
+                    )}
+                    description={t(
+                      'node-manager.packetManage.nodeImportCollectorDesc'
+                    )}
+                    action={
+                      packAlignAssetUrl ? (
+                        <Button
+                          size="small"
+                          onClick={() => router.push(packAlignAssetUrl)}
+                        >
+                          {t('node-manager.packetManage.goToStaleAssets')}
+                        </Button>
+                      ) : null
+                    }
                   />
-                  <div className="flex">
+                ) : null}
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="mr-2 flex min-w-0 items-center gap-2">
+                    <SearchCombination
+                      fieldConfigs={fieldConfigs}
+                      onChange={handleSearchChange}
+                    />
+                  </div>
+                  <div className="flex items-center">
+                    <CatalogScopeSegmented
+                      unassignedOnly={unassignedOnly}
+                      onChange={(checked) => {
+                        setUnassignedOnly(checked);
+                        setSelectedRowKeys([]);
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                      }}
+                      className="mr-[8px]"
+                    />
                     <PermissionWrapper
                       requiredPermissions={['InstallController']}
                     >
@@ -741,6 +863,11 @@ const Node = () => {
               collectorId={collectorId}
               collectorName={collectorName}
               collectorPackageId={collectorPackageId}
+              alignAssetUrl={
+                collectorOperationType === 'installCollector'
+                  ? packAlignAssetUrl || undefined
+                  : undefined
+              }
               cancel={cancelCollectorOperation}
             />
           )}

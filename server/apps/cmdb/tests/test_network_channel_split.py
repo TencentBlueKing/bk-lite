@@ -128,6 +128,30 @@ def test_expected_network_node_configs_returns_two_when_enabled(monkeypatch):
     assert nodes[1]["type"] == "network_topo"
 
 
+def test_network_device_and_topology_share_one_vault_resolution_snapshot(monkeypatch):
+    from apps.cmdb.services import network_collection_reconcile as reconcile
+
+    calls = []
+    seen = []
+
+    def resolve(instance):
+        calls.append(instance.id)
+        return [{"version": "v2", "community": "current-secret", "snmp_port": 161}]
+
+    def push(self):
+        seen.append(self.credential)
+        return [{"id": self.config_id}]
+
+    monkeypatch.setattr(reconcile, "resolve_task_credential_pool", resolve)
+    monkeypatch.setattr(NetworkNodeParams, "push_params", push)
+    monkeypatch.setattr(NetworkTopoNodeParams, "push_params", push)
+    reconcile.expected_network_node_configs(_network_instance())
+    assert calls == [42]
+    assert len(seen) == 2
+    assert seen[0] is seen[1]
+    assert seen[0]["community"] == "current-secret"
+
+
 def test_reconcile_delete_clears_both_configs(monkeypatch):
     from apps.cmdb.services import network_collection_reconcile as reconcile
 

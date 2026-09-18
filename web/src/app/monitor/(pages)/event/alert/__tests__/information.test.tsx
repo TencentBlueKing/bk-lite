@@ -132,9 +132,13 @@ describe('告警详情信息', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: '认领' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: '分派' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: '关闭此告警' })).not.toBeNull();
+    const claim = screen.getByRole('button', { name: /^认\s*领$/ });
+    const assign = screen.getByRole('button', { name: /^分\s*派$/ });
+    const close = screen.getByRole('button', { name: /^关\s*闭$/ });
+    expect(claim.className).toContain('ant-btn-link');
+    expect(assign.className).toContain('ant-btn-link');
+    expect(close.className).toContain('ant-btn-link');
+    expect(close.className).not.toContain('ant-btn-dangerous');
   });
 
   it('已有处理人的活跃告警不展示认领和分派', () => {
@@ -159,9 +163,9 @@ describe('告警详情信息', () => {
     );
 
     expect(screen.getByText('Bob(bob)')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: '认领' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '分派' })).toBeNull();
-    expect(screen.getByRole('button', { name: '关闭此告警' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /^认\s*领$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^分\s*派$/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^关\s*闭$/ })).not.toBeNull();
   });
 
   it('does not throw when objects is omitted or empty and falls back to --', () => {

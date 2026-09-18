@@ -287,6 +287,11 @@ export const useWikiApi = () => {
       responseType: "blob",
     });
 
+  const exportKnowledgeBaseOkf = (id: number): Promise<Blob> =>
+    get(`${BASE}/knowledge_base/${id}/export_okf/`, {
+      responseType: "blob",
+    });
+
   const previewMergeKnowledgeBase = (
     id: number,
   ): Promise<WikiPreviewMergeResult> =>
@@ -772,6 +777,7 @@ export const useWikiApi = () => {
     buildContext,
     reindexKnowledgeBase,
     exportKnowledgeBaseMarkdown,
+    exportKnowledgeBaseOkf,
     preflightKnowledgeBaseMarkdown,
     executeKnowledgeBaseMarkdown,
     previewMergeKnowledgeBase,

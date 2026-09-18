@@ -42,7 +42,7 @@ function submitCredential(patch: CredentialPoolItem) {
   }))).credential[0] as CredentialPoolItem;
 }
 
-it('首组凭据切换到 V3 authPriv 后提交界面默认的 SHA 和 AES', () => {
+it('首组凭据切换到 V3 authPriv 后提交界面默认的 SHA-1 和 AES-128', () => {
   const credential = submitCredential({
     version: 'v3', level: 'authPriv', username: 'test-user',
     authkey: 'test-auth-secret', privkey: 'test-privacy-secret',
@@ -60,6 +60,15 @@ it('未操作安全级别时提交界面默认的 authNoPriv，并排除加密�
   expect(credential).toMatchObject({ level: 'authNoPriv', integrity: 'sha' });
   expect(credential).not.toHaveProperty('privacy');
   expect(credential).not.toHaveProperty('privkey');
+});
+
+it('保留用户选择的 SHA-256 和 AES-256', () => {
+  const credential = submitCredential({
+    version: 'v3', level: 'authPriv', username: 'test-user',
+    integrity: 'sha256', privacy: 'aes256',
+    authkey: 'test-auth-secret', privkey: 'test-privacy-secret',
+  });
+  expect(credential).toMatchObject({ integrity: 'sha256', privacy: 'aes256' });
 });
 
 it('保留用户选择的 MD5 和 DES', () => {
@@ -96,5 +105,25 @@ it.each(['v2', 'v2c'])('%s 提交仅保留团体字和端口', (version) => {
   expect(submitCredential({
     version, community: 'test-community', username: 'test-user', level: 'authPriv',
     integrity: 'sha', privacy: 'aes', authkey: 'test-auth-secret', privkey: 'test-privacy-secret',
-  })).toEqual({ version, snmp_port: '161', community: 'test-community' });
+  })).toEqual({ version, snmp_port: '161', community: 'test-community', credential_source: 'inline' });
+});
+
+it('已有 SNMP 凭据只提交引用和动态端口，不提交页面默认版本', () => {
+  expect(submitCredential({
+    credential_source: 'vault', vault_type_key: 'snmp', vault_credential_id: 'crd-snmp-1',
+    version: 'v2', snmp_port: 1161, community: 'stale-page-secret',
+  })).toEqual({
+    snmp_port: 1161, credential_source: 'vault',
+    vault_credential_id: 'crd-snmp-1', vault_type_key: 'snmp',
+  });
+});
+
+it.each(['f5', 'security_device', 'tape_library'])('%s 不提交 Network 专属拓扑采集参数', (modelId) => {
+  render(<SNMPTask onClose={() => undefined}
+    selectedNode={{ id: 'network' } as React.ComponentProps<typeof SNMPTask>['selectedNode']}
+    modelItem={{ model_id: modelId, task_type: 'snmp', type: 'protocol' } as React.ComponentProps<typeof SNMPTask>['modelItem']}
+  />);
+  const result = taskOptions.formatValues({ ...taskOptions.initialValues, hasNetworkTopo: true, credentialPool: [] });
+  expect(result).toHaveProperty('params');
+  expect((result as unknown as { params: object }).params).not.toHaveProperty('has_network_topo');
 });

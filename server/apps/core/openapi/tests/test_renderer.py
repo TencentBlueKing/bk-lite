@@ -59,7 +59,12 @@ def test_good_entry_full_structure(env):
 
     inject = http["middlewares"]["openapi-itsm-inject"]["headers"]["customRequestHeaders"]
     # 注入共享密钥的同时必须清除调用方的平台凭据，避免上游拿到 API 令牌后冒充调用方
-    assert inject == {"X-BK-Gateway-Auth": "s3cret", "Authorization": ""}
+    assert inject["X-BK-Gateway-Auth"] == "s3cret"
+    assert inject["Authorization"] == ""
+    assert inject["X-Bklite-Acting-User"] == ""
+    assert inject["X-Bklite-Acting-Team"] == ""
+    assert "X-Bklite-Acting-User" not in clear
+    assert "X-Bklite-Acting-Team" not in clear
 
     assert http["middlewares"]["openapi-itsm-strip-v1"]["stripPrefix"]["prefixes"] == ["/openapi/v1/itsm"]
     assert http["services"]["openapi-itsm"]["loadBalancer"]["servers"] == [{"url": "http://itsm-svc:8000"}]
@@ -71,7 +76,9 @@ def test_service_token_mode_injects_authorization(env):
     config, report = render_one(entry)
     assert report["rendered"] == ["itsm"]
     inject = config["http"]["middlewares"]["openapi-itsm-inject"]["headers"]["customRequestHeaders"]
-    assert inject == {"Authorization": "Bearer tok-abc"}
+    assert inject["Authorization"] == "Bearer tok-abc"
+    assert inject["X-Bklite-Acting-User"] == ""
+    assert inject["X-Bklite-Acting-Team"] == ""
 
 
 def test_no_paths_renders_whole_prefix(env):

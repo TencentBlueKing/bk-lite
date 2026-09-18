@@ -30,6 +30,7 @@ class EventModelSerializer(AuthSerializer):
             "received_at": {"read_only": True},
             "monitor_id": {"read_only": True},
             "cmdb_id": {"read_only": True},
+            "node_id": {"read_only": True},
             "labels": {"write_only": True},
             # "raw_data": {"write_only": True},
         }

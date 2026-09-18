@@ -18,26 +18,16 @@ def _page(kb, title, body):
 
 
 def _relate(from_page, to_page, relation_type="reference", weight=1.0):
-    from apps.opspilot.models import PageRelation
+    from apps.opspilot.models import PageRelation, WikiKnowledgeBase
 
+    kb = WikiKnowledgeBase.objects.select_related("active_generation").get(pk=from_page.knowledge_base_id)
     return PageRelation.objects.create(
         from_page=from_page,
         to_page=to_page,
         relation_type=relation_type,
         weight=weight,
+        generation_id=kb.active_generation_id,
     )
-
-
-def _chunk_embed_stub(texts):
-    vectors = []
-    for text in texts:
-        if "restart" in text:
-            vectors.append([1.0, 0.0])
-        elif "backup" in text:
-            vectors.append([0.0, 1.0])
-        else:
-            vectors.append([0.9, 0.1])
-    return vectors
 
 
 @pytest.mark.django_db
@@ -83,6 +73,29 @@ def test_build_context_expands_one_hop_graph_neighbors():
     assert titles == ["蓝鲸平台", "作业平台"]
     assert out["citations"][1]["explanation"]["matched_by"] == ["graph"]
     assert out["citations"][1]["explanation"]["graph_source_title"] == "蓝鲸平台"
+
+
+def test_select_hits_direct_first_keeps_graph_from_displacing_direct_hits():
+    from apps.opspilot.services.wiki.wiki_context_service import _select_hits_direct_first
+
+    hits = [
+        {"id": 1, "score": 300, "explanation": {"matched_by": ["keyword"]}},
+        {"id": 2, "score": 160, "explanation": {"matched_by": ["generation_index"]}},
+        {"id": 3, "score": 225, "explanation": {"matched_by": ["graph"]}},
+    ]
+    selected = _select_hits_direct_first(hits, 2)
+    assert [hit["id"] for hit in selected] == [1, 2]
+
+
+def test_select_hits_direct_first_fills_remaining_slots_with_graph():
+    from apps.opspilot.services.wiki.wiki_context_service import _select_hits_direct_first
+
+    hits = [
+        {"id": 1, "score": 80, "explanation": {"matched_by": ["keyword"]}},
+        {"id": 3, "score": 60, "explanation": {"matched_by": ["graph"]}},
+    ]
+    selected = _select_hits_direct_first(hits, 2)
+    assert [hit["id"] for hit in selected] == [1, 3]
 
 
 @pytest.mark.django_db
@@ -139,56 +152,47 @@ def test_build_context_can_use_hybrid_search_explanations():
     from apps.opspilot.services.wiki.wiki_context_service import build_context
 
     kb = _kb()
-    _page(kb, "重启服务", "使用 systemctl restart 重启")
+    restart = _page(kb, "重启服务", "使用 systemctl restart 重启")
     semantic_page = _page(kb, "重启流程", "重启前先摘流量再重启")
-
-    def stub_embed(texts):
-        vectors = []
-        for text in texts:
-            if "流量" in text:
-                vectors.append([1.0, 0.0])
-            elif "systemctl" in text:
-                vectors.append([0.0, 1.0])
-            else:
-                vectors.append([0.9, 0.1])
-        return vectors
-
-    out = build_context([kb.id], "重启", top_k=2, retrieval_mode="hybrid", embed_fn=stub_embed, graph_hops=0)
-
-    assert out["citations"][0]["id"] == semantic_page.id
-    explanation = out["citations"][0]["explanation"]
-    assert explanation["matched_by"] == ["keyword", "vector"]
-    assert explanation["fusion"] == "rrf"
-    assert explanation["semantic_rank"] == 1
-
-
-@pytest.mark.django_db
-def test_build_context_can_use_chunk_search_with_chunk_citations():
-    from apps.opspilot.services.wiki.embedding_service import reindex_page_chunks
-    from apps.opspilot.services.wiki.wiki_context_service import build_context
-
-    kb = _kb()
-    page = _page(kb, "服务操作手册", "# 重启\nsystemctl restart\n# 备份\nbackup db")
-    reindex_page_chunks(page, kb.embed_provider, embed_fn=_chunk_embed_stub)
+    restart.current_version.embedding = [0.0, 1.0]
+    restart.current_version.save(update_fields=["embedding"])
+    semantic_page.current_version.embedding = [1.0, 0.0]
+    semantic_page.current_version.save(update_fields=["embedding"])
 
     out = build_context(
         [kb.id],
         "重启",
         top_k=2,
-        retrieval_mode="chunk",
-        embed_fn=_chunk_embed_stub,
+        retrieval_mode="hybrid",
+        embed_fn=lambda texts: [[0.9, 0.1] for _ in texts],
         graph_hops=0,
     )
 
-    assert out["retrieval_mode"] == "chunk"
-    assert out["citations"][0]["kind"] == "page_chunk"
-    assert out["citations"][0]["id"] == f"{page.id}:0"
-    assert out["citations"][0]["title"] == "服务操作手册"
-    assert out["citations"][0]["heading_path"] == "重启"
+    assert out["citations"][0]["id"] == semantic_page.id
     explanation = out["citations"][0]["explanation"]
-    assert explanation["matched_by"] == ["chunk_vector"]
-    assert explanation["chunk_index"] == 0
-    assert "systemctl restart" in out["context"]
+    assert "vector" in explanation["matched_by"]
+    assert explanation["fusion"] == "rrf"
+    assert explanation["semantic_rank"] == 1
+
+
+@pytest.mark.django_db
+def test_build_context_rejects_chunk_search_on_generation_kb():
+    from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    _page(kb, "服务操作手册", "# 重启\nsystemctl restart\n# 备份\nbackup db")
+
+    with pytest.raises(ActiveGenerationReadError) as exc:
+        build_context(
+            [kb.id],
+            "重启",
+            top_k=2,
+            retrieval_mode="chunk",
+            graph_hops=0,
+        )
+
+    assert exc.value.code == "chunk_retrieval_not_generation_safe"
 
 
 @pytest.mark.django_db
@@ -234,28 +238,12 @@ class TestContextView:
         assert r.status_code == 200
         data = r.json()["data"]
         assert data["retrieval_mode"] == "hybrid"
-        assert data["citations"][0]["explanation"]["matched_by"] == ["keyword"]
+        matched_by = data["citations"][0]["explanation"]["matched_by"]
+        assert "keyword" in matched_by or "generation_index" in matched_by
 
-    def test_context_endpoint_accepts_chunk_retrieval_mode(self, api_client, monkeypatch):
-        from apps.opspilot.services.wiki import wiki_context_service
-
+    def test_context_endpoint_rejects_chunk_retrieval_mode(self, api_client):
         kb = _kb()
         _page(kb, "服务操作手册", "# 重启\nsystemctl restart")
-
-        monkeypatch.setattr(
-            wiki_context_service,
-            "wiki_chunk_search",
-            lambda kb_arg, query, top_k, embed_fn=None: [
-                {
-                    "page_id": 99,
-                    "title": "服务操作手册",
-                    "heading_path": "重启",
-                    "snippet": "systemctl restart",
-                    "score": 0.9,
-                    "explanation": {"matched_by": ["chunk_vector"], "chunk_index": 0, "vector_score": 0.9},
-                }
-            ],
-        )
 
         r = api_client.post(
             "/api/v1/opspilot/wiki_mgmt/knowledge_base/context/",
@@ -263,9 +251,7 @@ class TestContextView:
             format="json",
         )
 
-        assert r.status_code == 200
-        data = r.json()["data"]
-        assert data["retrieval_mode"] == "chunk"
-        assert data["citations"][0]["kind"] == "page_chunk"
-        assert data["citations"][0]["title"] == "服务操作手册"
-        assert data["citations"][0]["heading_path"] == "重启"
+        assert r.status_code == 422
+        body = r.json()
+        assert body["result"] is False
+        assert body["code"] == "chunk_retrieval_not_generation_safe"

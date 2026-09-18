@@ -53,6 +53,56 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "Sangfor防火墙磁盘使用率过高",
+      "alert_name": "防火墙${resource_name} 磁盘 ${metric_sfFilesystemName} 使用率过高",
+      "description": "监控 Sangfor NGAF/AF8 防火墙各文件系统磁盘使用率，磁盘将满会阻碍日志与配置变更并可能导致设备不稳定。",
+      "metric_name": "device_disk_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Sangfor防火墙NAT TCP源端口使用率过高",
+      "alert_name": "防火墙${resource_name} NAT ${metric_sfNat4Name} TCP 源端口使用率过高",
+      "description": "监控 Sangfor NGAF/AF8 防火墙 NAT4 TCP 源端口使用率，接近 100% 时新建 TCP 转换可能失败。",
+      "metric_name": "firewall_nat_tcp_port_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
       "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",

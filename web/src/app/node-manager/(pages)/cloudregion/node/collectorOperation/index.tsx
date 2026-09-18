@@ -4,12 +4,15 @@ import { Steps, Result, Button } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import OperationProgress, { OperationType } from '../operationProgress';
 
+import { useScreenAwareRouter } from '@/console-layout';
+
 export interface CollectorOperationProps {
   operationType: OperationType;
   taskId: string;
   collectorId?: string;
   collectorName?: string;
   collectorPackageId?: number;
+  alignAssetUrl?: string;
   cancel: () => void;
 }
 
@@ -19,9 +22,11 @@ const CollectorOperation: React.FC<CollectorOperationProps> = ({
   collectorId,
   collectorName,
   collectorPackageId,
+  alignAssetUrl,
   cancel
 }) => {
   const { t } = useTranslation();
+  const router = useScreenAwareRouter();
   const [currentStep, setCurrentStep] = useState(0);
 
   // 获取操作类型的显示名称
@@ -64,8 +69,22 @@ const CollectorOperation: React.FC<CollectorOperationProps> = ({
           <Result
             status="success"
             title={t('node-manager.controller.operationCompleteTitle')}
-            subTitle={t('node-manager.controller.operationCompleteSubDesc')}
+            subTitle={
+              alignAssetUrl
+                ? t('node-manager.packetManage.operationCompleteAlignHint')
+                : t('node-manager.controller.operationCompleteSubDesc')
+            }
             extra={[
+              ...(alignAssetUrl
+                ? [
+                    <Button
+                      key="align"
+                      onClick={() => router.push(alignAssetUrl)}
+                    >
+                      {t('node-manager.packetManage.goToStaleAssets')}
+                    </Button>
+                ]
+                : []),
               <Button key="list" type="primary" onClick={cancel}>
                 {t('node-manager.controller.viewNodeList')}
               </Button>
@@ -74,7 +93,7 @@ const CollectorOperation: React.FC<CollectorOperationProps> = ({
         )
       }
     ],
-    [operationType, taskId, collectorId, collectorPackageId, cancel, t]
+    [operationType, taskId, collectorId, collectorPackageId, alignAssetUrl, cancel, router, t]
   );
 
   return (

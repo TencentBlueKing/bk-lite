@@ -10,6 +10,7 @@
   height: 100%;
   .detailContent {
     flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
   }
@@ -21,12 +22,24 @@
 
   .tabsWrapper {
     flex: 1;
+    min-height: 0;
     margin-top: 20px;
-    .ant-tabs,
-    .ant-tabs-content-holder,
-    .ant-tabs-content {
+
+    // AntD 的 content-holder 自带 flex:auto/min-height:0，这里把高度链补到 tabpane，
+    // 让 tab 内部自己滚动，而不是被 .detailContainer 的 overflow:hidden 截断。
+    :global(.ant-tabs),
+    :global(.ant-tabs-content),
+    :global(.ant-tabs-tabpane) {
       height: 100%;
     }
+
+    .tabContent {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+    }
+
     .timelineContent {
       overflow-y: auto;
       padding: 16px;

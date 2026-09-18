@@ -198,6 +198,9 @@ const OpenApiDocsPage: React.FC = () => {
         unrestricted: t('system.settings.openapiDocs.unrestricted'),
         orgScope: t('system.settings.openapiDocs.orgScope'),
         tabExample: t('system.settings.openapiDocs.tabExample'),
+        examplePersonal: t('system.settings.openapiDocs.examplePersonal'),
+        exampleSystem: t('system.settings.openapiDocs.exampleSystem'),
+        origin: window.location.origin,
         inject: (value) => t(injectDescriptionKey(value)),
       });
       message.success(t('common.exportSuccess'));

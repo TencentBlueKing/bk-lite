@@ -50,14 +50,25 @@ Wait for at least one collection interval, then confirm the instance appears and
 
 - `snmp_uptime` keeps increasing.
 - `device_cpu_usage` and `device_memory_usage` have entity-dimension readings.
+- Chassis power shows `device_power_used` / `device_power_total` in watts (`hwDevicePowerInfoUsedPower` / `hwDevicePowerInfoTotalPower`). Invalid samples (`-1` or empty) are dropped.
+- Fan-equipped models show `device_fan_state` / `device_fan_speed_pct` (percent of full speed), indexed by fan slot and serial number. Fanless SKUs may return an empty fan table.
 - `wlan_cur_joint_ap_num` and `wlan_cur_assoc_sta_num` roughly match the site.
 - `interface_ifHCInOctets` / `interface_ifHCOutOctets` show rates on the uplink.
+- Optical DDM series (`optical_temp_c`, `optical_voltage_mV`, `optical_bias_uA`, `optical_rx_dbm`, `optical_tx_dbm`) appear when transceivers are present.
 
 ## Troubleshooting
 
 ### Only uptime and interfaces, no CPU or memory
 
 The SNMP view may not authorize entity health objects. Confirm the read-only view includes `1.3.6.1.4.1.2011.5.25.31`.
+
+### No chassis used/total power metrics
+
+Confirm the view includes `1.3.6.1.4.1.2011.5.25.31.3`. These scalars are watts (`device_power_used` / `device_power_total`). Missing chassis power does not mean entity CPU/memory or IF-MIB collection failed.
+
+### No fan speed or fan state
+
+An empty `hwFanStatusTable` is expected on fanless SKUs and is not a collection failure. On fan-equipped models, confirm the view includes `1.3.6.1.4.1.2011.5.25.31.1.1.10`. Fan speed is a percent of full speed (`device_fan_speed_pct`), not RPM. Invalid samples (`-1` or empty) are dropped.
 
 ### No AP, station, or radio data
 
@@ -74,3 +85,7 @@ Confirm collection uses 64-bit `ifHCInOctets` / `ifHCOutOctets`. This template c
 ### Global wireless speed unit
 
 `wlan_global_up_speed` / `wlan_global_down_speed` (`hwWlanGlobalUpSpeed` / `hwWlanGlobalDownSpeed`) are collected in Kbps as defined by the MIB. The platform unit is `kbitps`; there is no conversion to bit/s.
+
+### No optical DDM series
+
+Empty `hwOpticalModuleInfoTable` is expected when the chassis has no optical modules. Invalid readings `2147483647` are dropped. Rx/Tx power is stored as dBm×100; the query divides by 100 to display dBm. Voltage is millivolts and the query divides by 1000 to display volts.

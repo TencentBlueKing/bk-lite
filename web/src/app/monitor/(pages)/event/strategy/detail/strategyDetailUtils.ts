@@ -614,11 +614,11 @@ export const getEnabledCompareModes = ({
     .filter((item) => !item.disabled)
     .map((item) => item.value);
 
-export type CompareModeSelectOption = {
+export interface CompareModeSelectOption {
   value: string;
   disabled: boolean;
   reasonKey?: string;
-};
+}
 
 export const getCompareModeSelectOptions = ({
   periodType,
@@ -686,9 +686,9 @@ export const groupAlgorithmOptions = <T extends { value?: string | number }>(
 export const coerceThresholdsForCompareMode = <
   T extends { method?: string | null }
 >(
-  compareMode: string,
-  thresholds: T[]
-): T[] => {
+    compareMode: string,
+    thresholds: T[]
+  ): T[] => {
   if (compareMode !== COMPARE_MODE_TIMELEFT) {
     return thresholds;
   }
@@ -738,9 +738,9 @@ export const recoveryConflictsWithThresholds = (
 export const coerceRecoveryForThresholds = <
   T extends { method?: string; value?: number | null }
 >(
-  recovery: T | null | undefined,
-  thresholds: Array<{ method?: string | null }> | null | undefined
-): T | { method: string; value: null } => {
+    recovery: T | null | undefined,
+    thresholds: Array<{ method?: string | null }> | null | undefined
+  ): T | { method: string; value: null } => {
   if (recoveryConflictsWithThresholds(recovery, thresholds)) {
     return { method: '', value: null };
   }
@@ -786,212 +786,6 @@ export const getAllowedRecoveryMethods = <T extends { value?: string | number }>
     );
   }
   return [];
-};
-
-export type SceneChipId =
-  | 'p95_absolute'
-  | 'prev_window_up'
-  | 'offset_1h_up'
-  | 'yoy_week'
-  | 'disk_timeleft'
-  | 'count_if_n';
-
-export type SceneChipDefinition = {
-  id: SceneChipId;
-  labelKey: string;
-  algorithm: string;
-  compareMode: string;
-  compareValueKind: string;
-  thresholdMethod?: string;
-  countPredicate?: { method: string; value: number };
-};
-
-export const SCENE_CHIPS: SceneChipDefinition[] = [
-  {
-    id: 'p95_absolute',
-    labelKey: 'monitor.events.sceneChipP95Absolute',
-    algorithm: 'p95_over_time',
-    compareMode: COMPARE_MODE_ABSOLUTE,
-    compareValueKind: ''
-  },
-  {
-    id: 'prev_window_up',
-    labelKey: 'monitor.events.sceneChipPrevWindowUp',
-    algorithm: 'avg_over_time',
-    compareMode: COMPARE_MODE_PREVIOUS_WINDOW,
-    compareValueKind: COMPARE_VALUE_KIND_PERCENT
-  },
-  {
-    id: 'offset_1h_up',
-    labelKey: 'monitor.events.sceneChipOffset1hUp',
-    algorithm: 'p95_over_time',
-    compareMode: COMPARE_MODE_OFFSET_1H,
-    compareValueKind: COMPARE_VALUE_KIND_PERCENT
-  },
-  {
-    id: 'yoy_week',
-    labelKey: 'monitor.events.sceneChipYoyWeek',
-    algorithm: 'avg_over_time',
-    compareMode: COMPARE_MODE_OFFSET_7D,
-    compareValueKind: COMPARE_VALUE_KIND_PERCENT
-  },
-  {
-    id: 'disk_timeleft',
-    labelKey: 'monitor.events.sceneChipDiskTimeleft',
-    algorithm: 'last_over_time',
-    compareMode: COMPARE_MODE_TIMELEFT,
-    compareValueKind: COMPARE_VALUE_KIND_HOURS,
-    thresholdMethod: '<'
-  },
-  {
-    id: 'count_if_n',
-    labelKey: 'monitor.events.sceneChipCountIfN',
-    algorithm: COUNT_IF_ALGORITHM,
-    compareMode: COMPARE_MODE_ABSOLUTE,
-    compareValueKind: '',
-    countPredicate: { method: '>', value: 0 }
-  }
-];
-
-export type SceneChipView = SceneChipDefinition & {
-  disabled: boolean;
-  reasonKey?: string;
-};
-
-export const getSceneChipStates = ({
-  isEnumMetric,
-  isFormulaMode,
-  disableRateAlgorithm,
-  periodType,
-  periodValue
-}: {
-  isEnumMetric?: boolean;
-  isFormulaMode?: boolean;
-  disableRateAlgorithm?: boolean;
-  periodType?: string | null;
-  periodValue?: number | null;
-}): SceneChipView[] =>
-  SCENE_CHIPS.map((chip) => {
-    if (isEnumMetric && (NEW_ALGORITHMS.includes(chip.algorithm) || chip.compareMode !== COMPARE_MODE_ABSOLUTE)) {
-      return {
-        ...chip,
-        disabled: true,
-        reasonKey: 'monitor.events.sceneChipDisabledEnum'
-      };
-    }
-    if (isFormulaMode && PER_SERIES_ALGORITHMS.includes(chip.algorithm)) {
-      return {
-        ...chip,
-        disabled: true,
-        reasonKey: 'monitor.events.sceneChipDisabledFormula'
-      };
-    }
-    if (disableRateAlgorithm && chip.algorithm === 'rate') {
-      return {
-        ...chip,
-        disabled: true,
-        reasonKey: 'monitor.events.rateAlreadyInQuery'
-      };
-    }
-    const compareOption = getCompareModeSelectOptions({
-      periodType,
-      periodValue,
-      algorithm: chip.algorithm
-    }).find((item) => item.value === chip.compareMode);
-    if (compareOption?.disabled) {
-      return {
-        ...chip,
-        disabled: true,
-        reasonKey: compareOption.reasonKey
-      };
-    }
-    return { ...chip, disabled: false };
-  });
-
-export const matchSceneChipId = ({
-  algorithm,
-  compareMode,
-  compareValueKind
-}: {
-  algorithm?: string | null;
-  compareMode?: string | null;
-  compareValueKind?: string | null;
-}): SceneChipId | null => {
-  const matched = SCENE_CHIPS.find(
-    (chip) =>
-      chip.algorithm === algorithm &&
-      chip.compareMode === (compareMode || COMPARE_MODE_ABSOLUTE) &&
-      (chip.compareValueKind || '') === (compareValueKind || '')
-  );
-  return matched?.id || null;
-};
-
-export type SceneChipApplyResult = {
-  algorithm: string;
-  compareMode: string;
-  compareValueKind: string;
-  thresholds: Array<{ level?: string; method?: string; value?: number | null }>;
-  recoveryThreshold: { method: string; value: number | null };
-  countPredicate: { method: string; value: number | null };
-};
-
-export const applySceneChip = ({
-  chipId,
-  algorithm,
-  compareMode,
-  compareValueKind,
-  thresholds,
-  recoveryThreshold,
-  countPredicate
-}: {
-  chipId: SceneChipId;
-  algorithm?: string | null;
-  compareMode?: string | null;
-  compareValueKind?: string | null;
-  thresholds: Array<{ level?: string; method?: string; value?: number | null }>;
-  recoveryThreshold?: { method?: string; value?: number | null } | null;
-  countPredicate?: { method?: string; value?: number | null } | null;
-}): SceneChipApplyResult | null => {
-  const chip = SCENE_CHIPS.find((item) => item.id === chipId);
-  if (!chip) {
-    return null;
-  }
-  const nextThresholds = coerceThresholdsForCompareMode(
-    chip.compareMode,
-    chip.thresholdMethod
-      ? thresholds.map((item) => ({
-        ...item,
-        method: chip.thresholdMethod
-      }))
-      : thresholds
-  );
-  const nextCountPredicate =
-    chip.countPredicate &&
-    (!countPredicate?.method ||
-      countPredicate.value == null ||
-      !Number.isFinite(Number(countPredicate.value)))
-      ? chip.countPredicate
-      : {
-        method: countPredicate?.method || '>',
-        value: countPredicate?.value ?? null
-      };
-  return {
-    algorithm: chip.algorithm,
-    compareMode: chip.compareMode,
-    compareValueKind: chip.compareValueKind,
-    thresholds: nextThresholds,
-    recoveryThreshold: coerceRecoveryForThresholds(
-      recoveryThreshold,
-      nextThresholds
-    ) as { method: string; value: number | null },
-    countPredicate: {
-      method: nextCountPredicate.method || '>',
-      value:
-        typeof nextCountPredicate.value === 'number'
-          ? nextCountPredicate.value
-          : null
-    }
-  };
 };
 
 type TranslateFn = (

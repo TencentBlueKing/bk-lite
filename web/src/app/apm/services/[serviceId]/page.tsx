@@ -1,7 +1,8 @@
 'use client';
 
+import './register-service-pilot';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   AppstoreOutlined,
@@ -36,6 +37,7 @@ import CatalogState, {
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
 import { DEPLOYMENT_LOOKBACK_MS, DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
+import { isTimeWindow } from '@/app/apm/components/service-catalog-model';
 import HealthDot from '@/app/apm/components/health-dot';
 import { StatusPill } from '@/app/apm/components/home/section-card';
 import {
@@ -93,6 +95,8 @@ export default function ApmServiceDetailPage() {
   const { token } = theme.useToken();
   const params = useParams<{ serviceId: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const {
     getService,
     getServiceRed,
@@ -109,7 +113,10 @@ export default function ApmServiceDetailPage() {
     searchParams.get('environment') ?? undefined
   );
   const [red, setRed] = useState<ApmServiceRed>();
-  const [timeRange, setTimeRange] = useState<TimeRange>('1h');
+  const [timeRange, setTimeRange] = useState<TimeRange>(() => {
+    const value = searchParams.get('window');
+    return isTimeWindow(value) ? value : '1h';
+  });
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [catalogState, setCatalogState] = useState<PageState>('loading');
   const [metricState, setMetricState] = useState<PageState>('loading');
@@ -134,6 +141,18 @@ export default function ApmServiceDetailPage() {
       startedAt: new Date(new Date(endedAt).getTime() - RANGE_MS[timeRange]).toISOString(),
     };
   }, [refreshKey, timeRange]);
+  const currentQuery = searchParams.toString();
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(currentQuery);
+    if (environment) nextParams.set('environment', environment);
+    else nextParams.delete('environment');
+    if (timeRange !== '1h') nextParams.set('window', timeRange);
+    else nextParams.delete('window');
+    const next = nextParams.toString();
+    if (next === currentQuery) return;
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [currentQuery, environment, pathname, router, timeRange]);
 
   useEffect(() => {
     if (authLoading || !params.serviceId) return;

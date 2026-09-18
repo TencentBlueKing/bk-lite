@@ -54,6 +54,7 @@ import {
   buildIntegrationConfigureUrl,
   resolveIntegrationEntryContext
 } from '@/app/monitor/utils/integrationEntryContext';
+import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 import { downloadPluginConfig } from './exportDownload';
 
 const { confirm } = Modal;
@@ -407,8 +408,8 @@ const Integration = () => {
       cancelText: t('common.cancel'),
       centered: true,
       onOk() {
-        return restoreBuiltinPlugin(app.id).then(() => {
-          message.success(t('monitor.integrations.restoreBuiltinSuccess'));
+        return restoreBuiltinPlugin(app.id).then((result: any) => {
+          const staleCount = Number(result?.stale_instance_count) || 0;
           invalidateMonitorPluginCache(objectId);
           getPluginList({
             monitor_object_id: objectId,
@@ -416,6 +417,28 @@ const Integration = () => {
             keyword: searchText,
             page: pagination.current
           });
+          if (staleCount > 0) {
+            Modal.success({
+              title: t('monitor.integrations.restoreBuiltinSuccess'),
+              content: t('monitor.integrations.restoreBuiltinStaleHint', '', {
+                count: staleCount
+              }),
+              okText: t('monitor.integrations.goToStaleAssets'),
+              onOk: () => {
+                router.push(
+                  buildCollectNeedUpdateAssetUrl({
+                    monitorObjectId:
+                      result?.monitor_object_id ||
+                      app.parent_monitor_object ||
+                      objectId,
+                    pluginId: result?.plugin_id || app.id
+                  })
+                );
+              }
+            });
+            return;
+          }
+          message.success(t('monitor.integrations.restoreBuiltinSuccess'));
         });
       }
     });
@@ -514,6 +537,10 @@ const Integration = () => {
                     (item) => sameMonitorId(item.id, app.parent_monitor_object)
                   );
                   const objectName = parentObject?.name || '';
+                  const staleCount = Number(app.stale_instance_count) || 0;
+                  const packVersionText = app.pack_version
+                    ? app.pack_version
+                    : t('monitor.integrations.builtinPack');
 
                   return (
                     <div
@@ -553,17 +580,48 @@ const Integration = () => {
                             </Tag>
                             <Tooltip
                               title={
-                                app.pack_version
-                                  ? t('monitor.integrations.pinnedPackHint', '', {
-                                    version: app.pack_version
+                                staleCount > 0
+                                  ? t('monitor.integrations.staleInstanceHint', '', {
+                                    count: staleCount,
+                                    version: packVersionText
                                   })
-                                  : t('monitor.integrations.builtinPackHint')
+                                  : app.pack_version
+                                    ? t('monitor.integrations.pinnedPackHint', '', {
+                                      version: app.pack_version
+                                    })
+                                    : t('monitor.integrations.builtinPackHint')
                               }
                             >
-                              <Tag className="mt-[4px] ml-[6px]">
-                                {app.pack_version
-                                  ? app.pack_version
-                                  : t('monitor.integrations.builtinPack')}
+                              <Tag
+                                color={staleCount > 0 ? 'warning' : undefined}
+                                className={`mt-[4px] ml-[6px]${staleCount > 0 ? ' cursor-pointer' : ''}`}
+                                onClick={
+                                  staleCount > 0
+                                    ? (e) => {
+                                      e.stopPropagation();
+                                      const result =
+                                        resolveIntegrationEntryContext(
+                                          app,
+                                          objects
+                                        );
+                                      router.push(
+                                        buildCollectNeedUpdateAssetUrl({
+                                          monitorObjectId: result.ok
+                                            ? result.context.objectId
+                                            : app.parent_monitor_object ||
+                                              String(objectId),
+                                          pluginId: app.id,
+                                          needUpdate: true
+                                        })
+                                      );
+                                    }
+                                    : undefined
+                                }
+                              >
+                                {packVersionText}
+                                {staleCount > 0
+                                  ? ` · ${t('monitor.integrations.needUpdate')} ${staleCount}`
+                                  : ''}
                               </Tag>
                             </Tooltip>
                             {app.is_custom && (

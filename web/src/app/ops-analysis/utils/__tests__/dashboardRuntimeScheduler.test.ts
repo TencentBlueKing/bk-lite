@@ -187,6 +187,55 @@ describe('DashboardRuntimeScheduler', () => {
     expect(order).toEqual(['manual', 'initial']);
   });
 
+  it('applies remembered location to later schedules without taking the scroll cause', async () => {
+    const scheduler = new DashboardRuntimeScheduler({ concurrency: 1 });
+    const blocker = deferred<void>();
+    const order: string[] = [];
+    const running = scheduler.schedule({
+      consumerId: 'running', ownerId: 'running', physicalKey: 'running',
+      priority: { cause: 0, visibility: 0, distance: 0, order: 0 },
+      start: () => blocker.promise,
+    });
+
+    scheduler.updateOwnerPriority('periodic-owner', {
+      cause: 1,
+      visibility: 0,
+      distance: 0,
+      order: 1,
+    });
+
+    const periodicNowVisible = scheduler.schedule({
+      consumerId: 'periodic-now-visible',
+      ownerId: 'periodic-owner',
+      physicalKey: 'periodic-now-visible',
+      priority: { cause: 2, visibility: 1, distance: 400, order: 8 },
+      start: async () => { order.push('periodic-now-visible'); },
+    });
+    const initialPrefetch = scheduler.schedule({
+      consumerId: 'initial-prefetch',
+      ownerId: 'initial-prefetch',
+      physicalKey: 'initial-prefetch',
+      priority: { cause: 1, visibility: 1, distance: 20, order: 2 },
+      start: async () => { order.push('initial-prefetch'); },
+    });
+    const periodicStillPrefetch = scheduler.schedule({
+      consumerId: 'periodic-still-prefetch',
+      ownerId: 'periodic-still-prefetch',
+      physicalKey: 'periodic-still-prefetch',
+      priority: { cause: 2, visibility: 1, distance: 20, order: 3 },
+      start: async () => { order.push('periodic-still-prefetch'); },
+    });
+
+    blocker.resolve();
+    await running;
+    await Promise.all([periodicNowVisible, initialPrefetch, periodicStillPrefetch]);
+    expect(order).toEqual([
+      'initial-prefetch',
+      'periodic-now-visible',
+      'periodic-still-prefetch',
+    ]);
+  });
+
   it('accepts B and C into physical scheduling without waiting for A to settle', async () => {
     const scheduler = new DashboardRuntimeScheduler({ concurrency: 2 });
     const a = deferred<string>();

@@ -399,20 +399,15 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                           )}
                         >
                           <Tooltip
-                            overlayInnerStyle={{
-                              whiteSpace: 'pre-line',
-                              color: 'var(--color-text-1)'
-                            }}
-                            placement="rightTop"
-                            arrow={false}
-                            color="var(--color-bg-1)"
+                            overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+                            placement="right"
                             title={
                               item.disabled
                                 ? t('monitor.events.rateAlreadyInQuery')
                                 : item.title
                             }
                           >
-                            <span className="inline-flex min-w-0 max-w-full items-baseline">
+                            <span className="flex w-full min-w-0 items-center">
                               <span className="shrink-0 text-[var(--color-text-1)]">
                                 {item.label}
                               </span>

@@ -3,6 +3,25 @@ from pathlib import Path
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_community_build_target_does_not_require_enterprise():
+    dockerfile = (STARGAZER_ROOT / "support-files/docker/Dockerfile").read_text(encoding="utf-8")
+    assert dockerfile.startswith("FROM python:3.12 AS community\n")
+    community, enterprise = dockerfile.split("FROM community AS enterprise\n", 1)
+
+    assert "enterprise_src" not in community
+    assert "ENTERPRISE_SHA" not in community
+    assert "import enterprise." not in community
+    assert 'RUN pip3 install -e ".[dev,aliyun,qcloud,huawei,vmware,openstack,qingyun,snmp]"' in community
+    assert 'CMD ["supervisord", "-n"]' in community
+
+    # 最后一阶段仍为企业版，兼容现有不带 --target 的企业版流水线。
+    assert "FROM " not in enterprise
+    assert "COPY --from=enterprise_src . ./enterprise" in enterprise
+    assert 'test -n "$ENTERPRISE_SHA"' in enterprise
+    assert "import enterprise.plugins.inputs.sangforhci.sangforhci_info" in enterprise
+    assert "import enterprise.plugins.inputs.sangforscp.sangforscp_info" in enterprise
+
+
 def test_stargazer_image_uses_verified_enterprise_submodule_context():
     makefile = (STARGAZER_ROOT / "Makefile").read_text(encoding="utf-8")
     dockerfile = (STARGAZER_ROOT / "support-files/docker/Dockerfile").read_text(encoding="utf-8")

@@ -52,10 +52,79 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- 无线健康 (CPU/温度/内存/关联客户端数/信道利用率) → N/A ----
-    # EnGenius（Senao，企业号 14125）私有 MIB 以配置为主。ENGENIUS-PRIVATE-MIB 无 CPU/温度/内存对象；
-    # 仅旧版 mesh 固件的 ENGENIUS-MESH-MIB 暴露 systemMemory(14125.1.1.1.2.0，为“空闲内存百分比”) 与
-    # systemUptime(字符串非数值)，且云管 ECW/EWS 机型无该私有树。关联客户端数无标量计数（须对 clientInfoTable 逐行计数，
-    # 各列均为 OCTET STRING 文本，telegraf 无法可靠 gauge 化），信道利用率无对象。
-    # 为跨机型（含云管）稳定可采，本插件仅采集标准 IF-MIB 接口流量 (ifHCInOctets/ifHCOutOctets) 与运行时长 (uptime)，
-    # 无线 CPU/内存/温度/客户端数/信道利用率为 N/A，不伪造。
+    # ---- 可选库存标签：firmware_version / device_name（非健康必做；无响应则缺省）----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14125.9.1.1.1.0"
+        name = "firmware_version"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14125.9.1.1.4.0"
+        name = "device_name"
+        is_tag = true
+    # ---- CPU：cpu_loading 标量，DisplayString 百分比文本，解析为 device_cpu_usage ----
+    # OID 1.3.6.1.4.1.14125.9.1.1.9.0。starlark 去掉 % 后转为 0-100 数值。
+    # 空串 / 非数字 / 解析失败跳过该点，不当 0%。设备无该叶时字段缺省，不报错、不伪造。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source", "firmware_version", "device_name"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14125.9.1.1.9"
+        name = "usage"
+    # ---- 内存：mem_usage 标量，DisplayString 百分比文本，解析为 device_memory_usage ----
+    # OID 1.3.6.1.4.1.14125.9.1.1.10.0。过滤口径与 CPU 相同。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source", "firmware_version", "device_name"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14125.9.1.1.10"
+        name = "usage"
+    # ---- 温度/风扇：无私有 Gauge，不臆造。关联客户端表逐行计数与信道利用率不采。----
+    # 不扩展 ifHC* / ifOperStatus；接口仍仅 ifIndex/ifDescr + ifHCInOctets/ifHCOutOctets。
+
+[[processors.starlark]]
+    namepass = ["device_cpu", "device_memory"]
+    source = '''
+def parse_percent(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int":
+        return float(raw)
+    if t == "float":
+        return raw
+    text = str(raw).strip()
+    if text.endswith("%"):
+        text = text[:-1].strip()
+    if text == "":
+        return None
+    i = 0
+    if text[0] == "+" or text[0] == "-":
+        i = 1
+    if i >= len(text):
+        return None
+    dots = 0
+    digits = 0
+    while i < len(text):
+        c = text[i]
+        if c >= "0" and c <= "9":
+            digits += 1
+        elif c == ".":
+            dots += 1
+            if dots > 1:
+                return None
+        else:
+            return None
+        i += 1
+    if digits == 0:
+        return None
+    return float(text)
+
+def apply(metric):
+    parsed = parse_percent(metric.fields.get("usage"))
+    if parsed == None:
+        return None
+    metric.fields["usage"] = parsed
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["engenius"]

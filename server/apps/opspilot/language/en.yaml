@@ -213,20 +213,22 @@ tools:
     name: Monitor
     description: |
       [Host CPU] Query BK-Lite monitored objects, instances, metric series, and alerts with caller identity.
-      Typical flow: object type → match host name to instance → confirm metric → query series.
+      Typical flow: object type → match name to instance → filter metrics by the user's word → query series.
       Prefer these tools; do not suggest SSH/top/htop.
+      If the user did not say the object type, list types then request_user_choice; do not guess Host/K8s Pod from the name.
+      For CPU, list metrics and filter names/display names containing CPU; do not guess cpu.util or ask the user to type metric names.
       instance_ids are monitor instance IDs (or host name/IP), not CMDB inst_uuid/_id.
     tools:
       monitor_list_objects:
-        description: "[Host CPU] Step 1: list object types and find the host monitor_obj_id."
+        description: "[Host CPU] Step 1: list object types; if the user did not specify a type, request_user_choice instead of guessing."
       monitor_list_object_instances:
-        description: "[Host CPU] Step 2: list instances; match host name to get monitor instance_id. Do not use CMDB inst_uuid."
+        description: "[Host CPU] Step 2: list instances by the confirmed object type; keyword must be the full name/IP. Call once per obj_id; empty list must ask the object type; do not guess IDs or truncate names."
       monitor_list_object_metrics:
-        description: "[Host CPU] Step 3: list metric definitions; confirm CPU usage metric name."
+        description: "[Host CPU] Step 3: list metrics; if the user asked CPU, pass keyword=CPU to filter name/display_name. Do not guess cpu.util. Must share a step with the query tool."
       monitor_list_instance_metrics:
         description: "[Host CPU] Optional: confirm whether an instance has CPU metrics."
       monitor_query_metric_data:
-        description: "[Host CPU] Step 4: query metric time series; needs object, metric, optional time range (default last 1h). instance_ids must be monitor IDs/name/IP, not CMDB inst_uuid."
+        description: "[Host CPU] Step 4: query metric time series; metric must come from list_object_metrics names, never guess cpu.util. instance_ids must be monitor IDs/name/IP, not CMDB inst_uuid."
       monitor_list_active_alerts:
         description: "[Host alerts] List current active alerts; filter by object/instance/level. instance_ids accepts monitor instance_id, name, or IP, not CMDB inst_uuid."
       monitor_query_alert_segments:

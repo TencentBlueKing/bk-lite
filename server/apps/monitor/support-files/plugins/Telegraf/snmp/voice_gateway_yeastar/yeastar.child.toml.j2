@@ -54,28 +54,28 @@
         name = "cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.8.0"
+        oid = "1.3.6.1.4.1.22736.3.1.8"
         name = "usage_percent"
     # pMemoryUsage 1.3.6.1.4.1.22736.3.1.7.0：百分比文本，解析为 memory_usage_percent。
     [[inputs.snmp.table]]
         name = "memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.7.0"
+        oid = "1.3.6.1.4.1.22736.3.1.7"
         name = "usage_percent"
     # pLocalStorageUsage 1.3.6.1.4.1.22736.3.1.6.0：百分比文本，解析为 local_storage_usage_percent。
     [[inputs.snmp.table]]
         name = "local_storage"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.6.0"
+        oid = "1.3.6.1.4.1.22736.3.1.6"
         name = "usage_percent"
     # pConcurrentCall 1.3.6.1.4.1.22736.3.1.9.0：Integer32 并发通话数。
     [[inputs.snmp.table]]
         name = "concurrent"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.9.0"
+        oid = "1.3.6.1.4.1.22736.3.1.9"
         name = "calls"
         conversion = "int"
     # pAsteriskStatus 1.3.6.1.4.1.22736.3.1.11.0：running(1)/stopped(2)，下方 enum 归一。
@@ -83,15 +83,13 @@
         name = "asterisk"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.11.0"
+        oid = "1.3.6.1.4.1.22736.3.1.11"
         name = "status"
         conversion = "int"
 # ---- 不扩展 IF-MIB 错误计数、ifOperStatus 或 32 位字节计数器。----
 
 [[processors.starlark]]
     namepass = ["cpu", "memory", "local_storage"]
-    [processors.starlark.tagpass]
-        brand = ["yeastar"]
     source = '''
 def parse_percent(raw):
     if raw == None:
@@ -110,6 +108,8 @@ def apply(metric):
     metric.fields["usage_percent"] = parsed
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["yeastar"]
 
 [[processors.enum]]
     namepass = ["asterisk"]

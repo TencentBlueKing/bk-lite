@@ -63,7 +63,12 @@ def _import_snmp_facts_with_stubbed_deps(monkeypatch):
     hlapi_module = types.ModuleType("pysnmp.hlapi")
     hlapi_module.usmHMACSHAAuthProtocol = object()
     hlapi_module.usmHMACMD5AuthProtocol = object()
+    hlapi_module.usmHMAC128SHA224AuthProtocol = object()
+    hlapi_module.usmHMAC192SHA256AuthProtocol = object()
+    hlapi_module.usmHMAC256SHA384AuthProtocol = object()
+    hlapi_module.usmHMAC384SHA512AuthProtocol = object()
     hlapi_module.usmAesCfb128Protocol = object()
+    hlapi_module.usmAesCfb256Protocol = object()
     hlapi_module.usmDESPrivProtocol = object()
 
     monkeypatch.setitem(sys.modules, "sanic", sanic_module)

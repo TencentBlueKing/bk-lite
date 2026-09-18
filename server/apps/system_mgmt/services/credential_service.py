@@ -13,7 +13,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.system_mgmt.models.credential import Credential, CredentialType
 from apps.system_mgmt.models.user import Group
-from apps.system_mgmt.services.credential_builtin import builtin_type_payloads
+from apps.system_mgmt.services.credential_builtin import BUILTIN_KEY_FALLBACKS, builtin_type_payloads, effective_type_fields
 from apps.system_mgmt.services.credential_crypto import decrypt_instance_fields, encrypt_instance_fields, public_instance_fields
 from apps.system_mgmt.services.credential_schema import SchemaError, secret_field_ids, type_field_ids, validate_instance_fields, validate_type_fields
 from apps.system_mgmt.services.credential_scope import is_current_team_authorized, manageable_owner_group_ids, usable_owner_group_ids
@@ -91,19 +91,20 @@ def _public_type(credential_type):
         "name": credential_type.name,
         "is_builtin": credential_type.is_builtin,
         "categories": deepcopy(credential_type.categories or []),
-        "fields": deepcopy(credential_type.fields or []),
+        "fields": effective_type_fields(credential_type),
         "credential_count": int(getattr(credential_type, "credential_count", 0) or 0),
     }
 
 
 def _public_credential(credential):
+    type_fields = effective_type_fields(credential.type)
     return {
         "credential_id": credential.credential_id,
         "type": credential.type_id,
         "name": credential.name,
         "group_id": credential.group_id,
         "disabled": credential.disabled,
-        "fields": public_instance_fields(credential.type.fields, credential.fields),
+        "fields": public_instance_fields(type_fields, credential.fields),
     }
 
 
@@ -146,11 +147,6 @@ def _owner_ids_for_scope(owner_scope, current_team, group_list, is_superuser):
     raise CredentialServiceError("invalid")
 
 
-BUILTIN_KEY_FALLBACKS = {
-    "openstack": "openstack_account",
-    "redfish": "redfish_bmc",
-}
-
 _PRIVATE_KEY = "private_key"
 _PASSPHRASE = "passphrase"
 
@@ -159,10 +155,7 @@ def _types_locked_by_key(*keys: str) -> dict[str, CredentialType]:
     wanted = sorted({key for key in keys if key})
     if not wanted:
         return {}
-    return {
-        row.key: row
-        for row in CredentialType.objects.select_for_update().filter(key__in=wanted)
-    }
+    return {row.key: row for row in CredentialType.objects.select_for_update().filter(key__in=wanted)}
 
 
 def _builtin_seed_key(preferred_key: str) -> str | None:
@@ -359,12 +352,13 @@ def create_credential(payload=None, actor=None, **values):
         raise CredentialServiceError("invalid")
     with transaction.atomic():
         credential_type = _load_type(type_key, lock=True)
+        type_fields = effective_type_fields(credential_type)
         try:
-            persisted = validate_instance_fields(type_fields=credential_type.fields, values=fields, require_secrets=True)
+            persisted = validate_instance_fields(type_fields=type_fields, values=fields, require_secrets=True)
         except SchemaError as exc:
             raise CredentialServiceError("invalid", str(exc)) from exc
-        encrypted = encrypt_instance_fields(credential_type.fields, persisted)
-        encrypted = _drop_passphrase_after_key_rotation(credential_type.fields, persisted, encrypted)
+        encrypted = encrypt_instance_fields(type_fields, persisted)
+        encrypted = _drop_passphrase_after_key_rotation(type_fields, persisted, encrypted)
         credential = Credential.objects.create(
             credential_id=build_credential_id(credential_type.key),
             name=name,
@@ -418,14 +412,11 @@ def update_credential(credential_id, payload=None, actor=None, **values):
             group_list=data.get("group_list"),
             is_superuser=data.get("is_superuser"),
         )
-        schema_ids = type_field_ids(credential.type.fields)
+        type_fields = effective_type_fields(credential.type)
+        schema_ids = type_field_ids(type_fields)
         # Keys dropped from the type schema (e.g. SSH port) are discarded on save.
         # Call sites must store connection params on the task, not the credential.
-        old_fields = {
-            key: value
-            for key, value in deepcopy(credential.fields or {}).items()
-            if key in schema_ids
-        }
+        old_fields = {key: value for key, value in deepcopy(credential.fields or {}).items() if key in schema_ids}
         incoming = data.get("fields")
         merged = deepcopy(old_fields)
         if incoming is not None:
@@ -436,18 +427,24 @@ def update_credential(credential_id, payload=None, actor=None, **values):
                 raise CredentialServiceError("invalid")
             merged.update(deepcopy(dict(incoming)))
         try:
-            persisted = validate_instance_fields(type_fields=credential.type.fields, values=merged, require_secrets=False)
+            persisted = validate_instance_fields(type_fields=type_fields, values=merged, require_secrets=False)
         except SchemaError as exc:
             raise CredentialServiceError("invalid", str(exc)) from exc
         incoming_values = dict(incoming) if isinstance(incoming, Mapping) else {}
-        for field in credential.type.fields:
+        for field in type_fields:
             if field.get("kind") == "secret" and field["id"] not in incoming_values:
                 persisted.pop(field["id"], None)
-        credential.fields = _drop_passphrase_after_key_rotation(
-            credential.type.fields,
+        effective_fields = _drop_passphrase_after_key_rotation(
+            type_fields,
             persisted,
-            encrypt_instance_fields(credential.type.fields, persisted, old_fields),
+            encrypt_instance_fields(type_fields, persisted, old_fields),
         )
+        try:
+            # 留空保留旧秘密后，再按新认证模式检查必填；只验证存在性，无需解密存量值。
+            validate_instance_fields(type_fields=type_fields, values=effective_fields, require_secrets=True)
+        except SchemaError as exc:
+            raise CredentialServiceError("invalid", str(exc)) from exc
+        credential.fields = effective_fields
         if "name" in data:
             if not isinstance(data["name"], str) or not data["name"]:
                 raise CredentialServiceError("invalid")
@@ -557,8 +554,9 @@ def resolve_credential(credential_id, current_team, actor=None, *, group_list=No
         raise CredentialServiceError("forbidden")
     if credential.disabled:
         raise CredentialServiceError("disabled")
+    type_fields = effective_type_fields(credential.type)
     result = _public_credential(credential)
-    result["fields"] = decrypt_instance_fields(credential.type.fields, credential.fields)
+    result["fields"] = decrypt_instance_fields(type_fields, credential.fields)
     return result
 
 
@@ -572,7 +570,8 @@ def resolve_secret_field(credential_id, field_id=None):
     credential = _load_credential(credential_id)
     if credential.disabled:
         raise CredentialServiceError("disabled")
-    secret_ids = secret_field_ids(credential.type.fields)
+    type_fields = effective_type_fields(credential.type)
+    secret_ids = secret_field_ids(type_fields)
     if field_id:
         if field_id not in secret_ids:
             raise CredentialServiceError("unknown_field")
@@ -580,7 +579,7 @@ def resolve_secret_field(credential_id, field_id=None):
         field_id = secret_ids[0]
     else:
         raise CredentialServiceError("ambiguous_field")
-    values = decrypt_instance_fields(credential.type.fields, credential.fields)
+    values = decrypt_instance_fields(type_fields, credential.fields)
     value = values.get(field_id)
     if not isinstance(value, str) or not value:
         raise CredentialServiceError("empty")

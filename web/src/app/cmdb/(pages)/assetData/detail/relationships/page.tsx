@@ -12,10 +12,6 @@ import { useTranslation } from '@/utils/i18n';
 import AssoList from './list';
 import Topo from './topo';
 import { PublicRelatedTopoSlot } from './publicRelatedTopoSlot';
-import {
-  canShowNetworkStatusTopoTab,
-  PublicNetworkStatusTopoSlot,
-} from './publicNetworkStatusTopoSlot';
 import NetworkTopo from './networkTopo';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
@@ -29,7 +25,6 @@ import { useCmdbUserList } from '@/app/cmdb/context/common';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { useRelationships } from '@/app/cmdb/context/relationships';
-import { useAppWidget } from '@/context/appCapabilities';
 import usePermissions from '@/hooks/usePermissions';
 import {
   buildRelationshipTabHref,
@@ -60,12 +55,6 @@ const Ralationships = () => {
   const { getTopoThemes } = useInstanceApi();
   const [themes, setThemes] = useState<string[]>([]);
   const [themesReady, setThemesReady] = useState(false);
-  const networkStatus = useAppWidget('ops-analysis.networkStatusTopology');
-  const showNetworkStatusTab = canShowNetworkStatusTopoTab({
-    hasNetworkTheme: themes.includes('network'),
-    declared: networkStatus.declared,
-    instUuid,
-  });
   // 机柜视图点设备：右侧抽屉展示详情（再从抽屉下钻到实例详情），与机房视图一致
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState<boolean>(false);
@@ -106,12 +95,6 @@ const Ralationships = () => {
     ...(themes.includes('network')
       ? [{ label: t('Model.networkTopo'), value: 'network' }]
       : []),
-    ...(showNetworkStatusTab
-      ? [{
-        label: t('Model.publicNetworkStatusTopology'),
-        value: 'networkStatusTopology',
-      }]
-      : []),
     ...(themes.includes('ipam')
       ? [{ label: t('Model.ipView'), value: 'ipam' }]
       : []),
@@ -132,7 +115,7 @@ const Ralationships = () => {
   const allowedTabs = segmentedOptions.map((option) => option.value);
   const gatesSettled = relationshipGatesSettled({
     themesReady,
-    widgetStatus: networkStatus.status,
+    widgetStatus: 'ready',
   });
   const { tab: activeTab, shouldRewrite } = normalizeRelationshipTab({
     requestedTab: tabParam || DEFAULT_RELATIONSHIP_TAB,
@@ -164,7 +147,6 @@ const Ralationships = () => {
 
   const isCanvasTab = [
     'network',
-    'networkStatusTopology',
     'ipam',
     'appOverview',
     'serviceTree',
@@ -234,9 +216,6 @@ const Ralationships = () => {
       )}
       {activeTab === 'network' && isAllowedRelationshipTab('network', allowedTabs) && (
         <NetworkTopo key={instUuid} modelId={modelId} instUuid={instUuid} fillContainer />
-      )}
-      {showNetworkStatusTab && activeTab === 'networkStatusTopology' && (
-        <PublicNetworkStatusTopoSlot instUuid={instUuid} />
       )}
       {activeTab === 'ipam' && isAllowedRelationshipTab('ipam', allowedTabs) && (
         <div className={relationshipsStyle.scrollCanvas}>

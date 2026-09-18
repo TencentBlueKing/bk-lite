@@ -98,14 +98,28 @@ class TestCollectTools:
         kb = _tool("knowledge_retrieve")
         with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=kb):
             tools = n._collect_deepagent_tools(_request())
-        assert [t.name for t in tools] == ["shell", "k8s", "knowledge_retrieve"]
+        assert [t.name for t in tools if t.name != "request_user_choice"] == ["shell", "k8s", "knowledge_retrieve"]
+        assert "request_user_choice" in [t.name for t in tools]
 
     def test_no_kb_tool_when_none(self):
         n = ToolsNodes()
         n.all_tools = [_tool("shell")]
         with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
             tools = n._collect_deepagent_tools(_request())
-        assert [t.name for t in tools] == ["shell"]
+        assert [t.name for t in tools if t.name != "request_user_choice"] == ["shell"]
+        assert "request_user_choice" in [t.name for t in tools]
+
+    def test_choice_tool_is_always_visible_for_planned_steps(self):
+        n = ToolsNodes()
+        n.all_tools = [_tool("monitor_list_object_instances")]
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            tools = n._collect_deepagent_tools(_request())
+        always_visible, _hidden = n._build_planned_execution_tool_visibility(
+            skill_sources=[],
+            skills_only_plan=False,
+            registered_tools=tools,
+        )
+        assert "request_user_choice" in always_visible
 
 
 class TestSkillBackendSources:
@@ -1098,6 +1112,52 @@ class TestBuildDeepagentNodes:
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "不存在" in replan_prompt
 
+    def test_missing_params_nudges_user_choice_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("monitor_query_metric_data"),
+            _tool("request_user_choice"),
+        ]
+        req = _request(user_message="fusion-collector近30天的情况")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查看主机近30天情况",
+                    "steps": [
+                        {
+                            "objective": "查询指标",
+                            "tools": ["monitor_query_metric_data"],
+                        }
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"success": false, "error": "metric is required"}',
+                        "status": "success",
+                        "name": "monitor_query_metric_data",
+                    }
+                },
+                agent_replies={
+                    1: "上一轮失败，可用 uvx fusion-monitor 替代排查。",
+                    2: "请选择要查看的指标",
+                },
+            )
+
+        assert len(captured["planner_calls"]) == 1
+        assert captured["visible_tool_calls"][0] == ["monitor_query_metric_data", "request_user_choice"]
+        assert captured["visible_tool_calls"][1] == ["monitor_query_metric_data", "request_user_choice"]
+        nudge_text = "\n".join(str(getattr(message, "content", "") or "") for message in captured["ainvoke_messages"][1])
+        assert "request_user_choice" in nudge_text
+        assert "禁止编造 uvx" in nudge_text
+        joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+        assert "uvx fusion-monitor" not in joined
+        assert "请选择要查看的指标" in joined
+
     def test_auth_tool_error_aborts_remaining_steps_without_replan(self):
         node = ToolsNodes()
         node.all_tools = [
@@ -1141,6 +1201,83 @@ class TestBuildDeepagentNodes:
         assert len(captured["planner_calls"]) == 1
         joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
         assert "401" in joined or "鉴权" in joined or "Unauthorized" in joined
+
+    def test_cmdb_inventory_hit_skips_monitor_fallback_step(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("cmdb_search_instances"),
+            _tool("monitor_list_objects"),
+            _tool("monitor_list_object_instances"),
+        ]
+        req = _request(user_message="目前纳管多少台主机了")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "统计纳管主机",
+                    "steps": [
+                        {"objective": "先查CMDB", "tools": ["cmdb_search_instances"]},
+                        {
+                            "objective": "若CMDB无数据再查监控中心",
+                            "tools": ["monitor_list_objects", "monitor_list_object_instances"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"success": true, "data": [{"name": "fusion-collector"}]}',
+                        "status": "success",
+                        "name": "cmdb_search_instances",
+                    }
+                },
+                agent_reply="当前纳管 1 台主机。",
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["cmdb_search_instances"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 1
+
+    def test_cmdb_then_metric_query_still_runs_monitor_step(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("cmdb_search_instances"),
+            _tool("monitor_query_metric_data"),
+        ]
+        req = _request(user_message="这些主机的CPU使用率情况如何")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查CPU",
+                    "steps": [
+                        {"objective": "查CMDB主机", "tools": ["cmdb_search_instances"]},
+                        {"objective": "查监控CPU", "tools": ["monitor_query_metric_data"]},
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"success": true, "data": [{"name": "web-1", "monitor_id": "m1"}]}',
+                        "status": "success",
+                        "name": "cmdb_search_instances",
+                    }
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["cmdb_search_instances"],
+            ["monitor_query_metric_data"],
+            [],
+        ]
 
     def test_unresolved_k8s_target_skips_namespace_required_followup_without_replan(self):
         node = ToolsNodes()
@@ -1798,7 +1935,19 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "【工具执行】" in guidance
     assert "未计划工具" in guidance
     assert "空列表" in guidance
+    assert "monitor_list_object_instances" in guidance
+    assert "禁止猜测" in guidance
     assert "重规划" in guidance
+    assert "request_user_choice" in guidance
+    assert "对象类型" in guidance
+    assert "查无此实例" in guidance
+    assert "Missing parameters" in guidance
+    assert "查不到再查" in guidance
+    assert "monitor_list_object_metrics" in guidance
+    assert "cpu.util" in guidance
+    assert "空矩阵" in guidance
+    assert "instance_ids" in guidance
+    assert "禁止用 name" in guidance or "禁止用实例名" in guidance
     assert "不要输出 Markdown 表" in guidance
     assert "禁止降低 lines" in guidance
     assert "execute" not in guidance

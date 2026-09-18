@@ -8,9 +8,31 @@ from unittest.mock import MagicMock
 import pytest
 
 from apps.opspilot.services.wiki.build_service import BuildOutputInvalid
-from apps.opspilot.services.wiki.generation_navigation_service import enhance_generation_overviews
+from apps.opspilot.services.wiki.generation_navigation_service import (
+    BODY_INDEX_SEP,
+    enhance_generation_overviews,
+    indexable_body_excerpt,
+    split_index_search_text,
+)
 
 pytestmark = pytest.mark.unit
+
+
+def test_indexable_body_excerpt_truncates_and_casefolds():
+    excerpt = indexable_body_excerpt("  梯子连不上  VPN  ")
+    assert excerpt == "梯子连不上 vpn"
+    assert BODY_INDEX_SEP not in excerpt
+    long_body = "字" * 3000
+    assert len(indexable_body_excerpt(long_body)) == 2000
+
+
+def test_split_index_search_text_separates_nav_and_body():
+    nav, body = split_index_search_text(f"title{BODY_INDEX_SEP}梯子连不上")
+    assert nav == "title"
+    assert body == "梯子连不上"
+    nav_only, empty = split_index_search_text("title alias")
+    assert nav_only == "title alias"
+    assert empty == ""
 
 
 def _budget(*, remaining=3, remaining_soft_tokens=20000):

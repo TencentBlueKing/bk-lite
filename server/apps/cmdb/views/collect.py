@@ -167,16 +167,53 @@ class CollectModelViewSet(AuthViewSet):
         return decrypt_item(raw_credential)
 
     def _build_region_query_credential(self, request, params, task_id=None):
+        from types import SimpleNamespace
+
+        from apps.cmdb.services.collect_vault_resolver import resolve_task_credential_pool
+
         credential = dict(params)
         model_id = (credential.get("model_id") or "").split("_account", 1)[0]
         credential["model_id"] = model_id
 
         driver_type = credential.get("driver_type")
-        page_secrets = self._page_region_secrets(credential)
-        if page_secrets:
+        instance = self._get_authorized_task(request, task_id) if task_id else None
+        vault_id = credential.pop("vault_credential_id", None)
+        page_secrets = None if vault_id else self._page_region_secrets(credential)
+        if vault_id or (
+            instance
+            and any(
+                item.get("credential_source") == "vault"
+                for item in (instance.decrypt_credentials if isinstance(instance.decrypt_credentials, list) else [instance.decrypt_credentials or {}])
+            )
+            and not page_secrets
+        ):
+            if not vault_id:
+                raw_pool = instance.decrypt_credentials or []
+                raw_pool = raw_pool if isinstance(raw_pool, list) else [raw_pool]
+                vault_item = next((item for item in raw_pool if item.get("credential_source") == "vault"), None)
+                if not vault_item:
+                    raise BaseAppException("已保存任务没有可用的已有凭据！")
+            else:
+                vault_item = {"credential_source": "vault", "vault_credential_id": vault_id}
+            vault_item = {
+                **vault_item,
+                "vault_actor_context": {
+                    "username": request.user.username,
+                    "domain": request.user.domain,
+                    "current_team": get_current_team_from_request(request),
+                },
+            }
+            driver_type = instance.driver_type if instance else (driver_type or "protocol")
+            candidate = SimpleNamespace(
+                model_id=instance.model_id if instance else (params.get("model_id") or model_id),
+                driver_type=driver_type,
+                params=getattr(instance, "params", {}) if instance else {},
+                decrypt_credentials=[vault_item],
+            )
+            raw_credential = resolve_task_credential_pool(candidate)
+        elif page_secrets:
             raw_credential = page_secrets
-        elif task_id:
-            instance = self._get_authorized_task(request, task_id)
+        elif instance:
             raw_credential = self._decrypt_region_credential(instance.decrypt_credentials or instance.credential or {})
             driver_type = instance.driver_type
         else:
@@ -194,12 +231,14 @@ class CollectModelViewSet(AuthViewSet):
             credential["secret_id"] = CollectModels.decrypt_password(credential["secret_id"])
         if isinstance(credential.get("secret_key"), str) and credential["secret_key"].startswith(ENCRYPTED_PREFIX):
             credential["secret_key"] = CollectModels.decrypt_password(credential["secret_key"])
+        for field in ("credential_source", "vault_type_key", "vault_actor_context"):
+            credential.pop(field, None)
         return credential
 
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_tree")
     def tree(self, request, *args, **kwargs):
-        data = apply_collect_tree_translations(get_collect_obj_tree(), request.user.locale)
+        data = apply_collect_tree_translations(get_collect_obj_tree(with_credential_types=True), request.user.locale)
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")
@@ -352,7 +391,10 @@ class CollectModelViewSet(AuthViewSet):
 
         编辑场景掩码凭据按 task_id 解密（需对象权限），秘密只在转发 body 内存中传递。
         """
+        from types import SimpleNamespace
+
         from apps.cmdb.services.collect_tool_service import MASKED_PASSWORD
+        from apps.cmdb.services.collect_vault_resolver import resolve_task_credential_pool
         from apps.cmdb.services.pc_connection_test import PCConnectionTestService
 
         payload = dict(request.data or {})
@@ -379,6 +421,20 @@ class CollectModelViewSet(AuthViewSet):
                         raise BaseAppException(f"无法从原任务获取字段 {field} 的凭据")
                     credential[field] = decrypted[field]
             payload["credential"] = credential
+        credential = dict(payload.get("credential") or {})
+        if credential.get("credential_source") == "vault":
+            credential["vault_actor_context"] = {
+                "username": request.user.username,
+                "domain": request.user.domain,
+                "current_team": get_current_team_from_request(request),
+            }
+            candidate = SimpleNamespace(
+                model_id="pc",
+                driver_type=CollectDriverTypes.JOB,
+                params={"os_type": payload.get("os_type")},
+                decrypt_credentials=[credential],
+            )
+            payload["credential"] = resolve_task_credential_pool(candidate)[0]
         result = PCConnectionTestService.test_connection(payload)
         return WebUtils.response_success(result)
 

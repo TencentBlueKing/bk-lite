@@ -53,37 +53,35 @@
         name = "cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.11.0"
+        oid = "1.3.6.1.4.1.2021.11.11"
         name = "idle"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.9.0"
+        oid = "1.3.6.1.4.1.2021.11.9"
         name = "user"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.10.0"
+        oid = "1.3.6.1.4.1.2021.11.10"
         name = "system"
     # ---- Memory (UCD-SNMP memTotalReal/memAvailReal, kB; usage=(total-avail)/total) ----
     [[inputs.snmp.table]]
         name = "memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.5.0"
+        oid = "1.3.6.1.4.1.2021.4.5"
         name = "total"
         conversion = "int"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.6.0"
+        oid = "1.3.6.1.4.1.2021.4.6"
         name = "free"
         conversion = "int"
     # ---- Optional memTotalFree (UCD-SNMP 1.3.6.1.4.1.2021.4.11.0, kB) ----
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.11.0"
+        oid = "1.3.6.1.4.1.2021.4.11"
         name = "total_free"
         conversion = "int"
 # ---- 保持既有 IF-MIB 64 位 HC 底盘；不扩展 ifInErrors、ifOperStatus 或 32 位字节计数器。不混入 3300/MiVB 通话负荷叶子。温度/风扇/电源 N/A 不采。----
 
 [[processors.starlark]]
     namepass = ["cpu"]
-    [processors.starlark.tagpass]
-        brand = ["mitel"]
     source = '''
 def apply(metric):
     idle = metric.fields.get("idle")
@@ -95,3 +93,5 @@ def apply(metric):
         metric.fields["usage_percent"] = user + system
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["mitel"]

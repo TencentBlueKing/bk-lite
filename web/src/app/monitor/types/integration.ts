@@ -137,8 +137,14 @@ export interface PluginItem {
   collect_mode: string;
   configured?: boolean;
   config_source?: 'configured' | 'reported_only' | 'configured_reported';
+  pack_version?: string;
+  applied_pack_version?: string;
+  latest_pack_version?: string;
   time: string;
   config_ids?: string[];
+  need_update?: boolean;
+  hand_edited?: boolean;
+  can_update?: boolean;
 }
 
 export interface TemplateAccessGuideMetricItem {

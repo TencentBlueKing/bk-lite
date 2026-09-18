@@ -17,7 +17,7 @@ export type ExtractorCreateTarget =
   | { kind: 'instance'; instanceId: string }
   | { kind: 'unavailable'; reason: 'missing_instance' };
 
-export type CollectTypeLinkFields = {
+export interface CollectTypeLinkFields {
   id?: unknown;
   name: string;
   collector?: unknown;
@@ -25,7 +25,7 @@ export type CollectTypeLinkFields = {
   display_name?: unknown;
   description?: unknown;
   display_description?: unknown;
-};
+}
 
 export const isTypeScopedCollectType = (
   value: unknown
@@ -47,23 +47,23 @@ export const resolveExtractorCreateTarget = (event: {
   return { kind: 'instance', instanceId };
 };
 
-export type ExtractorCreatePathOptions = {
+export interface ExtractorCreatePathOptions {
   create?: boolean;
   handoff?: string;
   sourceField?: string;
-};
+}
 
-export type ExtractorCreateHandoff = {
+export interface ExtractorCreateHandoff {
   event: Record<string, unknown>;
   source_field: string;
-};
+}
 
-export type ExtractorPreviewFieldChange = {
+export interface ExtractorPreviewFieldChange {
   path: string;
   kind: 'added' | 'changed' | 'removed';
   before?: unknown;
   after?: unknown;
-};
+}
 
 const appendExtractorCreateParams = (
   params: URLSearchParams,

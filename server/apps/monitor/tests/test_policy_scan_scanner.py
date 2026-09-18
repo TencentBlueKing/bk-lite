@@ -402,20 +402,23 @@ class TestPodAlertEndToEnd:
             ]
         )
 
-        # 两个容器同时无数据：只写一条 triggered Event，按 Pod 聚合为一个 alert。
+        # 两个容器同时无数据：按维度各开一张 Alert，各写一条 triggered。
         phase["result"] = []
         MonitorPolicyScan(no_data_policy).run()
 
-        no_data_alert = MonitorAlert.objects.get(policy_id=no_data_policy.id)
+        no_data_alerts = list(
+            MonitorAlert.objects.filter(policy_id=no_data_policy.id).order_by("metric_instance_id")
+        )
         first_events = MonitorEvent.objects.filter(policy_id=no_data_policy.id)
-        assert no_data_alert.monitor_instance_id == pod_id
-        assert no_data_alert.monitor_instance_name == "orders-7f9"
-        assert no_data_alert.content == "生产集群/orders-7f9 Pod Ready 无数据"
-        assert first_events.count() == 1
-        assert first_events.get().action == MonitorEvent.Action.TRIGGERED
-        assert set(first_events.values_list("alert_id", flat=True)) == {no_data_alert.id}
+        assert {alert.metric_instance_id for alert in no_data_alerts} == set(baselines)
+        assert {alert.monitor_instance_id for alert in no_data_alerts} == {pod_id}
+        assert {alert.monitor_instance_name for alert in no_data_alerts} == {"orders-7f9"}
+        assert {alert.content for alert in no_data_alerts} == {"生产集群/orders-7f9 Pod Ready 无数据"}
+        assert first_events.count() == 2
+        assert set(first_events.values_list("action", flat=True)) == {MonitorEvent.Action.TRIGGERED}
+        assert set(first_events.values_list("alert_id", flat=True)) == {alert.id for alert in no_data_alerts}
 
-        # api 恢复但 worker 仍无数据：复用原 alert，不应提前恢复。
+        # api 恢复但 worker 仍无数据：只恢复 api 对应 Alert。
         no_data_policy.last_run_time += timedelta(minutes=10)
         no_data_policy.save(update_fields=["last_run_time"])
         phase["result"] = [
@@ -430,12 +433,17 @@ class TestPodAlertEndToEnd:
         ]
         MonitorPolicyScan(no_data_policy).run()
 
-        no_data_alert.refresh_from_db()
-        assert no_data_alert.status == "new"
-        assert MonitorAlert.objects.filter(policy_id=no_data_policy.id).count() == 1
-        assert MonitorEvent.objects.filter(policy_id=no_data_policy.id).count() == 1
+        alerts_by_metric = {
+            alert.metric_instance_id: alert
+            for alert in MonitorAlert.objects.filter(policy_id=no_data_policy.id)
+        }
+        assert alerts_by_metric["('cluster-a', 'orders-7f9', 'api')"].status == "recovered"
+        assert alerts_by_metric["('cluster-a', 'orders-7f9', 'worker')"].status == "new"
+        assert MonitorEvent.objects.filter(
+            policy_id=no_data_policy.id, action=MonitorEvent.Action.RECOVERED
+        ).count() == 1
 
-        # 两个容器都恢复数据：同一个聚合 alert 自动恢复。
+        # 两个容器都恢复数据：worker 对应 Alert 也自动恢复。
         no_data_policy.last_run_time += timedelta(minutes=10)
         no_data_policy.save(update_fields=["last_run_time"])
         phase["result"] = [
@@ -451,11 +459,16 @@ class TestPodAlertEndToEnd:
         ]
         MonitorPolicyScan(no_data_policy).run()
 
-        no_data_alert.refresh_from_db()
-        assert no_data_alert.status == "recovered"
-        assert no_data_alert.end_event_time == no_data_policy.last_run_time
-        recovered_events = MonitorEvent.objects.filter(policy_id=no_data_policy.id, action=MonitorEvent.Action.RECOVERED)
-        assert recovered_events.count() == 1
+        worker_alert = MonitorAlert.objects.get(
+            policy_id=no_data_policy.id,
+            metric_instance_id="('cluster-a', 'orders-7f9', 'worker')",
+        )
+        assert worker_alert.status == "recovered"
+        assert worker_alert.end_event_time == no_data_policy.last_run_time
+        recovered_events = MonitorEvent.objects.filter(
+            policy_id=no_data_policy.id, action=MonitorEvent.Action.RECOVERED
+        )
+        assert recovered_events.count() == 2
 
 
 class TestThresholdLifecycleEvents:

@@ -12,6 +12,8 @@ interface PluginTooltipContentProps {
   timeText: string;
   collectionNodeLabel: string;
   notAssociatedText: string;
+  packVersionLabel: string;
+  packVersionText: string;
   collectMode?: string;
   collectorNodes?: CollectorNode[];
 }
@@ -46,6 +48,8 @@ const PluginTooltipContent = ({
   timeText,
   collectionNodeLabel,
   notAssociatedText,
+  packVersionLabel,
+  packVersionText,
   collectMode,
   collectorNodes
 }: PluginTooltipContentProps) => {
@@ -54,6 +58,7 @@ const PluginTooltipContent = ({
   return (
     <div className="text-xs leading-5">
       <div>{statusText}</div>
+      <div>{`${packVersionLabel}：${packVersionText}`}</div>
       <div>{`${lastReportTimeLabel}：${timeText}`}</div>
       <div>
         <span>{`${collectionNodeLabel}：`}</span>

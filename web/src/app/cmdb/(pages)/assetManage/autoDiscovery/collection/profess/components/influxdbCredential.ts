@@ -41,9 +41,14 @@ export function buildInfluxdbCredential(
     scheme: String(raw.scheme || 'http').toLowerCase(),
     port: Number(raw.port || 8086),
     verify_tls: raw.verify_tls !== false,
+    credential_source: raw.credential_source || 'inline',
+    ...(raw.credential_source === 'vault' ? {
+      vault_credential_id: raw.vault_credential_id,
+      vault_type_key: raw.vault_type_key,
+    } : {}),
   };
   const token = typeof raw.token === 'string' ? raw.token.trim() : '';
-  if (token && token !== PASSWORD_PLACEHOLDER) {
+  if (raw.credential_source !== 'vault' && token && token !== PASSWORD_PLACEHOLDER) {
     credential.token = token;
   }
   return credential;
@@ -59,13 +64,21 @@ export function restoreInfluxdbCredential(
     scheme: String(raw.scheme || (raw.ssl ? 'https' : 'http')).toLowerCase(),
     port: Number(raw.port || 8086),
     verify_tls: raw.verify_tls !== false,
-    token: isCopy ? '' : hasToken ? PASSWORD_PLACEHOLDER : '',
+    token: raw.credential_source === 'vault' ? '' : isCopy ? '' : hasToken ? PASSWORD_PLACEHOLDER : '',
+    credential_source: raw.credential_source || 'inline',
+    ...(raw.credential_source === 'vault' ? {
+      vault_credential_id: raw.vault_credential_id,
+      vault_type_key: raw.vault_type_key,
+    } : {}),
   };
 }
 
 export function validateInfluxdbCredential(
   credential: InfluxdbCredential,
-): 'scheme' | 'port' | null {
+): 'scheme' | 'port' | 'vault_credential_id' | null {
+  if (credential.credential_source === 'vault' && !credential.vault_credential_id) {
+    return 'vault_credential_id';
+  }
   if (!['http', 'https'].includes(String(credential.scheme || '').toLowerCase())) {
     return 'scheme';
   }

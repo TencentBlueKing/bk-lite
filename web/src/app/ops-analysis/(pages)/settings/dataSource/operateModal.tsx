@@ -1,10 +1,13 @@
 "use client";
 
+/**
+ * 数据源抽屉协调器：只负责打开/关闭、回填、预览、保存、提取到连接库。
+ * 源类型表单在 *Fields；回填/payload/预览字段在 operateModalUtils。
+ */
 import React, { useEffect } from "react";
-import GroupTreeSelect from "@/components/group-tree-select";
 import { v4 as uuidv4 } from "uuid";
 import { getChartTypeList } from "@/app/ops-analysis/constants/common";
-import { UploadOutlined, QuestionCircleOutlined } from "@ant-design/icons";
+import { QuestionCircleOutlined } from "@ant-design/icons";
 import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
 import { useDataConnectionApi } from "@/app/ops-analysis/api/dataConnection";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
@@ -15,43 +18,26 @@ import useUnsavedConfirm from "@/hooks/useUnsavedConfirm";
 import {
   DataSourcePreviewResult,
   DataSourceSourceType,
-  DatasourceItem,
   OperateModalProps,
   ParamItem,
 } from "@/app/ops-analysis/types/dataSource";
 import { DataConnectionItem } from "@/app/ops-analysis/types/dataConnection";
-import { NamespaceItem, TagItem } from "@/app/ops-analysis/types/namespace";
-import {
-  Drawer,
-  Form,
-  Input,
-  InputNumber,
-  Select,
-  Button,
-  Upload,
-  Checkbox,
-  Spin,
-  message,
-  Modal,
-  Radio,
-  Collapse,
-  Tooltip,
-} from "antd";
+import { TagItem } from "@/app/ops-analysis/types/namespace";
+import { Drawer, Form, Button, message, Tooltip } from "antd";
 import type { UploadFile } from "antd/es/upload/interface";
 import ParamTable, { ParamTableRef } from "./paramTable";
 import FieldSchemaTable, { FieldSchemaTableRef } from "./fieldSchemaTable";
 import PreviewPanel from "./previewPanel";
 import TransformScriptPanel from "@/app/ops-analysis/components/ops-analysis-transform-script-panel";
-import ExcelMaterializationStatus, {
-  ExcelMaterializationState,
-} from "@/app/ops-analysis/components/ops-analysis-excel-materialization-status";
-import { ensurePrometheusQueryRequired } from "@/app/ops-analysis/utils/dataSourceParamContract";
+import { ExcelMaterializationState } from "@/app/ops-analysis/components/ops-analysis-excel-materialization-status";
 import {
   buildBuiltinGroupsPayload,
   buildConnectorPayload,
   buildConnectionLibraryCreateFromDatasourceForm,
+  buildHydratedDatasourceFormState,
   canEditBuiltinDatasourceGroups,
   canExtractConnectionFromDatasourceForm,
+  canSaveExcelWithoutNewFile,
   isBuiltinDatasource,
   isDatasourceDefinitionReadOnly,
   shouldCreateLibraryConnectionFromForm,
@@ -59,12 +45,12 @@ import {
   createDefaultSchemaField,
   createDefaultTransformConfig,
   createPrometheusDefaultParams,
-  formatJsonText,
+  getDatasourceSourceFlags,
+  getPreviewFieldNames,
   normalizeFieldSchema,
   normalizeParams,
   normalizeTransformConfig,
   PASSWORD_PLACEHOLDER,
-  prometheusTimeRangeToMinutes,
   PROMETHEUS_DEFAULT_CHART_TYPES,
   SchemaField,
   SOURCE_TYPE_EXCEL,
@@ -75,107 +61,21 @@ import {
   SOURCE_TYPE_REST_API,
   TABLE_CHART_TYPE,
 } from "./operateModalUtils";
-import { migrateParamItemsFromStringList } from "@/app/ops-analysis/utils/stringParamMultipleMigrate";
-
-type FormSectionId = "basic" | "process";
-type FormSubsectionId = "connect" | "preview" | "fields";
-
-function resolveSubsectionForFieldName(
-  name: string | number | (string | number)[],
-): FormSubsectionId | null {
-  const root = Array.isArray(name) ? name[0] : name;
-  const key = String(root || "");
-  if (
-    key === "transform_config" ||
-    key === "excel_file" ||
-    key.startsWith("transform")
-  ) {
-    return "preview";
-  }
-  if (key === "field_schema" || key === "schema") {
-    return "fields";
-  }
-  if (
-    key === "connection" ||
-    key === "connection_mode" ||
-    key === "connection_config" ||
-    key === "connection_overrides" ||
-    key === "query_config" ||
-    key === "params"
-  ) {
-    return "connect";
-  }
-  return null;
-}
-
-function resolveSectionForFieldName(
-  name: string | number | (string | number)[],
-): FormSectionId {
-  return resolveSubsectionForFieldName(name) ? "process" : "basic";
-}
-
-function fieldDomId(name: string | number | (string | number)[]): string {
-  return (Array.isArray(name) ? name : [name]).map(String).join("_");
-}
-
-const FormSection: React.FC<{
-  id: FormSectionId;
-  step: number;
-  title: string;
-  titleExtra?: React.ReactNode;
-  extra?: React.ReactNode;
-  children: React.ReactNode;
-}> = ({ id, step, title, titleExtra, extra, children }) => (
-  <section
-    id={`ds-form-section-${id}`}
-    data-form-section={id}
-    className="scroll-mt-3 [&:not(:last-child)]:mb-7 [&>.ant-form-item:last-child]:mb-0 [&>.ant-form-item]:mb-5"
-  >
-    <div className="mb-4 flex min-h-[28px] items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="inline-flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--color-primary)] text-[11px] font-semibold text-white"
-          >
-            {step}
-          </span>
-          <h3 className="m-0 text-[13px] font-semibold leading-5 text-[var(--color-primary)]">
-            {title}
-          </h3>
-        </div>
-        {titleExtra}
-      </div>
-      {extra ? <div className="shrink-0">{extra}</div> : null}
-    </div>
-    {children}
-  </section>
-);
-
-const FormSubsection: React.FC<{
-  id: FormSubsectionId;
-  title: string;
-  titleExtra?: React.ReactNode;
-  extra?: React.ReactNode;
-  children: React.ReactNode;
-}> = ({ id, title, titleExtra, extra, children }) => (
-  <div
-    id={`ds-form-subsection-${id}`}
-    data-form-subsection={id}
-    className="scroll-mt-3 [&:not(:last-child)]:mb-6 [&>.ant-form-item:last-child]:mb-0 [&>.ant-form-item]:mb-5"
-  >
-    <div className="mb-3 flex min-h-[22px] items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-1.5">
-        <h4 className="m-0 text-sm font-semibold leading-[22px] text-[var(--color-text-1)]">
-          {title}
-        </h4>
-        {titleExtra}
-      </div>
-      {extra ? <div className="shrink-0">{extra}</div> : null}
-    </div>
-    {children}
-  </div>
-);
+import {
+  FormSection,
+  FormSubsection,
+  fieldDomId,
+  resolveSectionForFieldName,
+  resolveSubsectionForFieldName,
+  type FormSectionId,
+  type FormSubsectionId,
+} from "./operateModalFormLayout";
+import { DatasourceBasicFields } from "./datasourceBasicFields";
+import { RestApiConnectFields } from "./restApiConnectFields";
+import { DatabaseConnectFields } from "./databaseConnectFields";
+import { PrometheusConnectFields } from "./prometheusConnectFields";
+import { ExcelConnectFields } from "./excelConnectFields";
+import { ExtractConnectionModal } from "./extractConnectionModal";
 
 const OperateModal: React.FC<OperateModalProps> = ({
   open,
@@ -277,16 +177,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
     { label: "Excel", value: SOURCE_TYPE_EXCEL },
     { label: t("dataSource.sourceTypes.prometheus"), value: SOURCE_TYPE_PROMETHEUS },
   ];
-
-  const isNatsSource = sourceType === SOURCE_TYPE_NATS;
-  const isRestApiSource = sourceType === SOURCE_TYPE_REST_API;
-  const isPrometheusSource = sourceType === SOURCE_TYPE_PROMETHEUS;
-  const isDatabaseSource =
-    sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL;
-  const isExcelSource = sourceType === SOURCE_TYPE_EXCEL;
-  const supportsTransform = isRestApiSource || isExcelSource;
-  const supportsSharedConnection =
-    isDatabaseSource || isRestApiSource;
+  const {
+    isNatsSource,
+    isRestApiSource,
+    isPrometheusSource,
+    isDatabaseSource,
+    isExcelSource,
+    supportsTransform,
+    supportsSharedConnection,
+  } = getDatasourceSourceFlags(sourceType);
   const useSharedConnection =
     supportsSharedConnection && connectionMode !== "inline";
   const connectSubsectionTitle = isExcelSource
@@ -609,11 +508,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
       }
     };
 
-    const hydrateForm = (row: DatasourceItem | undefined) => {
+    const hydrateForm = (row: typeof currentRow) => {
       if (cancelled) return;
 
       form.resetFields();
-      setSchemaFields([]);
       paramTableRef.current?.clearValidation();
       fieldSchemaTableRef.current?.clearValidation();
       setShowSchemaConfig(true);
@@ -627,120 +525,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
       hydratingSourceTypeRef.current = true;
       previousSourceTypeRef.current = targetSourceType;
 
-      if (!row) {
-        setParams([]);
-        form.setFieldsValue({
-          source_type: SOURCE_TYPE_NATS,
-          connection_mode: "connection",
-          connection_config: {
-            method: "GET",
-            timeout: 10,
-          },
-          query_config: {},
-          transform_config: createDefaultTransformConfig(),
-        });
-        if (selectedGroup) {
-          form.setFieldValue("groups", [selectedGroup.id]);
-        }
-        return;
-      }
-
-      const connectionConfig = row.connection_config || {};
-      const queryConfig = row.query_config || {};
-      const rowSourceType = row.source_type || SOURCE_TYPE_NATS;
-      const hasConnection = !!(row.connection || row.connection_id);
-      const prometheusConnectionConfig = { ...connectionConfig };
-      if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
-        if (prometheusConnectionConfig.password) {
-          prometheusConnectionConfig.password = PASSWORD_PLACEHOLDER;
-        }
-        if (prometheusConnectionConfig.token) {
-          prometheusConnectionConfig.token = PASSWORD_PLACEHOLDER;
-        }
-      }
-      const formValues = {
-        ...row,
-        source_type: rowSourceType,
-        connection_mode: hasConnection ? "connection" : "inline",
-        connection: row.connection || row.connection_id || undefined,
-        connection_overrides: row.connection_overrides || {},
-        namespaces: row.namespaces || [],
-        groups: row.groups || [],
-        chart_type:
-          rowSourceType === SOURCE_TYPE_NATS
-            ? row.chart_type || []
-            : rowSourceType === SOURCE_TYPE_PROMETHEUS
-              ? row.chart_type?.length
-                ? row.chart_type
-                : [...PROMETHEUS_DEFAULT_CHART_TYPES]
-              : [TABLE_CHART_TYPE],
-        connection_config: {
-          ...prometheusConnectionConfig,
-          headersText: formatJsonText(connectionConfig.headers),
-          password: connectionConfig.password
-            ? PASSWORD_PLACEHOLDER
-            : connectionConfig.password,
-        },
-        query_config: {
-          ...queryConfig,
-          paramsText: formatJsonText(queryConfig.params),
-          bodyText: formatJsonText(queryConfig.body),
-          ...(rowSourceType === SOURCE_TYPE_PROMETHEUS
-            ? {
-              time_range: prometheusTimeRangeToMinutes(queryConfig.time_range),
-              max_series: queryConfig.max_series ?? 20,
-            }
-            : {}),
-        },
-        transform_config: createDefaultTransformConfig(row.transform_config),
-      };
-      form.setFieldsValue(formValues);
-
-      if (
-        row.source_type === SOURCE_TYPE_EXCEL &&
-        Array.isArray(queryConfig.imported_items)
-      ) {
-        setPreviewData({
-          items: queryConfig.imported_items,
-          count:
-            Number(queryConfig.imported_count) ||
-            queryConfig.imported_items.length,
-          fields: Array.isArray(queryConfig.imported_fields)
-            ? queryConfig.imported_fields
-            : [],
-        });
-      }
-
-      if (Array.isArray(row.field_schema)) {
-        setSchemaFields(
-          row.field_schema.map((field) => ({
-            ...field,
-            id: uuidv4(),
-          })),
-        );
-      }
-
-      const hasValidParams =
-        row.params && Array.isArray(row.params) && row.params.length > 0;
-
-      if (hasValidParams) {
-        const restoredParams = migrateParamItemsFromStringList(row.params).params.map((param: any) => ({
-          ...param,
-          type: param.type || "string",
-          filterType:
-            param.filterType ||
-            (param.type === "timeRange" ? "filter" : "fixed"),
-          id: param.id || uuidv4(),
-        }));
-        setParams(
-          rowSourceType === SOURCE_TYPE_PROMETHEUS
-            ? ensurePrometheusQueryRequired(restoredParams)
-            : restoredParams,
-        );
-      } else if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
-        setParams(createPrometheusDefaultParams());
-      } else {
-        setParams([]);
+      const hydrated = buildHydratedDatasourceFormState(row, {
+        selectedGroupId: selectedGroup?.id,
+      });
+      form.setFieldsValue(hydrated.formValues);
+      setParams(hydrated.params);
+      setSchemaFields(hydrated.schemaFields);
+      if (hydrated.excelPreview) {
+        setPreviewData(hydrated.excelPreview);
       }
     };
 
@@ -904,53 +696,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
   }, [open, sourceType, form, clearPreviewState, clearProcessInlineErrors]);
 
-  const getPreviewFieldNames = (): (string | (string | number)[])[] => {
-    if (isRestApiSource) {
-      if (useSharedConnection) {
-        return ["source_type", "connection", ["connection_config", "method"]];
-      }
-      return [
-        "source_type",
-        ["connection_config", "url"],
-        ["connection_config", "method"],
-      ];
-    }
-    if (isDatabaseSource) {
-      if (useSharedConnection) {
-        return ["source_type", "connection"];
-      }
-      return [
-        "source_type",
-        ["connection_config", "host"],
-        ["connection_config", "port"],
-        ["connection_config", "database"],
-        ["connection_config", "username"],
-        ["connection_config", "password"],
-      ];
-    }
-    if (isPrometheusSource) {
-      const fieldNames: (string | (string | number)[])[] = [
-        "source_type",
-        ["connection_config", "url"],
-        ["query_config", "query"],
-        ["query_config", "query_type"],
-      ];
-      if (prometheusQueryType === "range") {
-        fieldNames.push(["query_config", "time_range"]);
-        fieldNames.push(["query_config", "step"]);
-      }
-      return fieldNames;
-    }
-    return ["source_type"];
-  };
-
   const handlePreview = async () => {
     if (isNatsSource) return;
 
     try {
       setPreviewLoading(true);
       setTransformPreviewError(null);
-      const previewFields = getPreviewFieldNames();
+      const previewFields = getPreviewFieldNames({
+        sourceType,
+        useSharedConnection,
+        prometheusQueryType,
+      });
       if (supportsTransform && transformEnabled) {
         previewFields.push(["transform_config", "script"]);
       }
@@ -1184,6 +940,48 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
   };
 
+  const handleSourceTypeRadioChange = (nextSourceType: DataSourceSourceType) => {
+    if (nextSourceType === SOURCE_TYPE_MYSQL) {
+      form.setFieldValue(["connection_config", "port"], 3306);
+    }
+    if (nextSourceType === SOURCE_TYPE_POSTGRESQL) {
+      form.setFieldValue(["connection_config", "port"], 5432);
+    }
+    if (nextSourceType === SOURCE_TYPE_REST_API) {
+      form.setFieldsValue({
+        connection_config: {
+          ...form.getFieldValue("connection_config"),
+          method: "GET",
+          timeout: 10,
+        },
+      });
+    }
+    if (nextSourceType === SOURCE_TYPE_PROMETHEUS) {
+      form.setFieldsValue({
+        chart_type: [...PROMETHEUS_DEFAULT_CHART_TYPES],
+        connection_config: {
+          auth_type: "none",
+          timeout_seconds: 30,
+        },
+        query_config: {
+          query: "up",
+          query_type: "range",
+          time_range: 60,
+          step: "1m",
+          max_series: 20,
+        },
+      });
+      setParams(createPrometheusDefaultParams());
+    }
+    if (
+      nextSourceType !== SOURCE_TYPE_NATS &&
+      nextSourceType !== SOURCE_TYPE_PROMETHEUS
+    ) {
+      form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
+      setParams([]);
+    }
+  };
+
   const onFinish = async (values: any) => {
     if (readOnly) return;
     try {
@@ -1210,15 +1008,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
         Array.isArray(values.query_config?.imported_items) &&
         values.query_config.imported_items.length > 0;
       const isEditExcel = Boolean(currentRow?.id);
-      // 新建必须带文件；编辑仅在已有可运行结果/旧成功/已存原文件时可无新文件保存。
-      const canSaveWithoutNewFile =
-        isEditExcel &&
-        (hasLegacyImported ||
-          excelStatus === "ready" ||
-          excelStatus === "processing" ||
-          excelStatus === "update_failed_using_previous" ||
-          (excelStatus === "failed" &&
-            Boolean(excelMaterialization?.has_saved_source)));
+      const canSaveWithoutNewFile = canSaveExcelWithoutNewFile({
+        isEdit: isEditExcel,
+        hasLegacyImported,
+        excelStatus,
+        hasSavedSource: excelMaterialization?.has_saved_source,
+      });
 
       if (isExcelSource && !excelFile && !canSaveWithoutNewFile) {
         setSourceInlineError(
@@ -1231,7 +1026,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
         return;
       }
 
-      // 检查表格字段配置
       if (schemaFields.length > 0) {
         if (!fieldSchemaTableRef.current?.validate()) {
           scrollToFormError(undefined, "process", "fields");
@@ -1293,7 +1087,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
             JSON.stringify(normalizeTransformConfig(values.transform_config)),
           );
           formData.append("sync", "1");
-          // 新建失败清盘，避免列表残留半成品；编辑失败保留旧成功结果。
           formData.append("discard_on_fail", isExcelCreate ? "1" : "0");
           await submitExcelMaterialization(datasourceId, formData);
           message.success(
@@ -1303,7 +1096,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
           );
         } catch {
           if (isExcelCreate && datasourceId) {
-            // 服务端 discard_on_fail 为主；网络中断等残留再由前端补偿删除。
             try {
               await deleteDataSource(datasourceId, {
                 suppressErrorNotification: true,
@@ -1475,206 +1267,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
           step={1}
           title={t("dataSource.sections.basic")}
         >
-        <Form.Item
-          name="source_type"
-          label={t("dataSource.sourceType")}
-          rules={[{ required: true, message: t("common.inputMsg") }]}
-        >
-          <Radio.Group
-            optionType="button"
-            buttonStyle="solid"
-            options={sourceTypeOptions}
-            disabled={definitionReadOnly}
-            onChange={(event) => {
-              const nextSourceType = event.target.value as DataSourceSourceType;
-              if (nextSourceType === SOURCE_TYPE_MYSQL) {
-                form.setFieldValue(["connection_config", "port"], 3306);
-              }
-              if (nextSourceType === SOURCE_TYPE_POSTGRESQL) {
-                form.setFieldValue(["connection_config", "port"], 5432);
-              }
-              if (nextSourceType === SOURCE_TYPE_REST_API) {
-                form.setFieldsValue({
-                  connection_config: {
-                    ...form.getFieldValue("connection_config"),
-                    method: "GET",
-                    timeout: 10,
-                  },
-                });
-              }
-              if (nextSourceType === SOURCE_TYPE_PROMETHEUS) {
-                form.setFieldsValue({
-                  chart_type: [...PROMETHEUS_DEFAULT_CHART_TYPES],
-                  connection_config: {
-                    auth_type: "none",
-                    timeout_seconds: 30,
-                  },
-                  query_config: {
-                    query: "up",
-                    query_type: "range",
-                    time_range: 60,
-                    step: "1m",
-                    max_series: 20,
-                  },
-                });
-                setParams(createPrometheusDefaultParams());
-              }
-              if (
-                nextSourceType !== SOURCE_TYPE_NATS &&
-                nextSourceType !== SOURCE_TYPE_PROMETHEUS
-              ) {
-                form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
-                setParams([]);
-              }
-            }}
+          <DatasourceBasicFields
+            definitionReadOnly={definitionReadOnly}
+            groupsReadOnly={groupsReadOnly}
+            currentRow={currentRow}
+            sourceTypeOptions={sourceTypeOptions}
+            chartTypeOptions={chartTypeOptions}
+            isNatsSource={isNatsSource}
+            namespacesLoading={namespacesLoading}
+            namespaceList={namespaceList}
+            tagsLoading={tagsLoading}
+            tagList={tagList}
+            onSourceTypeChange={handleSourceTypeRadioChange}
           />
-        </Form.Item>
-
-        <Form.Item
-          name="name"
-          label={t("dataSource.name")}
-          rules={[{ required: true, message: t("common.inputMsg") }]}
-        >
-          <Input placeholder={t("common.inputMsg")} disabled={definitionReadOnly} />
-        </Form.Item>
-        {isNatsSource && (
-          <>
-            <Form.Item
-              name="rest_api"
-              label="NATS"
-              rules={[{ required: true, message: t("common.inputMsg") }]}
-            >
-              <Input placeholder={t("common.inputMsg")} disabled={definitionReadOnly} />
-            </Form.Item>
-            <Form.Item
-              name="namespaces"
-              label={t("namespace.title")}
-              rules={[
-                {
-                  required: true,
-                  type: "array",
-                  min: 1,
-                  message: t("common.selectMsg"),
-                },
-              ]}
-            >
-              {namespacesLoading ? (
-                <div className="py-2 text-center">
-                  <Spin size="small" />
-                </div>
-              ) : namespaceList.length === 0 ? (
-                <div className="text-[13px] text-[var(--color-text-4)]">
-                  {t("common.noData")}
-                </div>
-              ) : (
-                <Checkbox.Group
-                  className="flex flex-wrap gap-x-4 gap-y-2 pt-1"
-                  disabled={definitionReadOnly}
-                >
-                  {namespaceList.map((ns: NamespaceItem) => (
-                    <Checkbox
-                      key={ns.id}
-                      value={ns.id}
-                      className="!ml-0 flex min-w-0 items-center"
-                    >
-                      <span
-                        className="inline-block max-w-[180px] truncate align-bottom"
-                        title={ns.name}
-                      >
-                        {ns.name}
-                      </span>
-                    </Checkbox>
-                  ))}
-                </Checkbox.Group>
-              )}
-            </Form.Item>
-          </>
-        )}
-        <Form.Item
-          name="tag"
-          label={t("dataSource.tag")}
-          rules={[
-            {
-              required: true,
-              type: "array",
-              min: 1,
-              message: t("common.selectMsg"),
-            },
-          ]}
-        >
-          {tagsLoading ? (
-            <div className="py-2 text-center">
-              <Spin size="small" />
-            </div>
-          ) : tagList.length === 0 ? (
-            <div className="text-[13px] text-[var(--color-text-4)]">
-              {t("common.noData")}
-            </div>
-          ) : (
-            <Checkbox.Group
-              disabled={definitionReadOnly}
-              options={tagList.map((tag: TagItem) => ({
-                label: tag.name,
-                value: tag.id,
-              }))}
-            />
-          )}
-        </Form.Item>
-        <Form.Item
-          name="chart_type"
-          label={t("dataSource.chartType")}
-          rules={[
-            {
-              required: true,
-              type: "array",
-              min: 1,
-              message: t("common.selectMsg"),
-            },
-          ]}
-        >
-          <Select
-            mode="multiple"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            placeholder={t("common.selectMsg")}
-            options={chartTypeOptions}
-            disabled={definitionReadOnly}
-          />
-        </Form.Item>
-        <Form.Item
-          name="groups"
-          label={t("common.group")}
-          extra={
-            isBuiltinDatasource(currentRow)
-              ? t("dataSource.emptyGroupsMeansAllOrgs")
-              : undefined
-          }
-          rules={
-            isBuiltinDatasource(currentRow)
-              ? undefined
-              : [
-                {
-                  required: true,
-                  message: `${t("common.selectMsg")}${t("common.group")}`,
-                },
-              ]
-          }
-        >
-          <GroupTreeSelect
-            placeholder={`${t("common.selectMsg")}${t("common.group")}`}
-            multiple={true}
-            mode="ownership"
-            disabled={groupsReadOnly}
-          />
-        </Form.Item>
-        <Form.Item name="desc" label={t("dataSource.describe")}>
-          <Input.TextArea
-            rows={3}
-            disabled={definitionReadOnly}
-            placeholder={`${t("common.inputMsg")} ${t("dataSource.describe")}`}
-          />
-        </Form.Item>
         </FormSection>
 
         <FormSection
@@ -1699,471 +1304,65 @@ const OperateModal: React.FC<OperateModalProps> = ({
           }
         >
         {isRestApiSource && (
-          <Form.Item>
-            <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-4 pb-1 pt-4">
-              <Form.Item
-                name="connection_mode"
-                label={t("dataConnection.title")}
-                className="!mb-2"
-                initialValue="connection"
-              >
-                <Radio.Group disabled={definitionReadOnly}>
-                  <Radio.Button value="connection">
-                    {t("dataConnection.useConnection")}
-                  </Radio.Button>
-                  <Radio.Button value="inline">
-                    {t("dataConnection.useInline")}
-                  </Radio.Button>
-                </Radio.Group>
-              </Form.Item>
-              {useSharedConnection ? (
-                <>
-                  <Form.Item
-                    name="connection"
-                    label={t("dataConnection.selectConnection")}
-                    className="!mb-2"
-                    rules={[{ required: true, message: t("common.selectMsg") }]}
-                  >
-                    <Select
-                      disabled={definitionReadOnly}
-                      placeholder={t("common.selectMsg")}
-                      options={connectionList.map((item) => ({
-                        label: `${item.name}${item.endpoint_summary ? ` (${item.endpoint_summary})` : ""}`,
-                        value: item.id,
-                      }))}
-                      showSearch
-                      optionFilterProp="label"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name={["connection_overrides", "path"]}
-                    label={t("dataConnection.relativePath")}
-                    className="!mb-2"
-                  >
-                    <Input disabled={definitionReadOnly} placeholder="/api/v1/items" />
-                  </Form.Item>
-                </>
-              ) : (
-                <Form.Item
-                  name={["connection_config", "url"]}
-                  label={t("dataSource.url")}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t("common.inputMsg") }]}
-                >
-                  <Input placeholder="https://example.com/api" disabled={definitionReadOnly} />
-                </Form.Item>
-              )}
-              <div className="grid grid-cols-2 gap-x-3">
-                <Form.Item
-                  name={["connection_config", "method"]}
-                  label={t("dataSource.method")}
-                  className="!mb-2"
-                  initialValue="GET"
-                >
-                  <Select
-                    disabled={definitionReadOnly}
-                    options={[
-                      { label: "GET", value: "GET" },
-                      { label: "POST", value: "POST" },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name={["connection_config", "timeout"]}
-                  label={t("dataSource.timeout")}
-                  className="!mb-2"
-                  initialValue={10}
-                >
-                  <InputNumber min={1} max={30} className="w-full" disabled={definitionReadOnly} />
-                </Form.Item>
-                <Form.Item
-                  name={["query_config", "response_path"]}
-                  label={t("dataSource.responsePath")}
-                  className="!mb-2"
-                >
-                  <Input placeholder="data.items" disabled={definitionReadOnly} />
-                </Form.Item>
-              </div>
-              {!useSharedConnection && (
-                <Form.Item
-                  name={["connection_config", "headersText"]}
-                  label={t("dataSource.headers")}
-                  className="!mb-2"
-                >
-                  <Input.TextArea
-                    rows={3}
-                    placeholder='{"Authorization":"Bearer ..."}'
-                    disabled={definitionReadOnly}
-                  />
-                </Form.Item>
-              )}
-              <Form.Item
-                name={["query_config", "paramsText"]}
-                label={t("dataSource.queryParams")}
-                className="!mb-2"
-              >
-                <Input.TextArea rows={3} placeholder='{"page":1}' disabled={definitionReadOnly} />
-              </Form.Item>
-              <Form.Item
-                name={["query_config", "bodyText"]}
-                label={t("dataSource.requestBody")}
-                className="!mb-2"
-              >
-                <Input.TextArea rows={3} placeholder='{"limit":50}' disabled={definitionReadOnly} />
-              </Form.Item>
-              {extractToConnectionLibraryButton}
-            </div>
-          </Form.Item>
+          <RestApiConnectFields
+            definitionReadOnly={definitionReadOnly}
+            useSharedConnection={useSharedConnection}
+            connectionList={connectionList}
+            extractButton={extractToConnectionLibraryButton}
+          />
         )}
         {isDatabaseSource && (
-          <Form.Item>
-            <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-4 pb-1 pt-4">
-              <Form.Item
-                name="connection_mode"
-                label={t("dataConnection.title")}
-                className="!mb-2"
-                initialValue="connection"
-              >
-                <Radio.Group disabled={definitionReadOnly}>
-                  <Radio.Button value="connection">
-                    {t("dataConnection.useConnection")}
-                  </Radio.Button>
-                  <Radio.Button value="inline">
-                    {t("dataConnection.useInline")}
-                  </Radio.Button>
-                </Radio.Group>
-              </Form.Item>
-              {useSharedConnection ? (
-                <>
-                  <Form.Item
-                    name="connection"
-                    label={t("dataConnection.selectConnection")}
-                    className="!mb-2"
-                    rules={[{ required: true, message: t("common.selectMsg") }]}
-                  >
-                    <Select
-                      disabled={definitionReadOnly}
-                      placeholder={t("common.selectMsg")}
-                      options={connectionList.map((item) => ({
-                        label: `${item.name}${item.endpoint_summary ? ` (${item.endpoint_summary})` : ""}`,
-                        value: item.id,
-                      }))}
-                      showSearch
-                      optionFilterProp="label"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name={["connection_overrides", "database"]}
-                    label={t("dataConnection.overrideDatabase")}
-                    className="!mb-2"
-                  >
-                    <Input disabled={definitionReadOnly} placeholder={t("dataSource.database")} />
-                  </Form.Item>
-                </>
-              ) : (
-                <div className="grid grid-cols-2 gap-x-3">
-                <Form.Item
-                  name={["connection_config", "host"]}
-                  label={t("dataSource.host")}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t("common.inputMsg") }]}
-                >
-                  <Input placeholder="127.0.0.1" disabled={definitionReadOnly} />
-                </Form.Item>
-                <Form.Item
-                  name={["connection_config", "port"]}
-                  label={t("dataSource.port")}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t("common.inputMsg") }]}
-                >
-                  <InputNumber min={1} max={65535} className="w-full" disabled={definitionReadOnly} />
-                </Form.Item>
-                <Form.Item
-                  name={["connection_config", "database"]}
-                  label={t("dataSource.database")}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t("common.inputMsg") }]}
-                >
-                  <Input disabled={definitionReadOnly} />
-                </Form.Item>
-                <Form.Item
-                  name={["connection_config", "username"]}
-                  label={t("dataSource.username")}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t("common.inputMsg") }]}
-                >
-                  <Input disabled={definitionReadOnly} />
-                </Form.Item>
-                <Form.Item
-                  name={["connection_config", "password"]}
-                  label={t("dataSource.password")}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t("common.inputMsg") }]}
-                >
-                  <Input.Password
-                    autoComplete="new-password"
-                    onFocus={handlePasswordFocus}
-                    onBlur={handlePasswordBlur}
-                    disabled={definitionReadOnly}
-                  />
-                </Form.Item>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-x-3">
-                <Form.Item
-                  name={["query_config", "table"]}
-                  label={t("dataSource.tableName")}
-                  className="!mb-2"
-                >
-                  <Input disabled={definitionReadOnly} />
-                </Form.Item>
-              </div>
-              <Form.Item
-                name={["query_config", "sql"]}
-                label={t("dataSource.sql")}
-                className="!mb-2"
-              >
-                <Input.TextArea
-                  rows={3}
-                  placeholder="SELECT * FROM table_name"
-                  disabled={definitionReadOnly}
-                />
-              </Form.Item>
-              {extractToConnectionLibraryButton}
-            </div>
-          </Form.Item>
+          <DatabaseConnectFields
+            definitionReadOnly={definitionReadOnly}
+            useSharedConnection={useSharedConnection}
+            connectionList={connectionList}
+            extractButton={extractToConnectionLibraryButton}
+            onPasswordFocus={handlePasswordFocus}
+            onPasswordBlur={handlePasswordBlur}
+          />
         )}
         {isPrometheusSource && (
-          <Form.Item>
-            <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-4 pb-1 pt-4">
-              <div className="grid grid-cols-2 gap-x-3">
-                <Form.Item
-                  name={["connection_config", "url"]}
-                  label={t("dataSource.url")}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t("common.inputMsg") }]}
-                >
-                  <Input placeholder="https://prometheus.example.com" disabled={definitionReadOnly} />
-                </Form.Item>
-                <Form.Item
-                  name={["connection_config", "auth_type"]}
-                  label={t("dataSource.authType")}
-                  className="!mb-2"
-                  initialValue="none"
-                >
-                  <Select
-                    disabled={definitionReadOnly}
-                    options={[
-                      { label: t("dataSource.authTypes.none"), value: "none" },
-                      { label: t("dataSource.authTypes.basic"), value: "basic" },
-                      { label: t("dataSource.authTypes.bearer"), value: "bearer" },
-                    ]}
-                  />
-                </Form.Item>
-                {prometheusAuthType === "basic" && (
-                  <>
-                    <Form.Item
-                      name={["connection_config", "username"]}
-                      label={t("dataSource.username")}
-                      className="!mb-2"
-                      rules={[
-                        { required: true, message: t("common.inputMsg") },
-                      ]}
-                    >
-                      <Input disabled={definitionReadOnly} />
-                    </Form.Item>
-                    <Form.Item
-                      name={["connection_config", "password"]}
-                      label={t("dataSource.password")}
-                      className="!mb-2"
-                      rules={[
-                        { required: true, message: t("common.inputMsg") },
-                      ]}
-                    >
-                      <Input.Password
-                        autoComplete="new-password"
-                        disabled={definitionReadOnly}
-                        onFocus={handlePasswordFocus}
-                        onBlur={handlePasswordBlur}
-                      />
-                    </Form.Item>
-                  </>
-                )}
-                {prometheusAuthType === "bearer" && (
-                  <Form.Item
-                    name={["connection_config", "token"]}
-                    label={t("dataSource.token")}
-                    className="!mb-2"
-                    rules={[{ required: true, message: t("common.inputMsg") }]}
-                  >
-                    <Input.Password
-                      autoComplete="new-password"
-                      disabled={definitionReadOnly}
-                      onFocus={(event) =>
-                        handleSecretFocus(
-                          ["connection_config", "token"],
-                          event,
-                        )
-                      }
-                      onBlur={(event) =>
-                        handleSecretBlur(["connection_config", "token"], event)
-                      }
-                    />
-                  </Form.Item>
-                )}
-                <Form.Item
-                  name={["connection_config", "timeout_seconds"]}
-                  label={t("dataSource.timeout")}
-                  className="!mb-2"
-                  initialValue={30}
-                >
-                  <InputNumber min={1} max={120} className="w-full" disabled={definitionReadOnly} />
-                </Form.Item>
-              </div>
-              {definitionReadOnly ? null : (
-                <div className="mb-3 text-right">
-                  <Button
-                    size="small"
-                    loading={testConnectionLoading}
-                    onClick={handleTestConnection}
-                  >
-                    {t("dataSource.testConnection")}
-                  </Button>
-                </div>
-              )}
-              <Collapse
-                ghost
-                items={[
-                  {
-                    key: "prometheus-preview-query",
-                    label: t("dataSource.prometheusPreviewQuery"),
-                    children: (
-                      <div className="grid grid-cols-2 gap-x-3">
-                        <Form.Item
-                          name={["query_config", "query"]}
-                          label={t("dataSource.promql")}
-                          className="!mb-2 col-span-2"
-                          rules={[
-                            { required: true, message: t("common.inputMsg") },
-                          ]}
-                        >
-                          <Input.TextArea
-                            rows={2}
-                            placeholder="up"
-                            disabled={definitionReadOnly}
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          name={["query_config", "query_type"]}
-                          label={t("dataSource.queryType")}
-                          className="!mb-2"
-                          initialValue="range"
-                        >
-                          <Select
-                            disabled={definitionReadOnly}
-                            options={[
-                              { label: "range", value: "range" },
-                              { label: "instant", value: "instant" },
-                            ]}
-                          />
-                        </Form.Item>
-                        {prometheusQueryType === "range" && (
-                          <>
-                            <Form.Item
-                              name={["query_config", "time_range"]}
-                              label={t("dataSource.paramTypes.timeRange")}
-                              className="!mb-2"
-                              initialValue={60}
-                              rules={[
-                                {
-                                  required: true,
-                                  message: t("common.inputMsg"),
-                                },
-                              ]}
-                            >
-                              <InputNumber
-                                min={1}
-                                max={44640}
-                                className="w-full"
-                                disabled={definitionReadOnly}
-                              />
-                            </Form.Item>
-                            <Form.Item
-                              name={["query_config", "step"]}
-                              label={t("dataSource.step")}
-                              className="!mb-2"
-                              initialValue="1m"
-                            >
-                              <Input placeholder="1m" disabled={definitionReadOnly} />
-                            </Form.Item>
-                          </>
-                        )}
-                        <Form.Item
-                          name={["query_config", "max_series"]}
-                          label={t("dataSource.maxSeries")}
-                          className="!mb-2"
-                          initialValue={20}
-                        >
-                          <InputNumber
-                            min={1}
-                            max={50}
-                            className="w-full"
-                            disabled={definitionReadOnly}
-                          />
-                        </Form.Item>
-                      </div>
-                    ),
-                  },
-                ]}
-              />
-            </div>
-          </Form.Item>
+          <PrometheusConnectFields
+            definitionReadOnly={definitionReadOnly}
+            prometheusAuthType={prometheusAuthType}
+            prometheusQueryType={prometheusQueryType}
+            testConnectionLoading={testConnectionLoading}
+            onTestConnection={() => {
+              void handleTestConnection();
+            }}
+            onPasswordFocus={handlePasswordFocus}
+            onPasswordBlur={handlePasswordBlur}
+            onSecretFocus={handleSecretFocus}
+            onSecretBlur={handleSecretBlur}
+          />
         )}
         {isExcelSource && (
-          <Form.Item
-            validateStatus={sourceInlineError ? "error" : undefined}
-            help={sourceInlineError || undefined}
-          >
-            <div>
-              <Upload
-                disabled={definitionReadOnly}
-                accept=".xlsx"
-                maxCount={1}
-                beforeUpload={(file) => {
-                  setExcelFile(file);
-                  setExcelFileList([file]);
-                  setSourceInlineError(null);
-                  clearPreviewState();
-                  setSchemaFields([]);
-                  return false;
-                }}
-                onRemove={() => {
-                  setExcelFile(null);
-                  setExcelFileList([]);
-                  clearPreviewState();
-                  setSchemaFields([]);
-                }}
-                fileList={excelFileList}
-              >
-                <Button icon={<UploadOutlined />}>
-                  {t("dataSource.selectExcelFile")}
-                </Button>
-              </Upload>
-              <div className="mt-3">
-                <ExcelMaterializationStatus
-                  state={excelMaterialization}
-                  readOnly={definitionReadOnly}
-                  retrying={excelRetryLoading}
-                  pendingNewFile={Boolean(excelFile)}
-                  onRetry={
-                    excelMaterialization?.can_retry
-                      ? handleRetryExcelMaterialization
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
-          </Form.Item>
+          <ExcelConnectFields
+            definitionReadOnly={definitionReadOnly}
+            sourceInlineError={sourceInlineError}
+            excelFileList={excelFileList}
+            excelMaterialization={excelMaterialization}
+            excelRetryLoading={excelRetryLoading}
+            pendingNewFile={Boolean(excelFile)}
+            onFile={(file) => {
+              setExcelFile(file);
+              setExcelFileList([file]);
+              setSourceInlineError(null);
+              clearPreviewState();
+              setSchemaFields([]);
+            }}
+            onRemove={() => {
+              setExcelFile(null);
+              setExcelFileList([]);
+              clearPreviewState();
+              setSchemaFields([]);
+            }}
+            onRetry={
+              excelMaterialization?.can_retry
+                ? handleRetryExcelMaterialization
+                : undefined
+            }
+          />
         )}
         {isNatsSource && (
           <ParamTable
@@ -2245,13 +1444,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </div>
       </Form>
     </Drawer>
-    <Modal
-      title={t("dataConnection.extractConnectionTitle")}
+    <ExtractConnectionModal
       open={extractModalOpen}
-      centered
-      confirmLoading={extractLoading}
-      okText={t("common.confirm")}
-      cancelText={t("common.cancel")}
+      loading={extractLoading}
+      form={extractForm}
       onCancel={() => {
         if (extractLoading) return;
         setExtractModalOpen(false);
@@ -2260,25 +1456,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       onOk={() => {
         void handleExtractToConnectionLibrary();
       }}
-      destroyOnClose
-    >
-      <Form form={extractForm} layout="vertical" className="pt-2">
-        <Form.Item
-          name="name"
-          label={t("dataConnection.name")}
-          rules={[{ required: true, message: t("common.inputMsg") }]}
-        >
-          <Input placeholder={t("common.inputMsg")} maxLength={128} />
-        </Form.Item>
-        <Form.Item name="description" label={t("dataConnection.describe")}>
-          <Input.TextArea
-            rows={3}
-            placeholder={t("common.inputMsg")}
-            maxLength={512}
-          />
-        </Form.Item>
-      </Form>
-    </Modal>
+    />
     </>
   );
 };

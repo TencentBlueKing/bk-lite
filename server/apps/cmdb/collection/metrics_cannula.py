@@ -22,7 +22,9 @@ class MetricsCannula:
         data_cleanup_strategy: str = None,
         plugin_kwargs: dict = None,
         reconcile_task_assets: bool = False,
+        task=None,
     ):
+        self.task = task
         self.inst_id = inst_id
         self.organization = organization
         self.task_id = str(task_id)
@@ -109,6 +111,13 @@ class MetricsCannula:
         return old_data, accepted, failed
 
     def collect_controller(self) -> dict:
+        if self.reconcile_task_assets and getattr(self.task, "model_id", None) == "vmware_vc":
+            from apps.cmdb.collection.vmware_reconciliation import collect_vmware
+
+            return collect_vmware(self)
+        return self._collect_models()
+
+    def _collect_models(self) -> dict:
         result = {}
         all_count = 0
         for model_id, metrics in self.collection_metrics.items():

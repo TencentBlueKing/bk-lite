@@ -125,6 +125,27 @@ def _hit_key(hit):
     return hit["kb_id"], hit["kind"], hit["id"]
 
 
+def _is_graph_hit(hit):
+    matched = (hit.get("explanation") or {}).get("matched_by") or []
+    return "graph" in matched
+
+
+def _select_hits_direct_first(hits, top_k):
+    """Keep direct keyword/vector hits first; graph neighbors only fill leftover slots."""
+    try:
+        limit = max(1, int(top_k or 1))
+    except (TypeError, ValueError):
+        limit = 5
+    direct = [hit for hit in hits if not _is_graph_hit(hit)]
+    graph = [hit for hit in hits if _is_graph_hit(hit)]
+    direct.sort(key=lambda item: item.get("score", 0) or 0, reverse=True)
+    graph.sort(key=lambda item: item.get("score", 0) or 0, reverse=True)
+    selected = direct[:limit]
+    if len(selected) < limit:
+        selected.extend(graph[: limit - len(selected)])
+    return selected
+
+
 def _dedupe_hits(hits):
     by_key = {}
     for hit in hits:
@@ -442,8 +463,7 @@ def build_context(
             )
 
     hits = _dedupe_hits(hits)
-    hits.sort(key=lambda item: item["score"], reverse=True)
-    hits = hits[:top_k]
+    hits = _select_hits_direct_first(hits, top_k)
     remaining_budget = max(effective_budget - route.knowledge_tokens, 0)
     lines, citations, budget = _render_context(hits, token_budget=remaining_budget)
     budget.update(

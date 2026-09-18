@@ -71,6 +71,32 @@ def test_alert_retrieve_returns_full_monitor_object_collection(authenticated_use
 
     assert response.status_code == 200
     assert payload["data"]["monitor_objects"] == alert.monitor_objects
+    assert payload["data"]["log_alert_id"] is None
+    assert "labels" not in payload["data"]
+
+
+def test_alert_retrieve_exposes_log_alert_id_without_labels(authenticated_user):
+    authenticated_user.is_superuser = True
+    alert = Alert.objects.create(
+        alert_id="ALERT-LOG-POINTER-1",
+        level="1",
+        title="日志告警",
+        content="desc",
+        fingerprint="log-pointer-1",
+        team=[1],
+        labels={"log_alert_id": "  log-alert-9  ", "secret": "do-not-leak"},
+    )
+    request = _request(f"/alerts/{alert.id}/", authenticated_user)
+    response = AlertModelViewSet.as_view({"get": "retrieve"})(
+        request,
+        pk=str(alert.id),
+    )
+    payload = _render(response)
+
+    assert response.status_code == 200
+    assert payload["data"]["log_alert_id"] == "log-alert-9"
+    assert "labels" not in payload["data"]
+    assert "do-not-leak" not in json.dumps(payload)
 
 
 def test_alert_events_returns_each_event_identity_snapshot(authenticated_user):
@@ -118,9 +144,10 @@ def test_alert_events_returns_each_event_identity_snapshot(authenticated_user):
     items = data["items"] if isinstance(data, dict) else data
 
     assert response.status_code == 200
-    assert (items[0]["monitor_id"], items[0]["cmdb_id"]) == (
+    assert (items[0]["monitor_id"], items[0]["cmdb_id"], items[0]["node_id"]) == (
         "monitor-view-1",
         "cmdb-view-1",
+        None,
     )
 
 
@@ -276,3 +303,5 @@ def test_identity_snapshot_fields_are_read_only_in_crud_serializers(
     assert alert_serializer.fields["monitor_objects"].read_only is True
     assert event_serializer.fields["monitor_id"].read_only is True
     assert event_serializer.fields["cmdb_id"].read_only is True
+    assert event_serializer.fields["node_id"].read_only is True
+    assert alert_serializer.fields["log_alert_id"].read_only is True

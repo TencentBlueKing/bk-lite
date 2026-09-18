@@ -38,7 +38,7 @@
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4874.2.2.2.1.1.3.0"
+        oid = "1.3.6.1.4.1.4874.2.2.2.1.1.3"
         name = "usage"
     # ---- 模块 CPU（juniSystemModuleSoftwareTable，INDEX slot.level，整表 walk，不写死行）----
     # juniSystemModuleCpuUtilPct → device_cpu_usage；可选 1 分钟 / 5 分钟平均。-1 为未知，丢弃。

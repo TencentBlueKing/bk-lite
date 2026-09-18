@@ -28,6 +28,7 @@ from apps.opspilot.services.wiki.candidate_adapter_contract import (
     body_conflict_key,
     identity_conflict_key,
 )
+from apps.opspilot.services.wiki.colloquial_alias_service import enrich_generation_colloquial_aliases_safely
 from apps.opspilot.services.wiki.decision_service import build_participants_from_page_evidence, compute_schema_fingerprint
 from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
 from apps.opspilot.services.wiki.generation_service import GENERATION_PAGE_ACTIONS_KEY, put_generation_member, remove_generation_member
@@ -35,7 +36,7 @@ from apps.opspilot.services.wiki.generation_wikilink_enrichment_service import a
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.title_service import title_identity_key
 from apps.opspilot.services.wiki.update_service import _validate_frozen_generation_identity
-from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_alias_enrich_call_budget
 
 
 @dataclass
@@ -383,8 +384,6 @@ def _stage_rebuild_candidate(
                     page = comparison_page
                     page_data = {**page_data, "title": comparison_page.title}
                     identity = title_identity_key(comparison_page.title)
-                elif comparison.get("relation") in {"conflict", "unresolved"} and page is None:
-                    page = comparison_page
             member = base_by_page.get(page.pk) if page else None
             display = _member_display(member, page) if page else None
             contribution = display["contribution"] if display else "ai"
@@ -665,6 +664,14 @@ def _enrich_staged_rebuild(
             material_trace["page_actions"],
             enrichment_results,
         )
+    staged.source_trace["colloquial_aliases"] = enrich_generation_colloquial_aliases_safely(
+        context.candidate_generation_id,
+        staged.enrichment_page_ids,
+        llm_model_id=llm_model_id,
+        invoke_llm=_invoke_llm,
+        budget=new_alias_enrich_call_budget(),
+        llm_when="if_empty",
+    )
 
 
 def _materialize_evidence_records(staged, materials):

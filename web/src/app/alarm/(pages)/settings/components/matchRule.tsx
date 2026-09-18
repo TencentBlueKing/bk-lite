@@ -60,7 +60,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange, scope: supplied
             return <div key={conditionIndex}>
               <div className="flex flex-wrap items-start gap-2">
                 <div className="w-36 shrink-0">
-                  <Select className="w-full" popupMatchSelectWidth={220} allowClear value={field?.key}
+                  <Select className="w-full" popupMatchSelectWidth={220} allowClear virtual={false} value={field?.key}
                     status={condition.key && !field ? 'error' : undefined} placeholder={t('common.selectTip')}
                     options={ruleFields(scope).map(item => ({ value: item.key, label: t(`alarmCommon.ruleFields.${item.key}`) }))}
                     onChange={key => change(groupIndex, conditionIndex, { key, operator: undefined, value: undefined })} />

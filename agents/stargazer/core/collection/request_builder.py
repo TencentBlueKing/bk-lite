@@ -189,7 +189,7 @@ def _apply_preflight_defaults(params: dict[str, Any], plugin_name: str, family: 
     if plugin_name in CLOUD_TYPES:
         params["preflight_kind"] = "cloud"
         return
-    if plugin_name in {"network", "network_topo", "security_device", "tape_library"}:
+    if plugin_name in {"network", "network_topo", "f5", "security_device", "tape_library", "macrosan"}:
         params["preflight_kind"] = "snmp"
         params.setdefault("port", 161)
         return

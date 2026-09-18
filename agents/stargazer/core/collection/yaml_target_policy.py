@@ -143,7 +143,7 @@ def apply_executor_target_policy(
     params["preflight_kind"] = kind
     params["target_policy_mode"] = mode
     params["_yaml_target_policy_verified"] = True
-    if "port" in policy and policy.get("port") not in (None, ""):
+    if params.get("port") in (None, "") and "port" in policy and policy.get("port") not in (None, ""):
         params["port"] = int(policy["port"])
     if "tls" in policy:
         params.setdefault("ssl", policy["tls"])

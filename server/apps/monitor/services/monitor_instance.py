@@ -256,6 +256,16 @@ class InstanceSearch:
         elif monitor_obj_name in {"Docker Container"}:
             return InstanceSearch.get_parent_instance_list(monitor_object_id)
 
+        # 其余有 parent 的衍生对象（阿里云 Redis/RDS/ECS 等）：用库内父实例枚举，
+        # 否则列表「所属云」列只能显示裸 instance_id，顶栏筛选也没有选项。
+        child = None
+        if monitor_object_id not in (None, ""):
+            child = MonitorObject.objects.filter(id=monitor_object_id).only("id", "parent_id").first()
+        elif monitor_obj_name:
+            child = MonitorObject.objects.filter(name=monitor_obj_name).only("id", "parent_id").first()
+        if child and child.parent_id and child.id:
+            return InstanceSearch.get_parent_instance_list(child.id)
+
     def get_obj_metric_map(self):
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
@@ -401,6 +411,7 @@ class InstanceSearch:
                 collect_type=plugin.collect_type,
                 display_name=lan.get(f"{plugin_key_name}.name") or plugin.name,
                 display_description=lan.get(f"{plugin_key_name}.desc") or plugin.description,
+                pack_version=plugin.pack_version or "",
             )
             plugin_map[plugin.id] = plugin_info
 
@@ -509,6 +520,9 @@ class InstanceSearch:
             # 自动正常、一条幻影手动）。按模板身份去重，仅保留状态优先级最高的一条。
             item["plugins"] = self._dedupe_instance_plugins(item["plugins"])
 
+        from apps.monitor.services.collect_config_update import CollectConfigUpdateService
+
+        CollectConfigUpdateService.annotate_instance_plugins(data["results"])
         return data
 
     def _batch_collection_nodes_by_config_ids(self, config_ids):
@@ -958,6 +972,9 @@ class InstanceSearch:
         if name:
             qs = qs.filter(name__icontains=name)
         qs = self._apply_process_filters(qs)
+        from apps.monitor.services.collect_config_update import CollectConfigUpdateService
+
+        qs = CollectConfigUpdateService.filter_instance_qs(qs, self.query_data)
 
         # 去除重复
         qs = qs.distinct()

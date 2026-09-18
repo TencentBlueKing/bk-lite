@@ -9,6 +9,7 @@ metadata:
   - middleware
   - consul
   cloud_protocol: false
+  model_id: consul
 executors:
   job:
     type: job

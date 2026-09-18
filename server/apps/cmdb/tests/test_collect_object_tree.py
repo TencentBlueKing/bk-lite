@@ -76,6 +76,35 @@ def test_get_collect_obj_tree_no_enterprise(monkeypatch):
     assert "sangforhci" not in model_ids
 
 
+@pytest.mark.django_db
+def test_tree_returns_actual_builtin_credential_key_and_category(monkeypatch):
+    from apps.system_mgmt.models import CredentialType
+    from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES
+
+    _patch_collect_extension(monkeypatch, [])
+    CredentialType.objects.create(key="sql", name="用户名密码", is_builtin=True, categories=["host"], fields=BUILTIN_TYPES["sql"]["fields"])
+    CredentialType.objects.create(key="ssh", name="SSH", is_builtin=True, categories=["host"], fields=BUILTIN_TYPES["ssh"]["fields"])
+    CredentialType.objects.create(key="redfish", name="custom", is_builtin=False, categories=["host"])
+    CredentialType.objects.create(key="redfish_bmc", name="Redfish", is_builtin=True, categories=["host"], fields=BUILTIN_TYPES["redfish"]["fields"])
+    tree = get_collect_obj_tree(with_credential_types=True)
+    by_id = {child["id"]: child for group in tree for child in group.get("children", [])}
+    assert by_id["host"]["credential_category"] == "host"
+    assert by_id["host"]["credential_binding"] == "host/ssh"
+    assert by_id["host"]["credential_type_keys"] == ["ssh"]
+    assert by_id["physcial_server_redfish"]["credential_type_keys"] == ["redfish_bmc"]
+    assert by_id["ip_discovery"]["credential_type_keys"] == []
+    assert by_id["ip_discovery"]["credential_binding"] is None
+
+
+@pytest.mark.django_db
+def test_all_118_tree_entries_publish_their_credential_binding():
+    tree = get_collect_obj_tree(with_credential_types=True)
+    entries = [child for group in tree for child in group.get("children", [])]
+    assert len(entries) == 118
+    assert sum(bool(child["credential_binding"]) for child in entries) == 116
+    assert {child["id"] for child in entries if not child["credential_binding"]} == {"k8s_cluster", "ip_discovery"}
+
+
 def test_get_collect_obj_tree_host_group_uses_logical_host_name(monkeypatch):
     _patch_collect_extension(monkeypatch, [])
     tree = get_collect_obj_tree()

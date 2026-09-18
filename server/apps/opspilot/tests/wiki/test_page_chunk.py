@@ -2,9 +2,9 @@ import pytest
 
 
 def _kb():
-    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.tests.wiki.factories import WikiFactory
 
-    return WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    return WikiFactory().bootstrapped_knowledge_base()
 
 
 def _page(kb, title, body):
@@ -51,12 +51,12 @@ def test_reindex_page_chunks_and_search():
     page = _page(kb, "P", "# 重启\nsystemctl restart\n# 备份\nbackup db")
 
     n = reindex_page_chunks(page, kb.embed_provider, embed_fn=_stub)
-    assert n == 2
-    assert PageChunk.objects.filter(page=page).count() == 2
+    assert n == 1
+    assert PageChunk.objects.filter(page=page).count() == 1
 
     results = chunk_semantic_search(kb, "重启", embed_fn=_stub, top_k=5)
     assert results and "restart" in results[0]["snippet"]
-    assert results[0]["heading_path"] == "重启"
+    assert results[0]["heading_path"] == ""
     assert results[0]["explanation"]["matched_by"] == ["chunk_vector"]
     assert results[0]["explanation"]["chunk_index"] == 0
     assert results[0]["explanation"]["vector_score"] == results[0]["score"]
@@ -71,7 +71,7 @@ def test_reindex_chunks_is_idempotent():
     page = _page(kb, "P", "# A\nalpha\n# B\nbeta")
     reindex_page_chunks(page, kb.embed_provider, embed_fn=_stub)
     reindex_page_chunks(page, kb.embed_provider, embed_fn=_stub)
-    assert PageChunk.objects.filter(page=page).count() == 2  # 重建不累积
+    assert PageChunk.objects.filter(page=page).count() == 1  # 摘要单块，重建不累积
 
 
 @pytest.mark.django_db
@@ -86,7 +86,7 @@ def test_reindex_page_chunks_handles_page_without_current_version():
 
 
 @pytest.mark.django_db
-def test_reindex_page_chunks_clears_existing_chunks_when_body_empty():
+def test_reindex_page_chunks_clears_existing_chunks_when_summary_empty():
     from apps.opspilot.models import PageChunk
     from apps.opspilot.services.wiki.embedding_service import reindex_page_chunks
 

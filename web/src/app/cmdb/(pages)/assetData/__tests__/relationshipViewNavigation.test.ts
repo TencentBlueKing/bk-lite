@@ -29,16 +29,13 @@ describe('relationship view navigation', () => {
   it('快捷视图与关联关系父菜单保持互斥选中', () => {
     const shortcuts = [
       'network',
-      'networkStatusTopology',
       'appOverview',
       'rackView',
       'roomView',
     ];
 
     expect(isRelationshipMenuActive(true, 'network', shortcuts)).toBe(false);
-    expect(
-      isRelationshipMenuActive(true, 'networkStatusTopology', shortcuts),
-    ).toBe(false);
+    expect(isRelationshipMenuActive(true, 'roomView', shortcuts)).toBe(false);
     expect(isRelationshipMenuActive(true, 'list', shortcuts)).toBe(true);
     expect(isRelationshipMenuActive(true, 'topo', shortcuts)).toBe(true);
     expect(isRelationshipMenuActive(false, 'list', shortcuts)).toBe(false);
@@ -76,23 +73,21 @@ describe('relationship tab gate', () => {
 
     expect(
       normalizeRelationshipTab({
-        requestedTab: 'networkStatusTopology',
+        requestedTab: 'network',
         allowedTabs: alwaysAllowed,
         gatesSettled: false,
       }),
     ).toEqual({
-      tab: 'networkStatusTopology',
+      tab: 'network',
       shouldRewrite: false,
     });
-    expect(
-      isAllowedRelationshipTab('networkStatusTopology', alwaysAllowed),
-    ).toBe(false);
+    expect(isAllowedRelationshipTab('network', alwaysAllowed)).toBe(false);
   });
 
-  it('rewrites an illegal network-status tab to list after gates settle', () => {
+  it('rewrites an illegal network tab to list after gates settle', () => {
     expect(
       normalizeRelationshipTab({
-        requestedTab: 'networkStatusTopology',
+        requestedTab: 'network',
         allowedTabs: alwaysAllowed,
         gatesSettled: true,
       }),
@@ -112,20 +107,18 @@ describe('relationship tab gate', () => {
     });
   });
 
-  it('keeps a legal network-status tab and does not rewrite', () => {
-    const allowed = ['list', 'topo', 'network', 'networkStatusTopology'];
+  it('keeps a legal network tab and does not rewrite', () => {
+    const allowed = ['list', 'topo', 'network'];
     expect(
       normalizeRelationshipTab({
-        requestedTab: 'networkStatusTopology',
+        requestedTab: 'network',
         allowedTabs: allowed,
         gatesSettled: true,
       }),
     ).toEqual({
-      tab: 'networkStatusTopology',
+      tab: 'network',
       shouldRewrite: false,
     });
-    expect(
-      isAllowedRelationshipTab('networkStatusTopology', allowed),
-    ).toBe(true);
+    expect(isAllowedRelationshipTab('network', allowed)).toBe(true);
   });
 });

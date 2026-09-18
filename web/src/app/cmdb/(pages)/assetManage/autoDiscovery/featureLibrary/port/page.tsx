@@ -253,7 +253,7 @@ const PortFingerprintPage: React.FC = () => {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="shrink-0 overflow-x-auto">
         <Introduction
           title={t('OidLibrary.portIntroTitle')}
@@ -299,7 +299,7 @@ const PortFingerprintPage: React.FC = () => {
         </PermissionWrapper>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 h-full flex-1 overflow-hidden">
         <CustomTable
           size="middle"
           rowKey="id"
@@ -318,7 +318,6 @@ const PortFingerprintPage: React.FC = () => {
               pageSize: newPag.pageSize,
             });
           }}
-          scroll={{ y: 'calc(100vh - 456px)' }}
         />
       </div>
 
