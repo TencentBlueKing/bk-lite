@@ -1292,9 +1292,7 @@
       "manageGroup": "管理组织",
       "usageGroup": "使用组织",
       "usageGroupTip": "使用组织可调用该智能体进行对话/接口请求；管理组织会自动加入且不可移除",
-      "forceWikiGrounded": "强制",
-      "forceWikiGroundedExtra": "开启强制后会只按知识库回答",
-      "forceWikiGroundedNeedKb": "请先选择知识库"
+      "forceWikiGrounded": "强制"
     },
     "memory": {
       "title": "记忆",
