@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "补丁管理控制面与数据面（目标）",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "default": { "label": "默认流" },
+        "emphasis": { "label": "主治理路径" },
+        "security": { "label": "冻结 / fencing / Outbox" },
+        "dashed": { "label": "按团队扫描" },
+        "database": { "label": "持久化事实" }
+      }
+    },
+    "views": [
+      {
+        "id": "scope",
+        "label": "按团队接入",
+        "focus": ["patchWeb", "patchBeat", "patchSync", "patchCatalog", "patchGov"],
+        "note": "周期扫描按团队扇出并设 target 上限；源同步带 lease 进 Celery，不再堵在 HTTP 线程。"
+      },
+      {
+        "id": "claim",
+        "label": "CAS claim",
+        "focus": ["patchGov", "patchFanout", "patchKernel", "patchRemote", "patchHost"],
+        "note": "父任务用 compare-and-set claim；execution_token 仍挡住陈旧写回。"
+      },
+      {
+        "id": "intent",
+        "label": "durable intent",
+        "focus": ["patchRemote", "patchHost", "patchOutbox"],
+        "note": "终态事务里先写重启/验证/通知 intent，提交后再投递，Beat 重扫。"
+      }
+    ]
+  },
+  "stages": [
+    { "label": "控制面接入" },
+    { "label": "控制面编排" },
+    { "label": "数据面派发" },
+    { "label": "数据面执行" },
+    { "label": "收敛与后续" }
+  ],
+  "nodes": [
+    { "id": "patchSync", "type": "cloud", "label": "补丁源同步", "sublabel": "Linux Repo / WSUS", "stage": 0, "row": 0, "width": 145, "tag": "Celery + lease" },
+    { "id": "patchWeb", "type": "frontend", "label": "补丁管理 Web", "sublabel": "基线 / 风险 / 目标", "stage": 0, "row": 2, "width": 145, "tag": "登录用户" },
+    { "id": "patchBeat", "type": "backend", "label": "Beat 周期扫描", "sublabel": "ScanSetting per team", "stage": 0, "row": 4, "width": 145, "tag": "target 上限" },
+    { "id": "patchCatalog", "type": "database", "label": "目录与基线", "sublabel": "immutable version", "stage": 1, "row": 0, "width": 145, "tag": "baseline_version_id" },
+    { "id": "patchGov", "type": "security", "label": "治理命令", "sublabel": "锁定绑定 / 校验缺失", "stage": 1, "row": 2, "width": 145, "tag": "创建时重校验" },
+    { "id": "patchFanout", "type": "messagebus", "label": "父任务扇出", "sublabel": "每目标一个子任务", "stage": 2, "row": 2, "width": 150, "tag": "CAS claim" },
+    { "id": "patchKernel", "type": "backend", "label": "主机执行内核", "sublabel": "protocol adapter 拆开", "stage": 3, "row": 2, "width": 150, "tag": "状态机独立" },
+    { "id": "patchRemote", "type": "external", "label": "远端主机与源", "sublabel": "SSH / WinRM / Ansible", "stage": 3, "row": 4, "width": 150 },
+    { "id": "patchHost", "type": "database", "label": "GovernanceTaskHost", "sublabel": "token / 心跳 / log chunks", "stage": 4, "row": 2, "width": 165, "tag": "逐主机 fencing" },
+    { "id": "patchOutbox", "type": "database", "label": "Follow-up Outbox", "sublabel": "重启 / 验证 / 通知", "stage": 4, "row": 4, "width": 165, "tag": "durable intent" }
+  ],
+  "flows": [
+    { "id": "patch-sync-cat", "from": "patchSync", "to": "patchCatalog", "label": "lease ingest", "classification": "目录写入", "variant": "emphasis", "route": "straight" },
+    { "id": "patch-cat-gov", "from": "patchCatalog", "to": "patchGov", "label": "冻结 baseline version", "classification": "计划冻结", "variant": "security" },
+    { "id": "patch-web-gov", "from": "patchWeb", "to": "patchGov", "label": "HTTP 当前团队", "classification": "控制面", "variant": "emphasis", "route": "straight", "labelAt": [208, 320] },
+    { "id": "patch-beat-gov", "from": "patchBeat", "to": "patchGov", "label": "per-team scan", "classification": "周期扫描", "variant": "dashed" },
+    { "id": "patch-gov-fanout", "from": "patchGov", "to": "patchFanout", "label": "CAS claim", "classification": "编排", "variant": "emphasis", "route": "straight" },
+    { "id": "patch-fanout-kernel", "from": "patchFanout", "to": "patchKernel", "label": "领取 waiting 主机", "classification": "数据面", "variant": "emphasis", "route": "straight", "labelAt": [638, 320] },
+    { "id": "patch-kernel-remote", "from": "patchKernel", "to": "patchRemote", "label": "安装 / 扫描副作用", "classification": "远端命令", "variant": "emphasis" },
+    { "id": "patch-kernel-host", "from": "patchKernel", "to": "patchHost", "label": "claim + 心跳", "classification": "逐主机事实", "variant": "default", "route": "straight", "labelAt": [849, 320] },
+    { "id": "patch-remote-host", "from": "patchRemote", "to": "patchHost", "label": "token 写回 / 核验", "classification": "fencing", "variant": "security" },
+    { "id": "patch-host-outbox", "from": "patchHost", "to": "patchOutbox", "label": "事务内写 intent", "classification": "可补偿链路", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "相对现状改了什么",
+      "items": [
+        "周期扫描按可信 team 分区，不再用 ScanSetting pk=1 打完全库",
+        "父任务 CAS claim；重启和验证与通知一样走 Follow-up Outbox"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "必须守住的边界",
+      "items": [
+        "未知副作用只能 reconciling 或 pending_confirmation，不能当 transport 失败重试",
+        "cancel 只保证停止 waiting 并尽力中止，不是远端终止证明"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "读模型与内核",
+      "items": [
+        "评估引用不可变 baseline_version_id；风险列表查投影表，不在请求里算完全部主机",
+        "新 OS 只加 protocol adapter，不再往 patch_execution_service 堆分支"
+      ]
+    }
+  ]
+}

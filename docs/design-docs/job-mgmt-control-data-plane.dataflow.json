@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "作业平台控制面与数据面（现状）",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "default": { "label": "默认流" },
+        "emphasis": { "label": "主执行路径" },
+        "security": { "label": "信任/授权边界" },
+        "dashed": { "label": "不可恢复副作用" },
+        "database": { "label": "持久化事实" }
+      }
+    },
+    "views": [
+      {
+        "id": "control-plane",
+        "label": "控制面接入",
+        "focus": ["web", "nats", "policy", "catalog", "jobexec"],
+        "note": "Web 走登录用户；legacy NATS 仍把消息体 team 当授权事实写入 JobExecution。"
+      },
+      {
+        "id": "data-plane",
+        "label": "数据面执行",
+        "focus": ["jobexec", "celery", "sidecar", "ansible"],
+        "note": "Celery 行锁 claim 后分 Sidecar 线程池与 Ansible 异步；选路只看第一个手动目标。"
+      },
+      {
+        "id": "completion",
+        "label": "终态分叉",
+        "focus": ["sidecar", "ansible", "outbox", "consumers"],
+        "note": "Sidecar 直接回调；Ansible、超时和取消才进 Completion Outbox。"
+      }
+    ]
+  },
+  "stages": [
+    { "label": "控制面接入" },
+    { "label": "控制面编排" },
+    { "label": "数据面派发" },
+    { "label": "数据面执行" },
+    { "label": "回传与副作用" }
+  ],
+  "nodes": [
+    { "id": "web", "type": "frontend", "label": "作业平台 Web", "sublabel": "模板 / 执行 / 目标", "stage": 0, "row": 2, "width": 140, "tag": "登录用户" },
+    { "id": "nats", "type": "backend", "label": "NATS / OpenAPI", "sublabel": "12 个 handler", "stage": 0, "row": 4, "width": 140, "tag": "自报 team" },
+    { "id": "catalog", "type": "database", "label": "作业目录", "sublabel": "脚本 / 目标 / 文件", "stage": 1, "row": 0, "width": 140 },
+    { "id": "policy", "type": "security", "label": "策略与范围", "sublabel": "团队 / 高危规则", "stage": 1, "row": 2, "width": 140, "tag": "双轨信任" },
+    { "id": "jobexec", "type": "database", "label": "JobExecution", "sublabel": "状态 + results JSON", "stage": 2, "row": 2, "width": 150, "tag": "单行事实" },
+    { "id": "celery", "type": "messagebus", "label": "Celery / Beat", "sublabel": "claim PENDING", "stage": 2, "row": 4, "width": 150, "tag": "deadline 扫描" },
+    { "id": "sidecar", "type": "backend", "label": "Sidecar Runner", "sublabel": "脚本 / 文件线程池", "stage": 3, "row": 2, "width": 150, "tag": "每批 ≤10" },
+    { "id": "ansible", "type": "backend", "label": "Ansible 异步", "sublabel": "首目标 / 第一区域", "stage": 3, "row": 4, "width": 150, "tag": "callback token" },
+    { "id": "consumers", "type": "external", "label": "完成消费者", "sublabel": "SSE / Webhook / JetStream", "stage": 4, "row": 2, "width": 160 },
+    { "id": "outbox", "type": "database", "label": "Completion Outbox", "sublabel": "lease / 幂等 / 重扫", "stage": 4, "row": 4, "width": 160, "tag": "可恢复" }
+  ],
+  "flows": [
+    { "id": "web-policy", "from": "web", "to": "policy", "label": "HTTP 登录主体", "classification": "控制面", "variant": "emphasis", "route": "straight", "labelDy": -28 },
+    { "id": "nats-policy", "from": "nats", "to": "policy", "label": "消息体 team", "classification": "legacy 信任", "variant": "security" },
+    { "id": "catalog-policy", "from": "catalog", "to": "policy", "label": "脚本与目标快照", "classification": "目录", "variant": "default" },
+    { "id": "policy-jobexec", "from": "policy", "to": "jobexec", "label": "创建 PENDING", "classification": "控制面落库", "variant": "emphasis", "route": "straight" },
+    { "id": "jobexec-celery", "from": "jobexec", "to": "celery", "label": "delay / 行锁 claim", "classification": "数据面派发", "variant": "emphasis" },
+    { "id": "celery-sidecar", "from": "celery", "to": "sidecar", "label": "Sidecar 批次", "classification": "数据面", "variant": "emphasis" },
+    { "id": "celery-ansible", "from": "celery", "to": "ansible", "label": "Ansible 提交", "classification": "数据面", "variant": "default", "route": "straight", "labelDy": 53 },
+    { "id": "sidecar-consumers", "from": "sidecar", "to": "consumers", "label": "直接回调", "classification": "best-effort", "variant": "dashed", "route": "straight", "labelAt": [850, 320] },
+    { "id": "ansible-outbox", "from": "ansible", "to": "outbox", "label": "token 回调入箱", "classification": "可恢复终态", "variant": "security", "route": "straight", "labelDy": 53 },
+    { "id": "outbox-consumers", "from": "outbox", "to": "consumers", "label": "Beat 重扫投递", "classification": "完成副作用", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "控制面已经能裁决什么",
+      "items": [
+        "Web 与 OpenAPI 网关注入用户/团队；worker 用行锁把 PENDING 变成 RUNNING",
+        "取消、超时和 Ansible 回调会重新锁执行行，并用 callback token 挡住陈旧写回"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "控制面与数据面的断裂",
+      "items": [
+        "legacy job_script_execute / job_file_distribute 仍把 payload team 当授权事实",
+        "Sidecar 终态直接 send_callback；只有 Ansible、取消和超时进入 Completion Outbox"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "数据面容量仍绑在单行上",
+      "items": [
+        "执行路径由第一个手动目标的 driver 决定，多云区域只跑第一组",
+        "全部目标 stdout/stderr 写入 execution_results JSON，没有跨 worker 的共享预算"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "作业平台控制面与数据面（目标）",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "default": { "label": "默认流" },
+        "emphasis": { "label": "主执行路径" },
+        "security": { "label": "trusted_actor / Outbox" },
+        "dashed": { "label": "按批拆分" },
+        "database": { "label": "持久化事实" }
+      }
+    },
+    "views": [
+      {
+        "id": "trust",
+        "label": "trusted_actor",
+        "focus": ["jobWeb", "jobGateway", "jobPolicy", "jobCatalog", "jobRow"],
+        "note": "Web 与 NATS 都只接受网关注入的 trusted_actor；payload team 最多对照，不一致则拒绝。"
+      },
+      {
+        "id": "dispatch",
+        "label": "按批派发",
+        "focus": ["jobRow", "jobQueue", "jobSidecar", "jobAnsible"],
+        "note": "行锁 claim 后按 driver 和云区域拆批，禁止用第一个目标决定整单路径。"
+      },
+      {
+        "id": "complete",
+        "label": "统一 Outbox",
+        "focus": ["jobSidecar", "jobAnsible", "jobOutbox", "jobNotify"],
+        "note": "Sidecar 与 Ansible 都先写 Completion Outbox，再投递 SSE / Webhook / JetStream。"
+      }
+    ]
+  },
+  "stages": [
+    { "label": "控制面接入" },
+    { "label": "控制面编排" },
+    { "label": "数据面派发" },
+    { "label": "数据面执行" },
+    { "label": "回传与副作用" }
+  ],
+  "nodes": [
+    { "id": "jobWeb", "type": "frontend", "label": "作业平台 Web", "sublabel": "模板 / 执行 / 目标", "stage": 0, "row": 2, "width": 140, "tag": "登录用户" },
+    { "id": "jobGateway", "type": "backend", "label": "NATS / OpenAPI", "sublabel": "同一 ExecutionService", "stage": 0, "row": 4, "width": 140, "tag": "trusted_actor" },
+    { "id": "jobCatalog", "type": "database", "label": "作业目录", "sublabel": "授权范围过滤", "stage": 1, "row": 0, "width": 140, "tag": "禁止 page_size=-1" },
+    { "id": "jobPolicy", "type": "security", "label": "策略与范围", "sublabel": "trusted_actor 裁决", "stage": 1, "row": 2, "width": 140, "tag": "单轨信任" },
+    { "id": "jobRow", "type": "database", "label": "JobExecution", "sublabel": "状态 + result pointer", "stage": 2, "row": 2, "width": 150, "tag": "摘要行" },
+    { "id": "jobQueue", "type": "messagebus", "label": "Celery / Beat", "sublabel": "claim PENDING", "stage": 2, "row": 4, "width": 150, "tag": "共享预算" },
+    { "id": "jobSidecar", "type": "backend", "label": "Sidecar Runner", "sublabel": "同 driver 一批", "stage": 3, "row": 2, "width": 150, "tag": "日志外置" },
+    { "id": "jobAnsible", "type": "backend", "label": "Ansible 异步", "sublabel": "同云区域一批", "stage": 3, "row": 4, "width": 150, "tag": "callback token" },
+    { "id": "jobNotify", "type": "external", "label": "完成消费者", "sublabel": "SSE / Webhook / JetStream", "stage": 4, "row": 2, "width": 160 },
+    { "id": "jobOutbox", "type": "database", "label": "Completion Outbox", "sublabel": "lease / 幂等 / 重扫", "stage": 4, "row": 4, "width": 160, "tag": "唯一终态" }
+  ],
+  "flows": [
+    { "id": "job-web-policy", "from": "jobWeb", "to": "jobPolicy", "label": "HTTP 登录主体", "classification": "控制面", "variant": "emphasis", "route": "straight", "labelDy": -28 },
+    { "id": "job-gw-policy", "from": "jobGateway", "to": "jobPolicy", "label": "trusted_actor", "classification": "可信主体", "variant": "security" },
+    { "id": "job-cat-policy", "from": "jobCatalog", "to": "jobPolicy", "label": "授权目录快照", "classification": "目录", "variant": "default" },
+    { "id": "job-policy-row", "from": "jobPolicy", "to": "jobRow", "label": "创建 PENDING", "classification": "控制面落库", "variant": "emphasis", "route": "straight" },
+    { "id": "job-row-queue", "from": "jobRow", "to": "jobQueue", "label": "delay / 行锁 claim", "classification": "数据面派发", "variant": "emphasis" },
+    { "id": "job-queue-sidecar", "from": "jobQueue", "to": "jobSidecar", "label": "Sidecar 批次", "classification": "按 driver 拆批", "variant": "emphasis" },
+    { "id": "job-queue-ansible", "from": "jobQueue", "to": "jobAnsible", "label": "Ansible 批次", "classification": "按区域拆批", "variant": "dashed", "route": "straight", "labelDy": 53 },
+    { "id": "job-sidecar-outbox", "from": "jobSidecar", "to": "jobOutbox", "label": "enqueue Outbox", "classification": "可恢复终态", "variant": "security" },
+    { "id": "job-ansible-outbox", "from": "jobAnsible", "to": "jobOutbox", "label": "token 回调入箱", "classification": "可恢复终态", "variant": "security", "route": "straight", "labelDy": 53 },
+    { "id": "job-outbox-notify", "from": "jobOutbox", "to": "jobNotify", "label": "Beat 重扫投递", "classification": "完成副作用", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "相对现状改了什么",
+      "items": [
+        "legacy NATS 不再用 payload team 授权；与 Web 共用 trusted_actor 和同一 ExecutionService",
+        "Sidecar 不再直接 send_callback，与 Ansible、取消、超时共用 Completion Outbox"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "必须守住的边界",
+      "items": [
+        "Runner 不得自己写 JobExecution.status；终态只经唯一 reducer + Outbox",
+        "列表和批查必须按授权团队过滤，禁止 page_size=-1"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "数据面怎么拆",
+      "items": [
+        "混合 driver 或跨云区域在控制面拆成多条 JobExecution，而不是静默只跑第一组",
+        "主表只留摘要和 result pointer，默认 callback 不带完整 stdout"
+      ]
+    }
+  ]
+}

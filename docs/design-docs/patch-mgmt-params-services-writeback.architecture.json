@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "补丁管理：前端入参、服务与回写",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "params",
+        "label": "前端入参",
+        "focus": ["web", "api", "celery"],
+        "note": "评估/修复/重启先落 GovernanceTask。路由只看 PatchTarget.source_type 与 os_type。"
+      },
+      {
+        "id": "sidecar",
+        "label": "Sidecar",
+        "focus": ["celery", "sidecarLocal", "sidecarSsh", "writeback"],
+        "note": "node_mgmt 走本机 Sidecar。manual Linux 走区域 Sidecar SSH。Celery 等 RPC 再写库。"
+      },
+      {
+        "id": "ansible",
+        "label": "Ansible",
+        "focus": ["celery", "ansible", "writeback"],
+        "note": "manual Windows 走 Ansible WinRM。命令 adhoc 无 callback；包分发才 poll task_query。"
+      },
+      {
+        "id": "writeback",
+        "label": "回写",
+        "focus": ["celery", "api", "writeback"],
+        "note": "执行写 GovernanceTaskHost。评估写 HostBaselineBinding。探测写 connectivity_status。"
+      }
+    ]
+  },
+  "components": [
+    { "id": "web", "type": "frontend", "label": "Patch Web", "sublabel": "评估 / 修复 / 重启", "pos": [36, 48], "size": [158, 56], "tag": "source_type" },
+    { "id": "api", "type": "backend", "label": "PatchMgmt", "sublabel": "GovernanceTask", "pos": [36, 132], "size": [158, 56], "tag": "/governance /risk" },
+    { "id": "celery", "type": "messagebus", "label": "Celery", "sublabel": "execute_governance_host", "pos": [36, 216], "size": [158, 56], "tag": "resolve_route" },
+    { "id": "writeback", "type": "database", "label": "GovernanceTaskHost", "sublabel": "PatchTarget + binding", "pos": [36, 328], "size": [158, 56], "tag": "platform DB" },
+    { "id": "sidecarLocal", "type": "backend", "label": "Sidecar", "sublabel": "nats-executor local", "pos": [260, 216], "size": [168, 56], "tag": "node_mgmt" },
+    { "id": "sidecarSsh", "type": "backend", "label": "Sidecar", "sublabel": "nats-executor SSH", "pos": [560, 132], "size": [168, 56], "tag": "manual linux" },
+    { "id": "ansible", "type": "cloud", "label": "Ansible", "sublabel": "ansible-executor", "pos": [560, 300], "size": [168, 56], "tag": "manual windows" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Platform", "wraps": ["web", "api", "celery", "writeback"] },
+    { "kind": "region", "label": "Managed host", "wraps": ["sidecarLocal"] },
+    { "kind": "region", "label": "Cloud region", "wraps": ["sidecarSsh", "ansible"] }
+  ],
+  "connections": [
+    { "id": "web-api", "from": "web", "to": "api", "label": "task_type / items", "variant": "emphasis", "labelDy": 24 },
+    { "id": "api-celery", "from": "api", "to": "celery", "label": "delay(id)", "variant": "emphasis", "labelDy": 24 },
+    { "id": "celery-local", "from": "celery", "to": "sidecarLocal", "label": "local", "variant": "emphasis" },
+    { "id": "celery-ssh", "from": "celery", "to": "sidecarSsh", "label": "SSH", "variant": "emphasis", "fromSide": "bottom", "toSide": "left", "via": [[115, 288], [520, 288], [520, 160]], "labelAt": [370, 286] },
+    { "id": "celery-ans", "from": "celery", "to": "ansible", "label": "WinRM adhoc", "variant": "emphasis", "labelAt": [400, 340] },
+    { "id": "celery-host", "from": "celery", "to": "writeback", "label": "host result", "variant": "emphasis", "labelAt": [248, 400] },
+    { "id": "api-probe", "from": "api", "to": "writeback", "label": "probe", "variant": "security", "fromSide": "left", "toSide": "left", "via": [[16, 160], [16, 356]], "labelAt": [16, 300] }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "前端入参",
+      "items": [
+        "source_type + os_type 选链路；task_type 选命令"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "服务作用",
+      "items": [
+        "Celery 选 Sidecar local/SSH 或 Ansible；探测同步不经 Celery"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "回写场景",
+      "items": [
+        "GovernanceTaskHost + binding + connectivity_status；无 JobExecution"
+      ]
+    }
+  ]
+}
