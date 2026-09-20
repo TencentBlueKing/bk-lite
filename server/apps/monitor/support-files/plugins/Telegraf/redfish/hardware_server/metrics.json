@@ -24,7 +24,7 @@
     {
       "metric_group": "Health",
       "name": "redfish_system_health",
-      "query": "redfish_system_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_system_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "System Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Health",
       "name": "redfish_system_power_state",
-      "query": "redfish_system_power_state{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_system_power_state_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Power State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"Off\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"On\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Other\",\"id\":2,\"color\":\"#faad14\"}]",
@@ -46,7 +46,7 @@
     {
       "metric_group": "Health",
       "name": "redfish_manager_health",
-      "query": "redfish_manager_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_manager_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "BMC Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -57,7 +57,7 @@
     {
       "metric_group": "Health",
       "name": "redfish_processor_health_rollup",
-      "query": "redfish_processor_health_rollup{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_processor_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Processor Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -68,7 +68,7 @@
     {
       "metric_group": "Health",
       "name": "redfish_memory_health_rollup",
-      "query": "redfish_memory_health_rollup{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_memory_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Memory Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -79,7 +79,7 @@
     {
       "metric_group": "Environment",
       "name": "redfish_temperature_celsius",
-      "query": "redfish_temperature_celsius{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_temperature_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Environment",
       "name": "redfish_inlet_temperature_celsius",
-      "query": "redfish_inlet_temperature_celsius{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_inlet_temperature_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Inlet Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -101,7 +101,7 @@
     {
       "metric_group": "Environment",
       "name": "redfish_inlet_temperature_upper_critical_celsius",
-      "query": "redfish_inlet_temperature_upper_critical_celsius{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_inlet_temperature_upper_critical_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Inlet Temperature Upper Critical",
       "data_type": "Number",
       "unit": "celsius",
@@ -112,7 +112,7 @@
     {
       "metric_group": "Environment",
       "name": "redfish_fan_speed",
-      "query": "redfish_fan_speed{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_fan_speed_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "none",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_power_consumed_watts",
-      "query": "redfish_power_consumed_watts{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_power_consumed_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Power Consumed",
       "data_type": "Number",
       "unit": "watts",
@@ -134,7 +134,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_psu_health",
-      "query": "redfish_psu_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_psu_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "PSU Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -145,7 +145,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_psu_input_watts",
-      "query": "redfish_psu_input_watts{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_psu_input_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "PSU Input Power",
       "data_type": "Number",
       "unit": "watts",
@@ -156,7 +156,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_psu_output_watts",
-      "query": "redfish_psu_output_watts{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_psu_output_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "PSU Output Power",
       "data_type": "Number",
       "unit": "watts",
@@ -167,7 +167,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_psu_capacity_watts",
-      "query": "redfish_psu_capacity_watts{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_psu_capacity_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "PSU Capacity",
       "data_type": "Number",
       "unit": "watts",
@@ -178,7 +178,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_psu_delivering",
-      "query": "redfish_psu_delivering{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_psu_delivering_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "PSU Delivering",
       "data_type": "Enum",
       "unit": "[{\"name\":\"Idle\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"Delivering\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -189,7 +189,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_psu_redundant",
-      "query": "redfish_psu_redundant{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_psu_redundant_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "PSU Redundant",
       "data_type": "Enum",
       "unit": "[{\"name\":\"Lost\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"Redundant\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -200,7 +200,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_power_limit_watts",
-      "query": "redfish_power_limit_watts{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_power_limit_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Power Limit",
       "data_type": "Number",
       "unit": "watts",
@@ -211,7 +211,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_power_over_limit",
-      "query": "redfish_power_over_limit{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_power_over_limit_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Power Over Limit",
       "data_type": "Enum",
       "unit": "[{\"name\":\"Within Limit\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"Over Limit\",\"id\":1,\"color\":\"#ff4d4f\"}]",
@@ -222,7 +222,7 @@
     {
       "metric_group": "Inventory",
       "name": "redfish_firmware_info",
-      "query": "redfish_firmware_info{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_firmware_info_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Firmware",
       "data_type": "Number",
       "unit": "none",
@@ -233,7 +233,7 @@
     {
       "metric_group": "Environment",
       "name": "redfish_temperature_upper_critical_celsius",
-      "query": "redfish_temperature_upper_critical_celsius{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_temperature_upper_critical_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Temperature Upper Critical",
       "data_type": "Number",
       "unit": "celsius",
@@ -244,7 +244,7 @@
     {
       "metric_group": "Environment",
       "name": "redfish_fan_health",
-      "query": "redfish_fan_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_fan_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Fan Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -255,7 +255,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_psu_input_voltage",
-      "query": "redfish_psu_input_voltage{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_psu_input_voltage_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "PSU Input Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -266,7 +266,7 @@
     {
       "metric_group": "Power",
       "name": "redfish_voltage_volts",
-      "query": "redfish_voltage_volts{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_voltage_volts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Voltage",
       "data_type": "Number",
       "unit": "volts",
@@ -277,7 +277,7 @@
     {
       "metric_group": "Storage",
       "name": "redfish_storage_health",
-      "query": "redfish_storage_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_storage_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Storage Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -288,7 +288,7 @@
     {
       "metric_group": "Storage",
       "name": "redfish_drive_health",
-      "query": "redfish_drive_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_drive_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Drive Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -299,7 +299,7 @@
     {
       "metric_group": "Storage",
       "name": "redfish_drive_present_count",
-      "query": "redfish_drive_present_count{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_drive_present_count_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Present Drive Count",
       "data_type": "Number",
       "unit": "none",
@@ -310,7 +310,7 @@
     {
       "metric_group": "Storage",
       "name": "redfish_drive_life_percent",
-      "query": "redfish_drive_life_percent{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_drive_life_percent_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Drive Life Remaining",
       "data_type": "Number",
       "unit": "percent",
@@ -321,7 +321,7 @@
     {
       "metric_group": "Storage",
       "name": "redfish_storage_controller_health",
-      "query": "redfish_storage_controller_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_storage_controller_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "Storage Controller Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -332,7 +332,7 @@
     {
       "metric_group": "Network",
       "name": "redfish_nic_health",
-      "query": "redfish_nic_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_nic_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "NIC Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -343,7 +343,7 @@
     {
       "metric_group": "Network",
       "name": "redfish_nic_port_health",
-      "query": "redfish_nic_port_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_nic_port_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "NIC Port Health",
       "data_type": "Enum",
       "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
@@ -354,7 +354,7 @@
     {
       "metric_group": "Network",
       "name": "redfish_nic_port_link_up",
-      "query": "redfish_nic_port_link_up{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_nic_port_link_up_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "NIC Port Link",
       "data_type": "Enum",
       "unit": "[{\"name\":\"Down\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"Up\",\"id\":1,\"color\":\"#1ac44a\"}]",
@@ -365,7 +365,7 @@
     {
       "metric_group": "Network",
       "name": "redfish_nic_port_speed_mbps",
-      "query": "redfish_nic_port_speed_mbps{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "query": "redfish_nic_port_speed_mbps_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__}",
       "display_name": "NIC Port Speed",
       "data_type": "Number",
       "unit": "none",
