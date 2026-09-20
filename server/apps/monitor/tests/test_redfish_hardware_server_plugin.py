@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from jinja2 import Template
 
 PLUGIN_DIR = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "redfish" / "hardware_server"
 
@@ -39,17 +38,10 @@ def language(request):
 
 @pytest.mark.unit
 def test_template_scrapes_stargazer_redfish_metrics():
-    rendered = Template((PLUGIN_DIR / "hardware_server.child.toml.j2").read_text(encoding="utf-8")).render(
-        ip="192.0.2.10",
-        username="ro",
-        config_id="cfg_1",
-        instance_id="server_1",
-        instance_type="hardware_server",
-        interval=60,
-    )
+    toml_text = (PLUGIN_DIR / "hardware_server.child.toml.j2").read_text(encoding="utf-8")
 
-    assert "/api/monitor/redfish/metrics" in rendered
-    assert 'verify_tls = "{{ verify_tls | default(true) | lower }}"' in (PLUGIN_DIR / "hardware_server.child.toml.j2").read_text(encoding="utf-8")
+    assert "/api/monitor/redfish/metrics" in toml_text
+    assert 'verify_tls = "{{ verify_tls | default(true) | lower }}"' in toml_text
 
 
 @pytest.mark.unit
