@@ -231,11 +231,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
         param_bindings: paramBindings.map((b) =>
           b.from === 'const'
             ? {
-                name: b.name,
-                from: 'const' as const,
-                value: b.value,
-                ...(b.allow_adjust ? { allow_adjust: true } : {}),
-              }
+              name: b.name,
+              from: 'const' as const,
+              value: b.value,
+              ...(b.allow_adjust ? { allow_adjust: true } : {}),
+            }
             : { name: b.name, from: 'field' as const, value: b.value }
         ),
       };

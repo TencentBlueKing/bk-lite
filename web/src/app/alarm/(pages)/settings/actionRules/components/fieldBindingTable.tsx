@@ -66,11 +66,11 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
         from === 'field'
           ? { name, from: 'field', value: nextValue }
           : {
-              name,
-              from: 'const',
-              value: nextValue,
-              allow_adjust: (patch.allow_adjust ?? existing.allow_adjust) === true,
-            };
+            name,
+            from: 'const',
+            value: nextValue,
+            allow_adjust: (patch.allow_adjust ?? existing.allow_adjust) === true,
+          };
       const hasExisting = value.some((b) => b.name === name);
       onChange?.(
         hasExisting
