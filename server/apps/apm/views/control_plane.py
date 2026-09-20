@@ -1175,6 +1175,36 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
             )
         return Response(self.alert_service.serialize(assigned))
 
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def reassign(self, request, *args, **kwargs):
+        alert = self.get_object()
+        serializer = ApmAlertAssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reassigned = self.alert_service.reassign(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                actor=request.user,
+                operable_qs=self.get_queryset(),
+            )
+        except AlertHandlerForbidden as exc:
+            return Response(
+                {"code": "handler_forbidden", "detail": str(exc)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except AlertHandlerInvalid as exc:
+            return Response(
+                {"code": "handler_invalid", "detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except AlertHandlerConflict as exc:
+            return Response(
+                {"code": "handler_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(self.alert_service.serialize(reassigned))
+
     @action(methods=("get",), detail=True)
     @HasPermission("events-View")
     def snapshots(self, request, *args, **kwargs):

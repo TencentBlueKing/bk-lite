@@ -110,7 +110,7 @@ class DjangoApmAlertService:
         actor=None,
     ) -> list[dict]:
         event_queryset = ApmEvent.objects.exclude(
-            action__in=(ApmEvent.Action.CLAIMED, ApmEvent.Action.ASSIGNED)
+            action__in=(ApmEvent.Action.CLAIMED, ApmEvent.Action.ASSIGNED, ApmEvent.Action.REASSIGNED)
         )
         if status_group == "active":
             event_queryset = event_queryset.filter(alert__status=ApmAlert.Status.ACTIVE)
@@ -341,6 +341,44 @@ class DjangoApmAlertService:
             )
 
     @staticmethod
+    def notify_reassigned(alert: ApmAlert) -> None:
+        policy = ApmPolicy.objects.filter(id=alert.policy_id).first() if alert.policy_id else None
+        if policy is None:
+            return
+        handlers = [str(item) for item in (alert.handlers or []) if item not in (None, "")]
+        if not handlers:
+            return
+        title = f"APM {policy.name} 转派"
+        body = alert.policy_name or policy.name
+        payload = {
+            "action": "reassigned",
+            "alert_id": str(alert.id),
+            "external_id": alert.external_id,
+            "organizations": list(alert.organizations or []),
+            "title": title,
+            "description": body,
+        }
+        for target in policy.notification_targets.filter(
+            delivery_mode=ApmPolicyNotificationTarget.DeliveryMode.MESSAGE,
+            recipient_mode=ApmPolicyNotificationTarget.RecipientMode.SYSTEM_USER,
+        ).order_by("channel_id", "id"):
+            ApmAlertOutbox.objects.get_or_create(
+                event_key=f"reassign:{alert.id}:{uuid4().hex}:channel:{target.channel_id}",
+                defaults={
+                    "event": None,
+                    "channel_id": target.channel_id,
+                    "channel_name": target.channel_name,
+                    "channel_type": target.channel_type,
+                    "delivery_mode": target.delivery_mode,
+                    "receivers": handlers,
+                    "recipients": handlers,
+                    "title": title[:512],
+                    "body": body,
+                    "payload": payload,
+                },
+            )
+
+    @staticmethod
     def _is_int_identifier(value) -> bool:
         if isinstance(value, bool):
             return False
@@ -448,17 +486,50 @@ class DjangoApmAlertService:
         ).exists()
 
     @staticmethod
-    def _lock_assignable_alert(alert_id, *, operable_qs=None) -> ApmAlert:
+    def _actor_in_handlers(handlers, actor) -> bool:
+        allowed = set()
+        for item in handlers or []:
+            if item in (None, ""):
+                continue
+            allowed.add(item)
+            allowed.add(str(item))
+            if DjangoApmAlertService._is_int_identifier(item):
+                allowed.add(int(item))
+        for value in DjangoApmAlertService.handler_match_values(actor):
+            if value in allowed or str(value) in allowed:
+                return True
+            if DjangoApmAlertService._is_int_identifier(value) and int(value) in allowed:
+                return True
+        return False
+
+    @staticmethod
+    def _lock_alert(alert_id, *, operable_qs=None) -> ApmAlert:
         try:
             locked = ApmAlert.objects.select_for_update().get(id=alert_id)
         except ApmAlert.DoesNotExist as exc:
             raise AlertHandlerForbidden("没有操作该告警的权限") from exc
         if operable_qs is not None and not operable_qs.filter(pk=locked.pk).exists():
             raise AlertHandlerForbidden("没有操作该告警的权限")
+        return locked
+
+    @staticmethod
+    def _lock_assignable_alert(alert_id, *, operable_qs=None) -> ApmAlert:
+        locked = DjangoApmAlertService._lock_alert(alert_id, operable_qs=operable_qs)
         if locked.status != ApmAlert.Status.ACTIVE:
             raise AlertHandlerConflict("只有空处理人的活跃告警可以认领或分派")
         if list(locked.handlers or []):
             raise AlertHandlerConflict("告警已有处理人")
+        return locked
+
+    @staticmethod
+    def _lock_reassignable_alert(alert_id, *, actor, operable_qs=None) -> ApmAlert:
+        locked = DjangoApmAlertService._lock_alert(alert_id, operable_qs=operable_qs)
+        if locked.status != ApmAlert.Status.ACTIVE:
+            raise AlertHandlerConflict("只有活跃告警可以转派")
+        if not list(locked.handlers or []):
+            raise AlertHandlerConflict("告警没有处理人，请先认领或分派")
+        if not DjangoApmAlertService._actor_in_handlers(locked.handlers, actor):
+            raise AlertHandlerConflict("只有当前处理人可以把告警转派给其他人")
         return locked
 
     @staticmethod
@@ -483,6 +554,27 @@ class DjangoApmAlertService:
         transaction.on_commit(_notify)
 
     @staticmethod
+    def _schedule_reassign_notification(alert: ApmAlert) -> None:
+        policy_id = alert.policy_id
+        alert_id = alert.id
+
+        def _notify():
+            policy = ApmPolicy.objects.filter(id=policy_id).first() if policy_id else None
+            if policy is None or not DjangoApmAlertService._has_person_channel(policy):
+                logger.debug(
+                    "event=assign_notify_skipped alert_id=%s reason=%s",
+                    alert_id,
+                    "policy_deleted" if policy is None else "no_person_channel",
+                )
+                return
+            current = ApmAlert.objects.filter(id=alert_id).first()
+            if current is None:
+                return
+            DjangoApmAlertService.notify_reassigned(current)
+
+        transaction.on_commit(_notify)
+
+    @staticmethod
     def _actor_name(actor) -> str:
         return getattr(actor, "username", "") or str(actor)
 
@@ -492,12 +584,18 @@ class DjangoApmAlertService:
         operator = DjangoApmAlertService._actor_name(actor)
         if action == ApmEvent.Action.CLAIMED:
             return f"{operator} 认领，处理人变为 {names}"
+        if action == ApmEvent.Action.REASSIGNED:
+            return f"{operator} 转派给 {names}"
         return f"{operator} 分派给 {names}"
 
     @staticmethod
     def _write_handler_event(alert: ApmAlert, *, action, actor) -> None:
         occurred_at = timezone.now()
-        action_label = "认领" if action == ApmEvent.Action.CLAIMED else "分派"
+        action_label = {
+            ApmEvent.Action.CLAIMED: "认领",
+            ApmEvent.Action.ASSIGNED: "分派",
+            ApmEvent.Action.REASSIGNED: "转派",
+        }.get(action, "分派")
         ApmEvent.objects.create(
             event_id=f"{alert.external_id}:{action}:{uuid4().hex}",
             alert=alert,
@@ -537,4 +635,15 @@ class DjangoApmAlertService:
             DjangoApmAlertService._write_handler_event(locked, action=ApmEvent.Action.ASSIGNED, actor=actor)
             DjangoApmAlertService._schedule_assign_notification(locked)
         logger.info("event=alert_assigned alert_id=%s handler_count=%s", alert.id, len(locked.handlers))
+        return ApmAlert.objects.get(id=alert.id)
+
+    @staticmethod
+    def reassign(alert: ApmAlert, *, handlers, actor, operable_qs=None) -> ApmAlert:
+        with transaction.atomic():
+            locked = DjangoApmAlertService._lock_reassignable_alert(alert.id, actor=actor, operable_qs=operable_qs)
+            locked.handlers = DjangoApmAlertService.normalize_assign_handlers(handlers, locked.organizations)
+            locked.save(update_fields=("handlers", "updated_at"))
+            DjangoApmAlertService._write_handler_event(locked, action=ApmEvent.Action.REASSIGNED, actor=actor)
+            DjangoApmAlertService._schedule_reassign_notification(locked)
+        logger.info("event=alert_reassigned alert_id=%s handler_count=%s", alert.id, len(locked.handlers))
         return ApmAlert.objects.get(id=alert.id)

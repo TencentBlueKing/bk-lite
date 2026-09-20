@@ -82,7 +82,7 @@ const alert: ApmAlert = {
   started_at: '2026-08-14T02:00:00Z',
   ended_at: null,
   last_event_at: '2026-08-14T02:10:00Z',
-  event_count: 3,
+  event_count: 4,
   events: [
     {
       id: 'e1',
@@ -113,12 +113,22 @@ const alert: ApmAlert = {
       occurred_at: '2026-08-14T02:06:00Z',
       title: '分派',
       description: 'sre 分派给 bob'
+    },
+    {
+      id: 'e4',
+      event_id: 'evt-reassigned',
+      action: 'reassigned',
+      severity: 'error',
+      value: '0.2',
+      occurred_at: '2026-08-14T02:08:00Z',
+      title: '转派',
+      description: 'sre 转派给 alice'
     }
   ]
 };
 
 describe('APM 告警详情事件列表', { timeout: 15000 }, () => {
-  it('事件流展示认领与分派，不把它们画进指标快照图', async () => {
+  it('事件流展示认领、分派与转派，不把它们画进指标快照图', async () => {
     const metricSnapshot = {
       unit: 'ratio',
       aggregation: 'avg' as const,
@@ -161,8 +171,10 @@ describe('APM 告警详情事件列表', { timeout: 15000 }, () => {
     await userEvent.click(screen.getByRole('tab', { name: '事件' }));
     expect(await screen.findByText('认领')).toBeTruthy();
     expect(screen.getByText('分派')).toBeTruthy();
+    expect(screen.getByText('转派')).toBeTruthy();
     expect(screen.getByText('sre 认领，处理人变为 sre')).toBeTruthy();
     expect(screen.getByText('sre 分派给 bob')).toBeTruthy();
+    expect(screen.getByText('sre 转派给 alice')).toBeTruthy();
   });
 
   it('传入 eventEvidenceLoading 时应渲染证据加载态', async () => {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   canClaimOrAssignAlert,
+  canReassignAlert,
   formatAlertHandlers,
-  hasAlertHandlers
+  hasAlertHandlers,
+  isHandlerLifecycleEvent
 } from '../alertHandlerUtils';
 
 describe('APM 告警处理人操作', () => {
@@ -11,6 +13,14 @@ describe('APM 告警处理人操作', () => {
     expect(canClaimOrAssignAlert('active', [])).toBe(true);
     expect(canClaimOrAssignAlert('active', [7])).toBe(false);
     expect(canClaimOrAssignAlert('closed', [])).toBe(false);
+  });
+
+  it('当前处理人的活跃告警可转派，空单或非处理人不可', () => {
+    expect(canReassignAlert('active', [7], { id: 7, username: 'bob' })).toBe(true);
+    expect(canReassignAlert('active', [7], { id: 8, username: 'alice' })).toBe(false);
+    expect(canReassignAlert('active', [], { id: 7, username: 'bob' })).toBe(false);
+    expect(isHandlerLifecycleEvent('reassigned')).toBe(true);
+    expect(isHandlerLifecycleEvent('triggered')).toBe(false);
   });
 
   it('优先用 handlers_display', () => {
