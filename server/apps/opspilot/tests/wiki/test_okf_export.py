@@ -107,6 +107,13 @@ def test_export_okf_endpoint_without_generation_returns_409(api_client, wiki_fac
 
 
 @pytest.mark.django_db
+def test_export_okf_endpoint_rejects_cross_team(api_client, wiki_factory):
+    foreign = wiki_factory.knowledge_base(name="foreign-okf", team=[2])
+    response = api_client.get(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{foreign.id}/export_okf/")
+    assert response.status_code == 403, response.content
+
+
+@pytest.mark.django_db
 def test_export_okf_endpoint_quota_returns_400(api_client, wiki_factory, monkeypatch):
     from apps.opspilot.viewsets import wiki_kb_view
 
