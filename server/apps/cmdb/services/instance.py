@@ -3028,17 +3028,16 @@ class InstanceManage(object):
         """
         logger.info(f"[InstanceManage.fulltext_search] 搜索关键词: {search}, 区分大小写: {case_sensitive}")
 
-        # 构建权限参数
-        permission_params, _ = cls._build_permission_params(permission_map, creator)
+        permission_params, permission_params_dict = cls._build_permission_params(permission_map, creator)
 
         with GraphClient() as ag:
-            # 调用 full_text，保留全文搜索逻辑
             data = ag.full_text(
                 search=search,
                 permission_params=permission_params,
-                inst_name_params="",  # 实例名称权限已包含在 permission_params 中
-                created="",  # 创建人权限已包含在 permission_params 中
+                inst_name_params="",
+                created="",
                 case_sensitive=case_sensitive,
+                permission_params_dict=permission_params_dict,
             )
 
         logger.info(f"[InstanceManage.fulltext_search] 返回 {len(data)} 条结果")

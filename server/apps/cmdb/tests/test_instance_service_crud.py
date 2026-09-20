@@ -608,10 +608,19 @@ def test_instance_association_by_asso_id_missing(fake_graph):
 
 @pytest.mark.django_db
 def test_fulltext_search(fake_graph, monkeypatch):
-    monkeypatch.setattr(f"{MODULE}.InstanceManage._build_permission_params", classmethod(lambda cls, pmap, creator="": ("", {})))
-    fake_graph(MODULE, full_text=[{"_id": 1, "inst_name": "h1", "model_id": "host"}])
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage._build_permission_params",
+        classmethod(lambda cls, pmap, creator="": ("n.organization IN $list1", {"list1": [1]})),
+    )
+    graph = fake_graph(MODULE, full_text=[{"_id": 1, "inst_name": "h1", "model_id": "host"}])
     out = InstanceManage.fulltext_search(search="h", permission_map={1: {"inst_names": []}})
     assert len(out) == 1
+    name, _args, kwargs = next(call for call in graph.calls if call[0] == "full_text")
+    assert name == "full_text"
+    assert kwargs["permission_params"] == "n.organization IN $list1"
+    assert kwargs["inst_name_params"] == ""
+    assert kwargs["created"] == ""
+    assert kwargs["permission_params_dict"] == {"list1": [1]}
 
 
 @pytest.mark.django_db
