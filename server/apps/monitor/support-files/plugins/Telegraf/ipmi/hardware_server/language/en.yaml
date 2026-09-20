@@ -91,9 +91,11 @@ monitor_object_metric:
         more effective traffic management and optimization.
     ipmi_chassis_power_state:
       name: Power State
-      desc: The power state indicator is used to monitor if the device is powered
-        on. Its value can indicate whether the power is on or off. It is mainly used
-        for remote management and monitoring of the device's power state.
+      desc: The power state indicator monitors whether the device is powered on. It
+        prefers the SDR host_power sensor when present, and otherwise uses Telegraf
+        chassis_power_status (1=on mapped to 1/normal, 0=off mapped to 2/abnormal).
+        It is mainly used for remote management and monitoring of the device's power
+        state.
     ipmi_fan_speed_rpm:
       name: Fan Speed
       desc: The fan speed, measured in revolutions per minute (RPM), monitors the
