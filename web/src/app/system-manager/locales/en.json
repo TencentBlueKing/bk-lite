@@ -174,6 +174,7 @@
         "phone": "Phone",
         "temporary": "Temporary",
         "superuserTip": "Super administrator has all system permissions, including managing organizations, users, and accessing all application data",
+        "syncedContactOverwriteTip": "This user is synced from an external source. Changes to email or phone take effect immediately, but will be overwritten if the source provides those fields on the next sync.",
         "username": "Username",
         "password": "Password",
         "confirmPassword": "Confirm Password",

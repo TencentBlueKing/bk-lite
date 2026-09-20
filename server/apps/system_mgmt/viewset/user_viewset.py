@@ -811,8 +811,16 @@ class UserViewSet(ViewSetUtils):
         params["groups"] = groups
         is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
-        if not is_synced_user and not self._is_valid_phone(params.get("phone")):
-            return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")})
+        if "email" in params:
+            email_value = params.get("email")
+            if not isinstance(email_value, str) or not email_value.strip():
+                return JsonResponse({"result": False, "message": loader.get("error.email_required")}, status=400)
+            params["email"] = email_value.strip()
+        if "phone" in params and isinstance(params.get("phone"), str):
+            params["phone"] = params["phone"].strip()
+        should_validate_phone = (not is_synced_user) or ("phone" in params)
+        if should_validate_phone and not self._is_valid_phone(params.get("phone")):
+            return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")}, status=400)
         if is_superuser:
             params["roles"] = [admin_role_id]
         else:
@@ -843,10 +851,10 @@ class UserViewSet(ViewSetUtils):
             if not is_synced_user:
                 update_fields["display_name"] = params.get("lastName")
                 update_fields["group_list"] = params.get("groups")
-                if "email" in params:
-                    update_fields["email"] = params["email"]
-                if "phone" in params:
-                    update_fields["phone"] = params["phone"]
+            if "email" in params:
+                update_fields["email"] = params["email"]
+            if "phone" in params:
+                update_fields["phone"] = params["phone"]
 
             User.objects.filter(id=pk).update(**update_fields)
             # 清除用户菜单缓存（缓存键格式为 menus-user:{user_id}）
