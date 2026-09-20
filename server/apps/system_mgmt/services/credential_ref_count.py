@@ -113,8 +113,10 @@ def attach_public_refs(items, queriers=None):
 
 def assert_credential_unreferenced(credential_id, queriers=None):
     module_counts = query_module_counts([credential_id], queriers=queriers)
-    if any(counts is None for counts in module_counts.values()) or not module_counts:
-        raise CredentialServiceError("in_use")
-    total = sum(counts.get(credential_id, 0) for counts in module_counts.values())
+    total = 0
+    for counts in module_counts.values():
+        if counts is None:
+            continue
+        total += counts.get(credential_id, 0)
     if total > 0:
         raise CredentialServiceError("in_use")

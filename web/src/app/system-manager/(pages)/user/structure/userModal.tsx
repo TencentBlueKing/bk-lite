@@ -155,6 +155,14 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     >
       <Spin spinning={loading}>
         <Form ref={formRef} layout="vertical">
+          {type === 'edit' && isSyncedUser && (
+            <Alert
+              message={t('system.user.form.syncedContactOverwriteTip')}
+              type="info"
+              showIcon
+              className="mb-4"
+            />
+          )}
           <Form.Item
             name="username"
             label={t('system.user.form.username')}
@@ -170,17 +178,13 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             label={t('system.user.form.email')}
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
-            {type === 'edit' && isSyncedUser
-              ? <Input disabled />
-              : renderSensitiveInput('email', `${t('common.inputMsg')}${t('system.user.form.email')}`)}
+            {renderSensitiveInput('email', `${t('common.inputMsg')}${t('system.user.form.email')}`)}
           </Form.Item>
           <Form.Item
             name="phone"
             label={t('system.user.form.phone')}
           >
-            {type === 'edit' && isSyncedUser
-              ? <Input disabled />
-              : renderSensitiveInput('phone', `${t('common.inputMsg')}${t('system.user.form.phone')}`)}
+            {renderSensitiveInput('phone', `${t('common.inputMsg')}${t('system.user.form.phone')}`)}
           </Form.Item>
           <Form.Item
             name="lastName"

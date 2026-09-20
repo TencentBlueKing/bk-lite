@@ -1067,7 +1067,8 @@ async def test_run_task_forwards_stream_context_to_run_command(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkeypatch):
+@pytest.mark.parametrize("module", ["raw", "shell"])
+async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkeypatch, module):
     service = _make_service(tmp_path)
     service.nc = RecordingNATSClient()
     captured = {}
@@ -1078,7 +1079,7 @@ async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkey
         {
             "execute_timeout": 90,
             "stream_remote_output": True,
-            "module": "shell",
+            "module": module,
             "module_args": "echo first; sleep 20; echo second",
             "extra_vars": {"ansible_shell_executable": "/bin/bash"},
         },

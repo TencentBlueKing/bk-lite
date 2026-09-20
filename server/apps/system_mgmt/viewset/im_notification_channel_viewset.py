@@ -50,22 +50,40 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 
-    def _validate_team_in_user_scope(self, request, team_values):
+    def _normalize_team_ids(self, team_values):
+        if isinstance(team_values, (int, str)):
+            team_values = [team_values]
+        if team_values is None:
+            return [], False
+        if not isinstance(team_values, (list, tuple, set)):
+            return [], True
+
+        normalized = []
+        for value in team_values:
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                return [], True
+            if parsed <= 0:
+                return [], True
+            normalized.append(parsed)
+        return normalized, False
+
+    def _team_required_error(self):
+        message = self.loader.get("error.channel_team_required", "请选择渠道所属组织") if self.loader else "请选择渠道所属组织"
+        return JsonResponse({"result": False, "message": message}, status=400)
+
+    def _validate_team_in_user_scope(self, request, team_values, require_team=False):
+        normalized, has_invalid_team = self._normalize_team_ids(team_values)
+        if has_invalid_team or (require_team and not normalized):
+            return False, self._team_required_error()
+
         if getattr(request.user, "is_superuser", False):
             return True, None
 
         user_group_ids = self._get_user_group_ids(request.user)
         if not user_group_ids:
             return False, JsonResponse({"result": False, "message": "无权访问该团队数据"}, status=403)
-
-        normalized = []
-        if isinstance(team_values, (int, str)):
-            team_values = [team_values]
-        for value in team_values or []:
-            try:
-                normalized.append(int(value))
-            except (TypeError, ValueError):
-                continue
 
         invalid = set(normalized) - user_group_ids
         if invalid:
@@ -97,7 +115,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
     @HasPermission("channel_list-Add")
     def create(self, request, *args, **kwargs):
         team_values = request.data.get("team")
-        is_valid, error_response = self._validate_team_in_user_scope(request, team_values)
+        is_valid, error_response = self._validate_team_in_user_scope(request, team_values, require_team=True)
         if not is_valid:
             return error_response
 
@@ -113,12 +131,13 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
         if not is_valid:
             return error_response
 
-        team_values = request.data.get("team") or getattr(obj, "team", None)
-        is_valid, error_response = self._validate_team_in_user_scope(request, team_values)
+        has_team = "team" in request.data
+        team_values = request.data.get("team") if has_team else getattr(obj, "team", None)
+        is_valid, error_response = self._validate_team_in_user_scope(request, team_values, require_team=has_team)
         if not is_valid:
             return error_response
 
-        response = super().update(request, *args, **kwargs)
+        response = super().update(request, *args, partial=True, **kwargs)
         if response.status_code == 200:
             log_operation(request, "update", "channel", f"编辑IM应用通知: {response.data.get('name', '')}")
         return response

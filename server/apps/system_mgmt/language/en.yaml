@@ -69,6 +69,7 @@ error:
   password_invalid_characters: Password contains invalid characters. Only printable ASCII characters are allowed.
   initial_password_generation_failed: Unable to generate an initial password that meets the password policy
   invalid_phone: Invalid phone number format
+  email_required: Email cannot be empty
   initial_password_not_configured: Local user initial password is not configured
   initial_password_email_channel_unavailable: Initial password email channel does not exist or is unavailable
   initial_password_email_channel_invalid: Initial password email channel must be an email channel

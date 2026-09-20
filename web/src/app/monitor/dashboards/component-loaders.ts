@@ -32,6 +32,7 @@ const COMMUNITY_DASHBOARD_COMPONENT_LOADERS: Record<string, DashboardComponentLo
   elasticsearch: () => import('./objects/elasticsearch'),
   oracle: () => import('./objects/oracle'),
   influxdb: () => import('./objects/influxdb'),
+  'hardware-server': () => import('./objects/hardware-server'),
   host: () => import('./objects/host'),
   process: () => import('./objects/process'),
   website: () => import('./objects/website'),

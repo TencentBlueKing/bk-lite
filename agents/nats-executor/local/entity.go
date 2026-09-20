@@ -4,6 +4,8 @@ package local
 const (
 	ShellTypeSh         = "sh"         // Unix Shell（默认）
 	ShellTypeBash       = "bash"       // Bash Shell
+	ShellTypePython     = "python"     // Python
+	ShellTypePython3    = "python3"    // Python 3
 	ShellTypeBat        = "bat"        // Windows 批处理（cmd.exe）
 	ShellTypeCmd        = "cmd"        // Windows 命令提示符（同 bat）
 	ShellTypePowerShell = "powershell" // Windows PowerShell
