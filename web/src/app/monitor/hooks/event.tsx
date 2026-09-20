@@ -161,6 +161,7 @@ const useEventActionMap = () => {
       escalated: t('monitor.events.eventEscalated'),
       claimed: t('monitor.events.eventClaimed'),
       assigned: t('monitor.events.eventAssigned'),
+      reassigned: t('monitor.events.eventReassigned'),
       recovered: t('monitor.events.eventRecovered'),
       closed: t('monitor.events.eventClosed'),
     }),

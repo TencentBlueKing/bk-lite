@@ -175,6 +175,7 @@ class MonitorEvent(models.Model):
         ESCALATED = "escalated", "级别升级"
         CLAIMED = "claimed", "认领"
         ASSIGNED = "assigned", "分派"
+        REASSIGNED = "reassigned", "转派"
         RECOVERED = "recovered", "恢复"
         CLOSED = "closed", "人工关闭"
 
