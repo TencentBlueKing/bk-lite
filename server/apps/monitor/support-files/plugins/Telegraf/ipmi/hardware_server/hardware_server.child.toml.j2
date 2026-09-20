@@ -2,6 +2,7 @@
     startup_error_behavior = "retry"
     servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@{{ protocol }}({{ ip }})"]
     interval = "{{ interval }}s"
+    sensors = ["sdr", "chassis_power_status"]
     [inputs.ipmi_sensor.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

@@ -46,6 +46,9 @@ def test_template_collects_raw_ipmi_sensor_only(toml_text):
     parsed = tomllib.loads(rendered)
 
     assert list(parsed["inputs"]) == ["ipmi_sensor"]
+    ipmi = parsed["inputs"]["ipmi_sensor"][0]
+    assert ipmi["sensors"] == ["sdr", "chassis_power_status"]
+    assert "dcmi_power_reading" not in ipmi["sensors"]
     assert "exec" not in parsed.get("inputs", {})
     assert "processors" not in parsed
     assert "ipmi_normalizer.star" not in toml_text
@@ -55,10 +58,15 @@ def test_template_collects_raw_ipmi_sensor_only(toml_text):
 @pytest.mark.unit
 def test_manifest_keeps_pre_expansion_metric_set(metrics):
     names = [metric["name"] for metric in metrics["metrics"]]
+    power_state_query = metrics["metrics"][0]["query"]
 
     assert names == LEGACY_METRICS
-    assert metrics["metrics"][0]["query"].startswith("ipmi_sensor_status{")
-    assert 'name=~"host_power"' in metrics["metrics"][0]["query"]
+    assert power_state_query.startswith("max(ipmi_sensor_status{")
+    assert 'name=~"host_power"' in power_state_query
+    assert " or " in power_state_query
+    assert "2 - max(ipmi_sensor_value{" in power_state_query
+    assert 'name="chassis_power_status"' in power_state_query
+    assert power_state_query.count("by (instance_id)") == 2
     assert metrics["metrics"][1]["query"].startswith("ipmi_sensor_value{")
     assert metrics["support_collect_detect"] is True
 

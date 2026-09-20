@@ -1,8 +1,8 @@
 """Targeted Redfish hardware-server monitor collector.
 
-Follows Systems / Managers / Chassis Thermal+Power, then bounded Storage and
-Chassis NetworkAdapters. Does not crawl Sensors, logs, DIMMs, drives, or
-EthernetInterfaces.
+Follows Systems / Managers / Chassis Thermal+Power, then bounded Storage,
+Storage.Drives, and Chassis NetworkAdapters. Does not crawl Sensors, logs,
+DIMMs, or EthernetInterfaces.
 """
 
 from __future__ import annotations
@@ -30,14 +30,15 @@ FORBIDDEN_URI_PARTS = (
     "/logs/",
     "/memory",
     "/processors",
-    "/drives",
     "/ethernetinterfaces",
     "/telemetryservice",
 )
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_STORAGE_RESOURCES = 8
+MAX_DRIVES = 32
 MAX_NETWORK_ADAPTERS = 8
 MAX_NETWORK_PORTS = 16
+PSU_DELIVERING_MIN_WATTS = 20.0
 
 
 def now_ms() -> int:
@@ -148,6 +149,17 @@ def put_metric(current: dict[str, Any], name: str, value: Any, dims: list[tuple[
     current[name] = gauge(value)
 
 
+def resource_state(status: Any) -> str:
+    if not isinstance(status, dict):
+        return ""
+    return str(status.get("State") or "").strip().lower()
+
+
+def is_inlet_sensor(sensor: dict[str, Any], name: str) -> bool:
+    haystacks = (name, as_text(sensor.get("PhysicalContext")))
+    return any(token in text.lower() for text in haystacks for token in ("inlet", "intake"))
+
+
 def port_speed_mbps(port: dict[str, Any]) -> float | None:
     mbps = as_float(port.get("CurrentLinkSpeedMbps"))
     if mbps is not None:
@@ -163,7 +175,7 @@ class RedfishMonitorError(ValueError):
 
 
 class RedfishCollector(BaseCollector):
-    """Collect BMC health, thermal, power, storage rollup, and NIC metrics over Redfish."""
+    """Collect BMC health, thermal, power, storage/drive, and NIC metrics over Redfish."""
 
     def __init__(self, params: dict[str, Any], *, transport=None):
         super().__init__(params)
@@ -356,6 +368,21 @@ class RedfishCollector(BaseCollector):
         collection_link = odata_id(adapter.get("Ports")) or odata_id(adapter.get("NetworkPorts"))
         return await self._list_resources(client, collection_link, limit=remaining)
 
+    async def _list_drives(self, client: httpx.AsyncClient, storages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        drives: list[dict[str, Any]] = []
+        for storage in storages:
+            if len(drives) >= MAX_DRIVES:
+                break
+            remaining = MAX_DRIVES - len(drives)
+            for item in (storage.get("Drives") or [])[:remaining]:
+                link = odata_id(item)
+                if not link:
+                    continue
+                payload = await self._get_json(client, link, optional=True)
+                if isinstance(payload, dict):
+                    drives.append(payload)
+        return drives
+
     def _emit_system_metrics(self, current: dict[str, Any], system: dict[str, Any], manager: dict[str, Any] | None) -> None:
         put_metric(current, "redfish_system_health", health_code(system.get("Status")))
         put_metric(current, "redfish_system_power_state", power_state_code(system.get("PowerState")))
@@ -385,13 +412,19 @@ class RedfishCollector(BaseCollector):
             if not name:
                 continue
             dims = [("name", name)]
-            put_metric(current, "redfish_temperature_celsius", as_float(sensor.get("ReadingCelsius")), dims)
-            put_metric(
-                current,
-                "redfish_temperature_upper_critical_celsius",
-                as_float(sensor.get("UpperThresholdCritical")),
-                dims,
-            )
+            reading = as_float(sensor.get("ReadingCelsius"))
+            upper = as_float(sensor.get("UpperThresholdCritical"))
+            put_metric(current, "redfish_temperature_celsius", reading, dims)
+            put_metric(current, "redfish_temperature_upper_critical_celsius", upper, dims)
+            if is_inlet_sensor(sensor, name) and reading is not None:
+                previous = current.get("redfish_inlet_temperature_celsius")
+                previous_value = previous[0][1] if isinstance(previous, list) else None
+                if previous_value is None or reading > previous_value:
+                    current["redfish_inlet_temperature_celsius"] = gauge(reading)
+                    if upper is not None:
+                        current["redfish_inlet_temperature_upper_critical_celsius"] = gauge(upper)
+                    else:
+                        current.pop("redfish_inlet_temperature_upper_critical_celsius", None)
         for fan in thermal.get("Fans") or []:
             if not isinstance(fan, dict):
                 continue
@@ -412,17 +445,27 @@ class RedfishCollector(BaseCollector):
     def _emit_power_metrics(self, current: dict[str, Any], power: dict | None) -> None:
         if not isinstance(power, dict):
             return
+        over_limit = 0
+        delivering = 0
+        psu_count = 0
         for control in power.get("PowerControl") or []:
             if not isinstance(control, dict):
                 continue
             consumed = as_float(control.get("PowerConsumedWatts"))
-            if consumed is None:
-                continue
+            limit_node = control.get("PowerLimit") if isinstance(control.get("PowerLimit"), dict) else {}
+            limit = as_float(limit_node.get("LimitInWatts"))
             name = member_name(control.get("Name"), control.get("MemberId"))
-            if name:
-                put_metric(current, "redfish_power_consumed_watts", consumed, [("name", name)])
-            else:
-                put_metric(current, "redfish_power_consumed_watts", consumed)
+            if consumed is not None:
+                if name:
+                    put_metric(current, "redfish_power_consumed_watts", consumed, [("name", name)])
+                else:
+                    put_metric(current, "redfish_power_consumed_watts", consumed)
+            if limit is not None:
+                put_metric(current, "redfish_power_limit_watts", limit, [("name", name)] if name else None)
+                if consumed is not None and consumed > limit:
+                    over_limit = 1
+        if current.get("redfish_power_limit_watts") is not None:
+            put_metric(current, "redfish_power_over_limit", over_limit)
         for supply in power.get("PowerSupplies") or []:
             if not isinstance(supply, dict):
                 continue
@@ -430,9 +473,18 @@ class RedfishCollector(BaseCollector):
             if not name:
                 continue
             dims = [("name", name)]
+            input_watts = as_float(supply.get("PowerInputWatts"))
+            is_delivering = 1 if input_watts is not None and input_watts > PSU_DELIVERING_MIN_WATTS else 0
+            psu_count += 1
+            delivering += is_delivering
             put_metric(current, "redfish_psu_health", health_code(supply.get("Status")), dims)
-            put_metric(current, "redfish_psu_input_watts", as_float(supply.get("PowerInputWatts")), dims)
+            put_metric(current, "redfish_psu_input_watts", input_watts, dims)
+            put_metric(current, "redfish_psu_output_watts", as_float(supply.get("PowerOutputWatts")), dims)
+            put_metric(current, "redfish_psu_capacity_watts", as_float(supply.get("PowerCapacityWatts")), dims)
             put_metric(current, "redfish_psu_input_voltage", as_float(supply.get("LineInputVoltage")), dims)
+            put_metric(current, "redfish_psu_delivering", is_delivering, dims)
+        if psu_count:
+            put_metric(current, "redfish_psu_redundant", 1 if delivering >= 2 else 0)
         for voltage in power.get("Voltages") or []:
             if not isinstance(voltage, dict):
                 continue
@@ -465,6 +517,26 @@ class RedfishCollector(BaseCollector):
                     [("id", controller_id), ("storage_id", storage_id)],
                 )
 
+    def _emit_drive_metrics(self, current: dict[str, Any], drives: list[dict[str, Any]]) -> None:
+        present = 0
+        for drive in drives:
+            if resource_state(drive.get("Status")) == "absent":
+                continue
+            name = member_name(drive.get("Name"), drive.get("Id"))
+            if not name:
+                continue
+            present += 1
+            dims = [("name", name)]
+            media_type = as_text(drive.get("MediaType"))
+            protocol = as_text(drive.get("Protocol"))
+            if media_type:
+                dims.append(("media_type", media_type))
+            if protocol:
+                dims.append(("protocol", protocol))
+            put_metric(current, "redfish_drive_health", health_code(drive.get("Status")), dims)
+            put_metric(current, "redfish_drive_life_percent", as_float(drive.get("PredictedMediaLifeLeftPercent")), dims)
+        put_metric(current, "redfish_drive_present_count", present)
+
     def _emit_nic_metrics(
         self,
         current: dict[str, Any],
@@ -492,6 +564,7 @@ class RedfishCollector(BaseCollector):
         power: dict | None,
         storages: list[dict[str, Any]],
         nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]],
+        drives: list[dict[str, Any]] | None = None,
     ) -> dict:
         resource_id = str(system.get("Id") or odata_id(system) or self.host)
         current: dict[str, Any] = {}
@@ -499,6 +572,7 @@ class RedfishCollector(BaseCollector):
         self._emit_thermal_metrics(current, thermal)
         self._emit_power_metrics(current, power)
         self._emit_storage_metrics(current, storages)
+        self._emit_drive_metrics(current, drives or [])
         self._emit_nic_metrics(current, nic_rows)
         if not current:
             raise RedfishMonitorError("Redfish scrape produced no metrics")
@@ -520,6 +594,7 @@ class RedfishCollector(BaseCollector):
             manager = await self._follow_collection(client, odata_id(root.get("Managers")) or "/redfish/v1/Managers")
             thermal, power, network_link = await self._chassis_thermal_power(client, odata_id(root.get("Chassis")) or "/redfish/v1/Chassis")
             storages = await self._list_resources(client, odata_id(system.get("Storage")), limit=MAX_STORAGE_RESOURCES)
+            drives = await self._list_drives(client, storages)
             adapters = await self._list_resources(client, network_link, limit=MAX_NETWORK_ADAPTERS)
             nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
             remaining_ports = MAX_NETWORK_PORTS
@@ -527,7 +602,7 @@ class RedfishCollector(BaseCollector):
                 ports = await self._adapter_ports(client, adapter, remaining_ports)
                 remaining_ports -= len(ports)
                 nic_rows.append((adapter, ports))
-            metric_dict = self._emit_metrics(system, manager, thermal, power, storages, nic_rows)
+            metric_dict = self._emit_metrics(system, manager, thermal, power, storages, nic_rows, drives)
             output = "\n".join(convert_to_prometheus(metric_dict)) + "\n"
             logger.info(
                 "event=redfish_collect_success monitor_type=%s system_id=%s",

@@ -703,52 +703,6 @@ async def host_hpux_remote_metrics(request):
     )
 
 
-def _parse_verify_tls(value) -> bool:
-    if value is None or value == "":
-        return True
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() not in {"0", "false", "no", "off"}
-
-
-@monitor_router.get("/redfish/metrics")
-async def redfish_metrics(request):
-    def build_params(req):
-        host = (req.headers.get("host") or req.headers.get("ip") or "").strip()
-        raw_port = req.headers.get("port") or 443
-        try:
-            port = int(raw_port)
-        except (TypeError, ValueError):
-            port = 443
-        return {
-            "monitor_type": "redfish",
-            "username": req.headers.get("username") or req.headers.get("user"),
-            "password": req.headers.get("password"),
-            "host": host,
-            "port": port,
-            "verify_tls": _parse_verify_tls(req.headers.get("verify_tls")),
-            "preflight_kind": "https",
-            "preflight_kind_explicit": True,
-            "tags": _standard_tags(
-                req,
-                defaults={
-                    "instance_type": "hardware_server",
-                    "collect_type": "redfish",
-                    "config_type": "hardware_server",
-                },
-            ),
-        }
-
-    return await _run_monitor_handler(
-        request,
-        monitor_type="redfish",
-        build_params=build_params,
-        accept_labels=lambda params: {"host": params.get("host")},
-        error_labels=lambda: {"host": request.headers.get("host")},
-        log_name="Redfish",
-    )
-
-
 @monitor_router.get("/cisco_meraki/metrics")
 async def cisco_meraki_metrics(request):
     def build_params(req):
@@ -781,4 +735,50 @@ async def cisco_meraki_metrics(request):
         accept_labels=lambda params: {"organization_id": params.get("organization_id")},
         error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
         log_name="Meraki",
+    )
+
+
+def _parse_verify_tls(raw: Any, default: bool = True) -> bool:
+    if raw in (None, ""):
+        return default
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+
+@monitor_router.get("/redfish/metrics")
+async def redfish_metrics(request):
+    def build_params(req):
+        raw_port = req.headers.get("port") or 443
+        try:
+            port = int(raw_port)
+        except (TypeError, ValueError):
+            port = 443
+        return {
+            "monitor_type": "redfish",
+            "username": req.headers.get("username"),
+            "password": req.headers.get("password"),
+            "host": (req.headers.get("host") or "").strip(),
+            "port": port,
+            "verify_tls": _parse_verify_tls(req.headers.get("verify_tls")),
+            "preflight_kind": "https",
+            "preflight_kind_explicit": True,
+            "instance_id": req.headers.get("instance_id", ""),
+            "tags": _standard_tags(
+                req,
+                defaults={
+                    "instance_type": "hardware_server",
+                    "collect_type": "redfish",
+                    "config_type": "hardware_server",
+                },
+            ),
+        }
+
+    return await _run_monitor_handler(
+        request,
+        monitor_type="redfish",
+        build_params=build_params,
+        accept_labels=lambda params: {"host": params.get("host")},
+        error_labels=lambda: {"host": request.headers.get("host")},
+        log_name="Redfish",
     )

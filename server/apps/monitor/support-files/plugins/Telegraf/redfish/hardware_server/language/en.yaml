@@ -1,8 +1,8 @@
 Hardware Server Redfish:
   name: Hardware Server Redfish General
-  desc: Collect generic DMTF Redfish BMC health, firmware, thermal, power, storage
-    rollup, and NIC metrics over HTTPS. Discovers resources by @odata.id and does
-    not split by brand or crawl Sensors, drives, or EthernetInterfaces.
+  desc: Collect generic DMTF Redfish BMC health, firmware, thermal, power, storage,
+    drive, and NIC metrics over HTTPS. Discovers resources by @odata.id and does
+    not split by brand or crawl Sensors, logs, DIMMs, or EthernetInterfaces.
 monitor_object:
   Hardware Server: Hardware Server
 monitor_object_type:
@@ -27,6 +27,12 @@ monitor_object_metric:
     redfish_temperature_celsius:
       name: Temperature
       desc: Chassis Thermal temperature readings in degrees Celsius.
+    redfish_inlet_temperature_celsius:
+      name: Inlet Temperature
+      desc: Inlet or intake sensor reading. Matches name or PhysicalContext. Highest reading wins when several match.
+    redfish_inlet_temperature_upper_critical_celsius:
+      name: Inlet Temperature Upper Critical
+      desc: UpperThresholdCritical of the selected inlet or intake sensor, in degrees Celsius.
     redfish_fan_speed:
       name: Fan Speed
       desc: Chassis Thermal fan readings. The unit label is typically RPM or Percent.
@@ -39,6 +45,24 @@ monitor_object_metric:
     redfish_psu_input_watts:
       name: PSU Input Power
       desc: Power-supply PowerInputWatts, in watts.
+    redfish_psu_output_watts:
+      name: PSU Output Power
+      desc: Power-supply PowerOutputWatts, in watts.
+    redfish_psu_capacity_watts:
+      name: PSU Capacity
+      desc: Power-supply PowerCapacityWatts, in watts.
+    redfish_psu_delivering:
+      name: PSU Delivering
+      desc: 1 when PowerInputWatts is greater than 20 W. Distinguishes an idle OK PSU from one delivering power.
+    redfish_psu_redundant:
+      name: PSU Redundant
+      desc: 1 when at least two power supplies are delivering more than 20 W.
+    redfish_power_limit_watts:
+      name: Power Limit
+      desc: PowerControl.PowerLimit.LimitInWatts, in watts.
+    redfish_power_over_limit:
+      name: Power Over Limit
+      desc: 1 when consumed watts exceed the configured power limit.
     redfish_firmware_info:
       name: Firmware
       desc: Manager.FirmwareVersion and System.BiosVersion as labels. The metric value is 1.
@@ -56,7 +80,16 @@ monitor_object_metric:
       desc: Power.Voltages.ReadingVolts, in volts.
     redfish_storage_health:
       name: Storage Health
-      desc: Systems Storage HealthRollup without enumerating each drive.
+      desc: Systems Storage HealthRollup.
+    redfish_drive_health:
+      name: Drive Health
+      desc: Per-drive Status.Health from Storage.Drives. Absent bays are skipped. Capped at 32 drives.
+    redfish_drive_present_count:
+      name: Present Drive Count
+      desc: Number of present drives after skipping Absent bays.
+    redfish_drive_life_percent:
+      name: Drive Life Remaining
+      desc: PredictedMediaLifeLeftPercent when the drive reports it.
     redfish_storage_controller_health:
       name: Storage Controller Health
       desc: Embedded StorageControllers[].Status from the Storage resource.

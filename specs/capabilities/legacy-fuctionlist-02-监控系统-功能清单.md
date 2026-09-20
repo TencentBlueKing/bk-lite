@@ -811,7 +811,7 @@ _The IPMI collection plugin is a tool used for gathering hardware monitoring dat
 
 | 指标分组 | 指标名 | 显示名 | 单位 | 中文含义 |
 |---|---|---|---|---|
-| Power | `ipmi_chassis_power_state` | Power State | [{"name":"正常","id":1,"color":"#1ac44a"},{"name":"异常","id":2,"color":"#ff4d4f"}] | 设备电源开关状态，监控是否上电（状态枚举） |
+| Power | `ipmi_chassis_power_state` | Power State | [{"name":"正常","id":1,"color":"#1ac44a"},{"name":"异常","id":2,"color":"#ff4d4f"}] | 设备电源开关状态，监控是否上电（状态枚举）。优先 SDR `host_power`，否则使用 Telegraf `chassis_power_status`（开机=1，关机=2） |
 | Power | `ipmi_power_watts` | Power | watts | 设备当前功耗（瓦特），评估能耗状况 |
 | Power | `ipmi_voltage_volts` | Voltage | volts | 设备各电源轨电压水平，监控供电稳定性 |
 | Environment | `ipmi_fan_speed_rpm` | Fan Speed | none | 设备风扇转速（转/分），监控风扇运行状态 |

@@ -5,10 +5,10 @@ Status: implemented
 ## Completion Evidence
 
 - 作业字段绑定下拉含「告警 ID」/`alert_id`；动作匹配规则字段集合未扩大。
-- 告警 OpenAPI 整组经 `@openapi_expose` 挂到 `/openapi/v1/alerts/{list,detail,events,assign,acknowledge,reassign,close,batch-action}`，锚点为业务 `alert_id`；请求未知字段（含数据库 `id`、`team`）→ `SCHEMA_INVALID`。
+- 告警 OpenAPI 整组经 `@openapi_expose` 挂到 `/openapi/v1/alerts/{list,detail,events,assign,acknowledge,reassign,close,batch-action,shield-create,shield-operate}`，以及 PUT/DELETE `alerts/shield`。查询与告警生命周期锚点为业务 `alert_id`；屏蔽策略按名称定位、仅能操作本人创建的记录。请求未知字段（含数据库 `id`、`team`）→ `SCHEMA_INVALID`。
 - 接口关闭（网关与旧 `/api/open` 共用 `AlertsOpenAPIService`）：待响应/处理中可关，不校验处理人；未分派/已处理/已关闭类状态拒绝。页面关闭仍仅处理中且须为当前处理人。
 - 列表筛选补 `resource_type` / `resource_id` 精确匹配，页面、旧路径、网关同时生效。
-- 双租户测试已登记 8 个 path。
+- 双租户测试已登记 11 个 path（含屏蔽策略创建、启停、修改、删除）。
 - 验证（2026-08-28，本机 Postgres，`uv run pytest ... --no-cov`）：
   - `apps/alerts/tests/test_alert_operator.py` API 关闭 + 默认关闭：**passed**
   - `apps/alerts/tests/test_filters.py`：**8 passed**
@@ -49,6 +49,10 @@ Status: implemented
   - `GET alerts/events`：query `alert_id`
   - `POST alerts/assign` / `alerts/acknowledge` / `alerts/reassign` / `alerts/close`：body 含 `alert_id`
   - `POST alerts/batch-action`：body 含 `alert_ids`（1 至 100 条）及与单条相同的操作字段
+  - `POST alerts/shield-create`：创建告警屏蔽策略，归属当前认证用户
+  - `POST alerts/shield-operate`：按名称启用或停用本人创建的屏蔽策略
+  - `PUT alerts/shield`：按名称修改本人创建的屏蔽策略（不改名）
+  - `DELETE alerts/shield`：按名称删除本人创建的屏蔽策略
 - 网关没有 URL 路径变量，`alert_id` 放在 query（读）或 JSON body（写）。旧散落路径可继续把 `alert_id` 放在 URL 里，语义相同。
 - 列表筛选与页面生效条件对齐，并补上页面会传但当前过滤集会丢掉的字段：`level`、`status`、`source_name`、`created_at_after` / `created_at_before`、`activate`、`my_alert`、`alert_id`、`title`、`content`、`has_incident`、`incident_id`、`rule_id`，新增 `resource_type`、`resource_id` 精确匹配。这些过滤对页面列表、旧 OpenAPI 和网关列表同时生效。
 - 网关分页遵循平台规范：`page` 从 1 起，`page_size` 默认 20、上限 500、越限钳制。旧路径分页上限维持现有 100，避免改变已有调用方。排序仍只允许 `created_at` 与 `-created_at`。

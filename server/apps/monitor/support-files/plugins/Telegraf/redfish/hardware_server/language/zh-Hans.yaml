@@ -1,6 +1,6 @@
 Hardware Server Redfish:
   name: 硬件服务器 Redfish 通用
-  desc: 通过 BMC 通用 Redfish HTTPS 采集整机健康、固件、温度、风扇、电源、存储汇总和网卡指标。按 @odata.id 发现资源，不按品牌型号拆分，也不爬 Sensors、磁盘或 EthernetInterfaces。
+  desc: 通过 BMC 通用 Redfish HTTPS 采集整机健康、固件、温度、风扇、电源、存储、磁盘和网卡指标。按 @odata.id 发现资源，不按品牌型号拆分，也不爬 Sensors、日志、内存条或 EthernetInterfaces。
 monitor_object:
   Hardware Server: 硬件服务器
 monitor_object_type:
@@ -25,6 +25,12 @@ monitor_object_metric:
     redfish_temperature_celsius:
       name: 温度
       desc: Chassis Thermal 温度传感器读数，单位摄氏度。
+    redfish_inlet_temperature_celsius:
+      name: 进风口温度
+      desc: 名称或 PhysicalContext 含 inlet/intake 的温度传感器。多路进风口取最高读数。
+    redfish_inlet_temperature_upper_critical_celsius:
+      name: 进风口温度严重上限
+      desc: 所选进风口传感器的 UpperThresholdCritical，单位摄氏度。
     redfish_fan_speed:
       name: 风扇转速
       desc: Chassis Thermal 风扇读数，单位见 unit 标签，通常为 RPM。
@@ -37,6 +43,24 @@ monitor_object_metric:
     redfish_psu_input_watts:
       name: 电源输入功率
       desc: 电源模块 PowerInputWatts，单位瓦特。
+    redfish_psu_output_watts:
+      name: 电源输出功率
+      desc: 电源模块 PowerOutputWatts，单位瓦特。
+    redfish_psu_capacity_watts:
+      name: 电源额定容量
+      desc: 电源模块 PowerCapacityWatts，单位瓦特。
+    redfish_psu_delivering:
+      name: 电源在供电
+      desc: 输入功率大于 20W 为 1，否则为 0。用于区分 Health=OK 但空闲的电源。
+    redfish_psu_redundant:
+      name: 电源冗余
+      desc: 至少两路电源正在供电为 1，否则为 0。
+    redfish_power_limit_watts:
+      name: 功率上限
+      desc: PowerControl.PowerLimit.LimitInWatts，单位瓦特。
+    redfish_power_over_limit:
+      name: 功耗超限
+      desc: 系统功耗超过功率上限时为 1。
     redfish_firmware_info:
       name: 固件版本
       desc: Manager.FirmwareVersion 与 System.BiosVersion，以标签上报，指标值为 1。
@@ -54,7 +78,16 @@ monitor_object_metric:
       desc: Power.Voltages.ReadingVolts，单位伏特。
     redfish_storage_health:
       name: 存储健康
-      desc: Systems Storage 子系统 HealthRollup，不逐盘采集。
+      desc: Systems Storage 子系统 HealthRollup。
+    redfish_drive_health:
+      name: 磁盘健康
+      desc: Storage.Drives 单盘 Status.Health，跳过空托架，单次最多 32 块。
+    redfish_drive_present_count:
+      name: 在位磁盘数
+      desc: 跳过 Absent 后的在位磁盘数量。
+    redfish_drive_life_percent:
+      name: 磁盘剩余寿命
+      desc: PredictedMediaLifeLeftPercent，仅 SSD 等上报该字段的磁盘有值。
     redfish_storage_controller_health:
       name: 存储控制器健康
       desc: Storage 资源内嵌 StorageControllers[].Status。
