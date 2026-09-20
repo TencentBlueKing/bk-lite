@@ -330,4 +330,69 @@ describe('APM 添加接入', () => {
     expect(await screen.findByText('复制失败，请手动选择并复制')).not.toBeNull();
     expect(document.querySelector('textarea')).toBeNull();
   });
+
+  it('代码块下方展示当前语言与运行方式的操作指引，而不是窗口临时性标题', async () => {
+    await generateSnippet();
+
+    expect(screen.queryByText(/仅在本窗口保留/)).toBeNull();
+    expect(screen.queryByText(/默认云区域 ·/)).toBeNull();
+    const code = document.querySelector('pre code');
+    const guide = screen.getByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。');
+    expect(code).not.toBeNull();
+    expect(code!.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('实例 ID 在应用进程启动时生成，每个副本唯一。')).not.toBeNull();
+  });
+
+  it('切换 Docker 后改用 Node.js 容器注入指引', async () => {
+    const user = await generateSnippet();
+    await user.click(screen.getByText('Docker 运行（-e 注入）'));
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      language: 'nodejs',
+      runtime: 'docker',
+    })), { timeout: 3000 });
+
+    expect(await screen.findByText('将以下安装命令写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。')).not.toBeNull();
+    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+  });
+
+  it('Python Kubernetes 使用 Pod 合并指引而不是 Node.js 主机句', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'spec:\n  template: {}',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Python 接入' }));
+    await user.click(screen.getByText('Kubernetes Pod（Downward API）'));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+
+    expect(await screen.findByText('将以下环境变量合并到应用 Pod，确保镜像以 `opentelemetry-instrument` 启动后滚动重启。')).not.toBeNull();
+    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+  });
+
+  it('Go 手动 SDK 展示源码接入指引', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'Go 无通用零代码探针',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Go 接入' }));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+
+    expect(await screen.findByText('按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。')).not.toBeNull();
+    expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
+  });
 });

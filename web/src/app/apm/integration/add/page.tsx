@@ -134,6 +134,41 @@ function requestErrorMessage(error: unknown, t: Translate) {
   return rawMessage || t('apm.integration.generateFailed', '生成接入配置失败，请稍后重试。');
 }
 
+function snippetOperationGuide(
+  language: ApmIngestSnippetInput['language'],
+  mode: SnippetMode,
+  t: Translate,
+): string {
+  const guides: Record<ApmIngestSnippetInput['language'], Record<SnippetMode, string>> = {
+    nodejs: {
+      agent: t('apm.integration.guideNodeHost', '在原有 Node.js 启动命令末尾追加以下内容，并重启应用。'),
+      docker: t('apm.integration.guideNodeDocker', '将以下安装命令写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideNodeKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 Node.js 自动探针后滚动重启。'),
+    },
+    java: {
+      agent: t('apm.integration.guideJavaHost', '在原有 Java 启动命令中加入以下内容，并重启应用。'),
+      docker: t('apm.integration.guideJavaDocker', '将 Java Agent 安装命令写入 Dockerfile，通过 `JAVA_TOOL_OPTIONS` 注入后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideJavaKubernetes', '将以下环境变量（含 `JAVA_TOOL_OPTIONS`）合并到应用 Pod，确保镜像包含 Java Agent 后滚动重启。'),
+    },
+    python: {
+      agent: t('apm.integration.guidePythonHost', '按以下脚本安装探针后，用 `opentelemetry-instrument` 包装原有 Python 启动命令并重启应用。'),
+      docker: t('apm.integration.guidePythonDocker', '将探针安装命令写入 Dockerfile，用 `-e` 注入环境变量并以 `opentelemetry-instrument` 启动容器。'),
+      kubernetes: t('apm.integration.guidePythonKubernetes', '将以下环境变量合并到应用 Pod，确保镜像以 `opentelemetry-instrument` 启动后滚动重启。'),
+    },
+    dotnet: {
+      agent: t('apm.integration.guideDotnetHost', '按以下脚本安装自动探针并导出环境变量后，用原有 `dotnet` 启动命令重启应用。'),
+      docker: t('apm.integration.guideDotnetDocker', '将自动探针安装进镜像，用 `-e` 注入 CLR 分析器环境变量后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideDotnetKubernetes', '将以下环境变量合并到应用 Pod，确保镜像包含 .NET 自动探针后滚动重启。'),
+    },
+    go: {
+      agent: t('apm.integration.guideGoHost', '按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。'),
+      docker: t('apm.integration.guideGoDocker', '将 SDK 依赖安装进镜像，完成 Go SDK 初始化后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideGoKubernetes', '将以下环境变量合并到应用 Pod；应用二进制需先完成 OpenTelemetry Go SDK 初始化，然后滚动重启。'),
+    },
+  };
+  return guides[language][mode];
+}
+
 export default function ApmIntegrationAddPage() {
   const searchParams = useSearchParams();
   const { t } = useTranslation();
@@ -448,11 +483,9 @@ export default function ApmIntegrationAddPage() {
 
           {snippet ? (
             <div className="rounded-lg bg-[var(--color-fill-1)] p-4">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">2</span><Typography.Text strong>{t('apm.integration.resultTitle', '生成结果')}</Typography.Text></div>
-                  <Typography.Text type="secondary" className="mt-1 block text-xs">{t('apm.integration.windowOnly', '{name} · 仅在本窗口保留', { name: snippet.cloud_region.name })}</Typography.Text>
-                </div>
+              <div className="mb-4 flex items-center gap-2">
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">2</span>
+                <Typography.Text strong>{t('apm.integration.resultTitle', '生成结果')}</Typography.Text>
               </div>
               <div>
                 <Typography.Text type="secondary" className="mb-1 block text-xs">{t('apm.integration.otlpHttpEndpoint', 'OTLP/HTTP 上报端点')}</Typography.Text>
@@ -472,12 +505,7 @@ export default function ApmIntegrationAddPage() {
               </div>
               <div className="mt-4 border-t border-[var(--color-border)] pt-4">
                 <div role="group" aria-labelledby="apm-shell-snippet-title" className="mb-2 flex items-center justify-between gap-3">
-                  <div>
-                    <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
-                    <Typography.Text type="secondary" className="mt-1 block text-xs">
-                      {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
-                    </Typography.Text>
-                  </div>
+                  <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
                   <Button
                     aria-label={isGo && mode !== 'kubernetes'
                       ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
@@ -492,6 +520,14 @@ export default function ApmIntegrationAddPage() {
                   >{t('apm.integration.copySnippet', '复制片段')}</Button>
                 </div>
                 <pre className="max-h-[420px] overflow-auto rounded-lg border border-[var(--color-code-block-border)] bg-[var(--color-code-block-bg)] p-4 font-mono text-sm leading-6 text-[var(--color-code-block-text)]"><code>{snippet.code}</code></pre>
+                {selectedMethod?.language ? (
+                  <Typography.Text className="mt-2 block text-sm text-[var(--color-text-2)]">
+                    {snippetOperationGuide(selectedMethod.language, mode, t)}
+                  </Typography.Text>
+                ) : null}
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
+                </Typography.Text>
               </div>
             </div>
           ) : null}

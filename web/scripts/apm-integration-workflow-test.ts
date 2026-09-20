@@ -28,7 +28,15 @@ assert.match(catalog, /name="service_name"/, '接入配置必须收集 service.n
 assert.match(catalog, /name="service_version"/, '接入配置必须收集 service.version');
 assert.match(catalog, /name="sample_rate"/, '接入配置必须能选择本次脚本的采样率');
 assert.doesNotMatch(catalog, /接入配置不会保存|APM Token/, '页面不应使用全局警示解释内部存储或鉴权实现');
-assert.match(catalog, /仅在本窗口保留/, '生成结果附近必须说明临时性');
+assert.doesNotMatch(catalog, /仅在本窗口保留|windowOnly/, '生成结果不得用云区域名拼出窗口临时性标题');
+assert.match(catalog, /<pre[\s\S]*<\/pre>[\s\S]*snippetOperationGuide/, '代码块下方必须给出按语言与运行方式变化的操作指引');
+assert.match(catalog, /在原有 Node\.js 启动命令末尾追加以下内容，并重启应用。/, 'Node.js 主机接入必须给出操作指引');
+assert.match(catalog, /在原有 Java 启动命令中加入以下内容，并重启应用。/, 'Java 主机接入必须使用独立操作指引');
+assert.match(catalog, /用 `opentelemetry-instrument` 包装原有 Python 启动命令并重启应用。/, 'Python 主机接入必须使用独立操作指引');
+assert.match(catalog, /用原有 `dotnet` 启动命令重启应用。/, '.NET 主机接入必须使用独立操作指引');
+assert.match(catalog, /审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。/, 'Go 手动 SDK 必须使用独立操作指引');
+assert.match(catalog, /写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。/, 'Docker 运行方式必须给出注入式操作指引');
+assert.match(catalog, /合并到应用 Pod/, 'Kubernetes 运行方式必须给出 Pod 合并指引');
 assert.doesNotMatch(catalog, /Token 仅在本窗口显示一次|credential|createIngestSource/, '接入配置不得创建接入源或签发 Token');
 assert.match(catalog, /suppressErrorNotification: true/, '页面内错误态存在时，目录请求必须禁止重复全局 toast');
 assert.match(apmApi, /RequestConfig/, 'APM API 必须允许调用方声明页面内错误呈现策略');
