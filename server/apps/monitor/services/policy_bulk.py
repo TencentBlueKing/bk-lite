@@ -3,10 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from apps.monitor.tasks.utils.policy_methods import (
-    LEGACY_ALGORITHM_MAPPING,
-    POLICY_ALGORITHMS,
-)
+from apps.monitor.tasks.utils.policy_methods import LEGACY_ALGORITHM_MAPPING, POLICY_ALGORITHMS
 from apps.monitor.utils.unit_converter import UnitConverter
 
 LEGACY_METRIC_UNIT_MAPPING = {
@@ -51,6 +48,16 @@ def _merge_asset_organizations(assets: list[dict[str, Any]]) -> list[Any]:
             seen.add(organization)
             organizations.append(organization)
     return organizations
+
+
+def _template_source_id(template: dict[str, Any]) -> int | None:
+    """批量下发时记录来源模板；无有效 id 时不写 FK。"""
+    raw_id = template.get("id")
+    try:
+        template_id = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+    return template_id if template_id > 0 else None
 
 
 def _template_metric_name(template: dict[str, Any]) -> str:
@@ -159,6 +166,9 @@ def build_bulk_policy_payloads(
             "forecast_lookback": template.get("forecast_lookback") or {},
             "recovery_threshold": template.get("recovery_threshold") or {},
         }
+        template_id = _template_source_id(template)
+        if template_id is not None:
+            payload["source_template"] = template_id
         if config.get("notice_type"):
             payload["notice_type"] = config["notice_type"]
         if "no_data" in enable_alerts:

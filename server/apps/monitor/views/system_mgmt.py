@@ -2,10 +2,10 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
-from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
@@ -54,9 +54,19 @@ class SystemMgmtView(ViewSet):
     def search_channel_list(self, request):
         actor_context = _build_actor_context(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
-        data = SystemMgmtUtils.search_channel_list(
-            actor_context,
-            teams=[actor_context["current_team"]],
-            include_children=include_children,
-        )
+        query = getattr(request, "GET", None)
+        channel_type = ""
+        channel_method = ""
+        if query is not None:
+            channel_type = query.get("channel_type") or ""
+            channel_method = query.get("channel_method") or ""
+        kwargs = {
+            "teams": [actor_context["current_team"]],
+            "include_children": include_children,
+        }
+        if channel_type:
+            kwargs["channel_type"] = channel_type
+        if channel_method:
+            kwargs["channel_method"] = channel_method
+        data = SystemMgmtUtils.search_channel_list(actor_context, **kwargs)
         return WebUtils.response_success(data)

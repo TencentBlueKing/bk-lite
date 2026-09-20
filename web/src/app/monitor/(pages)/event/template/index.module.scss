@@ -311,6 +311,20 @@
     overflow: hidden;
 }
 
+.cardActions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.cardActionBtn {
+    height: auto;
+    padding: 0;
+    font-size: 12px;
+    line-height: 18px;
+}
+
 .bulkBar {
     position: fixed;
     left: 50%;
