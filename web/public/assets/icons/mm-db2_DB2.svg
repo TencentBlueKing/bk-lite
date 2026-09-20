@@ -1,1 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="DB2"><rect x="12" y="12" width="96" height="96" rx="24" fill="#4A5568"/><text x="60" y="72" text-anchor="middle" font-size="28" font-weight="700" fill="#fff" font-family="Arial,Helvetica,sans-serif">DB2</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="DB2 数据库">
+  <defs>
+    <linearGradient id="db2-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="db2-disc" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.1"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="60" cy="103" rx="34" ry="4" fill="#1E3A8A" opacity="0.25"/>
+  <rect x="12" y="12" width="96" height="96" rx="22" fill="url(#db2-bg)" stroke="rgba(255,255,255,0.25)" stroke-width="1.2"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round">
+    <ellipse cx="60" cy="31" rx="20" ry="6.5" fill="url(#db2-disc)"/>
+    <path d="M 40 38 C 40 44.5, 80 44.5, 80 38"/>
+    <path d="M 40 45 C 40 51.5, 80 51.5, 80 45"/>
+    <path d="M 40 31 L 40 45 M 80 31 L 80 45"/>
+  </g>
+  <circle cx="60" cy="31" r="2.2" fill="#FFFFFF"/>
+  <text x="60" y="82" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="26" font-weight="800" fill="#FFFFFF" letter-spacing="0.5">DB2</text>
+  <rect x="50" y="90" width="20" height="2.5" rx="1.25" fill="#FFFFFF" opacity="0.85"/>
+</svg>
