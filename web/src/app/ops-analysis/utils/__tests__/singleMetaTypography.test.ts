@@ -4,67 +4,66 @@ import {
   resolveSingleMainSlotHeight,
   resolveSingleMetaBlockHeight,
   resolveSingleMetaTypography,
-  SINGLE_META_TYPOGRAPHY,
+  resolveSingleValueMetaLayout,
 } from '../singleMetaTypography';
 
 const simulateLayout = (contentAreaHeight: number, scale = 1) => {
   const sparklineHeight = 34;
   const steps: string[] = [];
-  let mainFontSize = 36;
 
   for (let i = 0; i < 8; i += 1) {
-    const meta = resolveSingleMetaTypography({ contentAreaHeight, scale });
-    const descriptionReserve =
-      meta.descriptionFontSize *
-        SINGLE_META_TYPOGRAPHY.descriptionLineHeight *
-        SINGLE_META_TYPOGRAPHY.descriptionMaxLines +
-      meta.spacing;
-    const compareReserve =
-      meta.compareValueFontSize * SINGLE_META_TYPOGRAPHY.compareLineHeight +
-      meta.spacing;
-    const remaining =
-      contentAreaHeight - descriptionReserve - compareReserve - sparklineHeight;
-    mainFontSize = Math.max(18, Math.min(104, remaining * 0.7));
+    const layout = resolveSingleValueMetaLayout({
+      contentAreaHeight,
+      sparklineHeight,
+      scale,
+      hasDescription: true,
+      hasCompare: true,
+    });
     steps.push(
-      `${meta.descriptionFontSize}:${meta.compareValueFontSize}:${meta.spacing}:${mainFontSize.toFixed(2)}`,
+      `${layout.typography.descriptionFontSize}:${layout.typography.compareValueFontSize}:${layout.typography.spacing}:${layout.targetMainFontSize}:${layout.mainSlotHeight}`,
     );
   }
 
   return steps;
 };
 
-test('meta fonts scale with card height between readable bounds', () => {
+test('meta fonts track target main between readable bounds', () => {
   const compact = resolveSingleMetaTypography({
-    contentAreaHeight: 120,
+    targetMainFontSize: 40,
     scale: 1,
   });
   const large = resolveSingleMetaTypography({
-    contentAreaHeight: 360,
+    targetMainFontSize: 104,
     scale: 1,
   });
   assert.equal(compact.descriptionFontSize, 12);
   assert.equal(compact.compareLabelFontSize, 12);
   assert.equal(compact.compareValueFontSize, 14);
-  assert.equal(large.descriptionFontSize, 22);
-  assert.equal(large.compareLabelFontSize, 20);
-  assert.equal(large.compareValueFontSize, 24);
+  assert.equal(large.descriptionFontSize, 27.04);
+  assert.equal(large.compareLabelFontSize, 18.72);
+  assert.equal(large.compareValueFontSize, 22.88);
 });
 
 test('unmeasured cards use the readable minimum instead of a fallback main font', () => {
-  const meta = resolveSingleMetaTypography({ contentAreaHeight: 0, scale: 1 });
-  assert.equal(meta.descriptionFontSize, 12);
-  assert.equal(meta.compareValueFontSize, 14);
-  assert.equal(meta.spacing, 6);
+  const layout = resolveSingleValueMetaLayout({
+    contentAreaHeight: 0,
+    scale: 1,
+    hasDescription: true,
+  });
+  assert.equal(layout.typography.descriptionFontSize, 12);
+  assert.equal(layout.typography.compareValueFontSize, 14);
+  assert.equal(layout.typography.spacing, 6);
+  assert.equal(layout.mainSlotHeight, null);
 });
 
 test('screen scale converts visible min and max into canvas pixels', () => {
   const meta = resolveSingleMetaTypography({
-    contentAreaHeight: 600,
+    targetMainFontSize: 208,
     scale: 0.5,
   });
-  assert.equal(meta.descriptionFontSize, 44);
-  assert.equal(meta.compareLabelFontSize, 40);
-  assert.equal(meta.compareValueFontSize, 48);
+  assert.equal(meta.descriptionFontSize, 54.08);
+  assert.equal(meta.compareLabelFontSize, 37.44);
+  assert.equal(meta.compareValueFontSize, 45.76);
 });
 
 test('layout does not chase fitted main font across typical card heights', () => {
@@ -78,25 +77,52 @@ test('layout does not chase fitted main font across typical card heights', () =>
   }
 });
 
-test('tall cards keep the main slot close to the value height so it does not sit low', () => {
-  const typography = resolveSingleMetaTypography({
-    contentAreaHeight: 360,
-    scale: 1,
-  });
-  const descriptionBlockHeight = resolveSingleMetaBlockHeight({
-    hasDescription: true,
-    hasCompare: false,
-    typography,
-  });
-  const slot = resolveSingleMainSlotHeight({
-    contentAreaHeight: 360,
-    metaBlockHeight: descriptionBlockHeight,
+test('description stays near a quarter of the height-driven target main', () => {
+  const layout = resolveSingleValueMetaLayout({
+    contentAreaHeight: 180,
     sparklineHeight: 0,
     scale: 1,
+    hasDescription: true,
   });
-  assert.equal(slot, 113.04);
-  assert.ok((slot ?? 0) < 140);
-  assert.ok((slot ?? 0) + descriptionBlockHeight < 360);
+  const ratio =
+    layout.typography.descriptionFontSize / layout.targetMainFontSize;
+  assert.ok(ratio >= 0.24 && ratio <= 0.28, `ratio=${ratio}`);
+  assert.ok(layout.typography.descriptionFontSize >= 16);
+  assert.ok(layout.targetMainFontSize >= 60);
+});
+
+test('tall cards keep the main slot close to the value height so it does not sit low', () => {
+  const layout = resolveSingleValueMetaLayout({
+    contentAreaHeight: 360,
+    sparklineHeight: 0,
+    scale: 1,
+    hasDescription: true,
+  });
+  assert.ok(layout.mainSlotHeight != null);
+  assert.ok((layout.mainSlotHeight ?? 0) <= 113.04 + 0.01);
+  assert.ok(
+    (layout.mainSlotHeight ?? 0) +
+      resolveSingleMetaBlockHeight({
+        hasDescription: true,
+        hasCompare: false,
+        typography: layout.typography,
+      }) <
+      360,
+  );
+});
+
+test('same card height keeps meta fonts stable across different main text lengths', () => {
+  const a = resolveSingleValueMetaLayout({
+    contentAreaHeight: 160,
+    hasDescription: true,
+  });
+  const b = resolveSingleValueMetaLayout({
+    contentAreaHeight: 160,
+    hasDescription: true,
+  });
+  // Layout is height-only; digit count never enters the resolver.
+  assert.deepEqual(a.typography, b.typography);
+  assert.equal(a.targetMainFontSize, b.targetMainFontSize);
 });
 
 test('unmeasured cards leave the main slot unset so layout can fill first', () => {
@@ -108,4 +134,14 @@ test('unmeasured cards leave the main slot unset so layout can fill first', () =
     }),
     null,
   );
+});
+
+test('without description the main slot stays unset', () => {
+  const layout = resolveSingleValueMetaLayout({
+    contentAreaHeight: 200,
+    hasDescription: false,
+    hasCompare: true,
+  });
+  assert.equal(layout.mainSlotHeight, null);
+  assert.ok(layout.typography.compareValueFontSize >= 14);
 });

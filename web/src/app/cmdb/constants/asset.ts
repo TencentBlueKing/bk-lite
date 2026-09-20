@@ -685,19 +685,6 @@ export const BUILD_IN_MODEL: Array<{
     key: 'xsky',
     icon: 'cc-xsky',
   },
-  // 网络硬件
-  {
-    key: 'brocade_fc',
-    icon: 'cc-brocade_fc',
-  },
-  {
-    key: 'cisco_fc',
-    icon: 'cc-cisco_fc',
-  },
-  {
-    key: 'f5',
-    icon: 'cc-f5',
-  },
   // 操作系统
   {
     key: 'aix',

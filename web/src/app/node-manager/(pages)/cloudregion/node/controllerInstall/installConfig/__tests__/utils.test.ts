@@ -3,6 +3,7 @@ import {
   applyIpAsDefaultNodeName,
   applyWinrmCertificateValidation,
   DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+  mergeCurrentOrganization,
   parseControllerVersion,
   pickLatestPackage
 } from '../utils';
@@ -116,5 +117,22 @@ describe('pickLatestPackage', () => {
 
   it('returns undefined for an empty list', () => {
     expect(pickLatestPackage([])).toBeUndefined();
+  });
+});
+
+describe('mergeCurrentOrganization', () => {
+  it('fills an empty selection with the current organization', () => {
+    expect(mergeCurrentOrganization(null, 7)).toEqual([7]);
+    expect(mergeCurrentOrganization([], '7')).toEqual([7]);
+  });
+
+  it('keeps the current organization first and allows extra organizations', () => {
+    expect(mergeCurrentOrganization([2], 1)).toEqual([1, 2]);
+    expect(mergeCurrentOrganization([1, 2], 1)).toEqual([1, 2]);
+    expect(mergeCurrentOrganization([2, 1], 1)).toEqual([1, 2]);
+  });
+
+  it('ignores invalid organization ids', () => {
+    expect(mergeCurrentOrganization([0, 'x', 3], undefined)).toEqual([3]);
   });
 });

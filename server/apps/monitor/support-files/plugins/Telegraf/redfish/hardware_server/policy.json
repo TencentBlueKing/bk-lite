@@ -1,0 +1,150 @@
+{
+  "object": "Hardware Server",
+  "plugin": "Hardware Server Redfish",
+  "templates": [
+    {
+      "name": "系统健康异常",
+      "alert_name": "硬件服务器${resource_name} Redfish 系统健康异常",
+      "description": "BMC 上报的 System.Status.Health 不是 OK 时告警。",
+      "metric_name": "redfish_system_health",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "系统关机",
+      "alert_name": "硬件服务器${resource_name} 已关机",
+      "description": "Redfish System.PowerState 为 Off 时告警。",
+      "metric_name": "redfish_system_power_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "error",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "warning",
+          "value": 0,
+          "method": "="
+        }
+      ]
+    },
+    {
+      "name": "进风口温度过高",
+      "alert_name": "硬件服务器${resource_name} 传感器 ${metric_name} 温度过高",
+      "description": "Redfish 温度读数超过阈值时告警，覆盖进风口与 CPU 等传感器。",
+      "metric_name": "redfish_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "风扇健康异常",
+      "alert_name": "硬件服务器${resource_name} 风扇 ${metric_name} 健康异常",
+      "description": "Redfish Thermal.Fans.Status.Health 不是 OK 时告警。",
+      "metric_name": "redfish_fan_health",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "存储健康异常",
+      "alert_name": "硬件服务器${resource_name} 存储 ${metric_name} 健康异常",
+      "description": "Redfish Storage.Status.HealthRollup 不是 OK 时告警。",
+      "metric_name": "redfish_storage_health",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "电源模块健康异常",
+      "alert_name": "硬件服务器${resource_name} 电源 ${metric_name} 健康异常",
+      "description": "Redfish 电源模块 Status.Health 不是 OK 时告警。",
+      "metric_name": "redfish_psu_health",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

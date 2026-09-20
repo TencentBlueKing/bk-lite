@@ -1,6 +1,5 @@
 from apps.rpc.base import RpcClient
 
-
 RPC_TIMEOUT_GRACE_SECONDS = 1
 
 
@@ -43,7 +42,7 @@ class Executor(object):
         执行本地命令
         :param command: 要执行的命令
         :param timeout: 执行超时时间(秒)
-        :param shell: 脚本类型，支持: "sh"(默认), "bash", "bat", "cmd", "powershell", "pwsh"
+        :param shell: 脚本类型，支持: "sh"(默认), "bash", "python", "python3", "bat", "cmd", "powershell", "pwsh"
         :return: 命令执行结果
         """
         request_data = {"command": command, "execute_timeout": timeout}
@@ -61,7 +60,7 @@ class Executor(object):
 
         :param command: 要执行的命令
         :param timeout: 执行超时时间(秒)
-        :param shell: 脚本类型，支持: "sh", "bash", "bat", "cmd", "powershell", "pwsh"
+        :param shell: 脚本类型，支持: "sh", "bash", "python", "python3", "bat", "cmd", "powershell", "pwsh"
         :param execution_id: 执行 ID（写入流事件）
         :param stream_log_topic: 行事件发布主题
         :return: 命令执行结果

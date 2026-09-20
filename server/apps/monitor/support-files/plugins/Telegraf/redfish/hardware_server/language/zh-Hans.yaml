@@ -1,0 +1,80 @@
+Hardware Server Redfish:
+  name: 硬件服务器 Redfish 通用
+  desc: 通过 BMC 通用 Redfish HTTPS 采集整机健康、固件、温度、风扇、电源、存储汇总和网卡指标。按 @odata.id 发现资源，不按品牌型号拆分，也不爬 Sensors、磁盘或 EthernetInterfaces。
+monitor_object:
+  Hardware Server: 硬件服务器
+monitor_object_type:
+  Hardware Device: 硬件设备
+monitor_object_metric:
+  Hardware Server:
+    redfish_system_health:
+      name: 系统健康
+      desc: BMC 通过 Redfish System.Status.Health 上报的整机健康状态。
+    redfish_system_power_state:
+      name: 电源状态
+      desc: Redfish System.PowerState。开机为 1，关机为 0。
+    redfish_manager_health:
+      name: BMC 健康
+      desc: BMC / iDRAC Manager.Status.Health。
+    redfish_processor_health_rollup:
+      name: 处理器健康
+      desc: 来自 System.ProcessorSummary 的处理器汇总健康，不枚举每颗 CPU。
+    redfish_memory_health_rollup:
+      name: 内存健康
+      desc: 来自 System.MemorySummary 的内存汇总健康，不枚举每条 DIMM。
+    redfish_temperature_celsius:
+      name: 温度
+      desc: Chassis Thermal 温度传感器读数，单位摄氏度。
+    redfish_fan_speed:
+      name: 风扇转速
+      desc: Chassis Thermal 风扇读数，单位见 unit 标签，通常为 RPM。
+    redfish_power_consumed_watts:
+      name: 系统功耗
+      desc: PowerControl.PowerConsumedWatts 系统功耗，单位瓦特。
+    redfish_psu_health:
+      name: 电源健康
+      desc: 电源模块 Status.Health。
+    redfish_psu_input_watts:
+      name: 电源输入功率
+      desc: 电源模块 PowerInputWatts，单位瓦特。
+    redfish_firmware_info:
+      name: 固件版本
+      desc: Manager.FirmwareVersion 与 System.BiosVersion，以标签上报，指标值为 1。
+    redfish_temperature_upper_critical_celsius:
+      name: 温度严重上限
+      desc: Thermal.Temperatures.UpperThresholdCritical，单位摄氏度。
+    redfish_fan_health:
+      name: 风扇健康
+      desc: Thermal.Fans.Status.Health。
+    redfish_psu_input_voltage:
+      name: 电源输入电压
+      desc: PowerSupplies.LineInputVoltage，单位伏特。
+    redfish_voltage_volts:
+      name: 电压
+      desc: Power.Voltages.ReadingVolts，单位伏特。
+    redfish_storage_health:
+      name: 存储健康
+      desc: Systems Storage 子系统 HealthRollup，不逐盘采集。
+    redfish_storage_controller_health:
+      name: 存储控制器健康
+      desc: Storage 资源内嵌 StorageControllers[].Status。
+    redfish_nic_health:
+      name: 网卡健康
+      desc: Chassis NetworkAdapters.Status.Health。
+    redfish_nic_port_health:
+      name: 网口健康
+      desc: NetworkPort.Status.Health。
+    redfish_nic_port_link_up:
+      name: 网口链路
+      desc: NetworkPort.LinkStatus，Up 为 1，Down 为 0。
+    redfish_nic_port_speed_mbps:
+      name: 网口速率
+      desc: 当前链路速率，单位 Mbps。
+monitor_object_metric_group:
+  Hardware Server:
+    Health: 健康
+    Power: 功率
+    Environment: 环境
+    Inventory: 资产
+    Storage: 存储
+    Network: 网络

@@ -131,6 +131,21 @@ def test_default_logging_is_console_only_at_info():
     assert "node" not in config["handlers"]
 
 
+def test_openapi_logger_is_wired_for_console_info():
+    """openapi_access 走 getLogger('openapi')；未登记时 INFO 会被 root WARNING 吃掉。"""
+    console_only = build_logging_config(log_level="INFO", log_file_output=False)
+    logger_config = console_only["loggers"]["openapi"]
+    assert logger_config["handlers"] == ["console"]
+    assert logger_config["level"] == "INFO"
+
+    with_files = build_logging_config(log_level="INFO", log_file_output=True)
+    file_logger = with_files["loggers"]["openapi"]
+    assert file_logger["handlers"] == ["openapi", "console"]
+    assert file_logger["level"] == "INFO"
+    assert with_files["handlers"]["openapi"]["class"] == "logging.handlers.RotatingFileHandler"
+    assert with_files["handlers"]["openapi"]["filename"].endswith("openapi.log")
+
+
 def test_all_rotating_file_handlers_share_default_rotation_limits():
     config = build_logging_config(log_level="INFO", log_file_output=True)
     rotating = _rotating_file_handlers(config)

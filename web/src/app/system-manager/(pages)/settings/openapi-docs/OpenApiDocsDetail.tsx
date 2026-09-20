@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -45,6 +45,11 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
 }) => {
   const { t } = useTranslation();
   const { copy } = useCopy();
+  const [origin, setOrigin] = useState('');
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   const schemaRows = useMemo(() => {
     if (!selectedRow?.requestSchema) return [];
@@ -146,10 +151,15 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
     return generateSamplePayload(selectedRow.requestSchema);
   }, [selectedRow]);
 
-  const curlCommand = useMemo(() => {
-    if (!selectedRow || selectedRow.kind === 'external') return '';
-    return generateCurlCommand(selectedRow);
-  }, [selectedRow]);
+  const curlExamples = useMemo(() => {
+    if (!selectedRow || selectedRow.kind === 'external') {
+      return { personal: '', system: '' };
+    }
+    return {
+      personal: generateCurlCommand(selectedRow, 'personal', origin),
+      system: generateCurlCommand(selectedRow, 'system', origin),
+    };
+  }, [origin, selectedRow]);
 
   const [authKeyHintBefore, authKeyHintAfter] = splitLinkPlaceholder(
     t('system.settings.openapiDocs.authHeaderKeyHint'),
@@ -293,9 +303,21 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
                     children: (
                       <div className="space-y-3 pt-2 pb-3">
                         <div>
-                          <div className="mb-1 text-xs font-medium text-[var(--color-text-2)]">cURL</div>
+                          <div className="mb-1 text-xs font-medium text-[var(--color-text-2)]">
+                            {t('system.settings.openapiDocs.examplePersonal')}
+                          </div>
                           <CodeSnippet
-                            value={curlCommand}
+                            value={curlExamples.personal}
+                            copyable
+                            className={DETAIL_SNIPPET_CLASS}
+                          />
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs font-medium text-[var(--color-text-2)]">
+                            {t('system.settings.openapiDocs.exampleSystem')}
+                          </div>
+                          <CodeSnippet
+                            value={curlExamples.system}
                             copyable
                             className={DETAIL_SNIPPET_CLASS}
                           />

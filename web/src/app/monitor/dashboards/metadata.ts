@@ -46,6 +46,7 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'elasticsearch', groupKey: 'database', objectName: 'ElasticSearch', objectDisplayName: 'Elasticsearch', inheritedPermissionPath: '/monitor/view' },
   { key: 'oracle', groupKey: 'database', objectName: 'Oracle', objectDisplayName: 'Oracle', inheritedPermissionPath: '/monitor/view' },
   { key: 'influxdb', groupKey: 'database', objectName: 'InfluxDB', objectDisplayName: 'InfluxDB', inheritedPermissionPath: '/monitor/view' },
+  { key: 'hardware-server', aliases: ['Hardware Server', '硬件服务器'], groupKey: 'hardware', objectName: 'Hardware Server', objectDisplayName: '硬件服务器', inheritedPermissionPath: '/monitor/view' },
   { key: 'host', aliases: ['os', '主机'], groupKey: 'os', objectName: 'Host', objectDisplayName: '主机', inheritedPermissionPath: '/monitor/view' },
   { key: 'process', aliases: ['进程'], groupKey: 'os', objectName: 'Process', objectDisplayName: '进程', inheritedPermissionPath: '/monitor/view' },
   { key: 'website', aliases: ['web', '网站'], groupKey: 'network', objectName: 'Website', objectDisplayName: '网站', inheritedPermissionPath: '/monitor/view' },

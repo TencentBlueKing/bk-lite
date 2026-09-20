@@ -10,7 +10,14 @@ from rest_framework.request import Request
 from apps.cmdb.constants.constants import INSTANCE, CollectInputMethod, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.collect_model import CollectModels, normalize_topology_contract
-from apps.cmdb.models.scan_model import ScanHit, scan_driver_type_for_model, scan_task_type_for_model
+from apps.cmdb.models.scan_model import (
+    SCAN_MIDDLEWARE_TYPES,
+    ScanHit,
+    default_scan_snmp_version,
+    is_agent_credential,
+    scan_driver_type_for_model,
+    scan_task_type_for_model,
+)
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.instance import InstanceManage
@@ -29,6 +36,7 @@ _COLLECT_FORM_DEFAULTS = {
     "postgresql": {"timeout": 20, "cycle_minutes": 30},
     "mssql": {"timeout": 20, "cycle_minutes": 30},
     "influxdb": {"timeout": 20, "cycle_minutes": 30},
+    **{model_id: {"timeout": 20, "cycle_minutes": 30} for model_id in SCAN_MIDDLEWARE_TYPES},
 }
 _DEFAULT_TIMEOUT = 60
 _DEFAULT_CYCLE_MINUTES = 30
@@ -45,7 +53,7 @@ def collect_params(scan_task, family_model_id: str) -> dict:
     if family_model_id == "network":
         # 与手建 SNMP 表单默认一致：默认采集网络关系。
         params.update(normalize_topology_contract({"has_network_topo": True}))
-    if family_model_id == "host":
+    if family_model_id == "host" or family_model_id in SCAN_MIDDLEWARE_TYPES:
         params.update(host_cloud_from_scan(scan_task))
     return params
 
@@ -59,10 +67,13 @@ def _form_defaults(family_model_id: str) -> dict:
 
 def normalize_scan_credential_item(family_model_id: str, credential_item: dict) -> dict:
     item = dict(credential_item)
+    if (family_model_id == "host" or family_model_id in SCAN_MIDDLEWARE_TYPES) and is_agent_credential(item):
+        return {}
     if family_model_id == "influxdb":
         return _normalize_influxdb_credential(item)
     if family_model_id != "network":
         return item
+    item = default_scan_snmp_version(item)
     version = str(item.get("version") or "v2").strip() or "v2"
     normalized = {
         "version": version,
@@ -123,7 +134,10 @@ def merge_credential_items(family_model_id: str, existing, incoming) -> list:
             continue
         normalized = normalize_scan_credential_item(family_model_id, item)
         cred_id = str(normalized.get("credential_id") or "")
-        if not cred_id or cred_id in seen:
+        if not cred_id:
+            if family_model_id != "host" and family_model_id not in SCAN_MIDDLEWARE_TYPES:
+                continue
+        if cred_id in seen:
             continue
         seen.add(cred_id)
         pool.append(normalized)
@@ -337,8 +351,8 @@ def sync_scan_collect_task(
     request,
 ) -> CollectModels:
     params = collect.params if isinstance(collect.params, dict) else {}
-    if collect.model_id == "host":
-        params = {**params, **collect_params(scan_task, "host")}
+    if collect.model_id == "host" or collect.model_id in SCAN_MIDDLEWARE_TYPES:
+        params = {**params, **collect_params(scan_task, collect.model_id)}
     merged_instances = merge_instance_payloads(collect.instances, instances)
     merged_credentials = merge_credential_items(collect.model_id, collect.decrypt_credentials, credentials)
     existing_uuids = {str(item.get("inst_uuid") or "") for item in (collect.instances or []) if isinstance(item, dict)}

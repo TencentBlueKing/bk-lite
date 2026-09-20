@@ -14,14 +14,15 @@ from typing import Any
 
 from core.config import logger
 from service.ansible_runner import (
+    DEFAULT_MAX_OUTPUT_BYTES,
     DEFAULT_STREAM_BATCH_SIZE,
     DEFAULT_STREAM_FLUSH_TIMEOUT,
     DEFAULT_STREAM_MAX_LINE_BYTES,
     DEFAULT_STREAM_QUEUE_SIZE,
-    DEFAULT_MAX_OUTPUT_BYTES,
     BufferedStreamPublisher,
     LineEventStreamer,
     StreamPublish,
+    encode_adhoc_module_args,
     parse_ansible_output_per_host,
     run_command,
 )
@@ -62,7 +63,7 @@ def _replace_adhoc_action(command: list[str], module: str, module_args: str) -> 
     except (ValueError, IndexError) as error:
         raise ValueError("invalid ansible ad-hoc command") from error
     updated[module_index] = module
-    updated[args_index] = module_args
+    updated[args_index] = encode_adhoc_module_args(module, module_args)
     return updated
 
 
@@ -207,9 +208,9 @@ async def run_remote_shell_stream(
         shell_executable,
         max_output_bytes,
     )
-    start_command = _replace_adhoc_action(base_command, "shell", start_args)
-    poll_command = _replace_adhoc_action(base_command, "shell", poll_args)
-    stop_command = _replace_adhoc_action(base_command, "shell", stop_args)
+    start_command = _replace_adhoc_action(base_command, "raw", start_args)
+    poll_command = _replace_adhoc_action(base_command, "raw", poll_args)
+    stop_command = _replace_adhoc_action(base_command, "raw", stop_args)
     deadline = asyncio.get_running_loop().time() + timeout
     states: dict[str, _HostState] = {}
     retained_bytes = 0

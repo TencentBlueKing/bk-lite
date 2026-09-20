@@ -202,15 +202,6 @@ COLLECT_PLUGIN:
   tape_library:
     name: 磁带库
     desc: 采集磁带库基础配置信息
-  brocade_fc:
-    name: Brocade FC
-    desc: 采集Brocade FC基础配置信息
-  cisco_fc:
-    name: Cisco FC
-    desc: 采集Cisco FC基础配置信息
-  f5:
-    name: F5
-    desc: 采集F5基础配置信息
   informix:
     name: Informix
     desc: 采集Informix基础配置信息

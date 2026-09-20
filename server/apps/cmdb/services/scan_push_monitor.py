@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apps.cmdb.models.scan_model import ScanExecution, ScanHit, resolve_scan_task_credential
+from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanHit, is_agent_credential, resolve_scan_task_credential
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
@@ -78,6 +78,13 @@ def _lookup_instance_by_ip(model_id: str, host: str, port=None) -> dict | None:
     return None
 
 
+def _agent_host_node_id(instance: dict | None) -> str:
+    """主机 Agent 推监控认 sidecar 节点：CI 上的 node_id（兼容 id，不用图顶点 _id）。"""
+    if not isinstance(instance, dict):
+        return ""
+    return str(instance.get("node_id") or instance.get("id") or "").strip()
+
+
 def _resolve_graph_instance(hit: ScanHit) -> dict | None:
     if hit.inst_uuid:
         rows = InstanceManage.query_entity_by_uuids([hit.inst_uuid]) or []
@@ -91,6 +98,29 @@ def _resolve_graph_instance(hit: ScanHit) -> dict | None:
     if not model_id or model_id == "network":
         return None
     return _lookup_instance_by_ip(model_id, hit.host, hit.port)
+
+
+def _sync_hit_live_uuid(hit: ScanHit, instance: dict) -> str:
+    live_uuid = str(instance.get("inst_uuid") or hit.inst_uuid or "").strip()
+    if live_uuid and live_uuid != hit.inst_uuid:
+        hit.inst_uuid = live_uuid
+        hit.save(update_fields=["inst_uuid", "updated_at"])
+    return live_uuid
+
+
+def _fill_item_from_push_result(item: dict, push_result: dict) -> None:
+    result = (push_result or {}).get("monitor_result") or {}
+    if result.get("collect_error"):
+        item.update({"status": "failed", "reason": result["collect_error"], "monitor_result": result})
+    elif result.get("skipped"):
+        item.update({"status": "skipped", "reason": "already_in_monitor", "monitor_result": result})
+    elif result.get("ignored"):
+        # 带凭据推送期望建采；ignored 不是「可跳过」，而是链路未落库（常见：远端 NATS 抢答）。
+        item.update({"status": "failed", "reason": "ingest_ignored", "monitor_result": result})
+    elif result.get("created") or result.get("updated") or result.get("id"):
+        item.update({"status": "pushed", "monitor_result": result})
+    else:
+        item.update({"status": "failed", "reason": "ingest_empty", "monitor_result": result})
 
 
 def _actor_context_from_request(request):
@@ -148,6 +178,10 @@ class ScanPushMonitorService:
                 "cmdb_model_id": hit.cmdb_model_id,
             }
 
+            if family_model_id in SCAN_MIDDLEWARE_TYPES:
+                item.update({"status": "skipped", "reason": "middleware_needs_monitor_credential"})
+                results.append(item)
+                continue
             if not str(hit.inst_uuid or "").strip():
                 item.update({"status": "skipped", "reason": "no_ci"})
                 results.append(item)
@@ -158,6 +192,30 @@ class ScanPushMonitorService:
                 continue
 
             credential = _resolve_credential_item(scan_task, family_model_id, credential_id)
+            if family_model_id == "host" and is_agent_credential(credential or {"credential_id": credential_id}):
+                instance = _resolve_graph_instance(hit)
+                if not isinstance(instance, dict) or not _agent_host_node_id(instance):
+                    item.update({"status": "skipped", "reason": "agent_host_no_node"})
+                    results.append(item)
+                    continue
+                live_uuid = _sync_hit_live_uuid(hit, instance)
+                org_ids = actor_scope.get("allowed_org_ids") or []
+                if not org_ids:
+                    item.update({"status": "failed", "reason": "no_org_scope"})
+                    results.append(item)
+                    continue
+                try:
+                    # 无凭据关联 / Agent 主机模板；公开入口只接受 inst_uuid / graph id。
+                    push_result = CmdbToMonitorPushService.push_instance(
+                        live_uuid,
+                        actor_scope=actor_scope,
+                    )
+                    _fill_item_from_push_result(item, push_result)
+                except Exception as exc:
+                    logger.exception("[ScanPushMonitor] 推送失败 hit=%s host=%s", hit.id, hit.host)
+                    item.update({"status": "failed", "reason": str(exc)})
+                results.append(item)
+                continue
             if not credential:
                 item.update({"status": "failed", "reason": "credential_not_found"})
                 results.append(item)
@@ -174,10 +232,7 @@ class ScanPushMonitorService:
                 )
                 results.append(item)
                 continue
-            live_uuid = str(instance.get("inst_uuid") or hit.inst_uuid or "").strip()
-            if live_uuid and live_uuid != hit.inst_uuid:
-                hit.inst_uuid = live_uuid
-                hit.save(update_fields=["inst_uuid", "updated_at"])
+            _sync_hit_live_uuid(hit, instance)
 
             org_ids = actor_scope.get("allowed_org_ids") or []
             if not org_ids:
@@ -185,33 +240,16 @@ class ScanPushMonitorService:
                 results.append(item)
                 continue
 
-            push_instance = _enrich_instance_for_push(instance, hit, scan_task)
+            enriched_instance = _enrich_instance_for_push(instance, hit, scan_task)
             try:
                 push_result = CmdbToMonitorPushService.push_with_credential(
-                    push_instance,
+                    enriched_instance,
                     # _client_id 由 module_push 统一剥离，此处不再二次拷贝。
                     credential=credential,
                     actor_scope=actor_scope,
                     actor_context=actor_context,
                 )
-                result = push_result.get("monitor_result") or {}
-                if result.get("collect_error"):
-                    item.update({"status": "failed", "reason": result["collect_error"], "monitor_result": result})
-                elif result.get("skipped"):
-                    item.update(
-                        {
-                            "status": "skipped",
-                            "reason": "already_in_monitor",
-                            "monitor_result": result,
-                        }
-                    )
-                elif result.get("ignored"):
-                    # 带凭据推送期望建采；ignored 不是「可跳过」，而是链路未落库（常见：远端 NATS 抢答）。
-                    item.update({"status": "failed", "reason": "ingest_ignored", "monitor_result": result})
-                elif result.get("created") or result.get("updated") or result.get("id"):
-                    item.update({"status": "pushed", "monitor_result": result})
-                else:
-                    item.update({"status": "failed", "reason": "ingest_empty", "monitor_result": result})
+                _fill_item_from_push_result(item, push_result)
             except Exception as exc:
                 logger.exception("[ScanPushMonitor] 推送失败 hit=%s host=%s", hit.id, hit.host)
                 item.update({"status": "failed", "reason": str(exc)})

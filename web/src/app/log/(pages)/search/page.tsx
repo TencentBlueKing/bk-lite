@@ -1,4 +1,5 @@
 'use client';
+import './register-search-pilot';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue, TimeSelectorRef } from '@/types';

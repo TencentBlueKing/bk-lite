@@ -448,16 +448,23 @@ class TestRecoverNoDataAlerts:
         alert.refresh_from_db()
         assert alert.status == "new"
 
-    def test_aggregated_alert_waits_until_all_instance_baselines_have_data(
-        self, mocker
+    def test_recovers_only_the_series_that_has_data(
+        self, mocker, django_capture_on_commit_callbacks
     ):
         notifier = mocker.patch(
             "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
         )
-        alert = MonitorAlert.objects.create(
+        api_alert = MonitorAlert.objects.create(
             policy_id=1,
             monitor_instance_id="pod-1",
             metric_instance_id="('pod-1', 'api')",
+            alert_type="no_data",
+            status="new",
+        )
+        worker_alert = MonitorAlert.objects.create(
+            policy_id=1,
+            monitor_instance_id="pod-1",
+            metric_instance_id="('pod-1', 'worker')",
             alert_type="no_data",
             status="new",
         )
@@ -468,12 +475,15 @@ class TestRecoverNoDataAlerts:
                 "('pod-1', 'api')": "pod-1",
                 "('pod-1', 'worker')": "pod-1",
             },
-            [alert],
+            [api_alert, worker_alert],
             _mq(formatted={"('pod-1', 'api')": {"value": 1.0}}),
         )
 
-        detector.recover_no_data_alerts()
+        with django_capture_on_commit_callbacks(execute=True):
+            detector.recover_no_data_alerts()
 
-        alert.refresh_from_db()
-        assert alert.status == "new"
-        notifier.return_value.notify_alerts.assert_not_called()
+        api_alert.refresh_from_db()
+        worker_alert.refresh_from_db()
+        assert api_alert.status == "recovered"
+        assert worker_alert.status == "new"
+        notifier.return_value.notify_alerts.assert_called_once()

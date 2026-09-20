@@ -244,8 +244,9 @@ const Information: React.FC<InformationProps> = ({
       <div className="mt-4">
         <AlertHandlerActions
           record={formData}
-          closeText={t('monitor.events.closeAlert')}
+          closeText={t('common.close')}
           requiredPermissions={['Operate', 'Detail']}
+          size="middle"
           onSuccess={onClose}
         />
       </div>

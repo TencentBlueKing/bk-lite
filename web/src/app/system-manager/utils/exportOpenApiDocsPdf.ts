@@ -40,6 +40,9 @@ export interface OpenApiDocsPdfLabels {
   unrestricted: string;
   orgScope: string;
   tabExample: string;
+  examplePersonal: string;
+  exampleSystem: string;
+  origin?: string;
   inject: (value: string) => string;
 }
 
@@ -191,7 +194,8 @@ const renderEndpointBlock = (row: OpenAPIDocRow, labels: OpenApiDocsPdfLabels): 
     `;
   }
 
-  const curl = generateCurlCommand(row);
+  const personalCurl = generateCurlCommand(row, 'personal', labels.origin);
+  const systemCurl = generateCurlCommand(row, 'system', labels.origin);
   const permission = row.permission || labels.unrestricted;
   const inject = row.inject ? labels.inject(row.inject) : '--';
 
@@ -202,7 +206,10 @@ const renderEndpointBlock = (row: OpenAPIDocRow, labels: OpenApiDocsPdfLabels): 
       ${row.summary ? `<p>${escapeHtml(row.summary)}</p>` : ''}
       ${renderSchemaTable(row, labels)}
       <p><strong>${escapeHtml(labels.tabExample)}</strong></p>
-      ${renderPre(curl)}
+      <p><strong>${escapeHtml(labels.examplePersonal)}</strong></p>
+      ${renderPre(personalCurl)}
+      <p><strong>${escapeHtml(labels.exampleSystem)}</strong></p>
+      ${renderPre(systemCurl)}
       <p><strong>${escapeHtml(labels.permissionControl)}</strong> ${escapeHtml(permission)}</p>
       <p><strong>${escapeHtml(labels.orgScope)}</strong> ${escapeHtml(inject)}</p>
     </section>

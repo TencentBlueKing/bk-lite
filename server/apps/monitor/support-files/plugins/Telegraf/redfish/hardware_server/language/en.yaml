@@ -1,0 +1,82 @@
+Hardware Server Redfish:
+  name: Hardware Server Redfish General
+  desc: Collect generic DMTF Redfish BMC health, firmware, thermal, power, storage
+    rollup, and NIC metrics over HTTPS. Discovers resources by @odata.id and does
+    not split by brand or crawl Sensors, drives, or EthernetInterfaces.
+monitor_object:
+  Hardware Server: Hardware Server
+monitor_object_type:
+  Hardware Device: Hardware Device
+monitor_object_metric:
+  Hardware Server:
+    redfish_system_health:
+      name: System Health
+      desc: Overall computer-system health from Redfish System.Status.Health.
+    redfish_system_power_state:
+      name: Power State
+      desc: Redfish System.PowerState. On is 1 and Off is 0.
+    redfish_manager_health:
+      name: BMC Health
+      desc: BMC / iDRAC Manager.Status.Health.
+    redfish_processor_health_rollup:
+      name: Processor Health
+      desc: Rolled-up processor health from System.ProcessorSummary, without enumerating each CPU.
+    redfish_memory_health_rollup:
+      name: Memory Health
+      desc: Rolled-up memory health from System.MemorySummary, without enumerating each DIMM.
+    redfish_temperature_celsius:
+      name: Temperature
+      desc: Chassis Thermal temperature readings in degrees Celsius.
+    redfish_fan_speed:
+      name: Fan Speed
+      desc: Chassis Thermal fan readings. The unit label is typically RPM or Percent.
+    redfish_power_consumed_watts:
+      name: Power Consumed
+      desc: System power consumption from PowerControl.PowerConsumedWatts, in watts.
+    redfish_psu_health:
+      name: PSU Health
+      desc: Power-supply Status.Health.
+    redfish_psu_input_watts:
+      name: PSU Input Power
+      desc: Power-supply PowerInputWatts, in watts.
+    redfish_firmware_info:
+      name: Firmware
+      desc: Manager.FirmwareVersion and System.BiosVersion as labels. The metric value is 1.
+    redfish_temperature_upper_critical_celsius:
+      name: Temperature Upper Critical
+      desc: Thermal.Temperatures.UpperThresholdCritical, in degrees Celsius.
+    redfish_fan_health:
+      name: Fan Health
+      desc: Thermal.Fans.Status.Health.
+    redfish_psu_input_voltage:
+      name: PSU Input Voltage
+      desc: PowerSupplies.LineInputVoltage, in volts.
+    redfish_voltage_volts:
+      name: Voltage
+      desc: Power.Voltages.ReadingVolts, in volts.
+    redfish_storage_health:
+      name: Storage Health
+      desc: Systems Storage HealthRollup without enumerating each drive.
+    redfish_storage_controller_health:
+      name: Storage Controller Health
+      desc: Embedded StorageControllers[].Status from the Storage resource.
+    redfish_nic_health:
+      name: NIC Health
+      desc: Chassis NetworkAdapter.Status.Health.
+    redfish_nic_port_health:
+      name: NIC Port Health
+      desc: NetworkPort.Status.Health.
+    redfish_nic_port_link_up:
+      name: NIC Port Link
+      desc: NetworkPort.LinkStatus. Up is 1 and Down is 0.
+    redfish_nic_port_speed_mbps:
+      name: NIC Port Speed
+      desc: Current link speed in Mbps.
+monitor_object_metric_group:
+  Hardware Server:
+    Health: Health
+    Power: Power
+    Environment: Environment
+    Inventory: Inventory
+    Storage: Storage
+    Network: Network
