@@ -37,9 +37,10 @@ def test_parse_counts_requires_explicit_zero_and_rejects_invalid():
         parse_counts({"result": True, "data": {"counts": {SSH_A: -1}}}, [SSH_A])
 
 
-def test_list_shows_dash_when_all_modules_fail_and_chips_when_one_succeeds():
+def test_list_ref_chips_maps_failures_zeros_and_positive_counts():
     failed = lambda ids, **kwargs: (_ for _ in ()).throw(TimeoutError("rpc"))
     assert list_ref_chips([SSH_A], queriers=(("cmdb", failed), ("monitor", failed))) == {SSH_A: None}
+    assert list_ref_chips([SSH_A], queriers=(("cmdb", _ok({SSH_A: 0})), ("monitor", _ok({SSH_A: 0})))) == {SSH_A: []}
     chips = list_ref_chips(
         [SSH_A, SSH_B],
         queriers=(
@@ -51,17 +52,19 @@ def test_list_shows_dash_when_all_modules_fail_and_chips_when_one_succeeds():
     assert chips[SSH_B] == []
 
 
-def test_assert_unreferenced_fail_closed_on_timeout_or_positive_count():
+def test_assert_unreferenced_only_blocks_confirmed_refs():
     failed = lambda ids, **kwargs: (_ for _ in ()).throw(TimeoutError("rpc"))
-    with pytest.raises(CredentialServiceError) as timeout_exc:
-        assert_credential_unreferenced(SSH_A, queriers=(("cmdb", failed), ("monitor", _ok({SSH_A: 0}))))
-    assert timeout_exc.value.code == "in_use"
+    assert_credential_unreferenced(SSH_A, queriers=(("cmdb", failed), ("monitor", _ok({SSH_A: 0}))))
+    assert_credential_unreferenced(SSH_A, queriers=(("cmdb", failed), ("monitor", failed)))
     with pytest.raises(CredentialServiceError) as used_exc:
         assert_credential_unreferenced(
             SSH_A,
             queriers=(("cmdb", _ok({SSH_A: 1})), ("monitor", _ok({SSH_A: 0}))),
         )
     assert used_exc.value.code == "in_use"
+    with pytest.raises(CredentialServiceError) as mixed_exc:
+        assert_credential_unreferenced(SSH_A, queriers=(("cmdb", _ok({SSH_A: 2})), ("monitor", failed)))
+    assert mixed_exc.value.code == "in_use"
     assert_credential_unreferenced(
         SSH_A,
         queriers=(("cmdb", _ok({SSH_A: 0})), ("monitor", _ok({SSH_A: 0}))),

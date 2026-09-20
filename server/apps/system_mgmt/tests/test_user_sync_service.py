@@ -380,6 +380,76 @@ def test_execute_user_sync_creates_run_groups_and_users(ready_integration_instan
     assert user.email == "user1@example.com"
 
 
+def _contact_sync_payload(user_id, name, email, mobile):
+    return {
+        "group_list": [{"id": "dept-a", "parent_id": "0", "name": "Dept A"}],
+        "user_list": [
+            {
+                "user_id": user_id,
+                "name": name,
+                "email": email,
+                "mobile": mobile,
+                "department_ids": ["dept-a"],
+            }
+        ],
+    }
+
+
+def _make_contact_sync_source(ready_integration_instance, suffix):
+    return UserSyncSource.objects.create(
+        name=f"source-contact-{suffix}",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name=f"Contact {suffix} Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+
+
+def _run_contact_sync(source, user_id, name, email, mobile):
+    result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload=_contact_sync_payload(user_id, name, email, mobile),
+    )
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=result):
+        assert execute_user_sync(source.id)["result"] is True
+    return User.objects.get(username=user_id, domain="domain.com")
+
+
+@pytest.mark.django_db
+def test_execute_user_sync_skips_empty_contact_fields_and_overwrites_nonempty(ready_integration_instance):
+    source = _make_contact_sync_source(ready_integration_instance, "skip")
+    user = _run_contact_sync(source, "ou_keep", "Keep User", "keep@example.com", "13800000000")
+    user.email = "local@example.com"
+    user.phone = "13900000000"
+    user.save(update_fields=["email", "phone"])
+
+    _run_contact_sync(source, "ou_keep", "Keep User", "", "  ")
+    user.refresh_from_db()
+    assert user.email == "local@example.com"
+    assert user.phone == "13900000000"
+
+    _run_contact_sync(source, "ou_keep", "Keep User", "external@example.com", "13700000000")
+    user.refresh_from_db()
+    assert user.email == "external@example.com"
+    assert user.phone == "13700000000"
+
+
+@pytest.mark.django_db
+def test_execute_user_sync_overwrites_phone_independently_of_empty_email(ready_integration_instance):
+    source = _make_contact_sync_source(ready_integration_instance, "independent")
+    user = _run_contact_sync(source, "ou_split", "Split User", "keep@example.com", "13800000000")
+    user.email = "local@example.com"
+    user.phone = "13900000000"
+    user.save(update_fields=["email", "phone"])
+
+    _run_contact_sync(source, "ou_split", "Split User", "", "13700000000")
+    user.refresh_from_db()
+    assert user.email == "local@example.com"
+    assert user.phone == "13700000000"
+
+
 # ---------------------------------------------------------------------------
 # Task 2: business_config helper
 # ---------------------------------------------------------------------------

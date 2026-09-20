@@ -42,17 +42,17 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 
 > 证据来源：server/apps/system_mgmt/nats/users.py:20-38、41-119、156-181　|　同步基线：d2769559　|　【已实现】
 
-### 4.2 凭据仓库跨模块契约【已实现 / 引用计数待对接】
+### 4.2 凭据仓库跨模块契约【已实现 / 监控引用计数待对接】
 
 - 系统管理拥有类型目录与实例仓库。其它模块只保存 `credential_id`，不存口令。消费可见性为归属向下共享：`group_id ∈ {current_team} ∪ 活动祖先`。台账列表/创建/编辑归属为编辑者授权组织，不按当前节点裁子孙。
 - 已注册 NATS（RPC 封装 `server/apps/rpc/system_mgmt.py`）：`list_credentials`（无密文分页列表，不附引用计数）、`create_credential`、`resolve_credential`（明文只走这条，页面与 picker 不调用）。`list` 与 `resolve` 都不需 `credential-View`，也不新增「使用」权限；`resolve` 由调用方先做业务鉴权，仓库只做已登录、当前组织在授权内、消费范围、未停用、服务端解密；`create` 需 `credential-Add`。HTTP `credential/selectable/` 与 `credential_type/selectable/` 同样不占 View；台账 CRUD 与 `assignable_groups` / `usable_groups` 仍要 View/Add/Edit/Delete。带 `type` 时必须同时带 `category`。
-- 引用次数不建账本。契约由系统管理规定，消费方在本模块 NATS 实现同名载荷。方法名：`cmdb_count_credential_refs`、`monitor_count_credential_refs`（共用 namespace，必须前缀）。系统管理用 `RpcClient().run` **直接请求这两个方法名**（`server/apps/system_mgmt/services/credential_ref_count.py`），不经 `apps/rpc/cmdb.py`、`apps/rpc/monitor.py`，也不经 `apps/rpc/system_mgmt.py`。入参 `{ "credential_ids": [..] }`，上限 100；出参 `{ "result": true, "data": { "counts": { "<id>": n } } }`，入参中的 ID 都要有键，无引用为 `0`。系统管理在列表、删除、改组织时只定向问这两家。列表：成功的模块按模块加总画芯片；两家都失败或未接线显示「—」，禁止写死 0。删除/改组织：任一家超时、无订阅者、`result: false` 或 `count > 0` 则拦截。作业等后置，同一载荷另加方法即可。
+- 引用次数不建账本。契约由系统管理规定，消费方在本模块 NATS 实现同名载荷。方法名：`cmdb_count_credential_refs`、`monitor_count_credential_refs`（共用 namespace，必须前缀）。系统管理用 `RpcClient().run` **直接请求这两个方法名**（`server/apps/system_mgmt/services/credential_ref_count.py`），不经 `apps/rpc/cmdb.py`、`apps/rpc/monitor.py`，也不经 `apps/rpc/system_mgmt.py`。入参 `{ "credential_ids": [..] }`，上限 100；出参 `{ "result": true, "data": { "counts": { "<id>": n } } }`，入参中的 ID 都要有键，无引用为 `0`。系统管理在列表、删除、改组织时只定向问这两家。列表：成功且 `count > 0` 的模块按模块加总画芯片；至少一家成功且合计 0 显示「0」；两家都失败或未接线显示「—」。删除/改组织：只在任一家确认 `count > 0` 时拦截；超时、无订阅者、`result: false` 或合计 0 则放行。作业等后置，同一载荷另加方法即可。
 - 页面要引用仓库凭据时，把 `CredentialPicker`（`web/src/components/credential-picker`）嵌进业务原表单的 `Form.Item`，字段值为 `credential_id`；组件自己向系统管理拉可选列表，调用方只传 `category` / `type` 与表单值。不要自绘下拉或复用 `CredentialPickerChrome`。明文仍只走 `resolve_credential`。
 - 系统管理不负责消费方任务表加列、执行或测试连接调用 `resolve_credential`，也不规定消费方如何从任务表算出 `counts`。
 
 产品口径见 `docs/design/product-decisions/system-mgmt-credential-vault.md`，交付标识见 [[legacy-fuctionlist-07-系统管理-功能清单#12. 跨模块凭据仓库]]。
 
-> 证据来源：server/apps/system_mgmt/nats/credentials.py:59-138、server/apps/rpc/system_mgmt.py:94-116、server/apps/system_mgmt/services/credential_ref_count.py:24-35、server/apps/system_mgmt/models/credential.py:7-32　|　【已实现：列表/创建/解析/询问】【待对接：消费方 handler】
+> 证据来源：server/apps/system_mgmt/nats/credentials.py:59-138、server/apps/rpc/system_mgmt.py:94-116、server/apps/system_mgmt/services/credential_ref_count.py:24-35、server/apps/system_mgmt/models/credential.py:7-32　|　【已实现：列表/创建/解析/询问/拦截】【待对接：监控 handler】
 
 ## 5. 通知渠道【已实现/已存在】
 `models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。
