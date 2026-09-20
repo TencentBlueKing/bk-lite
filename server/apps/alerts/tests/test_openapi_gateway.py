@@ -9,8 +9,10 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.alerts.constants.constants import AlertStatus
+from apps.alerts.models.alert_operator import AlertShield
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event
+from apps.alerts.models.operator_log import OperatorLog
 from apps.base.models import User, UserAPISecret
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
@@ -25,6 +27,9 @@ ACK_URL = "/openapi/v1/alerts/acknowledge"
 REASSIGN_URL = "/openapi/v1/alerts/reassign"
 CLOSE_URL = "/openapi/v1/alerts/close"
 BATCH_URL = "/openapi/v1/alerts/batch-action"
+SHIELD_CREATE_URL = "/openapi/v1/alerts/shield-create"
+SHIELD_OPERATE_URL = "/openapi/v1/alerts/shield-operate"
+SHIELD_URL = "/openapi/v1/alerts/shield"
 
 
 def _auth(token):
@@ -32,20 +37,25 @@ def _auth(token):
 
 
 def _grant_alarm_perms(system_user):
-    view, _ = Menu.objects.get_or_create(
-        name="Alarms-View",
-        app="alarm",
-        defaults={"display_name": "Alarms View", "url": "", "menu_type": "button"},
-    )
-    edit, _ = Menu.objects.get_or_create(
-        name="Alarms-Edit",
-        app="alarm",
-        defaults={"display_name": "Alarms Edit", "url": "", "menu_type": "button"},
-    )
+    menu_specs = [
+        ("Alarms-View", "Alarms View"),
+        ("Alarms-Edit", "Alarms Edit"),
+        ("shield_strategy-Add", "Shield Strategy Add"),
+        ("shield_strategy-Edit", "Shield Strategy Edit"),
+        ("shield_strategy-Delete", "Shield Strategy Delete"),
+    ]
+    menu_ids = []
+    for name, display_name in menu_specs:
+        menu, _ = Menu.objects.get_or_create(
+            name=name,
+            app="alarm",
+            defaults={"display_name": display_name, "url": "", "menu_type": "button"},
+        )
+        menu_ids.append(menu.id)
     role, _ = Role.objects.update_or_create(
         name="openapi-alarm-operator",
         app="alarm",
-        defaults={"menu_list": [view.id, edit.id]},
+        defaults={"menu_list": menu_ids},
     )
     system_user.role_list = [role.id]
     system_user.save(update_fields=["role_list"])
@@ -481,11 +491,7 @@ def test_batch_action_forged_team_is_rejected(tenants):
 
 
 def test_system_token_all_scope_still_requires_alarms_view():
-    from apps.core.openapi.tests.test_system_token_auth import (
-        _acting,
-        _create_acting_user,
-        _create_system_token,
-    )
+    from apps.core.openapi.tests.test_system_token_auth import _acting, _create_acting_user, _create_system_token
 
     user = _create_acting_user(210)
     token = _create_system_token(scope={"mode": "all"})
@@ -496,11 +502,7 @@ def test_system_token_all_scope_still_requires_alarms_view():
 
 
 def test_system_token_all_scope_admin_bypasses_alarms_menu():
-    from apps.core.openapi.tests.test_system_token_auth import (
-        _acting,
-        _create_acting_user,
-        _create_system_token,
-    )
+    from apps.core.openapi.tests.test_system_token_auth import _acting, _create_acting_user, _create_system_token
     from apps.core.openapi.tests.test_system_token_permission import _grant_admin_role
 
     user = _create_acting_user(211)
@@ -513,11 +515,7 @@ def test_system_token_all_scope_admin_bypasses_alarms_menu():
 
 
 def test_system_token_alarm_admin_bypasses_empty_alarms_menu():
-    from apps.core.openapi.tests.test_system_token_auth import (
-        _acting,
-        _create_acting_user,
-        _create_system_token,
-    )
+    from apps.core.openapi.tests.test_system_token_auth import _acting, _create_acting_user, _create_system_token
 
     user = _create_acting_user(212)
     role, _ = Role.objects.get_or_create(name="admin", app="alarm", defaults={"menu_list": []})
@@ -530,3 +528,221 @@ def test_system_token_alarm_admin_bypasses_empty_alarms_menu():
     assert response.status_code == 200, response.json()
     assert response.json()["result"] is True
     assert response.json()["data"]["count"] == 0
+
+
+def _shield_payload(name, **overrides):
+    payload = {
+        "name": name,
+        "match_type": "all",
+        "match_rules": [],
+        "suppression_time": {"type": "day", "start_time": "00:00:00", "end_time": "23:59:59"},
+        "is_active": True,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _create_shield(*, tenant, name, is_active=True):
+    return AlertShield.objects.create(
+        name=name,
+        match_type="all",
+        match_rules=[],
+        suppression_time={},
+        is_active=is_active,
+        created_by=tenant.user.username,
+        domain=tenant.user.domain,
+    )
+
+
+def test_api_tenant_can_create_shield(tenants):
+    name = f"shield-own-{uuid.uuid4().hex[:8]}"
+    response = APIClient().post(
+        SHIELD_CREATE_URL,
+        _shield_payload(name),
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 200, response.json()
+    data = response.json()["data"]
+    assert data["name"] == name
+    assert data["is_active"] is True
+    assert "id" not in data
+    shield = AlertShield.objects.get(name=name)
+    assert shield.created_by == tenants.a.user.username
+    assert OperatorLog.objects.filter(operator_object="告警屏蔽策略-创建", target_id=str(shield.id)).exists()
+
+
+def test_api_tenant_create_shield_does_not_belong_to_other_org(tenants):
+    name = f"shield-b-{uuid.uuid4().hex[:8]}"
+    response = APIClient().post(
+        SHIELD_CREATE_URL,
+        _shield_payload(name),
+        format="json",
+        **_auth(tenants.b.token),
+    )
+    assert response.status_code == 200, response.json()
+    shield = AlertShield.objects.get(name=name)
+    assert shield.created_by == tenants.b.user.username
+    assert shield.created_by != tenants.a.user.username
+
+
+def test_shield_create_forged_team_is_rejected(tenants):
+    name = f"shield-forged-{uuid.uuid4().hex[:8]}"
+    payload = _shield_payload(name)
+    payload["team"] = tenants.b.team.id
+    response = APIClient().post(
+        SHIELD_CREATE_URL,
+        payload,
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+    assert not AlertShield.objects.filter(name=name).exists()
+
+
+def test_api_tenant_can_operate_own_shield(tenants):
+    name = f"shield-op-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name, is_active=True)
+    response = APIClient().post(
+        SHIELD_OPERATE_URL,
+        {"name": name, "is_active": False},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["is_active"] is False
+    assert AlertShield.objects.get(name=name).is_active is False
+    assert OperatorLog.objects.filter(operator_object="告警屏蔽策略-修改", overview=f"停用告警屏蔽策略[{name}]").exists()
+
+    enable = APIClient().post(
+        SHIELD_OPERATE_URL,
+        {"name": name, "is_active": True},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert enable.status_code == 200, enable.json()
+    assert enable.json()["data"]["is_active"] is True
+    assert AlertShield.objects.get(name=name).is_active is True
+
+
+def test_api_tenant_cannot_operate_other_org_shield(tenants):
+    name = f"shield-op-hidden-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name, is_active=True)
+    response = APIClient().post(
+        SHIELD_OPERATE_URL,
+        {"name": name, "is_active": False},
+        format="json",
+        **_auth(tenants.b.token),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "BUSINESS_REJECTED"
+    assert AlertShield.objects.get(name=name).is_active is True
+
+
+def test_shield_operate_forged_team_is_rejected(tenants):
+    name = f"shield-op-forged-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name)
+    response = APIClient().post(
+        SHIELD_OPERATE_URL,
+        {"name": name, "is_active": False, "team": tenants.b.team.id},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+    assert AlertShield.objects.get(name=name).is_active is True
+
+
+def test_api_tenant_can_update_own_shield(tenants):
+    name = f"shield-upd-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name)
+    response = APIClient().put(
+        SHIELD_URL,
+        {
+            "name": name,
+            "match_type": "filter",
+            "match_rules": [[{"key": "title", "operator": "eq", "value": "cpu"}]],
+            "suppression_time": {"type": "day", "start_time": "01:00:00", "end_time": "02:00:00"},
+        },
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 200, response.json()
+    data = response.json()["data"]
+    assert data["match_type"] == "filter"
+    assert data["match_rules"] == [[{"key": "title", "operator": "eq", "value": "cpu"}]]
+    shield = AlertShield.objects.get(name=name)
+    assert shield.match_type == "filter"
+    assert OperatorLog.objects.filter(operator_object="告警屏蔽策略-修改", overview=f"修改告警屏蔽策略[{name}]").exists()
+
+
+def test_api_tenant_cannot_update_other_org_shield(tenants):
+    name = f"shield-upd-hidden-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name)
+    response = APIClient().put(
+        SHIELD_URL,
+        {"name": name, "match_type": "all", "match_rules": [], "suppression_time": {}},
+        format="json",
+        **_auth(tenants.b.token),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "BUSINESS_REJECTED"
+    assert AlertShield.objects.get(name=name).match_type == "all"
+
+
+def test_shield_update_forged_team_is_rejected(tenants):
+    name = f"shield-upd-forged-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name)
+    response = APIClient().put(
+        SHIELD_URL,
+        {"name": name, "match_type": "all", "team": tenants.b.team.id},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_api_tenant_can_delete_own_shield(tenants):
+    name = f"shield-own-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name)
+    response = APIClient().delete(
+        SHIELD_URL,
+        {"name": name},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["name"] == name
+    assert "id" not in response.json()["data"]
+    assert not AlertShield.objects.filter(name=name).exists()
+    assert OperatorLog.objects.filter(operator_object="告警屏蔽策略-删除", overview=f"删除告警屏蔽策略[{name}]").exists()
+
+
+def test_api_tenant_cannot_delete_other_org_shield(tenants):
+    name = f"shield-hidden-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name)
+    response = APIClient().delete(
+        SHIELD_URL,
+        {"name": name},
+        format="json",
+        **_auth(tenants.b.token),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "BUSINESS_REJECTED"
+    assert AlertShield.objects.filter(name=name).exists()
+
+
+def test_shield_delete_forged_team_is_rejected(tenants):
+    name = f"shield-forged-{uuid.uuid4().hex[:8]}"
+    _create_shield(tenant=tenants.a, name=name)
+    response = APIClient().delete(
+        SHIELD_URL,
+        {"name": name, "team": tenants.b.team.id},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+    assert AlertShield.objects.filter(name=name).exists()
