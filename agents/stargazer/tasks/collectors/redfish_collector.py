@@ -1,0 +1,363 @@
+"""Targeted Redfish hardware-server monitor collector.
+
+Follows Systems / Managers / Chassis Thermal+Power only. Does not crawl Sensors,
+logs, DIMMs, or drives.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import json
+import time
+from typing import Any
+from urllib.parse import urlparse, urlsplit
+
+import httpx
+from core.logger import logger, safe_log_value
+from tasks.collectors.base_collector import BaseCollector
+from utils.convert import convert_to_prometheus
+
+MONITOR_TYPE = "redfish"
+RESOURCE_TYPE = "hardware_server"
+HEALTH_CODES = {"ok": 1, "warning": 2, "non-critical": 2, "critical": 3}
+POWER_STATE_CODES = {"on": 1, "off": 0}
+FORBIDDEN_URI_PARTS = (
+    "/sensors",
+    "/logservices",
+    "/logs/",
+    "/memory",
+    "/processors",
+    "/drives",
+    "/ethernetinterfaces",
+    "/telemetryservice",
+)
+MAX_RESPONSE_BYTES = 1024 * 1024
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def gauge(value: Any) -> list[tuple[int, Any]]:
+    return [(now_ms(), value)]
+
+
+def dim_gauge(dims: list[tuple[str, str]], value: Any) -> dict:
+    return {tuple(dims): gauge(value)}
+
+
+def as_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def health_code(status: Any) -> int | None:
+    if not isinstance(status, dict):
+        return None
+    health = status.get("Health")
+    if health in (None, ""):
+        return None
+    return HEALTH_CODES.get(str(health).strip().lower(), 0)
+
+
+def power_state_code(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    return POWER_STATE_CODES.get(str(value).strip().lower(), 2)
+
+
+def as_bool(value: Any, default: bool = True) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def odata_id(node: Any) -> str:
+    if isinstance(node, dict):
+        raw = node.get("@odata.id")
+        return str(raw) if isinstance(raw, str) else ""
+    return str(node) if isinstance(node, str) else ""
+
+
+def member_ids(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    members = payload.get("Members") or []
+    ids = []
+    for item in members:
+        link = odata_id(item)
+        if link:
+            ids.append(link)
+    return ids
+
+
+def reading_units(value: Any, default: str = "RPM") -> str:
+    if isinstance(value, list):
+        value = value[0] if value else default
+    text = str(value or default).strip()
+    return text or default
+
+
+class RedfishMonitorError(ValueError):
+    pass
+
+
+class RedfishCollector(BaseCollector):
+    """Collect BMC health, thermal, and power metrics over Redfish."""
+
+    def __init__(self, params: dict[str, Any], *, transport=None):
+        super().__init__(params)
+        raw_host = str(params.get("host") or params.get("ip") or "").strip()
+        parsed = urlparse(raw_host if "://" in raw_host else f"https://{raw_host}")
+        self.host = parsed.hostname or raw_host
+        self.port = int(parsed.port or params.get("port") or 443)
+        self.username = str(params.get("username") or params.get("user") or "")
+        self.password = str(params.get("password") or "")
+        self.verify_tls = as_bool(params.get("verify_tls"), True)
+        try:
+            self.timeout = float(params.get("timeout") or 30)
+        except (TypeError, ValueError):
+            self.timeout = 30.0
+        self._transport = transport or params.get("_transport")
+        self.session_uri = ""
+        self.base_url = f"https://{self._url_host()}:{self.port}"
+
+    def _url_host(self) -> str:
+        try:
+            address = ipaddress.ip_address(self.host)
+        except ValueError:
+            if not self.host or "/" in self.host:
+                raise RedfishMonitorError("Redfish target host is invalid")
+            return self.host
+        return f"[{address}]" if address.version == 6 else str(address)
+
+    def _client(self) -> httpx.AsyncClient:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "OData-Version": "4.0",
+        }
+        return httpx.AsyncClient(
+            auth=httpx.BasicAuth(self.username, self.password) if self.username or self.password else None,
+            follow_redirects=False,
+            headers=headers,
+            limits=httpx.Limits(max_connections=2, max_keepalive_connections=1),
+            timeout=httpx.Timeout(self.timeout, connect=min(5.0, self.timeout)),
+            transport=self._transport,
+            trust_env=False,
+            verify=self.verify_tls,
+        )
+
+    def _resource_url(self, resource_link: Any) -> str:
+        raw_link = odata_id(resource_link)
+        parsed = urlsplit(raw_link)
+        path = parsed.path or ""
+        lower = path.lower()
+        decoded = path.split("/")
+        is_service_path = path == "/redfish/v1" or path.startswith("/redfish/v1/")
+        is_absolute = bool(parsed.scheme or parsed.netloc)
+        if (
+            not is_service_path
+            or ".." in decoded
+            or parsed.fragment
+            or (is_absolute and not self._is_same_origin(parsed))
+            or any(part in lower for part in FORBIDDEN_URI_PARTS)
+        ):
+            raise RedfishMonitorError("Redfish resource link is not allowed")
+        query = f"?{parsed.query}" if parsed.query else ""
+        return f"{self.base_url}{path}{query}"
+
+    def _is_same_origin(self, parsed) -> bool:
+        if parsed.scheme.lower() != "https" or parsed.username or parsed.password:
+            return False
+        parsed_port = parsed.port if parsed.port is not None else 443
+        if parsed_port != self.port:
+            return False
+        try:
+            return ipaddress.ip_address(parsed.hostname or "") == ipaddress.ip_address(self.host)
+        except (ValueError, TypeError):
+            return str(parsed.hostname or "").lower() == str(self.host).lower()
+
+    async def _get_json(self, client: httpx.AsyncClient, resource_link: Any, *, optional: bool = False) -> dict[str, Any] | None:
+        url = self._resource_url(resource_link)
+        async with client.stream("GET", url) as response:
+            if response.status_code in {401, 403}:
+                raise RedfishMonitorError("Redfish authentication failed")
+            if response.status_code == 404 and optional:
+                return None
+            if response.status_code >= 400:
+                if optional:
+                    return None
+                raise RedfishMonitorError(f"Redfish resource returned HTTP {response.status_code}")
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > MAX_RESPONSE_BYTES:
+                    raise RedfishMonitorError("Redfish response exceeds size limit")
+        try:
+            payload = json.loads(body)
+        except (TypeError, ValueError, UnicodeError) as exc:
+            raise RedfishMonitorError("Redfish resource returned invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise RedfishMonitorError("Redfish resource returned invalid JSON")
+        return payload
+
+    async def _login(self, client: httpx.AsyncClient) -> None:
+        url = f"{self.base_url}/redfish/v1/SessionService/Sessions"
+        try:
+            response = await client.post(url, json={"UserName": self.username, "Password": self.password})
+        except httpx.HTTPError:
+            return
+        if response.status_code not in (200, 201):
+            return
+        token = response.headers.get("X-Auth-Token")
+        if not token:
+            try:
+                body = response.json()
+            except (ValueError, json.JSONDecodeError):
+                body = None
+            token = body.get("X-Auth-Token") if isinstance(body, dict) else None
+        if token:
+            client.headers["X-Auth-Token"] = token
+            client.auth = None
+        location = response.headers.get("Location")
+        if location:
+            try:
+                self.session_uri = self._resource_url(location)
+            except RedfishMonitorError:
+                self.session_uri = ""
+
+    async def _logout(self, client: httpx.AsyncClient) -> None:
+        if not self.session_uri:
+            return
+        try:
+            await client.delete(self.session_uri)
+        except httpx.HTTPError:
+            return
+
+    async def _follow_collection(self, client: httpx.AsyncClient, link: Any) -> dict[str, Any] | None:
+        collection = await self._get_json(client, link, optional=True)
+        members = member_ids(collection)
+        if not members:
+            return None
+        return await self._get_json(client, members[0], optional=True)
+
+    async def _chassis_thermal_power(self, client: httpx.AsyncClient, chassis_link: Any) -> tuple[dict | None, dict | None]:
+        collection = await self._get_json(client, chassis_link, optional=True)
+        thermal = None
+        power = None
+        for member in member_ids(collection):
+            chassis = await self._get_json(client, member, optional=True)
+            if not isinstance(chassis, dict):
+                continue
+            if thermal is None:
+                thermal_link = odata_id(chassis.get("Thermal")) or f"{urlsplit(self._resource_url(member)).path.rstrip('/')}/Thermal"
+                thermal = await self._get_json(client, thermal_link, optional=True)
+            if power is None:
+                power_link = odata_id(chassis.get("Power")) or f"{urlsplit(self._resource_url(member)).path.rstrip('/')}/Power"
+                power = await self._get_json(client, power_link, optional=True)
+            if thermal is not None and power is not None:
+                break
+        return thermal, power
+
+    def _emit_metrics(self, system: dict[str, Any], manager: dict[str, Any] | None, thermal: dict | None, power: dict | None) -> dict:
+        resource_id = str(system.get("Id") or odata_id(system) or self.host)
+        current: dict[str, Any] = {}
+        system_health = health_code(system.get("Status"))
+        if system_health is not None:
+            current["redfish_system_health"] = gauge(system_health)
+        power_code = power_state_code(system.get("PowerState"))
+        if power_code is not None:
+            current["redfish_system_power_state"] = gauge(power_code)
+        processor = system.get("ProcessorSummary") if isinstance(system.get("ProcessorSummary"), dict) else {}
+        memory = system.get("MemorySummary") if isinstance(system.get("MemorySummary"), dict) else {}
+        processor_health = health_code(processor.get("Status"))
+        memory_health = health_code(memory.get("Status"))
+        if processor_health is not None:
+            current["redfish_processor_health_rollup"] = gauge(processor_health)
+        if memory_health is not None:
+            current["redfish_memory_health_rollup"] = gauge(memory_health)
+        if isinstance(manager, dict):
+            manager_health = health_code(manager.get("Status"))
+            if manager_health is not None:
+                current["redfish_manager_health"] = gauge(manager_health)
+        if isinstance(thermal, dict):
+            for sensor in thermal.get("Temperatures") or []:
+                if not isinstance(sensor, dict):
+                    continue
+                reading = as_float(sensor.get("ReadingCelsius"))
+                name = str(sensor.get("Name") or sensor.get("PhysicalContext") or "").strip()
+                if reading is None or not name:
+                    continue
+                current.setdefault("redfish_temperature_celsius", {}).update(dim_gauge([("name", name)], reading))
+            for fan in thermal.get("Fans") or []:
+                if not isinstance(fan, dict):
+                    continue
+                reading = as_float(fan.get("Reading"))
+                name = str(fan.get("Name") or fan.get("Id") or fan.get("MemberId") or "").strip()
+                if reading is None or not name:
+                    continue
+                current.setdefault("redfish_fan_speed", {}).update(
+                    dim_gauge([("name", name), ("unit", reading_units(fan.get("ReadingUnits")))], reading)
+                )
+        if isinstance(power, dict):
+            for control in power.get("PowerControl") or []:
+                if not isinstance(control, dict):
+                    continue
+                consumed = as_float(control.get("PowerConsumedWatts"))
+                if consumed is None:
+                    continue
+                name = str(control.get("Name") or control.get("MemberId") or "").strip()
+                if name:
+                    current.setdefault("redfish_power_consumed_watts", {}).update(dim_gauge([("name", name)], consumed))
+                else:
+                    current["redfish_power_consumed_watts"] = gauge(consumed)
+            for supply in power.get("PowerSupplies") or []:
+                if not isinstance(supply, dict):
+                    continue
+                name = str(supply.get("Name") or supply.get("Id") or supply.get("MemberId") or "").strip()
+                if not name:
+                    continue
+                dims = [("name", name)]
+                psu_health = health_code(supply.get("Status"))
+                if psu_health is not None:
+                    current.setdefault("redfish_psu_health", {}).update(dim_gauge(dims, psu_health))
+                watts = as_float(supply.get("PowerInputWatts"))
+                if watts is not None:
+                    current.setdefault("redfish_psu_input_watts", {}).update(dim_gauge(dims, watts))
+        if not current:
+            raise RedfishMonitorError("Redfish scrape produced no metrics")
+        return {(resource_id, RESOURCE_TYPE): current}
+
+    async def collect(self) -> str:
+        if not self.host:
+            raise RedfishMonitorError("missing required host")
+        logger.info("event=redfish_collect_start monitor_type=%s host=%s", MONITOR_TYPE, safe_log_value(self.host))
+        client = self._client()
+        try:
+            await self._login(client)
+            root = await self._get_json(client, "/redfish/v1")
+            if not root:
+                raise RedfishMonitorError("Redfish service root is empty")
+            system = await self._follow_collection(client, odata_id(root.get("Systems")) or "/redfish/v1/Systems")
+            if not isinstance(system, dict):
+                raise RedfishMonitorError("Redfish Systems collection is empty")
+            manager = await self._follow_collection(client, odata_id(root.get("Managers")) or "/redfish/v1/Managers")
+            thermal, power = await self._chassis_thermal_power(client, odata_id(root.get("Chassis")) or "/redfish/v1/Chassis")
+            metric_dict = self._emit_metrics(system, manager, thermal, power)
+            output = "\n".join(convert_to_prometheus(metric_dict)) + "\n"
+            logger.info(
+                "event=redfish_collect_success monitor_type=%s system_id=%s",
+                MONITOR_TYPE,
+                safe_log_value(str(system.get("Id") or "")),
+            )
+            return output
+        finally:
+            await self._logout(client)
+            await client.aclose()

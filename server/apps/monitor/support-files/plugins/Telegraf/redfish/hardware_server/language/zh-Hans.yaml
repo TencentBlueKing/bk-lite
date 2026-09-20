@@ -1,0 +1,44 @@
+Hardware Server Redfish:
+  name: 硬件服务器 Redfish 通用
+  desc: 通过 BMC Redfish HTTPS 采集整机健康、开关机、温度、风扇和电源指标，适用于 Dell iDRAC 与浪潮等兼容实现。
+monitor_object:
+  Hardware Server: 硬件服务器
+monitor_object_type:
+  Hardware Device: 硬件设备
+monitor_object_metric:
+  Hardware Server:
+    redfish_system_health:
+      name: 系统健康
+      desc: BMC 通过 Redfish System.Status.Health 上报的整机健康状态。
+    redfish_system_power_state:
+      name: 电源状态
+      desc: Redfish System.PowerState。开机为 1，关机为 0。
+    redfish_manager_health:
+      name: BMC 健康
+      desc: BMC / iDRAC Manager.Status.Health。
+    redfish_processor_health_rollup:
+      name: 处理器健康
+      desc: 来自 System.ProcessorSummary 的处理器汇总健康，不枚举每颗 CPU。
+    redfish_memory_health_rollup:
+      name: 内存健康
+      desc: 来自 System.MemorySummary 的内存汇总健康，不枚举每条 DIMM。
+    redfish_temperature_celsius:
+      name: 温度
+      desc: Chassis Thermal 温度传感器读数，单位摄氏度。
+    redfish_fan_speed:
+      name: 风扇转速
+      desc: Chassis Thermal 风扇读数，单位见 unit 标签，通常为 RPM。
+    redfish_power_consumed_watts:
+      name: 系统功耗
+      desc: PowerControl.PowerConsumedWatts 系统功耗，单位瓦特。
+    redfish_psu_health:
+      name: 电源健康
+      desc: 电源模块 Status.Health。
+    redfish_psu_input_watts:
+      name: 电源输入功率
+      desc: 电源模块 PowerInputWatts，单位瓦特。
+monitor_object_metric_group:
+  Hardware Server:
+    Health: 健康
+    Power: 功率
+    Environment: 环境

@@ -6,6 +6,7 @@ export const useHardwareConfig = () => {
     collectTypes: {
       'Hardware Server SNMP General': 'snmp',
       'Hardware Server IPMI': 'ipmi',
+      'Hardware Server Redfish': 'redfish',
     },
   };
 };

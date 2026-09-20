@@ -1,0 +1,45 @@
+Hardware Server Redfish:
+  name: Hardware Server Redfish General
+  desc: Collect system health, power state, temperature, fan, and PSU metrics from
+    a BMC Redfish HTTPS API. Works with Dell iDRAC and other compatible BMCs.
+monitor_object:
+  Hardware Server: Hardware Server
+monitor_object_type:
+  Hardware Device: Hardware Device
+monitor_object_metric:
+  Hardware Server:
+    redfish_system_health:
+      name: System Health
+      desc: Overall computer-system health from Redfish System.Status.Health.
+    redfish_system_power_state:
+      name: Power State
+      desc: Redfish System.PowerState. On is 1 and Off is 0.
+    redfish_manager_health:
+      name: BMC Health
+      desc: BMC / iDRAC Manager.Status.Health.
+    redfish_processor_health_rollup:
+      name: Processor Health
+      desc: Rolled-up processor health from System.ProcessorSummary, without enumerating each CPU.
+    redfish_memory_health_rollup:
+      name: Memory Health
+      desc: Rolled-up memory health from System.MemorySummary, without enumerating each DIMM.
+    redfish_temperature_celsius:
+      name: Temperature
+      desc: Chassis Thermal temperature readings in degrees Celsius.
+    redfish_fan_speed:
+      name: Fan Speed
+      desc: Chassis Thermal fan readings. The unit label is typically RPM or Percent.
+    redfish_power_consumed_watts:
+      name: Power Consumed
+      desc: System power consumption from PowerControl.PowerConsumedWatts, in watts.
+    redfish_psu_health:
+      name: PSU Health
+      desc: Power-supply Status.Health.
+    redfish_psu_input_watts:
+      name: PSU Input Power
+      desc: Power-supply PowerInputWatts, in watts.
+monitor_object_metric_group:
+  Hardware Server:
+    Health: Health
+    Power: Power
+    Environment: Environment

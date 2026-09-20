@@ -65,6 +65,7 @@ DEFAULT_PORTS: dict[str, int] = {
     "vmware": 443,
     "vmware_vc": 443,
     "windows_wmi": 135,
+    "redfish": 443,
 }
 
 CLOUD_TYPES = frozenset({"aliyun", "qcloud", "hwcloud"})
