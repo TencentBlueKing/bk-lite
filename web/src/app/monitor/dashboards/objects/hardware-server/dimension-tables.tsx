@@ -314,8 +314,8 @@ export function HardwareDimensionTables({
       {visible.has('fan') ? (
         <DimensionTablePanel
           title="风扇健康"
-          subtitle="转速与 Status.Health"
-          guide={[{ label: '风扇', detail: '按风扇名称对齐转速与健康；缺健康样本时只保留转速。' }]}
+          subtitle="转速与健康"
+          guide={[{ label: '风扇', detail: '按风扇对齐转速与健康；缺健康样本时只保留转速。' }]}
           columns={fanColumns}
           rows={fanRows}
           styles={styles}
@@ -336,8 +336,8 @@ export function HardwareDimensionTables({
       {visible.has('nic') ? (
         <DimensionTablePanel
           title="网口"
-          subtitle="Chassis NetworkPorts · 不爬 EthernetInterfaces"
-          guide={[{ label: '网口', detail: '适配器 + 端口对齐链路、健康与速率。' }]}
+          subtitle="链路、健康与速率"
+          guide={[{ label: '网口', detail: '按适配器与端口对齐链路、健康与速率。' }]}
           columns={nicColumns}
           rows={nicRows}
           styles={styles}
@@ -347,11 +347,11 @@ export function HardwareDimensionTables({
       {visible.has('storage') ? (
         <DimensionTablePanel
           title="存储子系统"
-          subtitle="HealthRollup + 内嵌控制器 · 不逐盘"
+          subtitle="子系统与控制器"
           guide={[
             {
               label: '存储',
-              detail: '覆盖控制器/子系统故障。逐盘 Status.Health 需要 GET /drives，当前采集禁止。'
+              detail: '子系统汇总健康与内嵌控制器；不含逐盘明细。'
             }
           ]}
           columns={storageColumns}
