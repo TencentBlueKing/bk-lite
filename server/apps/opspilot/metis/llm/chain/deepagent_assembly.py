@@ -413,6 +413,7 @@ class DeepAgentAssemblyMixin:
             "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
             "空列表且用户未确认对象类型时，必须 request_user_choice 让用户选择类型，不要当成查无此实例。"
             "用户已声明主机/Pod/中间件时不要再问类型，直接用对应对象 id。"
+            "查未关闭/未分派/某台还在告时用 alerts_*，不要用 monitor_list_active_alerts，也不要为此问对象类型。"
             "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
             "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
             "monitor_query_metric_data 的 instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用 name 或 IP 代替。"
