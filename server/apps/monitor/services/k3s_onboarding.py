@@ -22,6 +22,11 @@ from apps.monitor.models import (
     MonitorInstanceOrganization,
     MonitorObject,
 )
+from apps.monitor.services.child_instance_discovery import (
+    normalize_collect_interval,
+    parent_has_child_objects,
+    schedule_child_instance_discovery_on_commit,
+)
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.dimension import parse_instance_id
@@ -76,6 +81,7 @@ class K3SOnboardingService:
         name,
         organizations,
         actor_context=None,
+        interval=None,
     ):
         monitor_object = cls._get_cluster_object(monitor_object_id)
         MonitorObjectService.validate_new_instance_name_unique(
@@ -88,6 +94,7 @@ class K3SOnboardingService:
             name=name,
             monitor_object=monitor_object,
             auto=False,
+            interval=normalize_collect_interval(interval),
             **maintainer_kwargs(actor_context),
         )
         MonitorInstanceOrganization.objects.bulk_create(
@@ -105,6 +112,8 @@ class K3SOnboardingService:
             instance.id,
             organizations,
         )
+        if parent_has_child_objects(monitor_object.id):
+            schedule_child_instance_discovery_on_commit(instance.id)
         return {"instance_id": instance.id}
 
     @staticmethod

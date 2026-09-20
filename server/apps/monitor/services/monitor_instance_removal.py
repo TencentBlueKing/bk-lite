@@ -20,6 +20,7 @@ from apps.monitor.models import (
 )
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+from apps.monitor.services.child_instance_discovery import cancel_child_instance_discovery
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.rpc.node_mgmt import NodeMgmt
@@ -136,6 +137,9 @@ class MonitorInstanceRemovalService:
                 )
                 MonitorInstance.objects.filter(id__in=removed_ids).delete()
                 FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
+
+            for instance_id in removed_ids:
+                cancel_child_instance_discovery(instance_id)
 
             # IoC：删除后通知节点/CMDB 只清关联 ID（best-effort）
             try:

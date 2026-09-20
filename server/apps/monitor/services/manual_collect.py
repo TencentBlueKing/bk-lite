@@ -3,6 +3,11 @@ from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.core.utils.k8s_daemonset_tolerations import TOLERATIONS_UNSET, normalize_k8s_daemonset_tolerations, token_tolerations_kwargs
 from apps.core.utils.k8s_image_registry import build_kubectl_install_command
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.services.child_instance_discovery import (
+    enqueue_child_instance_discovery,
+    normalize_collect_interval,
+    parent_has_child_objects,
+)
 from apps.monitor.services.infra import InfraService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.node_mgmt import InstanceConfigService
@@ -19,6 +24,8 @@ class ManualCollectService:
         organizations = payload.pop("organizations", [])
         payload["auto"] = False
         payload["id"] = str(tuple([payload["id"]]))
+        if "interval" in payload:
+            payload["interval"] = normalize_collect_interval(payload.get("interval"))
         return payload, organizations
 
     @classmethod
@@ -90,6 +97,8 @@ class ManualCollectService:
             instance_obj.id,
             organizations,
         )
+        if parent_has_child_objects(instance_obj.monitor_object_id):
+            enqueue_child_instance_discovery(instance_obj.id)
         return {"instance_id": instance_obj.id}
 
     @staticmethod
