@@ -75,6 +75,54 @@
       ]
     },
     {
+      "name": "风扇健康异常",
+      "alert_name": "硬件服务器${resource_name} 风扇 ${metric_name} 健康异常",
+      "description": "Redfish Thermal.Fans.Status.Health 不是 OK 时告警。",
+      "metric_name": "redfish_fan_health",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "存储健康异常",
+      "alert_name": "硬件服务器${resource_name} 存储 ${metric_name} 健康异常",
+      "description": "Redfish Storage.Status.HealthRollup 不是 OK 时告警。",
+      "metric_name": "redfish_storage_health",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
       "name": "电源模块健康异常",
       "alert_name": "硬件服务器${resource_name} 电源 ${metric_name} 健康异常",
       "description": "Redfish 电源模块 Status.Health 不是 OK 时告警。",

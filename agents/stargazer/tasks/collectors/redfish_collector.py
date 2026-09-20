@@ -1,7 +1,8 @@
 """Targeted Redfish hardware-server monitor collector.
 
-Follows Systems / Managers / Chassis Thermal+Power only. Does not crawl Sensors,
-logs, DIMMs, or drives.
+Follows Systems / Managers / Chassis Thermal+Power, then bounded Storage and
+Chassis NetworkAdapters. Does not crawl Sensors, logs, DIMMs, drives, or
+EthernetInterfaces.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ MONITOR_TYPE = "redfish"
 RESOURCE_TYPE = "hardware_server"
 HEALTH_CODES = {"ok": 1, "warning": 2, "non-critical": 2, "critical": 3}
 POWER_STATE_CODES = {"on": 1, "off": 0}
+LINK_UP_VALUES = frozenset({"linkup", "up", "connected"})
+LINK_DOWN_VALUES = frozenset({"linkdown", "down", "disconnected", "nolink"})
 FORBIDDEN_URI_PARTS = (
     "/sensors",
     "/logservices",
@@ -32,6 +35,9 @@ FORBIDDEN_URI_PARTS = (
     "/telemetryservice",
 )
 MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_STORAGE_RESOURCES = 8
+MAX_NETWORK_ADAPTERS = 8
+MAX_NETWORK_PORTS = 16
 
 
 def now_ms() -> int:
@@ -55,13 +61,29 @@ def as_float(value: Any) -> float | None:
         return None
 
 
-def health_code(status: Any) -> int | None:
+def as_text(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    return str(value).strip()
+
+
+def member_name(*candidates: Any) -> str:
+    for candidate in candidates:
+        text = as_text(candidate)
+        if text:
+            return text
+    return ""
+
+
+def health_code(status: Any, *, prefer_rollup: bool = False) -> int | None:
     if not isinstance(status, dict):
         return None
-    health = status.get("Health")
-    if health in (None, ""):
+    raw = status.get("HealthRollup") if prefer_rollup else None
+    if raw in (None, ""):
+        raw = status.get("Health")
+    if raw in (None, ""):
         return None
-    return HEALTH_CODES.get(str(health).strip().lower(), 0)
+    return HEALTH_CODES.get(str(raw).strip().lower(), 0)
 
 
 def power_state_code(value: Any) -> int | None:
@@ -70,8 +92,21 @@ def power_state_code(value: Any) -> int | None:
     return POWER_STATE_CODES.get(str(value).strip().lower(), 2)
 
 
+def link_up_code(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return 1 if value else 0
+    text = str(value).strip().lower()
+    if text in LINK_UP_VALUES:
+        return 1
+    if text in LINK_DOWN_VALUES:
+        return 0
+    return None
+
+
 def as_bool(value: Any, default: bool = True) -> bool:
-    if value is None or value == "":
+    if value in (None, ""):
         return default
     if isinstance(value, bool):
         return value
@@ -104,12 +139,31 @@ def reading_units(value: Any, default: str = "RPM") -> str:
     return text or default
 
 
+def put_metric(current: dict[str, Any], name: str, value: Any, dims: list[tuple[str, str]] | None = None) -> None:
+    if value is None:
+        return
+    if dims:
+        current.setdefault(name, {}).update(dim_gauge(dims, value))
+        return
+    current[name] = gauge(value)
+
+
+def port_speed_mbps(port: dict[str, Any]) -> float | None:
+    mbps = as_float(port.get("CurrentLinkSpeedMbps"))
+    if mbps is not None:
+        return mbps
+    gbps = as_float(port.get("CurrentSpeedGbps"))
+    if gbps is None:
+        return None
+    return gbps * 1000.0
+
+
 class RedfishMonitorError(ValueError):
     pass
 
 
 class RedfishCollector(BaseCollector):
-    """Collect BMC health, thermal, and power metrics over Redfish."""
+    """Collect BMC health, thermal, power, storage rollup, and NIC metrics over Redfish."""
 
     def __init__(self, params: dict[str, Any], *, transport=None):
         super().__init__(params)
@@ -248,10 +302,22 @@ class RedfishCollector(BaseCollector):
             return None
         return await self._get_json(client, members[0], optional=True)
 
-    async def _chassis_thermal_power(self, client: httpx.AsyncClient, chassis_link: Any) -> tuple[dict | None, dict | None]:
+    async def _list_resources(self, client: httpx.AsyncClient, link: Any, *, limit: int) -> list[dict[str, Any]]:
+        if not link or limit <= 0:
+            return []
+        collection = await self._get_json(client, link, optional=True)
+        payloads: list[dict[str, Any]] = []
+        for member in member_ids(collection)[:limit]:
+            payload = await self._get_json(client, member, optional=True)
+            if isinstance(payload, dict):
+                payloads.append(payload)
+        return payloads
+
+    async def _chassis_thermal_power(self, client: httpx.AsyncClient, chassis_link: Any) -> tuple[dict | None, dict | None, str]:
         collection = await self._get_json(client, chassis_link, optional=True)
         thermal = None
         power = None
+        network_link = ""
         for member in member_ids(collection):
             chassis = await self._get_json(client, member, optional=True)
             if not isinstance(chassis, dict):
@@ -259,78 +325,181 @@ class RedfishCollector(BaseCollector):
             if thermal is None:
                 thermal_link = odata_id(chassis.get("Thermal")) or f"{urlsplit(self._resource_url(member)).path.rstrip('/')}/Thermal"
                 thermal = await self._get_json(client, thermal_link, optional=True)
+                if isinstance(thermal, dict):
+                    network_link = odata_id(chassis.get("NetworkAdapters"))
             if power is None:
                 power_link = odata_id(chassis.get("Power")) or f"{urlsplit(self._resource_url(member)).path.rstrip('/')}/Power"
                 power = await self._get_json(client, power_link, optional=True)
             if thermal is not None and power is not None:
                 break
-        return thermal, power
+        return thermal, power, network_link
 
-    def _emit_metrics(self, system: dict[str, Any], manager: dict[str, Any] | None, thermal: dict | None, power: dict | None) -> dict:
-        resource_id = str(system.get("Id") or odata_id(system) or self.host)
-        current: dict[str, Any] = {}
-        system_health = health_code(system.get("Status"))
-        if system_health is not None:
-            current["redfish_system_health"] = gauge(system_health)
-        power_code = power_state_code(system.get("PowerState"))
-        if power_code is not None:
-            current["redfish_system_power_state"] = gauge(power_code)
+    async def _adapter_ports(self, client: httpx.AsyncClient, adapter: dict[str, Any], remaining: int) -> list[dict[str, Any]]:
+        if remaining <= 0:
+            return []
+        embedded: list[str] = []
+        for controller in adapter.get("Controllers") or []:
+            if not isinstance(controller, dict):
+                continue
+            links = controller.get("Links") if isinstance(controller.get("Links"), dict) else {}
+            for item in links.get("NetworkPorts") or []:
+                link = odata_id(item)
+                if link:
+                    embedded.append(link)
+        if embedded:
+            ports: list[dict[str, Any]] = []
+            for link in embedded[:remaining]:
+                payload = await self._get_json(client, link, optional=True)
+                if isinstance(payload, dict):
+                    ports.append(payload)
+            return ports
+        collection_link = odata_id(adapter.get("Ports")) or odata_id(adapter.get("NetworkPorts"))
+        return await self._list_resources(client, collection_link, limit=remaining)
+
+    def _emit_system_metrics(self, current: dict[str, Any], system: dict[str, Any], manager: dict[str, Any] | None) -> None:
+        put_metric(current, "redfish_system_health", health_code(system.get("Status")))
+        put_metric(current, "redfish_system_power_state", power_state_code(system.get("PowerState")))
         processor = system.get("ProcessorSummary") if isinstance(system.get("ProcessorSummary"), dict) else {}
         memory = system.get("MemorySummary") if isinstance(system.get("MemorySummary"), dict) else {}
-        processor_health = health_code(processor.get("Status"))
-        memory_health = health_code(memory.get("Status"))
-        if processor_health is not None:
-            current["redfish_processor_health_rollup"] = gauge(processor_health)
-        if memory_health is not None:
-            current["redfish_memory_health_rollup"] = gauge(memory_health)
+        put_metric(current, "redfish_processor_health_rollup", health_code(processor.get("Status")))
+        put_metric(current, "redfish_memory_health_rollup", health_code(memory.get("Status")))
+        firmware_dims: list[tuple[str, str]] = []
+        bios_version = as_text(system.get("BiosVersion"))
+        if bios_version:
+            firmware_dims.append(("bios_version", bios_version))
         if isinstance(manager, dict):
-            manager_health = health_code(manager.get("Status"))
-            if manager_health is not None:
-                current["redfish_manager_health"] = gauge(manager_health)
-        if isinstance(thermal, dict):
-            for sensor in thermal.get("Temperatures") or []:
-                if not isinstance(sensor, dict):
-                    continue
-                reading = as_float(sensor.get("ReadingCelsius"))
-                name = str(sensor.get("Name") or sensor.get("PhysicalContext") or "").strip()
-                if reading is None or not name:
-                    continue
-                current.setdefault("redfish_temperature_celsius", {}).update(dim_gauge([("name", name)], reading))
-            for fan in thermal.get("Fans") or []:
-                if not isinstance(fan, dict):
-                    continue
-                reading = as_float(fan.get("Reading"))
-                name = str(fan.get("Name") or fan.get("Id") or fan.get("MemberId") or "").strip()
-                if reading is None or not name:
-                    continue
-                current.setdefault("redfish_fan_speed", {}).update(
-                    dim_gauge([("name", name), ("unit", reading_units(fan.get("ReadingUnits")))], reading)
+            put_metric(current, "redfish_manager_health", health_code(manager.get("Status")))
+            bmc_firmware = as_text(manager.get("FirmwareVersion"))
+            if bmc_firmware:
+                firmware_dims.append(("bmc_firmware", bmc_firmware))
+        if firmware_dims:
+            put_metric(current, "redfish_firmware_info", 1, firmware_dims)
+
+    def _emit_thermal_metrics(self, current: dict[str, Any], thermal: dict | None) -> None:
+        if not isinstance(thermal, dict):
+            return
+        for sensor in thermal.get("Temperatures") or []:
+            if not isinstance(sensor, dict):
+                continue
+            name = member_name(sensor.get("Name"), sensor.get("PhysicalContext"))
+            if not name:
+                continue
+            dims = [("name", name)]
+            put_metric(current, "redfish_temperature_celsius", as_float(sensor.get("ReadingCelsius")), dims)
+            put_metric(
+                current,
+                "redfish_temperature_upper_critical_celsius",
+                as_float(sensor.get("UpperThresholdCritical")),
+                dims,
+            )
+        for fan in thermal.get("Fans") or []:
+            if not isinstance(fan, dict):
+                continue
+            name = member_name(fan.get("Name"), fan.get("FanName"), fan.get("Id"), fan.get("MemberId"))
+            if not name:
+                continue
+            dims = [("name", name)]
+            reading = as_float(fan.get("Reading"))
+            if reading is not None:
+                put_metric(
+                    current,
+                    "redfish_fan_speed",
+                    reading,
+                    [("name", name), ("unit", reading_units(fan.get("ReadingUnits")))],
                 )
-        if isinstance(power, dict):
-            for control in power.get("PowerControl") or []:
-                if not isinstance(control, dict):
+            put_metric(current, "redfish_fan_health", health_code(fan.get("Status")), dims)
+
+    def _emit_power_metrics(self, current: dict[str, Any], power: dict | None) -> None:
+        if not isinstance(power, dict):
+            return
+        for control in power.get("PowerControl") or []:
+            if not isinstance(control, dict):
+                continue
+            consumed = as_float(control.get("PowerConsumedWatts"))
+            if consumed is None:
+                continue
+            name = member_name(control.get("Name"), control.get("MemberId"))
+            if name:
+                put_metric(current, "redfish_power_consumed_watts", consumed, [("name", name)])
+            else:
+                put_metric(current, "redfish_power_consumed_watts", consumed)
+        for supply in power.get("PowerSupplies") or []:
+            if not isinstance(supply, dict):
+                continue
+            name = member_name(supply.get("Name"), supply.get("Id"), supply.get("MemberId"))
+            if not name:
+                continue
+            dims = [("name", name)]
+            put_metric(current, "redfish_psu_health", health_code(supply.get("Status")), dims)
+            put_metric(current, "redfish_psu_input_watts", as_float(supply.get("PowerInputWatts")), dims)
+            put_metric(current, "redfish_psu_input_voltage", as_float(supply.get("LineInputVoltage")), dims)
+        for voltage in power.get("Voltages") or []:
+            if not isinstance(voltage, dict):
+                continue
+            name = member_name(voltage.get("Name"), voltage.get("Id"), voltage.get("MemberId"))
+            if not name:
+                continue
+            put_metric(current, "redfish_voltage_volts", as_float(voltage.get("ReadingVolts")), [("name", name)])
+
+    def _emit_storage_metrics(self, current: dict[str, Any], storages: list[dict[str, Any]]) -> None:
+        for storage in storages:
+            storage_id = member_name(storage.get("Id"), storage.get("Name"))
+            if not storage_id:
+                continue
+            put_metric(
+                current,
+                "redfish_storage_health",
+                health_code(storage.get("Status"), prefer_rollup=True),
+                [("id", storage_id)],
+            )
+            for controller in storage.get("StorageControllers") or []:
+                if not isinstance(controller, dict):
                     continue
-                consumed = as_float(control.get("PowerConsumedWatts"))
-                if consumed is None:
+                controller_id = member_name(controller.get("MemberId"), controller.get("Id"), controller.get("Name"))
+                if not controller_id:
                     continue
-                name = str(control.get("Name") or control.get("MemberId") or "").strip()
-                if name:
-                    current.setdefault("redfish_power_consumed_watts", {}).update(dim_gauge([("name", name)], consumed))
-                else:
-                    current["redfish_power_consumed_watts"] = gauge(consumed)
-            for supply in power.get("PowerSupplies") or []:
-                if not isinstance(supply, dict):
+                put_metric(
+                    current,
+                    "redfish_storage_controller_health",
+                    health_code(controller.get("Status")),
+                    [("id", controller_id), ("storage_id", storage_id)],
+                )
+
+    def _emit_nic_metrics(
+        self,
+        current: dict[str, Any],
+        nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]],
+    ) -> None:
+        for adapter, ports in nic_rows:
+            adapter_id = member_name(adapter.get("Id"), adapter.get("Name"))
+            if not adapter_id:
+                continue
+            put_metric(current, "redfish_nic_health", health_code(adapter.get("Status")), [("id", adapter_id)])
+            for port in ports:
+                port_id = member_name(port.get("Id"), port.get("Name"), port.get("MemberId"))
+                if not port_id:
                     continue
-                name = str(supply.get("Name") or supply.get("Id") or supply.get("MemberId") or "").strip()
-                if not name:
-                    continue
-                dims = [("name", name)]
-                psu_health = health_code(supply.get("Status"))
-                if psu_health is not None:
-                    current.setdefault("redfish_psu_health", {}).update(dim_gauge(dims, psu_health))
-                watts = as_float(supply.get("PowerInputWatts"))
-                if watts is not None:
-                    current.setdefault("redfish_psu_input_watts", {}).update(dim_gauge(dims, watts))
+                dims = [("adapter_id", adapter_id), ("id", port_id)]
+                put_metric(current, "redfish_nic_port_health", health_code(port.get("Status")), dims)
+                put_metric(current, "redfish_nic_port_link_up", link_up_code(port.get("LinkStatus")), dims)
+                put_metric(current, "redfish_nic_port_speed_mbps", port_speed_mbps(port), dims)
+
+    def _emit_metrics(
+        self,
+        system: dict[str, Any],
+        manager: dict[str, Any] | None,
+        thermal: dict | None,
+        power: dict | None,
+        storages: list[dict[str, Any]],
+        nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]],
+    ) -> dict:
+        resource_id = str(system.get("Id") or odata_id(system) or self.host)
+        current: dict[str, Any] = {}
+        self._emit_system_metrics(current, system, manager)
+        self._emit_thermal_metrics(current, thermal)
+        self._emit_power_metrics(current, power)
+        self._emit_storage_metrics(current, storages)
+        self._emit_nic_metrics(current, nic_rows)
         if not current:
             raise RedfishMonitorError("Redfish scrape produced no metrics")
         return {(resource_id, RESOURCE_TYPE): current}
@@ -349,8 +518,16 @@ class RedfishCollector(BaseCollector):
             if not isinstance(system, dict):
                 raise RedfishMonitorError("Redfish Systems collection is empty")
             manager = await self._follow_collection(client, odata_id(root.get("Managers")) or "/redfish/v1/Managers")
-            thermal, power = await self._chassis_thermal_power(client, odata_id(root.get("Chassis")) or "/redfish/v1/Chassis")
-            metric_dict = self._emit_metrics(system, manager, thermal, power)
+            thermal, power, network_link = await self._chassis_thermal_power(client, odata_id(root.get("Chassis")) or "/redfish/v1/Chassis")
+            storages = await self._list_resources(client, odata_id(system.get("Storage")), limit=MAX_STORAGE_RESOURCES)
+            adapters = await self._list_resources(client, network_link, limit=MAX_NETWORK_ADAPTERS)
+            nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+            remaining_ports = MAX_NETWORK_PORTS
+            for adapter in adapters:
+                ports = await self._adapter_ports(client, adapter, remaining_ports)
+                remaining_ports -= len(ports)
+                nic_rows.append((adapter, ports))
+            metric_dict = self._emit_metrics(system, manager, thermal, power, storages, nic_rows)
             output = "\n".join(convert_to_prometheus(metric_dict)) + "\n"
             logger.info(
                 "event=redfish_collect_success monitor_type=%s system_id=%s",

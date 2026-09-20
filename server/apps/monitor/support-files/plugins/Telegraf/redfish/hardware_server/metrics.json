@@ -1,6 +1,6 @@
 {
   "plugin": "Hardware Server Redfish",
-  "plugin_desc": "Collect Dell iDRAC and other Redfish BMC health, power, temperature, and fan metrics over HTTPS without crawling the full Redfish tree.",
+  "plugin_desc": "Collect generic DMTF Redfish BMC health, firmware, thermal, power, storage rollup, and NIC metrics over HTTPS. Discovers Systems/Managers/Chassis by @odata.id and does not split by brand or crawl Sensors, drives, or EthernetInterfaces.",
   "collector": "Telegraf",
   "collect_type": "redfish",
   "support_collect_detect": false,
@@ -13,7 +13,7 @@
   "description": "",
   "default_metric": "any({instance_type='hardware_server'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["redfish_system_health", "redfish_system_power_state", "redfish_temperature_celsius"],
+  "supplementary_indicators": ["redfish_system_health", "redfish_system_power_state", "redfish_temperature_celsius", "redfish_fan_health"],
   "display_fields": [
     {"name": "Health", "sort_order": 0, "metrics": [{"plugin": "Hardware Server Redfish", "metric": "redfish_system_health"}]},
     {"name": "Power State", "sort_order": 1, "metrics": [{"plugin": "Hardware Server Redfish", "metric": "redfish_system_power_state"}, {"plugin": "Hardware Server IPMI", "metric": "ipmi_chassis_power_state"}]},
@@ -129,6 +129,127 @@
       "dimensions": [{"name": "name", "description": "Power supply name"}],
       "instance_id_keys": ["instance_id"],
       "description": "Power-supply input wattage from Redfish Power.PowerSupplies.PowerInputWatts."
+    },
+    {
+      "metric_group": "Inventory",
+      "name": "redfish_firmware_info",
+      "query": "redfish_firmware_info{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "Firmware",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "bmc_firmware", "description": "BMC firmware version"}, {"name": "bios_version", "description": "System BIOS version"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "BMC FirmwareVersion and ComputerSystem.BiosVersion from the Manager and System resources already fetched for health. Value is always 1; versions are labels."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "redfish_temperature_upper_critical_celsius",
+      "query": "redfish_temperature_upper_critical_celsius{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "Temperature Upper Critical",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [{"name": "name", "description": "Sensor name"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "BMC UpperThresholdCritical from the same Thermal.Temperatures array as the temperature reading. Missing thresholds are omitted."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "redfish_fan_health",
+      "query": "redfish_fan_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "Fan Health",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [{"name": "name", "description": "Fan name"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Fan Status.Health from Redfish Thermal.Fans, without enumerating Sensors."
+    },
+    {
+      "metric_group": "Power",
+      "name": "redfish_psu_input_voltage",
+      "query": "redfish_psu_input_voltage{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "PSU Input Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [{"name": "name", "description": "Power supply name"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Power-supply line input voltage from Redfish Power.PowerSupplies.LineInputVoltage."
+    },
+    {
+      "metric_group": "Power",
+      "name": "redfish_voltage_volts",
+      "query": "redfish_voltage_volts{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [{"name": "name", "description": "Voltage sensor name"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Chassis voltage rails from Redfish Power.Voltages.ReadingVolts when the Power resource includes them."
+    },
+    {
+      "metric_group": "Storage",
+      "name": "redfish_storage_health",
+      "query": "redfish_storage_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "Storage Health",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [{"name": "id", "description": "Storage subsystem id"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Storage subsystem HealthRollup from Systems/{id}/Storage/{StorageId}. Does not GET each drive."
+    },
+    {
+      "metric_group": "Storage",
+      "name": "redfish_storage_controller_health",
+      "query": "redfish_storage_controller_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "Storage Controller Health",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [{"name": "id", "description": "Controller id"}, {"name": "storage_id", "description": "Storage subsystem id"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Embedded StorageControllers[].Status from the Storage resource. Controllers that are only @odata.id links are skipped."
+    },
+    {
+      "metric_group": "Network",
+      "name": "redfish_nic_health",
+      "query": "redfish_nic_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "NIC Health",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [{"name": "id", "description": "Network adapter id"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Chassis NetworkAdapter.Status.Health. Uses Chassis/NetworkAdapters, not Systems/EthernetInterfaces."
+    },
+    {
+      "metric_group": "Network",
+      "name": "redfish_nic_port_health",
+      "query": "redfish_nic_port_health{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "NIC Port Health",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"OK\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"Warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"Critical\",\"id\":3,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [{"name": "adapter_id", "description": "Network adapter id"}, {"name": "id", "description": "Port id"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network port Status.Health from adapter Ports or Controllers.Links.NetworkPorts, capped per scrape."
+    },
+    {
+      "metric_group": "Network",
+      "name": "redfish_nic_port_link_up",
+      "query": "redfish_nic_port_link_up{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "NIC Port Link",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"Down\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"Up\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [{"name": "adapter_id", "description": "Network adapter id"}, {"name": "id", "description": "Port id"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "NetworkPort.LinkStatus mapped to 1=LinkUp and 0=LinkDown/NoLink."
+    },
+    {
+      "metric_group": "Network",
+      "name": "redfish_nic_port_speed_mbps",
+      "query": "redfish_nic_port_speed_mbps{instance_type='hardware_server', collect_type='redfish', __$labels__}",
+      "display_name": "NIC Port Speed",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [{"name": "adapter_id", "description": "Network adapter id"}, {"name": "id", "description": "Port id"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Current link speed in Mbps from CurrentLinkSpeedMbps or CurrentSpeedGbps."
     }
   ]
 }
