@@ -267,7 +267,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                     code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
                 else:
                     cmd, workspace = prepare_adhoc_execution(request)
-                if not windows_file_execution and remote_stream_enabled and request_module == "shell":
+                if not windows_file_execution and remote_stream_enabled and request_module in {"raw", "shell"}:
                     code, output, output_meta = await run_remote_shell_stream(
                         cmd,
                         script_content=request.module_args,

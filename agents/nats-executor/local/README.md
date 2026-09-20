@@ -16,6 +16,8 @@
 |---------|------|------|---------|
 | `sh` | `ShellTypeSh` | Unix Shell（默认） | Linux, macOS |
 | `bash` | `ShellTypeBash` | Bash Shell | Linux, macOS |
+| `python` | `ShellTypePython` | Python | Linux, macOS |
+| `python3` | `ShellTypePython3` | Python 3 | Linux, macOS |
 | `bat` | `ShellTypeBat` | Windows 批处理 | Windows |
 | `cmd` | `ShellTypeCmd` | Windows 命令提示符（同 bat） | Windows |
 | `powershell` | `ShellTypePowerShell` | Windows PowerShell | Windows |

@@ -142,7 +142,12 @@ async def test_remote_shell_stream_keeps_script_out_of_process_arguments():
 
     assert commands
     assert all(secret_script not in argument for command in commands for argument in command)
-    assert any("setsid -f" in argument for argument in commands[0])
+    for command in commands:
+        module_index = command.index("-m")
+        args_index = command.index("-a")
+        assert command[module_index + 1] == "raw"
+        assert "_raw_params" in json.loads(command[args_index + 1])
+    assert "setsid -f" in json.loads(commands[0][commands[0].index("-a") + 1])["_raw_params"]
 
 
 def test_remote_shell_commands_cap_target_file_and_clean_workspace():
