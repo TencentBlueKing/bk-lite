@@ -22,28 +22,6 @@ const IPMI_TEMP = 'ipmi_sensor_value{instance_type=\'hardware_server\', unit="de
 const IPMI_WATTS = 'ipmi_sensor_value{instance_type=\'hardware_server\', unit="watts", __$labels__}';
 const IPMI_RPM = 'ipmi_sensor_value{instance_type=\'hardware_server\', unit="rpm", __$labels__}';
 
-const HEALTH_STATUS_ROWS = [
-  { label: 'OK', detail: '正常' },
-  { label: 'Warning', detail: '警告' },
-  { label: 'Critical', detail: '严重' }
-] as const;
-
-const POWER_STATUS_ROWS = [
-  { label: 'On', detail: '开机' },
-  { label: 'Off', detail: '关机' },
-  { label: 'Other', detail: '其它状态' }
-] as const;
-
-const LINK_STATUS_ROWS = [
-  { label: 'Up', detail: '连通' },
-  { label: 'Down', detail: '断开' }
-] as const;
-
-/** 先说明指标含义，再逐行对照状态。 */
-const healthGuide = (detail: string) => [{ label: '说明', detail }, ...HEALTH_STATUS_ROWS];
-const powerGuide = (detail: string) => [{ label: '说明', detail }, ...POWER_STATUS_ROWS];
-const linkGuide = (detail: string) => [{ label: '说明', detail }, ...LINK_STATUS_ROWS];
-
 /**
  * Hardware Server 专业盘：Redfish 整机健康 + 热功耗 + 风扇/电源/网口/存储子系统。
  * 温度 / 风扇 / 整机功耗对 IPMI 同类物理量做 PromQL `or` 回退；Redfish 独有健康卡无数据时隐藏。
@@ -212,7 +190,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: HEALTH_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: healthGuide('整机当前健康状态。')
+      guide: [
+        {
+          label: '系统健康',
+          detail: '整机当前健康状态：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ]
     },
     {
       title: '电源状态',
@@ -222,7 +205,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: POWER_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: powerGuide('整机电源开/关状态。')
+      guide: [
+        {
+          label: '电源状态',
+          detail: '整机电源开/关状态：On 开机，Off 关机，Other 其它状态。'
+        }
+      ]
     },
     {
       title: 'BMC 健康',
@@ -232,7 +220,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: HEALTH_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: healthGuide('管理控制器（BMC）当前健康状态。')
+      guide: [
+        {
+          label: 'BMC 健康',
+          detail: '管理控制器当前健康状态：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ]
     },
     {
       title: '整机功耗',
@@ -257,7 +250,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: HEALTH_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: healthGuide('全部 CPU 的汇总健康，非单颗明细。')
+      guide: [
+        {
+          label: '处理器健康',
+          detail: '全部 CPU 的汇总健康（非单颗）：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ]
     },
     {
       title: '内存健康',
@@ -267,7 +265,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: HEALTH_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: healthGuide('全部内存的汇总健康，非单条明细。')
+      guide: [
+        {
+          label: '内存健康',
+          detail: '全部内存的汇总健康（非单条）：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ]
     }
   ],
   charts: [
@@ -322,7 +325,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按风扇',
       metric: 'redfish_fan_health',
       keepDimensionSeries: true,
-      guide: healthGuide('各风扇当前健康状态。'),
+      guide: [
+        {
+          label: '风扇健康',
+          detail: '各风扇健康状态：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ],
       series: [{ metric: 'redfish_fan_health', label: '健康', color: '#27c274' }]
     },
     {
@@ -330,7 +338,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按电源模块',
       metric: 'redfish_psu_health',
       keepDimensionSeries: true,
-      guide: healthGuide('各电源模块当前健康状态。'),
+      guide: [
+        {
+          label: '电源健康',
+          detail: '各电源模块健康状态：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ],
       series: [{ metric: 'redfish_psu_health', label: '健康', color: '#722ed1' }]
     },
     {
@@ -354,7 +367,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按子系统',
       metric: 'redfish_storage_health',
       keepDimensionSeries: true,
-      guide: healthGuide('存储子系统汇总健康；不含逐盘明细。'),
+      guide: [
+        {
+          label: '存储健康',
+          detail: '存储子系统汇总健康（不含逐盘）：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ],
       series: [{ metric: 'redfish_storage_health', label: '健康', color: '#2f6bff' }]
     },
     {
@@ -362,7 +380,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按控制器',
       metric: 'redfish_storage_controller_health',
       keepDimensionSeries: true,
-      guide: healthGuide('各存储控制器当前健康状态。'),
+      guide: [
+        {
+          label: '控制器健康',
+          detail: '各存储控制器健康状态：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ],
       series: [{ metric: 'redfish_storage_controller_health', label: '健康', color: '#597ef7' }]
     },
     {
@@ -370,7 +393,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按端口',
       metric: 'redfish_nic_port_link_up',
       keepDimensionSeries: true,
-      guide: linkGuide('各网口链路是否连通。'),
+      guide: [
+        {
+          label: '网口链路',
+          detail: '各网口链路状态：Up 连通，Down 断开。'
+        }
+      ],
       series: [{ metric: 'redfish_nic_port_link_up', label: '链路', color: '#27c274' }]
     },
     {
@@ -378,7 +406,12 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按端口',
       metric: 'redfish_nic_port_health',
       keepDimensionSeries: true,
-      guide: healthGuide('各网口当前健康状态。'),
+      guide: [
+        {
+          label: '网口健康',
+          detail: '各网口健康状态：OK 正常，Warning 警告，Critical 严重。'
+        }
+      ],
       series: [{ metric: 'redfish_nic_port_health', label: '健康', color: '#13c2c2' }]
     },
     {
