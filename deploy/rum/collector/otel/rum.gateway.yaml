@@ -1,0 +1,162 @@
+# RUM gateway: Faro/Replay → VictoriaLogs + VictoriaTraces + MinIO.
+
+receivers:
+  faro/rum:
+    endpoint: 0.0.0.0:4319
+    tenant_id: core
+    identity_hmac_secret: ${file:/run/secrets/rum_identity_hmac_current}
+    identity_hmac_version: ${env:RUM_IDENTITY_HMAC_CURRENT_VERSION}
+    identity_hmac_previous_secret: ${file:/run/secrets/rum_identity_hmac_previous}
+    identity_hmac_previous_version: ${env:RUM_IDENTITY_HMAC_PREVIOUS_VERSION}
+    admission_redis_url: ${env:RUM_ADMISSION_REDIS_URL}
+    admission_redis_password_file: /run/secrets/rum_admission_redis_password
+    max_compressed_bytes: 1048576
+    max_decompressed_bytes: 4194304
+    max_compression_ratio: 100
+    max_items: 1000
+    max_json_depth: 32
+    max_context_entries: 32
+    max_context_key_bytes: 128
+    max_context_value_bytes: 1024
+    read_header_timeout: 5s
+    read_timeout: 15s
+    idle_timeout: 30s
+  rum_replay:
+    endpoint: 0.0.0.0:4320
+    tenant_id: core
+    identity_hmac_secret: ${file:/run/secrets/rum_identity_hmac_current}
+    identity_hmac_version: ${env:RUM_IDENTITY_HMAC_CURRENT_VERSION}
+    identity_hmac_previous_secret: ${file:/run/secrets/rum_identity_hmac_previous}
+    identity_hmac_previous_version: ${env:RUM_IDENTITY_HMAC_PREVIOUS_VERSION}
+    admission_redis_url: ${env:RUM_ADMISSION_REDIS_URL}
+    admission_redis_password_file: /run/secrets/rum_admission_redis_password
+    max_compressed_bytes: 1048576
+    max_decompressed_bytes: 4194304
+    max_compression_ratio: 100
+    max_events: 10000
+    max_event_bytes: 4194304
+    max_json_depth: 64
+    read_header_timeout: 5s
+    read_timeout: 15s
+    idle_timeout: 30s
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  rumsession:
+    redis_url: ${env:RUM_SESSION_REDIS_URL}
+    redis_password_file: /run/secrets/rum_sessionizer_redis_password
+    idle_timeout: 15m
+    maximum_length: 4h
+    state_ttl: 5h
+    aof_timeout: 2s
+
+exporters:
+  rum_victoria/rum:
+    logs_endpoint: ${env:RUM_VICTORIA_LOGS_ENDPOINT}/insert/opentelemetry/v1/logs
+    admission_redis_url: ${env:RUM_ADMISSION_REDIS_URL}
+    admission_redis_password_file: /run/secrets/rum_admission_redis_password
+    max_queue_age: 336h
+    timeout: 10s
+    sending_queue:
+      enabled: true
+      storage: file_storage/rum_logs
+      sizer: bytes
+      queue_size: 536870912
+      num_consumers: 2
+      block_on_overflow: false
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 336h
+  rum_victoria/traces:
+    traces_endpoint: ${env:RUM_VICTORIA_TRACES_ENDPOINT}/insert/opentelemetry/v1/traces
+    admission_redis_url: ${env:RUM_ADMISSION_REDIS_URL}
+    admission_redis_password_file: /run/secrets/rum_admission_redis_password
+    max_queue_age: 168h
+    timeout: 10s
+    sending_queue:
+      enabled: true
+      storage: file_storage/rum_traces
+      sizer: bytes
+      queue_size: 268435456
+      num_consumers: 1
+      block_on_overflow: false
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 336h
+  rum_replay:
+    timeout: 15s
+    max_queue_age: 336h
+    minio_endpoint: ${env:RUM_MINIO_ENDPOINT}
+    minio_access_key: ${env:RUM_MINIO_ACCESS_KEY}
+    minio_secret_key: ${file:/run/secrets/rum_gateway_minio_secret}
+    minio_secure: ${env:RUM_MINIO_SECURE}
+    minio_bucket: rum-replay
+    redis_url: ${env:RUM_REPLAY_REDIS_URL}
+    redis_password_file: /run/secrets/rum_replay_exporter_redis_password
+    sending_queue:
+      enabled: true
+      storage: file_storage/rum_replay
+      sizer: bytes
+      queue_size: 2147483648
+      num_consumers: 4
+      block_on_overflow: false
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 336h
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13135
+  file_storage/rum_logs:
+    directory: /var/lib/core-rum/logs
+    create_directory: true
+    fsync: true
+    compaction:
+      on_start: true
+      cleanup_on_start: true
+      directory: /var/lib/core-rum/logs/compaction
+  file_storage/rum_traces:
+    directory: /var/lib/core-rum/traces
+    create_directory: true
+    fsync: true
+    compaction:
+      on_start: true
+      cleanup_on_start: true
+      directory: /var/lib/core-rum/traces/compaction
+  file_storage/rum_replay:
+    directory: /var/lib/core-rum/replay
+    create_directory: true
+    fsync: true
+    compaction:
+      on_start: true
+      cleanup_on_start: true
+      directory: /var/lib/core-rum/replay/compaction
+
+service:
+  extensions: [health_check, file_storage/rum_logs, file_storage/rum_traces, file_storage/rum_replay]
+  pipelines:
+    logs/rum:
+      receivers: [faro/rum]
+      processors: [memory_limiter, rumsession]
+      exporters: [rum_victoria/rum]
+    traces/rum:
+      receivers: [faro/rum]
+      processors: [memory_limiter]
+      exporters: [rum_victoria/traces]
+    logs/replay:
+      receivers: [rum_replay]
+      processors: [memory_limiter, rumsession]
+      exporters: [rum_replay]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888

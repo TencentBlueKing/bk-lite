@@ -31,7 +31,7 @@ Markdown 不复制维护运行时颜色值。修改品牌色或主题值时先�
 
 日常改 UI **不要默认通读本文全文**。可执行短清单在根目录 `CLAUDE.md` / `AGENTS.md` →「Web UI 硬约束」（会话常驻）。
 
-**仅当**新建视觉组件、改 token/设计语义、组件治理大迁移、设计走查，或短规则不够用时，再分段阅读本文相关章节（优先 **Overview**、**Layout & Styling**、**Do's and Don'ts**）和 `COMPONENT_GOVERNANCE.md`。做**实体网格列表页**时另读 **Components → Entity List Cards**；做**列表/表格上方搜索与操作**时另读 **List / Table Toolbar**；做**设置双栏 / 已选对象 / 对话**时另读 **Studio Workbench** 与 **Chat / AI Output**；做**加载态**时另读 **Loading / Skeleton**。
+**仅当**新建视觉组件、改 token/设计语义、组件治理大迁移、设计走查，或短规则不够用时，再分段阅读本文相关章节（优先 **Overview**、**Layout & Styling**、**Do's and Don'ts**）和 `COMPONENT_GOVERNANCE.md`。做**实体网格列表页**时另读 **Components → Entity List Cards**；做**列表/表格上方搜索与操作**时另读 **List / Table Toolbar**；做**设置双栏 / 已选对象 / 对话**时另读 **Studio Workbench** 与 **Chat / AI Output**；做**详情页 / 概览页（KPI + 卡片分区 + 属性面板）**时另读 **Detail / Overview Workbench**；做**加载态**时另读 **Loading / Skeleton**。
 
 ### Code Agent / 开发者开始写 UI 前
 
@@ -52,7 +52,7 @@ Markdown 不复制维护运行时颜色值。修改品牌色或主题值时先�
 
 BK-Lite Web 的默认气质是 **浅色、克制的企业控制台**：少装饰、少线框，用留白和浅底表达结构；让人觉得能工作，而不是在看科技展览。四个词：**干净、扁平、少框、留白分层**。
 
-这不是「科技风」。科技大屏（深色、霓虹、发光、巨大指标）、营销 SaaS（大 hero、渐变标题、很满的卡片墙）、旧式后台（每块都描边、开关套开关、灰底输入框）都不属于默认界面。OpsPilot 的列表卡、智能体设置双栏、测试对话是这套气质的当前参考面；其他 app 做同类 UI 时靠过来，不要平行发明第二套皮肤。
+这不是「科技风」。科技大屏（深色、霓虹、发光、巨大指标）、营销 SaaS（大 hero、渐变标题、很满的卡片墙）、旧式后台（每块都描边、开关套开关、灰底输入框）都不属于默认界面。OpsPilot 的列表卡、智能体设置双栏、测试对话，以及 RUM 的会话/错误详情页与应用概览页，是这套气质的当前参考面；其他 app 做同类 UI 时靠过来，不要平行发明第二套皮肤。
 
 界面服务于日常运维：发现资源、筛选对象、查看状态、处理告警、执行作业、确认高风险操作。友好来自清晰结构、可预期控件和及时反馈，而不是装饰。默认 register 是 product：顶栏、侧栏、筛选、表格、抽屉、弹窗、状态标签、批量操作。视觉策略是 restrained：白色/浅灰工作面 + 蓝色主操作 + 少量语义状态色。AI 出现时像工作助手，展示输入、输出、风险、下一步，不制造舞台感。
 
@@ -141,6 +141,7 @@ BK-Lite Web 以边框和色阶分层为主，阴影为辅。默认面板不应�
 - **Inset Content Edge** (`box-shadow: inset 0 6px 10px -6px rgba(0, 0, 0, 0.03)`): 主内容区顶部的轻微压线，来自 `.main-content`。
 - **Popover Shadow** (`box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)`): 顶部菜单 Popover 和临时浮层。
 - **Light Card Shadow** (`shadow-sm` / blur <= 8px): 仅用于需要从聊天流、报告流中分离的小型卡片。
+- **Micro Card Lift** (`box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03)`): 详情/概览页分区卡与 KPI 卡配 `1px` 边框时的微抬起，肉眼几乎不可见，只负责让卡从 `background-body` 上分离。
 
 ### Named Rules
 
@@ -241,7 +242,8 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **选择顺序:** 普通容器优先 Ant Design `Card`；指标摘要用 `SummaryMetricCard`；可选择卡片组用 `SelectableCardGrid`；页面表单头用 `PageFormHeaderCard`；故障排查语义用 `TroubleshootingCard`。实体、技能、集成等业务卡片保持 app-local，并组合已有 primitive。
 - **Corner Style:** 默认 `8px`，业务卡片可用 `12px`。不要超过 `16px`。
 - **Background:** 主容器 `var(--color-bg)`，弱容器 `var(--color-fill-1)`。已选对象小卡用 `bg-[var(--color-fill-1)]/70`，不要再加描边和阴影。
-- **Border:** 默认 `1px solid var(--color-border)`。禁止卡片左侧通高彩色 `border-left` / `border-right`（大于 `1px`）。章节标题允许 **约 `4×14px` 的品牌色短竖条** 作标记，不得铺满卡片高度。
+- **Border:** 默认 `1px solid var(--color-border)`。禁止卡片左侧通高彩色 `border-left` / `border-right`（大于 `1px`）。章节标题允许 **约 `4×14px` 的品牌色短竖条** 作标记，不得铺满卡片高度；短竖条只用于**同一块面板内部**划分子章节（如设置长表单里的「基础配置 / 提示词」），**已经是独立卡片（自带边框、栏头、内边距）的栏头禁止再加竖条**——容器边界本身就是分组，再加竖条属重复装饰。
+- **Shadow:** 独立卡片允许 `shadow-[0_1px_3px_rgba(0,0,0,0.03)]` 级别的微阴影配 `1px` 边框，用于让卡片从 `background-body` 上轻微抬起；不允许更大模糊（见 Elevation → No Ghost Card）。
 - **Internal Padding:** 默认 `16px`，弹窗主体可用 `24px`，密集行内块用 `8px`；已选对象小卡用 `p-2.5`。
 - **Nesting:** 禁止卡片套卡片。需要分组时用标题、分割线、表格分组或背景色阶。
 - **已选对象小卡：** 技能包、工具、已挂载项等共用一套缩小解剖：标题行左「名称 + 数量胶囊」、右「+ 添加xxx」（AntD `link` + `small`）；下一句说明；下方网格小卡（`rounded-lg p-2.5`，左 `20×20` 图标容器 + 名称，右配置/删除）。有选中即启用，空列表即关闭，**不要再给集合加总开关**；后端仍传列表（空数组即关）。数量必须有底色小胶囊（少数允许 `rounded-full`）；技能包用青绿、工具用琥珀，不要再用主色蓝，也不要做成无底色数字。空列表不显示数量。参考：OpsPilot 智能体设置页的技能包 / 工具。列表实体卡底栏 `+N` 不走这套，保持原样。
@@ -361,6 +363,110 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **底栏：** 栏内 sticky：左一句说明，右 AntD `primary`「保存」，圆角 `6px`。
 - **加载：** 用 `OpsPilotStudioWorkbenchSkeleton`，左右栏、栏头、表单行、已选小卡、发送框占位与最终布局同构。禁止用居中 `Spin` 替换整页。
 
+### Detail / Overview Workbench（详情页与概览页）
+
+对象详情（会话、错误、告警、作业、实例）和应用概览（KPI + 趋势 + 分布 + 近期列表）走同一套骨架：**顶部 KPI 指标格 → 主区（左宽右窄）卡片分区 → 右栏属性面板**。它是 Entity List Cards / Studio Workbench 的姊妹页型，用同一套 Look B 卡片语言；新 app 做详情/概览时按本节执行，不要再发明第二套详情皮肤。
+
+**参考实现（RUM，app-local）：**
+
+| 能力 | 路径 |
+| --- | --- |
+| KPI 指标卡 / 指标格 | `web/src/app/rum/components/rum-metric-card.tsx`（`RumMetricCard` / `RumMetricGrid`） |
+| 详情页（双栏 + 时间线 + 属性面板） | `web/src/app/rum/sessions/[sessionId]/page.tsx`、`web/src/app/rum/errors/detail/page.tsx` |
+| 概览页（趋势 + 分布卡 + 近期列表） | `web/src/app/rum/applications/[name]/overview/page.tsx` |
+| 同构骨架 | `web/src/app/rum/components/rum-skeleton.tsx`（`RumSessionDetailSkeleton` / `RumErrorDetailSkeleton` / `RumOverviewSkeleton`） |
+| 图标小动作 | `web/src/app/rum/components/rum-icon-action.tsx` |
+
+第二个真实 app 接入后再按 `COMPONENT_GOVERNANCE.md` 升 shared 并补 Storybook；升 shared 前禁止在别的 app 复制平行实现。
+
+#### 页面骨架
+
+```
+[← 返回] 对象名  [类型 tag] [状态 badge]                      [主操作 primary]
+副标题：所属 / 落地 / 时间
+
+[KPI] [KPI] [KPI] [KPI]                         ← RumMetricGrid，2–6 格
+
+┌ 主区卡片（flex-1）─────────────┐  ┌ 右栏（lg:w-[320px]）┐
+│ 栏头：图标 标题 (计数)  [操作]  │  │ 栏头：标题   [状态] │
+│ 正文：时间线 / 表格 / 堆栈      │  │ 属性行 · 属性行 …   │
+└────────────────────────────────┘  └─────────────────────┘
+```
+
+- **主区 / 右栏：** `flex min-w-0 flex-col items-start gap-4 lg:flex-row`；主区 `flex-1 min-w-0`，右栏 `w-full shrink-0 lg:w-[320px]`（最宽 `xl:w-[340px]`）。窄屏自动堆叠，不写 `calc(100vh - N)`。
+- **卡片间距：** 同栏卡片 `gap-4`；顶部 KPI 到主区 `gap-4`。
+- **返回：** 页头左侧 `ArrowLeft` 图标按钮回到列表，不做面包屑双份。
+
+#### 卡片容器与栏头（所有分区统一）
+
+```tsx
+<section className="overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-4 py-2.5">
+    <div className="flex items-center gap-2">
+      <CodeOutlined className="text-sm text-[var(--color-primary)]" />
+      <h2 className="m-0 text-[13px] font-semibold text-[var(--color-text-1)]">堆栈追踪</h2>
+      <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-1.5 text-xs font-semibold tabular-nums text-[var(--color-primary)]">12</span>
+    </div>
+    <Button size="small">复制堆栈</Button>
+  </div>
+  {/* 正文 */}
+</section>
+```
+
+- **容器：** `rounded-lg` + `1px border-1` + 微阴影 `0_1px_3px_rgba(0,0,0,0.03)`；`overflow-hidden` 让栏头浅底贴边。
+- **栏头：** `fill-1/35` 浅底 + `border-b border-1` + `px-4 py-2.5`。左：语义图标（`text-sm`，主色或该卡主题色）+ `13px semibold` 标题 + 可选计数胶囊；右：该卡的操作（Segmented、复制、查看全部、状态点）。**栏头不加短竖条**（见 Cards / Containers）。
+- **正文内边距：** 属性行 `p-3`；图表/表格 `p-3.5`；表格类正文可 `p-0` 直接贴表。
+- **一卡一职：** 每张卡只承载一种内容（时间线 / 堆栈 / 趋势 / 属性 / 近期列表）。卡内禁止再套卡；需要分组用浅底条目行或 `border-t`。
+
+#### KPI 指标卡（Look B 超微弱光感容器）
+
+- **容器：** 与分区卡同边框、同微阴影，`rounded-lg border border-[var(--color-border-1)] p-3 sm:px-3.5 sm:py-3 shadow-[0_1px_3px_rgba(0,0,0,0.03)]`。
+- **底色：** 极弱水洗微光（浓度严格控制在 `1.5%`，高度收缩在顶部 `32%`），有状态时色相与数值呼应，常规卡片统一透淡蓝光，整排均有底光，绝不留局部纯白：
+  - 常规 / 默认态：`linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 1.5%, var(--color-bg)) 0%, var(--color-bg) 32%)`
+  - 警告 / 危险 / 成功态：色相换为对应 token（`--color-warning` / `--color-fail` / `--color-success`），浓度保持极其轻薄的 `1.5%`，仅产生柔和氛围微光，绝不形成深色色斑。
+  - 悬停态（可点击时）：浓度微提至 `3%`。
+  - 解决痛点：既避免了“大红字大黄字顶上却透蓝光”的色彩拧巴，又通过极浅浓度（1.5%）和全员有光保证了整排卡片通透统一，彻底消除“红绿灯拼布感”。
+- **语义状态：** 主体依然由数值本身的文字颜色（`font-bold font-mono` 配 `var(--color-fail)`、`var(--color-success)`、`var(--color-warning)` 等）清晰传达。
+- **排版：** 上 label（`text-xs font-medium text-3`，保持纯文字，不加多余状态圆点），下数值 `font-mono tracking-tight tabular-nums`：短数值 `text-xl sm:text-2xl font-bold`；超过约 8 字符（带单位、时间戳、长字串）降到 `text-sm sm:text-base font-medium`，保持同排等高不折行。
+- **可点击：** 作为筛选/钻取入口时必须是 `button`，`group cursor-pointer hover:border-[var(--color-primary)] hover:shadow-sm`，label `group-hover:text-[var(--color-primary)]`，并有 `focus-visible` outline。不可点的指标卡 `cursor-default`。
+- **格数：** ≤3 格 `grid-cols-3`；4 格 `grid-cols-2 sm:grid-cols-4`；更多 `grid-cols-2 sm:grid-cols-3 lg:grid-cols-6`；间距 `gap-3`。
+
+#### 属性面板（右栏 key-value）
+
+- **条目化，不划线：** 每条属性一个浅底条目 `flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60`，条目间 `space-y-2`，外层 `p-3 text-xs`。**不要**用 `divide-y` 把一排属性切成满屏实线。
+- **左 key：** `text-[11px] font-medium text-3`，可带 `text-3` 小图标；**右 value：** `font-medium text-1`；代码类值（版本、指纹、UA）用 `font-mono text-xs font-semibold`，超长值 `truncate max-w-[170px]` + `title` / tooltip，旁边放复制小按钮。
+- **空值：** 统一 `—`，不显示 `undefined` / `null` / 空字符串。
+
+#### 计数胶囊（标题旁数字）
+
+- **只放纯数字：** 紧跟标题或标签的计数胶囊显示 `24`，不拼「会话」「个」「条」等量词——上下文已由标题给出。需要单位时放正文里，不放胶囊。
+- **必须有底色：** `h-5 min-w-[20px] rounded-full px-1.5 text-xs font-semibold tabular-nums`；主色胶囊用 `bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] text-[var(--color-primary)]`。禁止裸灰字悬空，禁止饱和实心色块。
+- **主题分布卡：** 同页多张并列分布卡（国家 / 设备 / 环境 / 版本）可各取一色区分（图标 + 进度条 + 计数胶囊三处同色，`<hue>-500/10` 底 + `<hue>-600` 字），但每张卡**只用这一处彩色**，不再给栏头加彩色竖条或彩色边框。
+- **零值不显示胶囊。** 设置页集合计数仍按 Colors 节的 count token，不与本条混用。
+
+#### 可点击反馈（The Visible Affordance Rule）
+
+- **表格行可钻取：** `onRow` 必须给 `cursor-pointer transition-colors hover:bg-[var(--color-fill-2)]`；主入口列（名称、ID、消息）默认 `text-1` 常规字重，hover `text-[var(--color-primary)] underline`。不要靠「整行变色」以外的猜测让用户发现能点。
+- **卡片可钻取：** 与 KPI 可点击规则一致（边框变主色 + 微阴影 + label 变主色）。
+- **图标小动作：** 幽灵图标按钮 hover 要有底色或下划线反馈，配 `aria-label`。
+- **静态元素不许伪装：** 不能点的卡片、数字、标签不加 hover 变色，避免「看着能点其实不能」。
+
+#### 去线（De-line）
+
+- 时间线竖轴、图表网格虚线、次级分割线统一降到 `/60` 不透明度（如 `before:bg-[var(--color-border-2)]/60`、`border-dashed border-[var(--color-border-2)]/60`）。
+- 卡片内部只保留栏头一条 `border-b`；正文分组靠浅底条目和 `space-y`，不再叠 `divide-y`。
+- 全局 `Watermark` 走浅色低密度（透明度 ≤ 0.06、间距 ≥ 160px），不许为了单页把水印调深。
+
+#### Named Rules
+
+**The One Detail Shell Rule.** 同一产品面的详情/概览页只保留一套「KPI 格 + 分区卡 + 属性面板」骨架；新模块复用或升 shared，不平行发明第二套详情皮肤。
+
+**The Card Header Without Accent Rule.** 独立卡片的栏头靠「浅底 + 图标 + 13px 标题 + 容器边框」表达层级，不加短竖条；竖条只留给同一面板内的子章节。
+
+**The Bare Number Badge Rule.** 标题旁计数胶囊只放纯数字，必须有柔和底色；量词进正文，不进胶囊。
+
+**The Unified Metric Wash Rule.** 指标卡微渐变必须严格克制在 1.5% 超浅浓度与顶部 32% 范围；微光色相与数值呼应，常规卡片统一透淡蓝光，整排均有底光，绝不留局部纯白。
+
 ### Loading / Skeleton
 
 页面加载是界面的一部分，不是临时转圈。骨架必须 **复刻即将出现的结构**（栏数、栏头、字段行、卡片网格、底栏），占位条圆角跟最终控件一致（按钮/chip `6px`，卡片 `8px`）。
@@ -369,6 +475,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 | --- | --- | --- |
 | 实体网格列表 | `OpsPilotCardGridSkeleton`（与 Look B 卡同解剖） | `Spin` 罩住旧卡或空白网格 |
 | 设置双栏 / Studio | `OpsPilotStudioWorkbenchSkeleton`（左右面板同构） | 整页居中 `Spin` |
+| 详情页 / 概览页 | `RumSessionDetailSkeleton` / `RumErrorDetailSkeleton` / `RumOverviewSkeleton`（KPI 格 + 分区卡栏头 + 属性行同构） | 只留 KPI 转圈、主区空白 |
 | 表格 | 表头保留，行用 Skeleton；或表格 `loading` 配骨架行 | 整表消失只剩转圈 |
 | 分页加载更多 | 底部小 `Spin` | 再刷一整页骨架 |
 
@@ -378,6 +485,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 | --- | --- |
 | 列表卡骨架 | `web/src/app/opspilot/components/opspilot-card-grid-skeleton` |
 | 设置双栏骨架 | `web/src/app/opspilot/components/opspilot-studio-workbench-skeleton` |
+| 详情 / 概览骨架 | `web/src/app/rum/components/rum-skeleton.tsx` |
 
 **The Layout-Isomorphic Skeleton Rule.** 骨架与最终布局同构：同样的分栏、同样的 header/footer 槽位、同样的内容节奏。失败时不要假骨架假装有数据；保存等局部提交只用按钮 `loading`。
 
@@ -439,7 +547,10 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Do** 保持浅色、克制的企业控制台：干净、扁平、少框、留白分层；让操作更清楚，而不是让界面更热闹。
 - **Do** 列表/表格工具条：标题靠左，搜索与操作成组靠右（`gap-2`，到内容 `mb-4`）；优先 `OpsPilotListPageHeader` / `SearchActionBar` / `ToolbarSplitShell`。
 - **Do** 设置双栏、已选对象小卡、对话过程态对齐 Studio Workbench 与 Chat 节；其他 app 靠这套，不要平行发明皮肤。
-- **Do** 首次加载与整页刷新用与最终布局同构的骨架屏（列表卡网格 / 设置双栏）；局部提交用按钮 `loading`。
+- **Do** 首次加载与整页刷新用与最终布局同构的骨架屏（列表卡网格 / 设置双栏 / 详情 KPI+分区卡）；局部提交用按钮 `loading`。
+- **Do** 详情/概览页统一「KPI 指标格 → 主区分区卡 → 右栏属性面板」；分区卡栏头 = `fill-1/35` 浅底 + 语义图标 + `13px semibold` 标题 + 可选计数胶囊，右侧放该卡操作。见 Detail / Overview Workbench。
+- **Do** 标题旁计数胶囊只放纯数字（`24`）并带 10–12% 柔和底色；属性面板用浅底条目行（`fill-1/35`，hover `/60`）代替 `divide-y`。
+- **Do** 凡是能点的表格行、卡片、主入口文字、图标动作，都给明确 hover 反馈（行底 `fill-2` / 边框主色 / 文字主色 + 下划线）。
 - **Do** 治理/功能改动触及的布局区块，把可替换的行内 flex/间距改为 `className`。
 
 ### Don't:
@@ -452,6 +563,11 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Don't** 给快捷问答、普通按钮使用胶囊大圆角；与保存按钮一样用 `6px`。数量胶囊除外。
 - **Don't** 用主色蓝给设置页集合计数上色，也不要把数量做成无底色灰字。技能包 / 工具各用一套 count token，不要全页一种计数色；不要改列表卡底栏 `+N`。
 - **Don't** 使用卡片通高彩色 `border-left` / `border-right` 大于 `1px`。章节标题短竖条、对话引用线见 Cards / Chat 节。
+- **Don't** 在已经有独立边框和栏头的卡片上再加短竖条；竖条只留给同一面板内的子章节。
+- **Don't** 在计数胶囊里拼「会话」「个」「条」等量词，也不要把计数做成无底色裸灰字或饱和实心色块。
+- **Don't** 用 `divide-y` 把详情页属性面板切成满屏实线；用浅底条目行 + `space-y-2`。
+- **Don't** 指标卡渐变过深（超过 2%）或范围过大（超过 35%），也不要留下部分卡片没有微光呈现死白；保持 1.5% 超浅光感。
+- **Don't** 让能钻取的表格行 / 卡片 / 主入口文字没有 hover 反馈，也不要给不能点的元素加 hover 变色伪装成可点。
 - **Don't** 使用 gradient text、装饰性玻璃拟态、重复卡片网格、手绘 sketch SVG、条纹背景。
 - **Don't** 为了视觉新鲜感重写 Ant Design 已有的 Button、Modal、Drawer、Table、Form、Select、Tabs、Segmented、Tooltip、Popover。
 - **Don't** 在组件内直写品牌色或状态色 hex；需要时加 token 或语义映射。

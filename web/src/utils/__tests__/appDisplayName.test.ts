@@ -119,6 +119,15 @@ describe('resolveAppTag', () => {
     expect(resolveAppTag('tag.trace_explore', tZh)).toBe('调用链');
     expect(resolveAppTag('tag.alert_center', tZh)).toBe('告警策略');
     expect(resolveAppTag('tag.apm_integration', tEn)).toBe('App Integration');
+    expect(resolveAppTag('tag.rum_integration', tZh)).toBe('集成');
+    expect(resolveAppTag('tag.rum_experience', tZh)).toBe('体验');
+    expect(resolveAppTag('tag.rum_quality', tZh)).toBe('质量');
+    expect(resolveAppTag('tag.rum_alerting', tZh)).toBe('事件');
+    expect(resolveAppTag('tag.rum_governance', tZh)).toBe('数据治理');
+    expect(resolveAppTag('tag.rum_integration', tEn)).toBe('Integration');
+    expect(resolveAppTag('tag.rum_quality', tEn)).toBe('Quality');
+    expect(resolveAppTag('tag.rum_alerting', tEn)).toBe('Events');
+    expect(resolveAppTag('tag.rum_governance', tEn)).toBe('Data Governance');
   });
 
   it('keeps unknown custom tags', () => {

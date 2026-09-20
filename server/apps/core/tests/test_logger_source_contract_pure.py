@@ -12,6 +12,7 @@ ALLOWED_GETLOGGER = {
 }
 EXPECTED_APP_LOGGERS = {
     "apm": {"apm_logger", "celery_logger"},
+    "rum": {"rum_logger", "celery_logger"},
     "alerts": {"alert_logger"},
     "cmdb": {"cmdb_logger"},
     "console_mgmt": {"console_mgmt_logger", "opspilot_logger"},
