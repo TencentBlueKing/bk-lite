@@ -75,6 +75,22 @@ def test_invalid_token_401(client):
     assert resp.json()["code"] == "AUTH_INVALID"
 
 
+def test_expired_personal_token_401(client):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.base.models.user import UserAPISecret
+
+    _, token = create_api_tenant(1)
+    UserAPISecret.objects.filter(api_secret=token).update(
+        expires_at=timezone.now() - timedelta(minutes=1),
+    )
+    resp = client.get(ME_URL, **bearer(token))
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "AUTH_INVALID"
+
+
 def test_unknown_path_404(client):
     _, token = create_api_tenant(1)
     resp = client.get("/openapi/v1/patch-mgmt/nonexistent", **bearer(token))
@@ -181,13 +197,18 @@ def test_non_scope_business_error_stays_400(client, patch_targets):
 
 
 def test_forged_identity_headers_ignored(client, patch_targets):
-    """伪造 X-BK-* 头对身份推导无效：身份永远来自凭据（红线 2 纵深防御）。"""
+    """伪造 X-BK-* 与 acting 头对身份推导无效：身份永远来自凭据（红线 2 纵深防御）。"""
+    from apps.core.openapi.tests.test_system_token_auth import _create_acting_user
+
     _, token = create_api_tenant(2)
+    other = _create_acting_user(1, username="intruder")
     resp = client.get(
         PATCH_URL,
         {"module": "patch_target", "group_id": 1},
         HTTP_X_BK_USER="admin@domain.com",
         HTTP_X_BK_TEAM="1",
+        HTTP_X_BKLITE_ACTING_USER=f"{other.username}@{other.domain}",
+        HTTP_X_BKLITE_ACTING_TEAM="1",
         **bearer(token),
     )
     # 伪造头未生效：身份仍取自凭据（组织 2），越权访问组织 1 被拒
@@ -237,6 +258,24 @@ def test_jwt_anchor_passthrough(client, captured_cmdb, jwt_env):
     assert captured_cmdb["user_info"]["team"] == 5
 
 
+def test_jwt_ignores_acting_headers(client, captured_cmdb, jwt_env):
+    from apps.core.openapi.tests.test_system_token_auth import _create_acting_user
+
+    user = make_jwt_tenant(5)
+    other = _create_acting_user(9, username="jwt-intruder")
+    resp = client.get(
+        CMDB_URL,
+        {"module": "instances", "child_module": "host", "group_id": 5, "team": "5"},
+        HTTP_AUTHORIZATION=f"Bearer {make_jwt(user)}",
+        HTTP_X_BKLITE_ACTING_USER=f"{other.username}@{other.domain}",
+        HTTP_X_BKLITE_ACTING_TEAM="9",
+    )
+    assert resp.status_code == 200
+    assert captured_cmdb["user_info"]["user"] == user.username
+    assert captured_cmdb["user_info"]["team"] == 5
+    assert captured_cmdb["user_info"]["user"] != other.username
+
+
 def test_jwt_missing_anchor_rejected(client, captured_cmdb, jwt_env):
     user = make_jwt_tenant(5)
     resp = client.get(
@@ -267,6 +306,33 @@ def test_me_api_token(client):
     service_names = {s["name"] for s in data["services"]}
     assert {"patch-mgmt", "cmdb"} <= service_names
     assert all(s["kind"] == "internal" for s in data["services"])
+    assert data.get("caller_system") in (None, "")
+    assert "token_id" not in data
+    assert "token_name" not in data
+
+
+def test_jwt_access_log_has_no_token_identity(client, caplog, jwt_env):
+    from apps.core.openapi.tests.test_system_token_auth import _AUDIT_TEMPLATE, _access_log
+
+    user = make_jwt_tenant(5)
+    token = make_jwt(user)
+    with caplog.at_level("INFO", logger="openapi"):
+        resp = client.get(ME_URL, HTTP_AUTHORIZATION=f"Bearer {token}")
+    assert resp.status_code == 200
+    rec = _access_log(caplog)
+    assert rec.msg == _AUDIT_TEMPLATE
+    assert rec.args[0] == user.username
+    assert rec.args[2] == "jwt"
+    assert rec.args[3] == "-"
+    assert rec.args[4] == "-"
+    assert rec.args[6] == "-"
+    rendered = rec.getMessage()
+    assert "credential=jwt" in rendered
+    assert "token_id=-" in rendered
+    assert "token_name=-" in rendered
+    assert "caller=-" in rendered
+    assert token not in rendered
+    assert token not in caplog.text
 
 
 def test_me_requires_credential(client):

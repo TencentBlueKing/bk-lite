@@ -5,7 +5,11 @@ from rest_framework.viewsets import ViewSet
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.current_team_scope import resolve_current_team_data_scope, validate_assignable_organizations
+from apps.core.utils.current_team_scope import (
+    _normalize_organization_ids,
+    resolve_current_team_data_scope,
+    validate_assignable_organizations,
+)
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.models.installer import CollectorTaskNode
@@ -26,18 +30,33 @@ from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_n
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
 
 
+ASSIGN_ORGANIZATION_DENIED = "User does not have permission to assign nodes to these organizations"
+CURRENT_ORGANIZATION_REQUIRED = "Node organizations must include the current organization"
+
+
 def _validate_install_target_organizations(request, nodes):
+    try:
+        current_team = resolve_current_team_data_scope(request).current_team
+    except BaseAppException:
+        return WebUtils.response_403(ASSIGN_ORGANIZATION_DENIED)
+
     organizations = []
     for node in nodes:
         node_organizations = node.get("organizations")
         if not node_organizations:
-            return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
+            return WebUtils.response_403(ASSIGN_ORGANIZATION_DENIED)
+        try:
+            normalized = _normalize_organization_ids(node_organizations)
+        except BaseAppException:
+            return WebUtils.response_403(ASSIGN_ORGANIZATION_DENIED)
+        if current_team not in normalized:
+            return WebUtils.response_403(CURRENT_ORGANIZATION_REQUIRED)
         organizations.extend(node_organizations)
 
     try:
         validate_assignable_organizations(request, organizations)
     except BaseAppException:
-        return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
+        return WebUtils.response_403(ASSIGN_ORGANIZATION_DENIED)
     return None
 
 

@@ -62,6 +62,9 @@ class TestUserAPISecretSerializer:
         assert "api_secret" not in data
         assert "team" in data
         assert "team_name" in data
+        assert "name" in data
+        assert "expires_at" in data
+        assert "scope" in data
 
     def test_create_serializer_includes_full_api_secret_once_when_provided(self):
         user = UserFactory(
@@ -99,3 +102,75 @@ class TestUserAPISecretSerializer:
         serializer = UserAPISecretCreateSerializer(secret, context={"request": request})
 
         assert "api_secret" not in serializer.data
+
+    @pytest.mark.parametrize(
+        "scope",
+        [
+            "cmdb",
+            ["asset_info-View"],
+            {"cmdb": "asset_info-View"},
+            {"cmdb": ["asset_info-View"]},
+            {"mode": "allowlist", "endpoints": []},
+        ],
+    )
+    def test_create_serializer_rejects_invalid_scope(self, scope):
+        user = UserFactory(
+            username="gina",
+            group_list=[{"id": 1, "name": "Team Alpha"}],
+        )
+        request = self._make_request(user)
+        serializer = UserAPISecretCreateSerializer(
+            data={
+                "username": user.username,
+                "domain": user.domain,
+                "team": 1,
+                "api_secret": "x" * 64,
+                "scope": scope,
+            },
+            context={"request": request},
+        )
+        assert serializer.is_valid() is False
+        assert "scope" in serializer.errors
+
+    @pytest.mark.parametrize(
+        "scope",
+        [
+            {"mode": "all"},
+            {"mode": "allowlist", "endpoints": ["GET cmdb/classifications", "EXTERNAL itsm"]},
+        ],
+    )
+    def test_create_serializer_accepts_canonical_scope(self, scope):
+        user = UserFactory(
+            username="gina-ok",
+            group_list=[{"id": 1, "name": "Team Alpha"}],
+        )
+        request = self._make_request(user)
+        serializer = UserAPISecretCreateSerializer(
+            data={
+                "username": user.username,
+                "domain": user.domain,
+                "team": 1,
+                "api_secret": "x" * 64,
+                "name": "ci",
+                "scope": scope,
+            },
+            context={"request": request},
+        )
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["scope"] == scope
+
+    def test_patch_serializer_rejects_non_object_scope(self):
+        user = UserFactory(
+            username="hank",
+            group_list=[{"id": 1, "name": "Team Alpha"}],
+        )
+        secret = UserAPISecretFactory(username="hank", domain=user.domain, team=1)
+        request = self._make_request(user)
+        serializer = UserAPISecretSerializer(
+            secret,
+            data={"scope": ["asset_info-View"]},
+            partial=True,
+            context={"request": request},
+        )
+        assert serializer.is_valid() is False
+        assert "scope" in serializer.errors

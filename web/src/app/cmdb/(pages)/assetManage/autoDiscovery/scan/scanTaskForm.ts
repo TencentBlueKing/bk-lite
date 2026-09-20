@@ -1,3 +1,30 @@
+const SSH_SECRET_KEYS = ['username', 'password', 'key', 'private_key'] as const;
+const SNMP_VERSIONS = new Set(['v2', 'v2c', 'v3']);
+
+export const poolHasSshSecret = (pool: Array<Record<string, unknown>> | undefined = []) =>
+  pool.some((item) =>
+    SSH_SECRET_KEYS.some((key) => {
+      const value = item?.[key];
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    })
+  );
+
+export const withDefaultSnmpVersion = <T extends Record<string, unknown>>(item: T): T => {
+  const version = String(item?.version ?? '').trim();
+  if (SNMP_VERSIONS.has(version)) {
+    return item;
+  }
+  const community = String(item?.community ?? '').trim();
+  const username = String(item?.username ?? '').trim();
+  return {
+    ...item,
+    version: username && !community ? 'v3' : 'v2',
+  };
+};
+
+export const withDefaultSnmpPool = <T extends Record<string, unknown>>(pool: T[] | undefined = []) =>
+  pool.map((item) => withDefaultSnmpVersion(item));
+
 export interface ScanAccessPointOption {
   label: string;
   value: string;
@@ -17,12 +44,23 @@ export interface ScanTaskDetail {
 
 const emptyRange = { begin: '', end: '' };
 
+const withDefaultScanCredentials = (credentials: Record<string, unknown>) => {
+  const network = credentials.network;
+  if (!Array.isArray(network)) {
+    return credentials;
+  }
+  return {
+    ...credentials,
+    network: withDefaultSnmpPool(network as Array<Record<string, unknown>>),
+  };
+};
+
 export const mapScanDetailToFormValues = (detail: ScanTaskDetail) => ({
   name: detail.name,
   team: detail.team,
   ipRanges: detail.ip_ranges?.length ? detail.ip_ranges : [emptyRange],
   families: detail.families || [],
-  credentials: detail.credentials || {},
+  credentials: withDefaultScanCredentials(detail.credentials || {}),
   accessPointId: detail.access_point?.[0]?.id,
   timeout: detail.timeout ?? 0,
 });
@@ -76,15 +114,15 @@ export const hasScanCloudRegion = (value: unknown) => {
 };
 
 export const resolveScanCloudRegion = ({
-  includeHost,
+  includeCloudRegion,
   origin,
   existing,
 }: {
-  includeHost: boolean;
+  includeCloudRegion: boolean;
   origin: Record<string, unknown>;
   existing?: unknown;
 }) => {
-  if (!includeHost) {
+  if (!includeCloudRegion) {
     return {};
   }
   return cloudRegionFromOrigin(origin) ?? existing ?? null;
@@ -94,14 +132,14 @@ export const buildScanTaskSubmitMeta = ({
   accessPointId,
   accessPoints,
   fallbackAccessPoint,
-  includeHost,
+  includeCloudRegion,
   existingCloudRegion,
   timeout,
 }: {
   accessPointId?: string;
   accessPoints: ScanAccessPointOption[];
   fallbackAccessPoint?: Record<string, unknown> | null;
-  includeHost: boolean;
+  includeCloudRegion: boolean;
   existingCloudRegion?: unknown;
   timeout?: number | null;
 }) => {
@@ -111,7 +149,7 @@ export const buildScanTaskSubmitMeta = ({
     access_point: accessPointId ? [origin] : [],
     timeout: timeout ?? 0,
     cloud_region: resolveScanCloudRegion({
-      includeHost,
+      includeCloudRegion,
       origin,
       existing: existingCloudRegion,
     }),

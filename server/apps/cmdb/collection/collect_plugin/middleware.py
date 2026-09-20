@@ -4,6 +4,7 @@
 # @Author: windyzhao
 import codecs
 import json
+
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.plugins import get_collection_plugin
@@ -13,6 +14,16 @@ from apps.core.logger import cmdb_logger as logger
 
 
 class MiddlewareCollectMetrics(CollectBase):
+    @staticmethod
+    def _metric_has_identity_tags(metric):
+        if not isinstance(metric, dict):
+            return False
+        for key in ("ip_addr", "listen_port", "port", "version", "bk_inst_name", "inst_name"):
+            value = metric.get(key)
+            if value not in (None, "", "{}", "{{bk_host_innerip}}"):
+                return True
+        return False
+
     @staticmethod
     def pick_value(data, keys, default=""):
         if not isinstance(data, dict):
@@ -46,19 +57,21 @@ class MiddlewareCollectMetrics(CollectBase):
                     self.timestamp_gt = True
             # 原始版本没有result，2025.11.27修改stargazer格式，将采集数据放到result中
             result_data = {}
-            if index_data["metric"].get("collect_status", 'failed') == 'failed':
+            if index_data["metric"].get("collect_status", "failed") == "failed":
                 continue
             if index_data["metric"].get("result", False) or index_data["metric"].get("success", False):
                 result_json = index_data["metric"].get("result", "{}")
                 if result_json and result_json != "{}":
                     try:
-                        unescaped_json = codecs.decode(
-                            result_json, 'unicode_escape')
+                        unescaped_json = codecs.decode(result_json, "unicode_escape")
                         result_data = json.loads(unescaped_json)
                     except Exception:  # noqa: BLE001 - JSON解析失败时使用空dict
                         result_data = {}
                 if isinstance(result_data, dict) and not result_data:
-                    continue
+                    # JOB 扫描常把 listen_port/ip_addr 打在 metric 标签上，result 仍是 "{}"。
+                    # 空嵌套 JSON 不能再整行丢弃，否则收口按端口拆 hit 会误删成功枪。
+                    if not self._metric_has_identity_tags(index_data["metric"]):
+                        continue
             index_dict = dict(
                 index_key=metric_name,
                 index_value=value,

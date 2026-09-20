@@ -262,3 +262,8 @@ export const filterVisibleMonitorObjects = (
   }
   return objects.filter((item) => !hiddenIds.has(item.id));
 };
+
+const POD_MONITOR_OBJECT_NAMES = new Set(['Pod', 'K3SPod']);
+
+export const isPodMonitorObject = (name?: string | null): boolean =>
+  Boolean(name && POD_MONITOR_OBJECT_NAMES.has(name));

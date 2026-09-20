@@ -21,20 +21,22 @@ class TestAnsibleCallbackFailureConvergence:
     """测试 Ansible 回调解析异常与终态 outbox 同时收敛。"""
 
     def _create_execution(self, status=ExecutionStatus.RUNNING):
-        return authorize_execution(JobExecution.objects.create(
-            name="callback-convergence",
-            job_type=JobType.SCRIPT,
-            status=status,
-            target_source=TargetSource.MANUAL,
-            target_list=[
-                {"target_id": "t1", "name": "host1", "ip": "1.2.3.4"},
-                {"target_id": "t2", "name": "host2", "ip": "5.6.7.8"},
-            ],
-            started_at=timezone.now(),
-            team=[1],
-            created_by="testuser",
-            updated_by="testuser",
-        ))
+        return authorize_execution(
+            JobExecution.objects.create(
+                name="callback-convergence",
+                job_type=JobType.SCRIPT,
+                status=status,
+                target_source=TargetSource.MANUAL,
+                target_list=[
+                    {"target_id": "t1", "name": "host1", "ip": "1.2.3.4"},
+                    {"target_id": "t2", "name": "host2", "ip": "5.6.7.8"},
+                ],
+                started_at=timezone.now(),
+                team=[1],
+                created_by="testuser",
+                updated_by="testuser",
+            )
+        )
 
     def _run(self, execution, result):
         from apps.job_mgmt.nats_api import ansible_task_callback
@@ -219,7 +221,7 @@ class TestAnsibleInterpreterSelection:
         execution = self._build_execution()
         target = self._build_target()
 
-        with patch("apps.job_mgmt.services.execution_base_service.Target.objects.filter", return_value=[target]), patch(
+        with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[target]), patch(
             "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._get_ansible_node", return_value="node-1"
         ), patch(
             "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._build_host_credentials", return_value=[{"host": "10.0.0.1"}]
@@ -240,7 +242,7 @@ class TestAnsibleInterpreterSelection:
 
             mock_executor.adhoc.assert_called_once()
             _, kwargs = mock_executor.adhoc.call_args
-            assert kwargs["module"] == "shell"
+            assert kwargs["module"] == "raw"
             assert kwargs["module_args"] == "python3 <<'__SCRIPT__'\n#!/usr/bin/env python3\nimport sys\nprint(sys.version)\n__SCRIPT__"
             assert kwargs["extra_vars"] is None
 
@@ -250,7 +252,7 @@ class TestAnsibleInterpreterSelection:
         execution = self._build_execution()
         target = self._build_target()
 
-        with patch("apps.job_mgmt.services.execution_base_service.Target.objects.filter", return_value=[target]), patch(
+        with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[target]), patch(
             "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._get_ansible_node", return_value="node-1"
         ), patch(
             "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._build_host_credentials", return_value=[{"host": "10.0.0.1"}]
@@ -270,6 +272,6 @@ class TestAnsibleInterpreterSelection:
             )
 
             _, kwargs = mock_executor.adhoc.call_args
-            assert kwargs["module"] == "shell"
+            assert kwargs["module"] == "raw"
             assert kwargs["module_args"] == script_content
             assert kwargs["extra_vars"] == {"ansible_shell_executable": "/bin/bash"}

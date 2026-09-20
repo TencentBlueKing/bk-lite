@@ -32,9 +32,19 @@ collect-static:
 
 DEV_HOST ?= 0.0.0.0
 DEV_PORT ?= 8011
+DEV_SSL_CERTFILE ?=
+DEV_SSL_KEYFILE ?=
+
+# deploy/local/scripts/dev_server.sh 在 HTTPS 本地模式下会传入证书路径。
+SSL_OPTS =
+ifneq ($(strip $(DEV_SSL_CERTFILE)),)
+ifneq ($(strip $(DEV_SSL_KEYFILE)),)
+SSL_OPTS = --ssl-certfile $(DEV_SSL_CERTFILE) --ssl-keyfile $(DEV_SSL_KEYFILE)
+endif
+endif
 
 dev:
-	uv run uvicorn asgi:application --host $(DEV_HOST) --port $(DEV_PORT) --reload --workers 1
+	uv run uvicorn asgi:application --host $(DEV_HOST) --port $(DEV_PORT) --reload --workers 1 $(SSL_OPTS)
 
 clean-migrate:
 	cd apps &&\

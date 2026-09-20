@@ -13,6 +13,7 @@ from .network_white_list_viewset import NetworkWhiteListViewSet  # noqa
 from .openapi_docs_viewset import OpenAPIDocsViewSet  # noqa
 from .operation_log_viewset import OperationLogViewSet  # noqa
 from .role_viewset import RoleViewSet  # noqa
+from .system_api_token_viewset import SystemAPITokenViewSet  # noqa
 from .system_settings_viewset import SystemSettingsViewSet  # noqa
 from .user_login_log_viewset import UserLoginLogViewSet  # noqa
 from .user_sync_source_viewset import UserSyncSourceViewSet  # noqa
