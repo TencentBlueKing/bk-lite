@@ -25,7 +25,7 @@ const IPMI_RPM = 'ipmi_sensor_value{instance_type=\'hardware_server\', unit="rpm
 const HEALTH_GUIDE = [
   {
     label: 'OK / Warning / Critical',
-    detail: '来自 DMTF Redfish Status.Health：1=OK、2=Warning、3=Critical。戴尔 System.Embedded.1 与浪潮 / 联想 Systems/1 共用同一套编码。'
+    detail: '部件健康：正常、警告、严重。'
   }
 ];
 
@@ -46,7 +46,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_system_health',
       display_name: '系统健康',
-      description: '整机 ComputerSystem.Status.Health。',
+      description: '整机健康状态。',
       unit: 'none',
       query: `max by (instance_id) (redfish_system_health{${REDFISH}})`,
       color: '#27c274'
@@ -54,7 +54,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_system_power_state',
       display_name: '电源状态',
-      description: 'ComputerSystem.PowerState：On=1、Off=0。',
+      description: '整机电源开/关状态。',
       unit: 'none',
       query: `max by (instance_id) (redfish_system_power_state{${REDFISH}})`,
       color: '#2f6bff'
@@ -62,7 +62,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_manager_health',
       display_name: 'BMC 健康',
-      description: 'Manager.Status.Health。',
+      description: 'BMC 管理控制器健康。',
       unit: 'none',
       query: `max by (instance_id) (redfish_manager_health{${REDFISH}})`,
       color: '#13c2c2'
@@ -70,7 +70,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_processor_health_rollup',
       display_name: '处理器健康',
-      description: 'ProcessorSummary.Status 汇总，不枚举每颗 CPU。',
+      description: '全部 CPU 的汇总健康。',
       unit: 'none',
       query: `max by (instance_id) (redfish_processor_health_rollup{${REDFISH}})`,
       color: '#597ef7'
@@ -78,7 +78,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_memory_health_rollup',
       display_name: '内存健康',
-      description: 'MemorySummary.Status 汇总，不枚举每条 DIMM。',
+      description: '全部内存的汇总健康。',
       unit: 'none',
       query: `max by (instance_id) (redfish_memory_health_rollup{${REDFISH}})`,
       color: '#8a5cff'
@@ -86,7 +86,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_power_consumed_watts',
       display_name: '整机功耗',
-      description: 'PowerControl.PowerConsumedWatts；无 Redfish 样本时回退 IPMI 功率传感器。',
+      description: '系统当前消耗功率。',
       unit: 'watts',
       query: `max by (instance_id) (redfish_power_consumed_watts{${REDFISH}} or ${IPMI_WATTS})`,
       color: '#ff8a1f'
@@ -94,7 +94,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_firmware_info',
       display_name: '固件',
-      description: '值为 1，BMC FirmwareVersion 与 BIOS 版本在标签上。',
+      description: 'BMC / BIOS 版本信息。',
       unit: 'none',
       query: `max by (bmc_firmware, bios_version) (redfish_firmware_info{${REDFISH}})`,
       color: '#597ef7'
@@ -102,7 +102,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_temperature_celsius',
       display_name: '温度',
-      description: 'Thermal.Temperatures 各传感器；无 Redfish 样本时回退 IPMI 温度传感器。',
+      description: '各温度传感器读数。',
       unit: 'celsius',
       query: `max by (name) (redfish_temperature_celsius{${REDFISH}} or ${IPMI_TEMP})`,
       color: '#f5222d'
@@ -110,7 +110,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_fan_speed',
       display_name: '风扇转速',
-      description: 'Thermal.Fans.Reading；无 Redfish 样本时回退 IPMI 风扇转速。',
+      description: '各风扇转速。',
       unit: 'none',
       query: `max by (name) (redfish_fan_speed{${REDFISH}} or ${IPMI_RPM})`,
       color: '#13c2c2'
@@ -118,7 +118,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_fan_health',
       display_name: '风扇健康',
-      description: 'Thermal.Fans.Status.Health。',
+      description: '各风扇健康状态。',
       unit: 'none',
       query: `max by (name) (redfish_fan_health{${REDFISH}})`,
       color: '#27c274'
@@ -126,7 +126,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_psu_health',
       display_name: '电源健康',
-      description: 'PowerSupplies.Status.Health。',
+      description: '各电源模块健康。',
       unit: 'none',
       query: `max by (name) (redfish_psu_health{${REDFISH}})`,
       color: '#722ed1'
@@ -134,7 +134,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_psu_input_watts',
       display_name: '电源输入功率',
-      description: 'PowerSupplies.PowerInputWatts。',
+      description: '各电源模块输入功率。',
       unit: 'watts',
       query: `max by (name) (redfish_psu_input_watts{${REDFISH}})`,
       color: '#ff8a1f'
@@ -142,7 +142,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_psu_input_voltage',
       display_name: '电源输入电压',
-      description: 'PowerSupplies.LineInputVoltage。',
+      description: '各电源模块输入电压。',
       unit: 'volts',
       query: `max by (name) (redfish_psu_input_voltage{${REDFISH}})`,
       color: '#d48806'
@@ -150,7 +150,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_storage_health',
       display_name: '存储子系统健康',
-      description: 'Storage.Status.HealthRollup，不逐盘 GET。',
+      description: '存储子系统汇总健康。',
       unit: 'none',
       query: `max by (id) (redfish_storage_health{${REDFISH}})`,
       color: '#2f6bff'
@@ -158,7 +158,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_storage_controller_health',
       display_name: '存储控制器健康',
-      description: '内嵌 StorageControllers[].Status。',
+      description: '存储控制器健康。',
       unit: 'none',
       query: `max by (id, storage_id) (redfish_storage_controller_health{${REDFISH}})`,
       color: '#597ef7'
@@ -166,7 +166,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_nic_port_link_up',
       display_name: '网口链路',
-      description: 'NetworkPort.LinkStatus：Up=1、Down=0。',
+      description: '网口链路是否连通。',
       unit: 'none',
       query: `max by (adapter_id, id) (redfish_nic_port_link_up{${REDFISH}})`,
       color: '#27c274'
@@ -174,7 +174,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_nic_port_health',
       display_name: '网口健康',
-      description: 'NetworkPort.Status.Health。',
+      description: '网口健康状态。',
       unit: 'none',
       query: `max by (adapter_id, id) (redfish_nic_port_health{${REDFISH}})`,
       color: '#13c2c2'
@@ -182,7 +182,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'redfish_nic_port_speed_mbps',
       display_name: '网口速率',
-      description: 'CurrentLinkSpeedMbps。',
+      description: '网口当前链路速率。',
       unit: 'none',
       query: `max by (adapter_id, id) (redfish_nic_port_speed_mbps{${REDFISH}})`,
       color: '#2f6bff'
@@ -210,7 +210,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: 'On / Off',
-          detail: 'Redfish ComputerSystem.PowerState。On=1、Off=0；其它状态归为 Other。'
+          detail: '整机电源开/关；其它状态显示为 Other。'
         }
       ]
     },
@@ -235,7 +235,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '整机功耗',
-          detail: 'Power.PowerControl.PowerConsumedWatts。无 Redfish 样本时回退 IPMI 功率传感器。'
+          detail: '系统当前消耗功率。'
         }
       ]
     },
@@ -249,8 +249,8 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       hideWhenNoData: true,
       guide: [
         {
-          label: '处理器汇总',
-          detail: 'ProcessorSummary.Status 健康汇总，不枚举每颗 CPU。'
+          label: '处理器健康',
+          detail: '全部 CPU 的汇总健康，非单颗明细。'
         }
       ]
     },
@@ -264,8 +264,8 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       hideWhenNoData: true,
       guide: [
         {
-          label: '内存汇总',
-          detail: 'MemorySummary.Status 健康汇总，不枚举每条 DIMM。'
+          label: '内存健康',
+          detail: '全部内存的汇总健康，非单条明细。'
         }
       ]
     }
@@ -273,48 +273,48 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   charts: [
     {
       title: '温度',
-      subtitle: 'Thermal.Temperatures · 按传感器',
+      subtitle: '按传感器',
       metric: 'redfish_temperature_celsius',
       keepDimensionSeries: true,
       guide: [
         {
           label: '温度',
-          detail: '进风口与 CPU 等温度传感器。UpperThresholdCritical 在指标页可查，本图按传感器分线。'
+          detail: '进风口、CPU 等温度传感器，按传感器分线。'
         }
       ],
       series: [{ metric: 'redfish_temperature_celsius', label: '温度', color: '#f5222d', unit: 'celsius' }]
     },
     {
       title: '整机功耗',
-      subtitle: 'PowerConsumedWatts',
+      subtitle: '系统功耗',
       metric: 'redfish_power_consumed_watts',
       guide: [
         {
           label: '整机功耗',
-          detail: '系统当前消耗功率。持续抬升结合风扇转速与进风温度排查负载或散热。'
+          detail: '系统当前消耗功率；持续抬升时结合风扇与进风温度排查。'
         }
       ],
       series: [{ metric: 'redfish_power_consumed_watts', label: '系统功耗', color: '#ff8a1f', unit: 'watts' }]
     },
     {
       title: '风扇转速',
-      subtitle: 'Thermal.Fans · RPM',
+      subtitle: '按风扇 · RPM',
       metric: 'redfish_fan_speed',
       keepDimensionSeries: true,
       guide: [
         {
           label: '风扇转速',
-          detail: '各风扇读数。健康状态见右侧表，不在本图叠健康编码。'
+          detail: '各风扇转速；健康状态见右侧表。'
         }
       ],
       series: [{ metric: 'redfish_fan_speed', label: '转速', color: '#13c2c2' }]
     },
     {
       title: '固件资产',
-      subtitle: 'BMC / BIOS 版本标签',
+      subtitle: 'BMC / BIOS 版本',
       metric: 'redfish_firmware_info',
       keepDimensionSeries: true,
-      guide: [{ label: '固件', detail: '版本在指标标签上，数值恒为 1。' }],
+      guide: [{ label: '固件', detail: '展示 BMC 与 BIOS 版本。' }],
       series: [{ metric: 'redfish_firmware_info', label: '固件', color: '#597ef7' }]
     },
     {
@@ -346,25 +346,25 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按电源模块',
       metric: 'redfish_psu_input_voltage',
       keepDimensionSeries: true,
-      guide: [{ label: '输入电压', detail: 'LineInputVoltage。' }],
+      guide: [{ label: '输入电压', detail: '各电源模块的输入电压。' }],
       series: [{ metric: 'redfish_psu_input_voltage', label: '输入电压', color: '#d48806', unit: 'volts' }]
     },
     {
       title: '存储健康',
-      subtitle: '按存储子系统',
+      subtitle: '按子系统',
       metric: 'redfish_storage_health',
       keepDimensionSeries: true,
       guide: [
         {
           label: '存储子系统',
-          detail: 'HealthRollup 覆盖控制器/子系统故障。当前采集禁止 /drives，不展示逐盘健康。'
+          detail: '子系统汇总健康；不含逐盘明细。'
         }
       ],
       series: [{ metric: 'redfish_storage_health', label: '健康', color: '#2f6bff' }]
     },
     {
       title: '控制器健康',
-      subtitle: '内嵌控制器',
+      subtitle: '按控制器',
       metric: 'redfish_storage_controller_health',
       keepDimensionSeries: true,
       guide: HEALTH_GUIDE,
@@ -372,15 +372,15 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '网口链路',
-      subtitle: 'NetworkPorts',
+      subtitle: '按端口',
       metric: 'redfish_nic_port_link_up',
       keepDimensionSeries: true,
-      guide: [{ label: '链路', detail: 'LinkUp=1、LinkDown/NoLink=0。来自 Chassis NetworkAdapters，不爬 EthernetInterfaces。' }],
+      guide: [{ label: '链路', detail: 'Up 为连通，Down 为断开。' }],
       series: [{ metric: 'redfish_nic_port_link_up', label: '链路', color: '#27c274' }]
     },
     {
       title: '网口健康',
-      subtitle: 'NetworkPorts',
+      subtitle: '按端口',
       metric: 'redfish_nic_port_health',
       keepDimensionSeries: true,
       guide: HEALTH_GUIDE,
@@ -391,7 +391,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: 'Mbps',
       metric: 'redfish_nic_port_speed_mbps',
       keepDimensionSeries: true,
-      guide: [{ label: '速率', detail: 'CurrentLinkSpeedMbps。' }],
+      guide: [{ label: '速率', detail: '网口当前链路速率。' }],
       series: [{ metric: 'redfish_nic_port_speed_mbps', label: '速率', color: '#2f6bff' }]
     }
   ],
