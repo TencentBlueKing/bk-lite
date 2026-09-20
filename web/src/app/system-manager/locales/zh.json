@@ -1477,7 +1477,6 @@
       "addCredential": "新增凭据",
       "quickCreateTitle": "新建凭据并选用",
       "saveAndSelect": "保存并选用",
-      "taskLockedHint": "当前任务已指定，不可修改。",
       "selectTypeFirst": "请先选择凭据类型",
       "createCredential": "新建凭据",
       "editCredentialTitle": "编辑凭据-{name}",
