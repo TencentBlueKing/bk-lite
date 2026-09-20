@@ -655,3 +655,169 @@ def test_assign_notify_failed_omits_traceback_and_channel_payload(grant_all, cap
     rendered = records[0].getMessage()
     assert "smtp-password=secret" not in rendered
     assert "password" not in rendered.lower()
+
+
+def test_current_handler_can_reassign_to_multiple_people(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    notify = mocker.patch("apps.log.services.alert_lifecycle_notify.LogAlertLifecycleNotifier.notify_assigned")
+    actor = _actor_user()
+    first = _org_user(username="reassign-a")
+    second = _org_user(username="reassign-b")
+    outsider = _org_user(username="outsider", organization=99)
+    disabled = _org_user(username="disabled1", disabled=True)
+    policy = _policy(notice=True)
+    alert = _new_alert(policy, "reassign-ok", handlers=[actor.id])
+    empty = _new_alert(policy, "reassign-empty")
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        ok = api_client.post(
+            f"/api/v1/log/alert/{alert.id}/reassign/",
+            {"handlers": [first.id, second.id]},
+            format="json",
+        )
+    alert.refresh_from_db()
+    assert ok.status_code == 200
+    assert alert.handlers == [first.id, second.id]
+    notify.assert_called_once()
+    assert notify.call_args.kwargs.get("action") == "reassigned"
+    assert notify.call_args.args[0].handlers == [first.id, second.id]
+    reassigned = list(Event.objects.filter(alert=alert, action=Event.Action.REASSIGNED))
+    assert len(reassigned) == 1
+    assert actor.username in reassigned[0].content
+    assert first.username in reassigned[0].content
+    assert second.username in reassigned[0].content
+
+    empty_resp = api_client.post(
+        f"/api/v1/log/alert/{empty.id}/reassign/",
+        {"handlers": [first.id]},
+        format="json",
+    )
+    owned = _new_alert(policy, "owned-reassign", handlers=[first.id])
+    not_handler = api_client.post(
+        f"/api/v1/log/alert/{owned.id}/reassign/",
+        {"handlers": [second.id]},
+        format="json",
+    )
+    still_mine = _new_alert(policy, "still-mine", handlers=[actor.id])
+    outside = api_client.post(
+        f"/api/v1/log/alert/{still_mine.id}/reassign/",
+        {"handlers": [outsider.id]},
+        format="json",
+    )
+    empty.refresh_from_db()
+    owned.refresh_from_db()
+    still_mine.refresh_from_db()
+    assert empty_resp.status_code == 409
+    assert empty.handlers == []
+    assert Event.objects.filter(alert=empty, action=Event.Action.REASSIGNED).count() == 0
+    assert not_handler.status_code == 409
+    assert owned.handlers == [first.id]
+    assert Event.objects.filter(alert=owned, action=Event.Action.REASSIGNED).count() == 0
+    assert outside.status_code == 400
+    assert still_mine.handlers == [actor.id]
+    assert Event.objects.filter(alert=still_mine, action=Event.Action.REASSIGNED).count() == 0
+
+    disabled_target = _new_alert(policy, "reassign-disabled", handlers=[actor.id])
+    disabled_resp = api_client.post(
+        f"/api/v1/log/alert/{disabled_target.id}/reassign/",
+        {"handlers": [disabled.id]},
+        format="json",
+    )
+    disabled_target.refresh_from_db()
+    assert disabled_resp.status_code == 400
+    assert disabled_target.handlers == [actor.id]
+    assert Event.objects.filter(alert=disabled_target, action=Event.Action.REASSIGNED).count() == 0
+
+
+def test_closed_alert_cannot_reassign(api_client, grant_all):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    owner = _org_user()
+    policy = _policy()
+    closed = _new_alert(policy, "closed-reassign", status="closed", handlers=[actor.id])
+    api_client.cookies["current_team"] = "1"
+
+    resp = api_client.post(
+        f"/api/v1/log/alert/{closed.id}/reassign/",
+        {"handlers": [owner.id]},
+        format="json",
+    )
+    closed.refresh_from_db()
+    assert resp.status_code == 409
+    assert closed.handlers == [actor.id]
+    assert Event.objects.filter(alert=closed, action=Event.Action.REASSIGNED).count() == 0
+
+
+def test_reassign_notice_uses_reassigned_title():
+    from types import SimpleNamespace
+
+    from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+
+    title, content = LogAlertLifecycleNotifier(SimpleNamespace(name="日志策略"))._build_assigned_notice(
+        SimpleNamespace(content="error"),
+        action="reassigned",
+    )
+    assert title == "【日志告警转派】"
+    assert "状态：已转派" in content
+
+
+def test_reassign_logs_lifecycle_template_without_handler_payload(grant_all, caplog):
+    from apps.log.services.alert_handlers import reassign_alert as reassign_alert_service
+
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    actor = _actor_user()
+    inside = _org_user()
+    policy = _policy()
+    alert = _new_alert(policy, "reassign-log-event", handlers=[actor.id])
+    caplog.set_level(logging.INFO, logger="log")
+
+    reassigned = reassign_alert_service(alert, handlers=[inside.id], actor=actor)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg == "event=alert_reassigned alert_id=%s handler_count=%s"
+    ]
+    assert reassigned.handlers == [inside.id]
+    assert len(records) == 1
+    assert records[0].args == (alert.pk, 1)
+    rendered = records[0].getMessage()
+    assert str(alert.pk) in rendered
+    assert "password" not in rendered.lower()
+    assert "handlers" not in rendered
+
+
+def test_reassign_sends_notice_to_new_handlers(
+    api_client, grant_all, mocker, django_capture_on_commit_callbacks
+):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    channel = _person_channel()
+    send = mocker.patch(
+        "apps.log.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": True},
+    )
+    actor = _actor_user()
+    first = _org_user(username="reassign-notice-a")
+    second = _org_user(username="reassign-notice-b")
+    policy = _policy(notice=True, notice_type="email", notice_type_id=channel.id, notice_users=["policy-notice-user"])
+    alert = _new_alert(policy, "reassign-notice", handlers=[actor.id])
+    api_client.cookies["current_team"] = "1"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = api_client.post(
+            f"/api/v1/log/alert/{alert.id}/reassign/",
+            {"handlers": [first.id, second.id]},
+            format="json",
+        )
+
+    assert resp.status_code == 200
+    send.assert_called_once()
+    channel_id, title, _content, receivers = send.call_args.args
+    assert channel_id == channel.id
+    assert "转派" in title
+    assert receivers == [str(first.id), str(second.id)]
+    assert str(actor.id) not in receivers
+    assert "policy-notice-user" not in receivers
