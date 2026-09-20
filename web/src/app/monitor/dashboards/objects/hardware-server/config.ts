@@ -23,10 +23,20 @@ const IPMI_WATTS = 'ipmi_sensor_value{instance_type=\'hardware_server\', unit="w
 const IPMI_RPM = 'ipmi_sensor_value{instance_type=\'hardware_server\', unit="rpm", __$labels__}';
 
 const HEALTH_GUIDE = [
-  {
-    label: 'OK / Warning / Critical',
-    detail: '部件健康：正常、警告、严重。'
-  }
+  { label: 'OK', detail: '正常' },
+  { label: 'Warning', detail: '警告' },
+  { label: 'Critical', detail: '严重' }
+];
+
+const POWER_GUIDE = [
+  { label: 'On', detail: '开机' },
+  { label: 'Off', detail: '关机' },
+  { label: 'Other', detail: '其它状态' }
+];
+
+const LINK_GUIDE = [
+  { label: 'Up', detail: '连通' },
+  { label: 'Down', detail: '断开' }
 ];
 
 /**
@@ -207,12 +217,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: POWER_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: [
-        {
-          label: 'On / Off',
-          detail: '整机电源开/关；其它状态显示为 Other。'
-        }
-      ]
+      guide: POWER_GUIDE
     },
     {
       title: 'BMC 健康',
@@ -247,12 +252,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: HEALTH_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: [
-        {
-          label: '处理器健康',
-          detail: '全部 CPU 的汇总健康，非单颗明细。'
-        }
-      ]
+      guide: HEALTH_GUIDE
     },
     {
       title: '内存健康',
@@ -262,12 +262,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       enumMap: HEALTH_ENUM,
       hideTrend: true,
       hideWhenNoData: true,
-      guide: [
-        {
-          label: '内存健康',
-          detail: '全部内存的汇总健康，非单条明细。'
-        }
-      ]
+      guide: HEALTH_GUIDE
     }
   ],
   charts: [
@@ -375,7 +370,7 @@ export const HARDWARE_SERVER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '按端口',
       metric: 'redfish_nic_port_link_up',
       keepDimensionSeries: true,
-      guide: [{ label: '链路', detail: 'Up 为连通，Down 为断开。' }],
+      guide: LINK_GUIDE,
       series: [{ metric: 'redfish_nic_port_link_up', label: '链路', color: '#27c274' }]
     },
     {
