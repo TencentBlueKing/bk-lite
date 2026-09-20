@@ -1105,7 +1105,15 @@
       "resultTitle": "Generated result",
       "otlpHttpEndpoint": "OTLP/HTTP ingest endpoint",
       "otlpHttpHint": "The platform uses the selected cloud region's passive ingest address and always reports via OTLP/HTTP (http/protobuf).",
-      "copySnippet": "Copy snippet"
+      "copySnippet": "Copy snippet",
+      "tabGuide": "Integration guide",
+      "tabFrameworks": "Supported frameworks",
+      "tabDiscovery": "Discovery capabilities",
+      "probeVersion": "Probe version {version}",
+      "frameworksHint": "Curated Web / RPC frameworks for the pinned probe version. This is not a complete instrumentation catalog.",
+      "manualFrameworkHint": "This language needs matching contrib instrumentation in code. The list below is a curated set of common frameworks.",
+      "discoveryHint": "These component types can appear as inferred downstream nodes on the application topology after this probe emits Client Spans.",
+      "discoveryFooter": "These are inferred topology nodes on the application detail canvas. They are not CMDB or monitoring auto-discovery, and they do not enter the service catalog or application list. Installing a Web probe will not create mysql as a separate application."
     }
   }
 }

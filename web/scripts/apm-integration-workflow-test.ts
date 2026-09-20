@@ -45,7 +45,13 @@ assert.match(request, /error\.config\?\.suppressErrorNotification/, '请求拦�
 assert.match(catalog, /云区域暂不可用/, '云区域目录失败必须显示与失败来源一致的页面内标题');
 assert.match(catalog, /重新加载/, '目录失败必须提供明确的恢复操作');
 assert.match(catalogState, /role="alert"/, '页面内目录错误必须可被辅助技术感知');
-assert.match(catalog, /上报端点/, 'SDK 接入向导应先展示平台分配的上报端点');
+assert.match(catalog, /Tabs/, '接入抽屉必须用 Tabs 分组接入指引、支持框架和发现能力');
+assert.match(catalog, /接入指引/, '接入抽屉默认 Tab 必须是接入指引');
+assert.match(catalog, /支持框架/, '接入抽屉必须提供支持框架 Tab');
+assert.match(catalog, /发现能力/, '接入抽屉必须提供发现能力 Tab');
+assert.match(catalog, /probe-capability-matrix/, '框架与发现能力必须来自本地静态矩阵');
+assert.match(catalog, /不是 CMDB 或监控自动发现/, '发现能力必须写明这是拓扑推断而不是 CMDB/监控发现');
+assert.match(catalog, /不会进入服务目录或应用列表/, '发现能力不得暗示推断组件会进入服务目录');
 assert.match(catalog, /接入配置/, 'SDK 接入向导应明确分组接入配置');
 assert.match(catalog, /Docker 运行/, 'SDK 接入向导应支持 Docker 环境变量注入模式');
 assert.match(catalog, /自动探针|Java Agent|Go SDK/, 'SDK 接入向导应提供语言对应的原生接入模式');

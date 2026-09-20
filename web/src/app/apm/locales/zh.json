@@ -1105,7 +1105,15 @@
       "resultTitle": "生成结果",
       "otlpHttpEndpoint": "OTLP/HTTP 上报端点",
       "otlpHttpHint": "平台使用所选云区域的被动接收地址，固定通过 OTLP/HTTP（http/protobuf）上报。",
-      "copySnippet": "复制片段"
+      "copySnippet": "复制片段",
+      "tabGuide": "接入指引",
+      "tabFrameworks": "支持框架",
+      "tabDiscovery": "发现能力",
+      "probeVersion": "探针版本 {version}",
+      "frameworksHint": "以下为当前钉死探针版本精选支持的 Web / RPC 框架，不是完整 instrumentation 清单。",
+      "manualFrameworkHint": "该语言需在代码中加入对应 contrib 插桩；下列为精选常见框架。",
+      "discoveryHint": "以下类型会在该探针打出 Client Span 后，出现在应用详情拓扑上，作为推断下游。",
+      "discoveryFooter": "这是应用详情拓扑上的推断节点，不是 CMDB 或监控自动发现，也不会进入服务目录或应用列表。给 Web 服务装探针后，mysql 不会作为独立应用出现。"
     }
   }
 }

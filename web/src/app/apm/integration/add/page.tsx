@@ -15,10 +15,11 @@ import {
   KubernetesOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import { getProbeCapability, type ProbeLanguage } from '@/app/apm/integration/probe-capability-matrix';
 import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -60,7 +61,7 @@ type PageState = 'loading' | 'empty' | 'ready' | 'error';
 type SnippetMode = 'agent' | 'docker' | 'kubernetes';
 type SnippetForm = Omit<ApmIngestSnippetInput, 'language' | 'runtime'>;
 type CatalogSource = 'applications' | 'cloud-regions';
-type Translate = (id: string, defaultMessage?: string) => string;
+type Translate = (id: string, defaultMessage?: string, values?: Record<string, string | number>) => string;
 
 interface CatalogLoadFailure {
   source: CatalogSource;
@@ -167,6 +168,54 @@ function snippetOperationGuide(
     },
   };
   return guides[language][mode];
+}
+
+function CapabilityTagList({ items }: { items: readonly string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <Tag key={item}>{item}</Tag>
+      ))}
+    </div>
+  );
+}
+
+function ProbeCapabilityPane({
+  language,
+  kind,
+  t,
+}: {
+  language: ProbeLanguage;
+  kind: 'frameworks' | 'discovery';
+  t: Translate;
+}) {
+  const capability = getProbeCapability(language);
+  const items = kind === 'frameworks' ? capability.frameworks : capability.inferredComponents;
+  return (
+    <div className="flex flex-col gap-3 pt-1">
+      <Typography.Text type="secondary" className="text-xs">
+        {t('apm.integration.probeVersion', '探针版本 {version}', { version: capability.version })}
+      </Typography.Text>
+      {kind === 'frameworks' && capability.manualInstrumentation ? (
+        <Alert
+          showIcon
+          type="info"
+          message={t('apm.integration.manualFrameworkHint', '该语言需在代码中加入对应 contrib 插桩；下列为精选常见框架。')}
+        />
+      ) : null}
+      <Typography.Paragraph type="secondary" className="!mb-0 text-xs">
+        {kind === 'frameworks'
+          ? t('apm.integration.frameworksHint', '以下为当前钉死探针版本精选支持的 Web / RPC 框架，不是完整 instrumentation 清单。')
+          : t('apm.integration.discoveryHint', '以下类型会在该探针打出 Client Span 后，出现在应用详情拓扑上，作为推断下游。')}
+      </Typography.Paragraph>
+      <CapabilityTagList items={items} />
+      {kind === 'discovery' ? (
+        <Typography.Paragraph type="secondary" className="!mb-0 text-xs">
+          {t('apm.integration.discoveryFooter', '这是应用详情拓扑上的推断节点，不是 CMDB 或监控自动发现，也不会进入服务目录或应用列表。给 Web 服务装探针后，mysql 不会作为独立应用出现。')}
+        </Typography.Paragraph>
+      ) : null}
+    </div>
+  );
 }
 
 export default function ApmIntegrationAddPage() {
@@ -420,6 +469,13 @@ export default function ApmIntegrationAddPage() {
         styles={{ body: { overflowY: 'auto' } }}
         onClose={() => setSelectedMethod(null)}
       >
+        <Tabs
+          defaultActiveKey="guide"
+          items={[
+            {
+              key: 'guide',
+              label: t('apm.integration.tabGuide', '接入指引'),
+              children: (
         <div className="flex flex-col gap-4 pt-2">
           <div className="rounded-lg bg-[var(--color-fill-1)] p-4">
             <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">1</span><Typography.Text strong>{t('apm.integration.configTitle', '接入配置')}</Typography.Text></div>
@@ -532,6 +588,24 @@ export default function ApmIntegrationAddPage() {
             </div>
           ) : null}
         </div>
+              ),
+            },
+            {
+              key: 'frameworks',
+              label: t('apm.integration.tabFrameworks', '支持框架'),
+              children: selectedMethod?.language ? (
+                <ProbeCapabilityPane language={selectedMethod.language} kind="frameworks" t={t} />
+              ) : null,
+            },
+            {
+              key: 'discovery',
+              label: t('apm.integration.tabDiscovery', '发现能力'),
+              children: selectedMethod?.language ? (
+                <ProbeCapabilityPane language={selectedMethod.language} kind="discovery" t={t} />
+              ) : null,
+            },
+          ]}
+        />
       </Drawer>
     </ApmRouteShell>
   );

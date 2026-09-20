@@ -395,4 +395,78 @@ describe('APM 添加接入', () => {
     expect(await screen.findByText('按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。')).not.toBeNull();
     expect(screen.queryByText('在原有 Node.js 启动命令末尾追加以下内容，并重启应用。')).toBeNull();
   });
+
+  it('接入抽屉默认打开接入指引，并提供支持框架与发现能力 Tab', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+
+    const panel = await screen.findByRole('dialog', { name: 'Node.js 接入' });
+    expect(within(panel).getByRole('tab', { name: '接入指引' })).not.toBeNull();
+    expect(within(panel).getByRole('tab', { name: '支持框架' })).not.toBeNull();
+    expect(within(panel).getByRole('tab', { name: '发现能力' })).not.toBeNull();
+    expect(within(panel).getByRole('tab', { name: '接入指引' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(panel).getByText('接入配置')).not.toBeNull();
+  });
+
+  it('支持框架 Tab 展示当前钉死探针版本与精选 Web/RPC 框架', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+    await user.click(screen.getByRole('tab', { name: '支持框架' }));
+
+    const panel = await screen.findByRole('tabpanel', { name: '支持框架' });
+    expect(within(panel).getByText(/0\.79\.0/)).not.toBeNull();
+    expect(within(panel).getByText('Express')).not.toBeNull();
+    expect(within(panel).getByText('NestJS')).not.toBeNull();
+    expect(within(panel).getByText('Koa')).not.toBeNull();
+    expect(within(panel).getByText('Fastify')).not.toBeNull();
+  });
+
+  it('Java 支持框架展示 2.31.1 与 Spring / Dubbo / gRPC', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Java 接入' }));
+    await user.click(screen.getByRole('tab', { name: '支持框架' }));
+
+    const panel = await screen.findByRole('tabpanel', { name: '支持框架' });
+    expect(within(panel).getByText(/2\.31\.1/)).not.toBeNull();
+    expect(within(panel).getByText('Spring MVC')).not.toBeNull();
+    expect(within(panel).getByText('Dubbo')).not.toBeNull();
+    expect(within(panel).getByText('gRPC')).not.toBeNull();
+  });
+
+  it('发现能力 Tab 说明拓扑推断，而不是 CMDB 发现或服务目录', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Python 接入' }));
+    await user.click(screen.getByRole('tab', { name: '发现能力' }));
+
+    const panel = await screen.findByRole('tabpanel', { name: '发现能力' });
+    expect(within(panel).getByText(/0\.65b0/)).not.toBeNull();
+    expect(within(panel).getByText('MySQL')).not.toBeNull();
+    expect(within(panel).getByText('Redis')).not.toBeNull();
+    expect(within(panel).getByText('Kafka')).not.toBeNull();
+    expect(within(panel).getByText(/以下类型会在该探针打出 Client Span 后，出现在应用详情拓扑上/)).not.toBeNull();
+    expect(within(panel).getByText(/不是 CMDB 或监控自动发现/)).not.toBeNull();
+    expect(within(panel).getByText(/不会进入服务目录或应用列表/)).not.toBeNull();
+    expect(screen.queryByText(/应用列表里也会出现 mysql/i)).toBeNull();
+  });
+
+  it('Go 支持框架标明需手动加入 contrib 插桩', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Go 接入' }));
+    await user.click(screen.getByRole('tab', { name: '支持框架' }));
+
+    const panel = await screen.findByRole('tabpanel', { name: '支持框架' });
+    expect(within(panel).getByText(/v1\.46\.0/)).not.toBeNull();
+    expect(within(panel).getByText('Gin')).not.toBeNull();
+    expect(within(panel).getByText(/需在代码中加入对应 contrib 插桩/)).not.toBeNull();
+  });
 });
