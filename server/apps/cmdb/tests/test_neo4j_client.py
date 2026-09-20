@@ -478,6 +478,27 @@ def test_full_text_stats_merges_permission_params(monkeypatch):
     assert "toString(n[key]) = $search_term" in query
 
 
+def test_full_text_accepts_inst_name_and_permission_params(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.graph.neo4j.ExcludeFieldsCache.get_exclude_fields", lambda: ["organization"])
+    node = FakeNode(1, ["instance"], {"inst_name": "nginx-80", "model_id": "nginx"})
+    c = _client([(node,)])
+    out = c.full_text(
+        "nginx",
+        permission_params="n.organization IN $list1",
+        inst_name_params="",
+        created="",
+        case_sensitive=False,
+        permission_params_dict={"list1": [1]},
+    )
+    assert out[0]["inst_name"] == "nginx-80"
+    query, params = c.session.calls[0]
+    assert "n.organization IN $list1" in query
+    assert params["list1"] == [1]
+    assert params["search_term"] == "nginx"
+    assert "CONTAINS" in query
+    assert "organization" in query
+
+
 def test_full_text_by_model_paginates(monkeypatch):
     monkeypatch.setattr("apps.cmdb.graph.neo4j.ExcludeFieldsCache.get_exclude_fields", lambda: [])
     node = FakeNode(1, ["instance"], {"inst_name": "h1", "model_id": "host"})
