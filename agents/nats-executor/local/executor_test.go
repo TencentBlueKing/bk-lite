@@ -1,6 +1,7 @@
 package local
 
 import (
+	"os/exec"
 	"runtime"
 	"strings"
 	"testing"
@@ -55,6 +56,44 @@ func TestExecuteBash(t *testing.T) {
 		t.Errorf("Bash execute failed: %s", response.Error)
 	}
 	t.Logf("Output: %s", response.Output)
+}
+
+func TestExecutePython3(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping python3 test on Windows")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is not installed")
+	}
+
+	response := Execute(ExecuteRequest{
+		Command:        "print('python3 script ready')",
+		ExecuteTimeout: 5,
+		Shell:          "python3",
+	}, "test-python3")
+
+	if !response.Success {
+		t.Fatalf("Python3 execute failed: %+v", response)
+	}
+	if !strings.Contains(response.Output, "python3 script ready") {
+		t.Fatalf("unexpected Python3 output: %q", response.Output)
+	}
+}
+
+func TestExecuteAcceptsPythonShellNames(t *testing.T) {
+	for _, shell := range []string{"python", "python3"} {
+		t.Run(shell, func(t *testing.T) {
+			response := Execute(ExecuteRequest{
+				Command:        "print('python script ready')",
+				ExecuteTimeout: 5,
+				Shell:          shell,
+			}, "test-"+shell)
+
+			if response.Code == utils.ErrorCodeInvalidRequest || strings.Contains(response.Error, "unsupported shell") {
+				t.Fatalf("%s must pass shell validation: %+v", shell, response)
+			}
+		})
+	}
 }
 
 // 测试 Windows bat/cmd
