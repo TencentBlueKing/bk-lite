@@ -1,6 +1,9 @@
 import pytest
 
+from apps.alerts.action.exceptions import ConfigError
+from apps.alerts.action.overrides import validate_manual_param_overrides
 from apps.alerts.action.payload import build_match_payload, build_rule_payload, resolve_field
+from apps.alerts.action.resolver import resolve_params
 
 
 class FakeAlert:
@@ -99,3 +102,83 @@ def test_snapshot_source_name_and_unknown_source_id_fail_closed():
     assert event_matches(p, [[{"key": "source_id", "operator": "eq", "value": 2}]]) is False
     # 不命中写法
     assert event_matches(p, [[{"key": "source_id", "operator": "eq", "value": 99}]]) is False
+
+
+def test_resolve_params_uses_script_order_and_keeps_empty_const():
+    payload = build_match_payload(FakeAlert())
+    bindings = [
+        {"name": "later", "from": "const", "value": "b"},
+        {"name": "empty", "from": "const", "value": ""},
+    ]
+    script_params = [
+        {"name": "empty", "default": "should-not-fill"},
+        {"name": "later", "default": "x"},
+        {"name": "added", "default": "from-script"},
+    ]
+    params = resolve_params(payload, bindings, script_params)
+    assert params == [
+        {"name": "empty", "value": ""},
+        {"name": "later", "value": "b"},
+        {"name": "added", "value": "from-script"},
+    ]
+
+
+def test_resolve_params_drops_removed_script_params_and_applies_overrides():
+    payload = build_match_payload(FakeAlert())
+    bindings = [
+        {"name": "gone", "from": "const", "value": "old"},
+        {"name": "keep", "from": "const", "value": "v1", "allow_adjust": True},
+        {"name": "svc", "from": "field", "value": "labels.service"},
+    ]
+    script_params = [
+        {"name": "keep", "default": "d"},
+        {"name": "svc", "default": "nginx"},
+    ]
+    params = resolve_params(payload, bindings, script_params, overrides={"keep": "v2"})
+    assert params == [
+        {"name": "keep", "value": "v2"},
+        {"name": "svc", "value": "nginx"},
+    ]
+
+
+def test_resolve_params_rejects_masked_default_as_real_value():
+    payload = build_match_payload(FakeAlert())
+    params = resolve_params(
+        payload,
+        [],
+        [{"name": "token", "default": "******"}],
+    )
+    assert params == [{"name": "token", "value": ""}]
+
+
+def test_field_missing_without_usable_default_is_config_error():
+    payload = build_match_payload(FakeAlert())
+    try:
+        resolve_params(
+            payload,
+            [{"name": "origin", "from": "field", "value": "labels.missing"}],
+            [{"name": "origin"}],
+        )
+    except ConfigError as exc:
+        assert "origin" in str(exc)
+    else:
+        raise AssertionError("expected ConfigError")
+
+
+def test_validate_manual_overrides_only_allows_adjustable_const():
+    bindings = [
+        {"name": "a", "from": "const", "value": "1", "allow_adjust": True},
+        {"name": "b", "from": "const", "value": "2"},
+        {"name": "c", "from": "field", "value": "title", "allow_adjust": True},
+    ]
+    validate_manual_param_overrides(bindings, {"a": "9"})
+    try:
+        validate_manual_param_overrides(bindings, {"b": "x"})
+        raise AssertionError("b should be rejected")
+    except ConfigError:
+        pass
+    try:
+        validate_manual_param_overrides(bindings, {"c": "x"})
+        raise AssertionError("field binding should be rejected")
+    except ConfigError:
+        pass
