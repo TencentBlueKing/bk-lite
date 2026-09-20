@@ -3,8 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import { useParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { HandledRequestError } from '@/utils/request';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useRelatedTopologyApi } from '@/app/ops-analysis/api/relatedTopology';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 import { buildRelatedTopologyGraph } from './graphModel';
@@ -24,7 +26,11 @@ const RelatedTopology = ({ instUuid, chartThemeMode }: RelatedTopologyProps) => 
   tRef.current = t;
   const usesScreenTheme = isScreenChartThemeMode(chartThemeMode);
   const canvasStyle = relatedTopologyCanvasStyle(usesScreenTheme);
-  const { getRelatedTopology } = useRelatedTopologyApi();
+  const shareMode = useShareMode();
+  const params = useParams<{ sessionId?: string }>();
+  const { getRelatedTopology } = useRelatedTopologyApi(
+    shareMode ? params.sessionId : undefined,
+  );
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<RelatedTopologyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);

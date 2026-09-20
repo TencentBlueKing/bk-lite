@@ -29,12 +29,12 @@ describe('scene widget capabilities', () => {
     expect(getSceneWidgetCapability('networkStatusTopology')?.reportSupported).toBe(false);
   });
 
-  it('keeps relatedTopology on Dashboard and Screen, not report or share', () => {
+  it('keeps relatedTopology on Dashboard and Screen, not report', () => {
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'dashboard')).toBe(true);
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'screen')).toBe(true);
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'report')).toBe(false);
     expect(isSelfFetchSceneWidget('relatedTopology')).toBe(true);
-    expect(getSceneWidgetCapability('relatedTopology')?.shareSupported).toBe(false);
+    expect(getSceneWidgetCapability('relatedTopology')?.shareSupported).toBe(true);
     expect(getSceneWidgetCapability('relatedTopology')?.reportSupported).toBe(false);
   });
 
