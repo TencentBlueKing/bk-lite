@@ -172,11 +172,12 @@ class TestSkillBackendSources:
 
         n = ToolsNodes()
         pkgs = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
-        with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
-        ) as backend_cls, patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat, patch.object(
-            ToolsNodes, "_ensure_skill_deps"
-        ) as ensure_deps:
+        with (
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()) as backend_cls,
+            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat,
+            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
+        ):
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         assert backend is not None
         assert sources == ["/skills/"]
@@ -198,11 +199,12 @@ class TestSkillBackendSources:
             {"name": "kubernetes-specialist", "package_id": "kubernetes-specialist"},
             {"name": "pdf", "package_id": "pdf"},
         ]
-        with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
-        ), patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package"), patch.object(
-            ToolsNodes, "_ensure_skill_deps"
-        ) as ensure_deps:
+        with (
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
+            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package"),
+            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
+        ):
             backend, _, sandbox_dir = n._build_skill_backend_and_sources(_request())
             ensure_deps.assert_not_called()
             backend.read("/skills/kubernetes-specialist/SKILL.md")
@@ -222,11 +224,13 @@ class TestSkillBackendSources:
     def test_single_package_materialize_failure_is_isolated(self):
         n = ToolsNodes()
         pkgs = [{"name": "a"}, {"name": "b"}]
-        with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
-        ), patch(
-            "apps.opspilot.services.skill_package.materializer.materialize_skill_package",
-            side_effect=[RuntimeError("boom"), None],
+        with (
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
+            patch(
+                "apps.opspilot.services.skill_package.materializer.materialize_skill_package",
+                side_effect=[RuntimeError("boom"), None],
+            ),
         ):
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         # 单包失败不影响整体返回
@@ -467,8 +471,9 @@ class TestBuildDeepagentNodes:
                     },
                 )
 
-        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", side_effect=_create), patch.object(
-            ToolsNodes, "get_llm_client", return_value=_FakeLLM()
+        with (
+            patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", side_effect=_create),
+            patch.object(ToolsNodes, "get_llm_client", return_value=_FakeLLM()),
         ):
             config = {"configurable": {"graph_request": req}}
             # 主线程无 event loop 时 `asyncio.get_event_loop()` 抛 RuntimeError;
@@ -482,8 +487,9 @@ class TestBuildDeepagentNodes:
         req = _request(user_message="你好", system_message_prompt="你是助手")
         captured = {}
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
         ):
             result = self._run_wrapper(
                 node,
@@ -508,9 +514,11 @@ class TestBuildDeepagentNodes:
         captured = {}
         pkgs = [{"name": "kubernetes-specialist", "description": "K8s 排障"}]
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(MagicMock(), ["/skills/"], None)) as build_skills:
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(MagicMock(), ["/skills/"], None)) as build_skills,
+        ):
             result = self._run_wrapper(
                 node,
                 req,
@@ -537,9 +545,11 @@ class TestBuildDeepagentNodes:
         pkgs = [{"name": "kubernetes-specialist", "description": "K8s 排障"}]
         fake_backend = MagicMock()
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)) as build_skills:
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)) as build_skills,
+        ):
             self._run_wrapper(
                 node,
                 req,
@@ -615,10 +625,11 @@ class TestBuildDeepagentNodes:
 
         fake_agent.ainvoke = _ainvoke
 
-        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
-            ToolsNodes, "get_llm_client", return_value=_OverflowLLM()
-        ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        with (
+            patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
+            patch.object(ToolsNodes, "get_llm_client", return_value=_OverflowLLM()),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
         ):
             result = asyncio.run(
                 wrapper(
@@ -690,10 +701,11 @@ class TestBuildDeepagentNodes:
         handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
         opspilot_logger.addHandler(handler)
         try:
-            with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
-                ToolsNodes, "get_llm_client", return_value=_PlannerLLM()
-            ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-                ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+            with (
+                patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
+                patch.object(ToolsNodes, "get_llm_client", return_value=_PlannerLLM()),
+                patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+                patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
             ):
                 result = asyncio.run(
                     wrapper(
@@ -792,10 +804,11 @@ class TestBuildDeepagentNodes:
 
         fake_agent.ainvoke = _ainvoke
 
-        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
-            ToolsNodes, "get_llm_client", return_value=_PlanLLM()
-        ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        with (
+            patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
+            patch.object(ToolsNodes, "get_llm_client", return_value=_PlanLLM()),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
         ):
             asyncio.run(
                 wrapper(
@@ -870,8 +883,9 @@ class TestBuildDeepagentNodes:
         node.all_tools = [_tool("list_kubernetes_events")]
         req = _request(user_message="查事件")
         captured = {}
-        with patch.object(ToolsNodes, "_prepare_messages_for_llm", _spy), patch.object(
-            ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None
+        with (
+            patch.object(ToolsNodes, "_prepare_messages_for_llm", _spy),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
         ):
             self._run_wrapper(
                 node,
@@ -1344,9 +1358,7 @@ class TestBuildDeepagentNodes:
 
         assert result["messages"]
         assert len(captured["planner_calls"]) == 1
-        ainvoke_blob = "\n".join(
-            str(getattr(message, "content", "") or "") for messages in captured["ainvoke_messages"] for message in messages
-        )
+        ainvoke_blob = "\n".join(str(getattr(message, "content", "") or "") for messages in captured["ainvoke_messages"] for message in messages)
         assert "缺少必要查询参数" in ainvoke_blob
 
         nudges = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_NUDGE_LOG]
@@ -1724,9 +1736,11 @@ class TestBuildDeepagentNodes:
         pkgs = [{"name": "ad-domain-ops", "package_id": "ad-domain-ops", "description": "AD"}]
         fake_backend = MagicMock()
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)):
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)),
+        ):
             result = self._run_wrapper(
                 node,
                 req,
@@ -1760,9 +1774,11 @@ class TestBuildDeepagentNodes:
         captured = {}
         fake_backend = MagicMock()
         pkgs = [{"name": "kubernetes-specialist", "description": "K8s"}]
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)):
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)),
+        ):
             self._run_wrapper(
                 node,
                 req,
@@ -1803,9 +1819,11 @@ class TestBuildDeepagentNodes:
             call_counter["n"] += 1
             return (fake_backend, ["/skills/"], None)
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", side_effect=_counting_side_effect):
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", side_effect=_counting_side_effect),
+        ):
             self._run_wrapper(
                 node,
                 req,
@@ -2170,6 +2188,8 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "对象类型" in guidance
     assert "查无此实例" in guidance
     assert "已声明" in guidance
+    assert "alerts_*" in guidance
+    assert "monitor_list_active_alerts" in guidance
     assert "Missing parameters" in guidance
     assert "查不到再查" in guidance
     assert "monitor_list_object_metrics" in guidance
