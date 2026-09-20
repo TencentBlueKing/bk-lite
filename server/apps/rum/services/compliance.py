@@ -245,7 +245,7 @@ class ComplianceService:
                 "result": result,
             }
         )
-        # Haro returns the control-plane operation payload; BK-Lite also attaches
+        # Upstream returns the control-plane operation payload; BK-Lite also attaches
         # the durable ledger record so the console can stop using localStorage.
         response = dict(result)
         response["ledger"] = job

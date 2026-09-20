@@ -4,7 +4,7 @@ go 1.25.0
 
 toolchain go1.26.8
 
-// RUM gateway tracks Haro OTel Collector 0.154.0 APIs (vendored source).
+// RUM gateway tracks upstream OTel Collector 0.154.0 APIs (vendored source).
 // APM's bklite-otelcol remains on 0.153.0; they are separate binaries.
 
 require (

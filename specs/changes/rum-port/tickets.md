@@ -21,14 +21,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` cancelled
 
 ## P1 — Data plane
 
-- [x] T10 Vendor Haro RUM collector packages into `deploy/rum/collector` (commit `d1dc8b34`, import rewrite to `github.com/bk-lite/rum-collector`, factory stub + `otel/rum.gateway.yaml`)
-- [x] T11 Wire Faro collect `:4319/rum/v1/collect` and replay `:4320/rum/v1/replay` (buildable `bklite-rum-gateway`, BK-Lite env/secrets, OTel **0.154.0** aligned with Haro — not APM 0.153.0; `make validate-config` green)
+- [x] T10 Vendor upstream RUM collector packages into `deploy/rum/collector` (commit `d1dc8b34`, import rewrite to `github.com/bk-lite/rum-collector`, factory stub + `otel/rum.gateway.yaml`)
+- [x] T11 Wire Faro collect `:4319/rum/v1/collect` and replay `:4320/rum/v1/replay` (buildable `bklite-rum-gateway`, BK-Lite env/secrets, OTel **0.154.0** aligned with upstream — not APM 0.153.0; `make validate-config` green)
 - [x] T12 Port `core-rum-controller` → `cmd/bklite-rum-controller` + NATS `rum.v1.control.*` subjects (`make build-controller` / `test-controller` green)
 - [x] T13 Port `core-rum-maintainer` → `cmd/bklite-rum-maintainer` (erase + replay reconcile; `make build-maintainer` / `test-maintainer` green)
 - [x] T14 `deploy/rum` compose fixture + ACCEPTANCE.md (`make validate` green; image pull smoke may need registry access)
-- [x] T15 Publish `bklite-rum-sdk` from Haro `packages/core-rum-sdk` (rename + CDN URLs; `bun run check` / pack green; assets → `web/public/rum/`)
+- [x] T15 Publish `bklite-rum-sdk` from upstream `packages/core-rum-sdk` (rename + CDN URLs; `bun run check` / pack green; assets → `web/public/rum/`)
 
-## P2 — Django BFF (parity with Haro `/api/ops/rum`)
+## P2 — Django BFF (parity with upstream `/api/ops/rum`)
 
 - [x] T20 Applications CRUD + keys + disable + status + overview + snippets + meta + analytics catalog (NATS control client + MemoryControl tests; overview/analytics degrade with `analyticsUnavailable` until T28 LogsQL)
 - [x] T21 Sessions list/detail/trend + replay manifest/grants/segments (degrade until LogsQL/MinIO; HMAC grant/manifest signing; unit tests green)
@@ -38,7 +38,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` cancelled
 - [x] T25 Releases + baselines + sourcemap upload/CI ingest
 - [x] T26 Monitors + alert-events + Celery evaluator + SystemMgmt notify
 - [x] T27 Compliance erase (`rum_erase_jobs` ledger)
-- [x] T28 LogsQL query parity tests vs Haro fixtures
+- [x] T28 LogsQL query parity tests vs upstream fixtures
 - [x] T29 Health/degraded flags (`controlUnavailable` / `analyticsUnavailable`)
 
 ## P3 — Web pages (1:1 UI)
@@ -68,7 +68,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` cancelled
   - Standards P0 fixed: `rum_logger` in `apps.core.logger`; rum services use it;
     notify/eval failures include `failed_stage` / `error_type`.
   - Residual P1 (not blocking T52): query “parity” tests are LogsQL/synthetic
-    not Haro BFF golden; hardcoded palette colors; ViewSet error duplication;
+    not upstream BFF golden; hardcoded palette colors; ViewSet error duplication;
     large `victoria_analytics.py`.
 - [x] T53 Mark `spec.md` Status: implemented with completion evidence
   - `spec.md` → Status: implemented + Completion evidence
@@ -81,5 +81,5 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` cancelled
 - Prefer vertical slices that keep API + page for one domain green together
   once T01–T06 are done.
 - Do not expand APM 4318. Do not introduce ClickHouse.
-- Preserve Haro JSON field names (`camelCase` where Haro uses it) at the HTTP
+- Preserve upstream JSON field names (`camelCase` where the RUM API uses it) at the HTTP
   boundary even if Django models use snake_case.

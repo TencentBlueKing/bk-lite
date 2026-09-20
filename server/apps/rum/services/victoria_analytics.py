@@ -18,7 +18,7 @@ from apps.rum.services.victoria_client import (
 
 
 class VictoriaAnalytics:
-    """rumcore.Analytics over VictoriaLogs LogsQL (Haro plugins/ops/server/rum/victoria)."""
+    """Analytics over VictoriaLogs LogsQL."""
 
     def __init__(self, client: VictoriaClient):
         self.client = client

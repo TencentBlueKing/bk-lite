@@ -1,4 +1,4 @@
-/** Lightweight UA parsing for the sessions explorer (Haro rum/shared/lib/ua). */
+/** Lightweight UA parsing for the sessions explorer. */
 
 export type DeviceClass = 'mobile' | 'tablet' | 'desktop';
 

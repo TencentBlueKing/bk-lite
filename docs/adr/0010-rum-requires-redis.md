@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-Haro RUM stores application registry, Browser Keys, Origins, budgets,
+Upstream RUM stores application registry, Browser Keys, Origins, budgets,
 last-accepted / last-stored evidence, and Session Replay indexes in Redis under
 `ops:rum:v2:*`. The Faro gateway admission path is a Redis Lua script; without
 Redis the public gateway cannot safely accept browser traffic.

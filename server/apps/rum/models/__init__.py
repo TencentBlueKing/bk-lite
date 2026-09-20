@@ -136,7 +136,7 @@ class RumSourcemapCredential(models.Model):
 
 
 class RumEraseJob(models.Model):
-    """BK-Lite deviation from Haro: durable erase ledger instead of localStorage."""
+    """BK-Lite deviation from upstream: durable erase ledger instead of localStorage."""
 
     id = models.CharField(primary_key=True, max_length=36, default=new_id, editable=False)
     application = models.CharField(max_length=128, db_index=True)

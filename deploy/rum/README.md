@@ -30,7 +30,7 @@ RUM 公网入口独立于 APM ADR 0008（4318 受信内网）。见
 | 路径 | 说明 |
 | --- | --- |
 | `collector/` | Go 数据面（gateway / controller / maintainer） |
-| `packages/bklite-rum-sdk` | 浏览器 Faro transport（由 Haro `core-rum-sdk` 重命名） |
+| `packages/bklite-rum-sdk` | 浏览器 Faro transport（由上游 `core-rum-sdk` 重命名） |
 | `compose.yaml` + `.env.example` | 本地依赖夹具（Redis ACL、NATS、VL、VT、MinIO） |
 | `redis/` / `nats/` | 本地最小权限示例，**不是**生产凭据 |
 | `ACCEPTANCE.md` | 上线验收与回滚约束 |

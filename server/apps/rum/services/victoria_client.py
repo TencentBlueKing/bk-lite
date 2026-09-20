@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 
 class VictoriaClient:
-    """VictoriaLogs / VictoriaTraces LogsQL HTTP client (Haro victoria/client.go)."""
+    """VictoriaLogs / VictoriaTraces LogsQL HTTP client."""
 
     def __init__(
         self,

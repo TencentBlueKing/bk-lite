@@ -39,7 +39,7 @@ def _service(control=None, **kwargs) -> ReleasesService:
     )
 
 
-def test_asset_fingerprint_matches_haro_contract():
+def test_asset_fingerprint_matches_wire_contract():
     expected = "asset:9ab0ce4d26f7d0ad959edd4b45878c1b"
     assert asset_fingerprint("https://cdn.example.test/assets/checkout.min.js?v=7#x") == expected
     assert asset_fingerprint("/assets/checkout.min.js") == expected

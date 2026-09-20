@@ -18,7 +18,7 @@ import { useTranslation } from '@/utils/i18n';
 
 export interface ViewPreset { nameKey: string; fallback: string; context: Record<string, string> }
 
-/** Context keys stored with a saved view (Haro parity). */
+/** Context keys stored with a saved view. */
 const STORED_KEYS = [
   'application',
   'sessionId',

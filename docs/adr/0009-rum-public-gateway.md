@@ -8,7 +8,7 @@ ADR 0008 requires APM OTLP/HTTP 4318 to remain on a trusted regional network
 without application-level Browser Tokens. RUM telemetry originates from end-user
 browsers on the public internet and therefore cannot reuse that ingress.
 
-Haro's RUM gateway already defines a working public contract:
+The upstream RUM gateway already defines a working public contract:
 
 - `POST /rum/v1/collect` (Faro JSON, `X-API-Key`, `X-RUM-Application`, `Origin`)
 - `POST /rum/v1/replay` (segmented gzip replay)

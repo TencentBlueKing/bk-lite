@@ -6,8 +6,8 @@
   - `apps/collector/pkg/rum` → `pkg/rum`
   - `platform/server/rumprivacy` → `internal/rumprivacy`
   - `deploy/collector/rum.yaml` → `otel/rum.gateway.yaml` (wiring land in T11)
-- Module rewrite: Haro collector module path → `github.com/bk-lite/rum-collector`
-- Module rewrite: Haro `platform/server/rumprivacy` → `internal/rumprivacy`
+- Module rewrite: upstream collector module path → `github.com/bk-lite/rum-collector`
+- Module rewrite: upstream `platform/server/rumprivacy` → `internal/rumprivacy`
 - Test-only LogsQL store import rewritten to `internal/victorialogscontract` (compile isolation; full analytics client stays in Django `apps.rum`).
 
-Re-vendor by re-running the T10 sync and re-applying import rewrites. Do not edit Haro from this tree.
+Re-vendor by re-running the T10 sync and re-applying import rewrites. Do not edit the upstream tree from here.

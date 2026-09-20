@@ -1,4 +1,4 @@
-"""RUM control-plane subject and budget defaults (Haro wire parity)."""
+"""RUM control-plane subject and budget defaults (wire parity)."""
 
 API_VERSION = "rum.control/v1"
 

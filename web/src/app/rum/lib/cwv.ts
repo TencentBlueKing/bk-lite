@@ -1,4 +1,4 @@
-/** Core Web Vitals thresholds and experience health (Haro rum/shared/lib/cwv). */
+/** Core Web Vitals thresholds and experience health. */
 
 export type CwvMetric = 'lcp' | 'inp' | 'cls';
 

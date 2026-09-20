@@ -9,7 +9,7 @@ import { useTranslation } from '@/utils/i18n';
 
 const SCOPES: RumTraffic[] = ['visitors', 'automated', 'all'];
 
-/** Traffic scope selector that rewrites ?traffic= (Haro visitors/automated/all). */
+/** Traffic scope selector that rewrites ?traffic= (visitors/automated/all). */
 export default function TrafficScopeControl({
   onChange,
   className,

@@ -6,17 +6,17 @@ Source of truth for product behavior: `alphamind-dev/core-admin` at
 `plugins/ops/{web,server}/rum`, `packages/core-rum-sdk`,
 `apps/collector/internal/rum`, `cmd/core-rum-{controller,maintainer}`.
 
-Local clone used for this port: `/Users/qiu/projects/core-admin`.
+Local clone used for this port: `core-admin` (sibling of this repo).
 
 ## Problem Statement
 
-BK-Lite has Monitor / Log / APM but no Real User Monitoring. The commercial
-Haro product (`core.bklite.cloud`) already ships a complete RUM domain with 15
+BK-Lite has Monitor / Log / APM but no Real User Monitoring. Upstream
+`alphamind-dev/core-admin` already ships a complete RUM domain with 15
 console pages, browser SDK, public Faro gateway, Redis admission, VictoriaLogs
 analytics, MinIO replay, and domain alerts. The user requires a **1:1 port of
 pages + functions** into BK-Lite.
 
-Host stacks differ: Haro control plane is Go + Vite plugin; BK-Lite control
+Host stacks differ: upstream control plane is Go + Vite plugin; BK-Lite control
 plane is Django + Next.js App Router. Data plane on both sides is a custom
 OTel Collector distribution in Go.
 
@@ -37,7 +37,7 @@ apps.rum (Django BFF)  /api/v1/rum/*
   → domain alerts → SystemMgmt.dispatch_notification
 
 web/src/app/rum  /rum/*
-  → 15 pages mirrored from Haro routes
+  → 15 pages mirrored from upstream RUM routes
 ```
 
 ### Explicit decisions
@@ -46,8 +46,8 @@ web/src/app/rum  /rum/*
    maintainer, `pkg/rum/wire`, replayindex). Merged into BK-Lite collector
    builder / new binaries under `deploy/rum/`.
 2. **Control-plane BFF is rewritten in Django** as `server/apps/rum`. HTTP
-   path prefix becomes `/api/v1/rum` (drop Haro `/api/ops` segment). Response
-   JSON shapes stay 1:1 with Haro.
+   path prefix becomes `/api/v1/rum` (drop upstream `/api/ops` segment). Response
+   JSON shapes stay 1:1 with the upstream RUM API.
 3. **Pages are ported** into `web/src/app/rum` with host adapters
    (`useApiClient`, `useTranslation`, `<Permission>`, Next navigation).
 4. **New ADR required** before exposing public RUM gateway: RUM public ingest
@@ -59,9 +59,9 @@ web/src/app/rum  /rum/*
 
 ### Non-goals
 
-- ClickHouse (Haro already cut over away from it).
+- ClickHouse (upstream already cut over away from it).
 - Keeping a Go BFF as the long-term control plane inside BK-Lite.
-- Porting Haro plugin shell / `@core-admin/platform-web` as a dependency.
+- Porting the upstream plugin shell / `@core-admin/platform-web` as a dependency.
 
 ## User Stories
 
@@ -76,7 +76,7 @@ web/src/app/rum  /rum/*
    through System Management channels.
 8. As a compliance officer, I erase a end-user's RUM data for an application.
 
-## Route contract (must match Haro UI)
+## Route contract (must match upstream RUM UI)
 
 | Path | Page |
 | --- | --- |
@@ -97,7 +97,7 @@ web/src/app/rum  /rum/*
 | `/rum/alert-events` | alert events |
 | `/rum/compliance` | compliance erase |
 
-API contract mirrors Haro under `/api/v1/rum/*` (see tickets for endpoint list).
+API contract mirrors the upstream RUM API under `/api/v1/rum/*` (see tickets for endpoint list).
 
 ## Phases
 
@@ -111,7 +111,7 @@ all P0–P3 tickets are done and acceptance scenarios pass.
 - All 15 pages reachable with menu permissions; loading / empty / degraded /
   forbidden states present.
 - Same VictoriaLogs fixture yields list/detail numbers within documented
-  tolerance vs Haro BFF (query parity tests).
+  tolerance vs the upstream BFF (query parity tests).
 - Policy fire / recover delivers via System Management channel.
 - Erase job removes VL/VT/MinIO evidence for the targeted user id.
 - APM 4318 remains trusted-intranet-only (ADR 0008 unchanged).
@@ -135,5 +135,5 @@ All tickets T00–T53 complete. See `tickets.md` and Completion evidence below.
   (2026-09-07).
 - **Tests**: `uv run pytest apps/rum/tests --no-cov` → **59 passed** (2026-09-07).
 - **Known residual (non-blocking for Status:implemented)**: LogsQL tests are
-  synthetic/shape parity, not Haro BFF golden tolerance; palette/token polish
+  synthetic/shape parity, not upstream BFF golden tolerance; palette/token polish
   and ViewSet error dedupe remain P1 follow-ups.

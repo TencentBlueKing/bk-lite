@@ -10,7 +10,7 @@ MAX_RANGE_SPAN = timedelta(days=31)
 
 
 def parse_range_params(params: dict[str, Any]) -> tuple[datetime, datetime]:
-    """Parse Haro-compatible range / from / to query params (UTC)."""
+    """Parse RUM range / from / to query params (UTC)."""
     now = datetime.now(timezone.utc)
     raw_from = params.get("from")
     raw_to = params.get("to")
@@ -96,7 +96,7 @@ def empty_release_list(*, reason: str | None = None) -> dict:
 
 
 def apply_degradation(page: dict, reason: str | None) -> dict:
-    """Attach exclusive pipeline flags (Haro PipelineDegradation.Degrade)."""
+    """Attach exclusive pipeline flags (PipelineDegradation.Degrade)."""
 
     if reason == "control":
         page["controlUnavailable"] = True

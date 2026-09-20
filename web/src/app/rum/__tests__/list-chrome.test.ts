@@ -5,7 +5,7 @@ import { parseRumTraffic } from '@/app/rum/lib/search-params';
 import { parseRumPageSize, sliceRumPage } from '@/app/rum/lib/table-pagination';
 
 describe('rum list chrome', () => {
-  it('parses Haro traffic scopes including automated', () => {
+  it('parses RUM traffic scopes including automated', () => {
     expect(parseRumTraffic('automated')).toBe('automated');
     expect(parseRumTraffic('visitors')).toBe('visitors');
     expect(parseRumTraffic('all')).toBe('all');

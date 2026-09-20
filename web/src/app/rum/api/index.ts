@@ -410,7 +410,7 @@ function emptyHealth(name: string, enabled = false): RumApplicationHealthItem {
   };
 }
 
-/** Shared RUM BFF calls used by host pages (Haro `/api/ops/rum` → BK-Lite `/rum`). */
+/** Shared RUM BFF calls used by host pages (`/api/ops/rum` → BK-Lite `/rum`). */
 export function useRumQueries() {
   const api = useRumApi();
 

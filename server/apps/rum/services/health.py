@@ -94,7 +94,7 @@ def resolve_product_scope(
     control: ControlPlane | None = None,
     analytics=None,
 ) -> ProductScope:
-    """Haro rumhttp.Scope.ResolveScope: empty page + reason when pipeline is down."""
+    """Empty page + reason when the control/analytics pipeline is down."""
 
     from apps.rum.services.analytics import get_analytics
 

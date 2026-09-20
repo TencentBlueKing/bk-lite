@@ -1,4 +1,4 @@
-"""LogsQL / Victoria analytics parity tests vs Haro plugins/ops/server/rum/victoria."""
+"""LogsQL / Victoria analytics parity tests vs the upstream RUM query contract."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def _serve(rows: list[dict]) -> tuple[HTTPServer, str]:
     return server, f"http://{host}:{port}"
 
 
-def test_rum_apps_filter_matches_haro_contract():
+def test_rum_apps_filter_matches_wire_contract():
     query = rum_apps_filter("core", ["storefront"])
     assert '"rum.event.type":*' in query
     assert '"tenant.id":"core"' in query

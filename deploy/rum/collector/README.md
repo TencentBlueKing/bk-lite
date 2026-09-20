@@ -1,6 +1,6 @@
 # BK-Lite RUM Collector / Gateway
 
-Vendored RUM data-plane packages from Haro (`core-admin`) for the public Faro
+Vendored RUM data-plane packages from `alphamind-dev/core-admin` for the public Faro
 collect + Session Replay gateway and control-plane controller.
 
 ## Layout
