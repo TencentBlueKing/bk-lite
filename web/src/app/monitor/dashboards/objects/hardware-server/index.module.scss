@@ -8,16 +8,28 @@
 
 .compactTrend {
   .chartWrap {
-    height: 180px;
+    height: 200px;
   }
 }
 
 .dimTablePanel {
   margin-top: 0;
+  border-radius: 12px;
 }
 
 .dimTableWrap {
   overflow-x: auto;
+
+  :global(.ant-table-thead > tr > th) {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-2);
+    background: color-mix(in srgb, var(--color-fill-1) 80%, transparent);
+  }
+
+  :global(.ant-table-tbody > tr > td) {
+    font-size: 13px;
+  }
 }
 
 .statusCell {

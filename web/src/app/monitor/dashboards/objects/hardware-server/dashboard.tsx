@@ -15,7 +15,7 @@ import { HARDWARE_SERVER_DASHBOARD_CONFIG } from './config';
 import { HardwareDimensionTables, extractFirmwareLabel } from './dimension-tables';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['系统健康', '电源状态', 'BMC 健康', '整机功耗', '处理器健康', '内存健康'];
+const SUMMARY_TITLES = ['系统健康', '电源状态', 'BMC 健康', '处理器健康', '内存健康'];
 const CHART_TITLES = ['温度', '整机功耗', '风扇转速'];
 
 export default function HardwareServerDashboardPage() {
@@ -52,7 +52,8 @@ export default function HardwareServerDashboardPage() {
       dashboardContent={
         <>
           <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={4} styles={styles} />
+          {/* 与 host/docker 一致：采集 + 5 状态 = 6 列满行；功耗见下方「热与功耗」 */}
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           <DashboardSectionLabel styles={styles}>热与功耗</DashboardSectionLabel>
           <FlexiblePanelSection styles={styles}>

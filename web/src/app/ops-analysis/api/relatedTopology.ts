@@ -5,17 +5,23 @@ import type { RelatedTopologyResponse } from '@/app/ops-analysis/components/widg
 export const RELATED_TOPOLOGY_API_PATH =
   '/operation_analysis/api/scene_widgets/related_topology/';
 
-export const useRelatedTopologyApi = () => {
+export const relatedTopologyApiPath = (shareSessionId?: string) =>
+  shareSessionId
+    ? `/operation_analysis/api/dashboard_share/session/${shareSessionId}/related_topology/`
+    : RELATED_TOPOLOGY_API_PATH;
+
+export const useRelatedTopologyApi = (shareSessionId?: string) => {
   const { post } = useApiClient();
+  const path = relatedTopologyApiPath(shareSessionId);
 
   const getRelatedTopology = useCallback(
     (instUuid: string) =>
       post<RelatedTopologyResponse>(
-        RELATED_TOPOLOGY_API_PATH,
+        path,
         { inst_uuid: instUuid },
         { suppressErrorNotification: true },
       ),
-    [post],
+    [path, post],
   );
 
   return { getRelatedTopology };
