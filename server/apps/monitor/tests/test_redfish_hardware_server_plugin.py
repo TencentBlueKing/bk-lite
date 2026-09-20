@@ -71,6 +71,15 @@ def test_added_metrics_have_translations(metrics, language):
 
 
 @pytest.mark.unit
+def test_queries_target_nats_gauge_suffix(metrics):
+    for metric in metrics["metrics"]:
+        name = metric["name"]
+        query = metric["query"]
+        assert f"{name}_gauge{{" in query
+        assert f"{name}{{" not in query
+
+
+@pytest.mark.unit
 def test_policy_uses_first_class_inlet_power_and_drive_metrics(policy):
     by_name = {item["name"]: item["metric_name"] for item in policy["templates"]}
 
