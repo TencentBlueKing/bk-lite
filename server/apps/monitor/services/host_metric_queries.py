@@ -76,6 +76,7 @@ def net_bytes_sent_query(*, labels: bool = False, window: str = "5m") -> str:
 def diskio_io_util_query(*, labels: bool = False) -> str:
     return (
         f"(rate(diskio_io_time{_sel(OS, labels=labels)}[5m]) / 10)"
+        f" or (rate(diskio_io_time_ms_gauge{_sel(OS, labels=labels)}[5m]) / 10)"
         f" or diskio_io_util{_sel(OS, labels=labels)}"
         f" or diskio_io_util_gauge{_sel(OS, labels=labels)}"
         f" or diskio_io_util_gauge_value{_sel(OS, WMI, labels=labels)}"
