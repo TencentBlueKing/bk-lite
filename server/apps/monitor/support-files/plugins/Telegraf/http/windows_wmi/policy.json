@@ -83,7 +83,10 @@
       "description": "监控 Windows 主机网卡入流量速率，当超出设定阈值时触发告警。",
       "metric_name": "net_bytes_recv_rate",
       "algorithm": "max_over_time",
-      "group_by": ["instance_id", "interface"],
+      "group_by": [
+        "instance_id",
+        "interface"
+      ],
       "threshold": [
         {
           "level": "critical",
@@ -109,7 +112,10 @@
       "description": "监控 Windows 主机网卡出流量速率，当超出设定阈值时触发告警。",
       "metric_name": "net_bytes_sent_rate",
       "algorithm": "max_over_time",
-      "group_by": ["instance_id", "interface"],
+      "group_by": [
+        "instance_id",
+        "interface"
+      ],
       "threshold": [
         {
           "level": "critical",
@@ -132,7 +138,7 @@
     {
       "name": "进程数过高",
       "alert_name": "Windows主机${instance_id} 进程数过高",
-      "description": "监控 Windows 主机运行进程数量，当超出设定阈值时触发告警。",
+      "description": "监控 Windows 主机进程表总数量（非运行队列），当超出设定阈值时触发告警。",
       "metric_name": "processes_running",
       "algorithm": "max_over_time",
       "threshold": [
