@@ -840,35 +840,34 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         ]
 
     def enrich_bulk_policy_templates(self, monitor_object_id, templates):
-        from apps.monitor.models.monitor_metrics import Metric
-
+        monitor_object = MonitorObject.objects.get(id=monitor_object_id)
         enriched = []
         for template in templates:
+            plugin = PolicyService._plugin_from_template_payload(template)
+            collect_type = template.get("collect_type") or template.get("plugin_id")
+            if plugin is not None and collect_type in (None, ""):
+                collect_type = plugin.id
             if template.get("query_condition"):
                 enriched.append(
                     {
                         **template,
                         "query_condition": PolicyService._runtime_query_condition(
                             template["query_condition"],
-                            MonitorObject.objects.get(id=monitor_object_id),
+                            monitor_object,
+                            plugin=plugin,
                         ),
-                        "collect_type": template.get("collect_type") or template.get("plugin_id"),
+                        "collect_type": collect_type,
                     }
                 )
                 continue
             metric_name = template.get("metric_name")
             if not metric_name:
                 raise BaseAppException("模板 metric_name 不能为空")
-            metric_qs = Metric.objects.filter(
-                monitor_object_id=monitor_object_id,
-                name=metric_name,
+            metric = PolicyService._resolve_runtime_metric(
+                monitor_object,
+                metric_name,
+                plugin=plugin,
             )
-            collect_type = template.get("collect_type") or template.get("plugin_id")
-            if collect_type:
-                metric_qs = metric_qs.filter(monitor_plugin_id=collect_type)
-            metric = metric_qs.first()
-            if not metric:
-                raise BaseAppException(f"指标不存在: {metric_name}")
             enriched.append(
                 {
                     **template,
