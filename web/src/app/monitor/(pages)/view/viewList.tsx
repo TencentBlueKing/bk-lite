@@ -46,9 +46,9 @@ import {
   displayFieldParamKey
 } from './instanceViewColumns';
 import {
-  keepValidColonyIds,
   readUrlColonyIds,
-  readUrlTableSort
+  readUrlTableSort,
+  resolveColonyAfterEnumLoad
 } from './viewListUrlPrefill';
 const { Option } = Select;
 
@@ -433,7 +433,7 @@ const ViewList: React.FC<ViewListProps> = ({
       const targetObject = findByMonitorId(objects, objectId);
       const nextColony = readUrlColonyIds(searchParams, targetObject?.name);
       const nextSort =
-        targetObject?.name === 'Pod' || targetObject?.name === 'Node'
+        isPod || isNode
           ? readUrlTableSort(searchParams, targetObject?.display_fields)
           : null;
       setNode(null);
@@ -634,15 +634,11 @@ const ViewList: React.FC<ViewListProps> = ({
           colonyRef.current = resolved;
           setColony(resolved);
         }
-      } else if (
-        (objName === 'Pod' || objName === 'Node') &&
-        colonyRef.current.length
-      ) {
-        const kept = keepValidColonyIds(colonyRef.current, queryForm);
-        if (!sameStringArray(kept, colonyRef.current)) {
-          colonyRef.current = kept;
-          setColony(kept);
-        }
+      }
+      const nextColony = resolveColonyAfterEnumLoad(objName, colonyRef.current);
+      if (!sameStringArray(nextColony, colonyRef.current)) {
+        colonyRef.current = nextColony;
+        setColony(nextColony);
       }
       setMetrics(res[0].items);
       if (objName) {

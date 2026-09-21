@@ -57,7 +57,7 @@ export interface HorizontalBarPanelProps {
   tiered?: boolean;
   isEmpty?: boolean;
   emptyDescription?: React.ReactNode;
-  extra?: React.ReactNode;
+  headerAction?: React.ReactNode;
   styles: HorizontalBarPanelStyles;
 }
 
@@ -167,7 +167,7 @@ export const HorizontalBarPanel = ({
   tiered = false,
   isEmpty = false,
   emptyDescription,
-  extra,
+  headerAction,
   styles,
 }: HorizontalBarPanelProps) => {
   const { t } = useTranslation();
@@ -192,7 +192,7 @@ export const HorizontalBarPanel = ({
           </h3>
           {subtitle ? <div className={styles.panelSubTitle}>{tDashboardText(t, subtitle)}</div> : null}
         </div>
-        {extra ? <div className="shrink-0 self-start">{extra}</div> : null}
+        {headerAction ? <div className="shrink-0 self-start">{headerAction}</div> : null}
       </div>
       {isEmpty ? (
         <div className="flex min-h-[176px] items-center justify-center">

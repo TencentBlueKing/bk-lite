@@ -7,15 +7,13 @@ export function resolveMonitorObjectIdByName(
   data: unknown,
   name: string
 ): string {
-  const list = Array.isArray(data)
-    ? data
-    : (data as { items?: unknown[]; results?: unknown[] })?.items ||
-      (data as { results?: unknown[] })?.results ||
-      [];
-  const found = (list as Array<{ name?: string; id?: string | number }>).find(
-    (item) => item?.name === name
-  );
-  return found?.id != null ? String(found.id) : '';
+  if (!Array.isArray(data)) return '';
+  for (const item of data) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { name?: string; id?: string | number };
+    if (row.name === name && row.id != null) return String(row.id);
+  }
+  return '';
 }
 
 export function buildK8sClusterViewListHref(options: {

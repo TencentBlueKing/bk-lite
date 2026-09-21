@@ -3,6 +3,9 @@ import { displayFieldKey } from './instanceViewColumns';
 export const isUrlColonyObject = (name?: string | null): boolean =>
   name === 'Process' || name === 'Pod' || name === 'Node';
 
+export const isUrlSortObject = (name?: string | null): boolean =>
+  isUrlColonyObject(name) && name !== 'Process';
+
 export const readUrlColonyIds = (
   searchParams: Pick<URLSearchParams, 'get'>,
   objectName?: string | null
@@ -12,16 +15,14 @@ export const readUrlColonyIds = (
   return raw ? [raw] : [];
 };
 
-export const keepValidColonyIds = (
-  colony: string[],
-  options: Array<{ id?: string | number }>
-): string[] => {
-  if (!colony.length || !options.length) return colony;
-  const valid = new Set(
-    options.map((item) => String(item.id ?? '')).filter(Boolean)
-  );
-  return colony.filter((id) => valid.has(id));
-};
+/**
+ * Process / Pod / Node keep URL colony ids even when the VM enum is missing them.
+ * Other objects wipe leftover colony so Host/K3SPod do not inherit instance_id.
+ */
+export const resolveColonyAfterEnumLoad = (
+  objectName: string | null | undefined,
+  colony: string[]
+): string[] => (isUrlColonyObject(objectName) ? colony : []);
 
 interface DisplayFieldLike {
   column_key?: string;

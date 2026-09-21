@@ -4,8 +4,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardSectionLabel } from '../common/dashboard-components';
 import type { Dayjs } from 'dayjs';
 import { useSearchParams } from 'next/navigation';
+import { Button } from 'antd';
 import { DatabaseOutlined, CloudServerOutlined, AppstoreOutlined, DeploymentUnitOutlined, PartitionOutlined, ReloadOutlined } from '@ant-design/icons';
-import { useScreenAwareRouter } from '@/console-layout';
+import { applyScreenAwareHref, useScreenAwareRouter } from '@/console-layout';
+import { useTranslation } from '@/utils/i18n';
 import useViewApi from '@/app/monitor/api/view';
 import useMonitorApi from '@/app/monitor/api';
 import MetricViews from '@/app/monitor/components/metric-views';
@@ -52,6 +54,7 @@ import {
   QUERY_CONCURRENCY,
   TREND_METRICS,
   TOP_N,
+  NS_TOP_N,
   HEALTH_GREEN,
   HEALTH_AMBER,
   HEALTH_RED,
@@ -116,6 +119,7 @@ const sumSeries = (arrs: ChartData[][]): ChartData[] => {
 
 export default function K8sClusterDashboardPage() {
   const router = useScreenAwareRouter();
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { getInstanceQuery } = useViewApi();
   const monitorApi = useMonitorApi();
@@ -215,14 +219,16 @@ export default function K8sClusterDashboardPage() {
     let active = true;
     (async () => {
       try {
-        const data = await getMonitorObjectRef.current({});
+        const data = await getMonitorObjectRef.current({ include_invisible: true });
         if (!active) return;
-        setViewObjectIds({
-          pod: resolveMonitorObjectIdByName(data, 'Pod'),
-          node: resolveMonitorObjectIdByName(data, 'Node')
-        });
+        const pod = resolveMonitorObjectIdByName(data, 'Pod');
+        const node = resolveMonitorObjectIdByName(data, 'Node');
+        setViewObjectIds((prev) => ({
+          pod: pod || prev.pod,
+          node: node || prev.node
+        }));
       } catch {
-        if (active) setViewObjectIds({ pod: '', node: '' });
+        // 保留上次解析到的对象 id，「更多」不会因一次失败永久消失。
       }
     })();
     return () => {
@@ -485,7 +491,7 @@ export default function K8sClusterDashboardPage() {
   const topPodCpuBars = useMemo(() => buildTopBars(raw.topPodCpu, 'pod', '#9254de', coresDisplay), [raw.topPodCpu]);
   const topPodMemBars = useMemo(() => buildTopBars(raw.topPodMem, 'pod', '#13c2c2', bytesDisplay), [raw.topPodMem]);
   const topNsMemBars = useMemo(
-    () => buildTopBars(raw.topNsMem, ['namespace', 'container_label_io_kubernetes_pod_namespace'], '#13c2c2', bytesDisplay),
+    () => buildTopBars(raw.topNsMem, ['namespace', 'container_label_io_kubernetes_pod_namespace'], '#13c2c2', bytesDisplay, NS_TOP_N),
     [raw.topNsMem]
   );
 
@@ -536,13 +542,14 @@ export default function K8sClusterDashboardPage() {
   const nodeMemMoreHref = moreHref(viewObjectIds.node, K8S_VIEW_NODE_MEM_ORDERING);
   const renderMore = (href: string | null) =>
     href ? (
-      <button
-        type="button"
-        className="shrink-0 text-sm text-[var(--color-primary)] hover:opacity-80"
-        onClick={() => router.push(href)}
+      <Button
+        type="link"
+        size="small"
+        className="shrink-0 px-0"
+        href={applyScreenAwareHref(href, searchParams)}
       >
-        更多
-      </button>
+        {t('common.more')}
+      </Button>
     ) : null;
 
   return (
@@ -714,7 +721,7 @@ export default function K8sClusterDashboardPage() {
               subtitle="核数 · 5m"
               guide={guide('Top Pod · CPU', 'CPU 消耗最高的 Pod。')}
               items={topPodCpuBars}
-              extra={renderMore(podCpuMoreHref)}
+              headerAction={renderMore(podCpuMoreHref)}
               tiered
               className={styles.span4}
               styles={styles}
@@ -723,7 +730,7 @@ export default function K8sClusterDashboardPage() {
               title="Top Pod · 内存"
               guide={guide('Top Pod · 内存', '内存占用最高的 Pod。')}
               items={topPodMemBars}
-              extra={renderMore(podMemMoreHref)}
+              headerAction={renderMore(podMemMoreHref)}
               tiered
               className={styles.span4}
               styles={styles}
@@ -733,7 +740,7 @@ export default function K8sClusterDashboardPage() {
               subtitle="近 1h"
               guide={guide('重启 Top Pod', '近 1 小时容器重启次数最多的 Pod。')}
               items={restartBars}
-              extra={renderMore(podRestartMoreHref)}
+              headerAction={renderMore(podRestartMoreHref)}
               tiered
               className={styles.span4}
               styles={styles}
@@ -746,7 +753,7 @@ export default function K8sClusterDashboardPage() {
                   title="节点内存 Top"
                   guide={guide('节点内存 Top', '内存使用率最高的节点。')}
                   items={nodeMemBars}
-                  extra={renderMore(nodeMemMoreHref)}
+                  headerAction={renderMore(nodeMemMoreHref)}
                   tiered
                   className={styles.span4}
                   styles={styles}
