@@ -1,4 +1,6 @@
-from django.http import HttpResponse, JsonResponse
+from asgiref.sync import sync_to_async
+from django.core.handlers.asgi import ASGIRequest
+from django.http import FileResponse, HttpResponse, JsonResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 
@@ -32,6 +34,15 @@ from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.utils.group_utils import GroupUtils
+
+
+async def _iter_export_file(stream):
+    """ASGI 下逐块读取，避免 Django 将同步文件迭代器完整转换成列表。"""
+    try:
+        while chunk := await sync_to_async(stream.read)(64 * 1024):
+            yield chunk
+    finally:
+        stream.close()
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
@@ -1157,25 +1168,25 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         attr_list = request.data.get("attr_list", [])
         association_list = request.data.get("association_list", [])
         inst_uuids = request.data.get("inst_uuids", [])
-        selected_instances = InstanceManage.query_entity_by_uuids(inst_uuids) if inst_uuids else []
+        selected_instances = InstanceManage.query_entity_by_uuids(inst_uuids, fields=["inst_uuid", "model_id"]) if inst_uuids else []
         if inst_uuids and len(selected_instances) != len(set(inst_uuids)):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
         export_ids = [item["_id"] for item in selected_instances]
 
-        response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-
-        response.write(
-            InstanceManage.inst_export(
-                model_id=model_id,
-                ids=export_ids,
-                permissions_map=permissions_map,
-                attr_list=attr_list,
-                association_list=association_list,
-                creator=request.user.username,
-            ).read()
+        stream = InstanceManage.inst_export(
+            model_id=model_id,
+            ids=export_ids,
+            permissions_map=permissions_map,
+            attr_list=attr_list,
+            association_list=association_list,
+            creator=request.user.username,
+            file_backed=True,
         )
+        response = FileResponse(stream, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
+        if isinstance(getattr(request, "_request", request), ASGIRequest):
+            response.streaming_content = _iter_export_file(stream)
         return response
 
     @HasPermission("search-View")

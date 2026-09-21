@@ -56,6 +56,11 @@ HTML 支持明暗主题、缩放、搜索、关系追踪、聚焦视图、演示
 
 `GraphClient` 会根据 `FALKORDB_HOST` 选择 FalkorDB，否则选择 Neo4j，见 [graph_client.py:32](../../server/apps/cmdb/graph/drivers/graph_client.py#L32)。因此 Graph 是资产事实源，Django DB 是操作与可靠性交付事实源；目标不是强行把两者放进一个事务，而是建立可恢复的提交协议。
 
+2026-09-21 导出读取路径更新：`InstanceManage.inst_export` 按授权范围和 UUID 游标分批取得实例，
+经 Graph Adapter 的端点查询批量准备所选关联；`Export.append_inst_list` 仅格式化和顺序写入，
+不再反向调用 InstanceManage 查询逐行关联。页面导出结果保存到临时文件并分块传输。
+具体契约与验证见 [实例导出性能修复](../../specs/changes/cmdb-export-performance/spec.md)。
+
 ### 3.2 建议明确六个能力域
 
 | 能力域 | 核心职责 | 当前主要落点 | 应拥有的规则/事实 |

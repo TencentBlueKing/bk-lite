@@ -352,6 +352,7 @@ class Neo4jClient:
         organization_field: str = "organization",
         case_sensitive: bool = True,
         include_count: bool = True,
+        fields: list[str] | None = None,
     ):
         """
         查询实体
@@ -408,7 +409,10 @@ class Neo4jClient:
 
         params_str = f"WHERE {params_str}" if params_str else params_str
 
-        sql_str = f"MATCH (n{label_str}) {params_str} RETURN n"
+        from apps.cmdb.graph.export_query import entity_projection
+
+        projection = "n" if fields is None else entity_projection(fields)
+        sql_str = f"MATCH (n{label_str}) {params_str} RETURN {projection}"
 
         # order by
         sql_str += f" ORDER BY n.{order} {order_type}" if order else f" ORDER BY ID(n) {order_type}"
@@ -421,6 +425,8 @@ class Neo4jClient:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self.session.run(sql_str, **query_params)
+        if fields is not None:
+            return [coerce_cloud_id_properties(dict(record[0])) for record in objs], count
         return self.entity_to_list(objs), count
 
     def query_cloud_cost(self, plan):
@@ -458,6 +464,15 @@ class Neo4jClient:
         if not objs:
             return []
         return self.entity_to_list(objs)
+
+    def query_export_associations(self, model_id, inst_uuids, association_ids):
+        from apps.cmdb.graph.export_query import export_association_queries
+
+        return [
+            dict(row)
+            for statement, params in export_association_queries(model_id, inst_uuids, association_ids)
+            for row in self.session.run(statement, **params)
+        ]
 
     def query_edge(
         self,

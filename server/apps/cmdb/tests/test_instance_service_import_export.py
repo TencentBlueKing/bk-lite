@@ -5,7 +5,6 @@
 """
 
 import io
-import json
 
 import openpyxl
 import pytest
@@ -175,9 +174,7 @@ def test_inst_import(monkeypatch, fake_graph, patch_side_effects):
     attrs = [
         {"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称", "is_required": True},
     ]
-    monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.search_model_attr_v2", lambda mid: attrs
-    )
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_attr_v2", lambda mid: attrs)
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.search_model_info",
         lambda mid: {"model_id": mid, "model_name": "主机"},
@@ -187,15 +184,17 @@ def test_inst_import(monkeypatch, fake_graph, patch_side_effects):
         "apps.cmdb.utils.Import.Import.import_inst_list",
         lambda self, fs: [{"data": {"_id": 1, "model_id": "host", "inst_name": "h1"}, "success": True}],
     )
-    monkeypatch.setattr(
-        "apps.cmdb.utils.Import.Import.get_model_asso_map", lambda self: {}
-    )
+    monkeypatch.setattr("apps.cmdb.utils.Import.Import.get_model_asso_map", lambda self: {})
     # InstanceManage 自己的 GraphClient（查 exist_items）
     fake_graph(MODULE, query_entity=([], 0))
 
-    stream = _make_excel("host", [
-        {"name": "实例名(必填)", "type": "字符串", "attr_id": "inst_name"},
-    ], [["h1"]])
+    stream = _make_excel(
+        "host",
+        [
+            {"name": "实例名(必填)", "type": "字符串", "attr_id": "inst_name"},
+        ],
+        [["h1"]],
+    )
     result = InstanceManage.inst_import("host", stream, "admin")
     assert result[0]["success"] is True
 
@@ -209,7 +208,7 @@ def test_inst_import(monkeypatch, fake_graph, patch_side_effects):
 def test_inst_export(monkeypatch, fake_graph):
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.search_model_attr_v2",
-        lambda mid: [
+        lambda mid, **kwargs: [
             {"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称", "is_required": True},
         ],
     )
@@ -227,7 +226,7 @@ def test_inst_export(monkeypatch, fake_graph):
 def test_inst_export_no_ids(monkeypatch, fake_graph):
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.search_model_attr_v2",
-        lambda mid: [{"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称"}],
+        lambda mid, **kwargs: [{"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称"}],
     )
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.model_association_search",
