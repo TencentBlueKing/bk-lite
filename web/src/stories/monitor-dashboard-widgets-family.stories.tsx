@@ -6,6 +6,7 @@ import {
   DatabaseOutlined,
 } from '@ant-design/icons';
 import type { Meta, StoryObj } from '@storybook/nextjs';
+import { Button } from 'antd';
 import {
   BacklogIcon,
   CollectionStatusCard,
@@ -327,7 +328,7 @@ const detailPanelCardStyles: DetailPanelCardStyles = {
 const horizontalBarStyles: HorizontalBarPanelStyles = {
   panel:
     'rounded-[18px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-5 shadow-sm',
-  panelHeader: 'mb-4',
+  panelHeader: 'mb-4 flex items-start justify-between gap-3',
   panelHeading: 'flex flex-col gap-1',
   panelTitle: 'm-0 text-[16px] font-semibold text-[var(--color-text-1)]',
   panelTitleWithGuide:
@@ -1194,6 +1195,23 @@ const FamilyOverview = () => {
           ]}
         />
 
+        <HorizontalBarPanel
+          title="Top Pod · CPU"
+          subtitle="核数 · 5m"
+          guide={rankingGuideItems}
+          styles={horizontalBarStyles}
+          tiered
+          headerAction={(
+            <Button type="link" size="small" className="px-0" href="/monitor/view?object_id=pod&vm_params.instance_id=cluster-a">
+              More
+            </Button>
+          )}
+          items={[
+            { label: 'payments/checkout-api-7f6c9d877b-x9k2m', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
+            { label: 'checkout/worker-5d4aa', value: 740, display: '740m', color: '#f59e0b', max: 1000, rank: 2 },
+          ]}
+        />
+
         <div className="w-full max-w-[360px]">
           <HorizontalBarPanel
             title="窄容器数据库排行"
@@ -1438,4 +1456,26 @@ export const Overview: Story = {};
 
 export const HorizontalBarOverflow: Story = {
   render: () => <HorizontalBarOverflowContract />,
+};
+
+export const HorizontalBarHeaderAction: Story = {
+  render: () => (
+    <HorizontalBarPanel
+      title="Top Pod · CPU"
+      subtitle="核数 · 5m"
+      guide={rankingGuideItems}
+      styles={horizontalBarStyles}
+      tiered
+      headerAction={(
+        <Button type="link" size="small" className="px-0" href="/monitor/view?object_id=pod&vm_params.instance_id=cluster-a">
+          More
+        </Button>
+      )}
+      items={[
+        { label: 'payments/checkout-api-7f6c9d877b-x9k2m', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
+        { label: 'checkout/worker-5d4aa', value: 740, display: '740m', color: '#f59e0b', max: 1000, rank: 2 },
+        { label: 'search/indexer-66fb2', value: 620, display: '620m', color: '#2563eb', max: 1000, rank: 3 },
+      ]}
+    />
+  ),
 };
