@@ -46,6 +46,7 @@ import { isStringArray } from '@/app/monitor/utils/common';
 import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   getMetricDimensionNames,
+  resolveLoadedGroupBy,
   sanitizeGroupBy
 } from '@/app/monitor/utils/metricDimensions';
 import {
@@ -84,6 +85,9 @@ import {
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import { resolveTemplateDuration } from '../../template/templateBulkUtils';
+import {
+  collectTemplateSaveIssues,
+} from './templateSaveIssues';
 import {
   buildMetricExpressionQueryCondition,
   createMetricRow,
@@ -788,13 +792,19 @@ const StrategyOperation = () => {
       if (_metrics) {
         setMetric(_metrics?.name || '');
         setConditions(query_condition?.filter || []);
+        const fixedList =
+          getGroupIds(monitorName as string)?.list || defaultGroup;
+        const loadedGroupBy = resolveLoadedGroupBy(data.group_by, [
+          ...fixedList,
+          ...getMetricDimensionNames(_metrics.dimensions),
+        ]);
         setMetricRows([
           createMetricRow(0, {
             metricId: _metrics.id,
             metricName: _metrics.name,
             filters: query_condition?.filter || [],
             groupAlgorithm: data.group_algorithm || 'avg',
-            groupBy: sanitizeGroupBy(data.group_by || [])
+            groupBy: loadedGroupBy
           })
         ]);
         setMetricExpressionMode('metric');
@@ -1295,6 +1305,39 @@ const StrategyOperation = () => {
       return params;
   };
 
+  const scrollToFirstInvalidField = (
+    error: unknown
+  ) => {
+    const issues = collectTemplateSaveIssues(
+      (error as { errorFields?: { name: (string | number)[]; errors: string[] }[] })
+        ?.errorFields
+    );
+    const firstField = issues[0]?.field;
+    if (!firstField) return;
+    window.setTimeout(() => {
+      const container = formContainerRef.current;
+      const fieldNode = document.getElementById(`basic_${firstField}`);
+      const formItem = fieldNode?.closest('.ant-form-item') as HTMLElement | null;
+      const errorNode = formItem?.querySelector(
+        '.ant-form-item-explain-error'
+      ) as HTMLElement | null;
+      const target = errorNode || formItem || fieldNode;
+      if (container && target) {
+        const top =
+          target.getBoundingClientRect().top -
+          container.getBoundingClientRect().top +
+          container.scrollTop -
+          (errorNode ? 160 : 16);
+        container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        return;
+      }
+      form.scrollToField(firstField, {
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 0);
+  };
+
   const createStrategy = () => {
     form
       ?.validateFields()
@@ -1302,8 +1345,8 @@ const StrategyOperation = () => {
         const params = buildStrategyParams(values);
         if (params) void operateStrategy(params);
       })
-      .catch(() => {
-        // 校验失败（含通知开启且通知人为空）时阻止创建/保存
+      .catch((error) => {
+        scrollToFirstInvalidField(error);
       });
   };
 
@@ -1329,8 +1372,8 @@ const StrategyOperation = () => {
           setDryRunLoading(false);
         }
       })
-      .catch(() => {
-        // 与保存相同：表单未通过时不发试跑
+      .catch((error) => {
+        scrollToFirstInvalidField(error);
       });
   };
 
@@ -1356,7 +1399,8 @@ const StrategyOperation = () => {
     let validated: Record<string, unknown>;
     try {
       validated = await form.validateFields(templateFields);
-    } catch {
+    } catch (error) {
+      scrollToFirstInvalidField(error);
       return;
     }
     const params = buildStrategyParams({
@@ -1459,7 +1503,7 @@ const StrategyOperation = () => {
         title: t('monitor.events.syncIssuedPoliciesTitle', '同步已下发策略'),
         content: t(
           'monitor.events.syncIssuedPoliciesConfirm',
-          '将更新 {count} 条已从该模板下发的策略',
+          '将同步更新 {count} 条已从该模板下发的策略。阈值、指标、分组维度和算法等配方字段会按模板覆盖；通知渠道、实例范围、检测频率和汇聚周期保持各策略原值。指标或分组变化时，进行中的阈值告警会关闭，需按新配方重新触发。',
           { count: relatedPolicyCount }
         ),
         okText: t('common.confirm'),

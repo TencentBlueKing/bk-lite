@@ -447,12 +447,12 @@ const Template: React.FC = () => {
           <div className={templateStyle.cardDescription} title={item.description || '--'}>
             {item.description || '--'}
           </div>
-          <div className={templateStyle.cardActions}>
+          <div className="mt-2 flex items-center gap-1">
             {isCustom ? (
               <Button
                 type="link"
                 size="small"
-                className={templateStyle.cardActionBtn}
+                className="h-auto p-0 text-xs leading-[18px]"
                 onClick={(event) => handleEditTemplate(item, event)}
               >
                 编辑
@@ -461,7 +461,7 @@ const Template: React.FC = () => {
             <Button
               type="link"
               size="small"
-              className={templateStyle.cardActionBtn}
+              className="h-auto p-0 text-xs leading-[18px]"
               onClick={(event) => handleOpenClone(item, event)}
             >
               克隆

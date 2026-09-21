@@ -414,7 +414,7 @@ class PolicyService:
         return query
 
     @staticmethod
-    def portable_config(config):
+    def portable_config(config, monitor_object=None, plugin=None):
         portable = copy.deepcopy(config or {})
         for field in (
             "id",
@@ -463,6 +463,7 @@ class PolicyService:
         portable["schedule"] = PolicyService._default_duration(portable.get("schedule"))
         portable["period"] = PolicyService._default_duration(portable.get("period"))
         PolicyService._ensure_query_condition(portable)
+        PolicyService._ensure_group_by(portable, monitor_object=monitor_object, plugin=plugin)
         return portable
 
     @staticmethod
@@ -474,6 +475,79 @@ class PolicyService:
         if isinstance(value, (int, float)) and value > 0:
             return {"type": "min", "value": int(value)}
         return {"type": "min", "value": 5}
+
+    @staticmethod
+    def _dimension_names(dimensions):
+        names = []
+        if not isinstance(dimensions, list):
+            return names
+        for item in dimensions:
+            if isinstance(item, str):
+                name = item.strip()
+            elif isinstance(item, dict):
+                name = str(item.get("name") or "").strip()
+            else:
+                name = ""
+            if name and name not in names:
+                names.append(name)
+        return names
+
+    @staticmethod
+    def _metric_dimension_names(portable, monitor_object=None, plugin=None):
+        if monitor_object is None:
+            return []
+        query = portable.get("query_condition") or {}
+        metric_name = str(portable.get("metric_name") or "").strip()
+        if isinstance(query, dict):
+            if query.get("type") == "formula":
+                for item in query.get("queries") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("metric_name") or "").strip()
+                    if name:
+                        metric_name = name
+                        break
+            else:
+                metric_name = metric_name or str(query.get("metric_name") or "").strip()
+        if not metric_name:
+            return []
+        metrics = Metric.objects.filter(monitor_object=monitor_object, name=metric_name)
+        if plugin is not None:
+            metrics = metrics.filter(monitor_plugin=plugin)
+        metric = metrics.first()
+        if not metric:
+            return []
+        return PolicyService._dimension_names(metric.dimensions)
+
+    @staticmethod
+    def _ensure_group_by(portable, monitor_object=None, plugin=None):
+        existing = portable.get("group_by")
+        if isinstance(existing, list):
+            cleaned = [str(item).strip() for item in existing if str(item).strip()]
+            if cleaned:
+                portable["group_by"] = cleaned
+                return
+        query = portable.get("query_condition") or {}
+        if isinstance(query, dict) and query.get("type") == "formula":
+            for item in query.get("queries") or []:
+                if not isinstance(item, dict):
+                    continue
+                query_group_by = item.get("group_by")
+                if isinstance(query_group_by, list):
+                    cleaned = [str(value).strip() for value in query_group_by if str(value).strip()]
+                    if cleaned:
+                        portable["group_by"] = cleaned
+                        return
+        fallback = ["instance_id", *PolicyService._metric_dimension_names(portable, monitor_object, plugin)]
+        cleaned = []
+        seen = set()
+        for item in fallback:
+            name = str(item).strip()
+            if not name or name in seen:
+                continue
+            cleaned.append(name)
+            seen.add(name)
+        portable["group_by"] = cleaned or ["instance_id"]
 
     @staticmethod
     def _ensure_query_condition(portable):
@@ -504,7 +578,11 @@ class PolicyService:
 
     @staticmethod
     def recipe_fields_from_template(template):
-        config = template.config or {}
+        config = PolicyService.portable_config(
+            template.config or {},
+            monitor_object=template.monitor_object,
+            plugin=template.plugin,
+        )
         group_algorithm, algorithm = normalize_template_algorithms(config)
         metric_unit = normalize_stored_metric_unit(
             config.get("metric_unit") or "",
@@ -518,7 +596,10 @@ class PolicyService:
             forecast_target = float(forecast_target)
         return {
             "alert_name": config.get("alert_name") or template.name or "",
-            "query_condition": copy.deepcopy(config.get("query_condition") or {}),
+            "query_condition": PolicyService._runtime_query_condition(
+                config.get("query_condition"),
+                template.monitor_object,
+            ),
             "threshold": copy.deepcopy(config.get("threshold") or []),
             "group_algorithm": group_algorithm,
             "algorithm": algorithm,
@@ -610,29 +691,38 @@ class PolicyService:
         recipe = PolicyService.recipe_fields_from_template(template)
         operator = getattr(user, "username", "") or "system"
         updated_count = 0
-        policies = list(MonitorPolicy.objects.filter(source_template_id=template.id))
-        for policy in policies:
-            changed_fields = []
-            old_query_condition = copy.deepcopy(policy.query_condition)
-            old_group_by = copy.deepcopy(policy.group_by)
-            for field in POLICY_RECIPE_SYNC_FIELDS:
-                new_value = recipe[field]
-                old_value = getattr(policy, field)
-                if PolicyService._json_equal(old_value, new_value):
-                    continue
-                setattr(policy, field, new_value)
-                changed_fields.append(field)
-            if not changed_fields:
-                continue
-            policy.updated_by = operator
-            policy.save(update_fields=[*changed_fields, "updated_by", "updated_at"])
-            PolicyService.close_active_threshold_alerts_for_recipe_change(
-                policy,
-                old_query_condition,
-                old_group_by,
-                operator,
+        last_id = 0
+        while True:
+            policies = list(
+                MonitorPolicy.objects.filter(source_template_id=template.id, id__gt=last_id).order_by("id")[
+                    : DatabaseConstants.BULK_UPDATE_BATCH_SIZE
+                ]
             )
-            updated_count += 1
+            if not policies:
+                break
+            last_id = policies[-1].id
+            for policy in policies:
+                changed_fields = []
+                old_query_condition = copy.deepcopy(policy.query_condition)
+                old_group_by = copy.deepcopy(policy.group_by)
+                for field in POLICY_RECIPE_SYNC_FIELDS:
+                    new_value = recipe[field]
+                    old_value = getattr(policy, field)
+                    if PolicyService._json_equal(old_value, new_value):
+                        continue
+                    setattr(policy, field, new_value)
+                    changed_fields.append(field)
+                if not changed_fields:
+                    continue
+                policy.updated_by = operator
+                policy.save(update_fields=[*changed_fields, "updated_by", "updated_at"])
+                PolicyService.close_active_threshold_alerts_for_recipe_change(
+                    policy,
+                    old_query_condition,
+                    old_group_by,
+                    operator,
+                )
+                updated_count += 1
         return updated_count
 
     @staticmethod
@@ -651,7 +741,7 @@ class PolicyService:
             plugin=plugin,
             name=name,
             description=description or "",
-            config=PolicyService.portable_config(config),
+            config=PolicyService.portable_config(config, monitor_object=monitor_object, plugin=plugin),
             created_by=user.username,
             updated_by=user.username,
             domain=getattr(user, "domain", "domain.com"),
@@ -668,7 +758,11 @@ class PolicyService:
             raise BaseAppException("无权限访问指定模板")
         template.name = name
         template.description = description or ""
-        template.config = PolicyService.portable_config(config)
+        template.config = PolicyService.portable_config(
+            config,
+            monitor_object=template.monitor_object,
+            plugin=template.plugin,
+        )
         template.updated_by = user.username
         template.updated_by_domain = getattr(user, "domain", "domain.com")
         with transaction.atomic():
@@ -834,7 +928,11 @@ class PolicyService:
             if key in package_keys:
                 raise BaseAppException(f"ZIP 包内模板重复: {name}")
             package_keys.add(key)
-            config = PolicyService.portable_config(payload["config"])
+            config = PolicyService.portable_config(
+                payload["config"],
+                monitor_object=monitor_object,
+                plugin=plugin,
+            )
             PolicyService._runtime_query_condition(config.get("query_condition"), monitor_object)
             payload["config"] = config
             existing = PolicyTemplate.objects.filter(

@@ -344,7 +344,7 @@
       "builtinTemplateNotEditable": "内置模版不可编辑",
       "templateAlreadySaved": "当前策略已保存为模版",
       "syncIssuedPoliciesTitle": "同步已下发策略",
-      "syncIssuedPoliciesConfirm": "将更新 {count} 条已从该模板下发的策略",
+      "syncIssuedPoliciesConfirm": "将同步更新 {count} 条已从该模板下发的策略。阈值、指标、分组维度和算法等配方字段会按模板覆盖；通知渠道、实例范围、检测频率和汇聚周期保持各策略原值。指标或分组变化时，进行中的阈值告警会关闭，需按新配方重新触发。",
       "saveAndExit": "保存并退出",
       "saveAndContinue": "保存并继续",
       "coverInstances": "覆盖 {count} 个实例：{names}",

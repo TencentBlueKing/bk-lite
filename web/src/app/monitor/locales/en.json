@@ -344,7 +344,7 @@
       "builtinTemplateNotEditable": "Built-in templates cannot be edited",
       "templateAlreadySaved": "This policy has already been saved as a template",
       "syncIssuedPoliciesTitle": "Sync issued policies",
-      "syncIssuedPoliciesConfirm": "This will update {count} policies issued from this template",
+      "syncIssuedPoliciesConfirm": "This will sync {count} policies issued from this template. Recipe fields such as thresholds, metrics, group-by dimensions, and algorithms will be overwritten. Notice channels, instance scope, detection frequency, and aggregation period stay as issued. Active threshold alerts close when the metric or group-by changes and must re-trigger under the new recipe.",
       "saveAndExit": "Save and Exit",
       "saveAndContinue": "Save and Continue",
       "coverInstances": "Covers {count} instances: {names}",
