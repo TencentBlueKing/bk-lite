@@ -15,4 +15,4 @@ if [ ! -d "${SERVER_DIR}" ]; then
 fi
 
 cd "${SERVER_DIR}"
-uv run celery -A apps.core.celery worker --loglevel=info --pool threads
+uv run celery -A apps.core.celery worker --loglevel=info --pool prefork --concurrency=2 --max-tasks-per-child=200 --max-memory-per-child=512000

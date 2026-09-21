@@ -58,6 +58,13 @@
       "template": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:01539a11",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (bmc_firmware, bios_version) (redfish_firmware_info_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:01fe2d05",
       "object_names": [
         "Active Directory"
@@ -562,6 +569,13 @@
         "K3SCluster"
       ],
       "template": "count(count(prometheus_remote_write_kube_pod_info{instance_type=\"k3s\",__$labels__}) by (namespace))"
+    },
+    {
+      "id": "dashboard:v1:15bbe68c",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (id, storage_id) (redfish_storage_controller_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:15fa733f",
@@ -1964,6 +1978,13 @@
       "template": "mysql_aborted_connects{__$labels__}"
     },
     {
+      "id": "dashboard:v1:4b784443",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_power_consumed_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"watts\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:4ba559b5",
       "object_names": [
         "Haproxy"
@@ -2032,6 +2053,13 @@
         "Minio"
       ],
       "template": "max by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or max by (instance_id) (minio_cluster_health_status_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:4f53c202",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_system_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:4f5a2773",
@@ -2154,6 +2182,13 @@
       "template": "sum by (instance_id) (rate(net_err_out{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:540f3f0e",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (id) (redfish_storage_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:544d4c36",
       "object_names": [
         "K3SNode"
@@ -2257,6 +2292,13 @@
         "Etcd"
       ],
       "template": "clamp_min((etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__} - etcd_mvcc_db_total_size_in_use_in_bytes_gauge{__$labels__}) / clamp_min(etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__}, 1) * 100, 0)"
+    },
+    {
+      "id": "dashboard:v1:57f3a4e6",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (adapter_id, id) (redfish_nic_port_link_up_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:585d46ef",
@@ -2562,6 +2604,13 @@
       "template": "topk(10, max by (consumergroup, topic, partition) (kafka_consumergroup_lag_gauge{__$labels__} >= 0))"
     },
     {
+      "id": "dashboard:v1:64d07958",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_fan_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:659002f9",
       "object_names": [
         "MSSQL"
@@ -2623,6 +2672,13 @@
         "Redis"
       ],
       "template": "redis_used_memory{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:695edc12",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_psu_input_voltage_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:6970bbf2",
@@ -2904,6 +2960,13 @@
         "MSSQL"
       ],
       "template": "avg without (database) (avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:784c50b0",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (adapter_id, id) (redfish_nic_port_speed_mbps_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:7852cb47",
@@ -3501,6 +3564,13 @@
       "template": "win_exchange_workload_QueuedTasks{instance_type=\"exchange\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:91c01239",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_system_power_state_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:91c1ff43",
       "object_names": [
         "Oracle"
@@ -3555,6 +3625,13 @@
         "Redis"
       ],
       "template": "clamp_max(100 * max by (instance_id) (redis_used_memory{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (redis_maxmemory{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:9378fc3c",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_temperature_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"degrees_c\", __$labels__})"
     },
     {
       "id": "dashboard:v1:93d0324a",
@@ -4005,6 +4082,13 @@
       "template": "avg(llamacpp:prompt_tokens_seconds_gauge{__$labels__})"
     },
     {
+      "id": "dashboard:v1:a6adce50",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_processor_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:a6eee9fe",
       "object_names": [
         "LlamaServer"
@@ -4080,6 +4164,13 @@
         "SGLang"
       ],
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:a9d1300e",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_fan_speed_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"rpm\", __$labels__})"
     },
     {
       "id": "dashboard:v1:aa39e9d2",
@@ -4431,6 +4522,13 @@
       "template": "sum by (instance_id) (rate(oracledb_activity_user_rollbacks_gauge{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:ba7292ee",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "count({instance_type='hardware_server', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:ba92b79a",
       "object_names": [
         "Website"
@@ -4464,6 +4562,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (haproxy_scur{svname=\"FRONTEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:bc1b0acf",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_psu_input_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:bc9ca465",
@@ -4788,6 +4893,13 @@
         "ConsoleServer"
       ],
       "template": "count({instance_type='console_server', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c9f0ea5c",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
     },
     {
       "id": "dashboard:v1:ca17f83c",
@@ -5559,6 +5671,13 @@
       "template": "max by (instance_id) (oracledb_wait_time_network_gauge{__$labels__})"
     },
     {
+      "id": "dashboard:v1:eb007f65",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_psu_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:eb236167",
       "object_names": [
         "JVM"
@@ -5592,13 +5711,6 @@
         "SGLang"
       ],
       "template": "sum(rate(sglang:e2e_request_latency_seconds_sum{__$labels__}[5m])) / sum(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]))"
-    },
-    {
-      "id": "dashboard:v1:ec9c95b9",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
     },
     {
       "id": "dashboard:v1:ecd2bdad",
@@ -5797,6 +5909,13 @@
       "template": "rate(diskio_write_time{instance_type=\"k3s\", __$labels__}[__$window__]) / clamp_min(rate(diskio_writes{instance_type=\"k3s\", __$labels__}[__$window__]), 1e-9)"
     },
     {
+      "id": "dashboard:v1:f5a7e508",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (adapter_id, id) (redfish_nic_port_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:f5c4dae3",
       "object_names": [
         "nginx"
@@ -5974,6 +6093,13 @@
       "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
     },
     {
+      "id": "dashboard:v1:fea6f24d",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_memory_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:fed85ec2",
       "object_names": [
         "Redis"
@@ -6014,6 +6140,13 @@
         "MSSQL"
       ],
       "template": "sqlserver_performance_value{counter=\"Version Store Size (KB)\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fff1945c",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_manager_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:fff61030",

@@ -41,8 +41,12 @@ if IS_USE_CELERY:
         "django_celery_results",
     )
     CELERY_ENABLE_UTC = True
-    CELERY_WORKER_CONCURRENCY = 2  # 并发数
-    CELERY_MAX_TASKS_PER_CHILD = 5  # worker最多执行5个任务便自我销毁释放内存
+    CELERY_WORKER_POOL = "prefork"
+    CELERY_WORKER_CONCURRENCY = int(os.getenv("CELERY_CONCURRENCY", "2"))
+    # worker_max_tasks_per_child / worker_max_memory_per_child 只对 prefork 生效。
+    # 旧名 CELERY_MAX_TASKS_PER_CHILD 不会映射到 Celery 配置，threads 下也无效。
+    CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_MAX_TASKS_PER_CHILD", "200"))
+    CELERY_WORKER_MAX_MEMORY_PER_CHILD = int(os.getenv("CELERY_MAX_MEMORY_PER_CHILD", "512000"))
     CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
     CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
     CELERY_ACCEPT_CONTENT = ["application/json"]
