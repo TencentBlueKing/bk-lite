@@ -2082,3 +2082,63 @@ def test_agui_stream_hides_planned_step_text_but_keeps_tools(monkeypatch):
     tool_results = [p for p in payloads if p["type"] == "TOOL_CALL_RESULT"]
     assert len(tool_results) == 1
     assert tool_results[0]["content"] == '[{"name":"calico"}]'
+
+
+def _hidden_step_delta(payload):
+    value = payload.get("value")
+    if isinstance(value, dict):
+        return str(value.get("delta") or "")
+    return ""
+
+
+def test_agui_stream_emits_hidden_step_text_as_custom_not_text(monkeypatch):
+    """步内正文改走 CUSTOM，刷新长连接，且不进 TEXT_MESSAGE_*。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+    monkeypatch.setattr("apps.opspilot.metis.llm.chain.graph.SSE_KEEPALIVE_INTERVAL_SECONDS", 0.02)
+
+    class _SlowHiddenCompiled:
+        async def astream_events(self, *_args, **_kwargs):
+            for _ in range(6):
+                yield {
+                    "event": "on_chat_model_stream",
+                    "data": {
+                        "chunk": SimpleNamespace(
+                            content="hidden token ",
+                            tool_call_chunks=[],
+                            additional_kwargs={},
+                        )
+                    },
+                }
+            await asyncio.sleep(0.05)
+            yield {
+                "event": "on_chat_model_end",
+                "data": {"output": SimpleNamespace(content="hidden summary", tool_calls=[])},
+            }
+
+    class _SlowHiddenGraph(BasicGraph):
+        async def compile_graph(self, _request):
+            return _SlowHiddenCompiled()
+
+    request = BasicLLMRequest(
+        thread_id="thread-hide-keepalive",
+        extra_config={"show_think": False, "opspilot_hide_planned_step_text": True},
+    )
+
+    async def _collect():
+        return [line async for line in _SlowHiddenGraph().agui_stream(request)]
+
+    lines = asyncio.run(_collect())
+    payloads = _parse_sse_payloads(lines)
+    types = [p["type"] for p in payloads]
+    assert "TEXT_MESSAGE_CONTENT" not in types
+    hidden = [p for p in payloads if p.get("type") == "CUSTOM" and p.get("name") == "planned_step_hidden_text"]
+    assert hidden
+    assert "".join(_hidden_step_delta(p) for p in hidden) == "hidden token " * 6
+    assert any(p.get("type") == "CUSTOM" and p.get("name") == "stream_keepalive" for p in payloads)

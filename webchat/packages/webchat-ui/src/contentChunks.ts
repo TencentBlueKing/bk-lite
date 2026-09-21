@@ -60,6 +60,28 @@ export function patchToolCall(
   });
 }
 
+/** Append a TOOL_CALL_ARGS delta onto the matching tool call. */
+export function appendToolCallArgs(
+  chunks: ContentChunk[],
+  toolCallId: string,
+  delta: string
+): ContentChunk[] {
+  if (!toolCallId || !delta) {
+    return chunks;
+  }
+  return chunks.map((chunk) => {
+    if (chunk.type !== 'toolCalls') {
+      return chunk;
+    }
+    return {
+      ...chunk,
+      toolCalls: chunk.toolCalls.map((tool) =>
+        tool.id === toolCallId ? { ...tool, args: `${tool.args || ''}${delta}` } : tool
+      ),
+    };
+  });
+}
+
 export function withUpdatedChunks(
   message: Message,
   chunks: ContentChunk[],

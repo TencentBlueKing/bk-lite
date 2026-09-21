@@ -15,6 +15,7 @@ const SKIP_CUSTOM_EVENTS = new Set([
   'user_choice_result',
   'assistant_text_retract',
   'stream_keepalive',
+  'planned_step_hidden_text',
   'llm_context_usage',
 ]);
 
@@ -295,6 +296,130 @@ function assembleTextFromEvents(events: Record<string, unknown>[]): string {
   return text.trim();
 }
 
+export type HistoryToolCall = {
+  id: string;
+  name: string;
+  args?: string;
+  result?: string;
+  status: 'running' | 'completed';
+};
+
+export type HistoryContentChunk =
+  | { type: 'text'; content: string }
+  | { type: 'toolCalls'; toolCalls: HistoryToolCall[] };
+
+function eventToolCallId(event: Record<string, unknown>): string {
+  if (typeof event.toolCallId === 'string' && event.toolCallId) {
+    return event.toolCallId;
+  }
+  if (typeof event.tool_call_id === 'string' && event.tool_call_id) {
+    return event.tool_call_id;
+  }
+  return '';
+}
+
+function eventToolCallName(event: Record<string, unknown>): string {
+  if (typeof event.toolCallName === 'string' && event.toolCallName) {
+    return event.toolCallName;
+  }
+  if (typeof event.tool_call_name === 'string' && event.tool_call_name) {
+    return event.tool_call_name;
+  }
+  return 'Unknown Tool';
+}
+
+function assembleContentChunksFromEvents(events: Record<string, unknown>[]): HistoryContentChunk[] {
+  const chunks: HistoryContentChunk[] = [];
+  const toolsById = new Map<string, HistoryToolCall>();
+  let textBuffer = '';
+
+  const flushText = () => {
+    if (!textBuffer) {
+      return;
+    }
+    chunks.push({ type: 'text', content: textBuffer });
+    textBuffer = '';
+  };
+
+  const upsertTool = (id: string, patch: Partial<HistoryToolCall>) => {
+    if (!id) {
+      return;
+    }
+    let tool = toolsById.get(id);
+    if (!tool) {
+      flushText();
+      tool = {
+        id,
+        name: patch.name || 'Unknown Tool',
+        status: patch.status || 'running',
+      };
+      toolsById.set(id, tool);
+      const last = chunks[chunks.length - 1];
+      if (last && last.type === 'toolCalls') {
+        last.toolCalls.push(tool);
+      } else {
+        chunks.push({ type: 'toolCalls', toolCalls: [tool] });
+      }
+    }
+    if (patch.name) tool.name = patch.name;
+    if (patch.status) tool.status = patch.status;
+    if (patch.args !== undefined) tool.args = patch.args;
+    if (patch.result !== undefined) tool.result = patch.result;
+  };
+
+  for (const event of events) {
+    const type = event.type;
+    if (typeof type !== 'string') {
+      continue;
+    }
+    if (type === 'TOOL_CALL_START') {
+      upsertTool(eventToolCallId(event), {
+        name: eventToolCallName(event),
+        status: 'running',
+      });
+      continue;
+    }
+    if (type === 'TOOL_CALL_ARGS') {
+      const id = eventToolCallId(event);
+      const delta = event.delta == null ? '' : String(event.delta);
+      const existing = toolsById.get(id);
+      if (existing) {
+        existing.args = `${existing.args || ''}${delta}`;
+      } else if (delta) {
+        upsertTool(id, { args: delta, status: 'running' });
+      }
+      continue;
+    }
+    if (type === 'TOOL_CALL_END') {
+      upsertTool(eventToolCallId(event), { status: 'completed' });
+      continue;
+    }
+    if (type === 'TOOL_CALL_RESULT') {
+      const result = event.content == null ? '' : String(event.content);
+      upsertTool(eventToolCallId(event), {
+        result,
+        status: 'completed',
+      });
+      continue;
+    }
+    if (AGUI_TEXT_EVENT_TYPES.has(type) && event.delta != null) {
+      textBuffer += String(event.delta);
+      continue;
+    }
+    if (type === 'CUSTOM') {
+      if (typeof event.name === 'string' && SKIP_CUSTOM_EVENTS.has(event.name)) {
+        continue;
+      }
+      const custom = customEventText(event.value);
+      if (custom) {
+        textBuffer += (textBuffer && !textBuffer.endsWith('\n') ? '\n' : '') + custom;
+      }
+    }
+  }
+  flushText();
+  return chunks;
+}
+
 function eventsFromUnknown(content: unknown): Record<string, unknown>[] | null {
   if (typeof content === 'string') {
     if (!looksLikeAguiPayload(content)) {
@@ -315,10 +440,10 @@ function eventsFromUnknown(content: unknown): Record<string, unknown>[] | null {
   return null;
 }
 
-/** Collapse stored AG-UI event dumps into readable assistant text and thinking. */
+/** Collapse stored AG-UI event dumps into readable assistant text, thinking, and tool chunks. */
 export function assembleAguiHistoryParts(
   content: unknown
-): { text: string; thinking: string } | null {
+): { text: string; thinking: string; contentChunks: HistoryContentChunk[] } | null {
   const events = eventsFromUnknown(content);
   if (!events || events.length === 0) {
     return null;
@@ -326,6 +451,7 @@ export function assembleAguiHistoryParts(
   return {
     text: assembleTextFromEvents(events),
     thinking: assembleThinkingFromEvents(events),
+    contentChunks: assembleContentChunksFromEvents(events),
   };
 }
 

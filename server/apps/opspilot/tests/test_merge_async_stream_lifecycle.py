@@ -150,3 +150,21 @@ async def test_等待上游期间保持发送keepalive(monkeypatch):
 
     assert await asyncio.wait_for(anext(merged), timeout=1) == ("keepalive", "waiting_model")
     await asyncio.wait_for(merged.aclose(), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_源生成器忙于吞掉事件时仍发送sse保活(monkeypatch):
+    from ag_ui.encoder import EventEncoder
+
+    from apps.opspilot.metis.llm.chain.graph import iter_sse_frames_with_idle_keepalive
+
+    monkeypatch.setattr(graph_module, "SSE_KEEPALIVE_INTERVAL_SECONDS", 0.02)
+
+    async def silent_busy_stream():
+        await asyncio.sleep(0.08)
+        yield 'data: {"type":"RUN_FINISHED"}\n\n'
+
+    frames = [frame async for frame in iter_sse_frames_with_idle_keepalive(silent_busy_stream(), EventEncoder())]
+    assert any(frame.startswith(": keepalive") for frame in frames)
+    assert any("stream_keepalive" in frame for frame in frames)
+    assert any("RUN_FINISHED" in frame for frame in frames)

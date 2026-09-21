@@ -21,6 +21,7 @@ from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_exception_info
+from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
 from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
     DeepAgentAssemblyMixin,
@@ -2279,6 +2280,7 @@ class ToolsNodes(
             endpoint.get("model") or "-",
             endpoint.get("api_base") or "-",
         )
+        reply_started = monotonic_ms()
         try:
             # Qwen 等网关要求：仅允许一条 system，且必须在 messages[0]。
             # 图前置节点已写入 SystemMessage，再前置 light_system 会变成
@@ -2286,11 +2288,19 @@ class ToolsNodes(
             light_messages = normalize_messages_for_llm([SystemMessage(content=light_system), *list(original_messages or [])])
             light_messages = await self._prepare_messages_for_llm(light_messages, graph_request)
             response: AIMessage | None = None
-            astream = getattr(llm, "astream", None)
+            # 规划器用 isolated 客户端 + callbacks=[]，避免被 graph.astream_events 跟踪。
+            # 轻量直答若带着父 config 做 astream，思考模型会在节点返回后让父流空转
+            # 1–3 分钟（opspilot.log thread 1789981753551：直答 2.7s，agui_run 116s）。
+            reply_llm = llm
+            if graph_request is not None:
+                reply_llm = self.get_llm_client(graph_request, isolated=True)
+            invoke_config = dict(config or {})
+            invoke_config["callbacks"] = []
+            astream = getattr(reply_llm, "astream", None)
             if callable(astream):
-                response = await self._astream_lightweight_reply(astream, light_messages, config)
+                response = await self._astream_lightweight_reply(astream, light_messages, invoke_config)
             else:
-                response = await llm.ainvoke(light_messages, config=config)
+                response = await reply_llm.ainvoke(light_messages, config=invoke_config)
                 if not isinstance(response, AIMessage):
                     response = AIMessage(content=str(getattr(response, "content", "") or ""))
             if not str(getattr(response, "content", "") or "").strip():
@@ -2316,6 +2326,11 @@ class ToolsNodes(
             )
             raise
         finally:
+            log_stage_timing(
+                "lightweight_reply",
+                elapsed_ms(reply_started),
+                thread_id=getattr(graph_request, "thread_id", None),
+            )
             if sandbox_dir:
                 self._cleanup_sandbox(sandbox_dir)
 
@@ -2541,6 +2556,7 @@ class ToolsNodes(
                     skill_packages=skill_packages,
                     config=config,
                     agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                    thread_id=missing_params_thread_id,
                 )
             except Exception as planning_exc:
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
@@ -2756,13 +2772,14 @@ class ToolsNodes(
                     output_messages=collected_output_messages,
                 )
 
+            completed_steps: List[CompletedExecutionStep] = []
+            replan_count = 0
+            summary_ran = False
+            run_started = monotonic_ms()
             try:
-                completed_steps: List[CompletedExecutionStep] = []
                 pending_steps = list(plan.steps)
                 agent_state: Dict[str, Any] = {"messages": without_system_messages(original_messages)}
-                replan_count = 0
                 total_steps = len(plan.steps)
-                summary_ran = False
                 require_formatted_report = False
                 self._set_hide_planned_step_text(graph_request, True)
 
@@ -2824,6 +2841,7 @@ class ToolsNodes(
                             skill_packages=skill_packages,
                             config=config,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                            thread_id=missing_params_thread_id,
                         )
                         _ensure_skill_runtime_for_plan(replacement)
                         pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
@@ -2906,10 +2924,20 @@ class ToolsNodes(
                                 graph_request,
                                 tools=active_tools,
                             )
-                            step_result = await deep_agent.ainvoke(
-                                step_payload,
-                                config=deep_config,
-                            )
+                            step_started = monotonic_ms()
+                            try:
+                                step_result = await deep_agent.ainvoke(
+                                    step_payload,
+                                    config=deep_config,
+                                )
+                            finally:
+                                log_stage_timing(
+                                    "plan_step",
+                                    elapsed_ms(step_started),
+                                    thread_id=missing_params_thread_id,
+                                    step_index=step_index,
+                                    tool_count=len(step.tools or []),
+                                )
                         except Exception as step_exc:
                             failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
                             if is_llm_upstream_error(step_exc):
@@ -3221,10 +3249,19 @@ class ToolsNodes(
                         list(final_payload.get("messages") or []),
                         graph_request,
                     )
-                    result = await deep_agent.ainvoke(
-                        final_payload,
-                        config=deep_config,
-                    )
+                    summary_started = monotonic_ms()
+                    try:
+                        result = await deep_agent.ainvoke(
+                            final_payload,
+                            config=deep_config,
+                        )
+                    finally:
+                        log_stage_timing(
+                            "planned_summary",
+                            elapsed_ms(summary_started),
+                            thread_id=missing_params_thread_id,
+                            summary_ran=1,
+                        )
                     final_messages = list(result.get("messages") or [])
                     _collect_output_messages(final_messages[len(final_payload["messages"]) :])
             except Exception as _await_exc:
@@ -3260,6 +3297,14 @@ class ToolsNodes(
                 # 才会被赋值,setup 阶段抛错时这个变量不存在,直接 finally 会 NameError。
                 if sandbox_dir:
                     self._cleanup_sandbox(sandbox_dir)
+                log_stage_timing(
+                    "planned_run",
+                    elapsed_ms(run_started),
+                    thread_id=missing_params_thread_id,
+                    step_count=len(completed_steps),
+                    replan_count=replan_count,
+                    summary_ran=1 if summary_ran else 0,
+                )
 
             # 分步执行路径已单独累积对外消息；其余路径仍从最终 state 截取新增消息。
             final_messages = result.get("messages", [])

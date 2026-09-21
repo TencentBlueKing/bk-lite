@@ -25,6 +25,7 @@ fs.writeFileSync(outputPath, compiled.outputText);
 process.on('exit', () => fs.rmSync(outputDir, { recursive: true, force: true }));
 
 const {
+  appendToolCallArgs,
   appendToolCallChunk,
   mapMessageChunks,
   patchToolCall,
@@ -53,6 +54,21 @@ test('appendToolCallChunk rejects duplicates', () => {
   const tool = { id: 't1', name: 'search', status: 'running' };
   const chunks = [{ type: 'toolCalls', toolCalls: [tool] }];
   assert.equal(appendToolCallChunk(chunks, tool), null);
+});
+
+test('appendToolCallArgs concatenates streamed deltas', () => {
+  const chunks = [
+    {
+      type: 'toolCalls',
+      toolCalls: [{ id: 't1', name: 'search', status: 'running' }],
+    },
+  ];
+  const first = appendToolCallArgs(chunks, 't1', '{"q":');
+  const second = appendToolCallArgs(first, 't1', '"host"}');
+  assert.deepEqual(second[0], {
+    type: 'toolCalls',
+    toolCalls: [{ id: 't1', name: 'search', status: 'running', args: '{"q":"host"}' }],
+  });
 });
 
 test('patchToolCall updates args and status', () => {
