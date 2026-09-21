@@ -14,6 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
 import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
+import TopSection from '@/components/top-section';
 import { formatRelativeTime, pickEntityTimestamp } from '@/utils/relativeTime';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
@@ -207,10 +208,12 @@ const IntegrationCenterPage: React.FC = () => {
   );
 
   return (
-    <div className="w-full">
-      <SystemManagerEntityGrid
+    <div className="w-full space-y-4">
+      <TopSection
         title={t('system.integrationCenter.pageTitle')}
-        description={t('system.integrationCenter.pageDesc')}
+        content={t('system.integrationCenter.pageDesc')}
+      />
+      <SystemManagerEntityGrid
         items={filteredInstances}
         loading={loadingInstances || loadingProviders}
         onSearch={setInstanceSearch}
