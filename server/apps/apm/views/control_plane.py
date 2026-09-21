@@ -68,7 +68,7 @@ from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden
 from apps.apm.services.access import current_organization_id, filter_current_organization, scope_catalog_queryset, validate_assignable_organizations, visible_organization_ids
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
-from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
+from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArtifactNotFound
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import apm_logger as logger
@@ -302,19 +302,37 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 {"code": "cloud_region_unavailable", "detail": "云区域配置暂时不可用，请稍后重试。"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        snippet = self.service.render_snippet(
-            IngestSnippetRequest(
-                language=data["language"],
-                runtime=data["runtime"],
-                endpoint=endpoints.http_endpoint,
-                service_namespace=application.application_id,
-                service_name=data["service_name"],
-                service_version=data.get("service_version", ""),
-                environment=data["environment"],
-                probe_download_url=endpoints.probe_download_url,
-                sample_rate=data.get("sample_rate", 100),
+        try:
+            snippet = self.service.render_snippet(
+                IngestSnippetRequest(
+                    language=data["language"],
+                    runtime=data["runtime"],
+                    endpoint=endpoints.http_endpoint,
+                    service_namespace=application.application_id,
+                    service_name=data["service_name"],
+                    service_version=data.get("service_version", ""),
+                    environment=data["environment"],
+                    probe_download_url=endpoints.probe_download_url,
+                    sample_rate=data.get("sample_rate", 100),
+                )
             )
-        )
+        except ProbeArtifactNotFound:
+            return Response(
+                {
+                    "code": "probe_artifact_not_found",
+                    "detail": "探针文件不存在，请先在服务端初始化探针制品。",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as exc:
+            logger.warning("APM ingest snippet rendering failed: %s", type(exc).__name__)
+            return Response(
+                {
+                    "code": "probe_artifact_unavailable",
+                    "detail": "探针文件暂时不可用，请稍后重试。",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(
             {
                 "application_id": application.application_id,

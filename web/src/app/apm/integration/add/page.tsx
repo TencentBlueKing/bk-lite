@@ -122,17 +122,49 @@ async function copyText(value: string) {
   }
 }
 
-function requestErrorMessage(error: unknown, t: Translate) {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  const rawMessage = typeof detail === 'string' && detail.trim()
-    ? detail.trim()
-    : error instanceof Error && error.message
-      ? error.message
-      : '';
-  if (/没有可用的被动接收地址|云区域(?:代理|接收)地址/.test(rawMessage)) {
-    return t('apm.integration.noReceiver', '所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。');
+type GenerationIssue = {
+  alertType: 'warning' | 'error';
+  title: string;
+  description: string;
+};
+
+function requestGenerationIssue(error: unknown, t: Translate): GenerationIssue {
+  const handled = error instanceof HandledRequestError ? error : null;
+  const payload = (handled?.payload ?? (error as { response?: { data?: unknown } })?.response?.data) as
+    | { code?: unknown; detail?: unknown; message?: unknown }
+    | undefined;
+  const detail = typeof payload?.detail === 'string' ? payload.detail.trim() : '';
+  const code = handled?.code ?? (typeof payload?.code === 'string' ? payload.code : '');
+  const rawMessage = detail
+    || (typeof payload?.message === 'string' ? payload.message.trim() : '')
+    || (error instanceof Error && error.message ? error.message : '');
+  if (code === 'probe_artifact_not_found' || /探针文件不存在/.test(rawMessage)) {
+    return {
+      alertType: 'warning',
+      title: t('apm.integration.probeMissingTitle', '探针包未就绪'),
+      description: t(
+        'apm.integration.probeMissing',
+        '主机和 Docker 接入需要从平台下载探针文件。当前环境还没有这份文件，请联系管理员完成探针初始化后再试。',
+      ),
+    };
   }
-  return rawMessage || t('apm.integration.generateFailed', '生成接入配置失败，请稍后重试。');
+  if (code === 'probe_artifact_unavailable' || /探针文件暂时不可用/.test(rawMessage)) {
+    return {
+      alertType: 'warning',
+      title: t('apm.integration.probeUnavailableTitle', '探针包暂时不可用'),
+      description: t(
+        'apm.integration.probeUnavailable',
+        '暂时无法读取探针文件，请稍后重试。若持续失败，请联系管理员检查探针存储。',
+      ),
+    };
+  }
+  return {
+    alertType: 'error',
+    title: t('apm.integration.generateFailedTitle', '配置生成失败'),
+    description: /没有可用的被动接收地址|云区域(?:代理|接收)地址/.test(rawMessage)
+      ? t('apm.integration.noReceiver', '所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。')
+      : (rawMessage || t('apm.integration.generateFailed', '生成接入配置失败，请稍后重试。')),
+  };
 }
 
 function snippetOperationGuide(
@@ -232,7 +264,7 @@ export default function ApmIntegrationAddPage() {
   const [mode, setMode] = useState<SnippetMode>('agent');
   const [snippet, setSnippet] = useState<ApmIngestSnippet | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<GenerationIssue | null>(null);
   const [form] = Form.useForm<SnippetForm>();
   const formValues = Form.useWatch([], form);
   const requestSequence = useRef(0);
@@ -373,7 +405,7 @@ export default function ApmIntegrationAddPage() {
     } catch (error) {
       if (sequence !== requestSequence.current) return;
       setSnippet(null);
-      setGenerationError(requestErrorMessage(error, t));
+      setGenerationError(requestGenerationIssue(error, t));
     } finally {
       if (sequence === requestSequence.current) setGenerating(false);
     }
@@ -528,9 +560,9 @@ export default function ApmIntegrationAddPage() {
                 <Alert
                   className="mb-4"
                   showIcon
-                  type="error"
-                  message={t('apm.integration.generateFailedTitle', '配置生成失败')}
-                  description={generationError}
+                  type={generationError.alertType}
+                  message={generationError.title}
+                  description={generationError.description}
                   action={<Button size="small" onClick={() => void form.validateFields().then(generate)}>{t('common.retry', '重试')}</Button>}
                 />
               ) : generating ? <Typography.Text type="secondary">{t('apm.integration.generating', '正在自动生成配置…')}</Typography.Text> : null}

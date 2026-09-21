@@ -258,6 +258,58 @@ describe('APM 添加接入', () => {
     expect(await screen.findByText('所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。')).not.toBeNull();
   });
 
+  it('将缺失的探针制品转换为可恢复的用户提示', async () => {
+    api.getIngestSnippet.mockRejectedValue({
+      code: 'probe_artifact_not_found',
+      payload: {
+        code: 'probe_artifact_not_found',
+        detail: '探针文件不存在，请先在服务端初始化探针制品。',
+      },
+      response: {
+        data: {
+          code: 'probe_artifact_not_found',
+          detail: '探针文件不存在，请先在服务端初始化探针制品。',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+
+    expect(await screen.findByText('探针包未就绪')).not.toBeNull();
+    expect(screen.getByText(/主机和 Docker 接入需要从平台下载探针文件/)).not.toBeNull();
+    expect(screen.queryByText('配置生成失败')).toBeNull();
+  });
+
+  it('将探针存储暂时不可用转换为可恢复的用户提示', async () => {
+    api.getIngestSnippet.mockRejectedValue({
+      code: 'probe_artifact_unavailable',
+      payload: {
+        code: 'probe_artifact_unavailable',
+        detail: '探针文件暂时不可用，请稍后重试。',
+      },
+      response: {
+        data: {
+          code: 'probe_artifact_unavailable',
+          detail: '探针文件暂时不可用，请稍后重试。',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Python 接入' }));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+
+    expect(await screen.findByText('探针包暂时不可用')).not.toBeNull();
+    expect(screen.getByText(/暂时无法读取探针文件/)).not.toBeNull();
+    expect(screen.queryByText('配置生成失败')).toBeNull();
+  });
+
   it('忽略晚到的旧配置响应', async () => {
     const first = deferred<Record<string, unknown>>();
     const second = deferred<Record<string, unknown>>();
