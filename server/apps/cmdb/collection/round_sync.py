@@ -318,9 +318,8 @@ def query_instance_ids_with_vm_data(
     if not normalized_ids:
         return set()
     instance_pattern = "|".join(re.escape(value) for value in normalized_ids)
-    sql = f"count by (instance_id) ({{instance_id=~'^({instance_pattern})$'}})"
-    payload = (collection or Collection()).query(
-        sql,
+    payload = (collection or Collection()).query_instance_data_counts(
+        f"^({instance_pattern})$",
         timeout=ROUND_MARKER_QUERY_TIMEOUT_SECONDS,
         retries=ROUND_MARKER_QUERY_RETRIES,
     )
