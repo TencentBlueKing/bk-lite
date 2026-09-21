@@ -1,11 +1,12 @@
 import * as THREE from "three";
+import type { Room3DRackTopLines } from "@/app/ops-analysis/types/sceneWidget";
 import {
   deviceHasAlarmGlow,
-  getRoom3DPositionLabel,
   getRoom3DRackDevices,
   type Room3DRack,
   type Room3DRenderableDevice,
 } from "./room3DData";
+import { resolveRoom3DRackTopTextureLines } from "./room3DRackTop";
 
 export interface RackVisual {
   rack: Room3DRack;
@@ -331,7 +332,7 @@ const createEquipmentTexture = (alarmMode = false) => {
   return { map, emissiveMap };
 };
 
-const createRackTopTexture = (label: string, category?: string) =>
+const createRackTopTexture = (lines: { line1: string; line2?: string }) =>
   createCanvasTexture(192, 128, (context) => {
     const gradient = context.createLinearGradient(0, 0, 192, 128);
     gradient.addColorStop(0, "#7e858b");
@@ -345,13 +346,13 @@ const createRackTopTexture = (label: string, category?: string) =>
     context.font = "700 30px sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    if (category) {
-      context.fillText(label.slice(0, 5), 96, 50);
+    if (lines.line2) {
+      context.fillText(lines.line1.slice(0, 5), 96, 50);
       context.fillStyle = "rgba(219,236,246,0.78)";
       context.font = "600 22px sans-serif";
-      context.fillText(category.slice(0, 8), 96, 84);
+      context.fillText(lines.line2.slice(0, 8), 96, 84);
     } else {
-      context.fillText(label.slice(0, 5), 96, 64);
+      context.fillText(lines.line1.slice(0, 5), 96, 64);
     }
     context.fillStyle = "rgba(95, 234, 255, 0.22)";
     for (let x = 56; x < 136; x += 10) {
@@ -1223,6 +1224,7 @@ export const createRackVisual = (
   rack: Room3DRack,
   x: number,
   z: number,
+  rackTopLines?: Room3DRackTopLines | null,
 ): RackVisual => {
   const isConflict = Boolean(rack.is_conflict);
   const root = new THREE.Group();
@@ -1380,10 +1382,7 @@ export const createRackVisual = (
     new THREE.MeshStandardMaterial({
       color: "#7d858c",
       map: createRackTopTexture(
-        getRoom3DPositionLabel(rack) || rack.rack_name,
-        typeof rack.rack_type_name === "string"
-          ? rack.rack_type_name.trim()
-          : undefined,
+        resolveRoom3DRackTopTextureLines(rack, rackTopLines),
       ),
       emissive: "#5a6268",
       emissiveIntensity: 0.24,

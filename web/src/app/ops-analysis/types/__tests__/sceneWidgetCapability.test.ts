@@ -38,8 +38,23 @@ describe('scene widget capabilities', () => {
     expect(getSceneWidgetCapability('relatedTopology')?.reportSupported).toBe(false);
   });
 
+  it('registers room3D as a Screen-only self-fetch scene', () => {
+    expect(getSceneWidgetCapability('room3D')).toEqual({
+      type: 'room3D',
+      selfFetch: true,
+      surfaces: ['screen'],
+      shareSupported: true,
+      reportSupported: false,
+    });
+    expect(isSceneWidgetType('room3D')).toBe(true);
+    expect(isSelfFetchSceneWidget('room3D')).toBe(true);
+    expect(isSceneWidgetAllowedOnSurface('room3D', 'screen')).toBe(true);
+    expect(isSceneWidgetAllowedOnSurface('room3D', 'dashboard')).toBe(false);
+    expect(isSceneWidgetAllowedOnSurface('room3D', 'report')).toBe(false);
+  });
+
   it('rejects unknown scene types', () => {
-    expect(isSceneWidgetType('room3D')).toBe(false);
+    expect(isSceneWidgetType('unknown')).toBe(false);
     expect(isSelfFetchSceneWidget('unknown')).toBe(false);
   });
 });
