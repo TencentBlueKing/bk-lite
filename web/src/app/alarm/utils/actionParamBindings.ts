@@ -8,6 +8,9 @@ export interface ScriptParam {
   default?: string;
 }
 
+/** 变量下拉中的触发事件类型；执行时取 ActionExecution.trigger_event。 */
+export const TRIGGER_EVENT_FIELD = 'trigger_event';
+
 const MASKED_DEFAULTS = new Set(['******', '***']);
 
 export function plainScriptDefault(param: ScriptParam): string {

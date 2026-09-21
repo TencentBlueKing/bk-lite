@@ -21,6 +21,8 @@ class JobActionHandler(ActionHandler):
                 return self._config_error(execution, "作业不存在")
 
             payload = build_match_payload(alert)
+            event = getattr(execution, "trigger_event", None)
+            payload["trigger_event"] = event if isinstance(event, str) else ""
             binding = cfg.get("target_binding", {})
             # mode: from_alert(默认，保留旧行为) | fixed（用规则内写死的 ip，不读 alert）
             mode = (binding.get("mode") or "from_alert").strip().lower()

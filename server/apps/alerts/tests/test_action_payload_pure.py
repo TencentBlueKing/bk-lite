@@ -165,6 +165,15 @@ def test_field_missing_without_usable_default_is_config_error():
         raise AssertionError("expected ConfigError")
 
 
+def test_resolve_params_reads_trigger_event_from_payload():
+    params = resolve_params(
+        {"trigger_event": "closed"},
+        [{"name": "event", "from": "field", "value": "trigger_event"}],
+        [{"name": "event"}],
+    )
+    assert params == [{"name": "event", "value": "closed"}]
+
+
 def test_validate_manual_overrides_only_allows_adjustable_const():
     bindings = [
         {"name": "a", "from": "const", "value": "1", "allow_adjust": True},

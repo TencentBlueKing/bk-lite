@@ -327,6 +327,25 @@ def test_const_empty_is_sent_and_overrides_apply(mock_target, mock_job):
     assert execution.result["params"] == payload["params"]
 
 
+@patch("apps.alerts.action.handlers.job.JobMgmt")
+@patch("apps.alerts.action.handlers.job.resolve_node_target")
+def test_trigger_event_binding_sends_execution_event_key(mock_target, mock_job):
+    mock_target.return_value = {"node_id": "n1", "name": "h", "ip": "10.0.0.5", "os": "linux", "cloud_region_id": 1}
+    mock_job.return_value.get_script.return_value = {
+        **SCRIPT,
+        "params": [{"name": "event", "default": ""}],
+    }
+    mock_job.return_value.job_script_execute.return_value = {"result": True, "data": {"task_id": 1}}
+    rule = _rule()
+    rule.action_config["param_bindings"] = [{"name": "event", "from": "field", "value": "trigger_event"}]
+    execution = MagicMock()
+    execution.trigger_event = "assigned"
+    execution.result = {}
+    JobActionHandler().execute(rule, _alert(), execution)
+    payload = mock_job.return_value.job_script_execute.call_args[0][0]
+    assert payload["params"] == [{"name": "event", "value": "assigned"}]
+
+
 def test_registry_returns_job_handler():
     from apps.alerts.action.handlers.job import JobActionHandler
     from apps.alerts.action.handlers.registry import get_handler

@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import { Input, Select, Switch, Table } from 'antd';
+import { Input, Select, Switch, Table, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { ruleList } from '@/app/alarm/constants/settings';
+import { ACTION_TRIGGER_EVENTS, ruleList } from '@/app/alarm/constants/settings';
 import {
   ParamBinding,
   ScriptParam,
+  TRIGGER_EVENT_FIELD,
   plainScriptDefault,
 } from '@/app/alarm/utils/actionParamBindings';
 
@@ -22,9 +24,9 @@ interface FieldBindingTableProps {
  * 脚本参数绑定表：每行一个脚本参数，可选手填常量或从告警字段取值。
  *
  * 变量列选项与告警处理匹配规则共用 `ruleList`，并额外提供 `alert_id`
- * （不在 ruleList 内）。过滤 source_id / location / service。
+ * 与触发事件类型 `trigger_event`（不在 ruleList 内）。过滤 source_id / location / service。
  */
-const valueOptions = [
+const alertFieldOptions = [
   { label: '告警ID', value: 'alert_id' },
   ...ruleList
     .filter(
@@ -141,20 +143,41 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
           );
         }
         return (
-          <Select
-            allowClear
-            size="small"
-            value={binding.value || undefined}
-            placeholder={t('common.selectTip')}
-            options={valueOptions}
-            onChange={(v) =>
-              updateBinding(record.name, {
-                from: 'field',
-                value: (v as string) ?? '',
-              })
-            }
-            style={{ minWidth: 160 }}
-          />
+          <div className="flex items-center gap-1">
+            <Select
+              allowClear
+              size="small"
+              value={binding.value || undefined}
+              placeholder={t('common.selectTip')}
+              options={[
+                {
+                  label: t('settings.actionParamTriggerEvent'),
+                  value: TRIGGER_EVENT_FIELD,
+                },
+                ...alertFieldOptions,
+              ]}
+              onChange={(v) =>
+                updateBinding(record.name, {
+                  from: 'field',
+                  value: (v as string) ?? '',
+                })
+              }
+              style={{ minWidth: 160 }}
+            />
+            <Tooltip
+              title={
+                <div>
+                  <div>{t('settings.actionParamTriggerEventTip')}</div>
+                  {ACTION_TRIGGER_EVENTS.map(({ value, label }) => (
+                    <div key={value}>{`${label} → ${value}`}</div>
+                  ))}
+                  <div>{`${t('settings.actionParamTriggerEventManual')} → manual`}</div>
+                </div>
+              }
+            >
+              <QuestionCircleOutlined className="text-[var(--color-text-3)]" />
+            </Tooltip>
+          </div>
         );
       },
     },

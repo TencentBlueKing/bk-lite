@@ -4,6 +4,7 @@ import {
   alignParamBindings,
   defaultBindingsFromScript,
   fieldBindingsIncomplete,
+  TRIGGER_EVENT_FIELD,
 } from '../actionParamBindings';
 
 const script = [
@@ -82,6 +83,9 @@ describe('fieldBindingsIncomplete', () => {
     ).toBe(true);
     expect(
       fieldBindingsIncomplete([{ name: 'a', from: 'const', value: '' }])
+    ).toBe(false);
+    expect(
+      fieldBindingsIncomplete([{ name: 'a', from: 'field', value: TRIGGER_EVENT_FIELD }])
     ).toBe(false);
   });
 });
