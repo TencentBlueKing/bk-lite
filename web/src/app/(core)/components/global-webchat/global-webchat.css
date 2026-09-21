@@ -1,9 +1,5 @@
 /* Launcher is a transparent logo; do not paint the old 40px primary disc. */
 
-html {
-  --bk-webchat-dock-width: 0px;
-}
-
 #webchat-root button[aria-label='打开对话'] {
   width: auto !important;
   height: auto !important;
@@ -51,16 +47,14 @@ html {
   z-index: 950 !important;
 }
 
-/* 2. 当 WebChat 处于展开状态（--bk-webchat-dock-width > 0）时，
-   Ant Design 右侧滑出抽屉（Drawer）自动以 WebChat 左边缘为锚点向左展开，
-   抽屉右边缘避让 WebChat 宽度，两者并排并存，且遮罩不遮挡 WebChat，实现边看抽屉边向 AI 提问 */
-.ant-drawer.ant-drawer-right {
-  right: var(--bk-webchat-dock-width, 0px) !important;
-  width: calc(100vw - var(--bk-webchat-dock-width, 0px)) !important;
-  transition: right 200ms ease-out, width 200ms ease-out;
+/* 2. 仅当 host 在 <html style> 写入非 0 的 --bk-webchat-dock-width 时，
+   已打开的右侧 Drawer overlay/mask 右缘避让 dock（不写 width，避免与 AntD
+   inset:0 过约束成 100vw）。关闭或 0px 时本规则不匹配，恢复 AntD 默认几何。 */
+html[style*="--bk-webchat-dock-width:"]:not([style*="--bk-webchat-dock-width: 0px"]) .ant-drawer.ant-drawer-right.ant-drawer-open {
+  inset: 0 var(--bk-webchat-dock-width) 0 0 !important;
 }
 
-.ant-drawer.ant-drawer-right .ant-drawer-content-wrapper {
-  max-width: calc(100vw - var(--bk-webchat-dock-width, 0px)) !important;
+html[style*="--bk-webchat-dock-width:"]:not([style*="--bk-webchat-dock-width: 0px"]) .ant-drawer.ant-drawer-right.ant-drawer-open .ant-drawer-content-wrapper {
+  max-width: 100% !important;
 }
 

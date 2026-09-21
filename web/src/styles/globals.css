@@ -49,17 +49,6 @@
   --bk-webchat-dock-width: 0px;
 }
 
-/* Ant Design 右侧抽屉避让 WebChat 侧边栏，实现双栏并排协同 */
-.ant-drawer.ant-drawer-right {
-  right: var(--bk-webchat-dock-width, 0px) !important;
-  width: calc(100vw - var(--bk-webchat-dock-width, 0px)) !important;
-  transition: right 200ms ease-out, width 200ms ease-out;
-}
-
-.ant-drawer.ant-drawer-right .ant-drawer-content-wrapper {
-  max-width: calc(100vw - var(--bk-webchat-dock-width, 0px)) !important;
-}
-
 /* application3D Screen chrome — dark-scene values; identical in both themes. */
 :root,
 html.dark {
