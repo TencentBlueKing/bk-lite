@@ -1,7 +1,7 @@
 import pytest
-from apps.alerts.action.resolver import resolve_params
-from apps.alerts.action.exceptions import ConfigError
 
+from apps.alerts.action.exceptions import ConfigError
+from apps.alerts.action.resolver import resolve_params
 
 PAYLOAD = {"labels.service": "nginx", "labels.disk": 95, "level": "1"}
 SCRIPT_PARAMS = [{"name": "service", "default": ""}, {"name": "threshold", "default": "90"}]
@@ -19,7 +19,10 @@ def test_field_and_const_binding():
 def test_missing_field_falls_back_to_default():
     bindings = [{"name": "service", "from": "field", "value": "labels.notexist"}]
     out = resolve_params(PAYLOAD, bindings, SCRIPT_PARAMS)
-    assert out == [{"name": "service", "value": ""}]
+    assert out == [
+        {"name": "service", "value": ""},
+        {"name": "threshold", "value": "90"},
+    ]
 
 
 def test_missing_field_no_default_raises_config_error():
