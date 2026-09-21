@@ -4,19 +4,59 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_object import MonitorObject, MonitorInstance, MonitorInstanceOrganization
 from apps.monitor.services.auto_discovery_lifecycle import AutoDiscoveryLifecycleService
+from apps.monitor.services.child_instance_discovery import (
+    copy_parent_organizations,
+    format_vm_step,
+    inject_promql_label_matchers,
+    parent_promql_labels,
+)
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from django.utils import timezone
 
 
 class SyncInstance:
-    def __init__(self):
+    FULL_SYNC_STEP = "10m"
+
+    def __init__(self, parent_instance_id=None):
+        self.parent_instance_id = parent_instance_id
+        self.parent_instance = None
+        if parent_instance_id:
+            self.parent_instance = (
+                MonitorInstance.objects.filter(
+                    id=parent_instance_id,
+                    is_deleted=False,
+                    is_active=True,
+                )
+                .select_related("monitor_object")
+                .first()
+            )
         self.monitor_map = self.get_monitor_map()
         self.failed_monitor_object_ids = set()
         self.successful_monitor_object_ids = set()
 
+    @property
+    def is_scoped(self):
+        return self.parent_instance_id is not None
+
     def get_monitor_map(self):
         monitor_objs = MonitorObject.objects.all()
         return {i.name: i.id for i in monitor_objs}
+
+    def _query_step(self):
+        if not self.is_scoped:
+            return self.FULL_SYNC_STEP
+        interval = getattr(self.parent_instance, "interval", None)
+        return format_vm_step(interval)
+
+    def _child_object_filter(self):
+        if not self.is_scoped:
+            return {}
+        if self.parent_instance is None:
+            return {"id__in": []}
+        return {
+            "parent_id": self.parent_instance.monitor_object_id,
+            "level": "derivative",
+        }
 
     @staticmethod
     def parse_organization_id(metric_info):
@@ -31,7 +71,9 @@ class SyncInstance:
     def get_instance_map_by_metrics(self):
         """通过查询指标获取实例信息"""
         instances_map = {}
-        monitor_objs = MonitorObject.objects.all().values(
+        if self.is_scoped and self.parent_instance is None:
+            return instances_map
+        monitor_objs = MonitorObject.objects.filter(**self._child_object_filter()).values(
             *MonitorObjConstants.OBJ_KEYS,
             "level",
             "parent_id",
@@ -42,6 +84,8 @@ class SyncInstance:
                 "monitor_object_id", "id"
             )
         )
+        scoped_labels = parent_promql_labels(self.parent_instance) if self.is_scoped else {}
+        query_step = self._query_step()
 
         for monitor_info in monitor_objs:
             if monitor_info["name"] not in self.monitor_map:
@@ -49,8 +93,10 @@ class SyncInstance:
             query = monitor_info["default_metric"]
             if not query:
                 continue
+            if scoped_labels:
+                query = inject_promql_label_matchers(query, scoped_labels)
             try:
-                metrics = VictoriaMetricsAPI().query(query, step="10m")
+                metrics = VictoriaMetricsAPI().query(query, step=query_step)
             except Exception:
                 monitor_object_id = self.monitor_map[monitor_info["name"]]
                 self.failed_monitor_object_ids.add(monitor_object_id)
@@ -119,11 +165,12 @@ class SyncInstance:
         all_existing_ids = set(MonitorInstance.objects.values_list("id", flat=True))
 
         # 只查询自动发现的实例（auto=True），用于后续的恢复和删除逻辑
-        all_instances_qs = (
-            MonitorInstance.objects.filter(auto=True)
-            .exclude(monitor_object_id__in=self.failed_monitor_object_ids)
-            .values("id", "is_deleted")
+        auto_qs = MonitorInstance.objects.filter(auto=True).exclude(
+            monitor_object_id__in=self.failed_monitor_object_ids
         )
+        if self.is_scoped:
+            auto_qs = auto_qs.filter(monitor_object_id__in=self.successful_monitor_object_ids)
+        all_instances_qs = auto_qs.values("id", "is_deleted")
         table_all = {i["id"] for i in all_instances_qs}
         table_deleted = {i["id"] for i in all_instances_qs if i["is_deleted"]}
 
@@ -133,7 +180,8 @@ class SyncInstance:
         # update_set: VM中出现 且 数据库中已删除的自动发现实例（需要恢复）
         update_set = vm_all & table_deleted
         # 显式标记删除且未重新上报的实例沿用原有物理删除语义。
-        delete_set = table_deleted - vm_all
+        # 预热/专用路径不跑全量 cleanup，避免和 10 分钟对账双写 missing_duration。
+        delete_set = set() if self.is_scoped else table_deleted - vm_all
         logger.info(
             f"监控实例同步 - 新增:{len(add_set)}, 恢复:{len(update_set)}, 物理删除:{len(delete_set)}"
         )
@@ -185,12 +233,28 @@ class SyncInstance:
                 )
             logger.info(f"恢复已删除的自动发现实例: {updated_count}")
 
+        if self.is_scoped:
+            observed_ids = set(metrics_instance_map.keys())
+            if observed_ids:
+                MonitorInstance.objects.filter(
+                    id__in=observed_ids,
+                    auto=True,
+                    is_deleted=False,
+                ).update(
+                    is_active=True,
+                    last_seen_at=timezone.now(),
+                    missing_duration_seconds=0,
+                )
+            copy_parent_organizations(self.parent_instance_id, add_set | update_set)
+            return {"added": len(add_set), "restored": len(update_set)}
+
         AutoDiscoveryLifecycleService.reconcile(
             metrics_instance_map,
             self.successful_monitor_object_ids,
             timezone.now(),
         )
+        return {"added": len(add_set), "restored": len(update_set)}
 
     def run(self):
         """更新监控实例"""
-        self.sync_monitor_instances()
+        return self.sync_monitor_instances()

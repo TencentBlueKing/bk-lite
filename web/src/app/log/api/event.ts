@@ -70,6 +70,13 @@ const useLogEventApi = () => {
     return await post(`/log/alert/${String(id)}/assign/`, { handlers });
   };
 
+  const reassignLogAlert = async (
+    id: React.Key,
+    handlers: Array<string | number>
+  ) => {
+    return await post(`/log/alert/${String(id)}/reassign/`, { handlers });
+  };
+
   const geEventList = async (
     params: {
       alert_id?: React.Key;
@@ -124,6 +131,7 @@ const useLogEventApi = () => {
     patchLogAlert,
     claimLogAlert,
     assignLogAlert,
+    reassignLogAlert,
     geEventList,
     getEventRaw,
     getEventRawData,
