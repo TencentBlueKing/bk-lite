@@ -1,5 +1,31 @@
 {
   "object": "VoiceGateway",
   "plugin": "VoiceGateway Sangoma Vega SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Sangoma语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Sangoma Dialogic IMG 2020 语音网关 CPU 忙时百分比（按 cpuInfoIndex 表取最高核），当持续高于阈值时触发告警，提示呼叫处理过载风险。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Sangoma语音网关温度过高",
+      "alert_name": "语音网关${resource_name} 温度过高",
+      "description": "监控 Sangoma Dialogic IMG 2020 设备温度，当超过阈值时触发告警，提示散热或风道异常，防止设备过热影响语音业务。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        { "level": "critical", "value": 70, "method": ">" },
+        { "level": "error", "value": 60, "method": ">" },
+        { "level": "warning", "value": 50, "method": ">" }
+      ]
+    }
+  ]
 }
