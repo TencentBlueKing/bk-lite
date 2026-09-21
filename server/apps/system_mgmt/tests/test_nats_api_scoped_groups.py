@@ -320,3 +320,161 @@ def test_get_assignable_groups_expands_persisted_root_to_unlisted_descendant():
     result = get_assignable_groups({"username": "assignable-actor", "domain": "domain.com"})
 
     assert set(result["data"]) == {root.id, child.id}
+
+
+USER_DIRECTORY_SENSITIVE_SENTINELS = (
+    "email",
+    "phone",
+    "role_list",
+    "last_login",
+    "password_last_modified",
+    "password_error_count",
+    "account_locked_until",
+    "password",
+    "otp_secret",
+    "group_list",
+)
+
+
+def _assert_directory_user_fields(user_row):
+    assert set(user_row) <= {"id", "user_id", "username", "display_name"}
+    for field in USER_DIRECTORY_SENSITIVE_SENTINELS:
+        assert field not in user_row
+
+
+@pytest.mark.django_db
+def test_get_group_users_scoped_rejects_forged_current_team_and_superuser():
+    from apps.system_mgmt.models import Group, User
+
+    home = Group.objects.create(name="scoped-home", parent_id=0)
+    other = Group.objects.create(name="scoped-other", parent_id=0)
+    User.objects.create(
+        username="scoped-actor",
+        password="x",
+        display_name="Scoped Actor",
+        email="actor@example.com",
+        phone="13800001111",
+        domain="domain.com",
+        group_list=[home.id],
+        role_list=[99],
+    )
+    outsider = User.objects.create(
+        username="scoped-outsider",
+        password="secret-hash",
+        display_name="Outsider",
+        email="outsider@example.com",
+        phone="13800002222",
+        domain="domain.com",
+        group_list=[other.id],
+        role_list=[100],
+    )
+
+    forged = get_group_users_scoped(
+        {
+            "username": "scoped-actor",
+            "domain": "domain.com",
+            "current_team": other.id,
+            "is_superuser": True,
+            "group_list": [other.id],
+        }
+    )
+
+    assert forged == {"result": True, "data": []}
+    assert outsider.username not in {row.get("username") for row in forged["data"]}
+
+
+@pytest.mark.django_db
+def test_get_group_users_scoped_returns_home_users_without_sensitive_fields():
+    from apps.system_mgmt.models import Group, User
+
+    home = Group.objects.create(name="dir-home", parent_id=0)
+    other = Group.objects.create(name="dir-other", parent_id=0)
+    User.objects.create(
+        username="dir-actor",
+        password="x",
+        display_name="Dir Actor",
+        email="dir-actor@example.com",
+        phone="13800003333",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    insider = User.objects.create(
+        username="dir-insider",
+        password="secret-hash",
+        display_name="Dir Insider",
+        email="insider@example.com",
+        phone="13800004444",
+        domain="domain.com",
+        group_list=[home.id],
+        role_list=[7],
+    )
+    User.objects.create(
+        username="dir-outsider",
+        password="secret-hash",
+        display_name="Dir Outsider",
+        email="dir-out@example.com",
+        domain="domain.com",
+        group_list=[other.id],
+    )
+
+    result = get_group_users_scoped(
+        {
+            "username": "dir-actor",
+            "domain": "domain.com",
+            "current_team": home.id,
+            "is_superuser": True,
+        }
+    )
+
+    assert result["result"] is True
+    usernames = {row["username"] for row in result["data"]}
+    assert insider.username in usernames
+    assert "dir-outsider" not in usernames
+    for row in result["data"]:
+        _assert_directory_user_fields(row)
+
+
+@pytest.mark.django_db
+def test_get_group_users_scoped_search_stays_inside_authorized_groups():
+    from apps.system_mgmt.models import Group, User
+
+    home = Group.objects.create(name="search-home", parent_id=0)
+    other = Group.objects.create(name="search-other", parent_id=0)
+    User.objects.create(
+        username="search-actor",
+        password="x",
+        display_name="Search Actor",
+        email="search-actor@example.com",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="alice-home",
+        password="x",
+        display_name="Alice Home",
+        email="alice-home@example.com",
+        domain="domain.com",
+        group_list=[home.id],
+    )
+    User.objects.create(
+        username="alice-other",
+        password="x",
+        display_name="Alice Other",
+        email="alice-other@example.com",
+        domain="domain.com",
+        group_list=[other.id],
+    )
+
+    result = get_group_users_scoped(
+        {
+            "username": "search-actor",
+            "domain": "domain.com",
+            "current_team": home.id,
+        },
+        search="alice",
+    )
+
+    assert result["result"] is True
+    assert {row["username"] for row in result["data"]} == {"alice-home"}
+    for row in result["data"]:
+        _assert_directory_user_fields(row)

@@ -709,8 +709,8 @@ def test_user_viewset_get_user_detail_only_reveals_authorized_sensitive_type():
 
 
 @pytest.mark.django_db
-# 验证 get_all_users 这类机器消费路径在保护开启后仍返回原始邮箱和手机号。
-def test_nats_get_all_users_keeps_raw_sensitive_fields_when_protection_enabled():
+# 验证 get_all_users 只返回 alerts/cmdb 需要的目录字段，不回传邮箱/手机号等敏感列。
+def test_nats_get_all_users_omits_sensitive_fields_when_protection_enabled():
     _set_sensitive_info_settings(enabled=True)
     target_user = User.objects.create(
         username="nats_raw_user",
@@ -719,14 +719,18 @@ def test_nats_get_all_users_keeps_raw_sensitive_fields_when_protection_enabled()
         phone="13800004444",
         password=make_password("password123"),
         locale="zh-Hans",
+        role_list=[9],
     )
 
     result = get_all_users()
 
     assert result["result"] is True
     returned_user = next(item for item in result["data"] if item["username"] == target_user.username)
-    assert returned_user["email"] == "natsraw@example.com"
-    assert returned_user["phone"] == "13800004444"
+    assert returned_user == {
+        "id": target_user.id,
+        "username": "nats_raw_user",
+        "display_name": "NATS 原值用户",
+    }
 
 
 @pytest.mark.django_db
