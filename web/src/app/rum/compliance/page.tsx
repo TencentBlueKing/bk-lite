@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   DeleteOutlined,
   PlusOutlined,
@@ -28,6 +28,7 @@ import CustomTable from '@/components/custom-table';
 import SemanticBadge from '@/components/semantic-badge';
 import { toneSemanticPalette } from '@/app/rum/lib/cwv';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useTranslation } from '@/utils/i18n';
 
 function formatWhen(iso: string): string {
@@ -43,7 +44,7 @@ function formatWhen(iso: string): string {
 
 export default function RumCompliancePage() {
   const { t } = useTranslation();
-  const { listApplications, listEraseJobs, eraseCompliance } = useRumQueries();
+  const { listApplications, listEraseJobs, eraseCompliance, authReady } = useRumQueries();
 
   const [selectedApp, setSelectedApp] = useState('all');
   const [searchUser, setSearchUser] = useState('');
@@ -69,19 +70,42 @@ export default function RumCompliancePage() {
     }
   }, [listEraseJobs, selectedApp]);
 
-  useEffect(() => {
-    void loadJobs();
-  }, [loadJobs]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      const params: Record<string, string> = {};
+      if (selectedApp && selectedApp !== 'all') params.application = selectedApp;
+      void listEraseJobs(params)
+        .then((next) => {
+          if (!isCancelled()) setRecords(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setRecords([]);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listEraseJobs, selectedApp],
+  );
 
-  useEffect(() => {
-    void listApplications()
-      .then((items) => {
-        const names = items.map((item) => item.application).filter(Boolean);
-        setApplications(names);
-        setFormApp((prev) => prev || names[0] || '');
-      })
-      .catch(() => setApplications([]));
-  }, [listApplications]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void listApplications()
+        .then((items) => {
+          if (isCancelled()) return;
+          const names = items.map((item) => item.application).filter(Boolean);
+          setApplications(names);
+          setFormApp((prev) => prev || names[0] || '');
+        })
+        .catch(() => {
+          if (!isCancelled()) setApplications([]);
+        });
+    },
+    [listApplications],
+  );
 
   const filteredRecords = useMemo(() => {
     const needle = searchUser.trim().toLowerCase();

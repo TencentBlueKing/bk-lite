@@ -11,6 +11,7 @@ import { RumSingleWorkbench } from '@/app/rum/components/rum-dual-workbench';
 import RumPermission from '@/app/rum/components/rum-permission';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
 import MonitorFormDrawer from '@/app/rum/monitors/ui/monitor-form-drawer';
 import CustomTable from '@/components/custom-table';
@@ -38,7 +39,7 @@ export default function RumMonitorsPage() {
   const { t } = useTranslation();
   const { application: appFromUrl, searchParams } = useRumSearchParams();
   const focusRule = searchParams.get('rule')?.trim() || undefined;
-  const { listMonitors, updateMonitor, deleteMonitor, listApplications } = useRumQueries();
+  const { listMonitors, updateMonitor, deleteMonitor, listApplications, authReady } = useRumQueries();
 
   const [items, setItems] = useState<RumMonitorItem[]>([]);
   const [apps, setApps] = useState<string[]>([]);
@@ -60,19 +61,41 @@ export default function RumMonitorsPage() {
     }
   }, [listMonitors]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void listMonitors()
+        .then((next) => {
+          if (!isCancelled()) setItems(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setItems([]);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listMonitors],
+  );
 
   useEffect(() => {
     setSelectedApp(appFromUrl);
   }, [appFromUrl]);
 
-  useEffect(() => {
-    void listApplications()
-      .then((list) => setApps(list.map((a) => a.application).filter(Boolean)))
-      .catch(() => setApps([]));
-  }, [listApplications]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void listApplications()
+        .then((list) => {
+          if (!isCancelled()) setApps(list.map((a) => a.application).filter(Boolean));
+        })
+        .catch(() => {
+          if (!isCancelled()) setApps([]);
+        });
+    },
+    [listApplications],
+  );
 
   async function toggleEnabled(item: RumMonitorItem) {
     setActing(item.id);

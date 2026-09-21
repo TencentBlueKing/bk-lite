@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -28,6 +28,7 @@ import { CatalogKpi } from '@/app/rum/applications/ui/overview-kpi';
 import RumIconAction from '@/app/rum/components/rum-icon-action';
 import RumListToolbar from '@/app/rum/components/rum-list-toolbar';
 import { RumSingleWorkbench } from '@/app/rum/components/rum-dual-workbench';
+import RumPageError from '@/app/rum/components/rum-page-error';
 import RumPermission from '@/app/rum/components/rum-permission';
 import RumRangeSegmented from '@/app/rum/components/rum-range-segmented';
 import RumRefreshButton from '@/app/rum/components/rum-refresh-button';
@@ -48,7 +49,9 @@ import {
 } from '@/app/rum/lib/cwv';
 import SemanticBadge from '@/components/semantic-badge';
 import { degradationReason } from '@/app/rum/lib/degradation';
+import { resolveRumPageState } from '@/app/rum/lib/page-state';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
 import CustomTable from '@/components/custom-table';
 import { useLocale } from '@/context/locale';
@@ -90,7 +93,7 @@ export default function RumApplicationsPage() {
   const { locale } = useLocale();
   const router = useRouter();
   const { range, setRange } = useRumSearchParams();
-  const { getAnalyticsCatalog } = useRumQueries();
+  const { getAnalyticsCatalog, authReady } = useRumQueries();
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('health');
@@ -108,13 +111,33 @@ export default function RumApplicationsPage() {
     }
   }, [getAnalyticsCatalog, range]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void getAnalyticsCatalog(range)
+        .then((next) => {
+          if (!isCancelled()) setPage(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setPage(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [getAnalyticsCatalog, range],
+  );
 
   const applications = page?.applications || [];
   const renderNow = Date.now();
   const degrade = degradationReason(page);
+  const chrome = resolveRumPageState({
+    pending: pending && page === null,
+    error: !pending && page === null ? t('rum.applications.loadFailed', '应用列表加载失败') : null,
+    itemCount: applications.length,
+    page,
+  });
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -304,7 +327,7 @@ export default function RumApplicationsPage() {
 
       <CreateApplicationDrawer open={createOpen} onOpenChange={setCreateOpen} />
 
-      {pending && !page ? (
+      {chrome === 'loading' ? (
         <div className="mb-2 shrink-0">
           <RumKpiSkeleton />
         </div>
@@ -350,10 +373,17 @@ export default function RumApplicationsPage() {
           />
         }
       >
-        {pending && !page ? (
+        {chrome === 'loading' ? (
           <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
-        ) : !pending && applications.length === 0 ? (
-          page?.controlUnavailable ? (
+        ) : chrome === 'error' ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <RumPageError
+              message={t('rum.applications.loadFailed', '应用列表加载失败')}
+              onRetry={() => void load()}
+            />
+          </div>
+        ) : applications.length === 0 ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center">
             <Empty
               image={
                 <span className="inline-flex size-11 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-text-3)]">
@@ -362,45 +392,40 @@ export default function RumApplicationsPage() {
               }
               description={
                 <div className="mx-auto max-w-md">
-                  <p className="m-0 text-sm font-semibold">
-                    {t('rum.applications.controlUnavailableTitle', '控制面不可达')}
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--color-text-3)]">
-                    {t(
-                      'rum.applications.controlUnavailableHint',
-                      '无法读取应用列表与接入配置，请检查 RUM controller 连接。',
-                    )}
-                  </p>
+                  {page?.controlUnavailable ? (
+                    <>
+                      <p className="m-0 text-sm font-semibold">
+                        {t('rum.applications.controlUnavailableTitle', '控制面不可达')}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--color-text-3)]">
+                        {t(
+                          'rum.applications.controlUnavailableHint',
+                          '无法读取应用列表与接入配置，请检查 RUM controller 连接。',
+                        )}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="m-0 text-sm font-semibold">
+                        {t('rum.applications.empty', '还没有 RUM 应用')}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--color-text-3)]">
+                        {t('rum.applications.emptyHint', '先创建一个应用，再配置 Origin 与 SDK。')}
+                      </p>
+                      <RumPermission resource="applications" action="Operate">
+                        <div className="mt-4 flex justify-center">
+                          <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setCreateOpen(true)}>
+                            {t('common.new', '新建')}
+                          </Button>
+                        </div>
+                      </RumPermission>
+                    </>
+                  )}
                 </div>
               }
             />
-          ) : (
-            <Empty
-              image={
-                <span className="inline-flex size-11 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-text-3)]">
-                  <GlobalOutlined />
-                </span>
-              }
-              description={
-                <div className="mx-auto max-w-md">
-                  <p className="m-0 text-sm font-semibold">
-                    {t('rum.applications.empty', '还没有 RUM 应用')}
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--color-text-3)]">
-                    {t('rum.applications.emptyHint', '先创建一个应用，再配置 Origin 与 SDK。')}
-                  </p>
-                  <RumPermission resource="applications" action="Operate">
-                    <div className="mt-4 flex justify-center">
-                      <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setCreateOpen(true)}>
-                        {t('common.new', '新建')}
-                      </Button>
-                    </div>
-                  </RumPermission>
-                </div>
-              }
-            />
-          )
-        ) : applications.length > 0 ? (
+          </div>
+        ) : (
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable<RumApplicationHealthItem>
               rowKey="application"
@@ -422,7 +447,7 @@ export default function RumApplicationsPage() {
               })}
             />
           </div>
-        ) : null}
+        )}
       </RumSingleWorkbench>
     </div>
   );

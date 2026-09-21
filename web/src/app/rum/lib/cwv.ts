@@ -1,19 +1,24 @@
 /** Core Web Vitals thresholds and experience health. */
 
-export type CwvMetric = 'lcp' | 'inp' | 'cls';
+export type CwvMetric = 'lcp' | 'inp' | 'cls' | 'fcp' | 'ttfb' | 'fid';
 
 /** [good upper, needs-improvement upper]. */
 export const CWV_THRESHOLDS: Record<CwvMetric, [number, number]> = {
   lcp: [2500, 4000],
   inp: [200, 500],
   cls: [0.1, 0.25],
+  fcp: [1800, 3000],
+  ttfb: [800, 1800],
+  fid: [100, 300],
 };
 
 export type CwvTone = 'success' | 'warning' | 'danger' | 'neutral';
 
-export function cwvTone(name: CwvMetric, v: number): CwvTone {
+export function cwvTone(name: string, v: number): CwvTone {
   if (v <= 0) return 'neutral';
-  const [good, poor] = CWV_THRESHOLDS[name];
+  const bounds = CWV_THRESHOLDS[name as CwvMetric];
+  if (!bounds) return 'neutral';
+  const [good, poor] = bounds;
   if (v <= good) return 'success';
   if (v <= poor) return 'warning';
   return 'danger';

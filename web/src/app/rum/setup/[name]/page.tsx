@@ -26,6 +26,7 @@ import { rumErrorMessage } from '@/app/rum/lib/error-message';
 import { rumIngestStatus } from '@/app/rum/lib/ingest';
 import SemanticBadge from '@/components/semantic-badge';
 import { toneSemanticPalette } from '@/app/rum/lib/cwv';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useTranslation } from '@/utils/i18n';
 
 export default function ApplicationSetupPage() {
@@ -40,6 +41,7 @@ export default function ApplicationSetupPage() {
     disableApplication,
     reissueKey,
     buildSnippets,
+    authReady,
   } = useRumQueries();
 
   const [app, setApp] = useState<RumApplicationView | null>(null);
@@ -75,26 +77,45 @@ export default function ApplicationSetupPage() {
     }
   }, [getApplication, name]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      if (!name) return;
+      setPending(true);
+      void getApplication(name)
+        .then((view) => {
+          if (isCancelled()) return;
+          setApp(view);
+          setOrigins(view.origins?.slice() || []);
+          setOriginsEditing(false);
+          setFreshKey(false);
+        })
+        .catch(() => {
+          if (!isCancelled()) setApp(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [getApplication, name],
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    void getMeta()
-      .then((meta) => {
-        if (cancelled) return;
-        setCollectUrl(meta.collectUrl || '');
-        setReplayUrl(meta.replayUrl || '');
-        setSdkCdnUrl(meta.sdkCdnUrl || '');
-      })
-      .catch(() => {
-        /* meta soft-fail; snippets stay empty until available */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [getMeta]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void getMeta()
+        .then((meta) => {
+          if (isCancelled()) return;
+          setCollectUrl(meta.collectUrl || '');
+          setReplayUrl(meta.replayUrl || '');
+          setSdkCdnUrl(meta.sdkCdnUrl || '');
+        })
+        .catch(() => {
+          /* meta soft-fail; snippets stay empty until available */
+        });
+    },
+    [getMeta],
+  );
 
   useEffect(() => {
     const key = app?.browserKeys?.[0];

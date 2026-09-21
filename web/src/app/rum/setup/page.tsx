@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiOutlined, SearchOutlined } from '@ant-design/icons';
 import { Button, Empty, Input, Segmented, type TableColumnsType } from 'antd';
@@ -21,6 +21,7 @@ import {
   type RumIngestFilter,
   type RumIngestStatus,
 } from '@/app/rum/lib/ingest';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
 import SemanticBadge from '@/components/semantic-badge';
 import { toneSemanticPalette } from '@/app/rum/lib/cwv';
@@ -43,7 +44,7 @@ export default function RumSetupIndexPage() {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const router = useRouter();
-  const { listApplications } = useRumQueries();
+  const { listApplications, authReady } = useRumQueries();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<RumIngestFilter>('all');
   const [apps, setApps] = useState<RumApplicationView[]>([]);
@@ -64,9 +65,27 @@ export default function RumSetupIndexPage() {
     }
   }, [listApplications]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void listApplications()
+        .then((items) => {
+          if (isCancelled()) return;
+          setApps(items);
+          setControlUnavailable(false);
+        })
+        .catch(() => {
+          if (isCancelled()) return;
+          setApps([]);
+          setControlUnavailable(true);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listApplications],
+  );
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();

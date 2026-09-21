@@ -31,6 +31,7 @@ import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { displayRoute } from '@/app/rum/lib/format';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import FunnelFormDrawer from '@/app/rum/funnels/ui/funnel-form-drawer';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
@@ -41,7 +42,7 @@ export default function FunnelsWorkspace() {
   const params = useParams<{ id?: string }>();
   const routeId = params.id ? decodeURIComponent(params.id) : '';
   const { range, setRange, traffic, searchParams, setParams } = useRumSearchParams();
-  const { listFunnels, deleteFunnel, funnelReach } = useRumQueries();
+  const { listFunnels, deleteFunnel, funnelReach, authReady } = useRumQueries();
 
   const [items, setItems] = useState<RumFunnelItem[]>([]);
   const [pending, setPending] = useState(true);
@@ -69,9 +70,23 @@ export default function FunnelsWorkspace() {
     }
   }, [listFunnels]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void listFunnels()
+        .then((next) => {
+          if (!isCancelled()) setItems(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setItems([]);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listFunnels],
+  );
 
   const runReach = useCallback(
     async (funnel: RumFunnelItem) => {
@@ -93,9 +108,10 @@ export default function FunnelsWorkspace() {
   );
 
   useEffect(() => {
+    if (!authReady) return;
     if (activeFunnel) void runReach(activeFunnel);
     else setReached([]);
-  }, [activeFunnel, runReach]);
+  }, [authReady, activeFunnel, runReach]);
 
   function selectFunnel(id: string) {
     if (routeId) {

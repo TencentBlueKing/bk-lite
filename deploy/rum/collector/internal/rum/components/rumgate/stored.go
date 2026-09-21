@@ -52,12 +52,24 @@ func (marker *redisStoredMarker) Record(ctx context.Context, applications []stri
 	}
 	now := strconv.FormatInt(marker.now().UTC().Unix(), 10)
 	for _, application := range applications {
-		if err := marker.client.HSet(
-			ctx,
-			ingress.ApplicationKey(application),
-			"last_stored_at",
-			now,
-		).Err(); err != nil {
+		key := ingress.ApplicationKey(application)
+		// Only annotate a registry hash that already has a revision. HSET on a
+		// missing key creates last_stored_at-only state; List() then skips it
+		// as invalid, so the console looks empty even after the operator creates
+		// the same name.
+		registered, err := marker.client.HExists(ctx, key, "revision").Result()
+		if err != nil {
+			marker.logger.Warn(
+				"record RUM last_stored_at marker failed",
+				zap.String("application", application),
+				zap.Error(err),
+			)
+			continue
+		}
+		if !registered {
+			continue
+		}
+		if err := marker.client.HSet(ctx, key, "last_stored_at", now).Err(); err != nil {
 			marker.logger.Warn(
 				"record RUM last_stored_at marker failed",
 				zap.String("application", application),

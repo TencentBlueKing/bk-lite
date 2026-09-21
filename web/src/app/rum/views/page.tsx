@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CaretDownOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons';
 import { Empty, Input, Segmented, Select, type TableColumnsType } from 'antd';
@@ -24,6 +24,7 @@ import { cwvTone, formatMs, toneSemanticPalette, toneTextClass, type CwvTone } f
 import SemanticBadge from '@/components/semantic-badge';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
 import DeviceMixCell from '@/app/rum/views/ui/device-mix-cell';
 import DistributionBar from '@/app/rum/views/ui/distribution-bar';
@@ -84,7 +85,7 @@ export default function RumViewsPage() {
     searchParams,
     setParams,
   } = useRumSearchParams();
-  const { listViews, listApplications } = useRumQueries();
+  const { listViews, listApplications, authReady } = useRumQueries();
 
   const mode = ((searchParams.get('mode') as Mode) || 'route') === 'release' ? 'release' : 'route';
   const release = searchParams.get('release') || '';
@@ -101,26 +102,37 @@ export default function RumViewsPage() {
     return out;
   }, [range, mode, traffic, application, release]);
 
-  const load = useCallback(async () => {
-    setPending(true);
-    try {
-      setPage(await listViews(query));
-    } catch {
-      setPage(null);
-    } finally {
-      setPending(false);
-    }
-  }, [listViews, query]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void listViews(query)
+        .then((next) => {
+          if (!isCancelled()) setPage(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setPage(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listViews, query],
+  );
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    void listApplications()
-      .then((items) => setApps(items.map((item) => item.application).filter(Boolean)))
-      .catch(() => setApps([]));
-  }, [listApplications]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void listApplications()
+        .then((items) => {
+          if (!isCancelled()) setApps(items.map((item) => item.application).filter(Boolean));
+        })
+        .catch(() => {
+          if (!isCancelled()) setApps([]);
+        });
+    },
+    [listApplications],
+  );
 
   const rows = page?.rows || [];
   const filteredRows = useMemo(() => {

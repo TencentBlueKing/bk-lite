@@ -51,7 +51,7 @@ describe('useRumQueries domain calls', () => {
 
     const { result } = renderHook(() => useRumQueries());
     const listed = await result.current.listApplications();
-    expect(get).toHaveBeenCalledWith('/rum/applications/', undefined);
+    expect(get).toHaveBeenCalledWith('/rum/applications', undefined);
     expect(listed[0].origins).toEqual([]);
     expect(listed[0].lastAcceptedAt).toBe(1_700_000_000);
     expect(listed[0].lastStoredAt).toBe(1_700_000_030);
@@ -61,14 +61,14 @@ describe('useRumQueries domain calls', () => {
       origins: ['https://a.test'],
     });
     expect(post).toHaveBeenCalledWith(
-      '/rum/applications/',
+      '/rum/applications',
       { application: 'store', origins: ['https://a.test'] },
       undefined,
     );
     expect(created.origins).toEqual(['https://a.test']);
 
     const updated = await result.current.updateApplication('store', { enabled: false });
-    expect(put).toHaveBeenCalledWith('/rum/applications/store/', { enabled: false }, undefined);
+    expect(put).toHaveBeenCalledWith('/rum/applications/store', { enabled: false }, undefined);
     expect(updated.enabled).toBe(false);
   });
 
@@ -83,13 +83,13 @@ describe('useRumQueries domain calls', () => {
     const { result } = renderHook(() => useRumQueries());
     const sessions = await result.current.listSessions({ range: '24h' });
     expect(get).toHaveBeenCalledWith(
-      '/rum/sessions/',
+      '/rum/sessions',
       expect.objectContaining({
         params: { range: '24h' },
       }),
     );
     expect(
-      get.mock.calls.find(([url]) => url === '/rum/sessions/')?.[1]?.suppressErrorNotification,
+      get.mock.calls.find(([url]) => url === '/rum/sessions')?.[1]?.suppressErrorNotification,
     ).toBeFalsy();
     expect(sessions.sessions).toEqual([]);
     expect(sessions.summary.total).toBe(0);
@@ -127,14 +127,14 @@ describe('useRumQueries domain calls', () => {
 
     const manifest = await result.current.getReplayManifest('store', 's1');
     expect(get).toHaveBeenCalledWith(
-      '/rum/replay/manifest/',
+      '/rum/replay/manifest',
       expect.objectContaining({ params: { application: 'store', session: 's1' } }),
     );
     expect(manifest.recordings).toHaveLength(1);
 
     const grant = await result.current.createReplayGrant('store', 's1', 'seg-1');
     expect(post).toHaveBeenCalledWith(
-      '/rum/replay/grants/',
+      '/rum/replay/grants',
       { application: 'store', session: 's1', targetRef: 'seg-1' },
       undefined,
     );

@@ -66,15 +66,16 @@ export function useRumSearchParams() {
   );
 
   const setRange = useCallback(
-    (value: RumAnalyticsRange) => setParams({ range: value }),
+    (value: RumAnalyticsRange) => setParams({ range: value, page: null }),
     [setParams],
   );
   const setTraffic = useCallback(
-    (value: RumTraffic) => setParams({ traffic: value === 'visitors' ? null : value }),
+    (value: RumTraffic) =>
+      setParams({ traffic: value === 'visitors' ? null : value, page: null }),
     [setParams],
   );
   const setApplication = useCallback(
-    (value: string) => setParams({ application: value || null }),
+    (value: string) => setParams({ application: value || null, page: null }),
     [setParams],
   );
   const setQuery = useCallback(

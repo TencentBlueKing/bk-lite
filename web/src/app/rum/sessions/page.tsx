@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -36,7 +36,10 @@ import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-s
 import SessionTrendChart from '@/app/rum/sessions/ui/session-trend-chart';
 import SavedViewsBar, { type ViewPreset } from '@/app/rum/components/saved-views-bar';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
+import RumPageError from '@/app/rum/components/rum-page-error';
 import { degradationReason } from '@/app/rum/lib/degradation';
+import { resolveRumPageState } from '@/app/rum/lib/page-state';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import {
   displayRoute,
   formatDurationMs,
@@ -86,7 +89,7 @@ export default function RumSessionsPage() {
   const router = useRouter();
   const { range, setRange, application, setApplication, traffic, searchParams, setParams } =
     useRumSearchParams();
-  const { listSessions, listSessionsTrend, listApplications } = useRumQueries();
+  const { listSessions, listSessionsTrend, listApplications, authReady } = useRumQueries();
 
   const [sort, setSort] = useState<SortKey>('impact');
   const [sessionId, setSessionId] = useState(searchParams.get('sessionId') || '');
@@ -131,15 +134,41 @@ export default function RumSessionsPage() {
     }
   }, [listSessions, listSessionsTrend, query]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void Promise.all([listSessions(query), listSessionsTrend(query)])
+        .then(([sessionsPage, trendPoints]) => {
+          if (isCancelled()) return;
+          setPage(sessionsPage);
+          setTrend(trendPoints);
+        })
+        .catch(() => {
+          if (isCancelled()) return;
+          setPage(null);
+          setTrend([]);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listSessions, listSessionsTrend, query],
+  );
 
-  useEffect(() => {
-    void listApplications()
-      .then((items) => setApps(items.map((item) => item.application).filter(Boolean)))
-      .catch(() => setApps([]));
-  }, [listApplications]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void listApplications()
+        .then((items) => {
+          if (!isCancelled()) setApps(items.map((item) => item.application).filter(Boolean));
+        })
+        .catch(() => {
+          if (!isCancelled()) setApps([]);
+        });
+    },
+    [listApplications],
+  );
 
   const sessions = page?.sessions || [];
   const total = page?.summary.total || 0;
@@ -147,6 +176,12 @@ export default function RumSessionsPage() {
   const medianDuration =
     page && page.summary.total > 0 ? formatDurationMs(page.summary.medianDurationMs) : '—';
   const degrade = degradationReason(page);
+  const chrome = resolveRumPageState({
+    pending: pending && page === null,
+    error: !pending && page === null ? t('rum.sessions.loadFailed', '会话列表加载失败') : null,
+    itemCount: sessions.length,
+    page,
+  });
 
   const columns: TableColumnsType<RumSessionRow> = [
     {
@@ -273,10 +308,7 @@ export default function RumSessionsPage() {
                 block
                 size="small"
                 value={range}
-                onChange={(value) => {
-                  setRange(value);
-                  setParams({ page: null });
-                }}
+                onChange={setRange}
               />
             </RumFilterBlock>
             <RumFilterBlock title={t('rum.applications.application', '应用')}>
@@ -287,10 +319,7 @@ export default function RumSessionsPage() {
                 className="w-full"
                 placeholder={t('rum.filter.allApps', '全部应用')}
                 value={application || undefined}
-                onChange={(value) => {
-                  setApplication(value || '');
-                  setParams({ page: null });
-                }}
+                onChange={(value) => setApplication(value || '')}
                 options={apps.map((name) => ({ value: name, label: name }))}
               />
             </RumFilterBlock>
@@ -307,11 +336,7 @@ export default function RumSessionsPage() {
               />
             </div>
             <RumFilterBlock title={t('rum.traffic.label', '流量')}>
-              <TrafficScopeControl
-                block
-                size="small"
-                onChange={() => setParams({ page: null })}
-              />
+              <TrafficScopeControl block size="small" />
             </RumFilterBlock>
           </>
         }
@@ -336,8 +361,15 @@ export default function RumSessionsPage() {
           ) : null
         }
         main={
-          pending && !page ? (
+          chrome === 'loading' ? (
             <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
+          ) : chrome === 'error' ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <RumPageError
+                message={t('rum.sessions.loadFailed', '会话列表加载失败')}
+                onRetry={() => void load()}
+              />
+            </div>
           ) : (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
               {page ? (

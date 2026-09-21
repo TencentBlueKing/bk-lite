@@ -30,13 +30,8 @@ class ApplicationsService:
         self.settings = settings or load_rum_settings()
         self.analytics = analytics if analytics is not None else get_analytics()
 
-    def list_applications(self, actor: str) -> list[dict]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return []
-            raise
+    def _load_registry(self, actor: str) -> list[dict]:
+        _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
         if data is None:
             return []
         if not isinstance(data, list):
@@ -44,6 +39,14 @@ class ApplicationsService:
         # The list is a registry overview; browser keys are only handed out
         # per application (get / keys) so one call cannot dump every key.
         return [strip_browser_keys(item) for item in data]
+
+    def list_applications(self, actor: str) -> list[dict]:
+        try:
+            return self._load_registry(actor)
+        except ControlError as exc:
+            if control_unavailable(exc):
+                return []
+            raise
 
     def get_application(self, actor: str, name: str) -> dict:
         if not valid_application(name):
@@ -218,7 +221,7 @@ class ApplicationsService:
         if not ok:
             raise ValidationError("invalid range")
         try:
-            registry = self.list_applications(actor)
+            registry = self._load_registry(actor)
             control_down = False
         except ControlError as exc:
             if not control_unavailable(exc):
@@ -284,7 +287,8 @@ class ApplicationsService:
                 }
             )
         page["sparklines"] = sparks
-        page["configured"] = True
+        if not control_down:
+            page["configured"] = True
         kpi = page["kpi"]
         for item in page["applications"]:
             if not item.get("enabled"):

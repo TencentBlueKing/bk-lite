@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
 import { BellOutlined, ExportOutlined } from '@ant-design/icons';
 import { Drawer, Empty, Segmented, Timeline, type TableColumnsType } from 'antd';
@@ -13,6 +13,7 @@ import {
 } from '@/app/rum/api';
 import CustomTable from '@/components/custom-table';
 import Sparkline from '@/app/apm/components/home/sparkline';
+import RumIconAction from '@/app/rum/components/rum-icon-action';
 import RumListToolbar from '@/app/rum/components/rum-list-toolbar';
 import { RumSingleWorkbench } from '@/app/rum/components/rum-dual-workbench';
 import { RumMetricGrid } from '@/app/rum/components/rum-metric-card';
@@ -21,6 +22,7 @@ import { RumAlertDetailSkeleton, RumTableSkeleton, rumSkeletonColumns } from '@/
 import SemanticBadge from '@/components/semantic-badge';
 import { toneSemanticPalette } from '@/app/rum/lib/cwv';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useTranslation } from '@/utils/i18n';
 
 const ALERT_EVENT_LIMIT = 200;
@@ -66,7 +68,7 @@ function eventExplanation(
 
 export default function RumAlertEventsPage() {
   const { t } = useTranslation();
-  const { listAlertEvents, getAlertEvent, listMonitors } = useRumQueries();
+  const { listAlertEvents, getAlertEvent, listMonitors, authReady } = useRumQueries();
   const [tab, setTab] = useState<'active' | 'history'>('active');
   const [items, setItems] = useState<RumAlertEventItem[]>([]);
   const [policies, setPolicies] = useState<RumMonitorItem[]>([]);
@@ -90,9 +92,25 @@ export default function RumAlertEventsPage() {
     }
   }, [listAlertEvents, listMonitors]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void Promise.all([listAlertEvents(1, ALERT_EVENT_LIMIT), listMonitors()])
+        .then(([events, monitors]) => {
+          if (isCancelled()) return;
+          setItems(events.items);
+          setPolicies(monitors);
+        })
+        .catch(() => {
+          if (!isCancelled()) setItems([]);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listAlertEvents, listMonitors],
+  );
 
   const policyById = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
 
@@ -104,24 +122,33 @@ export default function RumAlertEventsPage() {
 
   const activeCount = items.filter((ev) => ev.status !== 'resolved').length;
 
-  async function openDetail(ev: RumAlertEventItem) {
-    try {
-      setDetail(await getAlertEvent(ev.id));
-      setDrawerOpen(true);
-    } catch {
-      // request toast is handled by useApiClient
-    }
-  }
+  const openDetail = useCallback(
+    async (ev: RumAlertEventItem) => {
+      try {
+        setDetail(await getAlertEvent(ev.id));
+        setDrawerOpen(true);
+      } catch {
+        // request toast is handled by useApiClient
+      }
+    },
+    [getAlertEvent],
+  );
 
   const columns = useMemo<TableColumnsType<RumAlertEventItem>>(
     () => [
       {
         title: t('rum.alertEvents.policy', '策略'),
         key: 'policy',
-        width: 180,
-        render: (_: unknown, ev: RumAlertEventItem) => (
-          <span>{policyById.get(ev.policyId)?.name || ev.policyId.slice(0, 8)}</span>
-        ),
+        width: 200,
+        ellipsis: true,
+        render: (_: unknown, ev: RumAlertEventItem) => {
+          const name = policyById.get(ev.policyId)?.name || ev.policyId.slice(0, 8);
+          return (
+            <span className="truncate" title={name}>
+              {name}
+            </span>
+          );
+        },
       },
       {
         title: t('rum.alertEvents.status', '状态'),
@@ -139,7 +166,7 @@ export default function RumAlertEventsPage() {
         key: 'severity',
         width: 96,
         render: (_: unknown, ev: RumAlertEventItem) => {
-          const severity = policyById.get(ev.policyId)?.severity ?? 'warning';
+          const severity = policyById.get(ev.policyId)?.severity || 'warning';
           return (
             <SemanticBadge
               label={t(`rum.monitors.severity.${severity}`, severity)}
@@ -178,8 +205,22 @@ export default function RumAlertEventsPage() {
           </span>
         ),
       },
+      {
+        title: t('rum.common.actions', '操作'),
+        key: 'actions',
+        width: 72,
+        fixed: 'right',
+        render: (_: unknown, ev: RumAlertEventItem) => (
+          <div onClick={(e) => e.stopPropagation()}>
+            <RumIconAction
+              title={t('rum.alertEvents.viewDetail', '详情')}
+              onClick={() => void openDetail(ev)}
+            />
+          </div>
+        ),
+      },
     ],
-    [t, policyById],
+    [t, policyById, openDetail],
   );
 
   return (
@@ -287,7 +328,7 @@ function AlertEventDetailView({
   t: (key: string, fallback?: string) => string;
 }) {
   const ev = detail.event;
-  const trendValues = detail.trend.map((p) => Number(p.value) || 0);
+  const eventSeverity = detail.policy.severity || 'warning';
 
   return (
     <div className="space-y-6">
@@ -297,11 +338,8 @@ function AlertEventDetailView({
           {...toneSemanticPalette(statusTone[ev.status] ?? 'neutral')}
         />
         <SemanticBadge
-          label={t(
-            `rum.monitors.severity.${detail.policy.severity ?? 'warning'}`,
-            detail.policy.severity ?? 'warning',
-          )}
-          {...toneSemanticPalette(severityTone[detail.policy.severity ?? 'warning'] ?? 'neutral')}
+          label={t(`rum.monitors.severity.${eventSeverity}`, eventSeverity)}
+          {...toneSemanticPalette(severityTone[eventSeverity] ?? 'neutral')}
         />
         <span className="ml-auto font-mono text-xs text-[var(--color-text-3)]">
           {detail.policy.application}
@@ -309,6 +347,7 @@ function AlertEventDetailView({
       </div>
 
       <RumMetricGrid
+        className="!grid-cols-2"
         cells={[
           {
             label: t('rum.alertEvents.value', '指标值'),
@@ -333,13 +372,14 @@ function AlertEventDetailView({
         <div className="border-b border-[var(--color-border-2)] pb-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-3)]">
           {t('rum.alertEvents.trend', '指标趋势')}
         </div>
-        {trendValues.length === 0 ? (
-          <p className="text-xs text-[var(--color-text-3)]">{t('rum.alertEvents.emptyHint', '策略触发后会出现在这里。')}</p>
-        ) : (
-          <div className="h-24 pt-2">
-            <Sparkline data={trendValues} height={88} kind="area" color="var(--color-primary)" />
-          </div>
-        )}
+        <AlertMetricTrend
+          points={detail.trend}
+          emptyLabel={t('rum.alertEvents.trendEmpty', '该时间窗内暂无样本')}
+          hoverHint={t('rum.alertEvents.trendHover', '移入查看数值')}
+          formatPoint={(atMs, value) =>
+            `${formatWhen(new Date(atMs).toISOString())} · ${formatValue(detail.policy.metric ?? '', value)}`
+          }
+        />
       </div>
 
       <div className="space-y-2">
@@ -378,6 +418,74 @@ function AlertEventDetailView({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AlertMetricTrend({
+  points,
+  emptyLabel,
+  hoverHint,
+  formatPoint,
+}: {
+  points: { atMs: number; value: number }[];
+  emptyLabel: string;
+  hoverHint: string;
+  formatPoint: (atMs: number, value: number) => string;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const values = useMemo(() => points.map((p) => Number(p.value) || 0), [points]);
+  const hasSignal = values.some((v) => v > 0);
+
+  const onMove = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      const el = trackRef.current;
+      if (!el || points.length === 0) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ratio = (event.clientX - rect.left) / rect.width;
+      const idx = Math.round(ratio * (points.length - 1));
+      setHoverIdx(Math.max(0, Math.min(points.length - 1, idx)));
+    },
+    [points.length],
+  );
+
+  if (points.length === 0 || !hasSignal) {
+    return <p className="text-xs text-[var(--color-text-3)]">{emptyLabel}</p>;
+  }
+
+  const active = hoverIdx != null ? points[hoverIdx] : null;
+  const tipLeft =
+    hoverIdx == null || points.length <= 1 ? 50 : (hoverIdx / (points.length - 1)) * 100;
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative h-24 cursor-crosshair pt-2"
+      onMouseMove={onMove}
+      onMouseLeave={() => setHoverIdx(null)}
+    >
+      <Sparkline data={values} height={88} kind="area" color="var(--color-primary)" />
+      {active ? (
+        <>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-2 w-px bg-[var(--color-primary)] opacity-40"
+            style={{ left: `${tipLeft}%` }}
+          />
+          <div
+            className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--color-bg)] px-2 py-1 text-[11px] font-mono tabular-nums text-[var(--color-text-1)] shadow-sm ring-1 ring-[var(--color-border-2)]"
+            style={{ left: `${tipLeft}%` }}
+          >
+            {formatPoint(Number(active.atMs) || 0, Number(active.value) || 0)}
+          </div>
+        </>
+      ) : (
+        <p className="pointer-events-none absolute left-0 top-0 text-[11px] text-[var(--color-text-4)]">
+          {hoverHint}
+        </p>
+      )}
     </div>
   );
 }

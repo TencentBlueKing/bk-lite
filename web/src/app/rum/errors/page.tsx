@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Empty, Select, type TableColumnsType } from 'antd';
@@ -27,6 +27,8 @@ import { toneSemanticPalette, type CwvTone } from '@/app/rum/lib/cwv';
 import SemanticBadge from '@/components/semantic-badge';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { isProtectedRumMessage } from '@/app/rum/sessions/lib/timeline-error';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
@@ -76,7 +78,7 @@ export default function RumErrorsPage() {
     searchParams,
     setParams,
   } = useRumSearchParams();
-  const { listErrors, listApplications, updateErrorIssue } = useRumQueries();
+  const { listErrors, listApplications, updateErrorIssue, authReady } = useRumQueries();
 
   const status = searchParams.get('status') || 'all';
   const sort = searchParams.get('orderBy') || 'count';
@@ -103,15 +105,37 @@ export default function RumErrorsPage() {
     }
   }, [listErrors, query]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void listErrors(query)
+        .then((next) => {
+          if (!isCancelled()) setPage(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setPage(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listErrors, query],
+  );
 
-  useEffect(() => {
-    void listApplications()
-      .then((items) => setApps(items.map((item) => item.application).filter(Boolean)))
-      .catch(() => setApps([]));
-  }, [listApplications]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void listApplications()
+        .then((items) => {
+          if (!isCancelled()) setApps(items.map((item) => item.application).filter(Boolean));
+        })
+        .catch(() => {
+          if (!isCancelled()) setApps([]);
+        });
+    },
+    [listApplications],
+  );
 
   const issues = page?.issues || [];
   const table = useRumClientPager(issues, `${range}|${application}|${status}|${sort}|${traffic}`);
@@ -162,9 +186,16 @@ export default function RumErrorsPage() {
       ellipsis: true,
       render: (_, issue) => {
         const raw = issue.sampleMessage || issue.normalizedMessage || '';
-        const message = /^message:[0-9a-f]+$/i.test(raw)
-          ? t('rum.errors.privateMessage', '消息已隐私化')
-          : raw || '—';
+        const protectedMessage = isProtectedRumMessage(raw);
+        // Free-text bodies are hashed at ingest; lead with type so every row isn't the same placeholder.
+        const title = protectedMessage
+          ? issue.errorType || t('rum.errors.untitled', '异常错误')
+          : raw || issue.errorType || '—';
+        const subtitleParts = [
+          protectedMessage ? t('rum.errors.privateMessage', '消息已隐私化') : null,
+          !protectedMessage && issue.errorType && issue.errorType !== title ? issue.errorType : null,
+          issue.lastRelease || null,
+        ].filter(Boolean);
         const detailHref = `/rum/errors/detail?fingerprint=${encodeURIComponent(issue.fingerprint)}&application=${encodeURIComponent(issue.application)}&range=${range}`;
         return (
           <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
@@ -172,10 +203,10 @@ export default function RumErrorsPage() {
               <Link
                 href={detailHref}
                 className="truncate transition-colors hover:text-[var(--color-primary)] hover:underline group-hover:text-[var(--color-primary)]"
-                title={message}
+                title={title}
                 onClick={(e) => e.stopPropagation()}
               >
-                {message}
+                {title}
               </Link>
               {issue.signals?.includes('new') ? (
                 <SemanticBadge label={t('rum.errors.signal.new', '新增')} {...toneSemanticPalette('info')} />
@@ -184,10 +215,9 @@ export default function RumErrorsPage() {
                 <SemanticBadge label={t('rum.errors.signal.regression', '疑似回归')} {...toneSemanticPalette('danger')} />
               ) : null}
             </div>
-            <div className="truncate text-xs text-[var(--color-text-3)]">
-              {issue.errorType}
-              {issue.lastRelease ? ` · ${issue.lastRelease}` : ''}
-            </div>
+            {subtitleParts.length > 0 ? (
+              <div className="truncate text-xs text-[var(--color-text-3)]">{subtitleParts.join(' · ')}</div>
+            ) : null}
           </div>
         );
       },

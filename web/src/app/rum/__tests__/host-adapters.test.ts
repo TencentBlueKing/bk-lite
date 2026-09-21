@@ -5,9 +5,11 @@ import { degradationReason, withDegradation } from '@/app/rum/lib/degradation';
 import { parseRumRange, parseRumTraffic } from '@/app/rum/lib/search-params';
 
 describe('rum host adapters', () => {
-  it('prefixes API paths under /rum', () => {
-    expect(rumPath('/applications/')).toBe('/rum/applications/');
-    expect(rumPath('meta/')).toBe('/rum/meta/');
+  it('prefixes API paths under /rum without a trailing slash', () => {
+    expect(rumPath('/applications/')).toBe('/rum/applications');
+    expect(rumPath('meta/')).toBe('/rum/meta');
+    expect(rumPath('/applications/store/')).toBe('/rum/applications/store');
+    expect(rumPath('/sessions/trend/')).toBe('/rum/sessions/trend');
   });
 
   it('parses range and traffic query values', () => {

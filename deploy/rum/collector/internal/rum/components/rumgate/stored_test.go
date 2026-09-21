@@ -42,6 +42,8 @@ func TestStoredMarkerRecordsLastStoredAt(t *testing.T) {
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
 	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, client.HSet(t.Context(), "ops:rum:v2:app:storefront", "revision", "1").Err())
+	require.NoError(t, client.HSet(t.Context(), "ops:rum:v2:app:checkout", "revision", "1").Err())
 
 	marker := &redisStoredMarker{client: client, now: func() time.Time { return now }, logger: zap.NewNop()}
 	marker.Record(t.Context(), []string{"storefront", "checkout"})
@@ -49,4 +51,15 @@ func TestStoredMarkerRecordsLastStoredAt(t *testing.T) {
 	expected := strconv.FormatInt(now.Unix(), 10)
 	require.Equal(t, expected, server.HGet("ops:rum:v2:app:storefront", "last_stored_at"))
 	require.Equal(t, expected, server.HGet("ops:rum:v2:app:checkout", "last_stored_at"))
+}
+
+func TestStoredMarkerDoesNotCreateUnregisteredAppHash(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+
+	marker := &redisStoredMarker{client: client, now: time.Now, logger: zap.NewNop()}
+	marker.Record(t.Context(), []string{"local-demo"})
+
+	require.False(t, server.Exists("ops:rum:v2:app:local-demo"))
 }

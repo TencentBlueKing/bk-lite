@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Empty, Segmented } from 'antd';
 
@@ -14,6 +14,7 @@ import {
 import { RumReplayPageSkeleton, RumReplayPlayerSkeleton } from '@/app/rum/components/rum-skeleton';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { loadReplayRecording } from '@/app/rum/sessions/lib/replay-data';
 import ReplayPlayer from '@/app/rum/sessions/ui/replay-player';
 import { useAuth } from '@/context/auth';
@@ -26,7 +27,7 @@ export default function SessionReplayPage() {
   const sessionId = decodeURIComponent(params.sessionId || '');
   const { application, searchParams } = useRumSearchParams();
   const app = application || searchParams.get('application') || '';
-  const { getReplayManifest, createReplayGrant } = useRumQueries();
+  const { getReplayManifest, createReplayGrant, authReady } = useRumQueries();
 
   const [manifest, setManifest] = useState<RumReplayManifest | null>(null);
   const [pending, setPending] = useState(true);
@@ -36,24 +37,27 @@ export default function SessionReplayPage() {
 
   const back = `/rum/sessions/${encodeURIComponent(sessionId)}?application=${encodeURIComponent(app)}`;
 
-  const loadManifest = useCallback(async () => {
-    if (!app || !sessionId) {
-      setPending(false);
-      return;
-    }
-    setPending(true);
-    try {
-      setManifest(await getReplayManifest(app, sessionId));
-    } catch {
-      setManifest(null);
-    } finally {
-      setPending(false);
-    }
-  }, [app, getReplayManifest, sessionId]);
-
-  useEffect(() => {
-    void loadManifest();
-  }, [loadManifest]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      if (!app || !sessionId) {
+        setPending(false);
+        return;
+      }
+      setPending(true);
+      void getReplayManifest(app, sessionId)
+        .then((next) => {
+          if (!isCancelled()) setManifest(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setManifest(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [app, getReplayManifest, sessionId],
+  );
 
   const recordings = manifest?.recordings || [];
   const degrade = degradationReason(manifest);

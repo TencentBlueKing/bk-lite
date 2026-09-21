@@ -376,6 +376,12 @@ func TestCustomErrorSubclassKeepsReadableTemplate(t *testing.T) {
 	dom := sanitizeErrorMessage(`DOMException: The operation was aborted.`)
 	require.Equal(t, diagnosticTemplate, dom.Kind)
 	require.Contains(t, dom.Value, "DOMException")
+
+	// Faro console instrumentation prefix must not force a fingerprint fallback.
+	fromConsole := sanitizeErrorMessage(`console.error: CheckoutError: payment declined for order #10086`)
+	require.Equal(t, diagnosticTemplate, fromConsole.Kind)
+	require.Contains(t, fromConsole.Value, "CheckoutError: payment declined")
+	require.NotContains(t, fromConsole.Value, "console.error")
 }
 
 func TestPhonePatternDoesNotRedactShortDates(t *testing.T) {

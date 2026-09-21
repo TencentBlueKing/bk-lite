@@ -1,3 +1,4 @@
+from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.errors import MemorySourcemapStore
@@ -33,6 +34,7 @@ def _seed_app(control: MemoryControl) -> None:
 def _service(control=None, **kwargs) -> ReleasesService:
     return ReleasesService(
         control=control or MemoryControl(),
+        analytics=kwargs.get("analytics"),
         baselines=kwargs.get("baselines") or MemoryBaselineStore(),
         sourcemaps=kwargs.get("sourcemaps") or MemorySourcemapStore(),
         credentials=kwargs.get("credentials") or MemoryCredentialStore(),
@@ -50,7 +52,7 @@ def test_asset_fingerprint_matches_wire_contract():
 def test_list_releases_degrades_without_analytics():
     control = MemoryControl()
     _seed_app(control)
-    page = _service(control).list_releases("tester", {"range": "24h", "application": "checkout"})
+    page = _service(control, analytics=UnavailableAnalytics()).list_releases("tester", {"range": "24h", "application": "checkout"})
     assert page["releases"] == []
     assert page["analyticsUnavailable"] is True
 

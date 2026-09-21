@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 
-import { useRumApi } from '@/app/rum/api/client';
+import { useRumApi, useRumAuthReady } from '@/app/rum/api/client';
 import {
   withDegradation,
   type PipelineDegradation,
@@ -413,6 +413,7 @@ function emptyHealth(name: string, enabled = false): RumApplicationHealthItem {
 /** Shared RUM BFF calls used by host pages (`/api/ops/rum` → BK-Lite `/rum`). */
 export function useRumQueries() {
   const api = useRumApi();
+  const authReady = useRumAuthReady();
 
   const getMeta = useCallback(async () => {
     const data = await api.get<RumMeta>('/meta/');
@@ -764,7 +765,28 @@ export function useRumQueries() {
         params,
       });
       return withDegradation({
-        releases: Array.isArray(data?.releases) ? data.releases : [],
+        releases: Array.isArray(data?.releases)
+          ? data.releases.map((row) => ({
+            ...row,
+            release: row.release || '',
+            errorCount: Number(row.errorCount) || 0,
+            distinctIssues: Number(row.distinctIssues) || 0,
+            affectedSessions: Number(row.affectedSessions) || 0,
+            affectedUsers: Number(row.affectedUsers) || 0,
+            firstSeen: row.firstSeen || '',
+            lastSeen: row.lastSeen || '',
+            lcpP75: Number(row.lcpP75) || 0,
+            inpP75: Number(row.inpP75) || 0,
+            newIssues: Number(row.newIssues) || 0,
+            suspectedRegression: Boolean(row.suspectedRegression),
+            errorDelta: row.errorDelta == null ? undefined : Number(row.errorDelta) || 0,
+            sessionsDelta: row.sessionsDelta == null ? undefined : Number(row.sessionsDelta) || 0,
+            usersDelta: row.usersDelta == null ? undefined : Number(row.usersDelta) || 0,
+            issuesDelta: row.issuesDelta == null ? undefined : Number(row.issuesDelta) || 0,
+            lcpP75Delta: row.lcpP75Delta == null ? undefined : Number(row.lcpP75Delta) || 0,
+            inpP75Delta: row.inpP75Delta == null ? undefined : Number(row.inpP75Delta) || 0,
+          }))
+          : [],
         controlUnavailable: data?.controlUnavailable,
         analyticsUnavailable: data?.analyticsUnavailable,
       });
@@ -893,6 +915,7 @@ export function useRumQueries() {
 
   return {
     ...api,
+    authReady,
     getMeta,
     getHealth,
     listApplications,

@@ -58,6 +58,26 @@ describe('useRumSearchParams', () => {
     });
   });
 
+  it('resets page in the same URL write when range or application changes', () => {
+    currentSearch = new URLSearchParams('range=1h&application=store&page=3');
+    const rangeHook = renderHook(() => useRumSearchParams());
+    act(() => {
+      rangeHook.result.current.setRange('7d');
+    });
+    expect(replace).toHaveBeenCalledWith('/rum/sessions?range=7d&application=store', {
+      scroll: false,
+    });
+
+    currentSearch = new URLSearchParams('range=1h&application=store&page=3');
+    const appHook = renderHook(() => useRumSearchParams());
+    act(() => {
+      appHook.result.current.setApplication('checkout');
+    });
+    expect(replace).toHaveBeenCalledWith('/rum/sessions?range=1h&application=checkout', {
+      scroll: false,
+    });
+  });
+
   it('supports push when replace is disabled', () => {
     const { result } = renderHook(() => useRumSearchParams());
     act(() => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  cwvTone,
   formatMs,
   toneBarClass,
   toneColor,
@@ -11,6 +12,17 @@ import {
 } from '@/app/rum/lib/cwv';
 
 describe('rum cwv tone helpers', () => {
+  it('rates core and diagnostic vitals without throwing on unknown names', () => {
+    expect(cwvTone('lcp', 1200)).toBe('success');
+    expect(cwvTone('fcp', 1200)).toBe('success');
+    expect(cwvTone('ttfb', 2000)).toBe('danger');
+    expect(cwvTone('fid', 80)).toBe('success');
+    expect(cwvTone('cls', 0.2)).toBe('warning');
+    expect(cwvTone('fcp', 0)).toBe('neutral');
+    expect(cwvTone('', 1800)).toBe('neutral');
+    expect(cwvTone('web-vital-unknown', 9999)).toBe('neutral');
+  });
+
   it('formats milliseconds and empty values', () => {
     expect(formatMs(1234.6)).toBe('1235ms');
     expect(formatMs(0)).toBe('—');

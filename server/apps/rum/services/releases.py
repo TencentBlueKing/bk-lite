@@ -261,10 +261,30 @@ class ReleasesService:
         if len(apps) == 1:
             baselines = {item["application"]: item["baselineRelease"] for item in self.baselines.list() if item.get("application") == apps[0]}
             baseline_release = baselines.get(apps[0])
+            baseline_row = None
             if baseline_release:
                 for row in rows:
                     if row.get("release") == baseline_release:
                         row["isBaseline"] = True
+                        baseline_row = row
+                        break
+            if baseline_row is not None:
+                for row in rows:
+                    if row is baseline_row:
+                        continue
+                    error_delta = int(row.get("errorCount") or 0) - int(baseline_row.get("errorCount") or 0)
+                    sessions_delta = int(row.get("affectedSessions") or 0) - int(baseline_row.get("affectedSessions") or 0)
+                    users_delta = int(row.get("affectedUsers") or 0) - int(baseline_row.get("affectedUsers") or 0)
+                    issues_delta = int(row.get("distinctIssues") or 0) - int(baseline_row.get("distinctIssues") or 0)
+                    lcp_delta = float(row.get("lcpP75") or 0) - float(baseline_row.get("lcpP75") or 0)
+                    inp_delta = float(row.get("inpP75") or 0) - float(baseline_row.get("inpP75") or 0)
+                    row["errorDelta"] = error_delta
+                    row["sessionsDelta"] = sessions_delta
+                    row["usersDelta"] = users_delta
+                    row["issuesDelta"] = issues_delta
+                    row["lcpP75Delta"] = lcp_delta
+                    row["inpP75Delta"] = inp_delta
+                    row["suspectedRegression"] = error_delta > 0 or lcp_delta > 0 or inp_delta > 0
         return {**page, "releases": rows}
 
     def put_baseline(self, actor: str, application: str, body: dict) -> dict:

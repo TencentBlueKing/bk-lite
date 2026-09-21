@@ -1,3 +1,4 @@
+from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import ControlError, MemoryControl, UnavailableControl
 from apps.rum.services.settings import RumRuntimeSettings
@@ -31,7 +32,11 @@ def _seed_app(control: MemoryControl) -> None:
 def test_list_views_degrades_when_analytics_unavailable():
     control = MemoryControl()
     _seed_app(control)
-    page = ViewsService(control=control, saved_views=MemorySavedViewStore()).list_views("tester", {"range": "24h", "mode": "route"})
+    page = ViewsService(
+        control=control,
+        analytics=UnavailableAnalytics(),
+        saved_views=MemorySavedViewStore(),
+    ).list_views("tester", {"range": "24h", "mode": "route"})
     assert page["analyticsUnavailable"] is True
     assert page["rows"] == []
     assert page["mode"] == "route"

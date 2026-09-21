@@ -58,6 +58,23 @@ describe('rum DESIGN four-state helpers', () => {
     );
   });
 
+  it('failed catalog/session first paint is error, not empty', () => {
+    expect(
+      resolveRumPageState({
+        pending: false,
+        error: '应用列表加载失败',
+        itemCount: 0,
+      }),
+    ).toBe('error');
+    expect(
+      resolveRumPageState({
+        pending: true,
+        error: '应用列表加载失败',
+        itemCount: 0,
+      }),
+    ).toBe('loading');
+  });
+
   it('maps forbidden and unavailable errors to product copy', () => {
     const t = (id: string, fallback?: string) => fallback || id;
     expect(rumErrorMessage(new HandledRequestError('no', { code: 'forbidden' }), t)).toContain(
@@ -69,6 +86,12 @@ describe('rum DESIGN four-state helpers', () => {
     expect(rumErrorMessage(new HandledRequestError('x', { code: 'not_found' }), t)).toContain(
       '不存在',
     );
+  });
+  it('session detail attribute rows keep CJK labels on one line and truncate long ids', () => {
+    const src = readFileSync(join(RUM_ROOT, 'sessions/[sessionId]/page.tsx'), 'utf8');
+    expect(src).toContain('whitespace-nowrap');
+    expect(src).toContain('max-w-[170px]');
+    expect(src).toContain('copyText={session.userId');
   });
 });
 
@@ -122,14 +145,12 @@ describe('rum page four-state presence (static)', () => {
     }
 
     const noPageRequestError = [
-      'sessions/page.tsx',
       'sessions/[sessionId]/page.tsx',
       'sessions/[sessionId]/replay/page.tsx',
       'views/page.tsx',
       'errors/page.tsx',
       'funnels/funnels-workspace.tsx',
       'monitors/page.tsx',
-      'applications/page.tsx',
       'setup/page.tsx',
       'setup/[name]/page.tsx',
       'applications/[name]/overview/page.tsx',
@@ -150,6 +171,18 @@ describe('rum page four-state presence (static)', () => {
     expect(workspace.includes('pending')).toBe(true);
     expect(workspace.includes('<Empty')).toBe(true);
     expect(workspace.includes('catch')).toBe(true);
+  });
+
+  it('application catalog and session list wait for auth and keep failed loads off the empty copy', () => {
+    for (const rel of ['applications/page.tsx', 'sessions/page.tsx'] as const) {
+      const src = readFileSync(join(RUM_ROOT, rel), 'utf8');
+      expect(src.includes('authReady'), `${rel} missing authReady gate`).toBe(true);
+      expect(src.includes('useRumAuthedEffect'), `${rel} missing cancelled authed load`).toBe(true);
+      expect(src.includes('RumPageError'), `${rel} missing failed-load chrome`).toBe(true);
+    }
+    const catalog = readFileSync(join(RUM_ROOT, 'applications/page.tsx'), 'utf8');
+    expect(catalog.includes("chrome === 'error'")).toBe(true);
+    expect(catalog.includes("chrome === 'loading'")).toBe(true);
   });
 
   it('page loading uses isomorphic rum skeletons instead of Spin or paragraph Skeleton', () => {

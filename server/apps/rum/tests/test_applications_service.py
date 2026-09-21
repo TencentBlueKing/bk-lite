@@ -1,4 +1,5 @@
 from apps.rum.constants import DEFAULT_BUDGETS
+from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.settings import RumRuntimeSettings
@@ -82,9 +83,17 @@ def test_list_applications_degrades_to_empty_when_controller_unavailable():
     assert service.list_applications("tester") == []
 
 
+def test_analytics_catalog_marks_control_unavailable():
+    service = ApplicationsService(UnavailableControl(), _settings(), analytics=UnavailableAnalytics())
+    catalog = service.analytics_catalog("tester", "24h")
+    assert catalog["applications"] == []
+    assert catalog["controlUnavailable"] is True
+    assert catalog["configured"] is False
+
+
 def test_analytics_and_overview_mark_analytics_unavailable():
     control = MemoryControl()
-    service = ApplicationsService(control, _settings())
+    service = ApplicationsService(control, _settings(), analytics=UnavailableAnalytics())
     service.create_application(
         "tester",
         {"application": "checkout", "origins": ["https://shop.example.test"]},

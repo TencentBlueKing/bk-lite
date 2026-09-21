@@ -537,22 +537,28 @@ class MonitorsService:
             timeline.append({"kind": "resolved", "at": event["resolvedAt"], "note": "metric recovered"})
         trend: list[dict] = []
         if self.analytics.available() and policy.get("application") and policy.get("metric"):
+            from apps.rum.services.settings import load_rum_settings
+
             now = datetime.now(timezone.utc)
-            start = now.replace(microsecond=0) - timedelta(hours=1)
             end = now
+            # Sparse RUM traffic needs a wide window; a 15m pre-fire slice often paints
+            # an all-zero flat sparkline that looks identical across alerts.
+            start = now - timedelta(hours=6)
             if event.get("firedAt"):
                 fired = _parse_dt(event["firedAt"])
                 if fired is not None:
-                    start = fired - timedelta(minutes=15)
+                    start = min(start, fired - timedelta(hours=1))
                     if event.get("resolvedAt"):
                         resolved = _parse_dt(event["resolvedAt"])
                         if resolved is not None:
-                            end = resolved + timedelta(minutes=15)
+                            end = max(end, resolved + timedelta(minutes=15))
             week_ago = now - timedelta(days=7)
             if start < week_ago:
                 start = week_ago
+            if end <= start:
+                end = start + timedelta(hours=1)
             trend = self.analytics.metric_series(
-                "",
+                load_rum_settings().tenant_id,
                 {
                     "application": policy["application"],
                     "metric": policy["metric"],

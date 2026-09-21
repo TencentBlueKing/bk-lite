@@ -320,6 +320,182 @@ def test_funnel_respects_window_seconds():
     assert funnel_reached(events, ["/a", "/b"], timedelta(minutes=15)) == [1, 1]
 
 
+def test_list_views_fills_cwv_device_and_spark_fields():
+    """Views table needs INP/CLS/dist/deviceMix/mom — not only LCP P75."""
+    now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
+    stamp = now.isoformat().replace("+00:00", "Z")
+    rows = [
+        {
+            "_time": stamp,
+            "rum.application": "storefront",
+            "rum.session.id": "s1",
+            "rum.event.type": "view",
+            "rum.view.name": "/cart",
+            "user_agent.original": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+        },
+        {
+            "_time": stamp,
+            "rum.application": "storefront",
+            "rum.session.id": "s1",
+            "rum.event.type": "vital",
+            "rum.view.name": "/cart",
+            "rum.measurement.lcp": "1800",
+        },
+        {
+            "_time": stamp,
+            "rum.application": "storefront",
+            "rum.session.id": "s1",
+            "rum.event.type": "vital",
+            "rum.view.name": "/cart",
+            "rum.measurement.inp": "120",
+        },
+        {
+            "_time": stamp,
+            "rum.application": "storefront",
+            "rum.session.id": "s1",
+            "rum.event.type": "vital",
+            "rum.view.name": "/cart",
+            "rum.measurement.cls": "0.05",
+        },
+        {
+            "_time": stamp,
+            "rum.application": "storefront",
+            "rum.session.id": "s2",
+            "rum.event.type": "view",
+            "rum.view.name": "/cart",
+            "user_agent.original": "Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36",
+        },
+        {
+            "_time": stamp,
+            "rum.application": "storefront",
+            "rum.session.id": "s2",
+            "rum.event.type": "vital",
+            "rum.view.name": "/cart",
+            "rum.measurement.lcp": "5000",
+        },
+    ]
+    server, base = _serve(rows)
+    try:
+        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        page = analytics.list_views(
+            "core",
+            {
+                "from": now - timedelta(hours=1),
+                "to": now + timedelta(minutes=1),
+                "applications": ["storefront"],
+                "mode": "route",
+                "traffic": "all",
+            },
+        )
+        assert len(page["rows"]) == 1
+        row = page["rows"][0]
+        assert row["route"] == "/cart"
+        assert row["views"] == 2
+        assert row["sessions"] == 2
+        # Shared percentile uses floor index: sorted([1800, 5000]) @ p75 → 1800.
+        assert row["lcpP75"] == 1800.0
+        assert row["inpP75"] == 120.0
+        assert row["clsP75"] == 0.05
+        assert row["dist"]["good"] == 1
+        assert row["dist"]["poor"] == 1
+        assert row["dist"]["missing"] == 0
+        assert row["deviceMix"]["mobile"] == 1
+        assert row["deviceMix"]["desktop"] == 1
+        assert row["mom"]["hasDelta"] is True
+        assert sum(row["mom"]["spark"]) == 2
+        assert page["summary"]["inpP75"] == 120.0
+    finally:
+        server.shutdown()
+
+
+def test_list_releases_fills_first_seen_users_issues_and_cwv():
+    """Release table needs firstSeen / users / newIssues / LCP — not only sessions."""
+    now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
+    early = (now - timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+    late = now.isoformat().replace("+00:00", "Z")
+    rows = [
+        {
+            "_time": early,
+            "rum.application": "storefront",
+            "rum.session.id": "s1",
+            "rum.user.id": "u1",
+            "rum.event.type": "view",
+            "rum.release": "dev",
+            "rum.view.name": "/",
+        },
+        {
+            "_time": early,
+            "rum.application": "storefront",
+            "rum.session.id": "s1",
+            "rum.user.id": "u1",
+            "rum.event.type": "vital",
+            "rum.release": "dev",
+            "rum.measurement.lcp": "1800",
+        },
+        {
+            "_time": late,
+            "rum.application": "storefront",
+            "rum.session.id": "s2",
+            "rum.user.id": "u2",
+            "rum.event.type": "error",
+            "rum.release": "dev",
+            "rum.error.fingerprint": "fp-checkout",
+            "rum.error.message": "CheckoutError: payment declined",
+            "rum.error.type": "CheckoutError",
+        },
+        {
+            "_time": late,
+            "rum.application": "storefront",
+            "rum.session.id": "s2",
+            "rum.user.id": "u2",
+            "rum.event.type": "error",
+            "rum.release": "1.0.0",
+            "rum.error.fingerprint": "fp-checkout",
+            "rum.error.message": "CheckoutError: payment declined",
+            "rum.error.type": "CheckoutError",
+        },
+        {
+            "_time": late,
+            "rum.application": "storefront",
+            "rum.session.id": "s3",
+            "rum.user.id": "u3",
+            "rum.event.type": "error",
+            "rum.release": "1.0.0",
+            "rum.error.fingerprint": "fp-new",
+            "rum.error.message": "TypeError: boom",
+            "rum.error.type": "TypeError",
+        },
+    ]
+    server, base = _serve(rows)
+    try:
+        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        page = analytics.list_releases(
+            "core",
+            {
+                "from": now - timedelta(hours=1),
+                "to": now + timedelta(minutes=1),
+                "applications": ["storefront"],
+                "traffic": "all",
+            },
+        )
+        by_release = {row["release"]: row for row in page["releases"]}
+        assert set(by_release) == {"dev", "1.0.0"}
+        dev = by_release["dev"]
+        assert dev["firstSeen"] == early
+        assert dev["affectedUsers"] == 2
+        assert dev["affectedSessions"] == 2
+        assert dev["errorCount"] == 1
+        assert dev["distinctIssues"] == 1
+        assert dev["newIssues"] == 1  # fp-checkout first seen on dev
+        assert dev["lcpP75"] == 1800.0
+        v100 = by_release["1.0.0"]
+        assert v100["newIssues"] == 1  # fp-new only
+        assert v100["distinctIssues"] == 2
+        assert v100["affectedUsers"] == 2
+    finally:
+        server.shutdown()
+
+
 def test_parse_event_matches_product_kpi_fields():
     row = parse_event(
         {

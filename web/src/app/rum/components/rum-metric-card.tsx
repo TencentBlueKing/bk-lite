@@ -71,7 +71,7 @@ export function RumMetricCard({
           {label}
         </span>
       </div>
-      <div className={`font-mono tracking-tight tabular-nums truncate ${metricValueClass(tone, isLong)}`}>
+      <div className={`font-mono tracking-tight tabular-nums ${isLong ? 'whitespace-normal break-words leading-snug' : 'truncate'} ${metricValueClass(tone, isLong)}`}>
         {value}
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -32,6 +32,7 @@ import { degradationReason } from '@/app/rum/lib/degradation';
 import { displayRoute, truncateMiddle } from '@/app/rum/lib/format';
 import { rumSetupPath } from '@/app/rum/lib/ingest';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import SessionTrendChart from '@/app/rum/sessions/ui/session-trend-chart';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
@@ -42,7 +43,7 @@ export default function ApplicationOverviewPage() {
   const params = useParams<{ name: string }>();
   const name = decodeURIComponent(params.name || '');
   const { range, setRange } = useRumSearchParams();
-  const { getApplicationOverview, listSessions } = useRumQueries();
+  const { getApplicationOverview, listSessions, authReady } = useRumQueries();
 
   const [overview, setOverview] = useState<RumApplicationOverview | null>(null);
   const [recent, setRecent] = useState<RumSessionRow[]>([]);
@@ -80,13 +81,49 @@ export default function ApplicationOverviewPage() {
     }
   }, [listSessions, name, range]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      if (!name) return;
+      setPending(true);
+      void getApplicationOverview(name, range)
+        .then((next) => {
+          if (!isCancelled()) setOverview(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setOverview(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [getApplicationOverview, name, range],
+  );
 
-  useEffect(() => {
-    void loadRecent();
-  }, [loadRecent]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      if (!name) return;
+      setRecentPending(true);
+      void listSessions({
+        application: name,
+        range,
+        orderBy: 'start',
+        limit: '8',
+        traffic: 'all',
+      })
+        .then((data) => {
+          if (!isCancelled()) setRecent(data.sessions);
+        })
+        .catch(() => {
+          if (!isCancelled()) setRecent([]);
+        })
+        .finally(() => {
+          if (!isCancelled()) setRecentPending(false);
+        });
+    },
+    [listSessions, name, range],
+  );
 
   const degrade = degradationReason(overview);
   const kpi = overview?.kpi || null;

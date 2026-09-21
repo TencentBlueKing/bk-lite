@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -32,6 +32,8 @@ import SemanticBadge from '@/components/semantic-badge';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { truncateMiddle } from '@/app/rum/lib/format';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { isProtectedRumMessage } from '@/app/rum/sessions/lib/timeline-error';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import EvidenceStack, { formatFullStackTrace } from '@/app/rum/errors/ui/evidence-stack';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
@@ -49,17 +51,13 @@ function formatWhen(iso: string): string {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function isProtectedMessage(value: string): boolean {
-  return /^message:[0-9a-f]+$/i.test(value.trim());
-}
-
 export default function RumErrorDetailPage() {
   const { t } = useTranslation();
   const router = useRouter();
   const { range, application, searchParams } = useRumSearchParams();
   const fingerprint = searchParams.get('fingerprint') || '';
   const app = application || searchParams.get('application') || '';
-  const { getErrorDetail, updateErrorIssue, restoreSourceMap } = useRumQueries();
+  const { getErrorDetail, updateErrorIssue, restoreSourceMap, authReady } = useRumQueries();
 
   const [detail, setDetail] = useState<RumErrorDetail | null>(null);
   const [pending, setPending] = useState(true);
@@ -102,15 +100,22 @@ export default function RumErrorDetailPage() {
     }
   }, [app, fingerprint, getErrorDetail, range, restoreSourceMap]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void load().then(() => {
+        if (isCancelled()) return;
+      });
+    },
+    [load],
+  );
 
   const degrade = degradationReason(detail);
   const statusLabel = detail?.status || 'open';
   const rawTitle = detail?.sampleMessage || detail?.normalizedMessage || '';
-  const title = isProtectedMessage(rawTitle)
-    ? `${detail?.errorType} · ${t('rum.errors.privateMessage', '消息已隐私化')}`
+  const protectedMessage = isProtectedRumMessage(rawTitle);
+  const title = protectedMessage
+    ? detail?.errorType || t('rum.errors.untitled', '异常错误')
     : rawTitle || t('rum.errors.detail.title', '错误详情');
 
   const triageActions = useMemo(() => {
@@ -274,9 +279,14 @@ export default function RumErrorDetailPage() {
               >
                 {title}
               </h1>
-              {detail?.errorType ? (
+              {detail?.errorType && detail.errorType !== title ? (
                 <Tag className="m-0 border-0 bg-[var(--color-fill-2)] font-mono text-xs text-[var(--color-text-2)]">
                   {detail.errorType}
+                </Tag>
+              ) : null}
+              {protectedMessage ? (
+                <Tag className="m-0 border-0 bg-[var(--color-fill-2)] text-xs text-[var(--color-text-3)]">
+                  {t('rum.errors.privateMessage', '消息已隐私化')}
                 </Tag>
               ) : null}
             </div>

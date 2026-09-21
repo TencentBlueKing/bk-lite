@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -30,7 +30,7 @@ import PipelineDegradedBanner from '@/app/rum/components/pipeline-degraded';
 import RumBackButton, { RumDetailTitle } from '@/app/rum/components/rum-back-button';
 import { RumMetricGrid } from '@/app/rum/components/rum-metric-card';
 import { RumSessionDetailSkeleton } from '@/app/rum/components/rum-skeleton';
-import { cwvTone, type CwvMetric } from '@/app/rum/lib/cwv';
+import { cwvTone } from '@/app/rum/lib/cwv';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import {
   displayRoute,
@@ -40,6 +40,8 @@ import {
   truncateMiddle,
 } from '@/app/rum/lib/format';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
+import { presentTimelineError } from '@/app/rum/sessions/lib/timeline-error';
 import { useTranslation } from '@/utils/i18n';
 
 interface TimelineItem {
@@ -82,14 +84,14 @@ function buildTimeline(data: RumSessionJourney): TimelineItem[] {
   }
 
   for (const e of data.errors || []) {
-    const route = String(e.route || '');
+    const presented = presentTimelineError(e);
     items.push({
       id: String(e.eventId || `error-${items.length}`),
       at: Date.parse(String(e.timestamp || '')),
       kind: 'error',
-      title: String(e.message || e.errorType || '异常错误'),
-      detail: e.errorType ? String(e.errorType) : undefined,
-      route,
+      title: presented.title,
+      detail: presented.hint || undefined,
+      route: presented.route || undefined,
       raw: e,
     });
   }
@@ -170,6 +172,66 @@ function formatFullDateTime(ts: string | number | undefined): string {
   });
 }
 
+function SessionMetaRow({
+  label,
+  value,
+  title,
+  mono,
+  copyText,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  title?: string;
+  mono?: boolean;
+  /** Full string for clipboard; shows a copy control next to truncated values. */
+  copyText?: string;
+}) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!copyText) return;
+    void navigator.clipboard.writeText(copyText).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3 rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
+      <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-medium text-[var(--color-text-3)]">
+        {label}
+      </span>
+      <div className="flex min-w-0 items-center justify-end gap-1.5">
+        <span
+          className={`max-w-[170px] truncate text-right text-[var(--color-text-1)] ${
+            mono ? 'font-mono text-xs font-semibold' : 'font-medium'
+          }`}
+          title={title}
+        >
+          {value}
+        </span>
+        {copyText ? (
+          <Tooltip title={copied ? t('common.copied', '已复制') : t('common.copy', '复制')}>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex size-4 shrink-0 items-center justify-center rounded text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
+              aria-label={t('common.copy', '复制')}
+            >
+              {copied ? (
+                <CheckOutlined className="text-[10px] text-[var(--color-success)]" />
+              ) : (
+                <CopyOutlined className="text-[10px]" />
+              )}
+            </button>
+          </Tooltip>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function SessionDetailPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -177,7 +239,7 @@ export default function SessionDetailPage() {
   const sessionId = decodeURIComponent(params.sessionId || '');
   const { range, application, searchParams } = useRumSearchParams();
   const app = application || searchParams.get('application') || '';
-  const { getSession, getReplayManifest } = useRumQueries();
+  const { getSession, getReplayManifest, authReady } = useRumQueries();
 
   const [journey, setJourney] = useState<RumSessionJourney | null>(null);
   const [manifest, setManifest] = useState<RumReplayManifest | null>(null);
@@ -186,30 +248,33 @@ export default function SessionDetailPage() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!sessionId || !app) {
-      setPending(false);
-      setJourney(null);
-      return;
-    }
-    setPending(true);
-    try {
-      const [session, replay] = await Promise.all([
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      if (!sessionId || !app) {
+        setPending(false);
+        setJourney(null);
+        return;
+      }
+      setPending(true);
+      void Promise.all([
         getSession(sessionId, app, range),
         getReplayManifest(app, sessionId).catch(() => null),
-      ]);
-      setJourney(session);
-      setManifest(replay);
-    } catch {
-      setJourney(null);
-    } finally {
-      setPending(false);
-    }
-  }, [app, getReplayManifest, getSession, range, sessionId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+      ])
+        .then(([session, replay]) => {
+          if (isCancelled()) return;
+          setJourney(session);
+          setManifest(replay);
+        })
+        .catch(() => {
+          if (!isCancelled()) setJourney(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [app, getReplayManifest, getSession, range, sessionId],
+  );
 
   const session = journey?.session || null;
   const degrade = degradationReason(journey);
@@ -577,6 +642,12 @@ export default function SessionDetailPage() {
                         {filtered.map((item) => {
                           const relOffset = formatRelativeOffset(item.at, baseTime);
                           const absTime = formatEventTime(item.at);
+                          const presentedError =
+                            item.kind === 'error' ? presentTimelineError(item.raw) : null;
+                          const errorHref =
+                            presentedError?.fingerprint && app
+                              ? `/rum/errors/detail?fingerprint=${encodeURIComponent(presentedError.fingerprint)}&application=${encodeURIComponent(app)}&range=${range}`
+                              : null;
 
                           return (
                             <div key={item.id} className="group relative flex items-start gap-3">
@@ -633,7 +704,17 @@ export default function SessionDetailPage() {
                                       className="truncate font-mono text-sm font-semibold text-[var(--color-text-1)]"
                                       title={item.title}
                                     >
-                                      {item.title}
+                                      {errorHref ? (
+                                        <Link
+                                          href={errorHref}
+                                          className="hover:text-[var(--color-primary)] hover:underline"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {item.title}
+                                        </Link>
+                                      ) : (
+                                        item.title
+                                      )}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 text-xs text-[var(--color-text-3)] font-mono tabular-nums">
@@ -647,9 +728,10 @@ export default function SessionDetailPage() {
                                 {item.kind === 'vital' && item.raw ? (
                                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                                     {(() => {
-                                      const metricName = String(item.raw.name || '').toLowerCase() as CwvMetric;
+                                      const metricName = String(item.raw.name || '').toLowerCase();
                                       const val = Number(item.raw.value || 0);
                                       const tone = cwvTone(metricName, val);
+                                      if (tone === 'neutral') return null;
                                       const toneLabel =
                                         tone === 'success'
                                           ? t('rum.cwv.good', '良好 (Good)')
@@ -673,17 +755,13 @@ export default function SessionDetailPage() {
                                   </div>
                                 ) : null}
 
-                                {item.kind === 'error' && item.raw ? (
-                                  <div className="mt-2 rounded bg-[var(--color-fill-2)] p-2 text-xs">
-                                    {item.raw.errorMessage ? (
-                                      <div className="font-mono text-[var(--color-fail)] break-all">
-                                        {String(item.raw.errorMessage)}
-                                      </div>
+                                {presentedError && (presentedError.hint || presentedError.traceId) ? (
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--color-text-3)]">
+                                    {presentedError.hint ? (
+                                      <span className="font-mono">{presentedError.hint}</span>
                                     ) : null}
-                                    {item.raw.traceId ? (
-                                      <div className="mt-1 text-[var(--color-text-3)] font-mono">
-                                        Trace: {String(item.raw.traceId)}
-                                      </div>
+                                    {presentedError.traceId ? (
+                                      <span className="font-mono">Trace: {presentedError.traceId}</span>
                                     ) : null}
                                   </div>
                                 ) : null}
@@ -716,7 +794,7 @@ export default function SessionDetailPage() {
             </div>
 
             {/* 右侧上下文信息栏：回放剧场卡片 + 客户端环境元信息 */}
-            <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
+            <div className="flex w-full min-w-0 shrink-0 flex-col gap-4 overflow-hidden lg:w-[320px] lg:max-w-[320px]">
               {/* 会话回放剧场入口卡片 */}
               <div className="overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
                 <div className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-4 py-2.5">
@@ -774,70 +852,64 @@ export default function SessionDetailPage() {
                   </h3>
                 </div>
 
-                <div className="space-y-2 p-3 text-xs">
-                  {/* 用户 */}
-                  <div className="flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
-                    <span className="text-[11px] font-medium text-[var(--color-text-3)]">{t('rum.sessions.user', '用户')}</span>
-                    <span className="font-mono font-medium text-[var(--color-text-1)]">
-                      {session.userId ? (
-                        <span className="flex items-center gap-1" title={session.userId}>
-                          {session.userId}
-                        </span>
-                      ) : (
-                        <span className="text-[var(--color-text-3)]">{t('rum.sessions.anonymous', '匿名访客')}</span>
-                      )}
-                    </span>
-                  </div>
-
-                  {/* 位置 */}
-                  <div className="flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-[var(--color-text-3)]">
-                      <EnvironmentOutlined />
-                      <span>{t('rum.sessions.geo', '位置')}</span>
-                    </span>
-                    <span className="text-[var(--color-text-1)]">
-                      {session.geoCountry || session.geoCity ? (
-                        `${session.geoCountry || ''}${session.geoCity ? ` · ${session.geoCity}` : ''}`
-                      ) : (
-                        '—'
-                      )}
-                    </span>
-                  </div>
-
-                  {/* 设备类型 */}
-                  <div className="flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-[var(--color-text-3)]">
-                      <DeviceIcon />
-                      <span>{t('rum.sessions.device', '设备')}</span>
-                    </span>
-                    <span className="capitalize text-[var(--color-text-1)]">{device}</span>
-                  </div>
-
-                  {/* 浏览器 */}
-                  <div className="flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
-                    <span className="text-[11px] font-medium text-[var(--color-text-3)]">{t('rum.sessions.browser', '浏览器')}</span>
-                    <span className="text-[var(--color-text-1)]">{browser}</span>
-                  </div>
-
-                  {/* 所属应用 */}
-                  <div className="flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
-                    <span className="text-[11px] font-medium text-[var(--color-text-3)]">{t('rum.sessions.app', '应用')}</span>
-                    <span className="font-medium text-[var(--color-text-1)]">{session.application || app}</span>
-                  </div>
-
-                  {/* 部署环境 */}
-                  <div className="flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
-                    <span className="text-[11px] font-medium text-[var(--color-text-3)]">{t('rum.sessions.environment', '环境')}</span>
-                    <Tag className="m-0 border-0 font-mono text-[11px]">
-                      {session.environment || 'production'}
-                    </Tag>
-                  </div>
-
-                  {/* 版本 */}
-                  <div className="flex items-center justify-between rounded-md bg-[var(--color-fill-1)]/35 px-3 py-2 transition-colors hover:bg-[var(--color-fill-1)]/60">
-                    <span className="text-[11px] font-medium text-[var(--color-text-3)]">{t('rum.sessions.release', '版本')}</span>
-                    <span className="font-mono text-[var(--color-text-1)]">{session.release || '—'}</span>
-                  </div>
+                <div className="min-w-0 space-y-2 p-3 text-xs">
+                  <SessionMetaRow
+                    label={t('rum.sessions.user', '用户')}
+                    mono
+                    title={session.userId || undefined}
+                    copyText={session.userId || undefined}
+                    value={
+                      session.userId
+                        ? session.userId
+                        : t('rum.sessions.anonymous', '匿名访客')
+                    }
+                  />
+                  <SessionMetaRow
+                    label={
+                      <>
+                        <EnvironmentOutlined />
+                        <span>{t('rum.sessions.geo', '位置')}</span>
+                      </>
+                    }
+                    value={
+                      session.geoCountry || session.geoCity
+                        ? `${session.geoCountry || ''}${session.geoCity ? ` · ${session.geoCity}` : ''}`
+                        : '—'
+                    }
+                  />
+                  <SessionMetaRow
+                    label={
+                      <>
+                        <DeviceIcon />
+                        <span>{t('rum.sessions.device', '设备')}</span>
+                      </>
+                    }
+                    value={<span className="capitalize">{device}</span>}
+                  />
+                  <SessionMetaRow
+                    label={t('rum.sessions.browser', '浏览器')}
+                    value={browser}
+                  />
+                  <SessionMetaRow
+                    label={t('rum.sessions.app', '应用')}
+                    mono
+                    title={session.application || app}
+                    value={session.application || app}
+                  />
+                  <SessionMetaRow
+                    label={t('rum.sessions.environment', '环境')}
+                    value={
+                      <Tag className="m-0 border-0 font-mono text-[11px]">
+                        {session.environment || 'production'}
+                      </Tag>
+                    }
+                  />
+                  <SessionMetaRow
+                    label={t('rum.sessions.release', '版本')}
+                    mono
+                    title={session.release || undefined}
+                    value={session.release || '—'}
+                  />
 
                   {/* 时段 */}
                   <div className="flex flex-col gap-1.5 rounded-md bg-[var(--color-fill-1)]/35 p-3">

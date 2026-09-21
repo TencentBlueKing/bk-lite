@@ -52,6 +52,9 @@ func sanitizeErrorMessage(raw string) sanitizedDiagnostic {
 	if trimmed == "" {
 		return sanitizedDiagnostic{}
 	}
+	// Faro console instrumentation prefixes messages with "console.error: ", which
+	// would otherwise fail the *Error: template gate and fall back to fingerprint.
+	trimmed = stripConsoleErrorPrefix(trimmed)
 	if !knownErrorTemplatePattern.MatchString(trimmed) && !knownBrowserErrorPattern.MatchString(trimmed) {
 		return sanitizedDiagnostic{Value: privacyLabel("message", trimmed), Kind: diagnosticFingerprint}
 	}
@@ -87,6 +90,17 @@ func sanitizeErrorMessage(raw string) sanitizedDiagnostic {
 		return candidate
 	})
 	return sanitizedDiagnostic{Value: truncateUTF8(value, 1024), Kind: diagnosticTemplate}
+}
+
+func stripConsoleErrorPrefix(value string) string {
+	const prefix = "console.error:"
+	if len(value) < len(prefix) {
+		return value
+	}
+	if strings.EqualFold(value[:len(prefix)], prefix) {
+		return strings.TrimSpace(value[len(prefix):])
+	}
+	return value
 }
 
 // sanitizePathSegment 对页面 / 网络 / Trace URL 与 route 共用同一套段级规则：

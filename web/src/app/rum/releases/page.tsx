@@ -25,6 +25,7 @@ import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import { cwvTone, formatMs, toneSemanticPalette } from '@/app/rum/lib/cwv';
 import { degradationReason } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
+import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
 import SourceMapManager from '@/app/rum/releases/ui/sourcemap-manager';
 import CustomTable from '@/components/custom-table';
@@ -66,7 +67,8 @@ export default function RumReleasesPage() {
     searchParams,
     setParams,
   } = useRumSearchParams();
-  const { listReleases, putBaseline, listApplications, rotateSourceMapCredential } = useRumQueries();
+  const { listReleases, putBaseline, listApplications, rotateSourceMapCredential, authReady } =
+    useRumQueries();
 
   const isSourceMapTab =
     searchParams.get('tab') === 'sourcemaps' || searchParams.has('sourcemap');
@@ -96,15 +98,37 @@ export default function RumReleasesPage() {
     }
   }, [listReleases, query]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      setPending(true);
+      void listReleases(query)
+        .then((next) => {
+          if (!isCancelled()) setPage(next);
+        })
+        .catch(() => {
+          if (!isCancelled()) setPage(null);
+        })
+        .finally(() => {
+          if (!isCancelled()) setPending(false);
+        });
+    },
+    [listReleases, query],
+  );
 
-  useEffect(() => {
-    void listApplications()
-      .then((items) => setApps(items.map((item) => item.application).filter(Boolean)))
-      .catch(() => setApps([]));
-  }, [listApplications]);
+  useRumAuthedEffect(
+    authReady,
+    (isCancelled) => {
+      void listApplications()
+        .then((items) => {
+          if (!isCancelled()) setApps(items.map((item) => item.application).filter(Boolean));
+        })
+        .catch(() => {
+          if (!isCancelled()) setApps([]);
+        });
+    },
+    [listApplications],
+  );
 
   useEffect(() => {
     setCiToken('');
@@ -191,8 +215,8 @@ export default function RumReleasesPage() {
         detail: '',
       };
     }
-    const lcp = cwvTone('lcp', release.lcpP75);
-    if (lcp === 'danger' || lcp === 'warning') {
+    const lcp = cwvTone('lcp', release.lcpP75 || 0);
+    if ((lcp === 'danger' || lcp === 'warning') && (release.lcpP75 || 0) > 0) {
       return {
         label: t('rum.releases.experienceEvidence.lcpDegrade', 'LCP {v}', {
           v: formatMs(release.lcpP75),
