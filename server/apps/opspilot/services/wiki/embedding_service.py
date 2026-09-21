@@ -235,6 +235,11 @@ def embed_texts(texts, embed_provider):
         client = OpenAI(base_url=embed_provider.base_url, api_key=embed_provider.api_key)
         resp = client.embeddings.create(model=embed_provider.model_name, input=list(texts))
         return [item.embedding for item in resp.data]
-    except Exception:
-        logger.exception("wiki 嵌入生成失败 provider=%s", getattr(embed_provider, "id", None))
+    except Exception as error:
+        logger.exception(
+            "wiki 嵌入生成失败 provider=%s failed_stage=%s error_type=%s",
+            getattr(embed_provider, "id", None),
+            "embed_texts",
+            type(error).__name__,
+        )
         return []

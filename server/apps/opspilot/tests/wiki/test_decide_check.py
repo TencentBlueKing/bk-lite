@@ -82,6 +82,37 @@ def test_decide_check_use_new_promotes_candidate_and_records_evidence():
 
 
 @pytest.mark.django_db
+def test_decide_use_new_restores_page_missing_from_active_generation():
+    from apps.opspilot.models import Material, WikiGenerationPage
+    from apps.opspilot.services.wiki.check_service import create_candidate, decide_check
+
+    kb = _bootstrap_kb("kb-missing-generation-member")
+    page = _create_page_with_body(kb, title="WeOpsX 作业管理模块", body="# WeOpsX 作业管理模块\n\n作业管理正文")
+    WikiGenerationPage.objects.filter(generation_id=kb.active_generation_id, page=page).delete()
+    mat = Material.objects.create(knowledge_base=kb, name="节点管理-功能清单", material_type="text", text_content="new", content_hash="h-node")
+    check = create_candidate(
+        page,
+        body="# 节点管理\n\n节点管理是采集与执行底座。",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=mat,
+    )
+
+    decide_check(check, action="use_new", operator="u", material=mat)
+
+    kb.refresh_from_db()
+    page.refresh_from_db()
+    check.refresh_from_db()
+    assert check.status == "resolved"
+    assert page.current_version.body.startswith("# 节点管理")
+    assert WikiGenerationPage.objects.filter(
+        generation_id=kb.active_generation_id,
+        page=page,
+        page_status="active",
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_decide_check_edit_accept_uses_edited_body_and_records_evidence():
     """3.1: edit_accept 用编辑后正文创建新当前版本,并补证据。"""
     from apps.opspilot.models import KnowledgePage, Material, PageEvidence, PageVersion, WikiKnowledgeBase

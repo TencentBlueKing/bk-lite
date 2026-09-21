@@ -92,6 +92,25 @@ def test_decrypt_callback_rejects_invalid_json_body():
         crypto.decrypt_callback("signature", "1", "nonce", b"{")
 
 
+def test_decrypt_callback_accepts_uppercase_signature_and_padded_token():
+    token = "token"
+    timestamp = "1"
+    nonce = "nonce"
+    encoding_aes_key = _encoding_aes_key()
+    message = {"msgid": "m1", "msgtype": "text"}
+    encrypted = _encrypt_json(encoding_aes_key, message)
+    crypto = EnterpriseWechatAibotCrypto(token=f"  {token}  ", encoding_aes_key=encoding_aes_key)
+
+    result = crypto.decrypt_callback(
+        msg_signature=_signature(token, timestamp, nonce, encrypted).upper(),
+        timestamp=timestamp,
+        nonce=nonce,
+        body=json.dumps({"encrypt": encrypted}).encode("utf-8"),
+    )
+
+    assert result == message
+
+
 def test_decrypt_callback_rejects_invalid_message_signature():
     encoding_aes_key = _encoding_aes_key()
     encrypted = _encrypt_json(encoding_aes_key, {"msgid": "m1"})

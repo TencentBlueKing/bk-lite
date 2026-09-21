@@ -877,6 +877,22 @@ def test_full_text(patch_exclude):
     assert out[0]["inst_name"] == "h1"
 
 
+def test_full_text_merges_permission_params_dict(patch_exclude):
+    c = _client(_entity_result([]))
+    assert (
+        c.full_text(
+            "nginx",
+            permission_params="n.organization IN $list1",
+            inst_name_params="",
+            permission_params_dict={"list1": [1]},
+        )
+        == []
+    )
+    assert "n.organization IN $list1" in c._graph.last_query
+    assert c._graph.last_params["list1"] == [1]
+    assert c._graph.last_params["search_term"] == "nginx"
+
+
 def test_full_text_allows_legitimate_empty_exclude_fields(monkeypatch):
     monkeypatch.setattr("apps.cmdb.graph.falkordb.ExcludeFieldsCache.get_exclude_fields", lambda: [])
     c = _client(_entity_result([]))

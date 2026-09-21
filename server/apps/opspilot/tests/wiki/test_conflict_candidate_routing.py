@@ -305,3 +305,87 @@ def test_conflict_routing_degrades_when_retry_exceeds_token_budget(wiki_factory,
     assert result.comparisons[0]["relation"] == "unresolved"
     assert result.comparisons[0]["reason"] == "conflict_comparison_llm_empty"
     assert "error_type=WikiBudgetExceeded" in caplog.text
+
+
+def test_conflict_routing_treats_same_title_different_subject_as_unrelated(wiki_factory):
+    from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+    from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    page = wiki_factory.page(
+        knowledge_base=knowledge_base,
+        title="应用与菜单管理",
+        body="# 应用与菜单管理\n\n用于配置系统应用入口、菜单层级和权限绑定。",
+    )
+    knowledge_base.refresh_from_db()
+    invoked = False
+
+    def invoke_llm(*_args, **_kwargs):
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("distinct subjects must not need LLM comparison")
+
+    result = route_material_conflicts(
+        knowledge_base.active_generation_id,
+        [
+            {
+                "title": "应用与菜单管理",
+                "page_type": "concept",
+                "body": "# 云区域管理\n\n云区域是节点管理模块的分区单元，用于纳管节点。",
+            }
+        ],
+        llm_model_id=1,
+        budget=LLMCallBudget(max_calls=4, max_total_tokens=20000, scope="wiki_material:test"),
+        invoke_llm=invoke_llm,
+        base_generation_id=knowledge_base.active_generation_id,
+    )
+
+    assert invoked is False
+    assert result.comparisons[0]["relation"] == "unrelated"
+    assert result.comparisons[0]["same_subject"] is False
+    assert result.comparisons[0]["old_page_id"] == page.pk
+
+
+def test_conflict_routing_treats_different_module_titles_as_unrelated(wiki_factory):
+    from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+    from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    page = wiki_factory.page(
+        knowledge_base=knowledge_base,
+        title="WeOpsX 作业管理模块",
+        body="# WeOpsX 作业管理模块\n\n作业管理是 WeOpsX 平台统一的脚本执行中心。",
+    )
+    knowledge_base.refresh_from_db()
+    invoked = False
+
+    def invoke_llm(*_args, **_kwargs):
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("distinct WeOpsX modules must not need LLM comparison")
+
+    result = route_material_conflicts(
+        knowledge_base.active_generation_id,
+        [
+            {
+                "title": "WeOpsX 节点管理模块",
+                "page_type": "concept",
+                "summary": "WeOpsX 采集与执行底座",
+                "keywords": ["WeOpsX", "节点", "云区域"],
+                "body": "# 节点管理\n\n节点管理是 WeOpsX 平台的采集与执行底座模块，统一管理云区域。",
+            }
+        ],
+        llm_model_id=1,
+        budget=LLMCallBudget(max_calls=4, max_total_tokens=20000, scope="wiki_material:test"),
+        invoke_llm=invoke_llm,
+        base_generation_id=knowledge_base.active_generation_id,
+    )
+
+    assert invoked is False
+    assert result.comparisons[0]["relation"] == "unrelated"
+    assert result.comparisons[0]["same_subject"] is False
+    assert result.comparisons[0]["old_page_id"] == page.pk

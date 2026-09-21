@@ -382,24 +382,26 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   // Handle clicks
   const handleGuideClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (mode !== 'chat') return;
       const target = event.target as HTMLElement;
       if (target.classList.contains('guide-clickable-item')) {
         const content = target.getAttribute('data-content');
         if (content) sendMessage(content);
       }
     },
-    [sendMessage]
+    [mode, sendMessage]
   );
 
   const handleSuggestionClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (mode !== 'chat') return;
       const target = event.target as HTMLElement;
       if (target.classList.contains('suggestion-button')) {
         const suggestionText = target.getAttribute('data-suggestion');
         if (suggestionText) sendMessage(suggestionText);
       }
     },
-    [sendMessage]
+    [mode, sendMessage]
   );
 
   // 处理工具调用组的展开/折叠
@@ -696,6 +698,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     request={req}
                     token={token || ''}
                     onDecision={handleApprovalDecision}
+                    readOnly={mode === 'display'}
                   />
                 ))}
               </div>
@@ -708,6 +711,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     request={req}
                     token={token || ''}
                     onSubmit={handleUserChoiceSubmit}
+                    readOnly={mode === 'display'}
                   />
                 ))}
               </div>
@@ -772,6 +776,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                   request={req}
                   token={token || ''}
                   onSubmit={handleUserChoiceSubmit}
+                  readOnly={mode === 'display'}
                 />
               );
             }
@@ -831,6 +836,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onDecision={handleApprovalDecision}
+                readOnly={mode === 'display'}
               />
             ))}
           </div>
@@ -845,6 +851,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onSubmit={handleUserChoiceSubmit}
+                readOnly={mode === 'display'}
               />
             ))}
           </div>
@@ -1109,12 +1116,15 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         </div>
       )}
       <div
-        className={`flex flex-col rounded-lg p-4 h-full overflow-hidden ${styles.chatContainer}`}
+        className={`flex flex-col rounded-lg ${mode === 'display' ? 'px-0 py-2' : 'p-4'} h-full overflow-hidden ${styles.chatContainer}`}
         style={{
           height: isFullscreen ? 'calc(100vh - 70px)' : mode === 'chat' ? (showHeader ? 'calc(100% - 40px)' : '100%') : '100%'
         }}
       >
-        <div ref={chatContentRef} className="flex-1 chat-content-wrapper overflow-y-auto overflow-x-hidden pb-4">
+        <div
+          ref={chatContentRef}
+          className={`flex-1 chat-content-wrapper overflow-y-auto overflow-x-hidden pb-4 ${mode === 'display' ? 'px-6' : ''}`}
+        >
           {guide && (guideData.renderedHtml || guideData.items.length > 0) && (
             <div className="mb-4 space-y-2.5" onClick={handleGuideClick}>
               {guideData.renderedHtml && (
@@ -1163,14 +1173,16 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     <div className={`${styles.userMessageBubble}`}>
                       {renderContent(msg)}
                     </div>
-                    <div className="mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                      <MessageActions
-                        message={msg}
-                        onCopy={handleCopyMessage}
-                        onRegenerate={handleRegenerateMessage}
-                        onDelete={handleDeleteMessage}
-                      />
-                    </div>
+                    {mode === 'chat' && (
+                      <div className="mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                        <MessageActions
+                          message={msg}
+                          onCopy={handleCopyMessage}
+                          onRegenerate={handleRegenerateMessage}
+                          onDelete={handleDeleteMessage}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -1187,7 +1199,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                       renderContent(msg)
                     )}
                   </div>
-                  {!isCurrentBotLoading && (
+                  {!isCurrentBotLoading && mode === 'chat' && (
                     <div className="mt-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                       <MessageActions
                         message={msg}

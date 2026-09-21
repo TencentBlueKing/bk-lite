@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -435,7 +436,7 @@ def test_embed_texts_calls_openai_compatible_provider(monkeypatch):
     assert calls == [("http://embed", "secret"), ("embed-model", ["a", "b"])]
 
 
-def test_embed_texts_returns_empty_when_provider_fails(monkeypatch):
+def test_embed_texts_returns_empty_when_provider_fails(monkeypatch, caplog):
     from apps.opspilot.services.wiki import embedding_service
 
     class FakeOpenAI:
@@ -445,4 +446,12 @@ def test_embed_texts_returns_empty_when_provider_fails(monkeypatch):
     monkeypatch.setattr(embedding_service, "OpenAI", FakeOpenAI)
     provider = SimpleNamespace(base_url="http://embed", api_key="secret", model_name="embed-model", id=1)
 
-    assert embedding_service.embed_texts(["a"], provider) == []
+    with caplog.at_level(logging.ERROR, logger="opspilot"):
+        assert embedding_service.embed_texts(["a"], provider) == []
+    records = [record for record in caplog.records if record.msg == "wiki 嵌入生成失败 provider=%s failed_stage=%s error_type=%s"]
+    assert len(records) == 1
+    assert records[0].args == (1, "embed_texts", "RuntimeError")
+    rendered = records[0].getMessage()
+    assert "embed_texts" in rendered
+    assert "RuntimeError" in rendered
+    assert "secret" not in rendered
