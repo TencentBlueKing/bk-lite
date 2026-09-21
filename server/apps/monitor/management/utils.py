@@ -55,8 +55,7 @@ def find_files_by_pattern(root_dir: str, filename_pattern: str = None, extension
                                 result.append(str(file_path))
     except Exception as e:
         logger.error(f'遍历目录失败: {root_dir}, 错误: {e}')
-
-    return result
+        raise
 
 
 def parse_template_filename(filename: str) -> Tuple[str, str, str]:
