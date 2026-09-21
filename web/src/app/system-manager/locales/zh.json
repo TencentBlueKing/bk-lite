@@ -1,5 +1,10 @@
 {
   "system": {
+    "listCard": {
+      "owner": "负责人",
+      "team": "团队",
+      "loading": "加载中"
+    },
     "permission": {
       "type": "类型",
       "dataPermission": "数据权限",

@@ -104,3 +104,15 @@ export function filterTreeBySearch(data: ExtendedTreeDataNode[], searchQuery: st
 export function hasChildren(node: ExtendedTreeDataNode): boolean {
   return !!(node.children && node.children.length > 0);
 }
+
+export function collectExpandableKeys(nodes: ExtendedTreeDataNode[]): React.Key[] {
+  const keys: React.Key[] = [];
+  for (const node of nodes) {
+    if (!hasChildren(node)) {
+      continue;
+    }
+    keys.push(node.key as React.Key);
+    keys.push(...collectExpandableKeys(node.children || []));
+  }
+  return keys;
+}

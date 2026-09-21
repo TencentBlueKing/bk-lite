@@ -21,6 +21,7 @@ import {
 } from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PageLayout from '@/components/page-layout';
 import SearchActionBar from '@/components/search-action-bar';
@@ -89,8 +90,8 @@ function renderSyncPeriod(
 
   if (!scheduleEnabled) {
     return (
-      <div className="min-w-0 leading-6">
-        <div className="truncate text-base font-semibold text-[var(--color-text-1)]">
+      <div className="min-w-0">
+        <div className="truncate text-sm tabular-nums text-[var(--color-text-1)]">
           {t('system.channel.imNotificationPage.syncPeriodManualTitle')}
         </div>
         <div className="truncate text-xs text-[var(--color-text-3)]">
@@ -101,8 +102,8 @@ function renderSyncPeriod(
   }
 
   return (
-    <div className="min-w-0 leading-6">
-      <div className="truncate text-base font-semibold text-[var(--color-text-1)]">
+    <div className="min-w-0">
+      <div className="truncate text-sm tabular-nums text-[var(--color-text-1)]">
         {syncTime
           ? `${t('system.channel.imNotificationPage.syncPeriodDailyTitle')} ${syncTime}`
           : t('system.channel.imNotificationPage.syncPeriodDailyTitle')}
@@ -485,7 +486,7 @@ const ImNotificationPage: React.FC = () => {
       dataIndex: 'name',
       render: (_, record) => (
         <div className="min-w-0">
-          <EllipsisWithTooltip text={record.name} className="truncate font-semibold" />
+          <EllipsisWithTooltip text={record.name} className="truncate text-sm text-[var(--color-text-1)]" />
           <EllipsisWithTooltip
             text={record.description || '--'}
             className="truncate text-xs text-[var(--color-text-3)]"
@@ -522,8 +523,8 @@ const ImNotificationPage: React.FC = () => {
         const status = record.display_sync_status;
         if (status === 'never_synced' || !status) {
           return (
-            <div className="min-w-0 leading-6">
-              <span className="text-base font-semibold text-[var(--color-text-3)]">
+            <div className="min-w-0">
+              <span className="text-sm text-[var(--color-text-3)]">
                 {t('system.channel.imNotificationPage.latestSyncEmpty')}
               </span>
             </div>
@@ -534,8 +535,8 @@ const ImNotificationPage: React.FC = () => {
         const summary = getLatestSyncSummary(record, t);
 
         return (
-          <div className="min-w-0 leading-6">
-            <div className="truncate text-base font-semibold text-[var(--color-text-1)]">
+          <div className="min-w-0">
+            <div className="truncate text-sm tabular-nums text-[var(--color-text-1)]">
               {latestSyncTime ? renderTime(latestSyncTime) : '--'}
             </div>
             <div className="flex min-w-0 items-center gap-2 text-xs text-[var(--color-text-3)]">
@@ -667,35 +668,35 @@ const ImNotificationPage: React.FC = () => {
               }}
               actions={(
                 <>
-                  <PermissionWrapper requiredPermissions={['Add']}>
-                    <Button
-                      type="primary"
-                      icon={<PlusOutlined />}
-                      onClick={() => openModal(null)}
-                    >
-                      {t('common.add')}
-                    </Button>
-                  </PermissionWrapper>
                   <PermissionWrapper requiredPermissions={['Edit']}>
                     <Button onClick={handleSendOpen}>
                       {t('system.channel.imNotificationPage.sendTitle')}
                     </Button>
                   </PermissionWrapper>
                   <Button
-                    type="text"
                     icon={<ReloadOutlined />}
                     onClick={handleRefresh}
                     loading={refreshing}
-                  />
+                  >
+                    {t('common.refresh')}
+                  </Button>
+                  <PermissionWrapper requiredPermissions={['Add']}>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => openModal(null)}
+                    >
+                      {t('common.new')}
+                    </Button>
+                  </PermissionWrapper>
                 </>
               )}
             />
           </div>
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--color-bg)] p-1">
+          <SystemManagerFillTable className="bg-[var(--color-bg)]">
             <CustomTable
               rowKey="id"
-              scroll={{ y: 'calc(100vh - 385px)' }}
               loading={loading}
               dataSource={filteredChannels}
               columns={columns}
@@ -707,7 +708,7 @@ const ImNotificationPage: React.FC = () => {
                 },
               }}
             />
-          </div>
+          </SystemManagerFillTable>
 
           <IMNotificationConfigModal
             open={modalOpen}

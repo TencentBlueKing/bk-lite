@@ -11,9 +11,9 @@ import {useTranslation} from '@/utils/i18n';
 import {MemorySpace, useMemoryApi} from '@/app/opspilot/api/memory';
 import {useUserInfoContext} from '@/context/userInfo';
 import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
-import OpsPilotListPageHeader from '@/app/opspilot/components/opspilot-list-page-header';
-import OpsPilotCardGridSkeleton from '@/app/opspilot/components/opspilot-card-grid-skeleton';
-import { formatRelativeTime, pickEntityTimestamp } from '@/app/opspilot/utils/relativeTime';
+import ListPageHeader from '@/components/list-page-header';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import { formatRelativeTime, pickEntityTimestamp } from '@/utils/relativeTime';
 import { pickStableIcon } from '@/app/opspilot/utils/pickStableIcon';
 
 const { Search } = Input;
@@ -207,7 +207,7 @@ const MemoryPage = () => {
 
   return (
     <div className="w-full">
-      <OpsPilotListPageHeader
+      <ListPageHeader
         title={t('memory.pageTitle')}
         description={t('memory.pageDescription')}
         actions={
@@ -230,7 +230,7 @@ const MemoryPage = () => {
       />
 
       {loading ? (
-        <OpsPilotCardGridSkeleton />
+        <CardGridSkeleton />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
           {filteredSpaces.map((space) => (
