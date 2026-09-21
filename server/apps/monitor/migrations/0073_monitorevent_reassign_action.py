@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("monitor", "0071_collectconfig_applied_fingerprints"),
+        ("monitor", "0072_monitorpolicy_source_template"),
     ]
 
     operations = [
