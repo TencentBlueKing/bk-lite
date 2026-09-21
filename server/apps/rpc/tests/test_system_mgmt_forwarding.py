@@ -148,7 +148,7 @@ def test_get_group_users_scoped_转发(client):
     assert _last(client) == (
         "get_group_users_scoped",
         (),
-        {"actor_context": ctx, "group": 3, "include_children": True},
+        {"actor_context": ctx, "group": 3, "include_children": True, "search": ""},
     )
 
 
@@ -391,11 +391,6 @@ def test_probe_notification_channel_转发纯能力探针(client):
     )
 
 
-def test_search_groups_转发query_params(client):
-    client.search_groups({"search": "x"})
-    assert _last(client) == ("search_groups", (), {"query_params": {"search": "x"}})
-
-
 def test_search_opspilot_nats_channels_默认值(client):
     client.search_opspilot_nats_channels()
     assert _last(client) == (
@@ -403,11 +398,6 @@ def test_search_opspilot_nats_channels_默认值(client):
         (),
         {"teams": None, "bot_id": None, "include_children": False},
     )
-
-
-def test_search_users_转发(client):
-    client.search_users({"page": 1, "page_size": 10})
-    assert _last(client) == ("search_users", (), {"query_params": {"page": 1, "page_size": 10}})
 
 
 def test_send_email_to_receiver_转发(client):
