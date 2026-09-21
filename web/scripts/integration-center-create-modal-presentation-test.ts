@@ -108,8 +108,8 @@ assert.match(page, /common\.new/);
 assert.match(page, /statusLabel/);
 assert.match(page, /formatRelativeTime/);
 assert.match(page, /title=\{t\('system\.integrationCenter\.pageTitle'\)\}/);
-assert.match(page, /description=\{t\('system\.integrationCenter\.pageDesc'\)\}/);
-assert.doesNotMatch(page, /TopSection/);
+assert.match(page, /content=\{t\('system\.integrationCenter\.pageDesc'\)\}/);
+assert.match(page, /TopSection/);
 assert.doesNotMatch(page, /flex-wrap justify-end/);
 
 assert.doesNotMatch(page, /provider-packs/);
