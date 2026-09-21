@@ -174,6 +174,20 @@ def _monitor_accepted_response(
     )
 
 
+def _header_timeout(request, default: int) -> int:
+    """Parse scrape timeout from the Telegraf header; invalid/missing uses plugin default."""
+    raw = request.headers.get("timeout")
+    if raw is None or (isinstance(raw, str) and not str(raw).strip()):
+        return default
+    try:
+        timeout = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    if timeout <= 0:
+        return default
+    return timeout
+
+
 def _standard_tags(request, *, defaults: dict[str, str] | None = None) -> dict:
     defaults = defaults or {}
     return {
@@ -229,6 +243,7 @@ async def vmware_metrics(request):
             "password": req.headers.get("password"),
             "host": host,
             "minutes": int(minutes),
+            "timeout": _header_timeout(req, 300),
             "tags": _standard_tags(req),
         }
 
@@ -256,6 +271,7 @@ async def qcloud_metrics(request):
             "password": req.headers.get("password"),
             "region": region,
             "minutes": int(minutes),
+            "timeout": _header_timeout(req, 300),
             "tags": _standard_tags(req),
         }
 
@@ -330,11 +346,7 @@ async def windows_wmi_metrics(request):
         "disk_exclude_fstypes",
         "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs",
     )
-    raw_timeout = request.headers.get("timeout", "60")
-    try:
-        timeout = int(raw_timeout)
-    except (TypeError, ValueError):
-        timeout = 60
+    timeout = _header_timeout(request, 60)
 
     task_params = {
         "monitor_type": "windows_wmi",
@@ -718,6 +730,7 @@ async def cisco_meraki_metrics(request):
             "preflight_kind": "https",
             "preflight_kind_explicit": True,
             "host": base_url,
+            "timeout": _header_timeout(req, 180),
             "tags": _standard_tags(
                 req,
                 defaults={
@@ -735,4 +748,50 @@ async def cisco_meraki_metrics(request):
         accept_labels=lambda params: {"organization_id": params.get("organization_id")},
         error_labels=lambda: {"organization_id": request.headers.get("organization_id")},
         log_name="Meraki",
+    )
+
+
+def _parse_verify_tls(raw: Any, default: bool = True) -> bool:
+    if raw in (None, ""):
+        return default
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+
+@monitor_router.get("/redfish/metrics")
+async def redfish_metrics(request):
+    def build_params(req):
+        raw_port = req.headers.get("port") or 443
+        try:
+            port = int(raw_port)
+        except (TypeError, ValueError):
+            port = 443
+        return {
+            "monitor_type": "redfish",
+            "username": req.headers.get("username"),
+            "password": req.headers.get("password"),
+            "host": (req.headers.get("host") or "").strip(),
+            "port": port,
+            "verify_tls": _parse_verify_tls(req.headers.get("verify_tls")),
+            "preflight_kind": "https",
+            "preflight_kind_explicit": True,
+            "instance_id": req.headers.get("instance_id", ""),
+            "tags": _standard_tags(
+                req,
+                defaults={
+                    "instance_type": "hardware_server",
+                    "collect_type": "redfish",
+                    "config_type": "hardware_server",
+                },
+            ),
+        }
+
+    return await _run_monitor_handler(
+        request,
+        monitor_type="redfish",
+        build_params=build_params,
+        accept_labels=lambda params: {"host": params.get("host")},
+        error_labels=lambda: {"host": request.headers.get("host")},
+        log_name="Redfish",
     )

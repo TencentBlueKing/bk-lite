@@ -27,11 +27,15 @@ class CollectorConstants:
     DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd", "Ansible-Executor", "OTel-Collector"]
 
     IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat", "Winlogbeat"]
-    IGNORE_ERROR_COLLECTORS_MESSAGES = [
+    IGNORE_ERROR_EMPTY_CONFIG_MESSAGES = [
         "one or more modules must be configured",
         "no modules or inputs enabled and configuration reloading disabled. What files do you want me to watch?",
         "at least one event log must be configured as part of event_logs",
-        "Unable to start collector after 3 tries, giving up!",
+    ]
+    SIDECAR_COLLECTOR_START_RETRY_EXHAUSTED = "Unable to start collector after 3 tries, giving up!"
+    IGNORE_ERROR_COLLECTORS_MESSAGES = [
+        *IGNORE_ERROR_EMPTY_CONFIG_MESSAGES,
+        SIDECAR_COLLECTOR_START_RETRY_EXHAUSTED,
     ]
 
     # 控制机只保留 Sidecar。NATS-Executor / Ansible-Executor 作为托管组件暴露。

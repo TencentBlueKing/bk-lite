@@ -40,7 +40,7 @@
 - Test: `server/apps/alerts/tests/test_openapi_gateway.py`
 - Modify: `server/apps/core/openapi/tests/tenant_coverage.py`
 
-- [x] 8 个 path 全部登记双租户测试
+- [x] 11 个 path 全部登记双租户测试（含屏蔽策略创建、启停、修改、删除）
 
 ### Task 5: 作业参数告警 ID
 

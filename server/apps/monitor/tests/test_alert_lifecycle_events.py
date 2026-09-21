@@ -77,5 +77,15 @@ def test_claimed_assigned_are_outside_status_unique_constraint():
             action=MonitorEvent.Action.ASSIGNED,
             content="分派",
         )
+        MonitorEvent.objects.create(
+            id=f"reassigned-{suffix}",
+            alert=alert,
+            policy_id=alert.policy_id,
+            monitor_instance_id=alert.monitor_instance_id,
+            level="warning",
+            action=MonitorEvent.Action.REASSIGNED,
+            content="转派",
+        )
     assert MonitorEvent.objects.filter(alert=alert, action=MonitorEvent.Action.CLAIMED).count() == 2
     assert MonitorEvent.objects.filter(alert=alert, action=MonitorEvent.Action.ASSIGNED).count() == 2
+    assert MonitorEvent.objects.filter(alert=alert, action=MonitorEvent.Action.REASSIGNED).count() == 2

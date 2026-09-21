@@ -72,15 +72,42 @@ def scan_policy_task(policy_id):
                 _run_scan_and_record_success(policy_obj, current_time)
             else:
                 backfill_count = min(backfill_count, AlertConstants.MAX_BACKFILL_COUNT)
-                logger.info(f"监控策略 [{policy_id}] 需要补偿 {backfill_count} 个周期")
+                planned = min(backfill_count, AlertConstants.MAX_BACKFILL_PER_TASK)
+                logger.info(
+                    "event=policy_backfill_planned policy_id=%s pending=%s planned=%s",
+                    policy_id,
+                    backfill_count,
+                    planned,
+                )
 
-                for i in range(backfill_count):
+                completed = 0
+                for i in range(planned):
+                    if (
+                        i > 0
+                        and time.time() - start_time
+                        >= AlertConstants.BACKFILL_SOFT_TIME_LIMIT_SECONDS
+                    ):
+                        break
                     scan_time = policy_obj.last_run_time + timedelta(
                         seconds=period_seconds
                     )
                     _run_scan_and_record_success(policy_obj, scan_time)
+                    completed += 1
                     logger.debug(
-                        f"监控策略 [{policy_id}] 完成第 {i + 1}/{backfill_count} 次补偿"
+                        "event=policy_backfill_window_done policy_id=%s index=%s planned=%s",
+                        policy_id,
+                        completed,
+                        planned,
+                    )
+
+                remaining = backfill_count - completed
+                if remaining > 0:
+                    # 剩余窗口由下一次 Beat 调度继续；last_run_time 已单调推进，不会重扫。
+                    logger.info(
+                        "event=policy_backfill_deferred policy_id=%s completed=%s remaining=%s",
+                        policy_id,
+                        completed,
+                        remaining,
                     )
 
         duration = time.time() - start_time

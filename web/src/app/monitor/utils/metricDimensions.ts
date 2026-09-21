@@ -34,3 +34,14 @@ export const getMetricDimensionNames = (dimensions: unknown): string[] => {
 };
 
 export const sanitizeGroupBy = uniqueNonEmptyStrings;
+
+/** 模板没写分组维度时，回退到对象固定维度和指标维度，避免克隆后分组为空。 */
+export const resolveLoadedGroupBy = (
+  savedGroupBy: unknown,
+  fallbackGroupBy: unknown
+): string[] => {
+  const saved = sanitizeGroupBy(savedGroupBy);
+  if (saved.length) return saved;
+  const fallback = sanitizeGroupBy(fallbackGroupBy);
+  return fallback.length ? fallback : ['instance_id'];
+};

@@ -90,6 +90,10 @@ class TestBuildTitle:
         notifier = AlertLifecycleNotifier(policy=SimpleNamespace(name="磁盘策略"))
         assert notifier._build_title(_alert(), "assigned") == "告警分派：磁盘策略"
 
+    def test_转派动作标题(self):
+        notifier = AlertLifecycleNotifier(policy=SimpleNamespace(name="磁盘策略"))
+        assert notifier._build_title(_alert(), "reassigned") == "告警转派：磁盘策略"
+
 
 class TestBuildContent:
     def test_关闭动作含操作人与原因(self):
@@ -116,6 +120,11 @@ class TestBuildContent:
         notifier = AlertLifecycleNotifier(policy=None)
         content = notifier._build_content(_alert(), "assigned", "", "")
         assert "状态：已分派" in content
+
+    def test_转派动作状态行(self):
+        notifier = AlertLifecycleNotifier(policy=None)
+        content = notifier._build_content(_alert(), "reassigned", "", "")
+        assert "状态：已转派" in content
 
     def test_无实例名回退实例ID(self):
         notifier = AlertLifecycleNotifier(policy=None)

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Input, Button, Tree, Skeleton, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -148,6 +148,41 @@ const GroupTree: React.FC<GroupTreeProps> = ({
       };
     });
 
+  const processedTreeData = useMemo(
+    () => renderTreeNode(treeData),
+    [treeData, t, onGroupAction]
+  );
+
+  const treeHostRef = useRef<HTMLDivElement | null>(null);
+  const [treeHeight, setTreeHeight] = useState(0);
+
+  const applyTreeHostHeight = useCallback((host: HTMLDivElement | null) => {
+    if (!host) {
+      return;
+    }
+    const nextHeight = Math.floor(host.clientHeight);
+    if (nextHeight > 0) {
+      setTreeHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+    }
+  }, []);
+
+  const setTreeHostNode = useCallback((node: HTMLDivElement | null) => {
+    treeHostRef.current = node;
+    applyTreeHostHeight(node);
+  }, [applyTreeHostHeight]);
+
+  useLayoutEffect(() => {
+    const host = treeHostRef.current;
+    if (!host || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    applyTreeHostHeight(host);
+    const observer = new ResizeObserver(() => applyTreeHostHeight(host));
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [applyTreeHostHeight, loading]);
+
   const rootMenuItems = useMemo((): MenuProps['items'] => {
     const items: MenuProps['items'] = [];
     if (canAddGroup) {
@@ -168,7 +203,7 @@ const GroupTree: React.FC<GroupTreeProps> = ({
   }, [canAddGroup, canDeleteGroup, onAddRootGroup, onOpenArchivedDrawer, t]);
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full min-h-0 flex flex-col">
       <div className="flex items-center mb-4">
         <Input
           size="small"
@@ -189,19 +224,28 @@ const GroupTree: React.FC<GroupTreeProps> = ({
         )}
       </div>
       {loading ? (
-        <div className="w-full flex-1 overflow-auto p-4">
-          <Skeleton active paragraph={{ rows: 6 }} />
+        <div className="relative w-full min-h-0 flex-1">
+          <div className="absolute inset-0 overflow-auto p-4">
+            <Skeleton active paragraph={{ rows: 6 }} />
+          </div>
         </div>
       ) : (
-        <Tree
-          className="w-full flex-1 overflow-auto bg-transparent"
-          showLine
-          blockNode
-          expandAction={false}
-          defaultExpandAll
-          treeData={renderTreeNode(treeData)}
-          onSelect={onTreeSelect}
-        />
+        <div className="relative w-full min-h-0 flex-1">
+          <div ref={setTreeHostNode} className="absolute inset-0 overflow-hidden">
+            {treeHeight > 0 ? (
+              <Tree
+                className="w-full bg-transparent"
+                showLine
+                blockNode
+                expandAction={false}
+                virtual
+                height={treeHeight}
+                treeData={processedTreeData}
+                onSelect={onTreeSelect}
+              />
+            ) : null}
+          </div>
+        </div>
       )}
     </div>
   );

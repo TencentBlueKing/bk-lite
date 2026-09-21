@@ -27,6 +27,7 @@ import {
 import { buildMetricSelectOption } from './strategyDetailUtils';
 
 interface MetricExpressionEditorProps {
+  id?: string;
   rows: MetricExpressionRow[];
   mode: MetricExpressionMode;
   resultName: string;
@@ -47,6 +48,7 @@ interface MetricExpressionEditorProps {
 }
 
 const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
+  id,
   rows,
   mode,
   resultName,
@@ -187,7 +189,10 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   }));
 
   return (
-    <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm">
+    <div
+      id={id}
+      className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm"
+    >
       <div className="flex min-h-11 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-3">
         <span className="text-sm font-medium text-[var(--color-text-1)]">
           {translateWithFallback('monitor.events.metricEditor', '指标编辑器')}

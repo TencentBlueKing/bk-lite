@@ -95,19 +95,19 @@
     },
     {
       "name": "interval",
-      "label": "间隔",
+      "label": "采集周期",
       "type": "inputNumber",
       "required": true,
-      "default_value": 120,
-      "description": "监控数据的采集时间间隔（单位：秒）",
-      "guide_short": "默认 120 秒。一次采集会顺序抓取组织、设备、无线 AP、交换机与 MX 指标族，过短更容易触发 Dashboard API 每组织 10 次/秒的限制。",
-      "guide_short_en": "Default 120 seconds. One scrape sequentially collects organization, device, wireless AP, switch, and MX families. Shorter intervals are more likely to hit the 10 requests/second/organization budget.",
+      "default_value": 180,
+      "description": "单次采集预算与触发周期（单位：秒）。同一值同时作为采集间隔与采集超时：超时则丢弃结果不入库。一次 scrape 会顺序抓取多指标族，过短更容易触发 Dashboard API 限速或超时。",
+      "guide_short": "默认 180 秒。一次采集会顺序抓取组织、设备、无线 AP、交换机与 MX 指标族；过短更容易触发每组织 10 次/秒的限制或采集超时。",
+      "guide_short_en": "Default 180 seconds. One scrape sequentially collects organization, device, wireless AP, switch, and MX families. Shorter periods are more likely to hit the 10 requests/second/organization budget or time out.",
       "widget_props": {
         "min": 30,
         "precision": 0,
-        "placeholder": "间隔",
+        "placeholder": "采集周期",
         "addonAfter": "s",
-        "placeholder_en": "Interval"
+        "placeholder_en": "Collection Period"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -118,8 +118,8 @@
           "suffix": "s"
         }
       },
-      "label_en": "Interval",
-      "description_en": "Collection interval in seconds."
+      "label_en": "Collection Period",
+      "description_en": "Single value for both collection interval and timeout (seconds). Timed-out results are discarded and not published. One scrape collects multiple metric families; raise for large organizations."
     }
   ],
   "table_columns": [

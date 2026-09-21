@@ -558,6 +558,7 @@ async def test_publish_transient_failure_retries_once_without_recollecting(redis
         ("oceanstor", "/monitor/oceanstor/metrics"),
         ("windows-wmi", "/monitor/windows/wmi/metrics"),
         ("host", "/monitor/host/metrics"),
+        ("redfish", "/monitor/redfish/metrics"),
     ],
 )
 async def test_monitor_auth_enforce_rejects_every_route_before_submit(

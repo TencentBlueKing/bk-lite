@@ -11,4 +11,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.node_mgmt.tasks.version_discovery.discover_node_versions',
         'schedule': beat_crontab(minute='*/30'),  # 每30分钟执行一次
     },
+    'restart_failed_collectors': {
+        'task': 'apps.node_mgmt.tasks.collector_auto_restart.restart_failed_collectors',
+        'schedule': beat_crontab(minute='0'),  # 每小时扫描一次异常采集器并下发 restart
+    },
 }

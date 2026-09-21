@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, Input, message, Spin, Dropdown, Modal, Tag, Select } from 'antd';
+import { Form, Button, Input, message, Spin, Dropdown, Modal, Tag, Select, Switch } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -16,18 +16,28 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useEventApi from '@/app/monitor/api/event';
+import useMonitorUserHabitApi from '@/app/monitor/api/userHabit';
 import FieldGuideTip from '@/components/field-guide-tip';
 import type { PolicyTemplateItem } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
+import type { ChannelItem } from '@/app/monitor/types/event';
 import {
+  ALERT_CENTER_NATS_METHOD,
+  COLLECTION_POLICY_ALERT_CENTER_FIELD,
   COLLECTION_POLICY_CONTROL_WIDTH,
   COLLECTION_POLICY_FIELD,
   COLLECTION_POLICY_NAME_PREFIX_FIELD,
   buildCollectionPolicyApplyPayload,
-  defaultSelectedTemplateKeys,
+  collectionPolicyHabitKey,
+  collectionPolicyHabitValue,
   extractCollectInstanceIds,
+  isCollectionPolicyUiField,
   omitCollectionPolicyField,
+  parseRememberedPushAlertCenter,
+  parseRememberedTemplateKeys,
+  pickAlertCenterChannelIds,
   policyTemplateSelectOptions,
   resolvePolicyTemplateList,
+  resolveRememberedTemplateKeys,
   selectedPolicyTemplates
 } from './automaticPolicyApply';
 import { COLLECTION_POLICY_BULK_CONFIG_DEFAULTS } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
@@ -108,7 +118,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     getMonitorNodeList,
     updateNodeChildConfig
   } = useIntegrationApi();
-  const { getPolicyTemplate, bulkCreatePoliciesFromTemplates } = useEventApi();
+  const {
+    getPolicyTemplate,
+    bulkCreatePoliciesFromTemplates,
+    getSystemChannelList
+  } = useEventApi();
+  const { getUserHabit, saveUserHabit } = useMonitorUserHabitApi();
   const router = useRouter();
   const { renderTableColumn } = useConfigRenderer();
   const jsonConfig = usePluginFromJson();
@@ -143,6 +158,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   );
   const [policyTemplatesLoading, setPolicyTemplatesLoading] =
     useState<boolean>(false);
+  const [alertCenterChannels, setAlertCenterChannels] = useState<ChannelItem[]>(
+    []
+  );
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [collectDetectTasks, setCollectDetectTasks] = useState<
     Record<string, CollectDetectState>
@@ -187,24 +205,36 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       form.setFieldsValue({
         [COLLECTION_POLICY_FIELD]: [],
         [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
-          COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
+          COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix,
+        [COLLECTION_POLICY_ALERT_CENTER_FIELD]: false
       });
       return;
     }
     let cancelled = false;
     setPolicyTemplatesLoading(true);
-    getPolicyTemplate({
-      monitor_object_name: objectName,
-      plugin_id: pluginId
-    })
-      .then((data) => {
+    const habitKey = collectionPolicyHabitKey(pluginId);
+    Promise.all([
+      getPolicyTemplate({
+        monitor_object_name: objectName,
+        plugin_id: pluginId
+      }),
+      habitKey
+        ? getUserHabit(habitKey).catch(() => null)
+        : Promise.resolve(null)
+    ])
+      .then(([data, habit]) => {
         if (cancelled) return;
         const templates = resolvePolicyTemplateList(data, pluginId);
         setPolicyTemplates(templates);
         form.setFieldsValue({
-          [COLLECTION_POLICY_FIELD]: defaultSelectedTemplateKeys(templates),
+          [COLLECTION_POLICY_FIELD]: resolveRememberedTemplateKeys(
+            templates,
+            parseRememberedTemplateKeys(habit)
+          ),
           [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
-            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
+            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix,
+          [COLLECTION_POLICY_ALERT_CENTER_FIELD]:
+            parseRememberedPushAlertCenter(habit) === true
         });
       })
       .catch(() => {
@@ -213,7 +243,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         form.setFieldsValue({
           [COLLECTION_POLICY_FIELD]: [],
           [COLLECTION_POLICY_NAME_PREFIX_FIELD]:
-            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix
+            COLLECTION_POLICY_BULK_CONFIG_DEFAULTS.name_prefix,
+          [COLLECTION_POLICY_ALERT_CENTER_FIELD]: false
         });
       })
       .finally(() => {
@@ -226,6 +257,30 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     };
     // 模板列表只随当前插件/对象切换；getPolicyTemplate 引用变化不应冲掉用户选择。
   }, [isLoading, pluginId, objectName, form]);
+
+  useEffect(() => {
+    if (isLoading) {
+      setAlertCenterChannels([]);
+      return;
+    }
+    let cancelled = false;
+    getSystemChannelList({
+      channel_type: 'nats',
+      channel_method: ALERT_CENTER_NATS_METHOD
+    })
+      .then((data) => {
+        if (cancelled) return;
+        setAlertCenterChannels(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAlertCenterChannels([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading]);
 
   // 获取基础配置（不依赖 dataSource）
   const baseConfig = useMemo(() => {
@@ -1113,6 +1168,21 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           policyTemplates,
           values[COLLECTION_POLICY_FIELD]
         );
+        const pushAlertCenter = Boolean(
+          values[COLLECTION_POLICY_ALERT_CENTER_FIELD]
+        );
+        const alertCenterChannelIds = pickAlertCenterChannelIds(
+          alertCenterChannels
+        );
+        if (pushAlertCenter && templatesToApply.length && !alertCenterChannelIds.length) {
+          message.error(
+            t(
+              'monitor.integrations.pushToAlertCenterMissing',
+              '未找到告警中心 NATS 通道，请先在系统管理中配置'
+            )
+          );
+          return;
+        }
         const row = omitCollectionPolicyField(cloneDeep(values));
         delete row.nodes;
         const params =
@@ -1126,7 +1196,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         addNodesConfig(
           params,
           templatesToApply,
-          values[COLLECTION_POLICY_NAME_PREFIX_FIELD]
+          values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
+          pushAlertCenter,
+          alertCenterChannelIds
         );
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
@@ -1137,7 +1209,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const addNodesConfig = async (
     params: Record<string, any> = {},
     templatesToApply: PolicyTemplateItem[] = [],
-    namePrefix?: string
+    namePrefix?: string,
+    pushAlertCenter = false,
+    alertCenterChannelIds: Array<string | number> = []
   ) => {
     try {
       setConfirmLoading(true);
@@ -1147,7 +1221,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           monitorObjectId: objectId,
           templates: templatesToApply,
           instanceIds: extractCollectInstanceIds(collectResult, params),
-          namePrefix
+          namePrefix,
+          pushAlertCenter,
+          alertCenterChannelIds
         });
         if (!policyPayload) {
           message.success(t('common.addSuccess'));
@@ -1215,17 +1291,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         [COLLECTION_POLICY_NAME_PREFIX_FIELD]: t(
           'monitor.integrations.collectionNamePrefixDefault',
           '接入批量'
-        )
+        ),
+        [COLLECTION_POLICY_ALERT_CENTER_FIELD]: false
       }}
       onValuesChange={(changed, all) => {
         const changedKeys = Object.keys(changed);
         const isPolicyUiOnlyChange =
           changedKeys.length > 0 &&
-          changedKeys.every(
-            (key) =>
-              key === COLLECTION_POLICY_FIELD ||
-              key === COLLECTION_POLICY_NAME_PREFIX_FIELD
-          );
+          changedKeys.every((key) => isCollectionPolicyUiField(key));
         if (!isPolicyUiOnlyChange) {
           clearCollectDetectState();
         }
@@ -1256,6 +1329,27 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         ) {
           setFormSnapshot(nextValues);
         }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            changed,
+            COLLECTION_POLICY_FIELD
+          ) ||
+          Object.prototype.hasOwnProperty.call(
+            changed,
+            COLLECTION_POLICY_ALERT_CENTER_FIELD
+          )
+        ) {
+          const habitKey = collectionPolicyHabitKey(pluginId);
+          if (habitKey) {
+            saveUserHabit(
+              habitKey,
+              collectionPolicyHabitValue(
+                all[COLLECTION_POLICY_FIELD],
+                all[COLLECTION_POLICY_ALERT_CENTER_FIELD]
+              )
+            ).catch(() => undefined);
+          }
+        }
       }}
     >
       <div className="flex items-center justify-between mb-[10px]">
@@ -1280,9 +1374,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         <Select
           mode="multiple"
           allowClear
+          showSearch
+          optionFilterProp="label"
           maxTagCount="responsive"
           loading={policyTemplatesLoading}
-          options={policyTemplateSelectOptions(policyTemplates)}
+          options={policyTemplateSelectOptions(policyTemplates, {
+            builtin: t('monitor.events.templateTypeBuiltin', '内置'),
+            custom: t('monitor.events.templateTypeCustom', '自定义')
+          })}
           placeholder={t(
             'monitor.integrations.monitoringPolicyPlaceholder'
           )}
@@ -1327,6 +1426,21 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             </Form.Item>
           );
         }}
+      </Form.Item>
+      <Form.Item
+        name={COLLECTION_POLICY_ALERT_CENTER_FIELD}
+        valuePropName="checked"
+        label={
+          <span className="inline-flex items-center">
+            {t('monitor.integrations.pushToAlertCenter', '推送告警中心')}
+            <FieldGuideTip
+              short={t('monitor.integrations.pushToAlertCenterDes')}
+              title={t('monitor.integrations.fieldGuideTip')}
+            />
+          </span>
+        }
+      >
+        <Switch />
       </Form.Item>
       <b className="text-[14px] flex mb-[10px] ml-[-10px]">
         {t('monitor.integrations.basicInformation')}

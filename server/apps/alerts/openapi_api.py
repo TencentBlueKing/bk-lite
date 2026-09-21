@@ -11,6 +11,10 @@ from apps.alerts.openapi_serializers import (
     AlertEventsRequestSerializer,
     AlertIdRequestSerializer,
     AlertListRequestSerializer,
+    AlertShieldCreateRequestSerializer,
+    AlertShieldDeleteRequestSerializer,
+    AlertShieldOperateRequestSerializer,
+    AlertShieldUpdateRequestSerializer,
 )
 from apps.core.openapi.decorators import openapi_expose
 
@@ -197,3 +201,77 @@ def openapi_batch_alert_action(action, alert_ids, assignee=None, assignment_id=N
     if reason:
         data["reason"] = reason
     return _run_alerts_openapi(lambda: _service(team, user_info).operate_alerts_batch(action, data))
+
+
+@openapi_expose(
+    path="alerts/shield-create",
+    method="POST",
+    schema=AlertShieldCreateRequestSerializer,
+    inject="team_list_with_user",
+    permission="shield_strategy-Add",
+    permission_app="alarm",
+    summary=f"创建告警屏蔽策略，归属当前认证用户（{_ORG_SCOPE}）",
+)
+def openapi_create_shield(
+    name,
+    match_type,
+    match_rules=None,
+    suppression_time=None,
+    is_active=True,
+    *,
+    team=None,
+    user_info=None,
+):
+    data = {
+        "name": name,
+        "match_type": match_type,
+        "match_rules": match_rules or [],
+        "suppression_time": suppression_time or {},
+        "is_active": is_active,
+    }
+    return _run_alerts_openapi(lambda: _service(team, user_info).create_shield(data))
+
+
+@openapi_expose(
+    path="alerts/shield-operate",
+    method="POST",
+    schema=AlertShieldOperateRequestSerializer,
+    inject="team_list_with_user",
+    permission="shield_strategy-Edit",
+    permission_app="alarm",
+    summary=f"启用或停用本人创建的告警屏蔽策略（{_ORG_SCOPE}）",
+)
+def openapi_operate_shield(name, is_active, *, team=None, user_info=None):
+    return _run_alerts_openapi(lambda: _service(team, user_info).operate_shield(name, is_active))
+
+
+@openapi_expose(
+    path="alerts/shield",
+    method="PUT",
+    schema=AlertShieldUpdateRequestSerializer,
+    inject="team_list_with_user",
+    permission="shield_strategy-Edit",
+    permission_app="alarm",
+    summary=f"按名称修改本人创建的告警屏蔽策略（{_ORG_SCOPE}）",
+)
+def openapi_update_shield(name, match_type, match_rules=None, suppression_time=None, *, team=None, user_info=None):
+    data = {
+        "name": name,
+        "match_type": match_type,
+        "match_rules": match_rules or [],
+        "suppression_time": suppression_time or {},
+    }
+    return _run_alerts_openapi(lambda: _service(team, user_info).update_shield(data))
+
+
+@openapi_expose(
+    path="alerts/shield",
+    method="DELETE",
+    schema=AlertShieldDeleteRequestSerializer,
+    inject="team_list_with_user",
+    permission="shield_strategy-Delete",
+    permission_app="alarm",
+    summary=f"按名称删除本人创建的告警屏蔽策略；跨组织与不可见按不存在处理（{_ORG_SCOPE}）",
+)
+def openapi_delete_shield(name, *, team=None, user_info=None):
+    return _run_alerts_openapi(lambda: _service(team, user_info).delete_shield(name))

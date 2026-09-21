@@ -17,13 +17,13 @@
     {
       "metric_group": "Power",
       "name": "ipmi_chassis_power_state",
-      "query": "ipmi_sensor_status{instance_type='hardware_server', name=~\"host_power\", __$labels__}",
+      "query": "max(ipmi_sensor_status{instance_type='hardware_server', name=~\"host_power\", __$labels__}) by (instance_id) or (2 - max(ipmi_sensor_value{instance_type='hardware_server', name=\"chassis_power_status\", __$labels__}) by (instance_id))",
       "display_name": "Power State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [{"name": "name", "description": "name"}],
       "instance_id_keys": ["instance_id"],
-      "description": "The power state indicator is used to monitor if the device is powered on. Its value can indicate whether the power is on or off. It is mainly used for remote management and monitoring of the device's power state."
+      "description": "The power state indicator monitors whether the device is powered on. It prefers the SDR host_power sensor when present, and otherwise uses Telegraf chassis_power_status (1=on mapped to 1/normal, 0=off mapped to 2/abnormal). It is mainly used for remote management and monitoring of the device's power state."
     },
     {
       "metric_group": "Power",

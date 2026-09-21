@@ -709,6 +709,58 @@ def test_snippet_separately_quotes_shell_literals_and_encodes_otel_resource_valu
     }
 
 
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_host_and_docker_snippets_require_probe_hash_for_any_language(monkeypatch, language, runtime):
+    def missing(artifact_name):
+        raise ProbeArtifactNotFound(artifact_name)
+
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        missing,
+        raising=False,
+    )
+
+    with pytest.raises(ProbeArtifactNotFound):
+        DjangoIntegrationConfigurationService().render_snippet(
+            _request(
+                language=language,
+                runtime=runtime,
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+            )
+        )
+
+
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+def test_kubernetes_snippets_do_not_hash_probe_artifacts(monkeypatch, language):
+    def missing(artifact_name):
+        raise ProbeArtifactNotFound(artifact_name)
+
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        missing,
+        raising=False,
+    )
+
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        _request(
+            language=language,
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT" in snippet.code
+
+
 def test_probe_artifact_sha256_streams_allowlisted_object_and_caches(monkeypatch):
     from apps.apm.services import probe_artifacts as probe_artifacts_module
 
