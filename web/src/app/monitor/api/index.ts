@@ -206,6 +206,15 @@ const useMonitorApi = () => {
     });
   };
 
+  const reassignMonitorAlert = async (
+    id: React.Key,
+    handlers: Array<string | number>
+  ) => {
+    return await post(`/monitor/api/monitor_alert/${String(id)}/reassign/`, {
+      handlers
+    });
+  };
+
   const getAllUsers = async (organizationIds?: Array<string | number>) => {
     const params =
       organizationIds && organizationIds.length
@@ -248,6 +257,7 @@ const useMonitorApi = () => {
     patchMonitorAlert,
     claimMonitorAlert,
     assignMonitorAlert,
+    reassignMonitorAlert,
     getAllUsers,
     getUnitList,
     getVmMetricNames,

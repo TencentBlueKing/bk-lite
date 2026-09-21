@@ -10,6 +10,19 @@ from apps.operation_analysis.common.builtin_datasource_identity import find_clai
 from apps.operation_analysis.common.load_json_data import load_support_json
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 
+RETIRED_BUILTIN_DATASOURCES = (
+    {
+        "build_in_key": "CMDB 3D机房布局::cmdb/get_room3d_layout",
+        "name": "CMDB 3D机房布局",
+        "rest_api": "cmdb/get_room3d_layout",
+    },
+    {
+        "build_in_key": "CMDB 机房列表::cmdb/get_room_list",
+        "name": "CMDB 机房列表（选项）",
+        "rest_api": "cmdb/get_room_list",
+    },
+)
+
 
 class Command(BaseCommand):
     help = "初始化数据源标签和源API数据"
@@ -145,8 +158,45 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(success_msg))
             logger.info("[SourceApiInit] %s", success_msg)
 
+            retired_count = self.retire_scene_internal_datasources()
+            if retired_count:
+                logger.info("[SourceApiInit] 已下架内置场景数据源 %s 个", retired_count)
+
         except Exception as e:
             error_msg = f"初始化源API数据失败: {e}"
             logger.error("[SourceApiInit] 初始化源API数据失败：%s", e, exc_info=True)
             self.stdout.write(self.style.ERROR(error_msg))
             raise
+
+    def retire_scene_internal_datasources(self) -> int:
+        retired_count = 0
+        for item in RETIRED_BUILTIN_DATASOURCES:
+            obj = find_claimable_datasource(
+                DataSourceAPIModel,
+                stable_key=item["build_in_key"],
+                name=item["name"],
+                rest_api=item["rest_api"],
+            )
+            if obj is None:
+                continue
+            if not obj.is_build_in and obj.build_in_key != item["build_in_key"]:
+                continue
+            changed = False
+            if obj.chart_type:
+                obj.chart_type = []
+                changed = True
+            if obj.is_active:
+                obj.is_active = False
+                changed = True
+            if obj.build_in_key != item["build_in_key"]:
+                obj.build_in_key = item["build_in_key"]
+                changed = True
+            if not obj.is_build_in:
+                obj.is_build_in = True
+                changed = True
+            if changed:
+                obj.updated_by = "system"
+                obj.save(update_fields=["chart_type", "is_active", "build_in_key", "is_build_in", "updated_by", "updated_at"])
+                retired_count += 1
+                logger.debug("[SourceApiInit] 下架内置数据源：%s", item["build_in_key"])
+        return retired_count

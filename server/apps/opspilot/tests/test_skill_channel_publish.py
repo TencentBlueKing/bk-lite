@@ -1,6 +1,7 @@
 """智能体 usage_team 与渠道发布核心行为测试。"""
 
 import json
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -116,6 +117,104 @@ class TestSkillChannelCrud:
         ch = SkillChannel.objects.get(skill=skill, channel_type=SkillChannelChoices.PLATFORM)
         assert ch.usage_team == [1, 2]
         assert ch.enabled is True
+
+    def test_create_returns_im_callback_path(self):
+        skill = _skill(usage_team=[1])
+        factory = APIRequestFactory()
+        user = _superuser("su_cb")
+        request = factory.post(
+            "/",
+            {"skill": skill.id, "channel_type": SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT, "enabled": True},
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "1"
+        resp = SkillChannelViewSet.as_view({"post": "create"})(request)
+        assert resp.status_code == 201
+        ch = SkillChannel.objects.get(skill=skill, channel_type=SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        assert resp.data["data"]["public_id"] == str(ch.public_id)
+        assert resp.data["data"]["callback_path"] == (f"/api/v1/opspilot/skill_channel/{ch.public_id}/{SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT}/")
+
+    def test_create_keeps_client_public_id(self):
+        skill = _skill(usage_team=[1])
+        public_id = uuid.uuid4()
+        factory = APIRequestFactory()
+        user = _superuser("su_pid")
+        request = factory.post(
+            "/",
+            {
+                "skill": skill.id,
+                "channel_type": SkillChannelChoices.EMBEDDED_CHAT,
+                "enabled": True,
+                "public_id": str(public_id),
+            },
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "1"
+        resp = SkillChannelViewSet.as_view({"post": "create"})(request)
+        assert resp.status_code == 201
+        ch = SkillChannel.objects.get(skill=skill, channel_type=SkillChannelChoices.EMBEDDED_CHAT)
+        assert ch.public_id == public_id
+        assert SkillChannel.objects.filter(skill=skill).count() == 1
+
+    def test_update_ignores_public_id_change(self):
+        skill = _skill(usage_team=[1])
+        ch = SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.PLATFORM,
+            enabled=True,
+            usage_team=[1],
+            name="原名",
+        )
+        original = ch.public_id
+        factory = APIRequestFactory()
+        user = _superuser("su_pid_up")
+        request = factory.put(
+            "/",
+            {"name": "新名", "public_id": str(uuid.uuid4())},
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "1"
+        resp = SkillChannelViewSet.as_view({"put": "update"})(request, pk=ch.id)
+        assert resp.status_code == 200
+        ch.refresh_from_db()
+        assert ch.name == "新名"
+        assert ch.public_id == original
+
+    def test_im_callback_resolves_public_id(self):
+        skill = _skill()
+        ch = SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT,
+            enabled=True,
+            usage_team=[1],
+            channel_config={"token": "tok", "encodingAESKey": "0" * 43},
+        )
+        factory = APIRequestFactory()
+        req = factory.get("/", {"msg_signature": "s", "timestamp": "1", "nonce": "n", "echostr": "e"})
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.verify_url",
+            return_value="plain",
+        ):
+            resp = opspilot_views.execute_skill_channel_im(
+                req,
+                channel_type=SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT,
+                public_id=ch.public_id,
+            )
+        assert resp.status_code == 200
+        assert resp.content == b"plain"
+
+    def test_im_unknown_public_id_forbidden(self):
+        factory = APIRequestFactory()
+        req = factory.get("/")
+        resp = opspilot_views.execute_skill_channel_im(
+            req,
+            channel_type=SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT,
+            public_id=uuid.uuid4(),
+        )
+        assert resp.status_code == 403
 
     def test_rejects_duplicate_name_same_skill_and_channel_type(self):
         skill = _skill(usage_team=[1])
@@ -290,6 +389,8 @@ class TestPlatformListAndEmbeddedGate:
         )
         resp = opspilot_views.execute_skill_embedded_chat(request, skill.id, ch.id)
         assert resp.status_code == 200
+        resp_uuid = opspilot_views.execute_skill_embedded_chat(request, skill.id, public_id=ch.public_id)
+        assert resp_uuid.status_code == 200
         # StreamingHttpResponse may use async generator; consume via streaming_content if sync
         chunks = []
         try:
@@ -341,6 +442,87 @@ class TestPlatformListAndEmbeddedGate:
             mock_stream.assert_called_once()
         assert SkillConversation.objects.filter(channel=ch).exists()
         assert SkillConversationMessage.objects.filter(role="user", content="hi").exists()
+
+    def test_embedded_uses_api_secret_bound_team(self):
+        skill = _skill(usage_team=[1])
+        ch = SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.EMBEDDED_CHAT,
+            enabled=True,
+            usage_team=[1],
+        )
+        plain = UserAPISecret.generate_api_secret()
+        UserAPISecret.objects.create(
+            username="apiuser",
+            domain="domain.com",
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(plain),
+        )
+        factory = APIRequestFactory()
+        request = factory.post(
+            f"/skill_channel/embedded/{skill.id}/{ch.id}/",
+            {"message": "hi"},
+            format="json",
+            HTTP_API_AUTHORIZATION=plain,
+        )
+        with patch("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat") as mock_stream:
+            from django.http import StreamingHttpResponse
+
+            def gen():
+                yield b'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"ok"}\n\n'
+                yield b"data: [DONE]\n\n"
+
+            mock_stream.return_value = StreamingHttpResponse(gen(), content_type="text/event-stream")
+            resp = opspilot_views.execute_skill_embedded_chat(request, skill.id, ch.id)
+            assert resp.status_code == 200
+            mock_stream.assert_called_once()
+            params = mock_stream.call_args[0][0]
+            assert params["caller_identity"] == {
+                "username": "apiuser",
+                "domain": "domain.com",
+                "team_id": 1,
+                "include_children": False,
+            }
+
+    def test_embedded_accepts_sessionId_alias(self):
+        skill = _skill(usage_team=[1])
+        ch = SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.EMBEDDED_CHAT,
+            enabled=True,
+            usage_team=[1],
+        )
+        plain = UserAPISecret.generate_api_secret()
+        UserAPISecret.objects.create(
+            username="apiuser",
+            domain="domain.com",
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(plain),
+        )
+        factory = APIRequestFactory()
+        request = factory.post(
+            f"/skill_channel/embedded/{skill.id}/{ch.id}/",
+            {"message": "hi", "sessionId": "embed-session-1"},
+            format="json",
+            HTTP_API_AUTHORIZATION=plain,
+        )
+        with patch("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat") as mock_stream:
+            from django.http import StreamingHttpResponse
+
+            def gen():
+                yield b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'
+                yield b"data: [DONE]\n\n"
+
+            mock_stream.return_value = StreamingHttpResponse(gen(), content_type="text/event-stream")
+            with patch(
+                "apps.opspilot.services.skill_channel_chat_service.capture_caller_identity",
+                return_value={"username": "apiuser", "domain": "domain.com", "group": 1},
+            ):
+                resp = opspilot_views.execute_skill_embedded_chat(request, skill.id, ch.id)
+            assert resp.status_code == 200
+            mock_stream.assert_called_once()
+        conv = SkillConversation.objects.get(channel=ch)
+        assert conv.session_id == "embed-session-1"
 
 
 class TestSkillConversationHistory:

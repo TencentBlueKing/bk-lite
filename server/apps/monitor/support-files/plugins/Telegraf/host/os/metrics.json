@@ -3,21 +3,209 @@
   "plugin_desc": "The host monitoring plugin is used to collect and analyze performance data of hosts, including CPU, memory, disk, and network usage.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='os', collect_type='host'}) by (instance_id)",
-  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"selected_node","options":{"selection_field":"node_ids","node_field":"ip","required":true}}],
-  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "selected_node",
+      "options": {
+        "selection_field": "node_ids",
+        "node_field": "ip",
+        "required": true
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
   "name": "Host",
   "icon": "mm-host_主机",
   "type": "OS",
   "description": "",
   "default_metric": "any({instance_type='os'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "cpu_usage_total",
+    "mem_used_percent",
+    "disk_used_percent"
+  ],
   "display_fields": [
-    {"name":"CPU使用率","sort_order":0,"metrics":[{"plugin":"Host","metric":"cpu_usage_total"},{"plugin":"Windows WMI","metric":"cpu_usage_total"},{"plugin":"Host Remote","metric":"cpu_usage_total"},{"plugin":"Host AIX Remote","metric":"cpu_usage_total"},{"plugin":"Host FreeBSD Remote","metric":"cpu_usage_total"},{"plugin":"Host HP-UX Remote","metric":"cpu_usage_total"},{"plugin":"Host Solaris Remote","metric":"cpu_usage_total"}]},
-    {"name":"内存使用率","sort_order":1,"metrics":[{"plugin":"Host","metric":"mem_used_percent"},{"plugin":"Windows WMI","metric":"mem_used_percent"},{"plugin":"Host Remote","metric":"mem_used_percent"},{"plugin":"Host AIX Remote","metric":"mem_used_percent"},{"plugin":"Host FreeBSD Remote","metric":"mem_used_percent"},{"plugin":"Host HP-UX Remote","metric":"mem_used_percent"},{"plugin":"Host Solaris Remote","metric":"mem_used_percent"}]},
-    {"name":"磁盘使用率","sort_order":2,"metrics":[{"plugin":"Host","metric":"disk_used_percent"},{"plugin":"Windows WMI","metric":"disk_used_percent"},{"plugin":"Host Remote","metric":"disk_used_percent"},{"plugin":"Host AIX Remote","metric":"disk_used_percent"},{"plugin":"Host FreeBSD Remote","metric":"disk_used_percent"},{"plugin":"Host HP-UX Remote","metric":"disk_used_percent"},{"plugin":"Host Solaris Remote","metric":"disk_used_percent"}]},
-    {"name":"网络入向吞吐","sort_order":3,"metrics":[{"plugin":"Host","metric":"net_bytes_recv_rate"},{"plugin":"Windows WMI","metric":"net_bytes_recv_rate"},{"plugin":"Host Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host AIX Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host FreeBSD Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host HP-UX Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host Solaris Remote","metric":"net_bytes_recv_rate"}]},
-    {"name":"磁盘IO使用率","sort_order":4,"metrics":[{"plugin":"Host","metric":"diskio_io_util"},{"plugin":"Windows WMI","metric":"diskio_io_util"},{"plugin":"Host AIX Remote","metric":"disk_tm_act"},{"plugin":"Host FreeBSD Remote","metric":"disk_tm_act"},{"plugin":"Host HP-UX Remote","metric":"disk_tm_act"},{"plugin":"Host Solaris Remote","metric":"disk_tm_act"}]}
+    {
+      "name": "CPU使用率",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "cpu_usage_total"
+        }
+      ]
+    },
+    {
+      "name": "内存使用率",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "mem_used_percent"
+        }
+      ]
+    },
+    {
+      "name": "磁盘使用率",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "disk_used_percent"
+        }
+      ]
+    },
+    {
+      "name": "网络入向吞吐",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "net_bytes_recv_rate"
+        }
+      ]
+    },
+    {
+      "name": "磁盘IO使用率",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "diskio_io_util"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "diskio_io_util"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "diskio_io_util"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "disk_tm_act"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "disk_tm_act"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "disk_tm_act"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "disk_tm_act"
+        }
+      ]
+    }
   ],
   "metrics": [
     {
@@ -28,7 +216,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Reflects the overall CPU utilization of the host, representing the proportion of non-idle CPU time. Sustained high values usually indicate CPU resource pressure or bottlenecks."
     },
     {
@@ -44,7 +234,9 @@
           "description": "cpu"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Describes the utilization of individual CPU cores, enabling analysis of load distribution and identification of imbalanced or hot cores."
     },
     {
@@ -55,7 +247,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Indicates the proportion of CPU time spent waiting for I/O operations to complete, commonly used to identify disk or I/O performance constraints."
     },
     {
@@ -66,7 +260,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the percentage of CPU time spent executing kernel-level tasks. Abnormally high values may indicate increased system overhead or frequent system calls."
     },
     {
@@ -77,7 +273,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Indicates the percentage of CPU time spent executing user-space application logic, commonly used to evaluate application CPU consumption."
     },
     {
@@ -88,7 +286,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the percentage of CPU time spent handling hardware interrupts, helpful for diagnosing hardware or driver-related performance issues."
     },
     {
@@ -99,7 +299,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Indicates the proportion of CPU time stolen by the hypervisor in virtualized environments, used to assess CPU contention."
     },
     {
@@ -110,7 +312,9 @@
       "data_type": "Number",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the average system load over the last 1 minute, primarily used to observe short-term load fluctuations."
     },
     {
@@ -121,7 +325,9 @@
       "data_type": "Number",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the average system load over the last 5 minutes, useful for analyzing short-term load trends."
     },
     {
@@ -132,7 +338,9 @@
       "data_type": "Number",
       "unit": "none",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability."
     },
     {
@@ -143,13 +351,15 @@
       "data_type": "Number",
       "unit": "s",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "System uptime in seconds since last boot"
     },
     {
       "metric_group": "Disk IO",
       "name": "diskio_io_util",
-      "query": "diskio_io_util{instance_type=\"os\", __$labels__}",
+      "query": "rate(diskio_io_time{instance_type=\"os\", __$labels__}[5m]) / 10",
       "display_name": "Disk I/O Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -159,7 +369,9 @@
           "description": "设备名"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Indicates the proportion of time a disk device is busy handling I/O operations. Sustained high values usually suggest disk I/O saturation."
     },
     {
@@ -168,14 +380,16 @@
       "query": "rate(diskio_writes{instance_type=\"os\", __$labels__}[5m])",
       "display_name": "Disk Write IOPS",
       "data_type": "Number",
-      "unit": "counts",
+      "unit": "cps",
       "dimensions": [
         {
           "name": "name",
           "description": "设备名"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of disk write operations completed per second, measuring write I/O intensity and concurrency."
     },
     {
@@ -191,7 +405,9 @@
           "description": "设备名"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Indicates the amount of data written to disk per unit time, used to evaluate disk write throughput."
     },
     {
@@ -207,7 +423,9 @@
           "description": "设备名"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the average latency of disk write operations, used to analyze disk write performance and responsiveness."
     },
     {
@@ -216,14 +434,16 @@
       "query": "rate(diskio_reads{instance_type=\"os\", __$labels__}[5m])",
       "display_name": "Disk Read IOPS",
       "data_type": "Number",
-      "unit": "counts",
+      "unit": "cps",
       "dimensions": [
         {
           "name": "name",
           "description": "设备名"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of disk read operations completed per second, measuring read I/O concurrency and intensity."
     },
     {
@@ -239,7 +459,9 @@
           "description": "设备名"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput."
     },
     {
@@ -255,7 +477,9 @@
           "description": "设备名"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the average latency of disk read operations, used to analyze disk read performance and access delay."
     },
     {
@@ -279,7 +503,9 @@
           "description": "文件系统类型"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the total capacity of a disk or filesystem, used for capacity planning and resource management."
     },
     {
@@ -303,7 +529,9 @@
           "description": "文件系统类型"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the currently available free space of a disk or filesystem, used to monitor capacity risks."
     },
     {
@@ -327,7 +555,9 @@
           "description": "文件系统类型"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring."
     },
     {
@@ -351,7 +581,9 @@
           "description": "文件系统类型"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the percentage of inode usage in a filesystem, helping prevent failures caused by inode exhaustion."
     },
     {
@@ -362,7 +594,9 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of processes currently in a running state, reflecting system concurrency."
     },
     {
@@ -373,7 +607,9 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of processes blocked due to I/O or resource contention, helping identify system bottlenecks."
     },
     {
@@ -384,7 +620,9 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of zombie processes that have exited but remain unreaped, potentially indicating process management issues."
     },
     {
@@ -395,7 +633,9 @@
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of processes currently in a sleeping or waiting state."
     },
     {
@@ -406,7 +646,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation."
     },
     {
@@ -417,7 +659,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of memory available for applications without causing significant performance degradation."
     },
     {
@@ -428,7 +672,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the percentage of memory currently in use, indicating overall memory pressure."
     },
     {
@@ -439,7 +685,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of free swap space available, used to monitor buffering capacity under memory pressure."
     },
     {
@@ -450,7 +698,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of memory used for file caching, which can be reclaimed when necessary."
     },
     {
@@ -461,7 +711,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of memory shared among multiple processes."
     },
     {
@@ -472,7 +724,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of memory used for buffering block device I/O operations."
     },
     {
@@ -488,7 +742,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of packets received per unit time on a network interface, reflecting packet-level traffic."
     },
     {
@@ -504,7 +760,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of packets sent per unit time on a network interface."
     },
     {
@@ -520,7 +778,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization."
     },
     {
@@ -536,7 +796,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of data sent per unit time on a network interface, used to evaluate outbound bandwidth utilization."
     },
     {
@@ -552,7 +814,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of errored packets received per unit time, used to monitor network quality."
     },
     {
@@ -568,7 +832,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of errored packets sent per unit time on a network interface."
     },
     {
@@ -584,7 +850,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of incoming packets dropped per unit time, indicating congestion or abnormal conditions."
     },
     {
@@ -600,7 +868,9 @@
           "description": "网络接口"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the number of outgoing packets dropped per unit time on a network interface."
     },
     {
@@ -616,7 +886,9 @@
           "description": "序号"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the total available memory capacity of the GPU, serving as a baseline GPU resource metric."
     },
     {
@@ -632,7 +904,9 @@
           "description": "序号"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the amount of free GPU memory currently available for allocation."
     },
     {
@@ -648,7 +922,9 @@
           "description": "序号"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the percentage of GPU memory currently in use, indicating GPU memory pressure."
     },
     {
@@ -664,7 +940,9 @@
           "description": "序号"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the current power consumption of the GPU, used to monitor energy usage and operating status."
     },
     {
@@ -680,7 +958,9 @@
           "description": "序号"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the current core temperature of the GPU, used to monitor thermal conditions and cooling health."
     },
     {
@@ -696,7 +976,9 @@
           "description": "序号"
         }
       ],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Represents the average GPU fan speed as a percentage, used to assess cooling behavior and hardware status."
     }
   ]

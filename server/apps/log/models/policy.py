@@ -94,6 +94,7 @@ class Event(TimeInfo):
     class Action(models.TextChoices):
         CLAIMED = "claimed", "认领"
         ASSIGNED = "assigned", "分派"
+        REASSIGNED = "reassigned", "转派"
         CLOSED = "closed", "人工关闭"
 
     id = models.CharField(primary_key=True, max_length=50, verbose_name="事件ID")

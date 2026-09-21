@@ -1,8 +1,8 @@
 Transmission Ifotec SNMP:
   name: Transmission Ifotec SNMP
-  desc: SNMP monitoring template for Ifotec transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 21362).
+  desc: SNMP monitoring template for Ifotec transmission device. It reports chassis
+    and module temperature, per-port inbound traffic rate, per-port outbound traffic
+    rate, and system uptime (IANA PEN 21362).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -51,9 +51,9 @@ monitor_object_metric:
         pressure or unstable device services.
     device_temperature_celsius:
       name: Temperature
-      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
-        High values may indicate cooling problems, high ambient temperature or overloaded
-        hardware.
+      desc: Chassis or module temperature of the Ifotec transmission device in degrees
+        Celsius, scaled from tenths of a degree. High values may indicate cooling
+        problems, high ambient temperature or overloaded hardware.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A

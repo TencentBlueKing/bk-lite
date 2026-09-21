@@ -78,6 +78,13 @@
           "withParentPermission": true
         },
         {
+          "title": "历史",
+          "url": "/opspilot/skill/detail/history",
+          "icon": "talk-line",
+          "name": "skill_history",
+          "withParentPermission": true
+        },
+        {
           "title": "Web对话",
           "url": "/opspilot/skill/chat",
           "name": "skill_chat",
@@ -229,6 +236,13 @@
           "url": "/opspilot/skill/detail/channel",
           "icon": "channel1",
           "name": "skill_channel",
+          "withParentPermission": true
+        },
+        {
+          "title": "History",
+          "url": "/opspilot/skill/detail/history",
+          "icon": "talk-line",
+          "name": "skill_history",
           "withParentPermission": true
         },
         {

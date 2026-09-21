@@ -22,16 +22,41 @@ class WmiModule:
         raise NotImplementedError
 
 
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clamp_percent(value: float) -> float:
+    return round(min(100.0, max(0.0, value)), 2)
+
+
 class CpuModule(WmiModule):
     name = "cpu"
 
     def collect(self, client):
-        rows = client.query_class("Win32_Processor")
-        load_values = [float(row.get("LoadPercentage") or 0) for row in rows]
-        logical_counts = [int(row.get("NumberOfLogicalProcessors") or 0) for row in rows]
-        usage = sum(load_values) / len(load_values) if load_values else 0
-        cores = sum(logical_counts) or len(rows)
-        return {"usage_percent": round(usage, 2), "core_count": cores}
+        usage = 0.0
+        processor_rows = client.query_class("Win32_PerfFormattedData_PerfOS_Processor")
+        total_row = next((row for row in processor_rows if str(row.get("Name") or "") == "_Total"), None)
+        percent = _to_float((total_row or {}).get("PercentProcessorTime"))
+        if percent is not None:
+            usage = _clamp_percent(percent)
+
+        cpu_rows = client.query_class("Win32_Processor")
+        logical_counts = [_to_int(row.get("NumberOfLogicalProcessors")) for row in cpu_rows]
+        cores = sum(logical_counts) or len(cpu_rows)
+        return {"usage_percent": usage, "core_count": cores}
 
 
 class MemoryModule(WmiModule):
@@ -41,12 +66,20 @@ class MemoryModule(WmiModule):
         rows = client.query_class("Win32_OperatingSystem")
         row = rows[0] if rows else {}
         total = int(row.get("TotalVisibleMemorySize") or 0) * 1024
-        free = int(row.get("FreePhysicalMemory") or 0) * 1024
-        used = max(total - free, 0)
+        raw_memory = client.query_class("Win32_PerfRawData_PerfOS_Memory")
+        raw_row = raw_memory[0] if raw_memory else {}
+        available = _to_int(raw_row.get("AvailableBytes"))
+        if available <= 0:
+            formatted = client.query_class("Win32_PerfFormattedData_PerfOS_Memory")
+            formatted_row = formatted[0] if formatted else {}
+            available = _to_int(formatted_row.get("AvailableMBytes")) * 1024 * 1024
+        if total and available > total:
+            available = total
+        used = max(total - available, 0)
         used_percent = round((used / total) * 100, 2) if total else 0
         return {
             "total_bytes": total,
-            "available_bytes": free,
+            "available_bytes": available,
             "used_bytes": used,
             "used_percent": used_percent,
         }
@@ -74,13 +107,6 @@ class DiskModule(WmiModule):
                 }
             )
         return disks
-
-
-def _to_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value or default)
-    except (TypeError, ValueError):
-        return default
 
 
 class NetModule(WmiModule):
@@ -113,24 +139,25 @@ class DiskIOModule(WmiModule):
     name = "diskio"
 
     def collect(self, client):
-        rows = client.query_class("Win32_PerfRawData_PerfDisk_PhysicalDisk")
+        raw_rows = client.query_class("Win32_PerfRawData_PerfDisk_PhysicalDisk")
+        formatted_rows = client.query_class("Win32_PerfFormattedData_PerfDisk_PhysicalDisk")
+        util_by_name = {str(row.get("Name") or ""): _to_float(row.get("PercentDiskTime")) for row in formatted_rows}
         disks = []
-        for row in rows:
+        for row in raw_rows:
             name = str(row.get("Name") or "")
             if not name or name == "_Total":
                 continue
-            disks.append(
-                {
-                    "name": name,
-                    "reads": _to_int(row.get("DiskReadsPersec")),
-                    "writes": _to_int(row.get("DiskWritesPersec")),
-                    "read_bytes": _to_int(row.get("DiskReadBytesPersec")),
-                    "write_bytes": _to_int(row.get("DiskWriteBytesPersec")),
-                    "io_time_ms": _to_int(row.get("PercentDiskTime")),
-                    "read_time_ms": 0,
-                    "write_time_ms": 0,
-                }
-            )
+            item = {
+                "name": name,
+                "reads": _to_int(row.get("DiskReadsPersec")),
+                "writes": _to_int(row.get("DiskWritesPersec")),
+                "read_bytes": _to_int(row.get("DiskReadBytesPersec")),
+                "write_bytes": _to_int(row.get("DiskWriteBytesPersec")),
+            }
+            util = util_by_name.get(name)
+            if util is not None:
+                item["io_util_percent"] = _clamp_percent(util)
+            disks.append(item)
         return disks
 
 
@@ -139,12 +166,7 @@ class ProcessesModule(WmiModule):
 
     def collect(self, client):
         rows = client.query_class("Win32_Process")
-        return {
-            "running": len(rows),
-            "blocked": 0,
-            "sleeping": 0,
-            "zombies": 0,
-        }
+        return {"running": len(rows)}
 
 
 def _parse_wmi_datetime(value: Any) -> datetime | None:
@@ -165,12 +187,7 @@ class SystemModule(WmiModule):
         row = rows[0] if rows else {}
         last_boot = _parse_wmi_datetime(row.get("LastBootUpTime"))
         uptime = int((datetime.now(timezone.utc) - last_boot).total_seconds()) if last_boot else 0
-        return {
-            "uptime_seconds": max(uptime, 0),
-            "load1": 0,
-            "load5": 0,
-            "load15": 0,
-        }
+        return {"uptime_seconds": max(uptime, 0)}
 
 
 class EmptyModule(WmiModule):

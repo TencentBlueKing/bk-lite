@@ -8,10 +8,9 @@ from apps.monitor.models import MonitorEventRawData, MonitorAlertMetricSnapshot
 from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
 from apps.monitor.tasks.utils.policy_methods import (
     COMPARE_MODE_ABSOLUTE,
-    compile_policy_query,
     period_to_seconds,
 )
-from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.core.logger import celery_logger as logger
 
 
@@ -23,7 +22,6 @@ class SnapshotRecorder:
         self.instances_map = instances_map
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
-        self._fallback_raw_data_map = None
         self._overlay_value_maps = None
 
     def _get_alert_metric_instance_id(self, alert) -> str:
@@ -42,6 +40,9 @@ class SnapshotRecorder:
             return
 
         instance_raw_data_map = self._build_instance_raw_data_map(event_objs, info_events)
+        fallback_raw_data_map = self._query_fallback_raw_data_map(
+            all_active_alerts, instance_raw_data_map
+        )
 
         event_map = {}
         if event_objs:
@@ -60,7 +61,7 @@ class SnapshotRecorder:
             raw_data = {} if is_no_data_alert else instance_raw_data_map.get(metric_id, {})
 
             if not raw_data and not is_no_data_alert:
-                raw_data = self._query_fallback_raw_data(metric_id)
+                raw_data = fallback_raw_data_map.get(metric_id, {})
 
             # 无数据告警即使没有 raw_data 也需要记录快照（记录"仍然无数据"状态）
             if related_events or raw_data or is_new_alert or is_no_data_alert:
@@ -97,23 +98,47 @@ class SnapshotRecorder:
 
         return instance_raw_data_map
 
-    def _query_fallback_raw_data(self, metric_instance_id):
-        """查询兜底原始数据（用于历史活跃告警）"""
-        fallback_data_map = self._get_fallback_raw_data_map()
-        return fallback_data_map.get(metric_instance_id, {})
+    def _query_fallback_raw_data_map(self, alerts, instance_raw_data_map):
+        """只为本轮取不到 raw_data 的历史阈值告警按实例范围补查。
 
-    def _get_fallback_raw_data_map(self):
-        if self._fallback_raw_data_map is not None:
-            return self._fallback_raw_data_map
+        - 只把 miss 的告警所属监控实例编进 selector，不整库拉取；
+        - 结果 key 按当前 group_by 构造，历史 metric_instance_id 维度数不一致
+          （group_by 已变更）时直接跳过，避免每轮必走且永远命中不了的空转。
+        """
+        group_by_keys = list(self.metric_query_service.get_result_group_by() or [])
+        wanted = set()
+        instance_ids = []
+        mismatched = 0
+        for alert in alerts:
+            if alert.alert_type == "no_data":
+                continue
+            metric_id = self._get_alert_metric_instance_id(alert)
+            if instance_raw_data_map.get(metric_id):
+                continue
+            if len(parse_instance_id(metric_id)) != len(group_by_keys):
+                mismatched += 1
+                continue
+            wanted.add(metric_id)
+            instance_ids.append(alert.monitor_instance_id)
 
-        fallback_data = self.metric_query_service.query_raw_metrics(self.policy.period)
-        group_by_keys = self.policy.group_by or []
-        self._fallback_raw_data_map = {}
-        for metric_info in fallback_data.get("data", {}).get("result", []):
-            current_metric_id = str(tuple([metric_info["metric"].get(i) for i in group_by_keys]))
-            self._fallback_raw_data_map[current_metric_id] = metric_info
+        if mismatched:
+            logger.debug(
+                "event=snapshot_fallback_skipped policy_id=%s reason=group_by_mismatch count=%s",
+                self.policy.id,
+                mismatched,
+            )
+        if not wanted:
+            return {}
 
-        return self._fallback_raw_data_map
+        data = self.metric_query_service.query_policy_window_metrics(
+            self.policy.period, list(dict.fromkeys(instance_ids))
+        )
+        fallback_raw_data_map = {}
+        for metric_info in data.get("data", {}).get("result", []):
+            current_metric_id = str(tuple(metric_info["metric"].get(key) for key in group_by_keys))
+            if current_metric_id in wanted:
+                fallback_raw_data_map[current_metric_id] = metric_info
+        return fallback_raw_data_map
 
     def _update_alert_snapshot(
         self,
@@ -142,7 +167,9 @@ class SnapshotRecorder:
 
             if is_new_alert and created:
                 metric_id = self._get_alert_metric_instance_id(alert)
-                pre_alert_snapshot = self._build_pre_alert_snapshot(metric_id, snapshot_time)
+                pre_alert_snapshot = self._build_pre_alert_snapshot(
+                    metric_id, snapshot_time, monitor_instance_id=alert.monitor_instance_id
+                )
                 if pre_alert_snapshot:
                     snapshot_obj.snapshots.append(pre_alert_snapshot)
                     has_new_snapshot = True
@@ -202,8 +229,10 @@ class SnapshotRecorder:
             else:
                 logger.debug(f"No new snapshot data for alert {alert.id}, skipping save")
 
-    def _build_pre_alert_snapshot(self, metric_instance_id, current_snapshot_time):
-        """构建告警前快照数据"""
+    def _build_pre_alert_snapshot(
+        self, metric_instance_id, current_snapshot_time, monitor_instance_id=None
+    ):
+        """构建告警前快照数据；只查该告警所属实例，不按策略全范围拉取。"""
         period_seconds = period_to_seconds(self.policy.period)
         pre_alert_time = datetime.fromtimestamp(current_snapshot_time.timestamp() - period_seconds, tz=timezone.utc)
 
@@ -215,17 +244,14 @@ class SnapshotRecorder:
             )
             return None
 
-        end_timestamp = int(pre_alert_time.timestamp())
-        start_timestamp = end_timestamp - period_seconds
-        query = self.metric_query_service.format_pmq()
-        step = self.metric_query_service.format_period(self.policy.period)
         group_by_keys = self.metric_query_service.get_result_group_by()
-        group_by = ",".join(group_by_keys)
+        instance_ids = [monitor_instance_id] if monitor_instance_id else None
 
         try:
-            compiled = compile_policy_query(self.policy, query, step, group_by)
-            pre_alert_metrics = VictoriaMetricsAPI().query_range(
-                compiled, start_timestamp, end_timestamp, step
+            pre_alert_metrics = self.metric_query_service.query_policy_window_metrics(
+                self.policy.period,
+                instance_ids=instance_ids,
+                end_timestamp=int(pre_alert_time.timestamp()),
             )
         except Exception as e:
             logger.error(f"Failed to query pre-alert metrics for policy {self.policy.id}: {e}")

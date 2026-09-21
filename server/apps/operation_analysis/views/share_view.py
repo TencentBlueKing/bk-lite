@@ -606,6 +606,44 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             extra_reject=self._reject_undeclared_related_topology_inst,
         )
 
+    def _room3d_operation(self, request, session_id, *, action_name: str, view_action: str):
+        return self._delegated_scene_widget_operation(
+            request,
+            session_id,
+            action_name=action_name,
+            view_action=view_action,
+            widget_type="room3D",
+            allowed_resource_types=frozenset({"screen"}),
+            undeclared_reason="room3d_not_declared",
+            undeclared_detail="分享大屏未声明 3D 机房组件",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/room3d/rooms",
+    )
+    def room3d_rooms(self, request, session_id=None):
+        return self._room3d_operation(
+            request,
+            session_id,
+            action_name="room3d_rooms",
+            view_action="room3d_rooms",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/room3d/layout",
+    )
+    def room3d_layout(self, request, session_id=None):
+        return self._room3d_operation(
+            request,
+            session_id,
+            action_name="room3d_layout",
+            view_action="room3d_layout",
+        )
+
     def _resolve_network_topology_principal(self, request, session_id, *, action_name: str):
         try:
             principal = resolve_session(session_id=session_id, visitor=request.user)

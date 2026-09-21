@@ -12,6 +12,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Typography,
 } from 'antd';
@@ -30,6 +31,7 @@ import {
   SettingOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
+import { getProbeCapability, type ProbeLanguage } from '@/app/apm/integration/probe-capability-matrix';
 
 const { Content } = Layout;
 const { Title, Text } = Typography;
@@ -935,102 +937,122 @@ go run .`}
   );
 }
 
+function StoryCapabilityPane({
+  language,
+  kind,
+}: {
+  language: ProbeLanguage;
+  kind: 'frameworks' | 'discovery';
+}) {
+  const capability = getProbeCapability(language);
+  const items = kind === 'frameworks' ? capability.frameworks : capability.inferredComponents;
+  return (
+    <div className="flex flex-col gap-3">
+      <Text type="secondary" className="text-xs">
+        探针版本 {capability.version}
+      </Text>
+      {kind === 'frameworks' && capability.manualInstrumentation ? (
+        <Alert showIcon type="info" message="该语言需在代码中加入对应 contrib 插桩；下列为精选常见框架。" />
+      ) : null}
+      <Text type="secondary" className="text-xs">
+        {kind === 'frameworks'
+          ? '以下为当前钉死探针版本精选支持的 Web / RPC 框架，不是完整 instrumentation 清单。'
+          : '以下类型会在该探针打出 Client Span 后，出现在应用详情拓扑上，作为推断下游。'}
+      </Text>
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <Tag key={item}>{item}</Tag>
+        ))}
+      </div>
+      {kind === 'discovery' ? (
+        <Text type="secondary" className="text-xs">
+          这是应用详情拓扑上的推断节点，不是 CMDB 或监控自动发现，也不会进入服务目录或应用列表。给 Web 服务装探针后，mysql 不会作为独立应用出现。
+        </Text>
+      ) : null}
+    </div>
+  );
+}
+
 function IntegrationDetail({
   title,
   configPanel,
   endpointMap = REGION_ENDPOINTS,
+  language,
 }: {
   title: string;
   configPanel: (endpoint: string) => React.ReactNode;
   endpointMap?: Record<string, string>;
+  language?: ProbeLanguage;
 }) {
   const [region, setRegion] = useState('default');
   const [orgs, setOrgs] = useState<string[]>(['Default']);
   const endpoint = endpointMap[region] ?? endpointMap.default ?? Object.values(endpointMap)[0];
+  const guide = (
+    <>
+      <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+        <Space size={8} className="mb-1">
+          <span className="grid h-[22px] w-[22px] place-items-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-[var(--color-primary-foreground)]">
+            1
+          </span>
+          <Title level={5} className="!mb-0">
+            上报端点
+          </Title>
+        </Space>
+        <div className="pl-[30px]">
+          <EndpointPanel
+            region={region}
+            setRegion={setRegion}
+            orgs={orgs}
+            setOrgs={setOrgs}
+            endpointMap={endpointMap}
+          />
+        </div>
+      </div>
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+        <Space size={8} className="mb-1">
+          <span className="grid h-[22px] w-[22px] place-items-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-[var(--color-primary-foreground)]">
+            2
+          </span>
+          <Title level={5} className="!mb-0">
+            接入配置
+          </Title>
+        </Space>
+        <div className="pl-[30px]">{configPanel(endpoint)}</div>
+      </div>
+    </>
+  );
   return (
     <div style={shellStyle}>
       <TopMenuBar active="integration" />
-      <Content style={{ padding: 24 }}>
-        <Space style={{ marginBottom: 12 }}>
-          <a href={STORY_URLS.integration} style={{ color: TOKENS.textSecondary, fontSize: 13 }}>
+      <Content className="p-6">
+        <Space className="mb-3">
+          <a href={STORY_URLS.integration} className="text-[13px] text-[var(--color-text-3)]">
             <ArrowLeftOutlined /> 返回接入方式总览
           </a>
         </Space>
-        <div
-          style={{
-            ...surfaceCardStyle,
-            padding: '14px 16px',
-            marginBottom: 16,
-          }}
-        >
+        <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3.5">
           <Space size={8} align="center">
-            <RocketOutlined style={{ color: TOKENS.primary }} />
-            <Title level={4} style={{ margin: 0 }}>
+            <RocketOutlined className="text-[var(--color-primary)]" />
+            <Title level={4} className="!mb-0">
               {title}
             </Title>
-            <Tag color="processing" style={{ margin: 0 }}>
+            <Tag color="processing" className="!m-0">
               接入详情
             </Tag>
           </Space>
         </div>
-        {/* ① 上报端点 */}
-        <div style={{ ...surfaceCardStyle, padding: '14px 16px', marginBottom: 16 }}>
-          <Space size={8} style={{ marginBottom: 4 }}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 22,
-                height: 22,
-                borderRadius: '50%',
-                background: TOKENS.primary,
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              1
-            </span>
-            <Title level={5} style={{ margin: 0 }}>
-              上报端点
-            </Title>
-          </Space>
-          <div style={{ paddingLeft: 30 }}>
-            <EndpointPanel
-              region={region}
-              setRegion={setRegion}
-              orgs={orgs}
-              setOrgs={setOrgs}
-              endpointMap={endpointMap}
-            />
-          </div>
-        </div>
-        {/* ② 接入配置 */}
-        <div style={{ ...surfaceCardStyle, padding: '14px 16px' }}>
-          <Space size={8} style={{ marginBottom: 4 }}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 22,
-                height: 22,
-                borderRadius: '50%',
-                background: TOKENS.primary,
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              2
-            </span>
-            <Title level={5} style={{ margin: 0 }}>
-              接入配置
-            </Title>
-          </Space>
-          <div style={{ paddingLeft: 30 }}>{configPanel(endpoint)}</div>
-        </div>
+        {language ? (
+          <Tabs
+            defaultActiveKey="guide"
+            items={[
+              { key: 'guide', label: '接入指引', children: guide },
+              { key: 'frameworks', label: '支持框架', children: <StoryCapabilityPane language={language} kind="frameworks" /> },
+              { key: 'discovery', label: '发现能力', children: <StoryCapabilityPane language={language} kind="discovery" /> },
+            ]}
+          />
+        ) : (
+          guide
+        )}
       </Content>
     </div>
   );

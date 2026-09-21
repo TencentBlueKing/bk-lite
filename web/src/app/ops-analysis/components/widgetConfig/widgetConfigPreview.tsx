@@ -256,6 +256,10 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                             surface={surface}
                             reloadVersion={String(reloadVersion)}
                             runtimeActive
+                            layoutEditable={
+                              config.chartType === 'room3D' ||
+                              config.sceneWidgetType === 'room3D'
+                            }
                             onRawData={onRawData}
                           />
                         </React.Suspense>

@@ -28,7 +28,9 @@ from apps.opspilot.services.wiki.markdown_import_governance_service import (
     MarkdownImportGovernanceError,
     _release_preflight_after_failure,
     enqueue_markdown_import,
+    persist_markdown_import_celery_task_id,
     preflight_markdown_import,
+    reclaim_stale_markdown_import_builds,
 )
 from apps.opspilot.services.wiki.material_build_queue_service import has_active_runner, kb_has_user_build_in_progress, release_stale_runner_lease
 from apps.opspilot.services.wiki.native_markdown_export_service import build_native_markdown_export_zip
@@ -440,13 +442,13 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
             )
             return JsonResponse({"result": True, "data": data})
         try:
-            _opspilot_tasks.wiki_execute_markdown_import_task.delay(
-                knowledge_base.id,
-                dispatch["build_record_id"],
-                token,
-                dispatch["archive_locator"],
-                dispatch["filename"],
-                operator,
+            _opspilot_tasks.wiki_execute_markdown_import_task.apply_async(
+                kwargs={
+                    "kb_id": knowledge_base.id,
+                    "build_record_id": dispatch["build_record_id"],
+                    "operator": operator,
+                },
+                task_id=dispatch["celery_task_id"],
             )
         except Exception as error:
             with transaction.atomic():
@@ -467,6 +469,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                 ),
                 status=503,
             )
+        persist_markdown_import_celery_task_id(dispatch["build_record_id"], dispatch["celery_task_id"])
         log_operation(
             request,
             "create",
@@ -710,6 +713,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         try:
             with transaction.atomic():
                 kb = WikiKnowledgeBase.objects.select_for_update().get(pk=kb.pk)
+                reclaim_stale_markdown_import_builds(kb.pk)
                 if kb_has_user_build_in_progress(kb.pk) or has_active_runner(kb.pk):
                     return JsonResponse(
                         {

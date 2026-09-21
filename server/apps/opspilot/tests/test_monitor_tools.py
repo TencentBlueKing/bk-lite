@@ -76,6 +76,7 @@ def test_monitor_tool_descriptions_guide_host_metric_queries():
     objects = tools["monitor_list_objects"].description
     assert "request_user_choice" in objects
     assert "猜" in objects
+    assert "已声明" in objects
 
     metrics = tools["monitor_list_object_metrics"].description
     assert "第3步" in metrics
@@ -306,6 +307,8 @@ def test_monitor_list_objects_choice_hint_uses_real_type_names(mocker):
     assert "Redis" in hint
     assert "single_select" in hint
     assert "text" in hint.lower() or "不要用 text" in hint
+    assert "已明确" in hint or "已声明" in hint
+    assert "不要 request_user_choice" in hint
     assert result["data"][0]["id"] == "12"
 
 
@@ -641,7 +644,10 @@ def test_monitor_list_object_instances_unmatched_keyword_is_terminal(mocker):
     assert result["keyword"] == "not-a-host"
     assert "不要把空列表当成最终结论" in result["message"]
     assert "request_user_choice" in result["message"]
+    assert "已声明" in result["message"]
     assert "request_user_choice" in result["_next_step_hint"]
+    assert "已声明" in result["_next_step_hint"] or "不要再问" in result["_next_step_hint"]
+    assert "必须立即" not in result["_next_step_hint"]
     assert "id-mismatch-sz-app-01" in result["available_names"]
     rpc.monitor_object_instances.assert_called_once()
 
@@ -696,7 +702,10 @@ def test_monitor_list_object_instances_coerces_non_list_payload(mocker):
     assert result["data"] == []
     assert "没有实例" in result["message"]
     assert "request_user_choice" in result["message"]
+    assert "已声明" in result["message"]
     assert "request_user_choice" in result["_next_step_hint"]
+    assert "已声明" in result["_next_step_hint"] or "不要再问" in result["_next_step_hint"]
+    assert "必须立即" not in result["_next_step_hint"]
     assert "禁止猜测" in result["message"] or "猜测其他 ID" in result["message"]
 
 

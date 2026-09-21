@@ -81,6 +81,12 @@ beforeEach(() => {
       content: 'sre 分派给 bob'
     },
     {
+      id: 'reassigned-1',
+      action: 'reassigned',
+      event_time: '2026-01-01 12:07:00',
+      content: 'sre 转派给 alice'
+    },
+    {
       id: 'closed-1',
       action: 'closed',
       event_time: '2026-01-01 12:10:00',
@@ -111,7 +117,7 @@ afterEach(() => {
 
 describe('日志告警详情事件序列', () => {
   it(
-    '展示认领/分派/关闭动作，且热力图与详情不把生命周期当命中',
+    '展示认领/分派/转派/关闭动作，且热力图与详情不把生命周期当命中',
     async () => {
       const ref = createRef<ModalRef>();
       render(
@@ -140,6 +146,7 @@ describe('日志告警详情事件序列', () => {
 
       expect(await screen.findByText('认领')).toBeTruthy();
       expect(screen.getByText('分派')).toBeTruthy();
+      expect(screen.getByText('转派')).toBeTruthy();
       expect(screen.getByText('关闭')).toBeTruthy();
       expect(screen.getByText('error keyword')).toBeTruthy();
       expect(screen.getByTestId('event-heat-map').textContent).toBe('hit-1');

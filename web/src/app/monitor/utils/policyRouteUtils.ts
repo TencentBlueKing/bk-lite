@@ -1,10 +1,11 @@
-export type MonitorStrategyDetailType = 'edit' | 'add' | 'builtIn';
+export type MonitorStrategyDetailType = 'edit' | 'add' | 'builtIn' | 'editTemplate';
 
 export interface MonitorStrategyDetailParams {
   id?: string | number;
   name?: string;
   monitorObjId: string | number;
   monitorName: string;
+  templateKey?: string;
 }
 
 export function buildMonitorStrategyDetailUrl(
@@ -21,6 +22,9 @@ export function buildMonitorStrategyDetailUrl(
   }
   if (params.name) {
     searchParams.set('name', params.name);
+  }
+  if (params.templateKey) {
+    searchParams.set('template_key', params.templateKey);
   }
   return `/monitor/event/strategy/detail?${searchParams.toString()}`;
 }

@@ -228,20 +228,21 @@ class LogAlertLifecycleNotifier:
             return False
         return not self._is_alert_center_channel(channel)
 
-    def _build_assigned_notice(self, alert) -> tuple[str, str]:
-        title = "【日志告警分派】"
+    def _build_assigned_notice(self, alert, *, action="assigned") -> tuple[str, str]:
+        title = "【日志告警转派】" if action == "reassigned" else "【日志告警分派】"
+        status = "已转派" if action == "reassigned" else "已分派"
         url = f"{WebConstants.URL}/log/event/alert"
         content = "\n".join(
             [
                 f"告警内容：{alert.content or ''}",
                 f"策略名称：{self.policy.name}",
-                "状态：已分派",
+                f"状态：{status}",
                 f'查看告警详情：<a href="{url}">点击查看详情</a>',
             ]
         )
         return title, content
 
-    def notify_assigned(self, alert, max_attempts=None) -> tuple[bool, dict]:
+    def notify_assigned(self, alert, max_attempts=None, *, action="assigned") -> tuple[bool, dict]:
         channel = self._get_channel()
         if not self._is_person_assign_channel(channel):
             return False, {}
@@ -249,7 +250,7 @@ class LogAlertLifecycleNotifier:
         if not handlers:
             return False, {}
 
-        title, content = self._build_assigned_notice(alert)
+        title, content = self._build_assigned_notice(alert, action=action)
         if max_attempts is None:
             max_attempts = AlertConstants.NOTICE_SEND_MAX_ATTEMPTS
         max_attempts = max(int(max_attempts), 1)

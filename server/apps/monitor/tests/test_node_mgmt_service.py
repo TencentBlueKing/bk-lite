@@ -156,6 +156,26 @@ class TestSyncExistingInstanceAttrs:
         assert inst.is_active is True
         assert inst.is_deleted is False
         assert inst.updated_by == "system"
+        assert inst.interval == 60
+
+    def test_syncs_interval_from_payload(self):
+        obj = MonitorObject.objects.create(name="SyncIntervalObj", level="base")
+        MonitorInstance.objects.create(id="('h1',)", name="old", monitor_object=obj, interval=60)
+        SVC._sync_existing_instance_attrs(
+            [{"instance_id": "('h1',)", "instance_name": "new", "interval": 300}],
+        )
+        inst = MonitorInstance.objects.get(id="('h1',)")
+        assert inst.interval == 300
+
+    def test_keeps_existing_interval_when_payload_omits_it(self):
+        obj = MonitorObject.objects.create(name="KeepIntervalObj", level="base")
+        MonitorInstance.objects.create(id="('h1',)", name="old", monitor_object=obj, interval=300)
+        SVC._sync_existing_instance_attrs(
+            [{"instance_id": "('h1',)", "instance_name": "new"}],
+        )
+        inst = MonitorInstance.objects.get(id="('h1',)")
+        assert inst.interval == 300
+        assert inst.name == "new"
 
     def test_records_actor_as_updater(self):
         obj = MonitorObject.objects.create(name="SyncAttrActorObj", level="base")
@@ -238,6 +258,13 @@ class TestBuildInstanceObjects:
         assert objs[0].cloud_region_id == 1
         assert objs[0].node_id == "n1"
         assert objs[0].cmdb_id == "ci-1"
+
+    def test_copies_interval_from_instance(self):
+        objs, _, _ = SVC._build_instance_objects(
+            [{"instance_id": "('h1',)", "instance_name": "h1", "group_ids": [1], "interval": 300}],
+            1,
+        )
+        assert objs[0].interval == 300
 
 
 class TestGetConfigContent:

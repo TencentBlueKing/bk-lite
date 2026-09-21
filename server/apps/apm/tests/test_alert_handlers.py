@@ -477,3 +477,191 @@ def test_assign_logs_lifecycle_template_without_handler_payload(apm_api_client, 
     assert str(alert.id) in rendered
     assert "password" not in rendered.lower()
     assert "handlers" not in rendered
+
+
+def test_current_handler_can_reassign_to_multiple_people(
+    apm_api_client, mocker, django_capture_on_commit_callbacks
+):
+    notify = mocker.patch("apps.apm.services.alerts.DjangoApmAlertService.notify_reassigned")
+    actor = _actor_user()
+    first = _org_user(username="reassign-a")
+    second = _org_user(username="reassign-b")
+    outsider = _org_user(username="outsider", organization=99)
+    disabled = _org_user(username="disabled1", disabled=True)
+    _, alert, _ = _trigger(suffix="-reassign")
+    _person_channel(alert.policy)
+    snapshot_before = ApmEventSnapshot.objects.filter(alert=alert).count()
+
+    claimed = apm_api_client.post(f"/api/v1/apm/alerts/{alert.id}/claim/")
+    assert claimed.status_code == 200
+    with django_capture_on_commit_callbacks(execute=True):
+        ok = apm_api_client.post(
+            f"/api/v1/apm/alerts/{alert.id}/reassign/",
+            {"handlers": [first.id, second.id]},
+            format="json",
+        )
+    alert.refresh_from_db()
+    assert ok.status_code == 200
+    assert alert.handlers == [first.id, second.id]
+    notify.assert_called_once()
+    assert notify.call_args.args[0].handlers == [first.id, second.id]
+    reassigned_events = [item for item in ok.data["events"] if item["action"] == ApmEvent.Action.REASSIGNED]
+    assert len(reassigned_events) == 1
+    assert actor.username in reassigned_events[0]["description"]
+    assert first.username in reassigned_events[0]["description"]
+    assert second.username in reassigned_events[0]["description"]
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.REASSIGNED).count() == 1
+    assert ApmEventSnapshot.objects.filter(alert=alert).count() == snapshot_before
+    assert ApmEventSnapshot.objects.filter(alert=alert, action=ApmEvent.Action.REASSIGNED).count() == 0
+
+    _, empty, _ = _trigger(suffix="-reassign-empty")
+    empty_resp = apm_api_client.post(
+        f"/api/v1/apm/alerts/{empty.id}/reassign/",
+        {"handlers": [first.id]},
+        format="json",
+    )
+    _, owned, _ = _trigger(suffix="-reassign-owned")
+    owned.handlers = [first.id]
+    owned.save(update_fields=("handlers", "updated_at"))
+    not_handler = apm_api_client.post(
+        f"/api/v1/apm/alerts/{owned.id}/reassign/",
+        {"handlers": [second.id]},
+        format="json",
+    )
+    _, still_mine, _ = _trigger(suffix="-reassign-out")
+    claimed_mine = apm_api_client.post(f"/api/v1/apm/alerts/{still_mine.id}/claim/")
+    assert claimed_mine.status_code == 200
+    outside = apm_api_client.post(
+        f"/api/v1/apm/alerts/{still_mine.id}/reassign/",
+        {"handlers": [outsider.id]},
+        format="json",
+    )
+    empty.refresh_from_db()
+    owned.refresh_from_db()
+    still_mine.refresh_from_db()
+    assert empty_resp.status_code == 409
+    assert empty.handlers == []
+    assert ApmEvent.objects.filter(alert=empty, action=ApmEvent.Action.REASSIGNED).count() == 0
+    assert not_handler.status_code == 409
+    assert owned.handlers == [first.id]
+    assert ApmEvent.objects.filter(alert=owned, action=ApmEvent.Action.REASSIGNED).count() == 0
+    assert outside.status_code == 400
+    assert still_mine.handlers == claimed_mine.data["handlers"]
+    assert ApmEvent.objects.filter(alert=still_mine, action=ApmEvent.Action.REASSIGNED).count() == 0
+
+    _, disabled_target, _ = _trigger(suffix="-reassign-disabled")
+    claimed_disabled = apm_api_client.post(f"/api/v1/apm/alerts/{disabled_target.id}/claim/")
+    assert claimed_disabled.status_code == 200
+    disabled_resp = apm_api_client.post(
+        f"/api/v1/apm/alerts/{disabled_target.id}/reassign/",
+        {"handlers": [disabled.id]},
+        format="json",
+    )
+    disabled_target.refresh_from_db()
+    assert disabled_resp.status_code == 400
+    assert disabled_target.handlers == claimed_disabled.data["handlers"]
+    assert ApmEvent.objects.filter(alert=disabled_target, action=ApmEvent.Action.REASSIGNED).count() == 0
+
+
+def test_reassign_does_not_increase_distribution_count(apm_api_client):
+    inside = _org_user(username="reassign-dist")
+    _, alert, _ = _trigger(suffix="-reassign-dist")
+    claimed = apm_api_client.post(f"/api/v1/apm/alerts/{alert.id}/claim/")
+    assert claimed.status_code == 200
+
+    before = apm_api_client.get("/api/v1/apm/alerts/distribution/", {"status_group": "active"})
+    reassigned = apm_api_client.post(
+        f"/api/v1/apm/alerts/{alert.id}/reassign/",
+        {"handlers": [inside.id]},
+        format="json",
+    )
+    after = apm_api_client.get("/api/v1/apm/alerts/distribution/", {"status_group": "active"})
+
+    assert reassigned.status_code == 200
+    assert reassigned.data["handlers"] == [inside.id]
+    assert before.status_code == 200
+    assert after.status_code == 200
+    assert sum(bucket["error"] for bucket in before.data) == 1
+    assert sum(bucket["error"] for bucket in after.data) == 1
+
+
+def test_inactive_alert_cannot_reassign(apm_api_client):
+    owner = _org_user()
+    _, recovered, at = _trigger(suffix="-reassign-recovered")
+    claimed = apm_api_client.post(f"/api/v1/apm/alerts/{recovered.id}/claim/")
+    assert claimed.status_code == 200
+    recovered.status = ApmAlert.Status.RECOVERED
+    recovered.ended_at = at + timedelta(minutes=1)
+    recovered.save(update_fields=("status", "ended_at", "updated_at"))
+    _, closed, _ = _trigger(suffix="-reassign-closed")
+    closed_claim = apm_api_client.post(f"/api/v1/apm/alerts/{closed.id}/claim/")
+    assert closed_claim.status_code == 200
+    closed.status = ApmAlert.Status.CLOSED
+    closed.save(update_fields=("status", "updated_at"))
+
+    for alert in (recovered, closed):
+        resp = apm_api_client.post(
+            f"/api/v1/apm/alerts/{alert.id}/reassign/",
+            {"handlers": [owner.id]},
+            format="json",
+        )
+        assert resp.status_code == 409
+        assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.REASSIGNED).count() == 0
+
+
+def test_reassign_logs_lifecycle_template_without_handler_payload(apm_api_client, caplog):
+    from apps.apm.services.alerts import DjangoApmAlertService
+
+    actor = _actor_user()
+    inside = _org_user()
+    _, alert, _ = _trigger(suffix="-reassign-log")
+    claimed = DjangoApmAlertService.claim(alert, actor=actor)
+    caplog.set_level(logging.INFO, logger="apm")
+
+    reassigned = DjangoApmAlertService.reassign(claimed, handlers=[inside.id], actor=actor)
+
+    records = [
+        record
+        for record in caplog.records
+        if record.msg == "event=alert_reassigned alert_id=%s handler_count=%s"
+    ]
+    assert reassigned.handlers == [inside.id]
+    assert len(records) == 1
+    assert records[0].args == (alert.id, 1)
+    rendered = records[0].getMessage()
+    assert str(alert.id) in rendered
+    assert "password" not in rendered.lower()
+    assert "handlers" not in rendered
+
+
+def test_reassign_outbox_key_is_unique_per_occurrence():
+    from apps.apm.services.alerts import DjangoApmAlertService
+
+    first = _org_user(username="reassign-outbox-a")
+    second = _org_user(username="reassign-outbox-b")
+    _, alert, _ = _trigger(suffix="-reassign-outbox")
+    person = _person_channel(alert.policy)
+    before = set(ApmAlertOutbox.objects.values_list("event_key", flat=True))
+
+    alert.handlers = [first.id]
+    alert.save(update_fields=("handlers", "updated_at"))
+    DjangoApmAlertService.notify_reassigned(alert)
+    first_keys = set(ApmAlertOutbox.objects.values_list("event_key", flat=True)) - before
+
+    alert.handlers = [second.id]
+    alert.save(update_fields=("handlers", "updated_at"))
+    DjangoApmAlertService.notify_reassigned(alert)
+    created = ApmAlertOutbox.objects.exclude(event_key__in=before)
+
+    assert created.count() == 2
+    keys = list(created.values_list("event_key", flat=True))
+    assert all(key.startswith(f"reassign:{alert.id}:") for key in keys)
+    assert all(f"channel:{person.channel_id}" in key for key in keys)
+    assert all(not key.startswith(f"assign:{alert.id}:") for key in keys)
+    assert len(set(keys)) == 2
+    assert first_keys.isdisjoint(set(keys) - first_keys)
+    payloads = list(created.values_list("payload", flat=True))
+    assert all(item.get("action") == "reassigned" for item in payloads)
+    recipient_lists = list(created.values_list("recipients", flat=True))
+    assert any(str(first.id) in item for item in recipient_lists)
+    assert any(str(second.id) in item for item in recipient_lists)

@@ -5,7 +5,7 @@ type SwitchableInputConfig = NonNullable<ParamItem['inputConfig']> & {
   componentSwitch?: boolean;
 };
 
-const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'room3D', 'nodeGraph']);
+const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'nodeGraph']);
 
 export const supportsComponentSwitch = (chartType?: string): boolean =>
   Boolean(chartType && COMPONENT_SWITCH_CHART_TYPES.has(chartType));

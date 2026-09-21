@@ -1,8 +1,8 @@
 # 领域告警处理人产品决策记忆
 
-- 最近更新：2026-09-09
-- 当前规格：`specs/changes/domain-alert-handlers-followup/spec.md`
-- 相关规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`
+- 最近更新：2026-09-20
+- 当前规格：`specs/changes/domain-alert-reassign/spec.md`
+- 相关规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`、`specs/changes/domain-alert-handlers-followup/spec.md`
 
 ## 产品定位
 
@@ -16,8 +16,9 @@
 - 通知开启且需要通知人时，通知人默认带处理人，可删，删后不自动补回。
 - 列表「处理人」展示告警 `handlers`；「我的告警」只是筛选处理人包含当前用户。
 - 活跃且没有处理人：认领、分派、关闭。分派选人看告警自己的所属组织。
-- 手工分派后按策略通知配置给被分派人发通知。创建快照不是分派。
-- 认领、分派、自动恢复、手动关闭写入该域事件表，并在告警详情事件序列展示。日志补关闭事件；日志没有自动恢复，不发明恢复。
+- 活跃且已有处理人：当前处理人可转派，整表替换处理人名单（至少一人，可多人）；空单不能转派。
+- 手工分派 / 转派后按策略通知配置给被分派或被转派人发通知。创建快照不是分派。
+- 认领、分派、转派、自动恢复、手动关闭写入该域事件表，并在告警详情事件序列展示。日志补关闭事件；日志没有自动恢复，不发明恢复。
 
 ## 已确认设计决策
 
@@ -25,12 +26,12 @@
 - 处理人 = 分派人，可以多人。
 - 不复用 `operator`；`operator` 仍是关单 / 恢复操作人。
 - 告警权限已与策略解耦，分派选人跟告警生成时组织走。
-- 有处理人之后本期不做转派。
-- 认领不发通知；通知未开则分派也不发。
-- 认领 / 分派只允许发生在各域单一服务入口；事件与处理人名单同一事务，通知仍提交后发送。
-- 监控 `triggered` / `recovered` / `closed` 每告警每动作一条的约束不扩到认领 / 分派。
+- 转派只允许当前处理人；替换整份名单，不是加签。非处理人、空单、非活跃一律拒绝。
+- 认领不发通知；通知未开则分派 / 转派也不发。APM 转派出箱键按次唯一，不复用首次分派键。
+- 认领 / 分派 / 转派只允许发生在各域单一服务入口；事件与处理人名单同一事务，通知仍提交后发送。
+- 监控 `triggered` / `recovered` / `closed` 每告警每动作一条的约束不扩到认领 / 分派 / 转派。
 - 614 的「原因」是结构化审计（谁、动作、处理人变成谁），不是必填原因弹窗。关闭沿用监控已有可选原因拼接。
-- APM 认领 / 分派不走评估写事件入口，不建事件快照，不上指标图。
+- APM 认领 / 分派 / 转派不走评估写事件入口，不建事件快照，不上指标图。
 - 日志 Event 同时承载命中与生命周期；命中热力图 / raw log 只看命中行。
 - 监控 / APM 已有关闭 / 恢复事件不因 614 双写。
 
@@ -38,7 +39,7 @@
 
 - 关单 / 认领 / 分派必填原因弹窗。
 - 日志自动恢复。
-- 转派、升级、认领通知、创建当分派、历史回填、告警中心回写。
+- 升级、认领通知、创建当分派、历史回填、告警中心回写、超级用户抢转。
 - 把监控 / 日志整份生命周期通知从历史 `celery_logger` / `exc_info` 一次迁完（跟进规格只修 613 新增的分派通知路径）。
 
 ## 仍待确认
@@ -55,9 +56,10 @@
 - 「APM 策略没有组织、处理人候选走服务组织」：2026-09-09 改为 APM 策略补所属组织，与监控 / 日志对齐。
 - 「614 本期不做、只预留入口」：2026-09-09 改为 614 规格就绪，在 613 入口补写事件。
 - 「614 的原因 = 认领 / 分派 / 关闭必填文本框」：2026-09-09 改为结构化审计，不新增弹窗。
+- 「有处理人之后本期不做转派」：2026-09-20 改为当前处理人可转派给多人，写 `reassigned` 事件。
 
 ## 决策来源
 
 - p398_613、p398_614 需求正文与 2026-09-07～09 对齐。
 - 告警组织与策略解耦：p398_639 及三域告警 `organizations` 生成时快照。
-- 规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`。
+- 规格：`specs/changes/domain-alert-handlers-assignment/spec.md`、`specs/changes/domain-alert-lifecycle-events/spec.md`、`specs/changes/domain-alert-reassign/spec.md`。

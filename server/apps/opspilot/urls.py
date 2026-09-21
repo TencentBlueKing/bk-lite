@@ -200,9 +200,19 @@ urlpatterns += [
         name="execute_skill_channel_chat",
     ),
     path(
+        r"skill_channel/embedded/<int:skill_id>/<uuid:public_id>/",
+        views.execute_skill_embedded_chat,
+        name="execute_skill_embedded_chat_by_public_id",
+    ),
+    path(
         r"skill_channel/embedded/<int:skill_id>/<int:channel_id>/",
         views.execute_skill_embedded_chat,
         name="execute_skill_embedded_chat",
+    ),
+    path(
+        r"skill_channel/<uuid:public_id>/<str:channel_type>/",
+        views.execute_skill_channel_im,
+        name="execute_skill_channel_im_by_public_id",
     ),
     path(
         r"skill_channel/<int:channel_id>/<str:channel_type>/",

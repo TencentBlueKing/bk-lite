@@ -558,6 +558,7 @@ assert.deepEqual(getRoom3DDisplayOptions({ appearance: { frame: "panel" } }), {
 
 const room3DWidget = createScreenWidgetItem("room3D", []);
 assert.deepEqual(room3DWidget.valueConfig.appearance, { frame: "bare" });
+assert.equal(room3DWidget.valueConfig.sceneWidgetType, "room3D");
 
 const screenWithUnsupportedBareLine = addConfiguredScreenWidget(
   {
@@ -607,9 +608,11 @@ const componentSwitchSource = readFileSync(
 );
 assert.match(room3DComponentSource, /roomSwitchOverlay/);
 assert.match(room3DComponentSource, /chromeVisible|room3DChromeVisible/);
-assert.match(room3DComponentSource, /showRoomSummary = !componentSwitchControl/);
+assert.match(room3DComponentSource, /showRoomSwitcher/);
+assert.match(room3DComponentSource, /showRoomSummary = !showRoomSwitcher/);
 assert.match(room3DComponentSource, /styles\.roomTitle/);
 assert.match(room3DComponentSource, /roomSummaryText/);
+assert.doesNotMatch(room3DComponentSource, /componentSwitchControl/);
 assert.match(room3DStyleSource, /\.roomTitle\b/);
 assert.match(room3DStyleSource, /\.room3DImmersive:hover/);
 assert.doesNotMatch(

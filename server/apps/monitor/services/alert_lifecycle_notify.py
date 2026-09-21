@@ -69,7 +69,7 @@ class AlertLifecycleNotifier:
         self.policy = policy
         self.policies_by_id = policies_by_id or {}
 
-    def notify_assigned(self, alerts):
+    def notify_assigned(self, alerts, *, action="assigned"):
         if not alerts:
             return None
 
@@ -97,7 +97,7 @@ class AlertLifecycleNotifier:
                     channel_name,
                     list(handlers_tuple),
                     group_alerts,
-                    "assigned",
+                    action,
                     "",
                     "",
                 )
@@ -105,7 +105,8 @@ class AlertLifecycleNotifier:
                     alert_log_entries[alert.id].append(log_entry)
             except Exception as exc:
                 logger.error(
-                    "event=assign_notify_failed action=assigned channel_id=%s failed_stage=send error_type=%s",
+                    "event=assign_notify_failed action=%s channel_id=%s failed_stage=send error_type=%s",
+                    action,
                     channel_id,
                     type(exc).__name__,
                 )
@@ -114,7 +115,7 @@ class AlertLifecycleNotifier:
                     alert_log_entries[alert.id].append(
                         {
                             "time": now,
-                            "action": "assigned",
+                            "action": action,
                             "channel_id": channel_id,
                             "success": False,
                             "error": type(exc).__name__,
@@ -659,6 +660,7 @@ class AlertLifecycleNotifier:
             "closed": "告警关闭",
             "recovered": "告警恢复",
             "assigned": "告警分派",
+            "reassigned": "告警转派",
         }
         label = action_labels.get(action, "告警通知")
         policy = self.policies_by_id.get(alert.policy_id, self.policy)
@@ -720,6 +722,8 @@ class AlertLifecycleNotifier:
             parts.append("状态：已自动恢复")
         elif action == "assigned":
             parts.append("状态：已分派")
+        elif action == "reassigned":
+            parts.append("状态：已转派")
 
         if alert.start_event_time:
             parts.append(f"开始时间：{self._format_notice_time(alert.start_event_time, target_timezone)}")

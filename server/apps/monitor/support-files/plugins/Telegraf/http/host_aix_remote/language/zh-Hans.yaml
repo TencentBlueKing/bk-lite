@@ -1,6 +1,7 @@
 Host AIX Remote:
   name: AIX主机远程采集
-  desc: 由 Linux 采集节点按采集间隔 SSH 到 AIX，执行系统命令。采集 CPU（含 LPAR）、内存分页与 svmon、负载、进程状态、磁盘容量与 inode、读写与忙碌、网卡和运行时长。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
+  desc: 由 Linux 采集节点按采集间隔 SSH 到 AIX，执行系统命令。采集 CPU（含 LPAR）、内存分页与 svmon、负载、进程状态、磁盘容量与 inode、读写与忙碌、网卡和运行时长。目标主机无需安装采集器。表单填写
+    IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
 monitor_object:
   Host: 主机
 monitor_object_type:
@@ -9,7 +10,7 @@ monitor_object_metric:
   Host:
     cpu_usage_total:
       name: CPU使用率
-      desc: 由 mpstat 的 user、sys、iowait 三相加得到的 CPU 使用率。
+      desc: 由 mpstat 间隔采样的 user、sys、iowait 三相加得到的 CPU 使用率。
     cpu_usage_iowait_total:
       name: CPU等待IO占比
       desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，主要用于判断系统是否受限于磁盘或其他 I/O 性能。

@@ -99,6 +99,8 @@ import {
 import WidgetConfigPreview from './widgetConfig/widgetConfigPreview';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
 import { RelatedTopologyAssetField } from './widgetConfig/sections/relatedTopologyAssetField';
+import { Room3DRoomField } from './widgetConfig/sections/room3DRoomField';
+import { Room3DRackTopFields } from './widgetConfig/sections/room3DRackTopFields';
 import { getDefaultScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
@@ -242,6 +244,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     isTableLike: isTableLikeChartType,
     isNetworkStatusTopology,
     isRelatedTopology,
+    isRoom3D,
     isSceneWidget,
     showValueFormat,
   } = getWidgetChartTypeFlags(
@@ -1218,6 +1221,21 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             </ConfigSectionTitle>
             <RelatedTopologyAssetField open={open} enabled={isRelatedTopology} />
           </section>
+        ) : isRoom3D ? (
+          <>
+            <section>
+              <ConfigSectionTitle>
+                {t('dashboard.dataConfigSection', '数据配置')}
+              </ConfigSectionTitle>
+              <Room3DRoomField open={open} enabled={isRoom3D} />
+            </section>
+            <section>
+              <ConfigSectionTitle>
+                {t('dashboard.room3DRackTopSection')}
+              </ConfigSectionTitle>
+              <Room3DRackTopFields />
+            </section>
+          </>
         ) : isSceneWidget ? null : (
           <WidgetDatasourceChartTypeFields
             t={t}

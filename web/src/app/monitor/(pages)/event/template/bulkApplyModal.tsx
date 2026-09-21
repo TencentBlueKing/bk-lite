@@ -50,6 +50,11 @@ import templateStyle from './index.module.scss';
 import { formatUserName } from '@/utils/userDisplay';
 import { useTranslation } from '@/utils/i18n';
 import { isPodMonitorObject } from '@/app/monitor/utils/monitorObject';
+import {
+  ALERT_CENTER_NATS_METHOD,
+  applyPushAlertCenterToNotice,
+  pickAlertCenterChannelIds
+} from '@/app/monitor/(pages)/integration/list/detail/configure/automaticPolicyApply';
 
 const renderConfigLabel = (text: string, tip: string) => (
   <span className={templateStyle.fieldLabel}>
@@ -143,7 +148,8 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
     no_data_enabled: false,
     no_data_period: { type: 'min', value: 5 },
     no_data_level: 'warning',
-    no_data_alert_name: t('monitor.events.noDataAlertDefaultName', '无数据告警')
+    no_data_alert_name: t('monitor.events.noDataAlertDefaultName', '无数据告警'),
+    push_alert_center: false
   }), [t]);
   const timeUnitOptions = [
     { label: t('monitor.events.minutes', '分钟'), value: 'min' },
@@ -165,6 +171,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
     defaultAssetPagination
   );
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
+  const [alertCenterChannelIds, setAlertCenterChannelIds] = useState<Array<string | number>>([]);
   const [userList, setUserList] = useState<UserItem[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -197,7 +204,6 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
     form.setFieldsValue(defaultConfig);
     loadNotificationOptions();
     // 仅在弹窗打开或监控对象切换时重置；不要因 defaultConfig 引用变化冲掉用户输入
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, monitorObjectId]);
 
   useEffect(() => {
@@ -276,12 +282,17 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
   );
 
   const loadNotificationOptions = async () => {
-    const [channels, users] = await Promise.all([
+    const [channels, users, alertCenterChannels] = await Promise.all([
       getSystemChannelList(),
-      getAllUsers()
+      getAllUsers(),
+      getSystemChannelList({
+        channel_type: 'nats',
+        channel_method: ALERT_CENTER_NATS_METHOD
+      })
     ]);
     setChannelList(channels || []);
     setUserList(users || []);
+    setAlertCenterChannelIds(pickAlertCenterChannelIds(alertCenterChannels || []));
   };
 
   const handleRemoveTemplate = (template: PolicyTemplateItem) => {
@@ -348,7 +359,31 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
     }, channelList));
   };
 
-  const handleValuesChange = (_: Partial<BulkConfig>, values: BulkConfig) => {
+  const handleValuesChange = (changed: Partial<BulkConfig>, values: BulkConfig) => {
+    if (Object.prototype.hasOwnProperty.call(changed, 'push_alert_center')) {
+      const checked = Boolean(changed.push_alert_center);
+      if (checked && !alertCenterChannelIds.length) {
+        message.error(
+          t(
+            'monitor.integrations.pushToAlertCenterMissing',
+            '未找到告警中心 NATS 通道，请先在系统管理中配置'
+          )
+        );
+        form.setFieldValue('push_alert_center', false);
+        syncPreviewConfig(form.getFieldsValue(true));
+        return;
+      }
+      const noticePatch = applyPushAlertCenterToNotice({
+        pushAlertCenter: checked,
+        noticeTypeIds: values.notice_type_ids || [],
+        noticeUsers: values.notice_users || [],
+        alertCenterChannelIds,
+        channels: channelList
+      });
+      form.setFieldsValue(noticePatch);
+      syncPreviewConfig({ ...values, ...noticePatch, push_alert_center: checked });
+      return;
+    }
     syncPreviewConfig(values);
   };
 
@@ -382,10 +417,28 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
 
   const handleCreate = async () => {
     const values = await form.validateFields();
+    if (values.push_alert_center && !alertCenterChannelIds.length) {
+      message.error(
+        t(
+          'monitor.integrations.pushToAlertCenterMissing',
+          '未找到告警中心 NATS 通道，请先在系统管理中配置'
+        )
+      );
+      return;
+    }
+    const noticePatch = applyPushAlertCenterToNotice({
+      pushAlertCenter: Boolean(values.push_alert_center),
+      noticeTypeIds: values.notice_type_ids || [],
+      noticeUsers: values.notice_users || [],
+      alertCenterChannelIds,
+      channels: channelList
+    });
     const normalizedConfig = normalizeBulkConfig({
       ...defaultConfig,
       ...values,
+      ...noticePatch
     }, channelList);
+    delete normalizedConfig.push_alert_center;
     const payload = buildBulkApplyPayload({
       monitorObjectId,
       templates,
@@ -733,11 +786,25 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
                       />
                     </Form.Item>
                   </div>
+                  <div className={`${templateStyle.configModuleBody} ${templateStyle.configModuleBodyNotice}`}>
+                    <Form.Item
+                      label={renderConfigLabel(
+                        t('monitor.integrations.pushToAlertCenter', '推送告警中心'),
+                        t('monitor.integrations.pushToAlertCenterDes', '开启后，接入自动创建的监控策略会选中告警中心 NATS 通道，告警将进入告警中心，无需再选通知者。')
+                      )}
+                      name="push_alert_center"
+                      valuePropName="checked"
+                    >
+                      <Switch />
+                    </Form.Item>
+                  </div>
                   {noticeEnabled && (
                     <Form.Item noStyle shouldUpdate>
                       {({ getFieldValue }) => {
                         const selectedIds: Array<string | number> = getFieldValue('notice_type_ids') || [];
-                        const selectedChannels = channelList.filter((item) => selectedIds.includes(item.id));
+                        const selectedChannels = channelList.filter((item) =>
+                          selectedIds.some((id) => String(id) === String(item.id))
+                        );
                         const onlyNats =
                           selectedChannels.length > 0 &&
                           selectedChannels.every((item) => item.channel_type === 'nats');

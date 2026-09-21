@@ -725,11 +725,6 @@ screens:
       network-topology-builtin-main:
         title: Network Status Topology Overview
 datasources:
-  "CMDB 3D机房布局::cmdb/get_room3d_layout":
-    name: CMDB 3D Data Center Layout
-    desc: Query 3D cabinet layout for a CMDB server room
-    params:
-      server_room_id: Server Room ID
   "CMDB 变更趋势::cmdb/get_change_trend":
     name: CMDB Change Trend
     desc: Instance create, update, and delete trend in the time range; filterable by model

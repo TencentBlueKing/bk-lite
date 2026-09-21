@@ -1,4 +1,8 @@
-export type SceneWidgetType = 'networkStatusTopology' | 'application3D' | 'relatedTopology';
+export type SceneWidgetType =
+  | 'networkStatusTopology'
+  | 'application3D'
+  | 'relatedTopology'
+  | 'room3D';
 
 export type ApplicationHealthState = 'normal' | 'alarming' | 'unknown';
 
@@ -263,6 +267,31 @@ export interface RelatedTopologyConfig {
   instUuid?: string;
   /** 配置 UX：筛实例 / 回显。运行时只消费 instUuid。 */
   modelId?: string;
+}
+
+export type Room3DRackTopField = 'location' | 'name' | 'type' | 'state';
+
+export interface Room3DRackTopLines {
+  line1: Room3DRackTopField;
+  line2: Room3DRackTopField | '';
+}
+
+export interface Room3DConfig {
+  /** 编辑态保存的默认机房；可空。运行时切换不写回。 */
+  serverRoomId?: string;
+  /** 机柜顶第一行；缺省为位置码。 */
+  rackTopLine1?: Room3DRackTopField;
+  /** 机柜顶第二行；空字符串表示不显示。缺省（与第一行同时缺失）为机柜类型。 */
+  rackTopLine2?: Room3DRackTopField | '';
+}
+
+export interface Room3DRoomOption {
+  id: string;
+  name: string;
+}
+
+export interface Room3DRoomsData {
+  items: Room3DRoomOption[];
 }
 
 export type NetworkNodeStatus = 'normal' | 'warning' | 'error' | 'critical' | 'unknown';

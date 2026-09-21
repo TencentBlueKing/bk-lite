@@ -867,40 +867,57 @@ def wiki_retry_markdown_import_task(
     return {"status": "success", **result}
 
 
-@shared_task(name="apps.opspilot.tasks.wiki_execute_markdown_import_task", queue="opspilot_wiki")
+@shared_task(
+    name="apps.opspilot.tasks.wiki_execute_markdown_import_task",
+    queue="opspilot_wiki",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def wiki_execute_markdown_import_task(
     kb_id,
     build_record_id,
-    preflight_token,
-    archive_locator,
+    preflight_token=None,
+    archive_locator=None,
     filename="",
     operator="",
 ):
-    """Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker."""
+    """Run Markdown/OKF import off the HTTP request. Archive bytes live in object storage, not the broker.
+
+    acks_late + reject_on_worker_lost 只保证 worker 死后消息可重投；预检 consume 之后
+    不是同 id 续跑。重投若预检已 consumed 则 fail-and-rerequest。超时仍 running 的记录
+    由 reclaim_stale_markdown_import_builds 按 TTL 释放，旧工人必须在 activate 前 abort。
+    """
     from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
-    from apps.opspilot.services.wiki.markdown_import_governance_service import _release_preflight_after_failure, execute_markdown_import
+    from apps.opspilot.services.wiki.markdown_import_governance_service import (
+        _release_preflight_after_failure,
+        claim_markdown_import_execution,
+        execute_markdown_import,
+    )
     from apps.opspilot.services.wiki.parsed_media_service import delete_import_archive, read_import_archive_bytes
 
+    current_task_id = str(getattr(getattr(wiki_execute_markdown_import_task, "request", None), "id", None) or "")
+    build, early = claim_markdown_import_execution(kb_id, build_record_id, current_task_id)
+    if early is not None:
+        return early
     knowledge_base = WikiKnowledgeBase.objects.filter(pk=kb_id).first()
-    build = BuildRecord.objects.filter(pk=build_record_id, knowledge_base_id=kb_id, trigger="markdown_import").first()
-    preflight_id = (build.inputs or {}).get("preflight_id") if build is not None else None
-    if knowledge_base is None or build is None:
+    inputs = build.inputs or {}
+    preflight_id = inputs.get("preflight_id")
+    archive_locator = inputs.get("archive_locator") or archive_locator
+    filename = inputs.get("filename") or filename
+    if knowledge_base is None:
         logger.error(
             "wiki markdown import missing target knowledge_base=%s build_record=%s",
             kb_id,
             build_record_id,
         )
-        if build is not None:
-            _fail_wiki_task_build(build, "knowledge_base_not_found", "知识库不存在")
-            _release_preflight_after_failure(preflight_id)
+        _fail_wiki_task_build(build, "knowledge_base_not_found", "知识库不存在")
+        _release_preflight_after_failure(preflight_id)
         return {
             "status": "failed",
             "code": "knowledge_base_not_found",
             "retryable": False,
         }
-    if build.status in {"success", "partial"}:
-        return {"status": "success", "build_record_id": build.pk}
-    if not str(preflight_token or "").strip():
+    if not preflight_id and not str(preflight_token or "").strip():
         _fail_wiki_task_build(
             build,
             "markdown_import_preflight_identity_incomplete",
@@ -947,17 +964,30 @@ def wiki_execute_markdown_import_task(
             "retryable": False,
         }
 
+    keep_staging = False
     try:
         result = execute_markdown_import(
             knowledge_base,
-            preflight_token,
+            "" if preflight_id else preflight_token,
             content,
             filename=filename,
             actor=operator,
             existing_build_record_id=build_record_id,
             defer_search_enrichment=True,
+            preflight_id=preflight_id,
         )
     except Exception as error:
+        retryable = bool(getattr(error, "retryable", False))
+        code = getattr(error, "code", "markdown_import_generation_failed")
+        if code in {"markdown_import_fenced", "markdown_import_build_terminal"}:
+            # 旧工人在 TTL 回收后 abort：staging 可能已被同 sha 的新导入占用，不能删。
+            keep_staging = True
+            logger.info(
+                "wiki markdown import skipped fenced knowledge_base=%s build_record=%s",
+                kb_id,
+                build_record_id,
+            )
+            return {"status": "skipped", "code": code}
         logger.exception(
             "wiki markdown import failed knowledge_base=%s build_record=%s failed_stage=%s error_type=%s",
             kb_id,
@@ -965,8 +995,6 @@ def wiki_execute_markdown_import_task(
             "execute",
             type(error).__name__,
         )
-        retryable = bool(getattr(error, "retryable", False))
-        code = getattr(error, "code", "markdown_import_generation_failed")
         with transaction.atomic():
             WikiKnowledgeBase.objects.select_for_update().get(pk=kb_id)
             failed = BuildRecord.objects.select_for_update().filter(pk=build_record_id, knowledge_base_id=kb_id).first()
@@ -985,7 +1013,8 @@ def wiki_execute_markdown_import_task(
             "error": str(error),
         }
     finally:
-        delete_import_archive(archive_locator, knowledge_base_id=kb_id)
+        if not keep_staging:
+            delete_import_archive(archive_locator, knowledge_base_id=kb_id)
 
     logger.info(
         "wiki markdown import completed knowledge_base=%s build_record=%s",
