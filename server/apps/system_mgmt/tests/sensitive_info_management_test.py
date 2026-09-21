@@ -142,6 +142,7 @@ def test_user_viewset_create_user_accepts_valid_phone_and_rejects_invalid_phone(
         valid_request,
         user=_build_authenticated_request_user(
             username="creator-admin",
+            locale="zh-Hans",
             permission={"system-manager": {"user_group-Add User"}},
         ),
     )
@@ -172,6 +173,7 @@ def test_user_viewset_create_user_accepts_valid_phone_and_rejects_invalid_phone(
         invalid_request,
         user=_build_authenticated_request_user(
             username="creator-admin",
+            locale="zh-Hans",
             permission={"system-manager": {"user_group-Add User"}},
         ),
     )
@@ -628,6 +630,7 @@ def test_user_viewset_search_user_list_includes_sync_source_identifier():
         business_config={},
         schedule_config={},
     )
+    group = Group.objects.create(name="group-for-sync-source-list")
     synced_user = User.objects.create(
         username="sync-source-user",
         display_name="同步源用户",
@@ -635,6 +638,7 @@ def test_user_viewset_search_user_list_includes_sync_source_identifier():
         phone="13800001234",
         password=make_password("password123"),
         locale="zh-Hans",
+        group_list=[group.id],
         sync_source=source,
     )
 
@@ -647,6 +651,7 @@ def test_user_viewset_search_user_list_includes_sync_source_identifier():
             username="viewer-sync-source",
             is_superuser=False,
             permission={"system-manager": {"user_group-View"}},
+            group_list=[{"id": group.id}],
         ),
     )
 
