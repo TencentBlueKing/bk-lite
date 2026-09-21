@@ -36,7 +36,9 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
+  processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
 import {
   clearComponentParamSwitch,
   findComponentSwitchParams,
@@ -71,6 +73,7 @@ import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
 } from './widgetConfig/utils/columnProbing';
+import { buildTopNFieldSelectOptions } from './widgetConfig/utils/chartFieldOptions';
 import {
   buildDisplayColumnFieldOptions,
   resolveDatasourceChartTypes,
@@ -152,6 +155,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [previewDataFetchSignature, setPreviewDataFetchSignature] = useState<string | null>(null);
   const [previewReloadVersion, setPreviewReloadVersion] = useState(0);
   const [previewRawData, setPreviewRawData] = useState<unknown>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [loadingTopNFields, setLoadingTopNFields] = useState(false);
   const { getSourceDataByApiId } = useDataSourceApi();
   const configRequestIdRef = useRef(0);
   const resolvedParamOptionsRef = useRef(new Map<string, InputOption[]>());
@@ -297,6 +302,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         setWidgetParamOverrides([]);
         tableConfig.resetTableConfig();
         singleValueConfig.resetSingleValueConfig();
+        setPreviewRawData(null);
+        setLoadingTopNFields(false);
 
         form.setFieldsValue(
           buildSceneWidgetSelectorResetValues(sceneWidgetType, surface),
@@ -311,6 +318,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       setWidgetParamOverrides([]);
       tableConfig.resetTableConfig();
       singleValueConfig.resetSingleValueConfig();
+      setPreviewRawData(null);
+      setLoadingTopNFields(false);
 
       // 加载完整数据源（brief 模式不含 params）
       const fullItem = normalizeDatasourceItemParams(
@@ -389,25 +398,51 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     ],
   );
 
-  const topNLabelFieldOptions = useMemo(
-    () =>
-      availableFields.map((field) => ({
-        label: field.title ? `${field.key} (${field.title})` : field.key,
-        value: field.key,
-      })),
-    [availableFields],
+  const topNFieldOptions = useMemo(
+    () => buildTopNFieldSelectOptions(availableFields, previewRawData),
+    [availableFields, previewRawData],
   );
 
-  const topNValueFieldOptions = useMemo(
-    () =>
-      availableFields
-        .filter((field) => field.value_type === 'number')
-        .map((field) => ({
-          label: field.title ? `${field.key} (${field.title})` : field.key,
-          value: field.key,
-        })),
-    [availableFields],
-  );
+  const fetchTopNDataFields = useCallback(async () => {
+    const resolvedId = canonicalSelectedDataSource?.id;
+    if (!resolvedId || !canonicalSelectedDataSource) return;
+
+    setLoadingTopNFields(true);
+    try {
+      const formValues = form.getFieldsValue();
+      const userParams = formValues?.params || {};
+      const requestParams = processDataSourceParams({
+        sourceParams: canonicalSelectedDataSource.params,
+        userParams,
+        resolutionContext: {
+          referenceNow: Date.now(),
+          timezone: getDateRangeTimezone(),
+        },
+      });
+
+      if (
+        effectiveNamespaceId !== undefined &&
+        Array.isArray(canonicalSelectedDataSource.namespaces) &&
+        canonicalSelectedDataSource.namespaces.length > 0
+      ) {
+        requestParams.namespace_id = effectiveNamespaceId;
+      }
+
+      const { data } = await getSourceDataByApiId(resolvedId, requestParams);
+      setPreviewRawData(data);
+    } catch (error) {
+      console.error('Failed to fetch data fields:', error);
+      message.error(t('dashboard.fetchDataFieldsFailed'));
+    } finally {
+      setLoadingTopNFields(false);
+    }
+  }, [
+    canonicalSelectedDataSource,
+    effectiveNamespaceId,
+    form,
+    getSourceDataByApiId,
+    t,
+  ]);
 
   const displayColumnOptions = useMemo(
     () =>
@@ -729,6 +764,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setPreviewDataFetchSignature(null);
     setPreviewReloadVersion(0);
     setPreviewRawData(null);
+    setPreviewLoading(false);
+    setLoadingTopNFields(false);
     networkTopologyConfig.resetInstanceOptions();
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
@@ -1018,7 +1055,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       message.warning(t('dashboard.configPreviewNeedDataSource'));
       return;
     }
-    setPreviewRawData(null);
+    setPreviewLoading(true);
     setPreviewSnapshotConfig(draft);
     setPreviewSnapshotDataSource(effectiveDataSource);
     setPreviewSnapshotFilterDefinitions(previewFilterDefinitions);
@@ -1170,7 +1207,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               surface={surface}
               reloadVersion={previewReloadVersion}
               rawData={previewRawData}
-              onRawData={setPreviewRawData}
+              loading={previewLoading}
+              onRawData={(data) => {
+                setPreviewRawData(data);
+                setPreviewLoading(false);
+              }}
               liveName={watchedFormValues?.name}
               liveDescription={watchedFormValues?.description}
               onRefresh={handlePreview}
@@ -1364,8 +1405,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 t={t}
                 sectionTitle=""
                 selectedDataSource={selectedDataSource}
-                fieldOptions={topNLabelFieldOptions}
-                valueFieldOptions={topNValueFieldOptions}
+                fieldOptions={topNFieldOptions}
+                valueFieldOptions={topNFieldOptions}
               />
             )}
 
@@ -1421,8 +1462,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 t={t}
                 sectionTitle=""
                 selectedDataSource={selectedDataSource}
-                topNLabelFieldOptions={topNLabelFieldOptions}
-                topNValueFieldOptions={topNValueFieldOptions}
+                topNLabelFieldOptions={topNFieldOptions}
+                topNValueFieldOptions={topNFieldOptions}
+                loadingFields={loadingTopNFields}
+                onRefreshFields={fetchTopNDataFields}
               />
             )}
 
