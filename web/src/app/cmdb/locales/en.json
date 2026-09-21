@@ -1896,7 +1896,7 @@
         "uuid": "UUID",
         "port": "Port",
         "version": "Version",
-        "middlewarePath": "conf_path / install_path",
+        "middlewarePath": "Config path",
         "generateCollectDone": "Generated {count} collection task(s)",
         "generateCollectPartial": "Generate collect: {created} created, {appended} appended, {skipped} skipped, {failed} failed",
         "generateCollectFailed": "Failed to generate collection tasks. Please try again.",
