@@ -6,7 +6,13 @@ from pathlib import Path
 
 from apps.monitor.models import MonitorObject
 
-from .metric_query_contract import AuthorizedMetricQueryError, build_instance_matchers, escape_metric_label_value
+from .metric_query_contract import (
+    AuthorizedMetricQueryError,
+    build_instance_matcher_groups,
+    build_instance_matchers,
+    escape_metric_label_value,
+    join_label_queries,
+)
 
 CAPABILITY_MANIFEST = Path(__file__).resolve().parent.parent / "support-files" / "dashboard_query_capabilities.json"
 MAX_CAPABILITY_TEMPLATE_LENGTH = 20_000
@@ -139,12 +145,12 @@ def build_dashboard_query(
             "监控对象缺少实例标识契约",
             code="metric_instance_keys_missing",
         )
-    matchers = build_instance_matchers(instance_ids, instance_keys)
+    matcher_groups = build_instance_matcher_groups(instance_ids, instance_keys)
 
     if capability_id.startswith("dashboard:dynamic:kafka:"):
         if monitor_object.name != "Kafka":
             raise AuthorizedMetricQueryError("查询能力与监控对象不匹配", code="capability_object_mismatch")
-        return _build_kafka_dimension_query(capability_id, params, matchers)
+        return _build_kafka_dimension_query(capability_id, params, build_instance_matchers(instance_ids, instance_keys))
 
     capability = load_dashboard_query_capabilities().get(capability_id)
     if not capability:
@@ -152,7 +158,7 @@ def build_dashboard_query(
     if monitor_object.name not in capability.object_names:
         raise AuthorizedMetricQueryError("查询能力与监控对象不匹配", code="capability_object_mismatch")
 
-    query = capability.template.replace("__$labels__", ", ".join(matchers))
+    query = join_label_queries(capability.template, matcher_groups)
     query = query.replace("__$window__", _query_window(start, end))
     if "__$" in query:
         raise AuthorizedMetricQueryError("查询能力参数不完整", code="capability_template_invalid")

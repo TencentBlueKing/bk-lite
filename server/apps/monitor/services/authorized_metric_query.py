@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import Metric, MonitorInstance, MonitorObject
-from apps.monitor.services.metric_query_contract import AuthorizedMetricQueryError, build_instance_matchers, escape_metric_label_value
+from apps.monitor.services.metric_query_contract import (
+    AuthorizedMetricQueryError,
+    build_instance_matcher_groups,
+    escape_metric_label_value,
+    join_label_queries,
+)
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.utils.dimension import normalize_instance_identity, parse_instance_id
 
@@ -101,7 +106,7 @@ def _filter_matchers(metric: Metric, filters) -> list[str]:
     return matchers
 
 
-def _render_metric_query(metric: Metric, matchers: list[str], aggregation) -> str:
+def _render_metric_query(metric: Metric, matcher_groups: list[list[str]], aggregation) -> str:
     template = metric.query or ""
     if "__$labels__" not in template:
         raise AuthorizedMetricQueryError(
@@ -109,7 +114,7 @@ def _render_metric_query(metric: Metric, matchers: list[str], aggregation) -> st
             code="metric_template_not_scoped",
         )
 
-    query = template.replace("__$labels__", ", ".join(matchers))
+    query = join_label_queries(template, matcher_groups)
 
     aggregation_name = str(aggregation or "AVG").upper()
     if aggregation_name not in ALLOWED_AGGREGATIONS:
@@ -123,9 +128,9 @@ def _render_metric_query(metric: Metric, matchers: list[str], aggregation) -> st
 
 def _build_query(metric: Metric, instance_ids: tuple[str, ...], filters, aggregation) -> str:
     instance_keys = _metric_instance_id_keys(metric)
-    matchers = build_instance_matchers(instance_ids, instance_keys)
-    matchers.extend(_filter_matchers(metric, filters))
-    return _render_metric_query(metric, matchers, aggregation)
+    extra_matchers = _filter_matchers(metric, filters)
+    matcher_groups = [list(group) + extra_matchers for group in build_instance_matcher_groups(instance_ids, instance_keys)]
+    return _render_metric_query(metric, matcher_groups, aggregation)
 
 
 def _normalize_bool(value, *, field: str) -> bool:
@@ -334,7 +339,7 @@ class AuthorizedMetricQueryService:
             if scope_matchers is not None:
                 if payload.get("filters") not in (None, [], ""):
                     raise AuthorizedMetricQueryError("进程查询不接受额外筛选", code="query_scope_invalid")
-                query = _render_metric_query(metric, scope_matchers, payload.get("aggregation"))
+                query = _render_metric_query(metric, [scope_matchers], payload.get("aggregation"))
             else:
                 query = _build_query(
                     metric,
