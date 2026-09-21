@@ -60,7 +60,7 @@ const SourceMenuTree: React.FC<SourceMenuTreeProps> = ({
   }, [sourceMenus]);
 
   return (
-    <div className="w-[300px] bg-[var(--color-bg)] rounded-lg overflow-hidden flex flex-col">
+    <div className="flex h-full min-h-0 w-[300px] shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-1)]">
       <div className="px-4 py-3 border-b border-[var(--color-border-2)]">
         <h3 className="m-0 text-sm font-medium">{t('system.menu.sourceMenus')}</h3>
       </div>

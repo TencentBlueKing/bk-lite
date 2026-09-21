@@ -2,22 +2,30 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Menu, Modal, message } from 'antd';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Modal, message } from 'antd';
 
-import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
-import TopSection from '@/components/top-section';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type { IntegrationInstance, ProviderManifest } from '@/app/system-manager/types/integration-center';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
-import commonStyles from '@/app/system-manager/styles/common.module.scss';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
+import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
+import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
+import { formatRelativeTime, pickEntityTimestamp } from '@/utils/relativeTime';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
 import ProviderCapabilityTags from './ProviderCapabilityTags';
-import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, formatIntegrationInstanceDeleteError, getIntegrationCapabilityLabel, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/integrationCenter';
+import {
+  filterIntegrationInstancesByName,
+  formatIntegrationInstanceDeleteError,
+  getIntegrationCapabilityLabel,
+  getIntegrationCapabilityTagColor,
+  getIntegrationPrimaryStatusMeta,
+  toIntegrationCardStatusTone,
+} from '@/app/system-manager/utils/integrationCenter';
 
 const IntegrationCenterPage: React.FC = () => {
   const { t } = useTranslation();
@@ -176,81 +184,80 @@ const IntegrationCenterPage: React.FC = () => {
     });
   };
 
-  const getMenuActions = (instance: IntegrationInstance) => (
-    <Menu className={commonStyles.batchOperationMenu}>
-      <Menu.Item key="edit" onClick={() => setEditingInstance(instance)}>
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          <Button type="text" className="w-full">
-            {t('common.edit')}
-          </Button>
-        </PermissionWrapper>
-      </Menu.Item>
-      <Menu.Item key="delete" onClick={() => handleDeleteInstance(instance)}>
-        <PermissionWrapper requiredPermissions={['Delete']}>
-          <Button type="text" className="w-full">
-            {t('common.delete')}
-          </Button>
-        </PermissionWrapper>
-      </Menu.Item>
-    </Menu>
-  );
-
   const filteredInstances = useMemo(
     () => filterIntegrationInstancesByName(instances, instanceSearch),
     [instances, instanceSearch],
   );
 
-  const instanceCards = useMemo(
-    () => filteredInstances.map((instance) => {
-      const provider = providers.find((p) => p.key === instance.provider_key);
-      return buildIntegrationInstanceCardItem(instance, provider);
-    }),
-    [filteredInstances, providers],
-  );
-
-  const generateDescSlot = (data: IntegrationInstanceCardItem) => (
-    <ProviderCapabilityTags
-      align="end"
-      tags={(data.provider?.capabilities || []).map((capability) => ({
-        key: capability.key,
-        label: getIntegrationCapabilityLabel(capability.key, t),
-        appearance: getIntegrationCapabilityTagColor(data.raw, capability.key) === 'green' ? 'ready' : 'inactive',
-      }))}
-    />
-  );
-
   const operateSection = (
-    <div className="ml-2 flex flex-wrap items-center gap-2">
-      <PermissionWrapper requiredPermissions={['Add']}>
-        <Button type="primary" onClick={() => setCreateModalOpen(true)}>
-          {t('system.integrationCenter.addInstanceButton')}
-        </Button>
-      </PermissionWrapper>
+    <>
       <Button
-        type="text"
         icon={<ReloadOutlined />}
         onClick={handleRefresh}
         loading={refreshing}
-        aria-label={t('common.refresh')}
-      />
-    </div>
+      >
+        {t('common.refresh')}
+      </Button>
+      <PermissionWrapper requiredPermissions={['Add']}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+          {t('common.new')}
+        </Button>
+      </PermissionWrapper>
+    </>
   );
 
   return (
-    <div className="w-full space-y-4">
-      <TopSection
+    <div className="w-full">
+      <SystemManagerEntityGrid
         title={t('system.integrationCenter.pageTitle')}
-        content={t('system.integrationCenter.pageDesc')}
-      />
-
-      <EntityList
-        data={instanceCards}
+        description={t('system.integrationCenter.pageDesc')}
+        items={filteredInstances}
         loading={loadingInstances || loadingProviders}
         onSearch={setInstanceSearch}
-        onCardClick={(item: IntegrationInstanceCardItem) => handleInstanceClick(item.raw)}
-        menuActions={(item: IntegrationInstanceCardItem) => getMenuActions(item.raw)}
-        operateSection={operateSection}
-        descSlot={generateDescSlot}
+        actions={operateSection}
+        getItemKey={(item) => item.id}
+        renderCard={(instance) => {
+          const provider = providers.find((item) => item.key === instance.provider_key);
+          const statusMeta = getIntegrationPrimaryStatusMeta(instance.status, instance.capability_status);
+          const menuItems: MoreActionsDropdownItem[] = [
+            {
+              key: 'edit',
+              label: t('common.edit'),
+              permission: 'Edit',
+              onClick: () => setEditingInstance(instance),
+            },
+            {
+              key: 'delete',
+              label: t('common.delete'),
+              permission: 'Delete',
+              danger: true,
+              onClick: () => handleDeleteInstance(instance),
+            },
+          ];
+          return (
+            <SystemManagerUnifiedCard
+              name={instance.name}
+              description={provider?.name || instance.provider_key}
+              icon={instance.provider_key}
+              statusTone={toIntegrationCardStatusTone(statusMeta)}
+              statusLabel={t(`system.integrationCenter.primaryStatus.${statusMeta.key}`)}
+              updatedAt={formatRelativeTime(pickEntityTimestamp(instance), t)}
+              menuItems={menuItems}
+              onClick={() => handleInstanceClick(instance)}
+              body={(
+                <ProviderCapabilityTags
+                  tags={(provider?.capabilities || []).map((capability) => ({
+                    key: capability.key,
+                    label: getIntegrationCapabilityLabel(capability.key, t),
+                    appearance: getIntegrationCapabilityTagColor(instance, capability.key) === 'green'
+                      ? 'ready'
+                      : 'inactive',
+                  }))}
+                />
+              )}
+            />
+          );
+        }}
       />
 
       <CreateIntegrationInstanceModal

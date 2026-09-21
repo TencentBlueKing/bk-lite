@@ -104,8 +104,8 @@ const RoleManagement: React.FC = () => {
   }, [organizationTab]);
 
   return (
-    <>
-      <div className="w-full flex justify-between bg-[var(--color-bg)] rounded-md h-full p-4">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 w-full flex-1 overflow-hidden rounded-md bg-[var(--color-bg)]">
         <RoleList
           loadingRoles={loadingRoles}
           roleList={roleList}
@@ -115,8 +115,13 @@ const RoleManagement: React.FC = () => {
           onDeleteRole={handleDeleteRole}
           t={t}
         />
-        <div className="flex-1 overflow-hidden rounded-md">
-          <Tabs defaultActiveKey="1" activeKey={activeTab} onChange={handleTabChange}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4">
+          <Tabs
+            className="flex min-h-0 flex-1 flex-col [&>.ant-tabs-nav]:mb-3 [&>.ant-tabs-content-holder]:min-h-0 [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:m-0 [&_.ant-tabs-tabpane]:h-full [&_.ant-tabs-tabpane]:min-h-0 [&_.ant-tabs-tabpane]:overflow-hidden"
+            defaultActiveKey="1"
+            activeKey={activeTab}
+            onChange={handleTabChange}
+          >
             <TabPane tab={t('system.role.users')} key="1">
               <UserTab
                 tableData={userTab.tableData}
@@ -143,24 +148,26 @@ const RoleManagement: React.FC = () => {
             </TabPane>
             {selectedRole?.name !== 'admin' && (
               <TabPane tab={t('system.role.permissions')} key="2">
-                <div className="flex justify-end items-center mb-4">
-                  <PermissionWrapper requiredPermissions={['Edit Permission']}>
-                    <Button
-                      type="primary"
-                      loading={permissionTab.loading}
-                      onClick={permissionTab.handleConfirmPermissions}
-                    >
-                      {t('common.confirm')}
-                    </Button>
-                  </PermissionWrapper>
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="mb-4 flex shrink-0 items-center justify-end">
+                    <PermissionWrapper requiredPermissions={['Edit Permission']}>
+                      <Button
+                        type="primary"
+                        loading={permissionTab.loading}
+                        onClick={permissionTab.handleConfirmPermissions}
+                      >
+                        {t('common.confirm')}
+                      </Button>
+                    </PermissionWrapper>
+                  </div>
+                  <PermissionTable
+                    t={t}
+                    loading={permissionTab.loading}
+                    menuData={menuData}
+                    permissionsCheckedKeys={permissionTab.permissionsCheckedKeys}
+                    setPermissionsCheckedKeys={permissionTab.setPermissionsCheckedKeys}
+                  />
                 </div>
-                <PermissionTable
-                  t={t}
-                  loading={permissionTab.loading}
-                  menuData={menuData}
-                  permissionsCheckedKeys={permissionTab.permissionsCheckedKeys}
-                  setPermissionsCheckedKeys={permissionTab.setPermissionsCheckedKeys}
-                />
               </TabPane>
             )}
             <TabPane tab={t('system.role.organizations')} key="3">
@@ -208,7 +215,7 @@ const RoleManagement: React.FC = () => {
           </Form.Item>
         </Form>
       </OperateModal>
-    </>
+    </div>
   );
 };
 

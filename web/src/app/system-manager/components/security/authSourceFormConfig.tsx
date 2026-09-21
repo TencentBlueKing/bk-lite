@@ -99,7 +99,7 @@ export const getNewAuthSourceFormFields = ({
     type: 'custom',
     label: t('system.security.syncTime'),
     component: (
-      <div className="flex items-center flex-nowrap whitespace-nowrap text-gray-500">
+      <div className="flex items-center flex-nowrap whitespace-nowrap text-[var(--color-text-3)]">
         <span className="mr-2 flex-shrink-0">{t('system.security.everyday')}</span>
         <TimePicker
           format="HH:mm"

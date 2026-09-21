@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Button, Input, Tag, Spin, Form, Modal } from 'antd';
+import { Button, Tag, Form } from 'antd';
+import SearchActionBar from '@/components/search-action-bar';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type { CustomMenu } from '@/app/system-manager/types/menu';
@@ -12,14 +13,13 @@ import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import styles from '@/app/system-manager/styles/common.module.scss';
 import {
   useCustomMenuList,
   useCustomMenuActions,
   useCustomMenuModal,
 } from '@/app/system-manager/hooks/useCustomMenuPage';
-
-const { Search } = Input;
 
 const CustomMenuPage = () => {
   const { t } = useTranslation();
@@ -194,21 +194,20 @@ const CustomMenuPage = () => {
   );
 
   return (
-    <div className="w-full bg-[var(--color-bg)] rounded-md h-full p-4">
-      <div className="flex justify-end gap-2 mb-4">
-        <Search
-          allowClear
-          enterButton
-          className="w-60"
-          onSearch={handleSearch}
-          placeholder={t('system.menu.search')}
-        />
-        <PermissionWrapper requiredPermissions={['Add']}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openModal}>
-            {t('common.add')}
-          </Button>
-        </PermissionWrapper>
-      </div>
+    <div className="flex h-full min-h-0 w-full flex-col rounded-md bg-[var(--color-bg)] p-4">
+      <SearchActionBar
+        searchProps={{
+          placeholder: t('system.menu.search'),
+          onSearch: handleSearch,
+        }}
+        actions={(
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openModal}>
+              {t('common.new')}
+            </Button>
+          </PermissionWrapper>
+        )}
+      />
 
       <OperateModal
         title={t('common.add')}
@@ -231,8 +230,9 @@ const CustomMenuPage = () => {
         <DynamicForm form={menuForm} fields={getFormFields} />
       </OperateModal>
 
-      <Spin spinning={loading}>
+      <SystemManagerFillTable>
         <CustomTable
+          loading={loading}
           columns={columns}
           dataSource={dataList}
           rowKey="id"
@@ -242,18 +242,17 @@ const CustomMenuPage = () => {
             total: pagination.total,
             onChange: (page: number) => loadMenus(page, searchTerm),
             showSizeChanger: true,
-            pageSizeOptions: ['10', '20', '50'],
+            pageSizeOptions: ['10', '20', '50', '100'],
             onShowSizeChange: (_: number, size: number) => {
               setPagination((prev) => ({ ...prev, pageSize: size }));
               loadMenus(1, searchTerm);
             },
           }}
-          scroll={{ x: 1200, y: 'calc(100vh - 365px)' }}
           locale={{
             emptyText: t('system.menu.noData'),
           }}
         />
-      </Spin>
+      </SystemManagerFillTable>
     </div>
   );
 };

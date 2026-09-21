@@ -99,8 +99,8 @@ const IconFontSelector: React.FC<IconFontSelectorProps> = ({
       >
         {value ? (
           <>
-            <span className="flex items-center justify-center rounded-md bg-[var(--color-fill-2)] p-2">
-              <Icon type={value} className="text-lg" />
+            <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[var(--color-fill-1)] text-[var(--color-primary)]">
+              <Icon type={value} className="text-xl" />
             </span>
             {variant === 'compact' ? (
               <span className="truncate text-sm text-[var(--color-text-2)]">{value}</span>

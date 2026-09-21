@@ -20,7 +20,9 @@
     { "component": "routed-detail-layout-shell", "reason": "通用路由详情页布局骨架", "contractStory": "layout-family.stories.tsx" },
     { "component": "summary-detail-layout-shell", "reason": "通用摘要与详情组合布局", "contractStory": "layout-family.stories.tsx" },
     { "component": "tree-workspace-shell", "reason": "通用树与工作区组合布局", "contractStory": "layout-family.stories.tsx" },
-    { "component": "workspace-panel", "reason": "通用工作区面板容器", "contractStory": "layout-family.stories.tsx" }
+    { "component": "workspace-panel", "reason": "通用工作区面板容器", "contractStory": "layout-family.stories.tsx" },
+    { "component": "list-page-header", "reason": "通用实体列表页头：左标题短描述、右操作成组", "contractStory": "entity-grid-family.stories.tsx" },
+    { "component": "card-grid-skeleton", "reason": "通用实体网格卡片加载骨架，与 Look B 卡同解剖", "contractStory": "entity-grid-family.stories.tsx" }
   ],
   "form": [
     { "component": "form-setting-row", "reason": "将无业务语义的表单控件与说明文本并排编排", "contractStory": "integration-onboarding-family.stories.tsx" },
@@ -64,7 +66,8 @@
     { "component": "time-series-area-chart-canvas", "reason": "通用时序面积图画布", "contractStory": "charts-family.stories.tsx" },
     { "component": "time-series-bar-chart", "reason": "通用时序柱状图", "contractStory": "charts-family.stories.tsx" },
     { "component": "time-series-composed-chart", "reason": "通用时序组合图", "contractStory": "charts-family.stories.tsx" },
-    { "component": "version-badge", "reason": "通用版本标签展示", "contractStory": "data-display-family.stories.tsx" }
+    { "component": "version-badge", "reason": "通用版本标签展示", "contractStory": "data-display-family.stories.tsx" },
+    { "component": "grid-entity-card", "reason": "通用实体网格卡片底盘，不绑定具体业务域状态枚举", "contractStory": "entity-grid-family.stories.tsx" }
   ],
   "interaction": [
     { "component": "chart-dimension-filter", "reason": "通用图表维度筛选交互", "contractStory": "charts-family.stories.tsx" },
