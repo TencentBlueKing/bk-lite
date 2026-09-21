@@ -725,11 +725,6 @@ screens:
       network-topology-builtin-main:
         title: 网络状态拓扑总览
 datasources:
-  "CMDB 3D机房布局::cmdb/get_room3d_layout":
-    name: CMDB 3D机房布局
-    desc: 查询指定 CMDB 机房的 3D 机柜布局数据
-    params:
-      server_room_id: 机房ID
   "CMDB 变更趋势::cmdb/get_change_trend":
     name: CMDB 变更趋势
     desc: 跟随时间范围，统计实例新增、修改和删除趋势，可按模型筛选

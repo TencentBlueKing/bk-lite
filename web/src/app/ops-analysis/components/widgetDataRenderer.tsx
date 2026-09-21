@@ -507,9 +507,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         headerRuntimeSlot,
       )
       : null;
-  const inlineComponentSwitchControl = chartType === "room3D"
-    ? componentSwitchControl
-    : headerRuntimeSlot ? null : componentSwitchControl;
+  const inlineComponentSwitchControl = headerRuntimeSlot
+    ? null
+    : componentSwitchControl;
 
   const fetchIdRef = useRef(0);
   const inflightCountRef = useRef(0);

@@ -1391,13 +1391,44 @@ def _room3d_rack_id_as_int(rack_id):
         return None
 
 
-def _get_room3d_rack_type_name_map():
+def _room3d_scalar(value):
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _get_room3d_rack_enum_name_map(attr_id):
+    from apps.cmdb.services.model import ModelManage
+
     attrs = ExcludeFieldsCache.get_model_attrs("rack") or []
     for attr in attrs:
-        if attr.get("attr_id") != "datacenter_type" or attr.get("attr_type") != FIELD_TYPE_ENUM:
+        if attr.get("attr_id") != attr_id or attr.get("attr_type") != FIELD_TYPE_ENUM:
             continue
-        return {str(option.get("id")): option.get("name") for option in attr.get("option", []) if option and option.get("name")}
+        options = ModelManage.resolve_runtime_enum_options(attr)
+        if not isinstance(options, list):
+            options = attr.get("option") or []
+        return {str(option.get("id")): option.get("name") for option in options if isinstance(option, dict) and option.get("name")}
     return {}
+
+
+def _get_room3d_rack_type_name_map():
+    return _get_room3d_rack_enum_name_map("datacenter_type")
+
+
+def _get_room3d_rack_state_name_map():
+    return _get_room3d_rack_enum_name_map("datacenter_state")
+
+
+def _room3d_enum_name(value, name_map):
+    scalar = _room3d_scalar(value)
+    if scalar in (None, ""):
+        return None
+    key = str(scalar)
+    if key in name_map:
+        return name_map[key]
+    if key in set(name_map.values()):
+        return key
+    return None
 
 
 @nats_client.register
@@ -1472,12 +1503,15 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
                 device_summaries[rack_uuid] = _get_room3d_rack_device_summary(rack_id, permission_map=permission_map, user=user)
 
     rack_type_name_map = _get_room3d_rack_type_name_map()
+    rack_state_name_map = _get_room3d_rack_state_name_map()
     racks = []
     for item in candidate_racks:
         rack = item["rack"]
         device_summary = device_summaries.get(item["rack_id"], _empty_room3d_device_summary())
-        rack_type = rack.get("datacenter_type")
-        rack_type_name = rack_type_name_map.get(str(rack_type)) if rack_type not in (None, "") else None
+        rack_type = _room3d_scalar(rack.get("datacenter_type"))
+        rack_type_name = _room3d_enum_name(rack_type, rack_type_name_map)
+        rack_state = _room3d_scalar(rack.get("datacenter_state"))
+        rack_state_name = _room3d_enum_name(rack_state, rack_state_name_map)
         rack_payload = {
             "rack_id": item["rack_id"],
             "rack_name": item["rack_name"],
@@ -1485,6 +1519,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
             "col": item["col"],
             "location": item["location"],
             "rack_type": rack_type,
+            "rack_state": rack_state,
             "u_count": rack.get("u_count"),
             "used_u": rack.get("used_u"),
             "free_u": rack.get("free_u"),
@@ -1494,6 +1529,8 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         }
         if rack_type_name:
             rack_payload["rack_type_name"] = rack_type_name
+        if rack_state_name:
+            rack_payload["rack_state_name"] = rack_state_name
         racks.append(rack_payload)
 
     data = {

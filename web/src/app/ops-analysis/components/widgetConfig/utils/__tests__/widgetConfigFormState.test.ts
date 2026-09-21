@@ -41,6 +41,8 @@ describe('getWidgetChartTypeFlags', () => {
       getWidgetChartTypeFlags('', 'application3D').isSceneWidget,
       true,
     );
+    assert.equal(getWidgetChartTypeFlags('room3D').isRoom3D, true);
+    assert.equal(getWidgetChartTypeFlags('room3D').isSceneWidget, true);
     assert.equal(getWidgetChartTypeFlags('line').isSceneWidget, false);
   });
 
@@ -165,6 +167,61 @@ describe('opened widget hydrate', () => {
     assert.equal(formValues.compare, false);
     assert.equal(formValues.compareMode, 'value');
   });
+
+  it('hydrates room3D default from legacy dataSourceParams', () => {
+    const values = buildOpenedWidgetFormValues(
+      {
+        i: 'room',
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 4,
+        name: '3D机房',
+        valueConfig: {
+          chartType: 'room3D',
+          dataSource: 12,
+          dataSourceParams: [
+            {
+              name: 'server_room_id',
+              value: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            },
+          ],
+        },
+      },
+      { showChartThemeMode: false },
+    );
+    assert.deepEqual(values.room3D, {
+      serverRoomId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      rackTopLine1: 'location',
+      rackTopLine2: 'type',
+    });
+    assert.equal(values.sceneWidgetType, undefined);
+  });
+
+  it('hydrates saved rack-top lines into the room3D form', () => {
+    const values = buildOpenedWidgetFormValues(
+      {
+        i: 'room',
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 4,
+        name: '3D机房',
+        valueConfig: {
+          chartType: 'room3D',
+          sceneWidgetType: 'room3D',
+          room3D: {
+            rackTopLine1: 'name',
+            rackTopLine2: '',
+          },
+        },
+      },
+      { showChartThemeMode: false },
+    );
+    assert.deepEqual(values.room3D, {
+      rackTopLine1: 'name',
+    });
+  });
 });
 
 describe('scene open vs selector topology defaults', () => {
@@ -200,6 +257,10 @@ describe('scene open vs selector topology defaults', () => {
     assert.equal(
       resolveOpenedSceneWidgetType({ chartType: 'relatedTopology' }),
       'relatedTopology',
+    );
+    assert.equal(
+      resolveOpenedSceneWidgetType({ chartType: 'room3D' }),
+      'room3D',
     );
   });
 });
@@ -259,6 +320,7 @@ describe('buildDataFetchSignature', () => {
         topNValueField: 'cpu',
         cardListTitleField: undefined,
         networkStatusTopology: undefined,
+        room3D: undefined,
       }),
     );
   });

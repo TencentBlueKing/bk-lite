@@ -36,6 +36,19 @@ def test_scene_widget_surface_contract_rejects_illegal_imports():
     assert vs.normalize_canvas_view_sets_for_storage(screen, ObjectType.SCREEN)["items"] == application3d
 
 
+def test_room3d_scene_widget_is_screen_only():
+    room3d = [{"valueConfig": {"chartType": "room3D", "sceneWidgetType": "room3D"}}]
+    with pytest.raises(ValueError, match="room3D is not supported on dashboard"):
+        vs.normalize_canvas_view_sets_for_storage(room3d, ObjectType.DASHBOARD)
+    with pytest.raises(ValueError, match="room3D is not supported on report"):
+        vs.normalize_canvas_view_sets_for_storage(
+            {"schema_version": 1, "filters": [], "sections": room3d},
+            ObjectType.REPORT,
+        )
+    screen = {"viewport": {"width": 1920, "height": 1080}, "items": room3d, "decorations": {}}
+    assert vs.normalize_canvas_view_sets_for_storage(screen, ObjectType.SCREEN)["items"] == room3d
+
+
 def test_network_status_topology_remains_dashboard_and_screen_only():
     nst = [{"valueConfig": {"chartType": "networkStatusTopology", "sceneWidgetType": "networkStatusTopology"}}]
     assert vs.normalize_canvas_view_sets_for_storage(nst, ObjectType.DASHBOARD) == nst

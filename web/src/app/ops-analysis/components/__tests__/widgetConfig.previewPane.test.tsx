@@ -110,6 +110,23 @@ describe('WidgetConfigPreview pane', () => {
       '3',
     );
     expect(screen.queryByTestId('widget-config-preview-stale')).toBeNull();
+    expect(rendererProps.mock.calls.at(-1)?.[0].layoutEditable).toBe(false);
+  });
+
+  it('hides room3D view-mode chrome in the config preview', async () => {
+    renderPreview({
+      widgetId: 'config-preview:room-1',
+      config: {
+        name: '3D机房',
+        chartType: 'room3D',
+        sceneWidgetType: 'room3D',
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-preview-renderer')).toBeTruthy();
+    });
+    expect(rendererProps.mock.calls.at(-1)?.[0].layoutEditable).toBe(true);
   });
 
   it('shows stale badge and refresh control when the draft diverged', async () => {
