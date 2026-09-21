@@ -5,6 +5,7 @@ from apps.cmdb.collection.metrics_cannula import MetricsCannula
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.constants.constants import DataCleanupStrategy
 from apps.cmdb.models.scan_model import SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanFamilyRun, ScanHit, scan_task_type_for_model
+from apps.cmdb.services.scan_schedule_service import SCAN_MIDDLEWARE_LISTEN_PORTS
 from apps.core.logger import cmdb_logger as logger
 
 _PHYSICAL_SNAPSHOT_KEYS = ("serial_number", "uuid", "board_serial")
@@ -46,12 +47,22 @@ _MIDDLEWARE_SNAPSHOT_KEYS = (
     "install_path",
     "log_path",
 )
+_MIDDLEWARE_PATH_KEYS = (
+    "bin_path",
+    "nginx_path",
+    "conf_path",
+    "config_path",
+    "install_path",
+    "log_path",
+)
 _CHANNEL_PORTS = (0, 22)
 _HOST_OS_TYPE_LABELS = {"1": "Linux", "2": "Windows", "3": "AIX", "4": "Unix"}
 _SCAN_METRICS_RETRY_ATTEMPTS = 12
 _SCAN_METRICS_RETRY_SECONDS = 5
-_SCAN_MIDDLEWARE_METRICS_RETRY_ATTEMPTS = 10
-_SCAN_MIDDLEWARE_METRICS_RETRY_SECONDS = 2
+SCAN_MIDDLEWARE_ENRICH_DEADLINE_SECONDS = 3600
+SCAN_MIDDLEWARE_ENRICH_MAX_ATTEMPTS = 16
+SCAN_MIDDLEWARE_ENRICH_BASE_SECONDS = 15
+SCAN_MIDDLEWARE_ENRICH_MAX_SECONDS = 300
 
 
 def build_scan_collect_shim(family_run: ScanFamilyRun):
@@ -122,25 +133,81 @@ def collect_family_metrics_until_hits(family_run: ScanFamilyRun) -> dict:
     return metrics
 
 
-def collect_middleware_metrics_until_ready(family_run: ScanFamilyRun) -> dict:
-    """JOB 凭据回传先于 VM 落盘；空结果时短等，避免按 listen_port 拆 hit 时误删。"""
-    has_success = family_run.hits.filter(status=ScanHit.STATUS_SUCCESS).exists()
-    attempts = _SCAN_MIDDLEWARE_METRICS_RETRY_ATTEMPTS if has_success else 1
-    metrics = {}
-    for attempt in range(1, attempts + 1):
-        metrics = collect_family_metrics(family_run)
-        rows = (metrics or {}).get(family_run.model_id) or []
-        if rows or not has_success:
-            return metrics
-        logger.info(
-            "[ScanFinalize] 中间件指标尚未就绪 execution=%s family=%s attempt=%s",
-            family_run.execution_id,
-            family_run.model_id,
-            attempt,
+def _middleware_row_has_paths(row: dict) -> bool:
+    return any(row.get(key) not in (None, "") for key in _MIDDLEWARE_PATH_KEYS)
+
+
+def middleware_enrich_countdown(attempt: int) -> int:
+    return min(
+        SCAN_MIDDLEWARE_ENRICH_MAX_SECONDS,
+        SCAN_MIDDLEWARE_ENRICH_BASE_SECONDS * (2 ** max(int(attempt), 0)),
+    )
+
+
+def middleware_success_hits_missing_paths(execution: ScanExecution) -> bool:
+    for family_run in execution.family_runs.all():
+        if family_run.model_id not in SCAN_MIDDLEWARE_TYPES:
+            continue
+        for hit in family_run.hits.filter(status=ScanHit.STATUS_SUCCESS):
+            snapshot = hit.snapshot if isinstance(hit.snapshot, dict) else {}
+            if not _middleware_row_has_paths(snapshot):
+                return True
+    return False
+
+
+def schedule_middleware_snapshot_enrich(execution_id, attempt=0, deadline_ts=None) -> bool:
+    now_ts = int(time.time())
+    if deadline_ts is None:
+        deadline_ts = now_ts + SCAN_MIDDLEWARE_ENRICH_DEADLINE_SECONDS
+    deadline_ts = int(deadline_ts)
+    attempt = int(attempt)
+    remaining = deadline_ts - now_ts
+    if attempt >= SCAN_MIDDLEWARE_ENRICH_MAX_ATTEMPTS or remaining <= 0:
+        return False
+    from apps.cmdb.tasks.celery_tasks import enrich_scan_middleware_snapshots
+
+    enrich_scan_middleware_snapshots.apply_async(
+        args=(int(execution_id), attempt, deadline_ts),
+        countdown=min(middleware_enrich_countdown(attempt), remaining),
+    )
+    return True
+
+
+def enrich_middleware_snapshots(execution_id, attempt=0, deadline_ts=None) -> dict:
+    execution = ScanExecution.objects.filter(pk=execution_id).first()
+    if execution is None:
+        return {"status": "missing", "execution_id": execution_id}
+    for family_run in execution.family_runs.all():
+        if family_run.model_id not in SCAN_MIDDLEWARE_TYPES:
+            continue
+        try:
+            plugin_result = collect_family_metrics(family_run)
+        except Exception:
+            logger.exception(
+                "[ScanFinalize] 补齐中间件指标失败 execution=%s family=%s",
+                execution.id,
+                family_run.model_id,
+            )
+            continue
+        explode_middleware_hits(family_run, plugin_result)
+        polish_hit_snapshots(family_run)
+    if not middleware_success_hits_missing_paths(execution):
+        logger.info("[ScanFinalize] 中间件路径已补齐 execution=%s", execution.id)
+        return {"status": "ready", "execution_id": execution.id}
+    next_attempt = int(attempt) + 1
+    if schedule_middleware_snapshot_enrich(execution.id, next_attempt, deadline_ts):
+        logger.debug(
+            "[ScanFinalize] 中间件路径仍待补齐 execution=%s attempt=%s",
+            execution.id,
+            next_attempt,
         )
-        if attempt < attempts:
-            time.sleep(_SCAN_MIDDLEWARE_METRICS_RETRY_SECONDS)
-    return metrics
+        return {"status": "scheduled", "execution_id": execution.id, "attempt": next_attempt}
+    logger.warning(
+        "[ScanFinalize] 中间件路径补齐停止 execution=%s attempt=%s",
+        execution.id,
+        attempt,
+    )
+    return {"status": "stopped", "execution_id": execution.id}
 
 
 def write_refined_metrics(family_run: ScanFamilyRun, organization, refined: dict):
@@ -325,6 +392,54 @@ def attach_snmp_hits_to_physical(execution: ScanExecution):
         hit.save(update_fields=["attached_inst_uuid", "updated_at"])
 
 
+def _default_middleware_listen_port(model_id: str) -> int:
+    ports = SCAN_MIDDLEWARE_LISTEN_PORTS.get(model_id) or ()
+    return int(ports[0]) if ports else 0
+
+
+def _upsert_middleware_hit(family_run: ScanFamilyRun, *, host: str, port: int, credential_id: str, snapshot: dict, template=None):
+    existing = family_run.hits.filter(host=host, port=port, credential_id=credential_id).first()
+    if existing:
+        existing.status = ScanHit.STATUS_SUCCESS
+        existing.cmdb_model_id = family_run.model_id
+        existing.snapshot = snapshot
+        existing.save(update_fields=["status", "cmdb_model_id", "snapshot", "updated_at"])
+        return existing
+    return ScanHit.objects.create(
+        execution=family_run.execution,
+        family_run=family_run,
+        protocol=(template.protocol if template is not None else family_run.model_id),
+        host=host,
+        port=port,
+        credential_id=credential_id,
+        status=ScanHit.STATUS_SUCCESS,
+        cmdb_model_id=family_run.model_id,
+        snapshot=snapshot,
+    )
+
+
+def _keep_channel_hits_without_metrics(family_run: ScanFamilyRun, host: str, host_hits: list):
+    """JOB 已成功但 VM 尚未可读时，保留命中并把 SSH 通道口改成默认监听口。"""
+    fallback_port = _default_middleware_listen_port(family_run.model_id)
+    for hit in host_hits:
+        snapshot = dict(hit.snapshot or {}) if isinstance(hit.snapshot, dict) else {}
+        credential_id = hit.credential_id
+        if fallback_port and hit.port in _CHANNEL_PORTS:
+            if fallback_port != hit.port:
+                family_run.hits.filter(pk=hit.pk).delete()
+            _upsert_middleware_hit(
+                family_run,
+                host=host,
+                port=fallback_port,
+                credential_id=credential_id,
+                snapshot=snapshot,
+                template=hit,
+            )
+            continue
+        hit.cmdb_model_id = family_run.model_id
+        hit.save(update_fields=["cmdb_model_id", "updated_at"])
+
+
 def _middleware_hit_port(row: dict) -> int:
     raw = row.get("listen_port")
     if raw in (None, ""):
@@ -374,7 +489,7 @@ def explode_middleware_hits(family_run: ScanFamilyRun, plugin_result: dict):
     for host, host_hits in hits_by_host.items():
         plugin_rows = rows_by_host.get(host) or []
         if not plugin_rows:
-            family_run.hits.filter(host=host, status=ScanHit.STATUS_SUCCESS).delete()
+            _keep_channel_hits_without_metrics(family_run, host, host_hits)
             continue
         templates = []
         seen_credentials = set()
@@ -394,28 +509,32 @@ def explode_middleware_hits(family_run: ScanFamilyRun, plugin_result: dict):
                     credential_id=template.credential_id,
                 ).first()
                 snapshot = _middleware_snapshot(row, existing.snapshot if existing else template.snapshot)
-                if existing:
-                    existing.status = ScanHit.STATUS_SUCCESS
-                    existing.cmdb_model_id = model_id
-                    existing.snapshot = snapshot
-                    existing.save(update_fields=["status", "cmdb_model_id", "snapshot", "updated_at"])
-                    continue
-                ScanHit.objects.create(
-                    execution=family_run.execution,
-                    family_run=family_run,
-                    protocol=template.protocol,
+                _upsert_middleware_hit(
+                    family_run,
                     host=host,
                     port=port,
                     credential_id=template.credential_id,
-                    status=ScanHit.STATUS_SUCCESS,
-                    cmdb_model_id=model_id,
                     snapshot=snapshot,
+                    template=template,
                 )
         family_run.hits.filter(
             host=host,
             status=ScanHit.STATUS_SUCCESS,
             port__in=_CHANNEL_PORTS,
         ).exclude(port__in=new_ports).delete()
+
+    for host, plugin_rows in rows_by_host.items():
+        if host in hits_by_host:
+            continue
+        for row in plugin_rows:
+            port = _middleware_hit_port(row)
+            _upsert_middleware_hit(
+                family_run,
+                host=host,
+                port=port,
+                credential_id="",
+                snapshot=_middleware_snapshot(row),
+            )
 
 
 def polish_hit_snapshots(family_run: ScanFamilyRun):
@@ -465,7 +584,7 @@ def write_scan_execution(execution: ScanExecution):
         try:
             if family_run.model_id in SCAN_MIDDLEWARE_TYPES:
                 try:
-                    plugin_result = collect_middleware_metrics_until_ready(family_run)
+                    plugin_result = collect_family_metrics(family_run)
                 except Exception:
                     logger.exception(
                         "[ScanFinalize] 拉取中间件指标失败 execution=%s family=%s",
@@ -482,4 +601,6 @@ def write_scan_execution(execution: ScanExecution):
                 family_run.model_id,
             )
             continue
+    if middleware_success_hits_missing_paths(execution) and schedule_middleware_snapshot_enrich(execution.id):
+        logger.info("[ScanFinalize] 中间件路径待补齐 execution=%s", execution.id)
     return {"status": "written", "execution_id": execution.id}

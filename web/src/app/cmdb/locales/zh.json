@@ -1898,7 +1898,7 @@
         "uuid": "UUID",
         "port": "端口",
         "version": "版本",
-        "middlewarePath": "conf_path / install_path",
+        "middlewarePath": "配置路径",
         "generateCollectDone": "已生成 {count} 张采集任务",
         "generateCollectPartial": "生成采集：新建 {created}，追加 {appended}，跳过 {skipped}，失败 {failed}",
         "generateCollectFailed": "生成采集任务失败，请稍后重试",

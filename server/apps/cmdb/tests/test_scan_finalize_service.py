@@ -242,7 +242,7 @@ def test_finalize_does_not_attach_snmp_before_physical_ci(mocker):
     assert snmp_hit.attached_inst_uuid == ""
 
 
-def test_finalize_explodes_middleware_listen_ports_and_drops_empty_host(mocker):
+def test_finalize_explodes_middleware_listen_ports_and_keeps_empty_host(mocker):
     from apps.cmdb.constants.constants import CollectDriverTypes
 
     task = _scan_task(families=["middleware"], credentials={"middleware": [{"credential_id": "cred-ssh"}]})
@@ -285,16 +285,51 @@ def test_finalize_explodes_middleware_listen_ports_and_drops_empty_host(mocker):
             ]
         },
     )
+    mocker.patch("apps.cmdb.services.scan_finalize_service.schedule_middleware_snapshot_enrich", return_value=True)
     write_scan_execution(execution)
     ports = set(ScanHit.objects.filter(family_run=family_run, status=ScanHit.STATUS_SUCCESS).values_list("host", "port"))
-    assert ports == {("10.0.1.10", 80)}
+    assert ports == {("10.0.1.10", 80), ("10.0.1.11", 80)}
     hit = ScanHit.objects.get(host="10.0.1.10", port=80)
     assert hit.snapshot.get("version") == "1.24"
     assert hit.cmdb_model_id == "nginx"
-    assert not ScanHit.objects.filter(host="10.0.1.11").exists()
+    kept = ScanHit.objects.get(host="10.0.1.11", port=80)
+    assert kept.cmdb_model_id == "nginx"
+    assert not ScanHit.objects.filter(host="10.0.1.11", port=22).exists()
 
 
-def test_finalize_waits_for_middleware_metrics_before_explode(mocker):
+def test_finalize_creates_middleware_hits_from_metrics_without_ssh_template(mocker):
+    from apps.cmdb.constants.constants import CollectDriverTypes
+
+    task = _scan_task(families=["middleware"], credentials={"middleware": [{"credential_id": "cred-ssh"}]})
+    execution = ScanExecution.objects.create(task=task, status=ScanExecution.STATUS_RUNNING, claim_token="t")
+    family_run = ScanFamilyRun.objects.create(
+        execution=execution,
+        model_id="nginx",
+        driver_type=CollectDriverTypes.JOB,
+        admit_status=ScanFamilyRun.ADMIT_ACCEPTED,
+    )
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={
+            "nginx": [
+                {
+                    "ip_addr": "10.11.27.147",
+                    "listen_port": "80",
+                    "version": "1.20.1",
+                    "inst_name": "10.11.27.147-nginx-80",
+                }
+            ]
+        },
+    )
+    mocker.patch("apps.cmdb.services.scan_finalize_service.schedule_middleware_snapshot_enrich", return_value=True)
+    write_scan_execution(execution)
+    hit = ScanHit.objects.get(family_run=family_run, host="10.11.27.147", port=80)
+    assert hit.status == ScanHit.STATUS_SUCCESS
+    assert hit.cmdb_model_id == "nginx"
+    assert hit.snapshot.get("version") == "1.20.1"
+
+
+def _nginx_job_execution():
     from apps.cmdb.constants.constants import CollectDriverTypes
 
     task = _scan_task(families=["middleware"], credentials={"middleware": [{"credential_id": "cred-ssh"}]})
@@ -313,8 +348,18 @@ def test_finalize_waits_for_middleware_metrics_before_explode(mocker):
         port=22,
         credential_id="cred-ssh",
         status=ScanHit.STATUS_SUCCESS,
+        snapshot={"password": "secret-password"},
     )
-    nginx_row = {
+    return execution, family_run
+
+
+def test_finalize_keeps_identity_and_schedules_path_enrich(mocker, caplog):
+    import logging
+
+    from apps.cmdb.services.scan_finalize_service import SCAN_MIDDLEWARE_ENRICH_DEADLINE_SECONDS
+
+    execution, family_run = _nginx_job_execution()
+    identity_only = {
         "ip_addr": "10.0.1.10",
         "listen_port": "80",
         "version": "1.20.1",
@@ -322,14 +367,157 @@ def test_finalize_waits_for_middleware_metrics_before_explode(mocker):
     }
     mocker.patch(
         "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
-        side_effect=[{}, {"nginx": [nginx_row]}],
+        return_value={"nginx": [identity_only]},
     )
     slept = mocker.patch("apps.cmdb.services.scan_finalize_service.time.sleep")
-    write_scan_execution(execution)
-    slept.assert_called_once()
+    now_ts = 1_700_000_000
+    mocker.patch("apps.cmdb.services.scan_finalize_service.time.time", return_value=now_ts)
+    apply_async = mocker.patch("apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots.apply_async")
+    with caplog.at_level(logging.INFO, logger="cmdb"):
+        write_scan_execution(execution)
+    slept.assert_not_called()
+    apply_async.assert_called_once_with(
+        args=(execution.id, 0, now_ts + SCAN_MIDDLEWARE_ENRICH_DEADLINE_SECONDS),
+        countdown=15,
+    )
     hit = ScanHit.objects.get(family_run=family_run, status=ScanHit.STATUS_SUCCESS)
     assert (hit.host, hit.port) == ("10.0.1.10", 80)
-    assert hit.snapshot.get("listen_port") == "80"
+    assert hit.snapshot.get("version") == "1.20.1"
+    assert not hit.snapshot.get("conf_path")
+    records = [record for record in caplog.records if record.msg == "[ScanFinalize] 中间件路径待补齐 execution=%s"]
+    assert len(records) == 1
+    assert records[0].args == (execution.id,)
+    assert records[0].getMessage() == f"[ScanFinalize] 中间件路径待补齐 execution={execution.id}"
+    assert "secret-password" not in caplog.text
+
+
+def test_finalize_does_not_schedule_enrich_when_paths_ready(mocker):
+    execution, family_run = _nginx_job_execution()
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={
+            "nginx": [
+                {
+                    "ip_addr": "10.0.1.10",
+                    "listen_port": "80",
+                    "version": "1.20.1",
+                    "inst_name": "10.0.1.10-nginx-80",
+                    "conf_path": "/etc/nginx/nginx.conf",
+                    "bin_path": "/usr/sbin/nginx",
+                }
+            ]
+        },
+    )
+    apply_async = mocker.patch("apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots.apply_async")
+    write_scan_execution(execution)
+    apply_async.assert_not_called()
+    hit = ScanHit.objects.get(family_run=family_run, status=ScanHit.STATUS_SUCCESS)
+    assert hit.snapshot.get("conf_path") == "/etc/nginx/nginx.conf"
+
+
+def test_enrich_fills_middleware_paths_after_finalize(mocker, caplog):
+    import logging
+
+    from apps.cmdb.services.scan_finalize_service import enrich_middleware_snapshots
+
+    execution, family_run = _nginx_job_execution()
+    identity_only = {
+        "ip_addr": "10.0.1.10",
+        "listen_port": "80",
+        "version": "1.20.1",
+        "inst_name": "10.0.1.10-nginx-80",
+    }
+    with_paths = {
+        **identity_only,
+        "conf_path": "/etc/nginx/nginx.conf",
+        "bin_path": "/usr/sbin/nginx",
+        "log_path": "/var/log/nginx/error.log",
+    }
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={"nginx": [identity_only]},
+    )
+    mocker.patch("apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots.apply_async")
+    write_scan_execution(execution)
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={"nginx": [with_paths]},
+    )
+    apply_async = mocker.patch("apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots.apply_async")
+    with caplog.at_level(logging.INFO, logger="cmdb"):
+        result = enrich_middleware_snapshots(execution.id, attempt=0, deadline_ts=1_700_003_600)
+    assert result == {"status": "ready", "execution_id": execution.id}
+    apply_async.assert_not_called()
+    hit = ScanHit.objects.get(family_run=family_run, status=ScanHit.STATUS_SUCCESS)
+    assert hit.port == 80
+    assert hit.snapshot.get("conf_path") == "/etc/nginx/nginx.conf"
+    assert hit.snapshot.get("bin_path") == "/usr/sbin/nginx"
+    records = [record for record in caplog.records if record.msg == "[ScanFinalize] 中间件路径已补齐 execution=%s"]
+    assert len(records) == 1
+    assert records[0].args == (execution.id,)
+    assert records[0].getMessage() == f"[ScanFinalize] 中间件路径已补齐 execution={execution.id}"
+    assert "secret-password" not in caplog.text
+
+
+def test_enrich_reschedules_when_paths_still_missing(mocker):
+    from apps.cmdb.services.scan_finalize_service import enrich_middleware_snapshots
+
+    execution, _family_run = _nginx_job_execution()
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={
+            "nginx": [
+                {
+                    "ip_addr": "10.0.1.10",
+                    "listen_port": "80",
+                    "version": "1.20.1",
+                    "inst_name": "10.0.1.10-nginx-80",
+                }
+            ]
+        },
+    )
+    now_ts = 1_700_000_000
+    mocker.patch("apps.cmdb.services.scan_finalize_service.time.time", return_value=now_ts)
+    apply_async = mocker.patch("apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots.apply_async")
+    result = enrich_middleware_snapshots(execution.id, attempt=2, deadline_ts=now_ts + 3600)
+    assert result == {"status": "scheduled", "execution_id": execution.id, "attempt": 3}
+    apply_async.assert_called_once_with(args=(execution.id, 3, now_ts + 3600), countdown=120)
+
+
+def test_enrich_stops_after_deadline(mocker, caplog):
+    import logging
+
+    from apps.cmdb.services.scan_finalize_service import enrich_middleware_snapshots
+
+    execution, family_run = _nginx_job_execution()
+    mocker.patch(
+        "apps.cmdb.services.scan_finalize_service.collect_family_metrics",
+        return_value={
+            "nginx": [
+                {
+                    "ip_addr": "10.0.1.10",
+                    "listen_port": "80",
+                    "version": "1.20.1",
+                    "inst_name": "10.0.1.10-nginx-80",
+                }
+            ]
+        },
+    )
+    now_ts = 1_700_003_600
+    mocker.patch("apps.cmdb.services.scan_finalize_service.time.time", return_value=now_ts)
+    apply_async = mocker.patch("apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots.apply_async")
+    with caplog.at_level(logging.WARNING, logger="cmdb"):
+        result = enrich_middleware_snapshots(execution.id, attempt=5, deadline_ts=now_ts - 1)
+    assert result == {"status": "stopped", "execution_id": execution.id}
+    apply_async.assert_not_called()
+    hit = ScanHit.objects.get(family_run=family_run, status=ScanHit.STATUS_SUCCESS)
+    assert hit.snapshot.get("version") == "1.20.1"
+    assert not hit.snapshot.get("conf_path")
+    records = [record for record in caplog.records if record.msg == "[ScanFinalize] 中间件路径补齐停止 execution=%s attempt=%s"]
+    assert len(records) == 1
+    assert records[0].args == (execution.id, 5)
+    assert records[0].getMessage() == f"[ScanFinalize] 中间件路径补齐停止 execution={execution.id} attempt=5"
+    assert "secret-password" not in caplog.text
 
 
 def test_poll_ready_finalizes_and_marks_completed(mocker):

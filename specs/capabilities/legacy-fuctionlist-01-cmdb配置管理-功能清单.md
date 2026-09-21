@@ -94,7 +94,7 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 插件说明 | 查看采集插件说明文档 | — | GA |
 | 实例侧关联任务 | 在实例侧查看可关联的采集任务名称 | — | GA |
 | 部分数据库采集 | MongoDB、Elasticsearch、HBase、TiDB、MSSQL 等数据库对象采集 | 部分对象处于试验阶段 | Beta |
-| 网段扫描发现 | 按网段创建扫描任务，查看执行与命中并回写采集/资产 | 允许家族：网络/主机/物理服务器/数据库/InfluxDB；数据库凭据为统一用户名密码池，探测端口与类型来自特征库端口指纹，登录成功仍写 mysql/postgresql/mssql CI；网段前缀不得宽于 /21；命中详情分已匹配/未匹配；未知 SOID 可写指纹或手选类型后推监控/生成采集；数据库鉴权失败可补端口指纹或按预判类型建 CI，失败行不可推监控/生成采集 | GA |
+| 网段扫描发现 | 按网段创建扫描任务，查看执行与命中并回写采集/资产 | 允许家族：网络/主机/物理服务器/数据库/中间件/InfluxDB；数据库凭据为统一用户名密码池，探测端口与类型来自特征库端口指纹，登录成功仍写 mysql/postgresql/mssql CI；JOB 族按约 8 IP 切批排队、协议先打，SNMP 成功地址不再打主机 SSH，中间件在勾选主机时只打主机成功地址；网段前缀不得宽于 /21；命中详情分已匹配/未匹配；未知 SOID 可写指纹或手选类型后推监控/生成采集；数据库鉴权失败可补端口指纹或按预判类型建 CI，失败行不可推监控/生成采集；中间件 JOB 已成功时，收口不得因 VictoriaMetrics 指标空而删除命中；路径字段晚到时任务仍完成，由异步补齐 snapshot | GA |
 
 相关 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；相关架构：[[legacy-ard-modules-cmdb.md#3. 接口]]
 > 证据来源：server/apps/cmdb/urls.py:27，server/apps/cmdb/models/scan_model.py:10-22,39，web/src/app/cmdb/(pages)/assetManage/autoDiscovery/scan/page.tsx　|　同步基线：61bace9f　|　【已实现】

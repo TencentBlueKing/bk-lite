@@ -260,6 +260,7 @@ class ScanExecution(TimeInfo):
     finished_at = models.DateTimeField(blank=True, null=True)
     target_count = models.PositiveIntegerField(default=0)
     received_count = models.PositiveIntegerField(default=0)
+    schedule = JSONField(default=dict, help_text="JOB 工作队列：切批、游标与当前批次截止")
 
     class Meta:
         verbose_name = "扫描执行"
@@ -291,11 +292,12 @@ class ScanFamilyRun(TimeInfo):
         help_text="已计入进度的主机（含失败/不可达）；清单仅保留 success",
     )
     admit_status = models.CharField(max_length=32, choices=ADMIT_CHOICES, default=ADMIT_PENDING)
+    batch_index = models.PositiveSmallIntegerField(default=0, help_text="同模型 JOB 切批序号")
 
     class Meta:
         verbose_name = "扫描族执行"
         verbose_name_plural = verbose_name
-        unique_together = (("execution", "model_id", "driver_type"),)
+        unique_together = (("execution", "model_id", "driver_type", "batch_index"),)
 
 
 class ScanHit(TimeInfo):
