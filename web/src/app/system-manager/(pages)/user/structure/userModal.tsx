@@ -16,6 +16,8 @@ import {
 } from '@/app/system-manager/utils/userFormUtils';
 import type { TreeSelectNode } from '@/app/system-manager/utils/userFormUtils';
 
+const EMPTY_GROUP_IDS: React.Key[] = [];
+
 interface ModalProps {
   onSuccess: () => void;
   treeData: TreeDataNode[];
@@ -74,12 +76,15 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     });
   }, [filteredTreeData, selectedGroups]);
 
+  const syncedGroupIdsKey = type === 'edit'
+    ? historicalSyncedGroupIds.map(String).slice().sort().join('\0')
+    : '';
   const selectableGroupTreeData = useMemo(
     () => filterSyncedGroupsForLocalUser(
       filteredTreeData,
-      type === 'edit' ? historicalSyncedGroupIds : []
+      type === 'edit' ? historicalSyncedGroupIds : EMPTY_GROUP_IDS
     ),
-    [filteredTreeData, historicalSyncedGroupIds, type]
+    [filteredTreeData, type, syncedGroupIdsKey]
   );
 
   const isGroupSelectionLocked = isSyncedUser || historicalSyncedGroupIds.length > 0;
@@ -155,6 +160,14 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     >
       <Spin spinning={loading}>
         <Form ref={formRef} layout="vertical">
+          {type === 'edit' && isSyncedUser && (
+            <Alert
+              message={t('system.user.form.syncedContactOverwriteTip')}
+              type="info"
+              showIcon
+              className="mb-4"
+            />
+          )}
           <Form.Item
             name="username"
             label={t('system.user.form.username')}
@@ -170,17 +183,13 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             label={t('system.user.form.email')}
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
-            {type === 'edit' && isSyncedUser
-              ? <Input disabled />
-              : renderSensitiveInput('email', `${t('common.inputMsg')}${t('system.user.form.email')}`)}
+            {renderSensitiveInput('email', `${t('common.inputMsg')}${t('system.user.form.email')}`)}
           </Form.Item>
           <Form.Item
             name="phone"
             label={t('system.user.form.phone')}
           >
-            {type === 'edit' && isSyncedUser
-              ? <Input disabled />
-              : renderSensitiveInput('phone', `${t('common.inputMsg')}${t('system.user.form.phone')}`)}
+            {renderSensitiveInput('phone', `${t('common.inputMsg')}${t('system.user.form.phone')}`)}
           </Form.Item>
           <Form.Item
             name="lastName"
@@ -222,16 +231,18 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             label={t('common.organization')}
             required={!isSuperuser}
           >
-            <RoleTransfer
-              mode="group"
-              enableSubGroupSelect={true}
-              groupRules={groupRules}
-              treeData={selectableGroupTreeData}
-              selectedKeys={selectedGroups}
-              onChange={handleGroupChange}
-              onChangeRule={handleChangeRule}
-              disabled={isGroupSelectionLocked}
-            />
+            {visible && (type !== 'edit' || !loading) ? (
+              <RoleTransfer
+                mode="group"
+                enableSubGroupSelect={true}
+                groupRules={groupRules}
+                treeData={selectableGroupTreeData}
+                selectedKeys={selectedGroups}
+                onChange={handleGroupChange}
+                onChangeRule={handleChangeRule}
+                disabled={isGroupSelectionLocked}
+              />
+            ) : null}
           </Form.Item>
           <Form.Item
             label={t('system.user.form.role')}
@@ -245,17 +256,19 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
               </Radio.Group>
             </Form.Item>
             {!isSuperuser ? (
-              <RoleTransfer
-                groupRules={groupRules}
-                treeData={roleTreeData}
-                selectedKeys={selectedRoles}
-                personalRoleIds={personalRoleIds}
-                loading={roleLoading}
-                forceOrganizationRole={false}
-                organizationRoleIds={organizationRoleIds}
-                organizationRoleSourceMap={organizationRoleSourceMap}
-                onChange={handleRoleChange}
-              />
+              visible ? (
+                <RoleTransfer
+                  groupRules={groupRules}
+                  treeData={roleTreeData}
+                  selectedKeys={selectedRoles}
+                  personalRoleIds={personalRoleIds}
+                  loading={roleLoading}
+                  forceOrganizationRole={false}
+                  organizationRoleIds={organizationRoleIds}
+                  organizationRoleSourceMap={organizationRoleSourceMap}
+                  onChange={handleRoleChange}
+                />
+              ) : null
             ) : (
               <div>{t('system.user.form.superuser')}</div>
             )}

@@ -1,5 +1,6 @@
 'use client';
 
+import './register-trace-pilot';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import {

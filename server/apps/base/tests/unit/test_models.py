@@ -1,7 +1,7 @@
 import pytest
 from django.db import IntegrityError
 
-from apps.base.models import User, UserAPISecret
+from apps.base.models import UserAPISecret
 from apps.base.tests.factories import UserAPISecretFactory, UserFactory
 
 
@@ -50,10 +50,16 @@ class TestUserModelConstraints:
 @pytest.mark.unit
 @pytest.mark.django_db
 class TestUserAPISecretModelConstraints:
-    def test_unique_together_username_domain_team(self):
-        UserAPISecretFactory(username="alice", domain="test.com", team=1)
+    def test_same_username_domain_team_allows_multiple_secrets(self):
+        first = UserAPISecretFactory(username="alice", domain="test.com", team=1, name="ci")
+        second = UserAPISecretFactory(username="alice", domain="test.com", team=1, name="debug")
+        assert first.pk != second.pk
+        assert UserAPISecret.objects.filter(username="alice", domain="test.com", team=1).count() == 2
+
+    def test_same_name_in_same_team_is_rejected(self):
+        UserAPISecretFactory(username="alice", domain="test.com", team=1, name="ci")
         with pytest.raises(IntegrityError):
-            UserAPISecretFactory(username="alice", domain="test.com", team=1)
+            UserAPISecretFactory(username="alice", domain="test.com", team=1, name="ci")
 
     def test_same_username_different_team_allowed(self):
         UserAPISecretFactory(username="alice", domain="test.com", team=1)
@@ -77,3 +83,82 @@ class TestUserAPISecretModelConstraints:
         stored = UserAPISecretFactory(api_secret=raw_secret)
 
         assert UserAPISecret.find_by_api_secret(raw_secret) == stored
+
+    def test_find_by_api_secret_matches_each_of_two_live_secrets(self):
+        raw_a = UserAPISecret.generate_api_secret()
+        raw_b = UserAPISecret.generate_api_secret()
+        first = UserAPISecretFactory(
+            username="alice",
+            domain="test.com",
+            team=1,
+            name="first",
+            api_secret=UserAPISecret.hash_api_secret(raw_a),
+        )
+        second = UserAPISecretFactory(
+            username="alice",
+            domain="test.com",
+            team=1,
+            name="second",
+            api_secret=UserAPISecret.hash_api_secret(raw_b),
+        )
+
+        assert UserAPISecret.find_by_api_secret(raw_a) == first
+        assert UserAPISecret.find_by_api_secret(raw_b) == second
+
+    def test_find_by_api_secret_ignores_expired_row(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        raw_secret = UserAPISecret.generate_api_secret()
+        UserAPISecretFactory(
+            username="alice",
+            domain="test.com",
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(raw_secret),
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        assert UserAPISecret.find_by_api_secret(raw_secret) is None
+
+    def test_find_by_api_secret_keeps_null_expires_at(self):
+        raw_secret = UserAPISecret.generate_api_secret()
+        stored = UserAPISecretFactory(
+            username="alice",
+            domain="test.com",
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(raw_secret),
+            expires_at=None,
+        )
+
+        assert UserAPISecret.find_by_api_secret(raw_secret) == stored
+
+    def test_find_by_api_secret_keeps_future_expires_at(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        raw_secret = UserAPISecret.generate_api_secret()
+        stored = UserAPISecretFactory(
+            username="alice",
+            domain="test.com",
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(raw_secret),
+            expires_at=timezone.now() + timedelta(days=30),
+        )
+
+        assert UserAPISecret.find_by_api_secret(raw_secret) == stored
+
+    def test_find_by_api_secret_expired_plaintext_fallback_misses(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        raw_secret = UserAPISecret.generate_api_secret()
+        UserAPISecretFactory(
+            username="legacy",
+            api_secret=raw_secret,
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+
+        assert UserAPISecret.find_by_api_secret(raw_secret) is None

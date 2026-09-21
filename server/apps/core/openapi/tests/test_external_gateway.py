@@ -6,6 +6,7 @@
 
 import pytest
 
+from apps.base.models import UserAPISecret
 from apps.core.openapi import renderer
 from apps.core.openapi.testing import bearer, create_api_tenant
 
@@ -137,6 +138,26 @@ def test_forward_auth_required_roles_rejects_without_role(
     assert resp.json()["code"] == "ROLE_REQUIRED"
 
 
+def test_forward_auth_system_token_rejected_before_roles(client, registered_itsm):
+    """系统 Token 在 required_roles 评估前拒绝；空角色列表对 api_token 仍放行。"""
+    from apps.core.openapi.tests.test_system_token_auth import (
+        _acting,
+        _create_acting_user,
+        _create_system_token,
+    )
+
+    token = _create_system_token()
+    user = _create_acting_user(9)
+    resp = client.get(
+        AUTH_URL,
+        HTTP_X_FORWARDED_URI="/openapi/v1/itsm/tickets/create",
+        HTTP_X_ON_BEHALF_OF="lisi@domain.com",
+        **_acting(token, user, 9),
+    )
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "ROLE_REQUIRED"
+
+
 def test_forward_auth_on_behalf_of_echoed_for_api_token(client, registered_itsm):
     _, token = create_api_tenant(9)
     resp = client.get(
@@ -147,6 +168,45 @@ def test_forward_auth_on_behalf_of_echoed_for_api_token(client, registered_itsm)
     )
     assert resp.status_code == 200
     assert resp["X-On-Behalf-Of"] == "lisi@domain.com"
+
+
+def _set_personal_scope(user, team_id, scope):
+    UserAPISecret.objects.filter(
+        username=user.username, domain=user.domain, team=team_id
+    ).update(scope=scope)
+
+
+def test_forward_auth_personal_allowlist_blocks_unlisted_service(client, registered_itsm):
+    user, token = create_api_tenant(9)
+    _set_personal_scope(
+        user,
+        9,
+        {"mode": "allowlist", "endpoints": ["GET cmdb/classifications"]},
+    )
+    resp = client.get(
+        AUTH_URL,
+        HTTP_X_FORWARDED_URI="/openapi/v1/itsm/tickets/create",
+        **bearer(token),
+    )
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "SCOPE_DENIED"
+    assert resp.json()["message"] == "endpoint not in token scope"
+
+
+def test_forward_auth_personal_allowlist_allows_listed_service(client, registered_itsm):
+    user, token = create_api_tenant(9)
+    _set_personal_scope(
+        user,
+        9,
+        {"mode": "allowlist", "endpoints": ["EXTERNAL itsm"]},
+    )
+    resp = client.get(
+        AUTH_URL,
+        HTTP_X_FORWARDED_URI="/openapi/v1/itsm/tickets/create",
+        **bearer(token),
+    )
+    assert resp.status_code == 200
+    assert resp["X-BK-Team"] == "9"
 
 
 # ---------- _me 合并外部 service ----------

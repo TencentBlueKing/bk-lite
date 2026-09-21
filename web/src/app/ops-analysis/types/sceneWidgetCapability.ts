@@ -31,7 +31,7 @@ export const SCENE_WIDGET_CAPABILITIES: Record<
     type: 'relatedTopology',
     selfFetch: true,
     surfaces: ['dashboard', 'screen'],
-    shareSupported: false,
+    shareSupported: true,
     reportSupported: false,
   },
 };

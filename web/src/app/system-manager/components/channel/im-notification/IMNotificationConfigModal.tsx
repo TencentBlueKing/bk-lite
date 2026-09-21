@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import { Alert, Form, Input, Select, TimePicker } from 'antd';
 import type { FormInstance } from 'antd';
 
+import GroupTreeSelect from '@/components/group-tree-select';
 import OperateModal from '@/components/operate-modal';
 import type {
   AvailableInstance,
@@ -91,6 +92,17 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
           <Select
             placeholder={t('system.channel.imNotificationPage.integrationInstancePlaceholder')}
             options={integrationInstanceOptions}
+          />
+        </Form.Item>
+        <Form.Item
+          name="team"
+          label={t('common.organization')}
+          rules={[{ required: true, type: 'array', min: 1, message: `${t('common.selectMsg')}${t('common.organization')}` }]}
+        >
+          <GroupTreeSelect
+            placeholder={`${t('common.selectMsg')}${t('common.organization')}`}
+            multiple
+            mode="ownership"
           />
         </Form.Item>
         <Form.Item name="description" label={t('system.channel.imNotificationPage.description')}>

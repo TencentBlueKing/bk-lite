@@ -34,7 +34,7 @@ export interface IMNotificationChannel {
   latest_sync_unmatched_count: number | null;
   latest_sync_conflict_count: number | null;
   schedule_config: ScheduleConfig;
-  team: unknown[];
+  team: number[];
   created_by?: string;
   updated_by?: string;
   created_at?: string;
@@ -113,5 +113,5 @@ export type IMNotificationChannelPayload = Omit<
 > & {
   enabled?: boolean;
   status?: ChannelStatus;
-  team?: unknown[];
+  team?: number[];
 };

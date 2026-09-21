@@ -52,10 +52,10 @@ def test_channel_rejects_external_match_field_not_declared_by_manifest(ready_im_
             "status": "pending_sync",
             "platform_match_field": "email",
             "external_match_field": "name",
-            "external_receive_field": "user_id",
-            "team": [],
-        }
-    )
+                "external_receive_field": "user_id",
+                "team": [1],
+            }
+        )
 
     assert serializer.is_valid() is False
     assert "external_match_field" in serializer.errors
@@ -72,7 +72,7 @@ def test_channel_rejects_unknown_status(ready_im_instance):
             "platform_match_field": "email",
             "external_match_field": "email",
             "external_receive_field": "user_id",
-            "team": [],
+            "team": [1],
         }
     )
 
@@ -107,7 +107,7 @@ def test_channel_update_marks_needs_resync_when_critical_config_changes(channel,
             "platform_match_field": "username",
             "external_match_field": "email",
             "external_receive_field": "user_id",
-            "team": [],
+            "team": [1],
         },
     )
 
@@ -130,7 +130,7 @@ def test_channel_create_syncs_periodic_task_when_schedule_enabled(ready_im_insta
                 "external_match_field": "email",
                 "external_receive_field": "user_id",
                 "schedule_config": {"enabled": True, "sync_time": "02:00"},
-                "team": [],
+                "team": [1],
             },
         )
         assert serializer.is_valid(), serializer.errors
@@ -153,7 +153,7 @@ def test_channel_rejects_invalid_schedule_sync_time(ready_im_instance):
             "external_match_field": "email",
             "external_receive_field": "user_id",
             "schedule_config": {"enabled": True, "sync_time": "25:00"},
-            "team": [],
+            "team": [1],
         },
     )
 
@@ -175,7 +175,7 @@ def test_channel_update_syncs_periodic_task_when_schedule_enabled(channel, ready
                 "external_match_field": "email",
                 "external_receive_field": "user_id",
                 "schedule_config": {"enabled": True, "sync_time": "02:00"},
-                "team": [],
+                "team": [1],
             },
         )
         assert serializer.is_valid(), serializer.errors
@@ -418,6 +418,64 @@ def test_viewset_delegates_channel_access_to_common_service(authenticated_user, 
     assert error_response.status_code == 403
 
 
+def _im_channel_payload(ready_im_instance, **overrides):
+    payload = {
+        "name": "scoped-channel",
+        "integration_instance": ready_im_instance.id,
+        "enabled": True,
+        "platform_match_field": "email",
+        "external_match_field": "email",
+        "external_receive_field": "user_id",
+        "team": [1],
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.django_db
+def test_create_rejects_empty_team(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Add"}}
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/",
+        _im_channel_payload(ready_im_instance, name="empty-team-channel", team=[]),
+    )
+
+    assert response.status_code == 400
+    assert not IMNotificationChannel.objects.filter(name="empty-team-channel").exists()
+
+
+@pytest.mark.django_db
+def test_create_rejects_missing_team(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Add"}}
+
+    payload = _im_channel_payload(ready_im_instance, name="missing-team-channel")
+    payload.pop("team")
+    response = api_client.post("/api/v1/system_mgmt/im_notification_channel/", payload)
+
+    assert response.status_code == 400
+    assert not IMNotificationChannel.objects.filter(name="missing-team-channel").exists()
+
+
+@pytest.mark.django_db
+def test_create_accepts_team_in_user_scope(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Add"}}
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/",
+        _im_channel_payload(ready_im_instance),
+    )
+
+    assert response.status_code == 201
+    assert IMNotificationChannel.objects.get(name="scoped-channel").team == [1]
+
+
 @pytest.mark.django_db
 def test_create_rejects_team_outside_user_scope(api_client, authenticated_user, ready_im_instance):
     authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
@@ -426,22 +484,17 @@ def test_create_rejects_team_outside_user_scope(api_client, authenticated_user, 
 
     response = api_client.post(
         "/api/v1/system_mgmt/im_notification_channel/",
-        {
-            "name": "scoped-channel",
-            "integration_instance": ready_im_instance.id,
-            "enabled": True,
-            "platform_match_field": "email",
-            "external_match_field": "email",
-            "external_receive_field": "user_id",
-            "team": [99],
-        },
+        _im_channel_payload(ready_im_instance, team=[99]),
     )
 
     assert response.status_code == 403
+    assert not IMNotificationChannel.objects.filter(name="scoped-channel").exists()
 
 
 @pytest.mark.django_db
 def test_update_rejects_team_outside_user_scope(api_client, authenticated_user, channel, ready_im_instance):
+    channel.team = [1]
+    channel.save(update_fields=["team"])
     authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
     authenticated_user.save(update_fields=["group_list"])
     authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
@@ -460,6 +513,136 @@ def test_update_rejects_team_outside_user_scope(api_client, authenticated_user, 
     )
 
     assert response.status_code == 403
+    channel.refresh_from_db()
+    assert channel.team == [1]
+
+
+@pytest.mark.django_db
+def test_update_allows_superuser_to_fill_empty_team(api_client, authenticated_user, channel, ready_im_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    response = api_client.put(
+        f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/",
+        _im_channel_payload(
+            ready_im_instance,
+            name=channel.name,
+            team=[3],
+        ),
+    )
+
+    assert response.status_code == 200
+    channel.refresh_from_db()
+    assert channel.team == [3]
+
+
+@pytest.mark.django_db
+def test_channel_serializer_rejects_empty_or_invalid_team(ready_im_instance):
+    payload = {
+        "name": "team-required-channel",
+        "integration_instance": ready_im_instance.id,
+        "enabled": True,
+        "platform_match_field": "email",
+        "external_match_field": "email",
+        "external_receive_field": "user_id",
+    }
+    for team in ([], [0], ["abc"], {"id": 1}):
+        serializer = IMNotificationChannelSerializer(data={**payload, "team": team})
+        assert serializer.is_valid() is False
+        assert "team" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_create_rejects_zero_or_invalid_team(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Add"}}
+
+    for team in ([0], "abc", {"id": 1}):
+        response = api_client.post(
+            "/api/v1/system_mgmt/im_notification_channel/",
+            _im_channel_payload(ready_im_instance, name=f"invalid-team-{team}", team=team),
+        )
+        assert response.status_code == 400
+        assert not IMNotificationChannel.objects.filter(name=f"invalid-team-{team}").exists()
+
+
+@pytest.mark.django_db
+def test_update_rejects_empty_team_when_team_is_sent(api_client, authenticated_user, channel, ready_im_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    response = api_client.put(
+        f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/",
+        _im_channel_payload(ready_im_instance, name=channel.name, team=[]),
+    )
+
+    assert response.status_code == 400
+    channel.refresh_from_db()
+    assert channel.team == []
+
+
+@pytest.mark.django_db
+def test_update_toggle_enabled_without_team_keeps_existing_team(api_client, authenticated_user, channel):
+    channel.team = [1]
+    channel.save(update_fields=["team"])
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    response = api_client.put(
+        f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/",
+        {"enabled": False, "status": "disabled"},
+    )
+
+    assert response.status_code == 200
+    channel.refresh_from_db()
+    assert channel.enabled is False
+    assert channel.status == "disabled"
+    assert channel.team == [1]
+
+
+@pytest.mark.django_db
+def test_list_hides_empty_team_from_regular_user_and_shows_to_superuser(api_client, authenticated_user, ready_im_instance):
+    empty_channel = IMNotificationChannel.objects.create(
+        name="empty-team-list-channel",
+        integration_instance=ready_im_instance,
+        enabled=True,
+        status="pending_sync",
+        platform_match_field="email",
+        external_match_field="email",
+        external_receive_field="user_id",
+        team=[],
+    )
+    IMNotificationChannel.objects.create(
+        name="scoped-list-channel",
+        integration_instance=ready_im_instance,
+        enabled=True,
+        status="pending_sync",
+        platform_match_field="email",
+        external_match_field="email",
+        external_receive_field="user_id",
+        team=[1],
+    )
+    authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-View"}}
+
+    response = api_client.get("/api/v1/system_mgmt/im_notification_channel/", {"page": 1, "page_size": 10})
+    assert response.status_code == 200
+    names = {item["name"] for item in response.data["items"]}
+    assert "scoped-list-channel" in names
+    assert empty_channel.name not in names
+
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    response = api_client.get("/api/v1/system_mgmt/im_notification_channel/", {"page": 1, "page_size": 10})
+    assert response.status_code == 200
+    names = {item["name"] for item in response.data["items"]}
+    assert empty_channel.name in names
+    assert "scoped-list-channel" in names
 
 
 @pytest.mark.django_db

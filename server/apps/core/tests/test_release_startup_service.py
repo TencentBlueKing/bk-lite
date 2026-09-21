@@ -169,6 +169,11 @@ def test_opspilot_celery_worker_is_packaged_without_default_worker_exclude():
     assert "opspilot_celery.conf" in dockerfile
     assert "-X" not in celery_conf
     assert "opspilot_channel" not in celery_conf
+    assert "--pool prefork" in celery_conf
+    assert "--max-tasks-per-child=%(ENV_CELERY_MAX_TASKS_PER_CHILD)s" in celery_conf
+    assert "--max-memory-per-child=%(ENV_CELERY_MAX_MEMORY_PER_CHILD)s" in celery_conf
+    assert "--pool threads" not in celery_conf
+    assert "--pool prefork" in opspilot_conf
     assert "-Q opspilot_channel,opspilot_wiki,opspilot_maintenance" in opspilot_conf
     assert 'rm -f "$SUPERVISOR_CONF_DIR/opspilot_celery.conf"' in startup
     assert "SUPERVISOR_CONF_DIR=${SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}" in startup
@@ -202,3 +207,32 @@ def test_release_startup_keeps_opspilot_celery_conf_when_install_apps_empty(tmp_
 
     assert result.returncode == 0
     assert (conf_dir / "opspilot_celery.conf").exists()
+
+
+def test_release_celery_workers_use_prefork_and_child_recycle():
+    worker_confs = [
+        RELEASE_DIR / "supervisor/celery.conf",
+        RELEASE_DIR / "supervisor/opspilot_celery.conf",
+        RELEASE_DIR / "supervisor/dashboard_report_render_worker.conf",
+        RELEASE_DIR / "supervisor/patch_maintenance.conf",
+    ]
+    recycle_flags = (
+        "--pool prefork",
+        "--max-tasks-per-child=%(ENV_CELERY_MAX_TASKS_PER_CHILD)s",
+        "--max-memory-per-child=%(ENV_CELERY_MAX_MEMORY_PER_CHILD)s",
+    )
+    for conf_path in worker_confs:
+        content = conf_path.read_text(encoding="utf-8")
+        assert "--pool threads" not in content
+        for flag in recycle_flags:
+            assert flag in content, f"{conf_path.name} missing {flag}"
+
+    startup = STARTUP_SCRIPT.read_text(encoding="utf-8")
+    assert "CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-2}" in startup
+    assert "CELERY_MAX_TASKS_PER_CHILD=${CELERY_MAX_TASKS_PER_CHILD:-200}" in startup
+    assert "CELERY_MAX_MEMORY_PER_CHILD=${CELERY_MAX_MEMORY_PER_CHILD:-512000}" in startup
+
+    beat = (RELEASE_DIR / "supervisor/beat.conf").read_text(encoding="utf-8")
+    assert "--max-tasks-per-child" not in beat
+    assert "--max-memory-per-child" not in beat
+    assert "--pool" not in beat

@@ -329,7 +329,7 @@ func normalizeShell(shell string) string {
 
 func isSupportedShell(shell string) bool {
 	switch shell {
-	case ShellTypeSh, ShellTypeBash, ShellTypeBat, ShellTypeCmd, ShellTypePowerShell, ShellTypePwsh:
+	case ShellTypeSh, ShellTypeBash, ShellTypePython, ShellTypePython3, ShellTypeBat, ShellTypeCmd, ShellTypePowerShell, ShellTypePwsh:
 		return true
 	default:
 		return false

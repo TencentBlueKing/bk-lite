@@ -7,14 +7,14 @@ from apps.cmdb.open_api.auth import CMDBOpenAPIContext
 from apps.cmdb.open_api.errors import CMDBOpenAPIError
 
 
-def _request(*, api_pass=True, groups=None, permissions=None):
+def _request(*, api_pass=True, groups=None, permissions=None, is_superuser=False, roles=None):
     user = SimpleNamespace(
         username="api-user",
         domain="domain.com",
         group_list=groups or [{"id": 7}],
-        roles=["cmdb-reader"],
+        roles=list(roles if roles is not None else ["cmdb-reader"]),
         permission={"cmdb": set(permissions or [])},
-        is_superuser=False,
+        is_superuser=is_superuser,
         locale="zh-CN",
     )
     return SimpleNamespace(api_pass=api_pass, user=user, COOKIES={"include_children": "1"})
@@ -54,3 +54,33 @@ def test_permission_map_is_fail_closed_and_never_includes_children(mock_rules):
         permission_key="instances.host",
         include_children=False,
     )
+
+
+def test_require_feature_checks_cmdb_permission_key():
+    ctx = CMDBOpenAPIContext.from_request(_request(permissions={"model_management-View"}))
+    ctx.require_feature("model_management-View")
+    with pytest.raises(CMDBOpenAPIError) as exc:
+        ctx.require_feature("asset_info-View")
+    assert exc.value.code == "cmdb.permission.denied"
+
+
+def test_require_feature_superuser_bypass():
+    ctx = CMDBOpenAPIContext.from_request(_request(permissions=set(), is_superuser=True))
+    ctx.require_feature("asset_info-Delete")
+
+
+def test_require_feature_cmdb_admin_bypasses_empty_menus():
+    ctx = CMDBOpenAPIContext.from_request(
+        _request(permissions=set(), roles=["cmdb--admin"]),
+    )
+    ctx.require_feature("model_management-View")
+    ctx.require_feature("asset_info-View")
+
+
+def test_require_feature_other_app_admin_still_denied():
+    ctx = CMDBOpenAPIContext.from_request(
+        _request(permissions=set(), roles=["alarm--admin"]),
+    )
+    with pytest.raises(CMDBOpenAPIError) as exc:
+        ctx.require_feature("model_management-View")
+    assert exc.value.code == "cmdb.permission.denied"

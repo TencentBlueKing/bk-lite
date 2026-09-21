@@ -143,19 +143,35 @@ export const generateSamplePayload = (
   return payload;
 };
 
-export const generateCurlCommand = (row: OpenAPIDocRow): string => {
+export type OpenApiDocsTokenKind = 'personal' | 'system';
+
+export const absoluteGatewayUrl = (path: string, origin = ''): string => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const normalizedOrigin = origin.replace(/\/+$/, '');
+  return normalizedOrigin ? `${normalizedOrigin}${normalizedPath}` : normalizedPath;
+};
+
+export const generateCurlCommand = (
+  row: OpenAPIDocRow,
+  tokenKind: OpenApiDocsTokenKind = 'personal',
+  origin = '',
+): string => {
   if (row.kind === 'external' || !row.method) {
     return '';
   }
   const method = row.method.toUpperCase();
-  const url = row.path;
+  const url = absoluteGatewayUrl(row.path, origin);
   const isBodyMethod = ['POST', 'PUT', 'PATCH'].includes(method);
   const sample = isBodyMethod ? generateSamplePayload(row.requestSchema) : null;
 
   const lines = [
     `curl -X ${method} "${url}"`,
-    `  -H "Authorization: Bearer <API_TOKEN>"`,
+    `  -H "Authorization: Bearer <TOKEN>"`,
   ];
+  if (tokenKind === 'system') {
+    lines.push('  -H "X-Bklite-Acting-User: <username>"');
+    lines.push('  -H "X-Bklite-Acting-Team: <team_id>"');
+  }
 
   if (sample && Object.keys(sample).length > 0) {
     lines.push(`  -H "Content-Type: application/json"`);

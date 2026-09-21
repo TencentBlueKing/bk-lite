@@ -6,9 +6,9 @@
 失败状态过滤、host 关联构造、端口提取、JSON 字段序列化，以及 nginx 真实
 field_mapping 的 format_metrics 端到端转换。
 """
-import pydantic.root_model  # noqa: F401  预热
 import time
 
+import pydantic.root_model  # noqa: F401  预热
 import pytest
 
 from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
@@ -121,9 +121,7 @@ def test_get_docker_inst_name_prefers_existing(runner):
 
 def test_get_host_assos_builds_relation(runner):
     assos = runner.get__host_assos({"ip_addr": "10.0.0.1"})
-    assert assos == [
-        {"model_id": "host", "inst_name": "10.0.0.1", "asst_id": "run", "model_asst_id": "rabbitmq_run_host"}
-    ]
+    assert assos == [{"model_id": "host", "inst_name": "10.0.0.1", "asst_id": "run", "model_asst_id": "rabbitmq_run_host"}]
 
 
 def test_get_host_assos_empty_when_no_ip(monkeypatch):
@@ -202,13 +200,33 @@ def test_format_data_skips_failed(runner):
 
 
 def test_format_data_skips_empty_result_dict(runner):
-    # success 但 result 解析为空 dict -> continue
+    # success 但 result 解析为空 dict，且没有身份标签 -> continue
     row = {
         "metric": {"__name__": "nginx_info_gauge", "collect_status": "success", "result": "{}", "success": True},
         "value": [_now_ts(), "1"],
     }
     runner.format_data({"result": [row]})
     assert runner.collection_metrics_dict["nginx_info_gauge"] == []
+
+
+def test_format_data_keeps_tag_only_success_when_result_empty(runner):
+    row = {
+        "metric": {
+            "__name__": "nginx_info_gauge",
+            "collect_status": "success",
+            "result": "{}",
+            "success": True,
+            "ip_addr": "10.11.27.147",
+            "listen_port": "80",
+            "version": "1.20.1",
+        },
+        "value": [_now_ts(), "1"],
+    }
+    runner.format_data({"result": [row]})
+    collected = runner.collection_metrics_dict["nginx_info_gauge"]
+    assert len(collected) == 1
+    assert collected[0]["listen_port"] == "80"
+    assert collected[0]["ip_addr"] == "10.11.27.147"
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Transfer, Spin } from 'antd';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import { useTranslation } from '@/utils/i18n';
@@ -10,6 +10,7 @@ import {
   filterTreeData,
   getSubtreeKeys,
   getAllKeys,
+  resolveLeftExpandedKeys,
   filterTreeNode,
   getSearchExpandedKeys,
   getAllLeafNodes,
@@ -69,6 +70,12 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
   const [rightSearchValue, setRightSearchValue] = useState<string>('');
   const [leftExpandedKeys, setLeftExpandedKeys] = useState<React.Key[]>([]);
   const [rightExpandedKeys, setRightExpandedKeys] = useState<React.Key[]>([]);
+  const selectedKeysRef = useRef(selectedKeys);
+  selectedKeysRef.current = selectedKeys;
+  const leftExpandedKeysRef = useRef(leftExpandedKeys);
+  leftExpandedKeysRef.current = leftExpandedKeys;
+  const keysBeforeSearchRef = useRef<React.Key[] | null>(null);
+  const userHasExpandedRef = useRef(false);
 
   const handleSubGroupToggle = useCallback((node: TreeDataNode, includeAll: boolean) => {
     if (disabled || loading) return;
@@ -96,12 +103,23 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
   }, [treeData, leftSearchValue]);
 
   useEffect(() => {
-    const nextExpandedKeys = leftSearchValue
-      ? getSearchExpandedKeys(treeData, leftSearchValue)
-      : getAllKeys(treeData);
-
-    setLeftExpandedKeys((prevKeys) => (areKeysEqual(prevKeys, nextExpandedKeys) ? prevKeys : nextExpandedKeys));
-  }, [leftSearchValue, treeData]);
+    const resolved = resolveLeftExpandedKeys({
+      searchValue: leftSearchValue,
+      mode,
+      treeData,
+      selectedKeys: selectedKeysRef.current,
+      prevExpandedKeys: leftExpandedKeysRef.current,
+      keysBeforeSearch: keysBeforeSearchRef.current,
+      userHasExpanded: userHasExpandedRef.current,
+    });
+    keysBeforeSearchRef.current = resolved.keysBeforeSearch;
+    setLeftExpandedKeys((prevKeys) => (
+      areKeysEqual(prevKeys, resolved.expandedKeys) ? prevKeys : resolved.expandedKeys
+    ));
+    // selectedKeys 不进 deps：勾选 / 「全部子组织」不得按祖先重开已收起的长列表。
+    // 编辑态由 loading 卸挂保证首次挂载已带真实选中项；此处读 selectedKeysRef。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 见上
+  }, [leftSearchValue, treeData, mode]);
 
   const filteredRightData = useMemo(() => {
     const allRightKeys = [...new Map([...selectedKeys, ...inheritedRoleIds].map((key) => [String(key), key])).values()]
@@ -194,7 +212,10 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
                   enableSubGroupSelect={enableSubGroupSelect}
                   t={t}
                   onSearchChange={setLeftSearchValue}
-                  onExpandedKeysChange={setLeftExpandedKeys}
+                  onExpandedKeysChange={(keys) => {
+                    userHasExpandedRef.current = true;
+                    setLeftExpandedKeys(keys);
+                  }}
                   onChange={onChange}
                   onSubGroupToggle={handleSubGroupToggle}
                 />

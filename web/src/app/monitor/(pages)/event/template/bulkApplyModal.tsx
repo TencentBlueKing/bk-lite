@@ -49,6 +49,7 @@ import TemplateConditionSummary from './templateConditionSummary';
 import templateStyle from './index.module.scss';
 import { formatUserName } from '@/utils/userDisplay';
 import { useTranslation } from '@/utils/i18n';
+import { isPodMonitorObject } from '@/app/monitor/utils/monitorObject';
 
 const renderConfigLabel = (text: string, tip: string) => (
   <span className={templateStyle.fieldLabel}>
@@ -62,6 +63,7 @@ const renderConfigLabel = (text: string, tip: string) => (
 interface BulkApplyModalProps {
   visible: boolean;
   monitorObjectId: string | number;
+  monitorName?: string;
   selectedTemplates: PolicyTemplateItem[];
   onClose: () => void;
   onSuccess: () => void;
@@ -114,6 +116,7 @@ const getCollectionTemplateText = (asset: BulkAssetItem) => {
 const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
   visible,
   monitorObjectId,
+  monitorName,
   selectedTemplates,
   onClose,
   onSuccess
@@ -673,6 +676,14 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
                       />
                     </Form.Item>
                   </div>
+                  {isPodMonitorObject(monitorName) ? (
+                    <div className="px-4 pb-2 text-[12px] leading-[20px] text-[var(--color-text-3)]">
+                      {t(
+                        'monitor.events.noDataPodTip',
+                        '不建议为 Pod 配置无数据告警。Pod 生命周期短、基数高，按维度拆单后容易产生告警风暴，多数情况是滚动或删除，而不是采集中断。'
+                      )}
+                    </div>
+                  ) : null}
                   {noDataEnabled && (
                     <div className={`${templateStyle.configModuleBody} ${templateStyle.configModuleBodyNoData}`}>
                       <Form.Item label={t('monitor.events.noDataPeriod', '无数据周期')} required>

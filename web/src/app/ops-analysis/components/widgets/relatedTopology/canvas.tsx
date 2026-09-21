@@ -6,11 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import RelatedTopology from '@/app/ops-analysis/components/widgets/relatedTopology';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
-import { useShareMode } from '@/app/ops-analysis/context/shareMode';
-import {
-  getSceneWidgetCapability,
-  isSceneWidgetAllowedOnSurface,
-} from '@/app/ops-analysis/types/sceneWidgetCapability';
+import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { isScreenChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { relatedTopologyCanvasStyle } from './visual';
 
@@ -26,12 +22,8 @@ const RelatedTopologyCanvas = ({
   onReady,
 }: RelatedTopologyCanvasProps) => {
   const { t } = useTranslation();
-  const shareMode = useShareMode();
   const instUuid = config?.relatedTopology?.instUuid?.trim() || '';
-  const allowed =
-    isSceneWidgetAllowedOnSurface('relatedTopology', surface) &&
-    (!shareMode ||
-      getSceneWidgetCapability('relatedTopology')?.shareSupported === true);
+  const allowed = isSceneWidgetAllowedOnSurface('relatedTopology', surface);
 
   useEffect(() => {
     if (!allowed) return;

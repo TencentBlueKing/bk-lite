@@ -65,6 +65,7 @@ error:
   password_invalid_characters: 密码包含非法字符，只允许使用ASCII可打印字符
   initial_password_generation_failed: 无法生成符合当前密码策略的随机初始密码
   invalid_phone: 手机号格式不正确
+  email_required: 邮箱不能为空
   initial_password_not_configured: 本地用户初始密码未配置
   initial_password_email_channel_unavailable: 初始密码邮件通道不存在或不可用
   initial_password_email_channel_invalid: 初始密码邮件通道不是 email 类型

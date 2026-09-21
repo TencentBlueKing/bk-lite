@@ -13,7 +13,6 @@ import {
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
   FORECAST_LOOKBACK_OPTIONS,
-  applySceneChip,
   buildPolicyRestatement,
   defaultCompareValueKind,
   formatUnitLabelWithRateSuffix,
@@ -22,14 +21,11 @@ import {
   getCompareModeSelectOptions,
   getCompareValueKinds,
   getMetricThresholdEnumState,
-  getSceneChipStates,
   getThresholdUnitOptions,
   isVacantThresholdUnit,
-  matchSceneChipId,
   resolveMetricDisplayUnit,
   shouldShowThresholdUnitSelector,
-  timeleftRequiresLowSideThresholds,
-  type SceneChipId
+  timeleftRequiresLowSideThresholds
 } from './strategyDetailUtils';
 import ThresholdList from './thresholdList';
 import AlertDurationFields, {
@@ -80,10 +76,9 @@ interface AlertConditionsFormProps {
     value?: number | null;
   }) => void;
   metricLabel?: string | null;
-  disableRateAlgorithm?: boolean;
+  monitorName?: string;
   countPredicate?: { method?: string; value?: number | null } | null;
   onCountPredicateChange?: (val: { method: string; value: number | null }) => void;
-  onSceneChipApply?: (payload: NonNullable<ReturnType<typeof applySceneChip>>) => void;
   isTrap: (getFieldValue: any) => boolean;
 }
 
@@ -109,7 +104,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   forecastLookback,
   recoveryThreshold,
   metricLabel,
-  disableRateAlgorithm,
+  monitorName,
   countPredicate,
   onThresholdChange,
   onThresholdUnitChange,
@@ -123,7 +118,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onForecastLookbackChange,
   onRecoveryThresholdChange,
   onCountPredicateChange,
-  onSceneChipApply,
   isTrap
 }) => {
   const { t } = useTranslation();
@@ -198,22 +192,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     () => getCompareValueKinds(compareMode),
     [compareMode]
   );
-  const sceneChips = useMemo(
-    () =>
-      getSceneChipStates({
-        isEnumMetric,
-        isFormulaMode,
-        disableRateAlgorithm,
-        periodType: periodUnit,
-        periodValue: period
-      }),
-    [isEnumMetric, isFormulaMode, disableRateAlgorithm, periodUnit, period]
-  );
-  const activeSceneChipId = matchSceneChipId({
-    algorithm,
-    compareMode,
-    compareValueKind
-  });
   const allowedThresholdMethods = useMemo(
     () => getAllowedThresholdMethods(compareMode, COMPARISON_METHOD),
     [compareMode]
@@ -238,11 +216,27 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     baseline_4w: t('monitor.events.compareModeBaseline4w'),
     timeleft: t('monitor.events.compareModeTimeleft')
   };
+  const compareModeTips: Record<string, string> = {
+    absolute: t('monitor.events.compareModeAbsoluteTip'),
+    previous_window: t('monitor.events.compareModePreviousWindowTip'),
+    offset_1h: t('monitor.events.compareModeOffset1hTip'),
+    offset_24h: t('monitor.events.compareModeOffset24hTip'),
+    offset_7d: t('monitor.events.compareModeOffset7dTip'),
+    offset_30d: t('monitor.events.compareModeOffset30dTip'),
+    baseline_4w: t('monitor.events.compareModeBaseline4wTip'),
+    timeleft: t('monitor.events.compareModeTimeleftTip')
+  };
   const compareKindLabels: Record<string, string> = {
     delta: t('monitor.events.compareValueKindDelta'),
     percent: t('monitor.events.compareValueKindPercent'),
     ratio: t('monitor.events.compareValueKindRatio'),
     hours: t('monitor.events.compareValueKindHours')
+  };
+  const compareKindTips: Record<string, string> = {
+    delta: t('monitor.events.compareValueKindDeltaTip'),
+    percent: t('monitor.events.compareValueKindPercentTip'),
+    ratio: t('monitor.events.compareValueKindRatioTip'),
+    hours: t('monitor.events.compareValueKindHoursTip')
   };
   const forecastTargetUnitLabel = useMemo(() => {
     // 容量线是源指标量纲（例如磁盘 B），不是剩余时间 hours。
@@ -315,36 +309,27 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     }
   };
 
-  const handleSceneChipClick = (chipId: SceneChipId, disabled: boolean) => {
-    if (disabled || !onSceneChipApply) {
-      return;
-    }
-    const next = applySceneChip({
-      chipId,
-      algorithm,
-      compareMode,
-      compareValueKind,
-      thresholds: threshold,
-      recoveryThreshold,
-      countPredicate
-    });
-    if (next) {
-      onSceneChipApply(next);
-    }
-  };
-
   const renderCompareOption = (item: {
     value: string;
     disabled: boolean;
     reasonKey?: string;
   }) => (
-    <Option key={item.value} value={item.value} disabled={item.disabled}>
+    <Option
+      key={item.value}
+      value={item.value}
+      disabled={item.disabled}
+      label={compareModeLabels[item.value] || item.value}
+    >
       <Tooltip
+        overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+        placement="right"
         title={
-          item.disabled && item.reasonKey ? t(item.reasonKey) : undefined
+          item.disabled && item.reasonKey
+            ? t(item.reasonKey)
+            : compareModeTips[item.value]
         }
       >
-        <span className="flex w-full">
+        <span className="flex w-full min-w-0 items-center">
           {compareModeLabels[item.value] || item.value}
         </span>
       </Tooltip>
@@ -373,51 +358,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         {({ getFieldValue }) =>
           isTrap(getFieldValue) ? null : (
             <>
-              <Form.Item
-                colon={false}
-                label={
-                  <span className={`${STRATEGY_CONDITION_LABEL_CLASS} font-normal text-[var(--color-text-3)]`}>
-                    {t('monitor.events.sceneChipCommon')}
-                  </span>
-                }
-              >
-                <div className="flex flex-wrap gap-2">
-                  {sceneChips.map((chip) => {
-                    const active = activeSceneChipId === chip.id;
-                    return (
-                      <Tooltip
-                        key={chip.id}
-                        title={
-                          chip.disabled && chip.reasonKey
-                            ? t(chip.reasonKey)
-                            : undefined
-                        }
-                      >
-                        <span className="inline-flex">
-                          <button
-                            type="button"
-                            disabled={chip.disabled}
-                            className={`rounded-md px-3 py-1.5 text-xs font-normal transition-colors ${
-                              chip.disabled
-                                ? 'cursor-not-allowed bg-[var(--color-fill-1)]/70 text-[var(--color-text-4)]'
-                                : active
-                                  ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
-                                  : 'cursor-pointer bg-[var(--color-fill-1)]/70 text-[var(--color-text-2)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-primary)]'
-                            }`}
-                            onClick={() =>
-                              handleSceneChipClick(chip.id, chip.disabled)
-                            }
-                          >
-                            {t(chip.labelKey)}
-                          </button>
-                        </span>
-                      </Tooltip>
-                    );
-                  })}
-                </div>
-              </Form.Item>
               {!isEnumMetric && (
                 <Form.Item
+                  required
                   label={
                     <span className={STRATEGY_CONDITION_LABEL_CLASS}>
                       {t('monitor.events.compareBaseline')}
@@ -450,8 +393,20 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                         style={{ width: COMPARE_KIND_SELECT_WIDTH }}
                       >
                         {compareKindOptions.map((kind) => (
-                          <Option key={kind} value={kind}>
-                            {compareKindLabels[kind] || kind}
+                          <Option
+                            key={kind}
+                            value={kind}
+                            label={compareKindLabels[kind] || kind}
+                          >
+                            <Tooltip
+                              overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+                              placement="right"
+                              title={compareKindTips[kind]}
+                            >
+                              <span className="flex w-full min-w-0 items-center">
+                                {compareKindLabels[kind] || kind}
+                              </span>
+                            </Tooltip>
                           </Option>
                         ))}
                       </Select>
@@ -527,6 +482,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
 
               {/* 告警阈值 */}
               <Form.Item<StrategyFields>
+                required
                 name="threshold"
                 label={
                   <span className={STRATEGY_CONDITION_LABEL_CLASS}>
@@ -568,6 +524,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 noDataAlertLevel={noDataAlertLevel}
                 noDataAlertName={noDataAlertName}
                 functionDelayTip={functionDelayTip}
+                monitorName={monitorName}
                 onNoDataAlertChange={onNoDataAlertChange}
                 onNoDataRecoveryChange={onNoDataRecoveryChange}
                 onNoDataAlertLevelChange={onNoDataAlertLevelChange}

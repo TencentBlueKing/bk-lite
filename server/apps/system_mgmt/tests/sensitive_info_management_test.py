@@ -228,6 +228,7 @@ def test_user_viewset_update_user_rejects_invalid_phone():
         request,
         user=_build_authenticated_request_user(
             username="editor-admin",
+            locale="zh-Hans",
             permission={"system-manager": {"user_group-Edit User"}},
         ),
     )
@@ -236,7 +237,7 @@ def test_user_viewset_update_user_rejects_invalid_phone():
     payload = json.loads(response.content)
     user.refresh_from_db()
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     assert payload == {"result": False, "message": "手机号格式不正确"}
     assert user.phone == "13800000000"
 

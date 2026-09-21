@@ -206,8 +206,8 @@ class EventAlertManager:
         alert_type: str,
         monitor_instance_id: str = "",
     ) -> tuple:
-        identity = monitor_instance_id if alert_type == "no_data" and monitor_instance_id else metric_instance_id
-        return identity, alert_type
+        del monitor_instance_id
+        return metric_instance_id, alert_type
 
     def _select_lifecycle_events(self, events, new_alerts):
         """只保留触发和新高峰升级；持续命中、级别回落不落 Event。"""

@@ -212,15 +212,6 @@ COLLECT_PLUGIN:
   tape_library:
     name: Tape Library
     desc: Collect Tape Library basic configuration
-  brocade_fc:
-    name: Brocade FC
-    desc: Collect Brocade FC basic configuration
-  cisco_fc:
-    name: Cisco FC
-    desc: Collect Cisco FC basic configuration
-  f5:
-    name: F5
-    desc: Collect F5 basic configuration
   informix:
     name: Informix
     desc: Collect Informix basic configuration

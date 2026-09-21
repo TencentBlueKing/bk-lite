@@ -6,6 +6,8 @@
 
 基础地址：`{BK_LITE_BASE_URL}/openapi/v1`。认证走平台网关（`Authorization: Bearer <API_TOKEN>`），组织取令牌绑定团队，精确匹配、不级联。客户端不得传 `team` 或数据库主键 `id`，未知字段返回 `SCHEMA_INVALID`。分页 `page` 从 1 起，`page_size` 默认 20、上限 500、越限钳制。筛选字段与第 3 章列表参数一致（含 `resource_type` / `resource_id`）。
 
+屏蔽策略按业务名称 `name` 定位，不接受数据库主键；只能操作当前认证用户创建的记录，跨组织与不可见按不存在处理。创建请求含 `name`、`match_type`（`all`/`filter`）、可选 `match_rules` / `suppression_time` / `is_active`。启停请求含 `name`、`is_active`。修改请求含 `name`、`match_type` 以及对应的 `match_rules` / `suppression_time`。
+
 | 方法 | path | 锚点 |
 |---|---|---|
 | GET | `alerts/list` | 筛选字段 |
@@ -16,6 +18,10 @@
 | POST | `alerts/reassign` | body `alert_id`、`assignee` |
 | POST | `alerts/close` | body `alert_id`；待响应/处理中可关，不校验是否处理人 |
 | POST | `alerts/batch-action` | body `action`、`alert_ids`（1 至 100） |
+| POST | `alerts/shield-create` | body `name`、`match_type`；可选 `match_rules`、`suppression_time`、`is_active` |
+| POST | `alerts/shield-operate` | body `name`、`is_active`；启用或停用本人创建的屏蔽策略 |
+| PUT | `alerts/shield` | body `name`、`match_type`；修改本人创建的屏蔽策略 |
+| DELETE | `alerts/shield` | body `name`；删除本人创建的屏蔽策略 |
 
 以下第 1 章起为存量 `/api/v1/alerts/api/open` 路径说明；该路径分页上限仍为 100，`alert_id` 可放在 URL 中。
 

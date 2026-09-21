@@ -577,7 +577,7 @@ def test_unauthorized_current_team_and_missing_credentials_are_fail_closed():
     assert exc.value.code == "not_found"
 
 
-def test_delete_and_move_blocked_when_refs_exist_or_inquiry_fails(monkeypatch):
+def test_delete_and_move_blocked_when_refs_exist(monkeypatch):
     typ = sql_type()
     owner = group("ref-owner")
     child = group("ref-child", parent_id=owner.id)
@@ -600,6 +600,33 @@ def test_delete_and_move_blocked_when_refs_exist_or_inquiry_fails(monkeypatch):
         update_credential(created.credential_id, {"group_id": child.id}, actor(owner.id, owner.id, child.id))
     assert move_exc.value.code == "in_use"
     assert Credential.objects.get(credential_id=created.credential_id).group_id == owner.id
+
+
+def test_delete_and_move_allowed_when_inquiry_fails(monkeypatch):
+    typ = sql_type()
+    owner = group("ref-timeout-owner")
+    child = group("ref-timeout-child", parent_id=owner.id)
+    created = create_credential(
+        {"name": "DB", "type": typ.key, "group_id": owner.id, "fields": {"username": "u", "password": "p"}},
+        actor(owner.id, owner.id),
+    )
+
+    def failed(credential_ids, **kwargs):
+        raise TimeoutError("rpc")
+
+    monkeypatch.setattr(
+        "apps.system_mgmt.services.credential_ref_count._live_queriers",
+        lambda: (("cmdb", failed), ("monitor", failed)),
+    )
+    delete_credential(created.credential_id, actor=actor(owner.id, owner.id))
+    assert not Credential.objects.filter(credential_id=created.credential_id).exists()
+
+    remaining = create_credential(
+        {"name": "DB2", "type": typ.key, "group_id": owner.id, "fields": {"username": "u", "password": "p"}},
+        actor(owner.id, owner.id),
+    )
+    moved = update_credential(remaining.credential_id, {"group_id": child.id}, actor=actor(owner.id, owner.id, child.id))
+    assert moved.group_id == child.id
 
 
 def test_list_attaches_ref_chips_from_successful_modules(monkeypatch):

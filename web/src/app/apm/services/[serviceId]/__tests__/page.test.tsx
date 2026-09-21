@@ -19,9 +19,16 @@ const api = {
   isLoading: false,
 };
 
+const navigation = {
+  search: new URLSearchParams(),
+  replace: vi.fn(),
+};
+
 vi.mock('next/navigation', () => ({
   useParams: () => ({ serviceId: 'svc-1' }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => navigation.search,
+  usePathname: () => '/apm/services/svc-1',
+  useRouter: () => ({ replace: navigation.replace }),
 }));
 vi.mock('next/link', () => ({
   default: ({
@@ -51,6 +58,8 @@ vi.mock('@/components/permission', () => ({
 }));
 
 beforeEach(() => {
+  navigation.search = new URLSearchParams();
+  navigation.replace.mockReset();
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: true,
     media: query,
@@ -171,6 +180,23 @@ describe('APM 服务详情页头', () => {
     expect(catalogLink.getAttribute('href')).toBe('/apm/services?perspective=service');
     expect(catalogLink.textContent).toBe('服务');
     expect(screen.getByRole('navigation', { name: '页面路径' })).not.toBeNull();
+  }, 15_000);
+
+  it('从 URL 的 window 初始化时间窗，切换 Segmented 后写回 window', async () => {
+    navigation.search = new URLSearchParams('environment=production&window=7d');
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServiceDetailPage />);
+
+    expect(await screen.findByText('checkout')).not.toBeNull();
+    expect(screen.getByText('7d').closest('.ant-segmented-item-selected')).not.toBeNull();
+
+    await user.click(screen.getByText('15m'));
+    await waitFor(() => {
+      expect(navigation.replace).toHaveBeenCalledWith(
+        '/apm/services/svc-1?environment=production&window=15m',
+        { scroll: false },
+      );
+    });
   }, 15_000);
 });
 

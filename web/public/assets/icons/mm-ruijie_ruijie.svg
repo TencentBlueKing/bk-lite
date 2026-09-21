@@ -1,10 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="锐捷 Ruijie">
   <defs>
-    <linearGradient id="rjBlue" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1f6fe5"/>
-      <stop offset="1" stop-color="#0c45a8"/>
+    <linearGradient id="rj-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0891B2"/>
+      <stop offset="100%" stop-color="#0E7490"/>
     </linearGradient>
   </defs>
-  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#rjBlue)"/>
-  <path d="M44 84 V40 h20 a13 13 0 0 1 0 26 H44 M60 66 L80 84" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="60" cy="103" rx="34" ry="4" fill="#0E7490" opacity="0.25"/>
+  <rect x="12" y="12" width="96" height="96" rx="22" fill="url(#rj-bg)" stroke="rgba(255,255,255,0.25)" stroke-width="1.2"/>
+  <g stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M 40 33 L 74 33 M 67 28 L 75 33 L 67 38"/>
+    <path d="M 80 43 L 46 43 M 53 38 L 45 43 L 53 48"/>
+  </g>
+  <circle cx="40" cy="33" r="2.5" fill="#FFFFFF"/>
+  <circle cx="80" cy="43" r="2.5" fill="#FFFFFF"/>
+  <circle cx="50" cy="23" r="1.5" fill="#FFFFFF" opacity="0.75"/>
+  <circle cx="60" cy="23" r="1.5" fill="#FFFFFF" opacity="0.95"/>
+  <circle cx="70" cy="23" r="1.5" fill="#FFFFFF" opacity="0.75"/>
+  <text x="60" y="82" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="800" fill="#FFFFFF" letter-spacing="1">RJ</text>
+  <rect x="52" y="90" width="16" height="2.5" rx="1.25" fill="#FFFFFF" opacity="0.85"/>
 </svg>

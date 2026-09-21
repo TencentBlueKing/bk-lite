@@ -108,9 +108,12 @@ class APISecretAuthBackend(ModelBackend):
             user.group_list = []
             user._api_secret_team_scope = True
             user._api_secret_team = user_secret.team
+            user._api_secret_id = user_secret.pk
+            user._api_secret_name = user_secret.name or ""
 
             # 填充用户权限信息
             self._populate_user_permissions(user, user_secret.team)
+            user._api_secret_scope = user_secret.scope
 
             return user
 

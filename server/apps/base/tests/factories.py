@@ -29,3 +29,4 @@ class UserAPISecretFactory(factory.django.DjangoModelFactory):
     domain = "domain.com"
     api_secret = factory.LazyFunction(lambda: binascii.hexlify(os.urandom(32)).decode())
     team = 0
+    name = factory.Sequence(lambda n: f"secret-{n}")
