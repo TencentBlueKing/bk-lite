@@ -11,8 +11,8 @@ export const NEUTRAL_INK = '#1f2937';  // KPI 数值「健康/中性」深色
 export const SATURATION_WARN = 70;
 export const SATURATION_CRIT = 85;
 // 排行榜统一展示条数:同时驱动 topk(N) 拉取与前端 buildTopBars 截断,
-// 避免「后端取 8、前端只显示 5」式的取多丢少和散落的魔法数 5。
-export const TOP_N = 5;
+// 避免「后端取多、前端只显示少」式的取多丢少和散落的魔法数。
+export const TOP_N = 10;
 
 const L = '{instance_type="k8s",__$labels__}';
 
