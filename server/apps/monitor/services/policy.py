@@ -390,20 +390,64 @@ class PolicyService:
         return query
 
     @staticmethod
-    def _runtime_query_condition(query_condition, monitor_object):
+    def _plugin_from_template_payload(template):
+        plugin_id = template.get("collect_type") or template.get("plugin_id")
+        if plugin_id not in (None, ""):
+            plugin = MonitorPlugin.objects.filter(id=plugin_id).first()
+            if plugin is not None:
+                return plugin
+        plugin_name = str(template.get("plugin_name") or "").strip()
+        if plugin_name:
+            return MonitorPlugin.objects.filter(name=plugin_name).first()
+        return None
+
+    @staticmethod
+    def _resolve_runtime_metric(monitor_object, metric_name, *, plugin=None, plugin_name=None):
+        plugin_name = str(plugin_name or "").strip() or None
+        if plugin is not None and plugin_name and plugin_name != plugin.name:
+            raise BaseAppException(f"指标插件不匹配: {metric_name}")
+        metrics = Metric.objects.filter(monitor_object=monitor_object, name=metric_name)
+        if plugin is not None:
+            metrics = metrics.filter(monitor_plugin=plugin)
+        elif plugin_name:
+            metrics = metrics.filter(monitor_plugin__name=plugin_name)
+        matches = list(metrics[:2])
+        if not matches:
+            raise BaseAppException(f"指标不存在: {metric_name}")
+        if len(matches) > 1:
+            raise BaseAppException(f"指标不唯一: {metric_name}")
+        return matches[0]
+
+    @staticmethod
+    def _stamp_query_plugin(query, plugin):
+        if not isinstance(query, dict) or plugin is None:
+            return
+        plugin_name = plugin.name
+        if query.get("type") == "formula":
+            for item in query.get("queries") or []:
+                if isinstance(item, dict) and item.get("metric_name") and not item.get("metric_plugin"):
+                    item["metric_plugin"] = plugin_name
+            return
+        if query.get("metric_name") and not query.get("metric_plugin"):
+            query["metric_plugin"] = plugin_name
+
+    @staticmethod
+    def _runtime_query_condition(query_condition, monitor_object, plugin=None):
         query = copy.deepcopy(query_condition or {})
 
         def replace(item):
+            if not isinstance(item, dict):
+                return
             metric_name = item.pop("metric_name", None)
             plugin_name = item.pop("metric_plugin", None)
             if not metric_name:
                 return
-            metrics = Metric.objects.filter(monitor_object=monitor_object, name=metric_name)
-            if plugin_name:
-                metrics = metrics.filter(monitor_plugin__name=plugin_name)
-            metric = metrics.first()
-            if not metric:
-                raise BaseAppException(f"指标不存在: {metric_name}")
+            metric = PolicyService._resolve_runtime_metric(
+                monitor_object,
+                metric_name,
+                plugin=plugin,
+                plugin_name=plugin_name,
+            )
             item["metric_id"] = metric.id
 
         if query.get("type") == "formula":
@@ -462,7 +506,7 @@ class PolicyService:
         portable.setdefault("forecast_target", None)
         portable["schedule"] = PolicyService._default_duration(portable.get("schedule"))
         portable["period"] = PolicyService._default_duration(portable.get("period"))
-        PolicyService._ensure_query_condition(portable)
+        PolicyService._ensure_query_condition(portable, plugin=plugin)
         PolicyService._ensure_group_by(portable, monitor_object=monitor_object, plugin=plugin)
         return portable
 
@@ -498,6 +542,7 @@ class PolicyService:
             return []
         query = portable.get("query_condition") or {}
         metric_name = str(portable.get("metric_name") or "").strip()
+        plugin_name = None
         if isinstance(query, dict):
             if query.get("type") == "formula":
                 for item in query.get("queries") or []:
@@ -506,16 +551,21 @@ class PolicyService:
                     name = str(item.get("metric_name") or "").strip()
                     if name:
                         metric_name = name
+                        plugin_name = item.get("metric_plugin")
                         break
             else:
                 metric_name = metric_name or str(query.get("metric_name") or "").strip()
+                plugin_name = query.get("metric_plugin")
         if not metric_name:
             return []
-        metrics = Metric.objects.filter(monitor_object=monitor_object, name=metric_name)
-        if plugin is not None:
-            metrics = metrics.filter(monitor_plugin=plugin)
-        metric = metrics.first()
-        if not metric:
+        try:
+            metric = PolicyService._resolve_runtime_metric(
+                monitor_object,
+                metric_name,
+                plugin=plugin,
+                plugin_name=plugin_name,
+            )
+        except BaseAppException:
             return []
         return PolicyService._dimension_names(metric.dimensions)
 
@@ -550,18 +600,21 @@ class PolicyService:
         portable["group_by"] = cleaned or ["instance_id"]
 
     @staticmethod
-    def _ensure_query_condition(portable):
+    def _ensure_query_condition(portable, plugin=None):
         query = portable.get("query_condition")
         if isinstance(query, dict) and query.get("type") in {"formula", "metric", "pmq"}:
+            PolicyService._stamp_query_plugin(query, plugin)
             return
         metric_name = str(portable.get("metric_name") or "").strip()
         if not metric_name:
             return
-        portable["query_condition"] = {
+        query = {
             "type": "metric",
             "metric_name": metric_name,
             "filter": list(portable.get("filter") or []),
         }
+        PolicyService._stamp_query_plugin(query, plugin)
+        portable["query_condition"] = query
 
     @staticmethod
     def _related_policy_count(template):
@@ -599,6 +652,7 @@ class PolicyService:
             "query_condition": PolicyService._runtime_query_condition(
                 config.get("query_condition"),
                 template.monitor_object,
+                plugin=template.plugin,
             ),
             "threshold": copy.deepcopy(config.get("threshold") or []),
             "group_algorithm": group_algorithm,
@@ -933,7 +987,7 @@ class PolicyService:
                 monitor_object=monitor_object,
                 plugin=plugin,
             )
-            PolicyService._runtime_query_condition(config.get("query_condition"), monitor_object)
+            PolicyService._runtime_query_condition(config.get("query_condition"), monitor_object, plugin=plugin)
             payload["config"] = config
             existing = PolicyTemplate.objects.filter(
                 template_type=PolicyTemplate.TYPE_CUSTOM,
