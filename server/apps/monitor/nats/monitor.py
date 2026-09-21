@@ -2305,7 +2305,7 @@ def _get_nats_accessible_policy_queryset(user_info):
     return queryset.filter(id__in=authorized_ids), None
 
 
-def _get_nats_accessible_instance_queryset(user_info):
+def _get_nats_accessible_instance_queryset(user_info, instance_ids=None):
     permissions, scope_ids, is_superuser, error = _get_nats_permission_context(
         user_info,
         PermissionConstants.INSTANCE_MODULE,
@@ -2321,6 +2321,8 @@ def _get_nats_accessible_instance_queryset(user_info):
         .prefetch_related("monitorinstanceorganization_set")
         .distinct()
     )
+    if instance_ids is not None:
+        queryset = queryset.filter(id__in=list(instance_ids))
     if is_superuser:
         return queryset, None
 
