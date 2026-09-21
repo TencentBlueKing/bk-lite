@@ -501,6 +501,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             self.close_alerts(policy, alerts_to_close, "system", "policy_disabled")
         elif not old_enable and new_enable:
             MonitorPolicy.objects.filter(id=policy_id).update(last_run_time=datetime.now(timezone.utc))
+        # 停用策略不再由 Beat 派发；仅靠 scan_policy_task 内部早退仍会每个周期投递一次任务。
+        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").update(enabled=bool(new_enable))
 
     def format_crontab(self, schedule):
         """
@@ -550,13 +552,19 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         # 解析 schedule，并创建相应的调度
         format_crontab = self.format_crontab(schedule)
+        # 定时任务开关跟随策略 enable；改 schedule 不能把停用策略重新派发。
+        enabled = (
+            MonitorPolicy.objects.filter(id=policy_id)
+            .values_list("enable", flat=True)
+            .first()
+        )
         # 创建新的 PeriodicTask
         PeriodicTask.objects.create(
             name=task_name,
             task="apps.monitor.tasks.monitor_policy.scan_policy_task",
             args=json.dumps([policy_id]),  # 任务参数，使用 JSON 格式存储
             crontab=format_crontab,
-            enabled=True,
+            enabled=True if enabled is None else bool(enabled),
         )
 
     def update_policy_organizations(self, policy_id, organizations):
