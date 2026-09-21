@@ -1,6 +1,6 @@
 VoiceGateway Sangoma Vega SNMP:
   name: Sangoma Vega（Telegraf）
-  desc: 面向 Sangoma Vega 语音网关的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Sangoma Dialogic IMG 2020 语音网关的 SNMP 监控模板,可采集 CPU忙时百分比、空闲内存字节数、设备温度、每端口入向流量速率、每端口出向流量速率和运行时长。健康表无响应或为空时跳过。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -24,9 +24,15 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Dialogic IMG 2020 CPU 忙时百分比（按 cpuInfoIndex 表采集，直接为整百分比）。看板取各 CPU 最高值。
+    memory_free_bytes:
+      name: 空闲内存
+      desc: Dialogic IMG 2020 空闲内存，单位为字节。该表无内存总量列，因此不推导内存使用率。看板取各 CPU 索引的最小值，避免重复行被加总。
     device_temperature_celsius:
       name: 设备温度
-      desc: 语音网关设备温度，单位为摄氏度。用于识别散热异常、风道堵塞或过热风险。
+      desc: Dialogic IMG 2020 设备温度，单位为摄氏度，可带位置名称标签。用于识别散热异常、风道堵塞或过热风险。
     device_psu_state:
       name: 电源状态
       desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
@@ -34,5 +40,7 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
