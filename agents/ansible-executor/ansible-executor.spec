@@ -75,3 +75,6 @@ coll = COLLECT(
 BUILD_SUPPORT_MODULE.verify_packaged_ansible_windows_collection(
     DIST_PATH / "ansible-executor"
 )
+BUILD_SUPPORT_MODULE.verify_packaged_openssl_not_eol(
+    DIST_PATH / "ansible-executor"
+)

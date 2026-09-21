@@ -32,3 +32,22 @@ def test_packaged_collection_verification_accepts_win_copy(tmp_path: Path):
     module_file.write_text("# fixture", encoding="utf-8")
 
     assert build_support.verify_packaged_ansible_windows_collection(packaged_root) == module_file
+
+
+def test_packaged_openssl_verification_rejects_libssl_1_1(tmp_path: Path):
+    packaged_root = tmp_path / "ansible-executor"
+    stale = packaged_root / "_internal" / "libssl.so.1.1"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"stale-openssl")
+
+    with pytest.raises(RuntimeError, match="OpenSSL 1.1"):
+        build_support.verify_packaged_openssl_not_eol(packaged_root)
+
+
+def test_packaged_openssl_verification_accepts_libssl_3(tmp_path: Path):
+    packaged_root = tmp_path / "ansible-executor"
+    current = packaged_root / "_internal" / "libssl.so.3"
+    current.parent.mkdir(parents=True)
+    current.write_bytes(b"openssl-3")
+
+    build_support.verify_packaged_openssl_not_eol(packaged_root)
