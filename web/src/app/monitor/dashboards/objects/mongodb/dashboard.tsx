@@ -145,7 +145,7 @@ export default function MongoDashboardPage() {
   const loadSequence = useLoadSequence();
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
-  const monitorObjectName = searchParams.get('name') || 'Mongodb';
+  const monitorObjectName = searchParams.get('name') || 'MongoDB';
   const monitorObjDisplayName = searchParams.get('monitorObjDisplayName') || 'MongoDB';
   const instanceIdentity = useMemo(
     () => resolveDashboardInstanceIdentity(new URLSearchParams(searchParams.toString())),
