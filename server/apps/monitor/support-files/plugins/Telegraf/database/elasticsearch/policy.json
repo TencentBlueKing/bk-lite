@@ -95,14 +95,14 @@
     {
       "name": "Fielddata断路器触发",
       "alert_name": "ES 节点 ${resource_name} Fielddata 超限",
-      "description": "检测Fielddata内存断路器触发，会导致字段数据操作失败。需优化字段数据类型或增加堆内存。",
+      "description": "检测 Fielddata 内存断路器近期触发速率。该值大于 0 表示节点因字段数据内存触顶而拒绝请求，需优化字段类型或增加堆内存。",
       "metric_name": "elasticsearch_breakers_fielddata_tripped_rate",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">="
+          "value": 0,
+          "method": ">"
         }
       ],
       "group_algorithm": "avg"
