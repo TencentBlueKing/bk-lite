@@ -126,9 +126,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
         verbose_name="比较值类型",
     )
     count_predicate = models.JSONField(default=dict, verbose_name="条件计数内阈")
-    forecast_target = models.FloatField(
-        blank=True, null=True, verbose_name="容量线目标"
-    )
+    forecast_target = models.FloatField(blank=True, null=True, verbose_name="容量线目标")
     forecast_lookback = models.JSONField(default=dict, verbose_name="斜率回看窗")
     recovery_threshold = models.JSONField(default=dict, verbose_name="恢复阈值")
 
@@ -147,6 +145,14 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     enable = models.BooleanField(default=True, verbose_name="是否启用")
     enable_alerts = models.JSONField(default=list, verbose_name="启用的告警类型")
     last_run_time = models.DateTimeField(blank=True, null=True, verbose_name="最后一次执行时间")
+    source_template = models.ForeignKey(
+        PolicyTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issued_policies",
+        verbose_name="来源策略模板",
+    )
 
     class Meta:
         verbose_name = "监控策略"

@@ -8,13 +8,16 @@ import zipfile
 from pathlib import PurePosixPath
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.constants.database import DatabaseConstants
-from apps.monitor.models import MonitorObject, MonitorPlugin, PolicyTemplate
+from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorObject, MonitorPlugin, MonitorPolicy, PolicyTemplate
 from apps.monitor.models.monitor_metrics import Metric
+from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
+from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, AlertLifecycleNotifier
+from apps.monitor.services.policy_bulk import normalize_default_calculation_unit, normalize_stored_metric_unit, normalize_template_algorithms
 
 ARCHIVE_FORMAT = "bk-lite-monitor-policy-templates"
 ARCHIVE_SCHEMA_VERSION = 1
@@ -24,6 +27,23 @@ MAX_ARCHIVE_TEMPLATES = MAX_ARCHIVE_FILES - 1
 MAX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
 MAX_TEMPLATE_BYTES = 2 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 100
+POLICY_RECIPE_SYNC_FIELDS = (
+    "alert_name",
+    "query_condition",
+    "threshold",
+    "group_algorithm",
+    "algorithm",
+    "group_by",
+    "metric_unit",
+    "calculation_unit",
+    "threshold_unit",
+    "compare_mode",
+    "compare_value_kind",
+    "count_predicate",
+    "forecast_target",
+    "forecast_lookback",
+    "recovery_threshold",
+)
 
 
 class PolicyService:
@@ -308,11 +328,16 @@ class PolicyService:
             "template_group": (
                 f"{template.monitor_object.display_name or template.monitor_object.name}" f"（{template.plugin.display_name or template.plugin.name}）"
             ),
+            "related_policy_count": PolicyService._related_policy_count(template),
         }
 
     @staticmethod
     def get_policy_templates(monitor_object_name, organization=None, plugin_id=None):
-        query = PolicyTemplate.objects.select_related("monitor_object", "plugin").filter(monitor_object__name=monitor_object_name)
+        query = (
+            PolicyTemplate.objects.select_related("monitor_object", "plugin")
+            .annotate(related_policy_count=Count("issued_policies"))
+            .filter(monitor_object__name=monitor_object_name)
+        )
         if plugin_id not in (None, ""):
             try:
                 query = query.filter(plugin_id=int(plugin_id))
@@ -389,7 +414,7 @@ class PolicyService:
         return query
 
     @staticmethod
-    def portable_config(config):
+    def portable_config(config, monitor_object=None, plugin=None):
         portable = copy.deepcopy(config or {})
         for field in (
             "id",
@@ -435,7 +460,270 @@ class PolicyService:
         portable.setdefault("forecast_lookback", {})
         portable.setdefault("recovery_threshold", {})
         portable.setdefault("forecast_target", None)
+        portable["schedule"] = PolicyService._default_duration(portable.get("schedule"))
+        portable["period"] = PolicyService._default_duration(portable.get("period"))
+        PolicyService._ensure_query_condition(portable)
+        PolicyService._ensure_group_by(portable, monitor_object=monitor_object, plugin=plugin)
         return portable
+
+    @staticmethod
+    def _default_duration(value):
+        if isinstance(value, dict) and value.get("value") not in (None, ""):
+            duration = copy.deepcopy(value)
+            duration.setdefault("type", "min")
+            return duration
+        if isinstance(value, (int, float)) and value > 0:
+            return {"type": "min", "value": int(value)}
+        return {"type": "min", "value": 5}
+
+    @staticmethod
+    def _dimension_names(dimensions):
+        names = []
+        if not isinstance(dimensions, list):
+            return names
+        for item in dimensions:
+            if isinstance(item, str):
+                name = item.strip()
+            elif isinstance(item, dict):
+                name = str(item.get("name") or "").strip()
+            else:
+                name = ""
+            if name and name not in names:
+                names.append(name)
+        return names
+
+    @staticmethod
+    def _metric_dimension_names(portable, monitor_object=None, plugin=None):
+        if monitor_object is None:
+            return []
+        query = portable.get("query_condition") or {}
+        metric_name = str(portable.get("metric_name") or "").strip()
+        if isinstance(query, dict):
+            if query.get("type") == "formula":
+                for item in query.get("queries") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("metric_name") or "").strip()
+                    if name:
+                        metric_name = name
+                        break
+            else:
+                metric_name = metric_name or str(query.get("metric_name") or "").strip()
+        if not metric_name:
+            return []
+        metrics = Metric.objects.filter(monitor_object=monitor_object, name=metric_name)
+        if plugin is not None:
+            metrics = metrics.filter(monitor_plugin=plugin)
+        metric = metrics.first()
+        if not metric:
+            return []
+        return PolicyService._dimension_names(metric.dimensions)
+
+    @staticmethod
+    def _ensure_group_by(portable, monitor_object=None, plugin=None):
+        existing = portable.get("group_by")
+        if isinstance(existing, list):
+            cleaned = [str(item).strip() for item in existing if str(item).strip()]
+            if cleaned:
+                portable["group_by"] = cleaned
+                return
+        query = portable.get("query_condition") or {}
+        if isinstance(query, dict) and query.get("type") == "formula":
+            for item in query.get("queries") or []:
+                if not isinstance(item, dict):
+                    continue
+                query_group_by = item.get("group_by")
+                if isinstance(query_group_by, list):
+                    cleaned = [str(value).strip() for value in query_group_by if str(value).strip()]
+                    if cleaned:
+                        portable["group_by"] = cleaned
+                        return
+        fallback = ["instance_id", *PolicyService._metric_dimension_names(portable, monitor_object, plugin)]
+        cleaned = []
+        seen = set()
+        for item in fallback:
+            name = str(item).strip()
+            if not name or name in seen:
+                continue
+            cleaned.append(name)
+            seen.add(name)
+        portable["group_by"] = cleaned or ["instance_id"]
+
+    @staticmethod
+    def _ensure_query_condition(portable):
+        query = portable.get("query_condition")
+        if isinstance(query, dict) and query.get("type") in {"formula", "metric", "pmq"}:
+            return
+        metric_name = str(portable.get("metric_name") or "").strip()
+        if not metric_name:
+            return
+        portable["query_condition"] = {
+            "type": "metric",
+            "metric_name": metric_name,
+            "filter": list(portable.get("filter") or []),
+        }
+
+    @staticmethod
+    def _related_policy_count(template):
+        count = getattr(template, "related_policy_count", None)
+        if count is not None:
+            return int(count)
+        if not getattr(template, "pk", None):
+            return 0
+        return template.issued_policies.count()
+
+    @staticmethod
+    def _json_equal(left, right):
+        return json.dumps(left, sort_keys=True, default=str) == json.dumps(right, sort_keys=True, default=str)
+
+    @staticmethod
+    def recipe_fields_from_template(template):
+        config = PolicyService.portable_config(
+            template.config or {},
+            monitor_object=template.monitor_object,
+            plugin=template.plugin,
+        )
+        group_algorithm, algorithm = normalize_template_algorithms(config)
+        metric_unit = normalize_stored_metric_unit(
+            config.get("metric_unit") or "",
+            str(config.get("data_type") or ""),
+        )
+        default_calculation_unit = normalize_default_calculation_unit(metric_unit)
+        forecast_target = config.get("forecast_target")
+        if forecast_target in ("", None):
+            forecast_target = None
+        elif isinstance(forecast_target, (int, float)):
+            forecast_target = float(forecast_target)
+        return {
+            "alert_name": config.get("alert_name") or template.name or "",
+            "query_condition": PolicyService._runtime_query_condition(
+                config.get("query_condition"),
+                template.monitor_object,
+            ),
+            "threshold": copy.deepcopy(config.get("threshold") or []),
+            "group_algorithm": group_algorithm,
+            "algorithm": algorithm,
+            "group_by": copy.deepcopy(config.get("group_by") or ["instance_id"]),
+            "metric_unit": metric_unit,
+            "calculation_unit": config.get("calculation_unit") or default_calculation_unit,
+            "threshold_unit": (config.get("threshold_unit") or config.get("calculation_unit") or default_calculation_unit or ""),
+            "compare_mode": config.get("compare_mode") or "absolute",
+            "compare_value_kind": config.get("compare_value_kind") or "",
+            "count_predicate": copy.deepcopy(config.get("count_predicate") or {}),
+            "forecast_target": forecast_target,
+            "forecast_lookback": copy.deepcopy(config.get("forecast_lookback") or {}),
+            "recovery_threshold": copy.deepcopy(config.get("recovery_threshold") or {}),
+        }
+
+    @staticmethod
+    def _mark_new_alerts_closed(alerts_to_close, operator, reason):
+        if not alerts_to_close:
+            return []
+        now = timezone.now()
+        locked_alerts = list(
+            MonitorAlert.objects.select_for_update().filter(id__in=[alert.id for alert in alerts_to_close], status="new").order_by("id")
+        )
+        if not locked_alerts:
+            return []
+        operation_log = {
+            "action": "closed",
+            "reason": reason,
+            "operator": operator,
+            "time": now.isoformat(),
+        }
+        for alert in locked_alerts:
+            alert.status = "closed"
+            alert.end_event_time = now
+            alert.operator = operator
+            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+            alert.alert_center_notified = False
+        MonitorAlert.objects.bulk_update(
+            locked_alerts,
+            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+        )
+        record_lifecycle_events(
+            locked_alerts,
+            MonitorEvent.Action.CLOSED,
+            event_time=now,
+            operator=operator,
+            reason=reason,
+        )
+        return locked_alerts
+
+    @staticmethod
+    def close_active_threshold_alerts_for_recipe_change(policy, old_query_condition, old_group_by, operator):
+        reason = ""
+        if not PolicyService._json_equal(old_group_by, policy.group_by):
+            reason = "policy_group_by_changed"
+        elif not PolicyService._json_equal(old_query_condition, policy.query_condition):
+            reason = "policy_query_condition_changed"
+        if not reason:
+            return
+        alerts_to_close = list(
+            MonitorAlert.objects.filter(
+                policy_id=policy.id,
+                alert_type="alert",
+                status="new",
+            )
+        )
+        locked_alerts = PolicyService._mark_new_alerts_closed(alerts_to_close, operator, reason)
+        if not locked_alerts:
+            return
+        notifier = AlertLifecycleNotifier(policy)
+        notifier.enqueue_alert_center_deliveries(
+            locked_alerts,
+            "closed",
+            operator=operator,
+            reason=reason,
+        )
+        transaction.on_commit(
+            lambda alerts=tuple(locked_alerts), current_policy=policy: AlertLifecycleNotifier(current_policy).notify_alerts(
+                alerts,
+                action="closed",
+                operator=operator,
+                reason=reason,
+                notify_scope=NOTIFY_SCOPE_ALERT_CENTER_ONLY,
+            )
+        )
+
+    @staticmethod
+    def sync_issued_policies_from_template(template, user):
+        recipe = PolicyService.recipe_fields_from_template(template)
+        operator = getattr(user, "username", "") or "system"
+        updated_count = 0
+        last_id = 0
+        while True:
+            policies = list(
+                MonitorPolicy.objects.filter(source_template_id=template.id, id__gt=last_id).order_by("id")[
+                    : DatabaseConstants.BULK_UPDATE_BATCH_SIZE
+                ]
+            )
+            if not policies:
+                break
+            last_id = policies[-1].id
+            for policy in policies:
+                changed_fields = []
+                old_query_condition = copy.deepcopy(policy.query_condition)
+                old_group_by = copy.deepcopy(policy.group_by)
+                for field in POLICY_RECIPE_SYNC_FIELDS:
+                    new_value = recipe[field]
+                    old_value = getattr(policy, field)
+                    if PolicyService._json_equal(old_value, new_value):
+                        continue
+                    setattr(policy, field, new_value)
+                    changed_fields.append(field)
+                if not changed_fields:
+                    continue
+                policy.updated_by = operator
+                policy.save(update_fields=[*changed_fields, "updated_by", "updated_at"])
+                PolicyService.close_active_threshold_alerts_for_recipe_change(
+                    policy,
+                    old_query_condition,
+                    old_group_by,
+                    operator,
+                )
+                updated_count += 1
+        return updated_count
 
     @staticmethod
     def create_custom_template(*, organization, monitor_object_id, plugin_id, name, description, config, user):
@@ -453,12 +741,34 @@ class PolicyService:
             plugin=plugin,
             name=name,
             description=description or "",
-            config=PolicyService.portable_config(config),
+            config=PolicyService.portable_config(config, monitor_object=monitor_object, plugin=plugin),
             created_by=user.username,
             updated_by=user.username,
             domain=getattr(user, "domain", "domain.com"),
             updated_by_domain=getattr(user, "domain", "domain.com"),
         )
+
+    @staticmethod
+    def update_custom_template(*, organization, template_key, name, description, config, user):
+        templates = PolicyService.get_selected_templates([template_key], organization)
+        template = templates[0]
+        if template.template_type != PolicyTemplate.TYPE_CUSTOM:
+            raise BaseAppException("内置模版不可编辑")
+        if template.organization != organization:
+            raise BaseAppException("无权限访问指定模板")
+        template.name = name
+        template.description = description or ""
+        template.config = PolicyService.portable_config(
+            config,
+            monitor_object=template.monitor_object,
+            plugin=template.plugin,
+        )
+        template.updated_by = user.username
+        template.updated_by_domain = getattr(user, "domain", "domain.com")
+        with transaction.atomic():
+            template.save(update_fields=["name", "description", "config", "updated_by", "updated_by_domain", "updated_at"])
+            updated_policy_count = PolicyService.sync_issued_policies_from_template(template, user)
+        return template, updated_policy_count
 
     @staticmethod
     def parse_selection_keys(keys):
@@ -618,7 +928,11 @@ class PolicyService:
             if key in package_keys:
                 raise BaseAppException(f"ZIP 包内模板重复: {name}")
             package_keys.add(key)
-            config = PolicyService.portable_config(payload["config"])
+            config = PolicyService.portable_config(
+                payload["config"],
+                monitor_object=monitor_object,
+                plugin=plugin,
+            )
             PolicyService._runtime_query_condition(config.get("query_condition"), monitor_object)
             payload["config"] = config
             existing = PolicyTemplate.objects.filter(
@@ -630,8 +944,9 @@ class PolicyService:
                 conflicts.append({"id": existing.id, "name": existing.name})
             prepared.append((payload, monitor_object, plugin, existing))
         if conflicts and not overwrite:
-            return {"requires_overwrite": True, "conflicts": conflicts, "imported_count": 0}
+            return {"requires_overwrite": True, "conflicts": conflicts, "imported_count": 0, "updated_policy_count": 0}
 
+        updated_policy_count = 0
         with transaction.atomic():
             for payload, monitor_object, plugin, existing in prepared:
                 values = {
@@ -651,10 +966,16 @@ class PolicyService:
                     for field, value in values.items():
                         setattr(existing, field, value)
                     existing.save()
+                    updated_policy_count += PolicyService.sync_issued_policies_from_template(existing, user)
                 else:
                     PolicyTemplate.objects.create(
                         **values,
                         created_by=user.username,
                         domain=getattr(user, "domain", "domain.com"),
                     )
-        return {"requires_overwrite": False, "conflicts": conflicts, "imported_count": len(prepared)}
+        return {
+            "requires_overwrite": False,
+            "conflicts": conflicts,
+            "imported_count": len(prepared),
+            "updated_policy_count": updated_policy_count,
+        }

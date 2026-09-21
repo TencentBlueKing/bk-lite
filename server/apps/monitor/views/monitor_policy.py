@@ -30,8 +30,8 @@ from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.services.policy_bulk import build_bulk_policy_payloads, normalize_stored_metric_unit
-from apps.monitor.services.policy_preview import PolicyPreviewService
 from apps.monitor.services.policy_dry_run import PolicyDryRunService
+from apps.monitor.services.policy_preview import PolicyPreviewService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -330,9 +330,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         now = datetime.now(timezone.utc)
         with transaction.atomic():
             locked_alerts = list(
-                MonitorAlert.objects.select_for_update()
-                .filter(id__in=[alert.id for alert in alerts_to_close], status="new")
-                .order_by("id")
+                MonitorAlert.objects.select_for_update().filter(id__in=[alert.id for alert in alerts_to_close], status="new").order_by("id")
             )
             if not locked_alerts:
                 return []
@@ -611,6 +609,30 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         )
         return WebUtils.response_success(PolicyService.serialize_template(template))
 
+    @action(methods=["post"], detail=False, url_path="template/update")
+    @HasPermission("strategy_list-Edit")
+    def update_template(self, request):
+        template_key = str(request.data.get("template_key") or "").strip()
+        name = str(request.data.get("name") or "").strip()
+        config = request.data.get("config")
+        if not template_key or not name or not isinstance(config, dict):
+            raise BaseAppException("template_key、name 和 config 不能为空")
+        organization = self._get_data_scope().current_team
+        self._ensure_target_organizations([organization])
+        templates = PolicyService.get_selected_templates([template_key], organization)
+        self._ensure_template_operate_permission(templates[0].monitor_object_id)
+        template, updated_policy_count = PolicyService.update_custom_template(
+            organization=organization,
+            template_key=template_key,
+            name=name,
+            description=request.data.get("description") or "",
+            config=config,
+            user=request.user,
+        )
+        payload = PolicyService.serialize_template(template)
+        payload["updated_policy_count"] = updated_policy_count
+        return WebUtils.response_success(payload)
+
     @action(methods=["post"], detail=False, url_path="template/import")
     @HasPermission("strategy_list-Edit")
     def import_templates(self, request):
@@ -757,9 +779,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     @HasPermission("strategy_list-Add,strategy_list-Edit")
     def preview(self, request):
         payload = dict(request.data)
-        PolicyDryRunService.authorize_preview_payload(
-            payload, _build_actor_context(request)
-        )
+        PolicyDryRunService.authorize_preview_payload(payload, _build_actor_context(request))
         data = PolicyPreviewService(payload).preview()
         return WebUtils.response_success(data)
 
