@@ -100,6 +100,7 @@ def enqueue_alert_center_deliveries(
         locked_by_id = {alert.id: alert for alert in MonitorAlert.objects.select_for_update().filter(id__in=alert_ids).order_by("id")}
         instance_org_map = notifier._build_instance_org_map(target_alerts)
         monitor_identity_map = notifier._build_monitor_identity_map(target_alerts)
+        pending_rows = []
         for original in target_alerts:
             alert = locked_by_id.get(original.id, original)
             base_payload = notifier._build_alert_center_payload(
@@ -116,42 +117,66 @@ def enqueue_alert_center_deliveries(
                 # 才能让 receiver 对前者去重、对后者正常接收。
                 base_payload.pop("lifecycle_action", None)
             for channel_id in alert_channels[alert.id]:
-                blocking_generation = (
-                    MonitorAlertCenterDelivery.objects.filter(
-                        alert_id=alert.id,
-                        channel_id=channel_id,
-                        status=MonitorAlertCenterDelivery.Status.FAILED,
-                    )
-                    .order_by("generation")
-                    .values_list("generation", flat=True)
-                    .first()
-                )
                 delivery_id = _delivery_fingerprint(
                     alert.id,
                     action,
                     {"channel_id": channel_id, **base_payload},
                 )
-                existing = MonitorAlertCenterDelivery.objects.filter(delivery_id=delivery_id).first()
-                if existing:
-                    continue
-                generation = (MonitorAlertCenterDelivery.objects.filter(alert_id=alert.id).aggregate(value=Max("generation"))["value"] or 0) + 1
-                payload = {
-                    **base_payload,
-                    "lifecycle_generation": delivery_id,
-                }
-                delivery = MonitorAlertCenterDelivery.objects.create(
-                    alert_id=alert.id,
-                    action=action,
-                    generation=generation,
-                    delivery_id=delivery_id,
-                    channel_id=channel_id,
-                    payload=payload,
-                    status=(
-                        MonitorAlertCenterDelivery.Status.FAILED if blocking_generation is not None else MonitorAlertCenterDelivery.Status.PENDING
-                    ),
-                    last_error=(f"blocked by terminal generation {blocking_generation}" if blocking_generation is not None else ""),
-                )
-                created_ids.append(delivery.id)
+                pending_rows.append((alert, channel_id, delivery_id, base_payload))
+
+        blocking_generation_by_key = {}
+        for row in (
+            MonitorAlertCenterDelivery.objects.filter(
+                alert_id__in=alert_ids,
+                status=MonitorAlertCenterDelivery.Status.FAILED,
+            )
+            .order_by("alert_id", "channel_id", "generation")
+            .values("alert_id", "channel_id", "generation")
+        ):
+            key = (row["alert_id"], row["channel_id"])
+            if key not in blocking_generation_by_key:
+                blocking_generation_by_key[key] = row["generation"]
+
+        existing_delivery_ids = set(
+            MonitorAlertCenterDelivery.objects.filter(
+                delivery_id__in=[delivery_id for _, _, delivery_id, _ in pending_rows]
+            ).values_list("delivery_id", flat=True)
+        )
+        next_generation_by_alert = {
+            alert_id: 0
+            for alert_id in alert_ids
+        }
+        for row in (
+            MonitorAlertCenterDelivery.objects.filter(alert_id__in=alert_ids)
+            .values("alert_id")
+            .annotate(value=Max("generation"))
+        ):
+            next_generation_by_alert[row["alert_id"]] = row["value"] or 0
+
+        for alert, channel_id, delivery_id, base_payload in pending_rows:
+            if delivery_id in existing_delivery_ids:
+                continue
+            next_generation_by_alert[alert.id] += 1
+            generation = next_generation_by_alert[alert.id]
+            blocking_generation = blocking_generation_by_key.get((alert.id, channel_id))
+            payload = {
+                **base_payload,
+                "lifecycle_generation": delivery_id,
+            }
+            delivery = MonitorAlertCenterDelivery.objects.create(
+                alert_id=alert.id,
+                action=action,
+                generation=generation,
+                delivery_id=delivery_id,
+                channel_id=channel_id,
+                payload=payload,
+                status=(
+                    MonitorAlertCenterDelivery.Status.FAILED if blocking_generation is not None else MonitorAlertCenterDelivery.Status.PENDING
+                ),
+                last_error=(f"blocked by terminal generation {blocking_generation}" if blocking_generation is not None else ""),
+            )
+            created_ids.append(delivery.id)
+            existing_delivery_ids.add(delivery_id)
 
         if created_ids:
             MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_notified=False)
