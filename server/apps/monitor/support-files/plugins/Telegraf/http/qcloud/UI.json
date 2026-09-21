@@ -60,6 +60,52 @@
         "to_api": { "join": "," }
       },
       "label_en": "Tencent Cloud Region"
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 300,
+      "description": "监控数据的采集时间间隔（单位：秒）。建议与采集超时对齐，且间隔 ≥ 采集超时，避免任务重叠。",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection interval in seconds. Align with collection timeout; prefer interval >= collection timeout to avoid overlapping runs."
+    },
+    {
+      "name": "timeout",
+      "label": "采集超时",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 300,
+      "description": "单次采集允许的最长秒数。超时则丢弃结果不入库。建议与间隔对齐；多地域或云资源较多时可调高。",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "采集超时",
+        "addonAfter": "s",
+        "placeholder_en": "Collection Timeout"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.timeout"
+      },
+      "label_en": "Collection Timeout",
+      "description_en": "Max seconds allowed for one collection run. Timed-out results are discarded and not published. Align with interval; raise if many regions or resources are collected."
     }
   ],
   "table_columns": [

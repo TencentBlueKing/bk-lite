@@ -120,6 +120,28 @@
       },
       "label_en": "Interval",
       "description_en": "Collection interval in seconds."
+    },
+    {
+      "name": "timeout",
+      "label": "采集超时",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 180,
+      "description": "单次采集允许的最长秒数。超时则丢弃结果不入库。默认 180 秒，需覆盖一次多指标族 scrape；组织规模较大时可调高。",
+      "guide_short": "默认 180 秒。一次 scrape 会顺序抓取多指标族，需覆盖实际耗时。",
+      "guide_short_en": "Default 180 seconds. One scrape sequentially collects multiple metric families and must cover the actual run time.",
+      "widget_props": {
+        "min": 30,
+        "precision": 0,
+        "placeholder": "采集超时",
+        "addonAfter": "s",
+        "placeholder_en": "Collection Timeout"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.timeout"
+      },
+      "label_en": "Collection Timeout",
+      "description_en": "Max seconds allowed for one collection run. Timed-out results are discarded and not published. Default 180 seconds to cover one multi-family scrape; raise for large organizations."
     }
   ],
   "table_columns": [
