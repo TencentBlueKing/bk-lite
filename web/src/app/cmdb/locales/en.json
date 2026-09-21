@@ -1317,6 +1317,9 @@
             "switch": "Switch"
         },
         "objectType": "Object type",
+        "selectDeviceModels": "Device models",
+        "selectDeviceModelsPlaceholder": "Select models",
+        "duplicateManageIp": "The same management IP cannot be selected twice: {ip}",
         "taskName": "Task name",
         "CustomReporting": {
             "authHeader": "Authorization header",

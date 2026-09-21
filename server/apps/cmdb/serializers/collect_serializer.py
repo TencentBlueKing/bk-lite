@@ -30,6 +30,7 @@ from apps.cmdb.services.collect_object_tree import get_collect_object_meta
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import normalize_inst_uuid
+from apps.cmdb.services.network_collection_asset_policy import validate_network_collection_assets
 from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance, validate_commands, validate_network_config_instance
 from apps.cmdb.services.pc_collect_policy import validate_pc_collect_task
 from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope, VmwareScopeError
@@ -781,6 +782,11 @@ class CollectModelSerializer(AuthSerializer):
                     attrs["params"] = self._validate_topology_params(params)
                 else:
                     attrs["params"] = self._normalize_topology_params(params)
+                if model_id == "network" and "instances" in attrs:
+                    try:
+                        validate_network_collection_assets(attrs.get("instances"))
+                    except ValueError as err:
+                        raise serializers.ValidationError({"instances": str(err)}) from err
             return attrs
 
         if not self._get_attr_or_instance_value(attrs, "is_interval"):

@@ -39,6 +39,12 @@ import {
   createTaskValidationRules,
   isSupportedNetworkConfigBrand,
 } from '@/app/cmdb/constants/professCollection';
+import {
+  NETWORK_COLLECTION_ASSET_MODELS,
+  findDuplicateNetworkAssetIp,
+  mergeNetworkAssetSearchPages,
+  mergeVisibleNetworkAssetSelection,
+} from '../utils/networkAssetSelection';
 
 // 需要IP选择的任务类型
 const IP_SELECTION_TASK_TYPES = [
@@ -99,6 +105,7 @@ import {
   Drawer,
   Alert,
   Switch,
+  message,
 } from 'antd';
 
 interface TableItem {
@@ -169,6 +176,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const instanceModelId = targetModelId || modelId;
     const previousInstanceModelIdRef = useRef(instanceModelId);
     const normalizedTaskType = taskType || nodeId || '';
+    const isNetworkCollectionAssetTask =
+      modelId === 'network' && normalizedTaskType === 'snmp';
     const timeoutMin = timeoutProps.min ?? (normalizedTaskType === 'snmp' ? 30 : 1);
     const { t } = useTranslation();
     const guardClose = useUnsavedConfirm();
@@ -190,6 +199,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [accessPointLoading, setAccessPointLoading] = useState(false);
     const [instVisible, setInstVisible] = useState(false);
     const [relateType, setRelateType] = useState('');
+    const [assetModelIds, setAssetModelIds] = useState<string[]>([
+      ...NETWORK_COLLECTION_ASSET_MODELS,
+    ]);
     const [selectedRows, setSelectedRows] = useState<any[]>([]);
     const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
     const [displaySelectedKeys, setDisplaySelectedKeys] = useState<React.Key[]>(
@@ -344,6 +356,18 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         key: 'ip_addr',
         render: (text: any) => text || '--',
       },
+      ...(isNetworkCollectionAssetTask
+        ? [
+          {
+            title: t('Collection.objectType'),
+            dataIndex: 'model_id',
+            key: 'model_id',
+            render: (modelKey: string) =>
+              dropdownItems.items.find((item) => item.key === modelKey)
+                ?.label || modelKey || '--',
+          },
+        ]
+        : []),
     ];
 
     useEffect(() => {
@@ -389,7 +413,56 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         setInstPagination((prev) => ({
           ...prev,
           current: page,
+          pageSize,
           total: res.count || 0,
+        }));
+      } catch (error) {
+        console.error('Failed to fetch instances:', error);
+      } finally {
+        setInstLoading(false);
+      }
+    };
+
+    const fetchNetworkInstData = async (
+      modelIds: string[],
+      page = 1,
+      pageSize = 10
+    ) => {
+      if (!modelIds.length) {
+        setInstData([]);
+        setInstPagination((prev) => ({
+          ...prev,
+          current: 1,
+          total: 0,
+        }));
+        return;
+      }
+
+      try {
+        setInstLoading(true);
+        const pages = await Promise.all(
+          modelIds.map(async (searchModelId) => {
+            const res = await instanceApi.searchInstances({
+              model_id: searchModelId,
+              page,
+              page_size: pageSize,
+            });
+            return {
+              insts: (res.insts || []).map((item: TableItem) => ({
+                ...item,
+                model_id: item.model_id || searchModelId,
+              })),
+              count: res.count || 0,
+            };
+          })
+        );
+        const merged = mergeNetworkAssetSearchPages(pages);
+        setInstData(merged.insts);
+        setInstPagination((prev) => ({
+          ...prev,
+          current: page,
+          pageSize,
+          total: merged.count,
         }));
       } catch (error) {
         console.error('Failed to fetch instances:', error);
@@ -404,6 +477,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       }
 
       setInstVisible(true);
+      if (isNetworkCollectionAssetTask) {
+        fetchNetworkInstData(assetModelIds);
+        return;
+      }
       if (isCommonSelectInstTask) {
         fetchInstData(instanceModelId);
       }
@@ -463,9 +540,29 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     };
 
     const handleDrawerConfirm = () => {
+      const nextSelected = isNetworkCollectionAssetTask
+        ? mergeVisibleNetworkAssetSelection({
+          previouslySelected: selectedData,
+          visibleInstUuids: instData.map((item) => item.inst_uuid),
+          checkedRows: selectedRows,
+        })
+        : selectedRows.map((item) => item);
+      const duplicateIp = isNetworkCollectionAssetTask
+        ? findDuplicateNetworkAssetIp(nextSelected)
+        : null;
+      if (duplicateIp) {
+        message.error(
+          t(
+            'Collection.duplicateManageIp',
+            '同一任务中管理 IP 不能重复：{ip}',
+            { ip: duplicateIp }
+          )
+        );
+        return;
+      }
       setInstVisible(false);
-      setSelectedData(selectedRows.map((item) => item));
-      form.setFieldValue('assetInst', selectedRows);
+      setSelectedData(nextSelected);
+      form.setFieldValue('assetInst', nextSelected);
     };
 
     const handleDeleteRow = (record: TableItem) => {
@@ -495,6 +592,18 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         key: 'inst_name',
         render: (text: any, record: any) => record.inst_name || '--',
       },
+      ...(isNetworkCollectionAssetTask
+        ? [
+          {
+            title: t('Collection.objectType'),
+            dataIndex: 'model_id',
+            key: 'model_id',
+            render: (modelKey: string) =>
+              dropdownItems.items.find((item) => item.key === modelKey)
+                ?.label || modelKey || '--',
+          },
+        ]
+        : []),
       {
         title: t('common.actions'),
         key: 'action',
@@ -938,7 +1047,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   >
                     <div>
                       <Space>
-                        {isCommonSelectInstTask ? (
+                        {isCommonSelectInstTask || isNetworkCollectionAssetTask ? (
                           <Tooltip
                             overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
                             title={hostAssetSelectTooltip}
@@ -1152,13 +1261,20 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
         <Drawer
           title={
-            isCommonSelectInstTask
+            isCommonSelectInstTask || isNetworkCollectionAssetTask
               ? t('Collection.chooseAsset')
               : `选择${dropdownItems.items.find((item) => item.key === relateType)?.label || '资产'}`
           }
           width={620}
           open={instVisible}
           maskClosable={false}
+          styles={{
+            body: {
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            },
+          }}
           onClose={() => guardClose(selectedRows.length > 0, handleDrawerClose)}
           footer={
             <div style={{ textAlign: 'left' }}>
@@ -1177,32 +1293,60 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             </div>
           }
         >
-          <CustomTable
-            columns={instColumns}
-            dataSource={instData}
-            size="middle"
-            loading={instLoading}
-            rowKey="inst_uuid"
-            scroll={{ y: 'calc(100vh - 280px)' }}
-            pagination={{
-              ...instPagination,
-              onChange: (page, pageSize) =>
-                fetchInstData(
-                  isCommonSelectInstTask ? modelId : relateType,
-                  page,
-                  pageSize,
-                ),
-            }}
-            rowSelection={{
-              type: 'checkbox',
-              selectedRowKeys: selectedKeys,
-              onChange: handleRowSelect,
-              getCheckboxProps: (record: any) => ({
-                disabled: Boolean(getNetworkConfigDisabledReason(record)),
-                title: getNetworkConfigDisabledReason(record),
-              }),
-            }}
-          />
+          {isNetworkCollectionAssetTask ? (
+            <div className="mb-4 shrink-0">
+              <div className="mb-2 text-sm">
+                {t('Collection.selectDeviceModels')}
+              </div>
+              <Select
+                mode="multiple"
+                className="w-full"
+                allowClear
+                placeholder={t('Collection.selectDeviceModelsPlaceholder')}
+                value={assetModelIds}
+                options={dropdownItems.items.map((item) => ({
+                  label: item.label,
+                  value: item.key,
+                }))}
+                onChange={(ids: string[]) => {
+                  setAssetModelIds(ids);
+                  fetchNetworkInstData(ids, 1, instPagination.pageSize);
+                }}
+              />
+            </div>
+          ) : null}
+          <div className="min-h-0 h-full flex-1 overflow-hidden">
+            <CustomTable
+              columns={instColumns}
+              dataSource={instData}
+              size="middle"
+              loading={instLoading}
+              rowKey="inst_uuid"
+              pagination={{
+                ...instPagination,
+                onChange: (page, pageSize) => {
+                  if (isNetworkCollectionAssetTask) {
+                    fetchNetworkInstData(assetModelIds, page, pageSize);
+                    return;
+                  }
+                  fetchInstData(
+                    isCommonSelectInstTask ? modelId : relateType,
+                    page,
+                    pageSize,
+                  );
+                },
+              }}
+              rowSelection={{
+                type: 'checkbox',
+                selectedRowKeys: selectedKeys,
+                onChange: handleRowSelect,
+                getCheckboxProps: (record: any) => ({
+                  disabled: Boolean(getNetworkConfigDisabledReason(record)),
+                  title: getNetworkConfigDisabledReason(record),
+                }),
+              }}
+            />
+          </div>
         </Drawer>
       </>
     );

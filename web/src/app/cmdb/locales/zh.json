@@ -1023,6 +1023,9 @@
         "instanceName": "实例名",
         "manageIp": "管理IP",
         "objectType": "对象类型",
+        "selectDeviceModels": "设备模型",
+        "selectDeviceModelsPlaceholder": "请选择模型",
+        "duplicateManageIp": "同一任务中管理 IP 不能重复：{ip}",
         "networkDevice": {
             "switch": "交换机",
             "router": "路由器",
