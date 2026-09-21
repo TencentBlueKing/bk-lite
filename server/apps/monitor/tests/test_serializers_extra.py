@@ -81,6 +81,18 @@ class TestMonitorPolicyValidators:
 
         assert "必须是标量" in str(exc.value)
 
+    def test_validate_query_condition_rejects_object_filter(self):
+        with pytest.raises(serializers.ValidationError) as exc:
+            self._s().validate_query_condition(
+                {
+                    "type": "metric",
+                    "metric_id": 1,
+                    "filter": {"name": "service", "method": "=", "value": "checkout"},
+                }
+            )
+
+        assert "必须是数组" in str(exc.value)
+
     def test_validate_source_requires_type_and_values(self):
         with pytest.raises(serializers.ValidationError):
             self._s().validate_source({"type": "instance"})
