@@ -163,6 +163,9 @@ def parse_solaris_metrics_to_prometheus(
         _append_gauge(lines, "mem_total", base_labels, mem.get("total_bytes", 0), timestamp, "Memory total bytes")
         _append_gauge(lines, "mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
         _append_gauge(lines, "host_mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
+        available = _metric_value(mem, "available_bytes", "free_bytes", default=None)
+        if available is not None:
+            _append_gauge(lines, "mem_available", base_labels, available, timestamp, "Memory available bytes")
         _append_gauge(lines, "mem_swap_free", base_labels, swap_free, timestamp, "Swap free bytes")
         _append_gauge(lines, "mem_swap_total", base_labels, swap_total, timestamp, "Swap total bytes")
 
