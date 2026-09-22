@@ -124,6 +124,13 @@ export const useSecurityApi = () => {
     items: errorLogs,
   });
 
+  const getOpenApiCallLogs = async () => ({
+    count: 0,
+    items: [],
+  });
+
+  const exportOpenApiCallLogs = async () => new Blob();
+
   return {
     getSystemSettings,
     updateOtpSettings,
@@ -135,5 +142,7 @@ export const useSecurityApi = () => {
     getUserLoginLogs,
     getOperationLogs,
     getErrorLogs,
+    getOpenApiCallLogs,
+    exportOpenApiCallLogs,
   };
 };

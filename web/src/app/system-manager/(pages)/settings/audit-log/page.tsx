@@ -5,6 +5,7 @@ import { Tabs } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import OperationLogs from '@/app/system-manager/components/security/operationLogs';
 import UserLoginLogs from '@/app/system-manager/components/security/loginLogs';
+import OpenApiCallLogs from '@/app/system-manager/components/security/openapiCallLogs';
 
 const AuditLogPage: React.FC = () => {
   const { t } = useTranslation();
@@ -19,6 +20,11 @@ const AuditLogPage: React.FC = () => {
       key: 'login',
       label: t('system.security.loginLogs') || 'Login Logs',
       children: <UserLoginLogs />,
+    },
+    {
+      key: 'openapi',
+      label: t('system.security.apiCallLogs'),
+      children: <OpenApiCallLogs />,
     },
   ];
 
