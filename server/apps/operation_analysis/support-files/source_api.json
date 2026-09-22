@@ -81,7 +81,8 @@
       "line",
       "bar",
       "pie",
-      "single"
+      "single",
+      "topN"
     ],
     "params": [
       {

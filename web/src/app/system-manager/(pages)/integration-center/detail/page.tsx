@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeftOutlined, CloseCircleFilled, CopyOutlined } from '@ant-design/icons';
-import { Alert, App, Badge, Button, Form, Input, InputNumber, Select, Spin, Switch, Tabs, Tooltip } from 'antd';
+import { Alert, App, Badge, Button, Form, Input, InputNumber, Select, Skeleton, Switch, Tabs, Tooltip } from 'antd';
 
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type {
@@ -391,8 +391,13 @@ const IntegrationDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-[300px] items-center justify-center">
-        <Spin spinning />
+      <div className="w-full space-y-4" aria-busy="true" aria-label="loading">
+        <div className="h-20 rounded-md bg-[var(--color-bg)] p-4">
+          <Skeleton active paragraph={{ rows: 1 }} />
+        </div>
+        <div className="rounded-md bg-[var(--color-bg)] p-5">
+          <Skeleton active paragraph={{ rows: 8 }} />
+        </div>
       </div>
     );
   }
@@ -424,7 +429,7 @@ const IntegrationDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <section className="grid overflow-hidden rounded-md bg-[var(--color-bg)] shadow-sm xl:grid-cols-[minmax(0,8.4fr)_minmax(200px,1.6fr)]">
+      <section className="grid overflow-hidden rounded-md bg-[var(--color-bg)] xl:grid-cols-[minmax(0,8.4fr)_minmax(200px,1.6fr)]">
         <div className="px-5 py-4">
           <Tabs
             activeKey={activeTab}

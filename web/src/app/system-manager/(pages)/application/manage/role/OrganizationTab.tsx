@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
-import { Button, Input, Spin, Popconfirm, Form, Modal } from 'antd';
+import { Button, Popconfirm, Form, Modal } from 'antd';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from "@/components/permission";
 import GroupTreeSelect from '@/components/group-tree-select';
+import SearchActionBar from '@/components/search-action-bar';
 
-const { Search } = Input;
 const { confirm } = Modal;
 
 interface Group {
@@ -109,37 +110,37 @@ const OrganizationTab: React.FC<OrganizationTabProps> = ({
   };
 
   return (
-    <>
-      <div className="flex justify-end mb-4">
-        <Search
-          allowClear
-          enterButton
-          className='w-60 mr-[8px]'
-          onSearch={onSearch}
-          placeholder={`${t('common.search')}`}
-        />
-        <PermissionWrapper requiredPermissions={['Add group']}>
-          <Button
-            className="mr-[8px]"
-            type="primary"
-            onClick={openGroupModal}
-          >
-            +{t('common.add')}
-          </Button>
-        </PermissionWrapper>
-        <PermissionWrapper requiredPermissions={['Remove group']}>
-          <Button
-            loading={deleteLoading}
-            onClick={handleBatchDeleteClick}
-            disabled={selectedGroupKeys.length === 0 || deleteLoading}
-          >
-            {t('system.common.modifydelete')}
-          </Button>
-        </PermissionWrapper>
-      </div>
-      <Spin spinning={loading}>
+    <div className="flex h-full min-h-0 flex-col">
+      <SearchActionBar
+        searchProps={{
+          placeholder: `${t('common.search')}`,
+          onSearch,
+        }}
+        actions={(
+          <>
+            <PermissionWrapper requiredPermissions={['Remove group']}>
+              <Button
+                loading={deleteLoading}
+                onClick={handleBatchDeleteClick}
+                disabled={selectedGroupKeys.length === 0 || deleteLoading}
+              >
+                {t('system.common.modifydelete')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add group']}>
+              <Button
+                type="primary"
+                onClick={openGroupModal}
+              >
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        )}
+      />
+      <SystemManagerFillTable>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 435px)' }}
+          loading={loading}
           rowSelection={{
             selectedRowKeys: selectedGroupKeys,
             onChange: (selectedRowKeys) => setSelectedGroupKeys(selectedRowKeys as React.Key[]),
@@ -151,10 +152,11 @@ const OrganizationTab: React.FC<OrganizationTabProps> = ({
             current: groupCurrentPage,
             pageSize: groupPageSize,
             total: groupTotal,
+            showSizeChanger: true,
             onChange: onTableChange,
           }}
         />
-      </Spin>
+      </SystemManagerFillTable>
       <OperateModal
         title={t('system.role.addOrganization')}
         closable={false}
@@ -166,8 +168,8 @@ const OrganizationTab: React.FC<OrganizationTabProps> = ({
         onOk={handleAddGroups}
         onCancel={() => setAddGroupModalOpen(false)}
       >
-        <div className="mb-4 p-3 bg-blue-50 rounded-md border border-blue-200">
-          <div className="text-blue-800 text-sm">
+        <div className="mb-4 rounded-md border border-[var(--color-primary)]/20 bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--color-bg))] p-3">
+          <div className="text-sm text-[var(--color-text-1)]">
             {t('system.role.organizationTip')}
           </div>
         </div>
@@ -184,7 +186,7 @@ const OrganizationTab: React.FC<OrganizationTabProps> = ({
           </Form.Item>
         </Form>
       </OperateModal>
-    </>
+    </div>
   );
 };
 

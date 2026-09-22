@@ -35,10 +35,6 @@ class Notify:
                 result.append(user_info)
         return result
 
-    def get_user_emails(self):
-        emails = [user["email"] for user in self.user_list]
-        return emails
-
     def notify(self):
         send_kwargs = {
             "channel_id": self.channel_id,

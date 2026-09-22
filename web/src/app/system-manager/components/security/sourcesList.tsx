@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useCallback, useMemo } from 'react';
-import { Switch, Form, Menu, Button, Alert } from 'antd';
+import { Switch, Form, Button, Alert } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import EntityList from '@/components/entity-list';
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
 import PermissionWrapper from '@/components/permission';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { AuthSource } from '@/app/system-manager/types/security';
 import wechatAuthImg from '@/app/system-manager/img/wechat_auth.png';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
@@ -17,6 +17,8 @@ import {
   getWeChatFormFields,
 } from '@/app/system-manager/components/security/authSourceFormConfig';
 import { useAuthSourceModal, copyToClipboard } from '@/app/system-manager/hooks/useAuthSourceModal';
+import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
+import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
 
 interface AuthSourcesListProps {
   authSources: AuthSource[];
@@ -54,27 +56,27 @@ const AuthSourcesList: React.FC<AuthSourcesListProps> = ({
     copyToClipboard(text, t);
   }, [t]);
 
-  const menuActions = useCallback((item: AuthSource) => (
-    <Menu>
-      <Menu.Item key="edit" onClick={() => handleEditSource(item)}>
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          {t('common.edit')}
-        </PermissionWrapper>
-      </Menu.Item>
-      <Menu.Item key="sync" onClick={() => handleSyncAuthSource(item)}>
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          {t('system.security.syncNow')}
-        </PermissionWrapper>
-      </Menu.Item>
-      {!item.is_build_in && (
-        <Menu.Item key="delete" onClick={() => handleDeleteAuthSource(item)}>
-          <PermissionWrapper requiredPermissions={['Delete']}>
-            {t('common.delete')}
-          </PermissionWrapper>
-        </Menu.Item>
-      )}
-    </Menu>
-  ), [handleEditSource, handleSyncAuthSource, handleDeleteAuthSource, t]);
+  const menuItemsFor = useCallback((item: AuthSource): MoreActionsDropdownItem[] => [
+    {
+      key: 'edit',
+      label: t('common.edit'),
+      permission: 'Edit',
+      onClick: () => handleEditSource(item),
+    },
+    {
+      key: 'sync',
+      label: t('system.security.syncNow'),
+      permission: 'Edit',
+      onClick: () => handleSyncAuthSource(item),
+    },
+    ...(!item.is_build_in ? [{
+      key: 'delete',
+      label: t('common.delete'),
+      permission: 'Delete',
+      danger: true,
+      onClick: () => handleDeleteAuthSource(item),
+    } satisfies MoreActionsDropdownItem] : []),
+  ], [handleDeleteAuthSource, handleEditSource, handleSyncAuthSource, t]);
 
   const getAuthImageSrc = useCallback((sourceType: string) => {
     const imageMap: Record<string, string> = {
@@ -89,24 +91,11 @@ const AuthSourcesList: React.FC<AuthSourcesListProps> = ({
         type="primary"
         icon={<PlusOutlined />}
         onClick={handleAddAuthSource}
-        className="ml-2"
       >
-        {t('common.add')}
+        {t('common.new')}
       </Button>
     </PermissionWrapper>
   ), [handleAddAuthSource, t]);
-
-  const descSlot = useCallback((item: AuthSource) => (
-    <div className="flex items-center justify-end">
-      <div onClick={(e) => e.stopPropagation()}>
-        <Switch
-          size="small"
-          checked={item.enabled}
-          onChange={(checked) => handleAuthSourceToggle(item, checked)}
-        />
-      </div>
-    </div>
-  ), [handleAuthSourceToggle]);
 
   const formFieldsConfig = useMemo(() => ({
     t,
@@ -178,14 +167,30 @@ const AuthSourcesList: React.FC<AuthSourcesListProps> = ({
 
   return (
     <>
-      <EntityList
-        data={authSources}
+      <SystemManagerEntityGrid
+        items={authSources}
         loading={loading}
-        search
-        menuActions={menuActions}
-        onCardClick={handleEditSource}
-        operateSection={operateSection}
-        descSlot={descSlot}
+        actions={operateSection}
+        getItemKey={(item) => item.id}
+        renderCard={(item) => (
+          <SystemManagerUnifiedCard
+            name={item.name}
+            description={item.description}
+            icon={item.icon}
+            origin={item.is_build_in ? 'builtin' : 'external'}
+            menuItems={menuItemsFor(item)}
+            onClick={() => handleEditSource(item)}
+            footer="custom"
+            footerActions={(
+              <Switch
+                size="small"
+                checked={item.enabled}
+                aria-label={item.name}
+                onChange={(checked) => handleAuthSourceToggle(item, checked)}
+              />
+            )}
+          />
+        )}
       />
 
       <OperateModal

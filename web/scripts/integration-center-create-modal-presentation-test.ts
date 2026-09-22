@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import {
   computeVisibleCapabilityTagCount,
   formatIntegrationInstanceDeleteError,
+  getIntegrationCapabilityTagColor,
+  toIntegrationCardStatusTone,
   INTEGRATION_INSTANCE_IN_USE_CODE,
 } from '../src/app/system-manager/utils/integrationCenter';
 
@@ -34,6 +36,27 @@ assert.equal(computeVisibleCapabilityTagCount([40, 40, 40, 40, 40, 40], 208, 28)
 assert.equal(computeVisibleCapabilityTagCount([200, 40], 80, 28), 1);
 assert.equal(computeVisibleCapabilityTagCount([], 200, 28), 0);
 assert.equal(computeVisibleCapabilityTagCount([40], 0, 28), 0);
+assert.equal(
+  getIntegrationCapabilityTagColor(
+    { capability_enabled: { login_auth: true }, capability_status: { login_auth: 'ready' } } as never,
+    'login_auth',
+  ),
+  'green',
+);
+assert.equal(
+  getIntegrationCapabilityTagColor(
+    { capability_enabled: { login_auth: true }, capability_status: { login_auth: 'pending_verification' } } as never,
+    'login_auth',
+  ),
+  'default',
+);
+assert.equal(
+  getIntegrationCapabilityTagColor(
+    { capability_enabled: { login_auth: false }, capability_status: { login_auth: 'ready' } } as never,
+    'login_auth',
+  ),
+  'default',
+);
 
 assert.match(modal, /icon:\s*provider\.key/);
 assert.doesNotMatch(modal, /resolveIntegrationProviderIcon/);
@@ -45,6 +68,10 @@ assert.match(tags, /ResizeObserver/);
 assert.match(tags, /\+\{hiddenCount\}/);
 assert.match(tags, /hiddenTags\.map/);
 assert.doesNotMatch(tags, /hiddenTags\.map\(\(tag\) => tag\.label\)\.join/);
+assert.match(tags, /color-fill-1/);
+assert.match(tags, /color-success/);
+assert.doesNotMatch(tags, /color-primary/);
+assert.doesNotMatch(tags, /color-mix/);
 
 assert.equal(zh.system.integrationCenter.createInstanceTitle, '添加集成系统');
 assert.equal(en.system.integrationCenter.createInstanceTitle, 'Add Integration System');
@@ -60,8 +87,29 @@ assert.doesNotMatch(modal, /showSearch/);
 assert.match(modal, /filterIntegrationProvidersByQuery\(cards, '', capabilityFilters, t\)/);
 assert.doesNotMatch(modal, /applySearchFilter/);
 assert.doesNotMatch(modal, /onSearch=\{setProviderSearch\}/);
+assert.equal(
+  toIntegrationCardStatusTone({ key: 'error', tone: 'error' }),
+  'error',
+);
+assert.equal(
+  toIntegrationCardStatusTone({ key: 'started', tone: 'success' }),
+  'ok',
+);
 assert.match(page, /ProviderCapabilityTags/);
-assert.match(page, /align="end"/);
+assert.match(page, /getIntegrationCapabilityTagColor/);
+assert.match(page, /provider\?\.name \|\| instance\.provider_key/);
+assert.doesNotMatch(page, /instance\.description \|\|/);
+assert.match(page, /toIntegrationCardStatusTone/);
+assert.doesNotMatch(page, /return 'warn'/);
+assert.match(tags, /color-success/);
+assert.doesNotMatch(tags, /text-\[var\(--color-text-2\)\]/);
+assert.match(page, /appearance:/);
+assert.match(page, /common\.new/);
+assert.match(page, /statusLabel/);
+assert.match(page, /formatRelativeTime/);
+assert.match(page, /title=\{t\('system\.integrationCenter\.pageTitle'\)\}/);
+assert.match(page, /content=\{t\('system\.integrationCenter\.pageDesc'\)\}/);
+assert.match(page, /TopSection/);
 assert.doesNotMatch(page, /flex-wrap justify-end/);
 
 assert.doesNotMatch(page, /provider-packs/);

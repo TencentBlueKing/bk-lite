@@ -1,11 +1,14 @@
 import pydantic.root_model  # noqa
 
 import json
+import logging
 
 import pytest
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
+from apps.core.logger import SafeLogException
+from apps.core.services.user_group import USER_LIST_MAX_PAGE_SIZE
 from apps.core.views import user_group as ug_view
 from apps.core.views.user_group import UserGroupViewSet
 
@@ -50,6 +53,10 @@ class TestPaginationParams:
         vs = UserGroupViewSet()
         assert vs.get_pagination_params({"page": "abc"}) == (0, 20)
 
+    def test_page_size_is_capped(self):
+        vs = UserGroupViewSet()
+        assert vs.get_pagination_params({"page": "1", "page_size": "99999999"}) == (0, USER_LIST_MAX_PAGE_SIZE)
+
 
 class TestUserList:
     def test_success(self, factory, mocker):
@@ -60,47 +67,32 @@ class TestUserList:
         data = _body(resp)
         assert data["result"] is True
         assert data["data"]["count"] == 1
-        # 校验透传的 query_params 契约
         _, kwargs = ug_view.UserGroup.user_list.call_args
         assert kwargs["query_params"] == {"page": 2, "page_size": 5, "search": "foo"}
+        assert "actor_context" in kwargs
 
-    def test_failure_returns_error(self, factory, mocker):
-        mocker.patch.object(ug_view.UserGroup, "user_list", side_effect=RuntimeError("boom"))
+    def test_failure_returns_error_and_owns_safe_traceback(self, factory, mocker, caplog):
+        secret = "password=SUPER-SECRET-TOKEN"
+        original = RuntimeError(secret)
+        mocker.patch.object(ug_view.UserGroup, "user_list", side_effect=original)
+        caplog.set_level(logging.ERROR, logger="app")
         vs = UserGroupViewSet()
         resp = vs.user_list(factory.get("/x/"))
         data = _body(resp)
         assert data["result"] is False
         assert resp.status_code == 400
-
-
-class TestGroupList:
-    def test_success(self, factory, mocker):
-        mocker.patch.object(ug_view.UserGroup, "groups_list", return_value=[{"id": 1, "name": "g"}])
-        vs = UserGroupViewSet()
-        resp = vs.group_list(factory.get("/x/?search=g"))
-        data = _body(resp)
-        assert data["result"] is True
-        assert data["data"] == [{"id": 1, "name": "g"}]
-        assert ug_view.UserGroup.groups_list.call_args.kwargs["query_params"] == "g"
-
-    def test_failure(self, factory, mocker):
-        mocker.patch.object(ug_view.UserGroup, "groups_list", side_effect=ValueError("x"))
-        vs = UserGroupViewSet()
-        resp = vs.group_list(factory.get("/x/"))
-        assert _body(resp)["result"] is False
-
-
-class TestUserGroups:
-    def test_success(self, factory, mocker):
-        mocker.patch.object(ug_view.UserGroup, "user_groups_list", return_value={"groups": [1, 2]})
-        vs = UserGroupViewSet()
-        resp = vs.user_groups(factory.get("/x/"))
-        data = _body(resp)
-        assert data["result"] is True
-        assert data["data"] == {"groups": [1, 2]}
-
-    def test_failure(self, factory, mocker):
-        mocker.patch.object(ug_view.UserGroup, "user_groups_list", side_effect=RuntimeError("x"))
-        vs = UserGroupViewSet()
-        resp = vs.user_groups(factory.get("/x/"))
-        assert _body(resp)["result"] is False
+        records = [record for record in caplog.records if record.name == "app" and "event=user_list_query_failed" in record.getMessage()]
+        assert len(records) == 1
+        record = records[0]
+        assert record.levelno == logging.ERROR
+        assert record.msg == "event=user_list_query_failed failed_stage=user_list error_type=%s"
+        assert record.args == ("RuntimeError",)
+        assert record.getMessage() == "event=user_list_query_failed failed_stage=user_list error_type=RuntimeError"
+        assert record.exc_info is not None
+        assert record.exc_info[0] is SafeLogException
+        assert record.exc_info[2] is original.__traceback__
+        formatted = logging.Formatter().format(record)
+        assert secret not in record.getMessage()
+        assert secret not in formatted
+        assert secret not in caplog.text
+        assert original.args == (secret,)

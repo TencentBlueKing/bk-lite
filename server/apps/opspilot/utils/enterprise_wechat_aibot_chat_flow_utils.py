@@ -3,13 +3,14 @@ import re
 from typing import Any
 
 import requests
+from django.http import HttpRequest, HttpResponse
+
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCrypto, EnterpriseWechatAibotCryptoError
 from apps.opspilot.utils.workflow_sensitive_config import decrypt_workflow_sensitive_config
-from django.http import HttpRequest, HttpResponse
 
 
 class EnterpriseWechatAibotChatFlowUtils(BaseChatFlowUtils):
@@ -50,8 +51,16 @@ class EnterpriseWechatAibotChatFlowUtils(BaseChatFlowUtils):
     def get_webhook_config(cls, config: dict[str, Any]) -> dict[str, Any] | None:
         if config.get("connectionMode", "webhook") != "webhook":
             return None
-        webhook = config.get("webhook") or {}
-        if not webhook.get("token") or not webhook.get("encodingAESKey"):
+        webhook = dict(config.get("webhook") or {})
+        token = webhook.get("token")
+        aes_key = webhook.get("encodingAESKey")
+        if isinstance(token, str):
+            token = token.strip()
+            webhook["token"] = token
+        if isinstance(aes_key, str):
+            aes_key = aes_key.strip()
+            webhook["encodingAESKey"] = aes_key
+        if not token or not aes_key:
             return None
         return webhook
 

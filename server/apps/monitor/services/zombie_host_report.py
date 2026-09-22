@@ -13,6 +13,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Mapping
 
+from apps.monitor.services.host_metric_queries import cpu_usage_query, diskio_io_util_query, mem_used_percent_query, net_packets_recv_query
 from apps.monitor.services.metric_series import window_selector
 
 MAX_HOSTS = 100
@@ -47,36 +48,22 @@ FOLD_MAX = "max"
 # Cross-platform selectors; `__$labels__` is replaced by the Task 5 handler.
 ZOMBIE_METRIC_SPECS: dict[str, dict[str, Any]] = {
     "cpu": {
-        "query": (
-            '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__})'
-            ' or host_cpu_usage_percent_gauge{instance_type="os", __$labels__}'
-            ' or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}'
-        ),
+        "query": cpu_usage_query(labels=True),
         "fold": FOLD_IDENTITY,
         "windows": ("avg", "max"),
     },
     "mem": {
-        "query": (
-            'mem_used_percent{instance_type="os", __$labels__}'
-            ' or host_mem_used_percent_gauge{instance_type="os", __$labels__}'
-            ' or mem_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}'
-        ),
+        "query": mem_used_percent_query(labels=True),
         "fold": FOLD_IDENTITY,
         "windows": ("avg", "max"),
     },
     "packets": {
-        "query": (
-            'rate(net_packets_recv{instance_type="os", __$labels__}[5m])'
-            ' or rate(net_packets_recv_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[5m])'
-        ),
+        "query": net_packets_recv_query(labels=True),
         "fold": FOLD_SUM,
         "windows": ("avg", "max"),
     },
     "io": {
-        "query": (
-            'diskio_io_util{instance_type="os", __$labels__}'
-            ' or diskio_io_util_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}'
-        ),
+        "query": diskio_io_util_query(labels=True),
         "fold": FOLD_MAX,
         "windows": ("max",),
     },

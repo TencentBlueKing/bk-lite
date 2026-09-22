@@ -155,4 +155,20 @@ describe('WidgetConfigPreview pane', () => {
     );
     expect(screen.getByTestId('widget-config-preview-copy-json')).toBeTruthy();
   });
+
+  it('shows loading instead of empty json while a refresh is in flight', async () => {
+    const user = userEvent.setup();
+    const rawData = { items: [{ cpu: 1 }] };
+
+    renderPreview({ rawData, loading: true, onRefresh: vi.fn() });
+
+    await user.click(screen.getByText('dashboard.configPreviewRawJson'));
+
+    expect(screen.getByTestId('widget-config-preview-json-loading')).toBeTruthy();
+    expect(screen.queryByTestId('widget-config-preview-json')).toBeNull();
+    expect(screen.queryByText('dashboard.configPreviewRawJsonEmpty')).toBeNull();
+    expect(
+      screen.getByTestId('widget-config-preview-refresh').hasAttribute('disabled'),
+    ).toBe(true);
+  });
 });

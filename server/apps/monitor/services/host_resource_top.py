@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from apps.monitor.services.host_metric_queries import cpu_usage_query, disk_used_percent_query, mem_used_percent_query
 from apps.monitor.utils.dimension import parse_instance_id
 
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "disk")
@@ -166,12 +167,11 @@ def build_ranked_rows(
 class HostResourceTopService:
     """Query and rank the latest resource values for authorized hosts."""
 
-    # Agent Telegraf Host only.
-    # CPU stores idle percent; convert to usage in _query. Memory/disk are usage %.
+    # Cross-plugin CPU/mem/disk usage percent (Agent, Remote, WMI, Unix remote).
     METRIC_QUERIES = {
-        "cpu": '{__name__="cpu_usage_idle",cpu="cpu-total"}',
-        "memory": '{__name__="mem_used_percent"}',
-        "disk": '{__name__="disk_used_percent"}',
+        "cpu": cpu_usage_query(),
+        "memory": mem_used_percent_query(),
+        "disk": disk_used_percent_query(),
     }
 
     def __init__(self, *, vm_api, now: datetime | None = None):
@@ -205,11 +205,6 @@ class HostResourceTopService:
             except (TypeError, ValueError, OSError, OverflowError):
                 continue
             raw_value = value[1]
-            if metric_type == "cpu":
-                try:
-                    raw_value = 100.0 - float(raw_value)
-                except (TypeError, ValueError):
-                    continue
             candidate_labels = {
                 "mount": labels.get("mount") or labels.get("path"),
                 "path": labels.get("path") or labels.get("device"),

@@ -1,8 +1,9 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Button, Space, Popconfirm, message, Form } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import TopSection from '@/components/top-section';
 import PermissionWrapper from '@/components/permission';
 import { NetworkWhiteListItem, useSettingsApi } from '@/app/system-manager/api/settings';
@@ -140,13 +141,16 @@ const NetworkWhitelistPage: React.FC = () => {
       render: (text: string) => (text ? convertToLocalizedTime(text) : '-'),
     },
     {
-      title: '',
-      key: 'action',
-      width: 100,
+      title: t('common.actions'),
+      key: 'actions',
+      width: 120,
+      fixed: 'right' as const,
       render: (_: unknown, record: NetworkWhiteListItem) => record.is_build_in ? null : (
-        <Space size={0}>
+        <Space>
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
+            <Button type="link" size="small" onClick={() => openEdit(record)}>
+              {t('common.edit')}
+            </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
@@ -155,7 +159,9 @@ const NetworkWhitelistPage: React.FC = () => {
               okText={t('common.yes')}
               cancelText={t('common.no')}
             >
-              <Button type="text" icon={<DeleteOutlined />} danger />
+              <Button type="link" size="small" danger>
+                {t('common.delete')}
+              </Button>
             </Popconfirm>
           </PermissionWrapper>
         </Space>
@@ -175,11 +181,11 @@ const NetworkWhitelistPage: React.FC = () => {
         <div className="mb-4 flex shrink-0 justify-end">
           <PermissionWrapper requiredPermissions={['Add']}>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              {t('system.settings.networkWhitelist.add')}
+              {t('common.new')}
             </Button>
           </PermissionWrapper>
         </div>
-        <div className="min-h-0 flex-1">
+        <SystemManagerFillTable>
           <CustomTable<NetworkWhiteListItem>
             dataSource={dataSource}
             columns={columns}
@@ -196,7 +202,7 @@ const NetworkWhitelistPage: React.FC = () => {
             }}
             rowKey="id"
           />
-        </div>
+        </SystemManagerFillTable>
       </section>
 
       <NetworkWhitelistFormModal

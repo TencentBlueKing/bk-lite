@@ -38,6 +38,7 @@ from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt.models import User as SystemMgmtUser
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.models.login_module import LoginModule
 from apps.system_mgmt.models.system_settings import SystemSettings
@@ -267,22 +268,17 @@ def verify_wechat_code(code: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def _safe_get_user_id_by_username(client, username):
-    """安全获取用户ID"""
+def _safe_get_user_id_by_username(username, domain="domain.com"):
+    """按精确用户名定位系统用户 ID，不走可枚举搜索接口。"""
     try:
-        res = client.search_users({"search": username})
-        users_list = res.get("data", {}).get("users", [])
-
-        if not users_list:
-            return None
-
-        for user in users_list:
-            if user.get("username") == username:
-                return user.get("id")
-
-        return None
-    except Exception as e:
-        logger.error(f"Error searching for user {username}: {e}")
+        user = SystemMgmtUser.objects.filter(username=username, domain=domain).only("id").first()
+        return user.id if user else None
+    except Exception as exc:
+        logger.error(
+            "event=user_id_lookup_failed failed_stage=username_lookup error_type=%s",
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
         return None
 
 
@@ -611,8 +607,10 @@ def login_info(request):
         # default_group = os.environ.get("TOP_GROUP", "Default")
         is_first_login = _check_first_login(request.user, "OpsPilotGuest")
 
-        client = _create_system_mgmt_client()
-        user_id = _safe_get_user_id_by_username(client, request.user.username)
+        user_id = _safe_get_user_id_by_username(
+            request.user.username,
+            getattr(request.user, "domain", "domain.com"),
+        )
 
         if user_id is None:
             logger.error(f"User not found: {request.user.username}")

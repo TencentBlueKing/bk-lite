@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useMemo, useState } from 'react';
-import { Input, Button, Spin, Form, Dropdown, Menu } from 'antd';
+import { Input, Button, Form, Dropdown, Menu } from 'antd';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import TopSection from '@/components/top-section';
 import UserModal, { ModalRef } from './userModal';
@@ -13,21 +13,25 @@ import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
+import SystemManagerResizablePane from '@/app/system-manager/components/system-manager-resizable-pane';
 import { TableRowSelection } from '@/app/system-manager/types/user';
-import PageLayout from '@/components/page-layout';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
+import SearchActionBar from '@/components/search-action-bar';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import GroupTree from '@/app/system-manager/components/user/GroupTree';
 import { createUserTableColumns } from '@/app/system-manager/components/user/tableColumns';
 import { useTreeData, useUserTable, useGroupManagement } from '@/app/system-manager/hooks/useUserStructure';
 import { nodeExistsInTree } from '@/app/system-manager/utils/userTreeUtils';
 import usePermissions from '@/hooks/usePermissions';
-import { DownOutlined, UploadOutlined } from '@ant-design/icons';
+import { DownOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import commonStyles from '@/app/system-manager/styles/common.module.scss';
 import styles from './index.module.scss';
+import SystemManagerWorkbenchShell, {
+  SystemManagerWorkbenchPanel,
+} from '@/app/system-manager/components/system-manager-workbench-shell';
 
-const { Search } = Input;
 const normalizeUserId = (userId: React.Key) => String(userId);
 
 const User: React.FC = () => {
@@ -182,114 +186,124 @@ const User: React.FC = () => {
 
   return (
     <>
-      <PageLayout
-        height='calc(100vh - 240px)'
-        topSection={<TopSection title={t('system.user.title')} content={t('system.user.desc')} />}
-        leftSection={
-          <div className={`w-full h-full flex flex-col ${styles.userInfo}`}>
-            <GroupTree
-              treeData={filteredTreeData}
-              searchValue={treeSearchValue}
-              onSearchChange={handleTreeSearchChange}
-              onAddRootGroup={handleAddRootGroup}
-              onOpenArchivedDrawer={() => setArchivedDrawerOpen(true)}
-              onTreeSelect={onTreeSelect}
-              onGroupAction={handleGroupAction}
-              t={t}
-              loading={treeLoading}
-            />
-          </div>
-        }
-        rightSection={
-          <>
-            <div className="w-full mb-4 flex justify-end">
-              <Search
-                allowClear
-                enterButton
-                className="w-60 mr-2"
-                onSearch={handleUserSearch}
-                placeholder={`${t('common.search')}...`}
-              />
-              <PermissionWrapper requiredPermissions={['Add User']}>
-                <Button type="primary" className="mr-2" onClick={() => openUserModal('add')}>
-                  +{t('common.add')}
-                </Button>
-              </PermissionWrapper>
-              <PermissionWrapper requiredPermissions={['Add User']}>
-                <Button className="mr-2" icon={<UploadOutlined />} onClick={() => userImportModalRef.current?.showModal()}>
-                  {t('common.import')}
-                </Button>
-              </PermissionWrapper>
-              <UserModal ref={userModalRef} treeData={treeData} onSuccess={onSuccessUserModal} />
-              <UserImportModal ref={userImportModalRef} treeData={treeData} onSuccess={onSuccessUserModal} />
-              {hasBatchActions && (
-                <Dropdown
-                  overlay={
-                    <Menu className={`${commonStyles.batchOperationMenu} ${styles.batchOperationMenuCentered}`}>
-                      {canEditUser && (
-                        <Menu.Item key="enable">
-                          <PermissionWrapper requiredPermissions={['Edit User']}>
-                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('enable')}>
-                              {t('common.enable') || 'Enable'}
-                            </Button>
-                          </PermissionWrapper>
-                        </Menu.Item>
-                      )}
-                      {canEditUser && (
-                        <Menu.Item key="disable">
-                          <PermissionWrapper requiredPermissions={['Edit User']}>
-                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('disable')}>
-                              {t('common.disable') || 'Disable'}
-                            </Button>
-                          </PermissionWrapper>
-                        </Menu.Item>
-                      )}
-                      {canEditUser && (
-                        <Menu.Item key="unlock">
-                          <PermissionWrapper requiredPermissions={['Edit User']}>
-                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('unlock')}>
-                              {t('system.user.status.unlock') || 'Unlock'}
-                            </Button>
-                          </PermissionWrapper>
-                        </Menu.Item>
-                      )}
-                      {canEditUser && canBatchUnbindOtp && (
-                        <Menu.Item key="unbind_otp">
-                          <PermissionWrapper requiredPermissions={['Edit User']}>
-                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('unbind_otp')}>
-                              {t('system.user.status.unbindOtp')}
-                            </Button>
-                          </PermissionWrapper>
-                        </Menu.Item>
-                      )}
-                      {canDeleteUser && (
-                        <Menu.Item key="delete">
-                          <PermissionWrapper requiredPermissions={['Delete User']}>
-                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('delete')}>
-                              {t('common.delete') || 'Delete'}
-                            </Button>
-                          </PermissionWrapper>
-                        </Menu.Item>
-                      )}
-                    </Menu>
-                  }
-                  trigger={['click']}
-                  disabled={isDeleteDisabled}
-                >
-                  <Button>
-                    {t('common.batchOperation') || 'Batch Operation'}
-                    <DownOutlined />
-                  </Button>
-                </Dropdown>
+      <SystemManagerWorkbenchShell
+        header={<TopSection title={t('system.user.title')} content={t('system.user.desc')} />}
+        leftWidthClassName=""
+        left={(
+          <SystemManagerResizablePane
+            storageKey="system-manager.user.structure.sidebarWidth"
+            defaultWidth={260}
+            minWidth={200}
+            maxWidth={420}
+          >
+            <SystemManagerWorkbenchPanel bodyClassName="flex min-h-0 flex-col p-4">
+              <div className={`flex h-full min-h-0 flex-col ${styles.userInfo}`}>
+                <GroupTree
+                  treeData={filteredTreeData}
+                  searchValue={treeSearchValue}
+                  onSearchChange={handleTreeSearchChange}
+                  onAddRootGroup={handleAddRootGroup}
+                  onOpenArchivedDrawer={() => setArchivedDrawerOpen(true)}
+                  onTreeSelect={onTreeSelect}
+                  onGroupAction={handleGroupAction}
+                  t={t}
+                  loading={treeLoading}
+                />
+              </div>
+            </SystemManagerWorkbenchPanel>
+          </SystemManagerResizablePane>
+        )}
+        right={(
+          <SystemManagerWorkbenchPanel bodyClassName="flex min-h-0 flex-col p-4">
+            <SearchActionBar
+              searchProps={{
+                placeholder: `${t('common.search')}...`,
+                onSearch: handleUserSearch,
+              }}
+              actions={(
+                <>
+                  <PermissionWrapper requiredPermissions={['Add User']}>
+                    <Button icon={<UploadOutlined />} onClick={() => userImportModalRef.current?.showModal()}>
+                      {t('common.import')}
+                    </Button>
+                  </PermissionWrapper>
+                  {hasBatchActions && (
+                    <Dropdown
+                      overlay={
+                        <Menu className={`${commonStyles.batchOperationMenu} ${styles.batchOperationMenuCentered}`}>
+                          {canEditUser && (
+                            <Menu.Item key="enable">
+                              <PermissionWrapper requiredPermissions={['Edit User']}>
+                                <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('enable')}>
+                                  {t('common.enable') || 'Enable'}
+                                </Button>
+                              </PermissionWrapper>
+                            </Menu.Item>
+                          )}
+                          {canEditUser && (
+                            <Menu.Item key="disable">
+                              <PermissionWrapper requiredPermissions={['Edit User']}>
+                                <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('disable')}>
+                                  {t('common.disable') || 'Disable'}
+                                </Button>
+                              </PermissionWrapper>
+                            </Menu.Item>
+                          )}
+                          {canEditUser && (
+                            <Menu.Item key="unlock">
+                              <PermissionWrapper requiredPermissions={['Edit User']}>
+                                <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('unlock')}>
+                                  {t('system.user.status.unlock') || 'Unlock'}
+                                </Button>
+                              </PermissionWrapper>
+                            </Menu.Item>
+                          )}
+                          {canEditUser && canBatchUnbindOtp && (
+                            <Menu.Item key="unbind_otp">
+                              <PermissionWrapper requiredPermissions={['Edit User']}>
+                                <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('unbind_otp')}>
+                                  {t('system.user.status.unbindOtp')}
+                                </Button>
+                              </PermissionWrapper>
+                            </Menu.Item>
+                          )}
+                          {canDeleteUser && (
+                            <Menu.Item key="delete">
+                              <PermissionWrapper requiredPermissions={['Delete User']}>
+                                <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('delete')}>
+                                  {t('common.delete') || 'Delete'}
+                                </Button>
+                              </PermissionWrapper>
+                            </Menu.Item>
+                          )}
+                        </Menu>
+                      }
+                      trigger={['click']}
+                      disabled={isDeleteDisabled}
+                    >
+                      <Button>
+                        {t('common.batchOperation') || 'Batch Operation'}
+                        <DownOutlined />
+                      </Button>
+                    </Dropdown>
+                  )}
+                  <PermissionWrapper requiredPermissions={['Add User']}>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => openUserModal('add')}>
+                      {t('common.new')}
+                    </Button>
+                  </PermissionWrapper>
+                  <UserModal ref={userModalRef} treeData={treeData} onSuccess={onSuccessUserModal} />
+                  <UserImportModal ref={userImportModalRef} treeData={treeData} onSuccess={onSuccessUserModal} />
+                  <PasswordModal
+                    ref={passwordModalRef}
+                    onSuccess={() => fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize })}
+                  />
+                </>
               )}
-              <PasswordModal
-                ref={passwordModalRef}
-                onSuccess={() => fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize })}
-              />
-            </div>
-            <Spin spinning={loading}>
+            />
+            <SystemManagerFillTable>
               <CustomTable
-                scroll={{ y: 'calc(100vh - 430px)' }}
+                loading={loading}
                 pagination={{
                   pageSize,
                   current: currentPage,
@@ -301,9 +315,9 @@ const User: React.FC = () => {
                 dataSource={tableData}
                 rowSelection={rowSelection}
               />
-            </Spin>
-          </>
-        }
+            </SystemManagerFillTable>
+          </SystemManagerWorkbenchPanel>
+        )}
       />
 
       <GroupEditModal ref={groupEditModalRef} onSuccess={onSuccessGroupEdit} />

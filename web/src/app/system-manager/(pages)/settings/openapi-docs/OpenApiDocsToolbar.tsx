@@ -105,13 +105,12 @@ const OpenApiDocsToolbar: React.FC<OpenApiDocsToolbarProps> = ({
           {t('system.settings.openapiDocs.totalCount', undefined, { count: filteredCount })}
         </span>
         <Button
-          type="text"
           icon={<ReloadOutlined />}
           loading={loading}
           onClick={onRefresh}
-          aria-label={t('common.refresh')}
-          title={t('common.refresh')}
-        />
+        >
+          {t('common.refresh')}
+        </Button>
       </div>
     </FilterToolbar>
   );

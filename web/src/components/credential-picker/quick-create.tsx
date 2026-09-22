@@ -62,10 +62,6 @@ export const CredentialQuickCreateForm: React.FC<CredentialQuickCreateFormProps>
   const watchedCategory = Form.useWatch('category', form);
   const watchedType = Form.useWatch('type', form);
   const selectedType = types.find((item) => item.key === watchedType);
-  const lockHint = t('system.credential.taskLockedHint', '当前任务已指定，不可修改。');
-  const extra = (locked: boolean | undefined) => (locked ? (
-    <span className="text-xs text-[var(--color-text-3)]">{lockHint}</span>
-  ) : null);
 
   const categoryIds = Array.from(new Set([
     ...CREDENTIAL_CATEGORIES,
@@ -84,7 +80,6 @@ export const CredentialQuickCreateForm: React.FC<CredentialQuickCreateFormProps>
         <Form.Item
           name="category"
           label={t('system.credential.categoryBelong')}
-          extra={extra(lockedCategory)}
           rules={[{ required: true }]}
         >
           <Select
@@ -99,7 +94,6 @@ export const CredentialQuickCreateForm: React.FC<CredentialQuickCreateFormProps>
         <Form.Item
           name="type"
           label={t('system.credential.credentialType')}
-          extra={extra(lockedType)}
           rules={[{ required: true }]}
         >
           <Select

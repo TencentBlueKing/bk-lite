@@ -7,6 +7,7 @@ const { Search } = Input;
 
 export interface SearchActionBarProps {
   searchProps: SearchProps;
+  filters?: React.ReactNode;
   actions?: React.ReactNode;
   className?: string;
   searchClassName?: string;
@@ -15,6 +16,7 @@ export interface SearchActionBarProps {
 
 const SearchActionBar: React.FC<SearchActionBarProps> = ({
   searchProps,
+  filters,
   actions,
   className = '',
   searchClassName = '',
@@ -28,6 +30,7 @@ const SearchActionBar: React.FC<SearchActionBarProps> = ({
       className={`${spacingClassName || ''} ${className}`.trim()}
       trailing={(
         <>
+          {filters}
           <Search
             allowClear={allowClear ?? true}
             enterButton={enterButton ?? true}

@@ -31,6 +31,7 @@ from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F40
     _build_lightweight_system_prompt,
     _build_planned_execution_runtime_middleware,
     _build_planned_execution_tool_visibility,
+    _catalog_has_business_tools,
     _plan_is_skills_only,
     _planned_step_already_answered,
     _planned_tool_step_guidance,
@@ -119,6 +120,29 @@ try:
 except ImportError:
     PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
+
+MISSING_PARAMS_NUDGE_LOG = "event=deepagent_missing_params_nudge objective=%s error_type=%s failed_stage=%s thread_id=%s"
+MISSING_PARAMS_ABORT_LOG = "event=deepagent_missing_params_abort objective=%s error_type=%s failed_stage=%s thread_id=%s"
+_MISSING_PARAMS_ERROR_TYPE = "MissingToolParams"
+_MISSING_PARAMS_FAILED_STAGE = "missing_params"
+_LOG_FIELD_MAX_LEN = 120
+
+
+def _bounded_log_field(value, max_len: int = _LOG_FIELD_MAX_LEN) -> str:
+    """规划器/用户侧字段只记有界单行，CR/LF 压成空格，空值记为 -。"""
+    text = " ".join(str(value or "").replace("\r", " ").replace("\n", " ").split())
+    if not text:
+        return "-"
+    return text if len(text) <= max_len else text[:max_len]
+
+
+def _missing_params_log_args(objective, thread_id) -> tuple[str, str, str, str]:
+    return (
+        _bounded_log_field(objective),
+        _MISSING_PARAMS_ERROR_TYPE,
+        _MISSING_PARAMS_FAILED_STAGE,
+        _bounded_log_field(thread_id, max_len=80),
+    )
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
@@ -2084,8 +2108,9 @@ class ToolsNodes(
         if kb_tool is not None:
             tools.append(kb_tool)
 
-        # 澄清选择卡必须给模型；K8s 修复报告仍由后端状态机派发，不向模型暴露。
-        if not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
+        # 澄清卡只在本轮已有业务工具时注入；空目录寒暄走轻量直答。
+        # K8s 修复报告仍由后端状态机派发，不向模型暴露。
+        if self._catalog_has_business_tools(tools) and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
             tools.append(self._build_choice_tool())
         return tools
 
@@ -2359,6 +2384,7 @@ class ToolsNodes(
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
+            missing_params_thread_id = getattr(graph_request, "thread_id", None)
 
             # 创建系统提示
             final_system_prompt = TemplateLoader.render_template(
@@ -2669,7 +2695,7 @@ class ToolsNodes(
                     additional_kwargs={"opspilot_planned_execution": True},
                 )
 
-            def _step_failure(messages: List[BaseMessage]) -> str:
+            def _step_failure(messages: List[BaseMessage]) -> tuple[str, bool]:
                 for message in reversed(messages):
                     if not isinstance(message, ToolMessage):
                         continue
@@ -2677,10 +2703,11 @@ class ToolsNodes(
                     content = message.content
                     # 技能脚本失败带 [OPSPILOT_SKILL_RESULT]，不算 is_tool_result_failure，
                     # 但仍按与业务工具同一套分型收口凭据/配置/实现异常。
-                    if is_non_replanable_tool_failure(content, status) or is_tool_result_failure(content, status):
+                    unrecoverable = is_non_replanable_tool_failure(content, status)
+                    if unrecoverable or is_tool_result_failure(content, status):
                         tool_name = str(getattr(message, "name", "") or "未知工具")
-                        return f"工具 {tool_name} 执行失败: {str(content)[:800]}"
-                return ""
+                        return f"工具 {tool_name} 执行失败: {str(content)[:800]}", unrecoverable
+                return "", False
 
             def _without_substitute_plan_text(messages: List[BaseMessage]) -> List[BaseMessage]:
                 return [message for message in messages if not is_substitute_plan_message(message)]
@@ -2915,7 +2942,10 @@ class ToolsNodes(
                                 break
                             if is_missing_tool_params_failure(failure):
                                 if missing_params_nudged:
-                                    logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划: %s", failure[:400])
+                                    logger.warning(
+                                        MISSING_PARAMS_ABORT_LOG,
+                                        *_missing_params_log_args(step.objective, missing_params_thread_id),
+                                    )
                                     completed_steps.append(
                                         CompletedExecutionStep(
                                             objective=step.objective,
@@ -2937,7 +2967,10 @@ class ToolsNodes(
                                     step_finished = True
                                     break
                                 missing_params_nudged = True
-                                logger.debug("DeepAgent 步骤因缺参改为向用户澄清: %s", failure[:400])
+                                logger.debug(
+                                    MISSING_PARAMS_NUDGE_LOG,
+                                    *_missing_params_log_args(step.objective, missing_params_thread_id),
+                                )
                                 step_payload = {
                                     **agent_state,
                                     "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
@@ -2955,7 +2988,10 @@ class ToolsNodes(
                         step_messages = result_messages[len(step_payload["messages"]) :]
                         if step_has_unasked_missing_params(step_messages):
                             if missing_params_nudged:
-                                logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划")
+                                logger.warning(
+                                    MISSING_PARAMS_ABORT_LOG,
+                                    *_missing_params_log_args(step.objective, missing_params_thread_id),
+                                )
                                 _collect_output_messages(_without_substitute_plan_text(step_messages))
                                 completed_steps.append(
                                     CompletedExecutionStep(
@@ -2978,7 +3014,10 @@ class ToolsNodes(
                                 step_finished = True
                                 break
                             missing_params_nudged = True
-                            logger.debug("DeepAgent 步骤因缺参改为向用户澄清")
+                            logger.debug(
+                                MISSING_PARAMS_NUDGE_LOG,
+                                *_missing_params_log_args(step.objective, missing_params_thread_id),
+                            )
                             agent_state = step_result
                             step_payload = {
                                 **agent_state,
@@ -3028,7 +3067,7 @@ class ToolsNodes(
                             step_finished = True
                             break
 
-                        failure = _step_failure(step_messages)
+                        failure, unrecoverable_failure = _step_failure(step_messages)
                         agent_state = step_result
                         if k8s_target_lookup_exhausted_from_messages(step_messages):
                             _collect_output_messages(step_messages)
@@ -3086,7 +3125,7 @@ class ToolsNodes(
                                 agent_state = _compact_agent_state_with_summaries(overflow=True)
                                 step_finished = True
                                 break
-                            if is_non_replanable_tool_failure(failure):
+                            if unrecoverable_failure or is_non_replanable_tool_failure(failure):
                                 await _abort_unrecoverable_step(failure, extra_messages=step_messages)
                                 break
                             if replan_count >= 2:

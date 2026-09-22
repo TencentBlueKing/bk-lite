@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { getValueByPath } from '@/app/ops-analysis/components/ops-analysis-config-sections';
 import { resolveOpsChartThemeName } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
 import type {
   DatasourceItem,
@@ -8,6 +7,11 @@ import type {
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import ChartSurface from '@/components/chart-surface';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
+import {
+  buildTopNItems,
+  resolveTopNBarPercent,
+  resolveTopNMaxValue,
+} from '@/app/ops-analysis/utils/topNData';
 
 export interface OpsAnalysisTopNProps {
   rawData: any;
@@ -16,28 +20,6 @@ export interface OpsAnalysisTopNProps {
   dataSource?: DatasourceItem;
   onReady?: (ready: boolean) => void;
 }
-
-interface TopNItem {
-  name: string;
-  value: number;
-}
-
-const unwrapTopNData = (data: any): any[] => {
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (data && typeof data === 'object') {
-    if (Array.isArray(data.items)) {
-      return data.items;
-    }
-    if (Array.isArray(data.data)) {
-      return data.data;
-    }
-  }
-
-  return [];
-};
 
 export const resolveTopNHeaderLabel = (fieldKey?: string, fieldSchema?: ResponseFieldDefinition[]) => {
   const key = String(fieldKey || '').trim();
@@ -63,49 +45,8 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
   const labelHeader = resolveTopNHeaderLabel(labelField, dataSource?.field_schema);
   const valueHeader = resolveTopNHeaderLabel(valueField, dataSource?.field_schema);
 
-  const transformData = (data: any): TopNItem[] => {
-    const rows = unwrapTopNData(data);
-    if (rows.length === 0) return [];
-
-    if (Array.isArray(rows[0])) {
-      return rows
-        .map((item: any[]) => {
-          const rawName = getValueByPath(item, labelField);
-          const rawValue = getValueByPath(item, valueField);
-
-          const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
-          const value = Number(rawValue);
-          if (!name || Number.isNaN(value)) {
-            return null;
-          }
-
-          return { name, value };
-        })
-        .filter((item: TopNItem | null): item is TopNItem => item !== null);
-    }
-
-    if (typeof rows[0] === 'object') {
-      return rows
-        .map((item: any) => {
-          const rawName = getValueByPath(item, labelField);
-          const rawValue = getValueByPath(item, valueField);
-
-          const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
-          const value = Number(rawValue);
-          if (!name || Number.isNaN(value)) {
-            return null;
-          }
-
-          return { name, value };
-        })
-        .filter((item: TopNItem | null): item is TopNItem => item !== null);
-    }
-
-    return [];
-  };
-
-  const items = transformData(rawData);
-  const maxValue = items.length > 0 ? Math.max(...items.map((item) => item.value)) : 0;
+  const items = buildTopNItems(rawData, labelField, valueField);
+  const maxValue = resolveTopNMaxValue(items);
   const isDataReady = items.length > 0;
 
   useEffect(() => {
@@ -149,7 +90,7 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
         }}
       >
         {items.map((item, index) => {
-          const percent = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
+          const percent = resolveTopNBarPercent(item.value, maxValue);
 
           return (
             <React.Fragment key={`${item.name}-${index}`}>
@@ -172,7 +113,7 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${Math.max(percent, item.value > 0 ? 2 : 0)}%`,
+                      width: `${Math.max(percent, (item.value ?? 0) > 0 ? 2 : 0)}%`,
                       background: isDark
                         ? 'linear-gradient(90deg, #5b8cff 0%, #2f6bff 100%)'
                         : 'linear-gradient(90deg, #4f7df3 0%, #235ee8 100%)',

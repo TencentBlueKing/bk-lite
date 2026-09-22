@@ -1,6 +1,6 @@
 Wireless Huawei AC SNMP:
   name: 华为 WLAN AC（Telegraf）
-  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、机箱已用/总功耗（瓦特）、风扇转速（满速百分比）与风扇状态、AP 环境/CPU/NP 温度、AP/终端数量、射频占用、上联流量和光模块 DDM 等主要指标。无风扇机型风扇表可为空。
+  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、机箱已用/总功耗（瓦特）、风扇转速（满速百分比）与风扇状态、AP 环境/CPU/NP 温度、AP/终端数量、射频占用、信道干扰率、上联流量和光模块 DDM 等主要指标。无风扇机型风扇表可为空。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:
@@ -165,6 +165,9 @@ monitor_object_metric:
     wlan_radio_free:
       name: 射频空闲率
       desc: 射频信道空闲比例（hwWlanRadioFree），0～100。空闲过低表示该射频难以再承载更多负载。
+    wlan_radio_interference:
+      name: 射频信道干扰率
+      desc: 射频信道干扰率（hwWlanRadioChInterferenceRate），0～100。索引与利用率、底噪相同（AP MAC + 射频 ID）。干扰率持续偏高且终端不多，通常表示同频或非 Wi-Fi 能量占用工作信道。
     wlan_radio_sta_num:
       name: 射频终端数
       desc: 射频当前接入终端数量（hwWlanRadioStaNum）。

@@ -1,6 +1,7 @@
 Host Solaris Remote:
   name: Solaris主机远程采集
-  desc: 由 Linux 采集节点按采集间隔 SSH 到 Solaris，执行系统命令。x86 与 SPARC 共用本插件。采集 CPU、负载、内存与交换区、磁盘容量与 inode、读写与忙碌、网卡、运行时长和操作系统版本。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本与架构自动识别。
+  desc: 由 Linux 采集节点按采集间隔 SSH 到 Solaris，执行系统命令。x86 与 SPARC 共用本插件。采集 CPU、负载、内存与交换区、磁盘容量与 inode、读写与忙碌、网卡、运行时长和操作系统版本。目标主机无需安装采集器。表单填写
+    IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本与架构自动识别。
 monitor_object:
   Host: 主机
 monitor_object_type:
@@ -73,6 +74,9 @@ monitor_object_metric:
     mem_used_percent:
       name: 内存使用率
       desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    mem_available:
+      name: 可用内存
+      desc: 表示当前可回收的可用物理内存（空闲页加 ZFS ARC；无 ARC 时仅为空闲页）。
     mem_swap_free:
       name: 空闲交换内存
       desc: 表示当前剩余可用的交换区空间，用于监控内存紧张情况下的缓冲能力。

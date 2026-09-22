@@ -8,10 +8,12 @@ import {
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 
-import PageLayout from '@/components/page-layout';
-import TopSection from '@/components/top-section';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
+import TopSection from '@/components/top-section';
+import SystemManagerWorkbenchShell, {
+  SystemManagerWorkbenchPanel,
+} from '@/app/system-manager/components/system-manager-workbench-shell';
 import UserSyncSourceList, {
   type UserSyncSourceCardItem,
   type UserSyncStatusTone,
@@ -146,7 +148,7 @@ const UserSyncPage: React.FC = () => {
   }, []);
 
   const entityListItems = useMemo<UserSyncEntityItem[]>(() => {
-    return sources.map((source) => {
+    const items = sources.map((source) => {
       const providerKey =
         source.integration_provider_key
         || availableInstances.find((item) => item.id === source.integration_instance)?.provider_key
@@ -183,6 +185,7 @@ const UserSyncPage: React.FC = () => {
         dependencyStatusText,
       };
     });
+    return items;
   }, [availableInstances, convertToLocalizedTime, sources, t]);
 
   const showPreviewSuccess = (result: { estimated_user_count: number; estimated_group_count?: number }) => {
@@ -485,47 +488,48 @@ const UserSyncPage: React.FC = () => {
   }, [getRunById, progressRun, t]);
 
   const operateSection = useMemo(() => (
-    <div className="ml-2 flex flex-wrap items-center gap-2">
+    <>
       <Button onClick={openRecords} disabled={sources.length === 0}>
         {t('system.user.userSyncPage.records')}
       </Button>
-      <PermissionWrapper requiredPermissions={['Add']}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
-          {t('system.user.userSyncPage.addSource')}
-        </Button>
-      </PermissionWrapper>
       <Button
-        type="text"
         icon={<ReloadOutlined />}
         onClick={handleRefresh}
         loading={refreshing}
-        aria-label={t('common.refresh')}
-      />
-    </div>
+      >
+        {t('common.refresh')}
+      </Button>
+      <PermissionWrapper requiredPermissions={['Add']}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
+          {t('common.new')}
+        </Button>
+      </PermissionWrapper>
+    </>
   ), [handleRefresh, openAdd, openRecords, refreshing, sources.length, t]);
 
   return (
     <>
-      <PageLayout
-        height="calc(100vh - 240px)"
-        topSection={
+      <SystemManagerWorkbenchShell
+        header={(
           <TopSection
             title={t('system.integrationCenter.capability.userSync')}
             content={t('system.user.userSyncPage.pageDesc')}
           />
-        }
-        rightSection={
-          <UserSyncSourceList
-            data={entityListItems}
-            loading={loading}
-            operateSection={operateSection}
-            onEdit={(item) => openBasic(item.raw)}
-            onConfig={(item) => openConfig(item.raw)}
-            onStrategy={(item) => openStrategy(item.raw)}
-            onDelete={(item) => handleDelete(item.raw)}
-            onSyncNow={(item) => handleSyncNow(item.raw)}
-          />
-        }
+        )}
+        right={(
+          <SystemManagerWorkbenchPanel bodyClassName="flex min-h-0 flex-col p-4">
+            <UserSyncSourceList
+              data={entityListItems}
+              loading={loading}
+              operateSection={operateSection}
+              onEdit={(item) => openBasic(item.raw)}
+              onConfig={(item) => openConfig(item.raw)}
+              onStrategy={(item) => openStrategy(item.raw)}
+              onDelete={(item) => handleDelete(item.raw)}
+              onSyncNow={(item) => handleSyncNow(item.raw)}
+            />
+          </SystemManagerWorkbenchPanel>
+        )}
       />
 
       <UserSyncOperateModal

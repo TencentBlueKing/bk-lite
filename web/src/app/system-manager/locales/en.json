@@ -1,5 +1,10 @@
 {
   "system": {
+    "listCard": {
+      "owner": "Owner",
+      "team": "Team",
+      "loading": "Loading"
+    },
     "permission": {
       "type": "Type",
       "dataPermission": "Data Permission",
@@ -1522,7 +1527,6 @@
       "addCredential": "Add credential",
       "quickCreateTitle": "Create and select credential",
       "saveAndSelect": "Save and select",
-      "taskLockedHint": "Set by the current task and cannot be changed.",
       "selectTypeFirst": "Select a credential type first",
       "createCredential": "New credential",
       "editCredentialTitle": "Edit credential-{name}",

@@ -1148,39 +1148,26 @@ class Neo4jClient:
             "data": data,
         }
 
-    def full_text(self, search: str, permission_params: str = "", instance_permission_params: dict = None, created: str = ""):
-        """全文检索"""
-        if instance_permission_params is None:
-            instance_permission_params = {}
-
-        # 构建基础权限条件（组织权限）
-        base_condition = permission_params or ""
-
-        # 在组织权限基础上，添加实例权限过滤
-        instance_permission_str = self.format_instance_permission_params(instance_permission_params, created)
-
-        # 组合最终权限条件
-        permission_conditions = []
-
-        # 如果有组织权限，所有条件都必须在组织权限范围内
-        if base_condition:
-            if instance_permission_str:
-                # 组织权限 AND (实例权限 OR 创建人权限)
-                permission_conditions.append(f"{base_condition} AND ({instance_permission_str})")
-            else:
-                # 仅组织权限
-                permission_conditions.append(base_condition)
-        elif instance_permission_str:
-            # 仅实例权限（包含创建人权限）
-            permission_conditions.append(f"({instance_permission_str})")
-
-        final_permission_condition = " OR ".join(permission_conditions) if permission_conditions else ""
-
-        # 组合权限条件和全文检索条件
-        where_condition = f"({final_permission_condition}) AND" if final_permission_condition else ""
-
-        query = f"""MATCH (n:{INSTANCE}) WHERE {where_condition} ANY(key IN keys(n) WHERE (NOT n[key] IS NULL AND ANY(value IN n[key] WHERE toString(value) CONTAINS $search))) RETURN n"""  # noqa
-        objs = self.session.run(query, search=search)
+    def full_text(
+        self,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
+    ):
+        """全文检索。签名与 FalkorDB 及 InstanceManage.fulltext_search 对齐。"""
+        where_clause, query_params = self._full_text_where(
+            search=search,
+            permission_params=permission_params,
+            inst_name_params=inst_name_params,
+            created=created,
+            case_sensitive=case_sensitive,
+            permission_params_dict=permission_params_dict,
+        )
+        query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n"
+        objs = self.session.run(query, **query_params)
         return self.entity_to_list(objs)
 
     def batch_save_entity(

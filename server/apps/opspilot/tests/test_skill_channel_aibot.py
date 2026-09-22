@@ -1,16 +1,23 @@
 """智能体企微 aibot 渠道：协议复用 + 单 Agent 异步回覆。"""
 
+import logging
 from unittest.mock import patch
 
 import pytest
 from django.test import RequestFactory
 
+from apps.core.logger import safe_log_value
 from apps.opspilot import views as opspilot_views
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation
-from apps.opspilot.services.skill_channel_aibot import SkillChannelAibotUtils, normalize_aibot_channel_config
+from apps.opspilot.services.skill_channel_aibot import (
+    SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE,
+    SkillChannelAibotUtils,
+    normalize_aibot_channel_config,
+)
 from apps.opspilot.tasks import process_skill_channel_aibot_message, process_skill_channel_aibot_reply
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCryptoError
+from apps.opspilot.views.skill_channel import SKILL_CHANNEL_IM_ACCEPTED_TEMPLATE
 
 pytestmark = pytest.mark.django_db
 
@@ -39,7 +46,7 @@ class TestNormalizeConfig:
     def test_wraps_flat_config(self):
         assert normalize_aibot_channel_config({"token": "t", "encodingAESKey": "k", "aibotid": "a"}) == {
             "connectionMode": "webhook",
-            "webhook": {"token": "t", "encodingAESKey": "k", "aibotid": "a"},
+            "webhook": {"token": "t", "encodingAESKey": "k"},
         }
 
     def test_keeps_bot_shape(self):
@@ -48,6 +55,15 @@ class TestNormalizeConfig:
 
 
 class TestAibotHttp:
+    def test_wecom_callback_skips_login_token(self):
+        from apps.core.middlewares.auth_middleware import AuthMiddleware
+
+        assert getattr(opspilot_views.execute_skill_channel_im, "api_exempt", False) is True
+        mw = AuthMiddleware(get_response=lambda r: None)
+        req = RequestFactory().get("/api/v1/opspilot/skill_channel/1/enterprise_wechat_aibot/")
+        assert not req.META.get("HTTP_AUTHORIZATION")
+        assert mw.process_view(req, opspilot_views.execute_skill_channel_im, [], {}) is None
+
     def test_disabled_returns_403(self):
         skill = _skill()
         ch = _aibot_channel(skill, enabled=False)
@@ -66,6 +82,55 @@ class TestAibotHttp:
             resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
         assert resp.status_code == 200
         assert resp.content == b"plain"
+
+    def test_url_verification_logs_accepted_without_query_secrets(self, caplog):
+        token_sentinel = "WECOM_TOKEN_SENTINEL_do_not_log"
+        signature_sentinel = "MSG_SIGNATURE_SENTINEL_do_not_log"
+        echo_sentinel = "ECHOSTR_SENTINEL_do_not_log"
+        skill = _skill()
+        ch = _aibot_channel(
+            skill,
+            config={"token": token_sentinel, "encodingAESKey": "0" * 43},
+        )
+        req = RequestFactory().get(
+            "/",
+            {
+                "msg_signature": signature_sentinel,
+                "timestamp": "1",
+                "nonce": "n",
+                "echostr": echo_sentinel,
+            },
+        )
+        caplog.set_level(logging.INFO, logger="opspilot")
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.verify_url",
+            return_value="plain",
+        ):
+            resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        assert resp.status_code == 200
+        assert resp.content == b"plain"
+
+        records = [record for record in caplog.records if record.msg == SKILL_CHANNEL_IM_ACCEPTED_TEMPLATE]
+        assert len(records) == 1
+        record = records[0]
+        assert record.levelno == logging.INFO
+        assert record.args == (
+            ch.id,
+            safe_log_value(SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT),
+            safe_log_value("GET"),
+        )
+        rendered = record.getMessage()
+        formatted = logging.Formatter().format(record)
+        expected = SKILL_CHANNEL_IM_ACCEPTED_TEMPLATE % (
+            ch.id,
+            safe_log_value(SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT),
+            safe_log_value("GET"),
+        )
+        assert rendered == expected
+        for text in (rendered, formatted, caplog.text):
+            assert token_sentinel not in text
+            assert signature_sentinel not in text
+            assert echo_sentinel not in text
 
     def test_post_text_dispatches_skill_aibot_task(self):
         skill = _skill()
@@ -103,6 +168,34 @@ class TestAibotHttp:
         assert kwargs["message"]["last_message"] == "查询 CPU"
         assert kwargs["config"]["response_url"] == "https://example.com/response"
 
+    def test_post_ignores_stored_aibotid(self):
+        skill = _skill()
+        ch = _aibot_channel(
+            skill,
+            config={
+                "connectionMode": "webhook",
+                "webhook": {"token": "tok", "encodingAESKey": "0" * 43, "aibotid": "expected"},
+            },
+        )
+        message = {
+            "msgid": "m-ignore-aibot",
+            "aibotid": "actual",
+            "from": {"userid": "user-1"},
+            "msgtype": "text",
+            "text": {"content": "hi"},
+        }
+        req = RequestFactory().post("/", data=b'{"encrypt":"x"}', content_type="application/json")
+        with patch(
+            "apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils.EnterpriseWechatAibotCrypto.decrypt_callback",
+            return_value=message,
+        ), patch.object(SkillChannelAibotUtils, "is_message_processed", return_value=False), patch(
+            "apps.opspilot.tasks.process_skill_channel_aibot_message.delay"
+        ) as delay:
+            resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+        assert resp.content == b"success"
+        delay.assert_called_once()
+        assert delay.call_args.kwargs["msg_id"] == "m-ignore-aibot"
+
     def test_post_decrypt_error_acks_without_dispatch(self):
         skill = _skill()
         ch = _aibot_channel(skill)
@@ -114,6 +207,61 @@ class TestAibotHttp:
             resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
         assert resp.content == b"success"
         delay.assert_not_called()
+
+    def test_post_invalid_signature_logs_without_secrets_or_traceback(self, caplog):
+        import base64
+        import hashlib
+        import json
+        import struct
+
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+        token_sentinel = "WECOM_TOKEN_SENTINEL_do_not_log"
+        encrypt_sentinel = "WECOM_ENCRYPT_SENTINEL"
+        encoding_aes_key = base64.b64encode(b"0" * 32).decode("utf-8").rstrip("=")
+        key = base64.b64decode(f"{encoding_aes_key}=")
+        content = json.dumps({"msgid": "m1"}, separators=(",", ":")).encode("utf-8")
+        plain = b"1" * 16 + struct.pack("!I", len(content)) + content
+        pad = 32 - (len(plain) % 32)
+        plain = plain + bytes([pad]) * pad
+        cipher = Cipher(algorithms.AES(key), modes.CBC(key[:16]))
+        encrypted = base64.b64encode(cipher.encryptor().update(plain) + cipher.encryptor().finalize()).decode("utf-8")
+        signature = hashlib.sha1("".join(sorted([token_sentinel, "1", "n", encrypted])).encode("utf-8")).hexdigest()
+
+        skill = _skill()
+        ch = _aibot_channel(
+            skill,
+            config={
+                "connectionMode": "webhook",
+                "webhook": {"token": "wrong-token", "encodingAESKey": encoding_aes_key},
+            },
+        )
+        req = RequestFactory().post(
+            "/",
+            data=json.dumps({"encrypt": encrypted, "note": encrypt_sentinel}).encode("utf-8"),
+            content_type="application/json",
+            QUERY_STRING=f"msg_signature={signature}&timestamp=1&nonce=n",
+        )
+        caplog.set_level(logging.INFO, logger="opspilot")
+        with patch("apps.opspilot.tasks.process_skill_channel_aibot_message.delay") as delay:
+            resp = opspilot_views.execute_skill_channel_im(req, ch.id, SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT)
+
+        assert resp.status_code == 200
+        assert resp.content == b"success"
+        delay.assert_not_called()
+        records = [record for record in caplog.records if record.msg == SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE]
+        assert len(records) == 1
+        record = records[0]
+        assert record.levelno == logging.WARNING
+        assert record.exc_info is None
+        assert record.args == (ch.id, "invalid signature", True, True, True, len("wrong-token"))
+        rendered = record.getMessage()
+        formatted = logging.Formatter().format(record)
+        for text in (rendered, formatted, caplog.text):
+            assert token_sentinel not in text
+            assert encrypt_sentinel not in text
+            assert encrypted not in text
+            assert signature not in text
 
     def test_post_duplicate_skips_dispatch(self):
         skill = _skill()

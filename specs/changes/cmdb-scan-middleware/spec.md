@@ -25,9 +25,9 @@ Status: ready
 ### 族与类型
 
 - 任务 `families` 增加 `middleware`，与网络 / 主机 / 物理机 / `database` / InfluxDB 并列。保存仍存这一份族名，不把 nginx 等写进 `families`。
-- 第一期运行时拆成 7 个 JOB family_run：`nginx`、`tomcat`、`kafka`、`zookeeper`、`rabbitmq`、`consul`、`etcd`。界面不做类型子勾选。
+- 第一期运行时拆成 7 个 JOB 类型：`nginx`、`tomcat`、`kafka`、`zookeeper`、`rabbitmq`、`consul`、`etcd`。界面不做类型子勾选。触发时不一次打满 7 枪，由扫描工作队列按 IP 切批、同时只飞一批（见 `specs/changes/cmdb-scan-work-queue/spec.md`）。
 - `driver_type` 为 job，插件名仍是各模型现有 `nginx_info` 等。扫描外壳（IP 段、凭据池、凭据结果 subject）与现有扫描一致，不改发现脚本，不新增统一中间件扫描器。
-- 端口特征库里即使已有 redis 等中间件端口，本轮仍不按数据库那样做协议探测。端口库不是发现本体。
+- 端口特征库里即使已有 redis 等中间件端口，发现本体仍是 JOB 脚本，不按数据库那样做协议登录。工作队列可用常见监听端口做 TCP 过滤，探测全空则不过滤。
 - Redis / Mongo / ES 仍挂在采集树数据库下，不进本族。Apache / MinIO / IIS 等 Beta 不进。
 
 ### 凭据：空则 Agent，填写则 SSH
@@ -53,7 +53,7 @@ Status: ready
 - 凭据回传仍按主机计进度。JOB 成功时通道端口常常是 22，不能当成中间件业务端口。
 - 收口后按该 family_run 的现有 mapping 拉指标，按 `listen_port`（或脚本等价字段）拆成多条 success 命中。唯一键：`family_run（模型）+ host + listen_port + credential_id`。
 - snapshot 写入 inst_name、ip、port、version、安装/配置/日志路径等该模型已有字段。`cmdb_model_id` 即 nginx / tomcat 等。
-- SSH 或 Agent 通了但脚本没有进程：不得留下 port=22 的假实例，不进清单。
+- **禁止把 VictoriaMetrics 空结果当成「没有中间件」去删 JOB success 命中。** 凭据回传成功先于 VM 落盘；实测 nginx/consul 脚本已成功、稍后 `nginx_info_gauge` / `consul_info_gauge` 可读。空指标时必须保留命中，通道口 22 改成该类型默认监听口；有指标再按 listen_port 拆行。只有 JOB 失败 / 不可达才不进清单。收口不等死固定窗口：先落命中并结束任务，路径字段由后续补齐写入 snapshot。
 - 失败 / 不可达 / 无 Agent：只计进度。中间件不做数据库那种鉴权失败未匹配，也没有 SOID 分类。
 
 ### 写 CI 与生成采集
@@ -79,7 +79,7 @@ Status: ready
 
 - 扫描任务校验：`middleware` 合法；主机 / 中间件允许空池；网络 / 数据库 / InfluxDB 空池仍拒绝；Agent 中间件缺云区域拒绝；SSH 中间件可不填云区域。
 - 扫描触发（mock 接纳）：`middleware` 拆出 7 个 JOB family_run 与插件名；空池不 `ADMIT_FAILED`；主机有 SSH 时中间件复用该池；端口特征库中间件端口仍不出现在数据库枪里。
-- 收口 / 写 CI：多 `listen_port` 拆多行；无进程不进清单；同 IP 主机存在才建 run 关联。
+- 收口 / 写 CI：多 `listen_port` 拆多行；JOB success 在指标空时仍保留（通道口改默认监听口），不得删除；同 IP 主机存在才建 run 关联。收口不阻塞等 VM；缺路径时异步补齐 snapshot。
 - 生成采集：SSH 行带密码字段；Agent 行凭据为空。
 - 推监控：中间件行 skipped；主机 Agent 不走带凭据 Host Remote。
 - 前端类型检查覆盖：族勾选、空凭据提示、云区域提示、清单列、推监控禁用文案、主机展示名。

@@ -10,9 +10,10 @@ interface ApprovalCardProps {
   request: ApprovalRequest;
   token: string;
   onDecision: (toolCallId: string, decision: 'approved' | 'rejected') => void;
+  readOnly?: boolean;
 }
 
-const ApprovalCard: React.FC<ApprovalCardProps> = ({ request, token, onDecision }) => {
+const ApprovalCard: React.FC<ApprovalCardProps> = ({ request, token, onDecision, readOnly = false }) => {
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -35,6 +36,7 @@ const ApprovalCard: React.FC<ApprovalCardProps> = ({ request, token, onDecision 
   }, [request.received_at, request.timeout_seconds, request.status]);
 
   const handleSubmit = useCallback(async (decision: 'approved' | 'rejected') => {
+    if (readOnly) return;
     setSubmitting(true);
     // 后端 API 要求 'approve' / 'reject'（不带 -d/-ed 后缀）
     const apiDecision = decision === 'approved' ? 'approve' : 'reject';
@@ -62,7 +64,7 @@ const ApprovalCard: React.FC<ApprovalCardProps> = ({ request, token, onDecision 
     } finally {
       setSubmitting(false);
     }
-  }, [token, request, reason, onDecision, t]);
+  }, [token, request, reason, onDecision, t, readOnly]);
 
   const isTimedOut = remainingSeconds <= 0 && request.status === 'pending';
   const isPending = request.status === 'pending' && !isTimedOut;
@@ -115,7 +117,7 @@ const ApprovalCard: React.FC<ApprovalCardProps> = ({ request, token, onDecision 
         <span>{statusText()}</span>
       </div>
 
-      {isPending && (
+      {isPending && !readOnly && (
         <>
           <Input
             size="small"

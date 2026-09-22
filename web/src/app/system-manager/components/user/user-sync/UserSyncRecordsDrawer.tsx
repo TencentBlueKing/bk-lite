@@ -127,12 +127,12 @@ const UserSyncRecordsDrawer: React.FC<UserSyncRecordsDrawerProps> = ({
           }}
           actions={(
             <Button
-              type="text"
               icon={<ReloadOutlined />}
               onClick={onRefresh}
               loading={loading}
-              aria-label={t('common.refresh')}
-            />
+            >
+              {t('common.refresh')}
+            </Button>
           )}
         />
       </div>
