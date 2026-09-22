@@ -76,7 +76,7 @@ const FormTimeSelector: React.FC<{
   };
 
   return (
-    <div className="w-full">
+    <div className="min-w-0 w-full">
       {disabled ? (
         <Input
           size="small"

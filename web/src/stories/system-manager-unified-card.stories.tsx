@@ -75,18 +75,22 @@ export const UserSyncPaused: Story = {
         <span>根组织默认组织</span>
       </>
     ),
-    footer: 'custom',
-    footerLeft: (
-      <div className="text-xs leading-5 text-[var(--color-text-3)]">
-        <span>最近同步 --</span>
-        <span className="mx-1">·</span>
-        <span>暂无记录</span>
+    menuItems: [
+      { key: 'strategy', label: '同步策略' },
+    ],
+    body: (
+      <div className="flex flex-col gap-2">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0 truncate text-xs leading-5 text-[var(--color-text-3)]">
+            <span>最近同步 --</span>
+            <span className="mx-1">·</span>
+            <span>暂无记录</span>
+          </div>
+          <Button type="primary" size="small" className="shrink-0" disabled>
+            立即同步
+          </Button>
+        </div>
       </div>
-    ),
-    footerActions: (
-      <Button type="primary" size="small" disabled>
-        立即同步
-      </Button>
     ),
   },
 };

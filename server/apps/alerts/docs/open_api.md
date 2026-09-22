@@ -46,10 +46,10 @@ https://bk-lite.example.com/api/v1/alerts/api/open/alerts
 API Token 需要在 BK-Lite 产品页面申请，入口为：
 
 ```text
-系统管理 → 平台设置 → 密钥
+系统管理 → 平台管理 → API 令牌
 ```
 
-在该页面申请密钥后，将获得的 Token 作为接口认证凭据。本文中的“API Secret”与产品页面申请到的“API Token”指同一凭据。
+在该页面申请令牌后，将获得的 Token 作为接口认证凭据。本文中的“API Secret”与产品页面申请到的“API Token”指同一凭据。
 
 所有接口都必须携带请求头：
 

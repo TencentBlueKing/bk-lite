@@ -637,6 +637,64 @@ def test_multi_channel_enqueue_is_idempotent_across_retries(alert_center_channel
     assert MonitorAlertCenterDelivery.objects.filter(alert=alert).count() == 2
 
 
+def _delivery_status_selects(captured_queries):
+    selects = []
+    for query in captured_queries:
+        sql = query["sql"].lstrip()
+        if "monitor_alert_center_delivery" in sql.lower() and sql.lower().startswith("select"):
+            selects.append(sql)
+    return selects
+
+
+def test_outbox_enqueue_batches_delivery_status_lookups(alert_center_channel, monkeypatch):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_ENABLED",
+        True,
+    )
+    monkeypatch.setattr("apps.monitor.services.alert_center_delivery._schedule_deliveries", lambda ids: None)
+    second_channel = Channel.objects.create(
+        name="备用告警中心-批量查询",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    notifier = AlertLifecycleNotifier(SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True))
+    channel_ids = [alert_center_channel.id, second_channel.id]
+
+    small_alerts = [
+        _alert(
+            alert_center_channel,
+            monitor_instance_id=f"host-small-{index}",
+            notice_type_ids=channel_ids,
+        )
+        for index in range(2)
+    ]
+    with CaptureQueriesContext(connection) as small_ctx:
+        small_ids = enqueue_alert_center_deliveries(small_alerts, "created", notifier=notifier)
+    small_selects = _delivery_status_selects(small_ctx.captured_queries)
+
+    large_alerts = [
+        _alert(
+            alert_center_channel,
+            monitor_instance_id=f"host-large-{index}",
+            notice_type_ids=channel_ids,
+        )
+        for index in range(4)
+    ]
+    with CaptureQueriesContext(connection) as large_ctx:
+        large_ids = enqueue_alert_center_deliveries(large_alerts, "created", notifier=notifier)
+    large_selects = _delivery_status_selects(large_ctx.captured_queries)
+
+    assert len(small_ids) == 4
+    assert len(large_ids) == 8
+    assert len(small_selects) == len(large_selects)
+    assert len(large_selects) <= 3
+
+
 def test_later_generation_cannot_overtake_pending_created(alert_center_channel, mocker):
     alert = _alert(alert_center_channel)
     first = MonitorAlertCenterDelivery.objects.create(

@@ -46,9 +46,9 @@ describe('auth header key link copy', () => {
       formatAuthHeaderPlainText(
         'Authorization: Bearer <TOKEN>。',
         '可在「{link}」中生成与管理令牌。',
-        '平台设置 → 密钥',
+        '平台管理 → API 令牌',
       ),
-    ).toBe('Authorization: Bearer <TOKEN>。 可在「平台设置 → 密钥」中生成与管理令牌。');
+    ).toBe('Authorization: Bearer <TOKEN>。 可在「平台管理 → API 令牌」中生成与管理令牌。');
   });
 });
 

@@ -38,6 +38,52 @@ def normalize_stored_metric_unit(metric_unit: str, data_type: str = "") -> str:
     return unit
 
 
+def _dimension_names(dimensions) -> list[str]:
+    names = []
+    if not isinstance(dimensions, list):
+        return names
+    for item in dimensions:
+        if isinstance(item, str):
+            name = item.strip()
+        elif isinstance(item, dict):
+            name = str(item.get("name") or "").strip()
+        else:
+            name = ""
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def resolve_bulk_group_by(template: dict[str, Any], config: dict[str, Any], monitor_object_id: int) -> list[str]:
+    group_by = config.get("group_by") or template.get("group_by")
+    if isinstance(group_by, list):
+        cleaned = [str(item).strip() for item in group_by if str(item).strip()]
+        if cleaned:
+            return cleaned
+    names = ["instance_id"]
+    dimensions = template.get("dimensions") or []
+    dimension_names = _dimension_names(dimensions)
+    if not dimension_names:
+        metric_name = str(template.get("metric_name") or "").strip()
+        query = template.get("query_condition") or {}
+        if isinstance(query, dict):
+            metric_name = metric_name or str(query.get("metric_name") or "").strip()
+        if metric_name:
+            from apps.monitor.models.monitor_metrics import Metric
+
+            metric = (
+                Metric.objects.filter(monitor_object_id=monitor_object_id, name=metric_name)
+                .only("dimensions")
+                .first()
+            )
+            if metric:
+                dimension_names = _dimension_names(metric.dimensions)
+    for name in dimension_names:
+        if name not in names:
+            names.append(name)
+    return names
+
+
 def _merge_asset_organizations(assets: list[dict[str, Any]]) -> list[Any]:
     organizations: list[Any] = []
     seen = set()
@@ -124,7 +170,7 @@ def build_bulk_policy_payloads(
             str(template.get("data_type") or ""),
         )
         default_calculation_unit = normalize_default_calculation_unit(metric_unit)
-        group_by = config.get("group_by") or template.get("group_by") or ["instance_id"]
+        group_by = resolve_bulk_group_by(template, config, monitor_object_id)
         template_name = template.get("name") or template.get("metric_name") or ""
         enable_alerts = config.get("enable_alerts") or ["threshold"]
         payload = {

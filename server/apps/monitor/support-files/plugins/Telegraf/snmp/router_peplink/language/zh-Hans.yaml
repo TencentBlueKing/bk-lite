@@ -1,0 +1,29 @@
+Router Peplink SNMP:
+  name: Peplink（Telegraf）
+  desc: 面向 Peplink/Pepwave Balance、MAX、Edge 路由器的 SNMP 监控模板，可采集 CPU 使用率、内存已用/总量及推导出的利用率。
+monitor_object:
+  Router: 路由器
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Peplink/Pepwave 路由器的 CPU 使用率（DEVICE.mib deviceCpuLoad），按 INTEGER(0..100) 直接记为百分比，不再除以 100。持续偏高可能意味着控制平面过载、WAN 调度繁忙或异常流量。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标表示 Peplink/Pepwave 路由器的物理内存总量（DEVICE.mib deviceTotalMemory）。原始单位为 KB，查询侧乘 1024 换算为字节。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标表示 Peplink/Pepwave 路由器当前已使用的物理内存（DEVICE.mib deviceMemoryUsage）。原始单位为 KB，查询侧乘 1024 换算为字节。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 Peplink/Pepwave 路由器整体内存使用率，按 已用/总量*100 计算。持续偏高可能由内存泄漏、会话表过大或容量不足导致。
+monitor_object_metric_group:
+  Router:
+    CPU: CPU
+    Memory: 内存
+    Base: 基础

@@ -97,6 +97,16 @@ def test_builtin_sync_rejects_the_whole_snapshot_before_writing_when_any_documen
 
 
 def test_migrate_policy_preserves_the_whole_snapshot_when_any_file_cannot_be_read(tmp_path, mocker):
+    monitor_object, plugin = _catalog()
+    PolicyTemplate.objects.create(
+        key="builtin:existing",
+        scope_key="builtin",
+        template_type="builtin",
+        monitor_object=monitor_object,
+        plugin=plugin,
+        name="CPU",
+        config={},
+    )
     valid_file = tmp_path / "valid-policy.json"
     valid_file.write_text(json.dumps(_document(["CPU"])), encoding="utf-8")
     missing_file = tmp_path / "missing-policy.json"
@@ -110,6 +120,53 @@ def test_migrate_policy_preserves_the_whole_snapshot_when_any_file_cannot_be_rea
     policy_migrate.migrate_policy()
 
     sync.assert_not_called()
+    assert PolicyTemplate.objects.filter(template_type="builtin", name="CPU").exists()
+
+
+def test_migrate_policy_fails_bootstrap_when_any_file_cannot_be_read(tmp_path, mocker):
+    from django.core.management import CommandError
+
+    valid_file = tmp_path / "valid-policy.json"
+    valid_file.write_text(json.dumps(_document(["CPU"])), encoding="utf-8")
+    missing_file = tmp_path / "missing-policy.json"
+    mocker.patch.object(
+        policy_migrate,
+        "find_files_by_pattern",
+        side_effect=[[str(valid_file), str(missing_file)], []],
+    )
+    sync = mocker.patch.object(policy_migrate.PolicyService, "sync_builtin_policy_templates")
+
+    with pytest.raises(CommandError, match="内置策略模板尚未重建"):
+        policy_migrate.migrate_policy()
+
+    sync.assert_not_called()
+
+
+def test_migrate_policy_fails_bootstrap_when_no_readable_documents(mocker):
+    from django.core.management import CommandError
+
+    mocker.patch.object(policy_migrate, "find_files_by_pattern", return_value=[])
+    with pytest.raises(CommandError, match="没有可读的策略配置"):
+        policy_migrate.migrate_policy()
+
+
+def test_migrate_policy_fails_bootstrap_when_sync_raises(tmp_path, mocker):
+    from django.core.management import CommandError
+
+    valid_file = tmp_path / "valid-policy.json"
+    valid_file.write_text(json.dumps(_document(["CPU"])), encoding="utf-8")
+    mocker.patch.object(
+        policy_migrate,
+        "find_files_by_pattern",
+        side_effect=[[str(valid_file)], []],
+    )
+    mocker.patch.object(
+        policy_migrate.PolicyService,
+        "sync_builtin_policy_templates",
+        side_effect=RuntimeError("broken catalog"),
+    )
+    with pytest.raises(CommandError, match="策略模板校验或对账失败"):
+        policy_migrate.migrate_policy()
 
 
 def test_builtin_and_custom_with_same_name_can_coexist():

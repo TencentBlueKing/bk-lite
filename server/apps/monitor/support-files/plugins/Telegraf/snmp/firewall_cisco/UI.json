@@ -1,12 +1,12 @@
 {
   "object_name": "Firewall",
   "instance_type": "firewall",
-  "collect_type": "snmp_cisco_asa",
+  "collect_type": "snmp_cisco_firewall",
   "config_type": [
-    "cisco_asa"
+    "cisco_firewall"
   ],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_cisco_asa_{{ip}}",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_cisco_firewall_{{ip}}",
   "form_fields": [
     {
       "name": "ip",

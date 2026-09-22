@@ -1,10 +1,10 @@
 {
   "collector": "Telegraf",
-  "collect_type": "snmp_cisco_asa",
+  "collect_type": "snmp_cisco_firewall",
   "plugin": "Firewall Cisco SNMP",
-  "plugin_desc": "Cisco ASA / Secure Firewall SNMP collection (CISCO-PROCESS-MIB, CISCO-MEMORY-POOL-MIB, CISCO-FIREWALL-MIB). Collects 5-minute CPU (cpmCPUTotal5minRev; optional 1-minute Rev), per-pool memory used/free bytes (GLOBAL_SHARED dropped), and current-in-use firewall sessions (cfwConnectionStatValue protoIp/currentInUse). Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported models from CISCO-PRODUCTS-MIB — ASA 5500-X (5506-X/5506W-X/5508-X/5512-X/5515-X/5516-X/5525-X/5545-X/5555-X), ASA Virtual (ciscoVASA), Firepower 2100/3100/4100 and Virtual, Secure Firewall 1200 (1210CE/1210CP/1220CX/1230/1240/1250/1260).",
+  "plugin_desc": "Cisco ASA / Secure Firewall SNMP collection (CISCO-PROCESS-MIB, CISCO-MEMORY-POOL-MIB, CISCO-FIREWALL-MIB). Collects 5-minute CPU (cpmCPUTotal5minRev; optional 1-minute Rev), per-pool memory used/free bytes (GLOBAL_SHARED dropped by name), and firewall connection statistics (cfwConnectionStatValue with service+type index; current-in-use type=6 as firewall_active_sessions). Interface counters come from the built-in IF-MIB catalog, not this plugin. Distinct from Switch Cisco SNMP (snmp_cisco). Supported models — ASA 5500-X, ASA Virtual, and Secure Firewall appliances that expose these public MIBs.",
   "support_collect_detect": true,
-  "status_query": "any({instance_type='firewall', collect_type='snmp_cisco_asa'}) by (instance_id)",
+  "status_query": "any({instance_type='firewall', collect_type='snmp_cisco_firewall'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
   "type": "Network Device",
@@ -131,11 +131,16 @@
       "display_name": "Active Sessions",
       "data_type": "Number",
       "unit": "short",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (service.type; type=6 is current in use)"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Number of connections currently in use on the Cisco firewall (CISCO-FIREWALL-MIB cfwConnectionStatValue). Indexed as Services protoIp(40) + ConnectionStat currentInUse(6). A rapid rise can indicate a connection flood or session-table pressure."
+      "description": "Number of connections currently in use on the Cisco firewall (CISCO-FIREWALL-MIB cfwConnectionStatValue). The table is indexed by service + type; only current-in-use rows (type=6) are kept. A rapid rise can indicate a connection flood or session-table pressure."
     }
   ]
 }

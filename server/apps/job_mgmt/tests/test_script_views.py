@@ -142,6 +142,65 @@ class TestScriptCrud:
         assert resp.status_code == 200
         assert resp.data["deleted_count"] == 2
 
+    def test_update_keeps_encrypted_default_when_mask_echoed(self, su_client):
+        """二次编辑未改加密默认值时，回传 ****** 不得覆盖库中原密文。"""
+        from apps.job_mgmt.services.param_crypto import MASKED_DEFAULT, ParamCrypto
+
+        create_resp = su_client.post(
+            URL,
+            {
+                "name": "enc-script",
+                "content": 'Write-Host "你输入的内容是：$InputStr"',
+                "script_type": "powershell",
+                "team": [1],
+                "params": [
+                    {
+                        "name": "testpassword",
+                        "default": "test123456",
+                        "is_encrypted": True,
+                        "is_required": True,
+                    }
+                ],
+            },
+            format="json",
+        )
+        assert create_resp.status_code == 201
+        script_id = create_resp.data["id"]
+
+        detail = su_client.get(f"{URL}{script_id}/")
+        assert detail.status_code == 200
+        assert detail.data["params"][0]["default"] == MASKED_DEFAULT
+
+        update_resp = su_client.put(
+            f"{URL}{script_id}/",
+            {
+                "name": "enc-script",
+                "description": "只改描述",
+                "content": 'Write-Host "你输入的内容是：$InputStr"',
+                "script_type": "powershell",
+                "team": [1],
+                "params": [
+                    {
+                        "name": "testpassword",
+                        "default": MASKED_DEFAULT,
+                        "is_encrypted": True,
+                        "is_required": True,
+                    }
+                ],
+            },
+            format="json",
+        )
+        assert update_resp.status_code == 200
+        assert update_resp.data["params"][0]["default"] == MASKED_DEFAULT
+
+        script = Script.objects.get(pk=script_id)
+        assert script.description == "只改描述"
+        assert script.params[0]["default"] != MASKED_DEFAULT
+        assert script.params[0]["default"] != "test123456"
+
+        ready = ParamCrypto.prepare_params_for_execution({}, script.params)
+        assert ready["testpassword"] == "test123456"
+
 
 class TestScriptNormalizeLineEndings:
     """入库前规范化脚本换行符（CRLF/CR → LF；bat/powershell 保留）。"""

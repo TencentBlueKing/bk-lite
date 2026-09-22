@@ -1,7 +1,8 @@
 Router Teltonika SNMP:
   name: Teltonika (Telegraf)
-  desc: SNMP monitoring template for Teltonika router. It reports CPU utilization,
-    per-port inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: SNMP monitoring template for Teltonika industrial cellular routers. It reports
+    private CPU utilization, UCD memory, modem temperature, and built-in IF-MIB interface
+    traffic.
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -10,8 +11,10 @@ monitor_object_metric:
   Router:
     device_temperature_celsius:
       name: Device Temperature
-      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
-        high values may indicate fan failure, poor airflow, or high ambient temperature.
+      desc: Modem temperature of the Teltonika cellular router in degrees Celsius
+        (mTemperature). The SNMP integer is tenths of a degree and is divided by 10
+        at collection so stored values are already in °C. High values can indicate
+        enclosure heat buildup or modem thermal stress.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each cooling fan (enum). A non-normal state indicates
@@ -36,15 +39,15 @@ monitor_object_metric:
         memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports CPU utilization of the Teltonika cellular router as
+        a 0-100 percentage. The private cpuUsage scalar is the preferred headline;
+        HOST-RESOURCES hrProcessorLoad is kept as a per-core fallback. Sustained high
+        usage indicates control-plane overload or abnormal traffic.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports memory utilization of the Teltonika cellular router,
+        derived as 100*(total-free)/total from UCD-SNMP memTotalReal and memAvailReal.
+        Sustained high usage may indicate memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

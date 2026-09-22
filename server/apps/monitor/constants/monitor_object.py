@@ -1,6 +1,9 @@
 class MonitorObjConstants:
     """监控实例相关常量"""
 
+    INSTANCE_ID_MAX_LENGTH = 200
+    INSTANCE_NAME_MAX_LENGTH = 200
+
     # 监控对象关键字段
     OBJ_KEYS = ["name", "type", "default_metric", "instance_id_keys", "supplementary_indicators", "display_fields"]
 
@@ -8,7 +11,7 @@ class MonitorObjConstants:
     DEFAULT_OBJ_ORDER = [
         {"name_list": ["Host"], "type": "OS"},
         {"name_list": ["Website", "Ping"], "type": "Web"},
-        {"name_list": ["ElasticSearch", "InfluxDB", "Mongodb", "Mysql", "Postgres", "Redis", "Oracle"], "type": "Database"},
+        {"name_list": ["ElasticSearch", "InfluxDB", "MongoDB", "Mysql", "Postgres", "Redis", "Oracle"], "type": "Database"},
         {
             "name_list": [
                 "RabbitMQ",

@@ -28,6 +28,7 @@ export const CARD_GLASS = {
   fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
   titleSize: 48,
   statusSize: 42,
+  coverageSize: 28,
   iconSize: 64,
 } as const;
 
@@ -297,6 +298,15 @@ const paintFrontChrome = (
   ctx.stroke();
   ctx.fillStyle = tokens.statusText;
   ctx.fillText(visual.statusLabel, tagX + tagPadX, tagY + tagH / 2 + 1);
+
+  if (visual.coverageLabel) {
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.font = `500 ${CARD_GLASS.coverageSize}px ${CARD_GLASS.fontFamily}`;
+    ctx.fillStyle = 'rgba(148, 160, 176, 0.72)';
+    ctx.fillText(visual.coverageLabel, w - padX, tagY + tagH / 2 + 1);
+    ctx.textAlign = 'left';
+  }
 
   if (!visual.showBadge || !badge) return;
   roundRectPath(ctx, badge.x, badge.y, badge.width, badge.height, badge.radius);

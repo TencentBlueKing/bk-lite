@@ -32,28 +32,12 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- Teltonika RutOS CPU usage (HOST-RESOURCES hrProcessorLoad, per-core %, headline avg by instance) ----
-    # 来源：RutOS 为 Linux + net-snmp，标准 HOST-RESOURCES。待现网核验。
-    # 待现网核验：1.3.6.1.2.1.25.3.3.1.2（每核 0-100%，共享盘 avg by instance_id 取整机均值）。
+# @bk_include_ifmib_table
+    # ---- Private CPU scalar (cpuUsage), top-level field GET with instance .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.48690.1.8.0"
+        name = "device_cpu_usage"
+    # ---- HOST-RESOURCES CPU fallback (hrProcessorLoad, per-core %) ----
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
@@ -61,8 +45,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.3.3.1.2"
         name = "usage"
-    # ---- Teltonika RutOS memory (UCD-SNMP-MIB, total + free, KB; usage=100*(total-free)/total) ----
-    # 待现网核验：memTotalReal 1.3.6.1.4.1.2021.4.5.0；memAvailReal 1.3.6.1.4.1.2021.4.6.0（均为 KB，共享盘 *1024 转字节）。
+    # ---- UCD-SNMP-MIB memory (total + free, KB) ----
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
@@ -72,4 +55,27 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2021.4.6"
         name = "free"
-# ---- 温度/风扇/电源：Teltonika RUT 系列蜂窝路由器为无风扇紧凑型工业设计，未以标量形式暴露温度/电源传感器 → 温度/风扇/电源 N/A 不采。仅 CPU/内存/接口干净可采。----
+    # ---- Modem temperature table (mTemperature, integer 0.1°C; table.field must not use .0) ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.48690.2.2.1.1"
+        name = "mIndex"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.48690.2.2.1.17"
+        name = "celsius"
+    # ---- 风扇/电源：Teltonika RUT 系列为无风扇紧凑型工业设计，风扇/电源 N/A。----
+
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    value = metric.fields.get("celsius")
+    if value == None:
+        return metric
+    metric.fields["celsius"] = float(value) / 10.0
+    return metric
+'''

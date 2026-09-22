@@ -463,9 +463,10 @@ class ExecutionTaskBaseService(object):
         if not target.ssh_key_file:
             return None
         try:
-            with target.ssh_key_file.open("r") as fh:
+            # MinIO backend only accepts binary read mode ("rb"); text "r" raises ValueError.
+            with target.ssh_key_file.open("rb") as fh:
                 content = fh.read()
-        except (FileNotFoundError, OSError) as e:
+        except (FileNotFoundError, OSError, ValueError) as e:
             logger.warning(f"[_read_ssh_key_file] 读取 SSH 密钥文件失败: target_id={getattr(target, 'id', None)}, error={e}")
             return None
         return content.decode("utf-8") if isinstance(content, bytes) else content

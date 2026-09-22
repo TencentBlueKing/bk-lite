@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 import zipfile
 
 import pytest
@@ -292,6 +293,63 @@ async def test_run_command_truncates_oversized_output():
     assert output_meta["output_bytes_total"] == 2048
     assert output_meta["output_bytes_retained"] == 128
     assert output_meta["output_max_bytes"] == 128
+
+
+@pytest.mark.asyncio
+async def test_run_command_keeps_ansible_output_when_process_hangs_after_stdout_closes():
+    """真实子进程：输出已关闭但进程不退出（模拟 SSH ControlPersist 收尾挂起）。
+
+    回归：流式日志已推送成功结果时，不得因 wait 超时清空输出并丢终态。
+    """
+    published: list[str] = []
+
+    async def publisher(_subject: str, payload: bytes) -> None:
+        published.append(json.loads(payload.decode("utf-8"))["line"])
+
+    script = "\n".join(
+        [
+            "import os, sys, time",
+            "print('10.11.27.53 | CHANGED | rc=0 >>')",
+            "print('/etc/profile.d/lang.sh:行19: 警告:setlocale: LC_CTYPE: 无法改变区域选项 (C.UTF-8)')",
+            "print('hello world')",
+            'print("Shared connection to 10.11.27.53 closed.")',
+            "sys.stdout.flush()",
+            "sys.stderr.flush()",
+            "os.close(1)",
+            "os.close(2)",
+            "time.sleep(100)",
+        ]
+    )
+    started = time.monotonic()
+    code, output, _meta = await run_command(
+        [sys.executable, "-c", script],
+        timeout=10,
+        stream_publish=publisher,
+        stream_log_topic="job.stream.55.ansible",
+        execution_id="55",
+    )
+    elapsed = time.monotonic() - started
+
+    assert code == 0
+    assert "hello world" in output
+    assert "10.11.27.53 | CHANGED | rc=0 >>" in output
+    assert "command timed out" not in output
+    assert any("hello world" in line for line in published)
+    assert elapsed < 8
+
+
+@pytest.mark.asyncio
+async def test_run_command_true_timeout_still_returns_124_when_stdout_never_closes():
+    started = time.monotonic()
+    code, output, _meta = await run_command(
+        [sys.executable, "-c", "import time; print('partial', flush=True); time.sleep(100)"],
+        timeout=1,
+    )
+    elapsed = time.monotonic() - started
+
+    assert code == 124
+    assert output == "command timed out"
+    assert elapsed < 3
 
 
 def test_parse_playbook_recap_keeps_opening_brace_from_ok_line():
