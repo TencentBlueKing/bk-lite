@@ -8,7 +8,7 @@ import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
 import { formatUserName } from '@/utils/userDisplay';
 import { useTranslation } from '@/utils/i18n';
-import { canClaimOrAssignAlert, canReassignAlert } from './alertHandlerUtils';
+import { canClaimOrAssignAlert, canCloseAlert, canReassignAlert } from './alertHandlerUtils';
 
 interface AlertHandlerActionsProps {
   alert: ApmAlert;
@@ -34,6 +34,7 @@ export default function AlertHandlerActions({
   const actor = { id: userId, username };
   const canClaimOrAssign = canClaimOrAssignAlert(alert.status, alert.handlers);
   const canReassign = canReassignAlert(alert.status, alert.handlers, actor);
+  const canClose = canCloseAlert(alert.handlers, actor);
 
   const handleClaim = async () => {
     setActionLoading(true);
@@ -115,25 +116,27 @@ export default function AlertHandlerActions({
               {t('apm.alerts.reassign', '转派')}
             </Button>
           ) : null}
-          <Popconfirm
-            title={t('apm.alerts.closeConfirm', '确定关闭此告警？')}
-            description={t('apm.alerts.closeConfirmDescription', '关闭后会追加人工关闭事件，确认继续？')}
-            okText={t('apm.alerts.confirmAction', '确定')}
-            cancelText={t('common.cancel', '取消')}
-            disabled={alert.status !== 'active'}
-            okButtonProps={{ loading: actionLoading }}
-            onConfirm={handleClose}
-          >
-            <Button
-              type="link"
-              size={size}
-              className="p-0"
+          {canClose ? (
+            <Popconfirm
+              title={t('apm.alerts.closeConfirm', '确定关闭此告警？')}
+              description={t('apm.alerts.closeConfirmDescription', '关闭后会追加人工关闭事件，确认继续？')}
+              okText={t('apm.alerts.confirmAction', '确定')}
+              cancelText={t('common.cancel', '取消')}
               disabled={alert.status !== 'active'}
-              onClick={(event) => event.stopPropagation()}
+              okButtonProps={{ loading: actionLoading }}
+              onConfirm={handleClose}
             >
-              {closeText}
-            </Button>
-          </Popconfirm>
+              <Button
+                type="link"
+                size={size}
+                className="p-0"
+                disabled={alert.status !== 'active'}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {closeText}
+              </Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       </Permission>
       <Modal
