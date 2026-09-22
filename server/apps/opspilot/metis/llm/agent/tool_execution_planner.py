@@ -11,6 +11,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
     MISSING_PARAMS_CHOICE_HINT,
@@ -1728,7 +1729,12 @@ class ToolExecutionPlanner:
         skill_packages: Sequence[Any] = (),
         config: dict[str, Any] | None = None,
         agent_system_prompt: str = "",
+        thread_id: str | None = None,
     ) -> ToolExecutionPlan:
+        started = monotonic_ms()
+        model_call_ms = 0
+        retry_count = 0
+        logged = False
         completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "无"
         failure_text = failure.strip() or "无"
         packages = [item for item in (skill_packages or []) if isinstance(item, dict)]
@@ -1752,36 +1758,64 @@ class ToolExecutionPlanner:
             len(list(tools or [])),
             len(packages),
         )
-        response = await self._ainvoke_plan(primary_messages, config=config)
-        raw_text = _message_text(response)
         try:
-            payload = parse_tool_execution_plan_payload(raw_text)
-        except ToolPlanningError as first_error:
-            preview = " ".join(raw_text.split())[:500]
-            logger.warning("DeepAgent 规划输出无法解析为 JSON 对象: raw=%s", preview)
-            # 部分网关/模型会把有效 user 内容误判为空，改用单条合并消息再试一次。
-            if not _looks_like_empty_message_reply(raw_text) and "{" not in raw_text and "[" not in raw_text:
-                # 非空消息闲聊且无 JSON 痕迹：仍重试一次（更严格）
-                pass
-            retry_messages = [HumanMessage(content=(f"{system_prompt}\n\n" "上一次回复无效（未给出 JSON 计划）。请重新规划。" "只输出一个 JSON 对象，不要解释。\n\n" f"{task_prompt}"))]
-            logger.warning(
-                "DeepAgent 规划将重试一次（合并 system+user）: reason=%s",
-                "empty_message_reply" if _looks_like_empty_message_reply(raw_text) else "non_json_reply",
-            )
-            retry_response = await self._ainvoke_plan(retry_messages, config=config)
-            raw_text = _message_text(retry_response)
+            model_started = monotonic_ms()
+            response = await self._ainvoke_plan(primary_messages, config=config)
+            model_call_ms += elapsed_ms(model_started)
+            raw_text = _message_text(response)
             try:
                 payload = parse_tool_execution_plan_payload(raw_text)
-            except ToolPlanningError:
+            except ToolPlanningError as first_error:
+                preview = " ".join(raw_text.split())[:500]
+                logger.warning("DeepAgent 规划输出无法解析为 JSON 对象: raw=%s", preview)
+                # 部分网关/模型会把有效 user 内容误判为空，改用单条合并消息再试一次。
+                if not _looks_like_empty_message_reply(raw_text) and "{" not in raw_text and "[" not in raw_text:
+                    # 非空消息闲聊且无 JSON 痕迹：仍重试一次（更严格）
+                    pass
+                retry_messages = [
+                    HumanMessage(content=(f"{system_prompt}\n\n" "上一次回复无效（未给出 JSON 计划）。请重新规划。" "只输出一个 JSON 对象，不要解释。\n\n" f"{task_prompt}"))
+                ]
                 logger.warning(
-                    "DeepAgent 规划重试仍无法解析: raw=%s",
-                    " ".join(raw_text.split())[:500],
+                    "DeepAgent 规划将重试一次（合并 system+user）: reason=%s",
+                    "empty_message_reply" if _looks_like_empty_message_reply(raw_text) else "non_json_reply",
                 )
-                raise first_error from None
-        return self._normalize(
-            payload,
-            tools,
-            packages,
-            user_message=user_message,
-            agent_system_prompt=agent_system_prompt,
-        )
+                retry_count = 1
+                model_started = monotonic_ms()
+                retry_response = await self._ainvoke_plan(retry_messages, config=config)
+                model_call_ms += elapsed_ms(model_started)
+                raw_text = _message_text(retry_response)
+                try:
+                    payload = parse_tool_execution_plan_payload(raw_text)
+                except ToolPlanningError:
+                    logger.warning(
+                        "DeepAgent 规划重试仍无法解析: raw=%s",
+                        " ".join(raw_text.split())[:500],
+                    )
+                    raise first_error from None
+            plan = self._normalize(
+                payload,
+                tools,
+                packages,
+                user_message=user_message,
+                agent_system_prompt=agent_system_prompt,
+            )
+            log_stage_timing(
+                "planning",
+                elapsed_ms(started),
+                thread_id=thread_id,
+                step_count=len(plan.steps),
+                retry_count=retry_count,
+                model_call_ms=model_call_ms,
+            )
+            logged = True
+            return plan
+        finally:
+            if not logged:
+                log_stage_timing(
+                    "planning",
+                    elapsed_ms(started),
+                    thread_id=thread_id,
+                    step_count=0,
+                    retry_count=retry_count,
+                    model_call_ms=model_call_ms,
+                )

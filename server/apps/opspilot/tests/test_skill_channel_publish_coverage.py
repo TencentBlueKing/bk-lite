@@ -445,6 +445,17 @@ class TestChatServiceUnit:
         content = chat_svc.assemble_assistant_persist_content(parsed)
         assert json.loads(content)[0]["name"] == "planned_execution_status"
         assert chat_svc.visible_assistant_text(content) == "现在是下午两点"
+        ephemeral = chat_svc.assemble_assistant_persist_content(
+            events
+            + [
+                {"type": "CUSTOM", "name": "stream_keepalive", "value": {"phase": "waiting_model"}},
+                {"type": "CUSTOM", "name": "planned_step_hidden_text", "value": {"delta": "步内草稿"}},
+            ]
+        )
+        persisted_names = [item.get("name") for item in json.loads(ephemeral) if item.get("type") == "CUSTOM"]
+        assert "stream_keepalive" not in persisted_names
+        assert "planned_step_hidden_text" not in persisted_names
+        assert chat_svc.visible_assistant_text(ephemeral) == "现在是下午两点"
         mixed = chat_svc.assemble_assistant_persist_content(events + [{"type": "TEXT_MESSAGE_CONTENT", "delta": '{"phase":"planning"}'}])
         assert chat_svc.visible_assistant_text(mixed) == "现在是下午两点"
         assert chat_svc.assemble_assistant_persist_content([{"choices": [{"delta": {"content": "hello"}}]}, {"content": "!"}]) == "hello!"

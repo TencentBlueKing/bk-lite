@@ -18,6 +18,7 @@ from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import SKILL_CHANNEL_SKIP_ORG_CHECK, SkillChannelChoices
 from apps.opspilot.memory.identity import is_system_user_uuid, resolve_owner_identity, split_external_user_id
+from apps.opspilot.metis.llm.chain.entity import is_ephemeral_agui_custom_event
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
@@ -980,7 +981,7 @@ def parse_sse_json_payloads(text: str) -> list[dict]:
 
 def assemble_assistant_persist_content(events: list[dict]) -> str:
     """助手落库：有 AG-UI type 时存事件数组，供前端分步回放；否则拼 OpenAI 正文。"""
-    typed = [item for item in events if item.get("type") and not (item.get("type") == "CUSTOM" and item.get("name") == "stream_keepalive")]
+    typed = [item for item in events if item.get("type") and not is_ephemeral_agui_custom_event(item)]
     if typed:
         return json.dumps(typed, ensure_ascii=False)
     parts = []

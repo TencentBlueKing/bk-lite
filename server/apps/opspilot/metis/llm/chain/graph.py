@@ -27,7 +27,14 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY, BasicLLMRequest, BasicLLMResponse
+from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
+from apps.opspilot.metis.llm.chain.entity import (
+    HIDDEN_STEP_TEXT_EVENT_NAME,
+    HIDE_PLANNED_STEP_TEXT_KEY,
+    STREAM_KEEPALIVE_EVENT_NAME,
+    BasicLLMRequest,
+    BasicLLMResponse,
+)
 from apps.opspilot.metis.llm.chain.report_renderers import find_unclosed_phantom_tool_call_start, strip_phantom_tool_calls
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
     classify_llm_error,
@@ -73,7 +80,6 @@ _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS = 96
 _AGUI_LIVE_DELTA_CHARS = 64
 # 低于 Next/undici body 空闲超时（约 300s），避免 RUN_STARTED 后长时间无 chunk 被掐流。
 SSE_KEEPALIVE_INTERVAL_SECONDS = 15.0
-STREAM_KEEPALIVE_EVENT_NAME = "stream_keepalive"
 # 与浏览器步骤队列使用相同的单请求容量边界，满载时由 await put 反压生产者。
 SSE_OUTPUT_QUEUE_MAXSIZE = 100
 
@@ -100,6 +106,18 @@ def encode_stream_keepalive(encoder: EventEncoder, phase: str) -> str:
     )
 
 
+def encode_hidden_step_text(encoder: EventEncoder, delta: str) -> str:
+    """步内被丢掉的模型正文改走 CUSTOM，刷新长连接，不进 TEXT_MESSAGE_*。"""
+    return encoder.encode(
+        CustomEvent(
+            type=EventType.CUSTOM,
+            name=HIDDEN_STEP_TEXT_EVENT_NAME,
+            value={"delta": delta},
+            timestamp=int(time.time() * 1000),
+        )
+    )
+
+
 def iter_stream_keepalive_frames(encoder: EventEncoder, phase: str):
     """注释帧刷新中间代理；CUSTOM 帧给前端/DevTools。"""
     yield ": keepalive\n\n"
@@ -113,6 +131,44 @@ async def iter_sse_keepalive_until(task: asyncio.Task, encoder: EventEncoder, ph
         if not done:
             for frame in iter_stream_keepalive_frames(encoder, phase):
                 yield frame
+
+
+async def iter_sse_frames_with_idle_keepalive(
+    frames: AsyncGenerator[str, None],
+    encoder: EventEncoder,
+    phase: str = "waiting_model",
+) -> AsyncGenerator[str, None]:
+    """源生成器长时间不产出 SSE 帧时仍写保活。
+
+    分步执行会吞掉步内模型 token；此时上游事件仍在流动，_merge_async_streams
+    不会发 keepalive，但 HTTP 连接已无字节。Next/undici 约 300s 空闲会
+    UND_ERR_BODY_TIMEOUT（表现为工具完成后卡住，最后 network error）。
+    """
+    iterator = frames.__aiter__()
+    pending = asyncio.ensure_future(iterator.__anext__())
+    try:
+        while True:
+            done, _pending = await asyncio.wait({pending}, timeout=SSE_KEEPALIVE_INTERVAL_SECONDS)
+            if not done:
+                for frame in iter_stream_keepalive_frames(encoder, phase):
+                    yield frame
+                continue
+            try:
+                frame = pending.result()
+            except StopAsyncIteration:
+                break
+            yield frame
+            pending = asyncio.ensure_future(iterator.__anext__())
+    finally:
+        if not pending.done():
+            pending.cancel()
+            try:
+                await pending
+            except (asyncio.CancelledError, StopAsyncIteration):
+                pass
+        closer = getattr(frames, "aclose", None)
+        if closer is not None:
+            await closer()
 
 
 def _record_emitted_text_signatures(encoded_events: list[str], signatures: set[str]) -> str:
@@ -1335,7 +1391,20 @@ class BasicGraph(ABC):
                 current_tool_calls[tool_call_id]["args"] = tool_args
         return events
 
-    async def agui_stream(  # noqa: C901
+    async def agui_stream(
+        self,
+        request: BasicLLMRequest,
+        token_usage_accumulator: Optional[TokenUsageAccumulator] = None,
+    ) -> AsyncGenerator[str, None]:
+        """使用 agui 协议以 SSE 格式流式输出事件。"""
+        encoder = EventEncoder()
+        async for frame in iter_sse_frames_with_idle_keepalive(
+            self._agui_stream_events(request, token_usage_accumulator),
+            encoder,
+        ):
+            yield frame
+
+    async def _agui_stream_events(  # noqa: C901
         self,
         request: BasicLLMRequest,
         token_usage_accumulator: Optional[TokenUsageAccumulator] = None,
@@ -1396,6 +1465,7 @@ class BasicGraph(ABC):
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
         browser_custom_event_callback = create_browser_custom_event_callback(browser_event_queue, encoder)
         stop_event = asyncio.Event()
+        run_started = monotonic_ms()
 
         try:
             # 发送 RUN_STARTED 事件
@@ -1410,10 +1480,14 @@ class BasicGraph(ABC):
             for frame in iter_stream_keepalive_frames(encoder, "started"):
                 yield frame
 
-            compile_task = asyncio.ensure_future(self.compile_graph(request))
-            async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
-                yield keepalive
-            graph = compile_task.result()
+            compile_started = monotonic_ms()
+            try:
+                compile_task = asyncio.ensure_future(self.compile_graph(request))
+                async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
+                    yield keepalive
+                graph = compile_task.result()
+            finally:
+                log_stage_timing("compile_graph", elapsed_ms(compile_started), thread_id=thread_id)
             if graph is None:
                 raise RuntimeError("Failed to compile graph: graph is None")
 
@@ -1516,9 +1590,13 @@ class BasicGraph(ABC):
                     elif text_piece:
                         pending_turn_text += text_piece
                         turn_plain_text_chunks += 1
+                        hide_step_text = _hide_planned_step_text(request)
+                        if hide_step_text:
+                            # 不进气泡，但必须有 data 帧，否则工具结束后模型仍在吐字时 HTTP 空闲断连。
+                            yield encode_hidden_step_text(encoder, text_piece)
                         # show_think=False：禁止提前开播，等 chat_model_end 再裁定（防长旁白泄漏）。
                         should_go_live = (
-                            (not _hide_planned_step_text(request))
+                            (not hide_step_text)
                             and show_think
                             and (
                                 turn_text_live
@@ -1566,13 +1644,16 @@ class BasicGraph(ABC):
                                 event.get("run_id"),
                             )
                     leftover_strip = text_strip_buffers.pop(pending_turn_strip_key, "")
-                    if leftover_strip:
-                        pending_turn_text += strip_phantom_tool_calls(leftover_strip)
+                    leftover_text = strip_phantom_tool_calls(leftover_strip) if leftover_strip else ""
+                    if leftover_text:
+                        pending_turn_text += leftover_text
 
                     output = event_data.get("output")
                     end_tool_calls = getattr(output, "tool_calls", None) or []
                     turn_has_tools = bool(end_tool_calls) or turn_saw_tool_call_chunks
                     hide_step_text = _hide_planned_step_text(request)
+                    if hide_step_text and leftover_text and not turn_has_tools:
+                        yield encode_hidden_step_text(encoder, leftover_text)
                     # 有工具：丢弃本轮旁白缓冲，只补工具事件。
                     # 已实时推送：冲掉剩余缓冲并结束消息，禁止再整段重发。
                     # 未实时推送的短纯文本：chat_model_end 一次性发出。
@@ -1811,6 +1892,7 @@ class BasicGraph(ABC):
             )
         finally:
             stop_event.set()
+            log_stage_timing("agui_run", elapsed_ms(run_started), thread_id=thread_id)
 
     async def _handle_tool_calls(
         self,

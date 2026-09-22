@@ -12,6 +12,7 @@ import time
 from asgiref.sync import sync_to_async
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.chain.entity import is_ephemeral_agui_custom_event
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import classify_llm_error, format_llm_failure_log, summarize_llm_endpoint
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, SkillRequestLog
@@ -488,7 +489,7 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
                     try:
                         data_json = json.loads(sse_line[6:].strip())
                         output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
-                        if not (data_json.get("type") == "CUSTOM" and data_json.get("name") == "stream_keepalive"):
+                        if not is_ephemeral_agui_custom_event(data_json):
                             accumulated_content.append(data_json)
                     except (json.JSONDecodeError, ValueError) as parse_err:
                         sample = sse_line[6:].strip()[:200]

@@ -157,7 +157,8 @@ test('text after a tool starts a new chunk without repeating the prior segment',
   harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
   harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'before' });
   harness.dispatch({ type: 'TOOL_CALL_START', toolCallId: 'tool-1', toolCallName: 'search' });
-  harness.dispatch({ type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '{"q":"x"}' });
+  harness.dispatch({ type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '{"q":' });
+  harness.dispatch({ type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '"x"}' });
   harness.dispatch({ type: 'TOOL_CALL_END', toolCallId: 'tool-1' });
   harness.dispatch({ type: 'TOOL_CALL_RESULT', toolCallId: 'tool-1', content: 'found' });
   harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'after' });

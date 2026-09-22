@@ -8,6 +8,7 @@ import {
 import type { AGUIEvent } from './agui';
 import type { ToolCall } from './contentChunks';
 import {
+  appendToolCallArgs,
   appendToolCallChunk,
   mapMessageChunks,
   patchToolCall,
@@ -289,9 +290,16 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       }
 
       case 'TOOL_CALL_ARGS': {
-        applyToolPatch(event.toolCallId || '', {
-          args: event.delta,
-        });
+        textBatcher.flush();
+        const messageId = currentMessageIdRef.current;
+        const toolCallId = event.toolCallId || '';
+        const delta = event.delta || '';
+        setMessages((prev) =>
+          mapMessageChunks(prev, messageId, (chunks) => appendToolCallArgs(chunks, toolCallId, delta))
+        );
+        syncSessionChunks(sessionManagerRef.current?.getSession(), messageId, (chunks) =>
+          appendToolCallArgs(chunks, toolCallId, delta)
+        );
         break;
       }
 

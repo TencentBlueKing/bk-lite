@@ -4,6 +4,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # 分步执行期间由引擎写入 extra_config：为 True 时 AG-UI 不推步内助手正文。
 HIDE_PLANNED_STEP_TEXT_KEY = "opspilot_hide_planned_step_text"
+# 保活 / 步内隐藏正文：走 CUSTOM，不进 TEXT_MESSAGE_*，前端静默，也不落库。
+STREAM_KEEPALIVE_EVENT_NAME = "stream_keepalive"
+HIDDEN_STEP_TEXT_EVENT_NAME = "planned_step_hidden_text"
+EPHEMERAL_AGUI_CUSTOM_EVENT_NAMES = frozenset(
+    {
+        STREAM_KEEPALIVE_EVENT_NAME,
+        HIDDEN_STEP_TEXT_EVENT_NAME,
+    }
+)
+
+
+def is_ephemeral_agui_custom_event(payload) -> bool:
+    """SSE 保活或步内隐藏正文：刷新连接，不进气泡、不进历史。"""
+    if not isinstance(payload, dict):
+        return False
+    return payload.get("type") == "CUSTOM" and payload.get("name") in EPHEMERAL_AGUI_CUSTOM_EVENT_NAMES
 
 
 class NormalizedToolCall(BaseModel):

@@ -1069,7 +1069,9 @@ export class AGUIMessageHandler {
           ? String((customValue as { name?: string }).name || '')
           : '');
         const plannedKind = looksLikePlannedExecutionPayload(customValue);
-        if (customName === 'browser_step_progress' && customValue) {
+        if (customName === 'stream_keepalive' || customName === 'planned_step_hidden_text') {
+          return false;
+        } else if (customName === 'browser_step_progress' && customValue) {
           this.handleBrowserStepProgress(customValue as BrowserStepProgressValue);
         } else if (customName === 'browser_task_received' && customValue) {
           this.handleBrowserTaskReceived(customValue as BrowserTaskReceivedValue);

@@ -519,6 +519,9 @@ const buildFromEvents = (events: any[], finalize = true) => {
           const customValue = unwrapCustomValue(msg.value);
           const customName = msg.name || (isRecord(customValue) ? String(customValue.name || '') : '');
           const plannedKind = looksLikePlannedExecutionPayload(customValue);
+          if (customName === 'stream_keepalive' || customName === 'planned_step_hidden_text') {
+            break;
+          }
           if (customName === 'browser_step_progress' && customValue) {
             upsertStep(customValue as BrowserStepProgressData);
           } else if (customName === 'browser_task_received' && customValue) {
