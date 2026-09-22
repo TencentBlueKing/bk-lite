@@ -3,24 +3,18 @@ import logging
 from apps.cmdb.services.application_system import expand_systems_to_host_uuids
 from apps.cmdb.services.service_tree import (
     APPLICATION_RUN_HOST,
-    BIZ_GROUP_CONTAINS_APPLICATION,
-    BIZ_GROUP_CONTAINS_BIZ_GROUP,
     SYSTEM_CONTAINS_APPLICATION,
-    SYSTEM_CONTAINS_BIZ_GROUP,
     ServiceTreeService,
     applications_by_system,
     assign_host_plan,
     build_service_tree,
-    can_add_group,
     can_create_application_model,
     create_layer_models,
     expand_systems_to_host_uuids_via_service_tree,
-    group_has_children,
     layer_schema_from,
     match_host,
     parse_import_row,
     plan_import_rows,
-    service_tree_membership,
     transfer_host_plan,
     unbind_host_plan,
 )
@@ -51,8 +45,8 @@ def _loader(graph):
 
 def test_old_expander_still_only_walks_two_hops():
     graph = [
-        _edge(SYSTEM_CONTAINS_BIZ_GROUP, "system", "s1", "biz_group", "g1"),
-        _edge(BIZ_GROUP_CONTAINS_APPLICATION, "biz_group", "g1", "application", "a-grouped"),
+        _edge("system_contains_biz_group", "system", "s1", "biz_group", "g1"),
+        _edge("biz_group_contains_application", "biz_group", "g1", "application", "a-grouped"),
         _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a-direct"),
         _edge(APPLICATION_RUN_HOST, "application", "a-grouped", "host", "h-hidden"),
         _edge(APPLICATION_RUN_HOST, "application", "a-direct", "host", "h-direct"),
@@ -60,22 +54,18 @@ def test_old_expander_still_only_walks_two_hops():
     assert expand_systems_to_host_uuids(["s1"], edge_loader=_loader(graph)) == ["h-direct"]
 
 
-def test_service_tree_expand_walks_mixed_depth_and_dedupes():
+def test_service_tree_expand_only_walks_direct_applications():
     graph = [
         _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a-direct"),
-        _edge(SYSTEM_CONTAINS_BIZ_GROUP, "system", "s1", "biz_group", "g1"),
-        _edge(BIZ_GROUP_CONTAINS_APPLICATION, "biz_group", "g1", "application", "a-l1"),
-        _edge(BIZ_GROUP_CONTAINS_BIZ_GROUP, "biz_group", "g1", "biz_group", "g2"),
-        _edge(BIZ_GROUP_CONTAINS_APPLICATION, "biz_group", "g2", "application", "a-l2"),
+        _edge("system_contains_biz_group", "system", "s1", "biz_group", "g1"),
+        _edge("biz_group_contains_application", "biz_group", "g1", "application", "a-grouped"),
+        _edge(APPLICATION_RUN_HOST, "application", "a-direct", "host", "h-direct"),
+        _edge(APPLICATION_RUN_HOST, "application", "a-grouped", "host", "h-hidden"),
         _edge(APPLICATION_RUN_HOST, "application", "a-direct", "host", "h-shared"),
-        _edge(APPLICATION_RUN_HOST, "application", "a-l1", "host", "h-l1"),
-        _edge(APPLICATION_RUN_HOST, "application", "a-l2", "host", "h-shared"),
-        _edge(APPLICATION_RUN_HOST, "application", "a-l2", "host", "h-l2"),
     ]
     assert expand_systems_to_host_uuids_via_service_tree(["s1"], edge_loader=_loader(graph)) == [
+        "h-direct",
         "h-shared",
-        "h-l1",
-        "h-l2",
     ]
 
 
@@ -84,24 +74,14 @@ def test_service_tree_expand_empty_or_unknown_returns_empty():
     assert expand_systems_to_host_uuids_via_service_tree(["missing"], edge_loader=lambda *_: []) == []
 
 
-def test_applications_by_system_and_membership_follow_groups():
+def test_applications_by_system_only_follows_direct_contains():
     graph = [
         _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a-direct"),
-        _edge(SYSTEM_CONTAINS_BIZ_GROUP, "system", "s1", "biz_group", "g1"),
-        _edge(BIZ_GROUP_CONTAINS_APPLICATION, "biz_group", "g1", "application", "a-l1"),
+        _edge("system_contains_biz_group", "system", "s1", "biz_group", "g1"),
+        _edge("biz_group_contains_application", "biz_group", "g1", "application", "a-grouped"),
         _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s2", "application", "a-other"),
     ]
-    assert applications_by_system(["s1"], edge_loader=_loader(graph)) == {"s1": ["a-direct", "a-l1"]}
-    membership = service_tree_membership("s1", edge_loader=_loader(graph))
-    assert membership["group_ids"] == ["g1"]
-    assert membership["application_parents"] == {"a-direct": "s1", "a-l1": "g1"}
-
-
-def test_can_add_group_caps_at_two_layers():
-    assert can_add_group("system", 0) is True
-    assert can_add_group("biz_group", 1) is True
-    assert can_add_group("biz_group", 2) is False
-    assert can_add_group("application", 1) is False
+    assert applications_by_system(["s1"], edge_loader=_loader(graph)) == {"s1": ["a-direct"]}
 
 
 def _model(model_id, name, is_pre):
@@ -120,7 +100,6 @@ def _assoc(src, dst, asst="contains"):
 _BUILTIN_MODELS = [
     _model("system", "应用系统", True),
     _model("application", "应用", True),
-    _model("biz_group", "业务分组", True),
     _model("host", "主机", True),
 ]
 
@@ -128,13 +107,9 @@ _BUILTIN_MODELS = [
 def test_create_layer_button_absent_without_custom_model():
     associations = [
         _assoc("system", "application"),
-        _assoc("system", "biz_group"),
-        _assoc("biz_group", "biz_group"),
-        _assoc("biz_group", "application"),
         _assoc("application", "host", "run"),
     ]
     assert create_layer_models("system", associations, _BUILTIN_MODELS) == []
-    assert create_layer_models("biz_group", associations, _BUILTIN_MODELS) == []
 
 
 def test_create_layer_button_uses_custom_model_name_between_system_and_application():
@@ -448,25 +423,15 @@ def test_assign_does_not_list_host_uuids_as_applications(monkeypatch):
     assert listed == [("application", "a1")]
 
 
-def test_systems_for_applications_walks_group_to_system(monkeypatch):
+def test_systems_for_applications_walks_direct_system_contains(monkeypatch):
     def _list(model_id, inst_uuid):
         if inst_uuid == "a1":
             return [
                 {
-                    "model_asst_id": "biz_group_application_contains",
-                    "asst_id": "contains",
-                    "src_model_id": "biz_group",
-                    "dst_model_id": "application",
-                    "inst_list": [{"inst_uuid": "g1", "model_id": "biz_group", "inst_name": "生产"}],
-                }
-            ]
-        if inst_uuid == "g1":
-            return [
-                {
-                    "model_asst_id": "system_biz_group_contains",
+                    "model_asst_id": "system_contains_application",
                     "asst_id": "contains",
                     "src_model_id": "system",
-                    "dst_model_id": "biz_group",
+                    "dst_model_id": "application",
                     "inst_list": [{"inst_uuid": "s1", "model_id": "system", "inst_name": "sys-ops"}],
                 }
             ]
@@ -477,42 +442,38 @@ def test_systems_for_applications_walks_group_to_system(monkeypatch):
     assert ServiceTreeService.systems_for_applications(["a1"]) == {"a1": {"inst_uuid": "s1", "inst_name": "sys-ops"}}
 
 
-def test_parse_import_row_rejects_l2_without_l1_and_unknown_host_path():
+def test_parse_import_row_requires_application_and_host():
     ok = parse_import_row(
         {
             "system": "门户",
-            "group": "生产",
-            "group_l2": "web",
             "application": "门户前端",
             "host": "web-1",
         },
         expected_system_name="门户",
     )
-    assert ok["group"] == "生产"
-    assert ok["group_l2"] == "web"
     assert ok["application"] == "门户前端"
     assert ok["host"] == "web-1"
+    assert "group" not in ok
 
     try:
         parse_import_row(
-            {"system": "门户", "group": "", "group_l2": "web", "application": "门户前端", "host": "web-1"},
+            {"system": "门户", "application": "", "host": "web-1"},
             expected_system_name="门户",
         )
     except ValidationAppException as exc:
-        assert "二级分组" in exc.message
+        assert "应用" in exc.message
     else:
         raise AssertionError("expected ValidationAppException")
 
 
-def test_parse_import_row_empty_group_means_app_hangs_on_system():
+def test_parse_import_row_empty_extra_columns_are_ignored():
     row = parse_import_row(
-        {"应用系统": "门户", "业务分组": "", "二级分组": "", "应用": "门户前端", "主机标识": "10.0.0.1"},
+        {"应用系统": "门户", "业务分组": "生产", "二级分组": "web", "应用": "门户前端", "主机标识": "10.0.0.1"},
         expected_system_name="门户",
     )
-    assert row["group"] == ""
-    assert row["group_l2"] == ""
     assert row["application"] == "门户前端"
     assert row["host"] == "10.0.0.1"
+    assert "group" not in row
 
 
 def test_match_host_requires_unique_existing_identity():
@@ -539,58 +500,50 @@ def test_match_host_requires_unique_existing_identity():
         raise AssertionError("expected ValidationAppException")
 
 
-def test_plan_import_creates_missing_groups_and_apps_and_assigns_host():
+def test_plan_import_creates_missing_apps_and_assigns_host():
     plan = plan_import_rows(
         system_name="门户",
         system_uuid="s1",
         rows=[
-            {"system": "门户", "group": "生产", "group_l2": "", "application": "门户前端", "host": "web-1"},
-            {"system": "门户", "group": "", "group_l2": "", "application": "直挂应用", "host": "web-2"},
+            {"system": "门户", "application": "门户前端", "host": "web-1"},
+            {"system": "门户", "application": "直挂应用", "host": "web-2"},
         ],
-        existing_tree={"groups": {}, "apps": {}, "app_parents": {}, "group_parents": {}},
+        existing_tree={"apps": {}},
         hosts=[{"inst_uuid": "h1", "inst_name": "web-1", "ip_addr": "10.0.0.1"}, {"inst_uuid": "h2", "inst_name": "web-2"}],
     )
     assert plan["errors"] == []
     created = {(item["model_id"], item["inst_name"], item["parent_key"]) for item in plan["create_nodes"]}
-    assert ("biz_group", "生产", "s1") in created
-    assert ("application", "门户前端", "g:生产") in created
+    assert ("application", "门户前端", "s1") in created
     assert ("application", "直挂应用", "s1") in created
     assert {(item["app_key"], item["host_uuid"]) for item in plan["assign"]} == {
-        ("a:生产/门户前端", "h1"),
+        ("a:/门户前端", "h1"),
         ("a:/直挂应用", "h2"),
     }
 
 
-def test_plan_import_reuses_application_by_path_not_bare_name():
+def test_plan_import_reuses_application_by_name_under_system():
     plan = plan_import_rows(
         system_name="门户",
         system_uuid="s1",
-        rows=[{"system": "门户", "group": "", "group_l2": "", "application": "门户前端", "host": "web-2"}],
-        existing_tree={"groups": {"g:生产": "g1"}, "apps": {"a:生产/门户前端": "a1"}, "app_parents": {}, "group_parents": {}},
+        rows=[{"system": "门户", "application": "门户前端", "host": "web-2"}],
+        existing_tree={"apps": {"a:/门户前端": "a1"}},
         hosts=[{"inst_uuid": "h2", "inst_name": "web-2"}],
     )
-    created = {(item["model_id"], item["inst_name"], item["parent_key"]) for item in plan["create_nodes"]}
-    assert ("application", "门户前端", "s1") in created
-    assert plan["assign"] == [{"app_key": "a:/门户前端", "host_uuid": "h2"}]
+    assert plan["create_nodes"] == []
+    assert plan["assign"] == [{"app_key": "a1", "host_uuid": "h2"}]
 
 
 def test_plan_import_fails_unknown_host_without_creating_that_row():
     plan = plan_import_rows(
         system_name="门户",
         system_uuid="s1",
-        rows=[{"system": "门户", "group": "", "group_l2": "", "application": "门户前端", "host": "ghost"}],
-        existing_tree={"groups": {}, "apps": {}, "app_parents": {}, "group_parents": {}},
+        rows=[{"system": "门户", "application": "门户前端", "host": "ghost"}],
+        existing_tree={"apps": {}},
         hosts=[{"inst_uuid": "h1", "inst_name": "web-1"}],
     )
     assert plan["assign"] == []
     assert len(plan["errors"]) == 1
     assert "主机" in plan["errors"][0]["message"]
-
-
-def test_group_with_children_cannot_be_deleted():
-    assert group_has_children("g1", [_edge(BIZ_GROUP_CONTAINS_APPLICATION, "biz_group", "g1", "application", "a1")]) is True
-    assert group_has_children("g1", [_edge(BIZ_GROUP_CONTAINS_BIZ_GROUP, "biz_group", "g1", "biz_group", "g2")]) is True
-    assert group_has_children("g1", []) is False
 
 
 def test_build_service_tree_shows_contains_application_even_if_asst_id_is_not_seeded_name():
@@ -780,13 +733,11 @@ def test_build_service_tree_stops_at_application_and_counts_hosts():
     tree = build_service_tree(
         system={"inst_uuid": "s1", "inst_name": "门户"},
         nodes={
-            "g1": {"inst_uuid": "g1", "inst_name": "生产", "model_id": "biz_group"},
             "a1": {"inst_uuid": "a1", "inst_name": "门户前端", "model_id": "application"},
             "a2": {"inst_uuid": "a2", "inst_name": "直挂", "model_id": "application"},
         },
         edges=[
-            _edge(SYSTEM_CONTAINS_BIZ_GROUP, "system", "s1", "biz_group", "g1"),
-            _edge(BIZ_GROUP_CONTAINS_APPLICATION, "biz_group", "g1", "application", "a1"),
+            _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a1"),
             _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a2"),
             _edge(APPLICATION_RUN_HOST, "application", "a1", "host", "h1"),
             _edge(APPLICATION_RUN_HOST, "application", "a1", "host", "h2"),
@@ -796,26 +747,22 @@ def test_build_service_tree_stops_at_application_and_counts_hosts():
     assert tree["kind"] == "system"
     assert tree["host_count"] == 2
     kinds = [child["kind"] for child in tree["children"]]
+    assert kinds == ["application", "application"]
     assert "host" not in kinds
-    group = next(child for child in tree["children"] if child["kind"] == "biz_group")
-    app = next(child for child in tree["children"] if child["kind"] == "application")
-    assert group["host_count"] == 2
-    assert app["inst_name"] == "直挂"
-    assert [leaf["kind"] for leaf in group["children"]] == ["application"]
-    assert group["children"][0]["host_count"] == 2
+    by_name = {child["inst_name"]: child for child in tree["children"]}
+    assert by_name["门户前端"]["host_count"] == 2
+    assert by_name["直挂"]["host_count"] == 1
 
 
 def test_build_service_tree_omits_invisible_nodes():
     tree = build_service_tree(
         system={"inst_uuid": "s1", "inst_name": "门户"},
         nodes={
-            "g1": {"inst_uuid": "g1", "inst_name": "生产", "model_id": "biz_group"},
             "a1": {"inst_uuid": "a1", "inst_name": "门户前端", "model_id": "application"},
             "a2": {"inst_uuid": "a2", "inst_name": "直挂", "model_id": "application"},
         },
         edges=[
-            _edge(SYSTEM_CONTAINS_BIZ_GROUP, "system", "s1", "biz_group", "g1"),
-            _edge(BIZ_GROUP_CONTAINS_APPLICATION, "biz_group", "g1", "application", "a1"),
+            _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a1"),
             _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a2"),
         ],
         visible_uuids={"a2"},
@@ -835,7 +782,7 @@ def test_create_child_logs_lifecycle_template_and_keeps_return_contract(monkeypa
     monkeypatch.setattr(ServiceTreeService, "get_tree", classmethod(lambda cls, system, is_visible=None: tree))
     monkeypatch.setattr(
         "apps.cmdb.services.service_tree._create_instance",
-        lambda *args, **kwargs: {"inst_uuid": "g-new", "inst_name": "生产"},
+        lambda *args, **kwargs: {"inst_uuid": "a-new", "inst_name": "门户前端"},
     )
     monkeypatch.setattr("apps.cmdb.services.service_tree._create_association", lambda *args, **kwargs: None)
     caplog.set_level(logging.INFO, logger="cmdb")
@@ -843,17 +790,17 @@ def test_create_child_logs_lifecycle_template_and_keeps_return_contract(monkeypa
     result = ServiceTreeService.create_child(
         system={"inst_uuid": "s1", "organization": [1], "inst_name": sentinel},
         parent_uuid="s1",
-        kind="biz_group",
-        inst_name="生产",
+        kind="application",
+        inst_name="门户前端",
         operator="alice",
     )
 
-    assert result == {"inst_uuid": "g-new", "inst_name": "生产", "kind": "biz_group"}
+    assert result == {"inst_uuid": "a-new", "inst_name": "门户前端", "kind": "application"}
     records = [record for record in caplog.records if record.name == "cmdb" and "event=service_tree_child_created" in record.msg]
     assert len(records) == 1
     assert records[0].msg == "event=service_tree_child_created system_uuid=%s parent_uuid=%s child_uuid=%s kind=%s"
-    assert records[0].args == ("s1", "s1", "g-new", "biz_group")
-    assert records[0].getMessage() == "event=service_tree_child_created system_uuid=s1 parent_uuid=s1 child_uuid=g-new kind=biz_group"
+    assert records[0].args == ("s1", "s1", "a-new", "application")
+    assert records[0].getMessage() == "event=service_tree_child_created system_uuid=s1 parent_uuid=s1 child_uuid=a-new kind=application"
     assert sentinel not in records[0].getMessage()
     assert "alice" not in records[0].getMessage()
     assert "password" not in records[0].getMessage()
@@ -907,16 +854,15 @@ def test_delete_node_logs_lifecycle_template(monkeypatch, caplog):
         "inst_name": "门户",
         "kind": "system",
         "depth": 0,
-        "children": [{"inst_uuid": "g1", "inst_name": "生产", "kind": "biz_group", "depth": 1, "children": []}],
+        "children": [{"inst_uuid": "a1", "inst_name": "门户前端", "kind": "application", "depth": 1, "children": []}],
     }
     monkeypatch.setattr(ServiceTreeService, "get_tree", classmethod(lambda cls, system, is_visible=None: tree))
-    monkeypatch.setattr("apps.cmdb.services.service_tree._load_tree_edges", lambda *args, **kwargs: [])
     monkeypatch.setattr("apps.cmdb.services.service_tree.InstanceManage.instance_batch_delete_by_uuids", lambda *args, **kwargs: None)
     caplog.set_level(logging.INFO, logger="cmdb")
 
     result = ServiceTreeService.delete_node(
         system={"inst_uuid": "s1"},
-        node_uuid="g1",
+        node_uuid="a1",
         operator="alice",
         user_groups=[],
         roles=[],
@@ -926,6 +872,6 @@ def test_delete_node_logs_lifecycle_template(monkeypatch, caplog):
     records = [record for record in caplog.records if record.name == "cmdb" and "event=service_tree_node_deleted" in record.msg]
     assert len(records) == 1
     assert records[0].msg == "event=service_tree_node_deleted system_uuid=%s node_uuid=%s kind=%s"
-    assert records[0].args == ("s1", "g1", "biz_group")
-    assert records[0].getMessage() == "event=service_tree_node_deleted system_uuid=s1 node_uuid=g1 kind=biz_group"
+    assert records[0].args == ("s1", "a1", "application")
+    assert records[0].getMessage() == "event=service_tree_node_deleted system_uuid=s1 node_uuid=a1 kind=application"
     assert "alice" not in records[0].getMessage()

@@ -106,7 +106,7 @@ DOMESTIC_TASK_SOURCE_IDS = {
 }
 
 FOREIGN_CATALOG_BRAND_COUNTS = {
-    "Cisco": 577,
+    "Cisco": 581,
     "HPE": 82,
     "SynOptics": 64,
     "Enterasys Networks": 1,
@@ -123,7 +123,7 @@ FOREIGN_CATALOG_BRAND_COUNTS = {
     "Dell": 17,
     "Alcatel-Lucent": 1,
     "Piolink": 1,
-    "Fortinet": 5,
+    "Fortinet": 6,
     "Aruba": 2,
     "Arista": 3,
     "Palo Alto Networks": 2,
@@ -1030,13 +1030,13 @@ def test_production_catalog_is_valid_and_preserves_exact_legacy_oid_set():
     ).hexdigest()
     foreign_counts = Counter(entry["brand"] for entry in raw.values() if entry["brand"] in FOREIGN_CATALOG_BRAND_COUNTS)
 
-    assert len(legacy_raw) == 1998, "信创目录的 legacy-compatible 条目数已变化"
-    assert oid_sequence_digest == "4fdc993a31ac2742508c14e7bb756700993a2066b11dbb355c55dc23dc9314e2", "历史 SOID 数值排序序列已变化（ASCII 编码、LF 分隔、无末尾换行）"
-    assert legacy_content_digest == ("8857e4af97adce57402e08966c056bd6e5cb78fbed760e0d2a0921e5e69a9138"), "legacy-compatible SOID 的字段语义已变化"
+    assert len(legacy_raw) == 2122, "信创目录的 legacy-compatible 条目数已变化"
+    assert oid_sequence_digest == "f13b7004bdc572d52c48ac7725132d4f8e3153fadd0daf9cb9497d021d7a3d9b", "历史 SOID 数值排序序列已变化（ASCII 编码、LF 分隔、无末尾换行）"
+    assert legacy_content_digest == ("d447d986eaa2cb34f94342a49b3d4a153ec6d7644b61ea4540410999c688c6bf"), "legacy-compatible SOID 的字段语义已变化"
     assert foreign_counts == FOREIGN_CATALOG_BRAND_COUNTS, "国际厂商目录条目不得增加"
     assert "1.3.6.1.4.1.8072.3.2.10" not in raw
     assert len(entries) == len(raw)
-    assert len(raw) > 1998, "verified 与信创前缀必须在历史目录之外新增"
+    assert len(raw) > 2122, "verified 与信创前缀必须在历史目录之外新增"
     assert "1.3.6.1.4.1.9.1.1208" in entries
     assert "1.3.6.1.4.1.2011.2.23.968" in entries
     assert "1.3.6.1.4.1.25506.1.2609" in entries
@@ -1204,7 +1204,7 @@ def test_production_catalog_version_and_xinchuang_prefix_rows():
     metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
     entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
 
-    assert metadata["catalog_version"] == "2026.08.28"
+    assert metadata["catalog_version"] == "2026.09.22"
     assert all(len(oid) <= 64 for oid in raw)
     assert "Hillstone" not in metadata["coverage_gaps"]
     assert metadata["coverage_gaps"]["H3C"] == ["firewall"]

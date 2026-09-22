@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import dayjs from 'dayjs';
 import { Select, DatePicker, TimePicker } from 'antd';
 import {
@@ -30,18 +30,10 @@ const defaultValue: EffectiveTimeValue = {
 };
 
 const AlarmEffectiveTime: React.FC<AlarmEffectiveTimeProps> = ({
-  open,
   value,
   onChange,
 }) => {
   const form = value || defaultValue;
-  const typeChangeRef = useRef(true);
-
-  useEffect(() => {
-    if (open) {
-      typeChangeRef.current = true;
-    }
-  }, [open]);
 
   useEffect(() => {
     if (!value) {
@@ -53,33 +45,31 @@ const AlarmEffectiveTime: React.FC<AlarmEffectiveTimeProps> = ({
     onChange?.({ ...form, ...changed });
   };
 
-  useEffect(() => {
-    if (typeChangeRef.current) {
-      typeChangeRef.current = false;
-      return;
-    }
-    if (form.type === 'one') {
+  const handleTypeChange = (nextType: EffectiveTimeValue['type']) => {
+    if (nextType === 'one') {
       triggerChange({
+        type: nextType,
         start_time: dayjs().startOf('day').format('YYYY-MM-DD HH:mm:ss'),
         end_time: dayjs()
           .add(1, 'month')
           .endOf('day')
           .format('YYYY-MM-DD HH:mm:ss'),
       });
-    } else {
-      triggerChange({
-        start_time: '00:00:00',
-        end_time: '23:59:59',
-      });
+      return;
     }
-  }, [form.type]);
+    triggerChange({
+      type: nextType,
+      start_time: '00:00:00',
+      end_time: '23:59:59',
+    });
+  };
 
   return (
     <div className="flex" id="effective-time">
       <div className="mr-[6px] flex-1">
         <Select
           value={form.type}
-          onChange={(nextValue) => triggerChange({ type: nextValue })}
+          onChange={handleTypeChange}
         >
           {timeInterval.map((item) => (
             <Option key={item.value} value={item.value}>

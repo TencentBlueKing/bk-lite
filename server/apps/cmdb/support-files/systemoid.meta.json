@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026.08.28",
+  "catalog_version": "2026.09.22",
   "allowed_device_types": [
     "switch",
     "router",

@@ -112,13 +112,10 @@ export interface Application3DDetailData {
   refreshedAt: string;
 }
 
-export type Application3DArchitectureKind = 'system' | 'biz_group' | 'application' | 'host';
+export type Application3DArchitectureKind = 'system' | 'application' | 'host';
 
 export type Application3DArchitectureRelation =
   | 'system_contains_application'
-  | 'system_contains_biz_group'
-  | 'biz_group_contains_biz_group'
-  | 'biz_group_contains_application'
   | 'application_run_host';
 
 export interface Application3DArchitectureNode {

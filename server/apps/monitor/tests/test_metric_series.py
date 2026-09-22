@@ -159,6 +159,30 @@ def test_fold_instant_sums_instances_and_maps_protocol():
     assert rows[1]["value"] == 2.0
 
 
+def test_fold_instant_ranks_tied_multidim_labels():
+    rows = fold_instant_rows(
+        [
+            {
+                "metric": {"namespace": "ai-gateway", "deployment": "bifrost"},
+                "value": [1, "1"],
+            },
+            {
+                "metric": {"namespace": "ray", "deployment": "serve"},
+                "value": [1, "1"],
+            },
+            {
+                "metric": {"namespace": "kube-system", "deployment": "coredns"},
+                "value": [1, "2"],
+            },
+        ],
+        dimensions=["namespace", "deployment"],
+        limit=10,
+    )
+    assert [row["value"] for row in rows] == [2.0, 1.0, 1.0]
+    assert rows[0]["name"] == "kube-system / coredns"
+    assert {row["name"] for row in rows[1:]} == {"ai-gateway / bifrost", "ray / serve"}
+
+
 def test_fold_instant_overview_is_single_total():
     rows = fold_instant_rows(
         [
