@@ -2,7 +2,7 @@ Wireless Huawei AC SNMP:
   name: Huawei WLAN AC (Telegraf)
   desc: SNMP monitoring template for Huawei WLAN AC. It reports entity CPU, memory, temperature,
     chassis used/total power in watts, fan speed as a percent of full speed, fan state,
-    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, uplink traffic,
+    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, channel interference, uplink traffic,
     and optical module DDM.
 monitor_object:
   Wireless: Wireless
@@ -241,6 +241,12 @@ monitor_object_metric:
       name: Radio Free Airtime
       desc: Free airtime of each radio (hwWlanRadioFree), as a 0-100 percentage. Low free
         airtime means the radio cannot accept more load without quality loss.
+    wlan_radio_interference:
+      name: Radio Channel Interference
+      desc: Channel interference rate of each radio (hwWlanRadioChInterferenceRate), as a
+        0-100 percentage. Indexed by AP MAC and radio ID, same as utilization and noise.
+        High interference with modest STA count often means co-channel or non-Wi-Fi energy
+        on the working channel.
     wlan_radio_sta_num:
       name: Radio STA Count
       desc: Current station count of each radio (hwWlanRadioStaNum).

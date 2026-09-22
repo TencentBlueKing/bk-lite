@@ -126,6 +126,31 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei WLAN AC射频信道干扰率过高",
+      "alert_name": "无线控制器${resource_name} 射频信道干扰率过高",
+      "description": "监控华为 WLAN AC 所管射频的信道干扰率。持续偏高且终端数量并不大时，通常表示同频或非 Wi-Fi 能量占用工作信道，可能导致吞吐下降与漫游变差。",
+      "metric_name": "wlan_radio_interference",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }
