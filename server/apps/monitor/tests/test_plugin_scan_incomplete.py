@@ -33,6 +33,18 @@ def test_find_files_raises_after_partial_directory_scan(tmp_path, monkeypatch):
         find_files_by_pattern(str(root), filename_pattern="metrics.json")
 
 
+def test_complete_scan_returns_discovered_metrics_files(tmp_path):
+    root = tmp_path / "plugins"
+    plugin_a = root / "Telegraf" / "host_a"
+    plugin_a.mkdir(parents=True)
+    metrics = plugin_a / "metrics.json"
+    metrics.write_text('{"plugin":"Keep Me"}', encoding="utf-8")
+
+    found = find_files_by_pattern(str(root), filename_pattern="metrics.json")
+
+    assert found == [str(metrics)]
+
+
 def test_migrate_plugin_skips_cleanup_when_scan_incomplete(mocker):
     mocker.patch(
         "apps.monitor.management.services.plugin_migrate.find_files_by_pattern",
