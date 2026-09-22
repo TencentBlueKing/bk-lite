@@ -61,6 +61,17 @@ HTML 支持明暗主题、缩放、搜索、关系追踪、聚焦视图、演示
 不再反向调用 InstanceManage 查询逐行关联。页面导出结果保存到临时文件并分块传输。
 具体契约与验证见 [实例导出性能修复](../../specs/changes/cmdb-export-performance/spec.md)。
 
+2026-09-21 异步导入导出补充：资产页面通过 `TransferTaskViewSet` 接纳任务，
+`TransferService` 在 Django DB 保存用户配额、任务及执行占用；导入导出由现有 Celery 默认队列和 Worker 执行。
+接纳提交后仅启动有界后台发布，HTTP 不等待 Broker；投递意图由任务表持有，
+每分钟补发覆盖发布失败、线程饱和和 API 退出，无需单独启动 CMDB Worker。
+导出读取图数据并将产物与授权清单写入既有 `cmdb-config-file` 桶的
+`transfer/` 前缀；导入按批查询标识，通过现有 InstanceManage 与 Operation/Outbox
+写入实例、记录成功审计。实例数据不进入任务状态表，源文件不进入数据库 JSON。
+每分钟维护派发/租约、每天 03:00 清理过期终态及文件；不确定导入不自动重放或释放占用。
+见 [实施设计](../../specs/changes/cmdb-async-transfer/spec.md) 和
+[实施测试记录](../../specs/changes/cmdb-async-transfer/test-report.md)。旧同步接口继续保留。
+
 ### 3.2 建议明确六个能力域
 
 | 能力域 | 核心职责 | 当前主要落点 | 应拥有的规则/事实 |

@@ -306,3 +306,26 @@ def test_file_save_failure_closes_file_without_replacing_error(monkeypatch, fake
     assert caught.value is error
     assert stream.closed
     assert set(ALL_TEMP_FILES) == before
+
+
+def test_async_export_budget_and_progress(monkeypatch, fake_graph):
+    from apps.cmdb.services.transfer_service import TransferError
+
+    monkeypatch.setattr(ModelManage, "search_model_attr_v2", lambda *a, **k: ATTRS)
+    fake_graph("apps.cmdb.services.instance", query_entity=([{"inst_uuid": uuid(i), "inst_name": str(i)} for i in range(3)], None))
+    progress = []
+    with pytest.raises(TransferError) as error:
+        InstanceManage.inst_export(
+            "host", [], {1: {"inst_names": []}}, attr_list=["inst_name"], row_limit=2, progress=lambda count: progress.append(count)
+        )
+    assert error.value.code == "export_limit"
+    assert progress == [0]
+
+
+def test_export_keeps_user_text_as_text_instead_of_executable_formula(monkeypatch, fake_graph):
+    monkeypatch.setattr(ModelManage, "search_model_attr_v2", lambda *a, **k: ATTRS)
+    fake_graph("apps.cmdb.services.instance", query_entity=([{"inst_name": '=HYPERLINK("private")'}], None))
+    stream = InstanceManage.inst_export("host", [], {1: {"inst_names": []}}, attr_list=["inst_name"])
+    cell = openpyxl.load_workbook(stream).active.cell(4, 2)
+    assert cell.value == '=HYPERLINK("private")'
+    assert cell.data_type == "s"

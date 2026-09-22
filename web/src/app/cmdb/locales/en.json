@@ -1930,5 +1930,59 @@
         "timeoutSeconds": "seconds (0 for default)"
     },
     "table": "Table",
-    "tag": "Tag"
+    "tag": "Tag",
+  "Transfer": {
+    "activeHint": "An active or unverified task already exists. If its record has expired, contact an administrator to verify the result.",
+    "retry": "Resubmit export",
+    "title": "Import / export history",
+    "retention": "Keep up to 5 records for 7 days. Older completed records are removed automatically. Download your files in time.",
+    "empty": "No import or export tasks",
+    "accepted": "Task created. View the result in import / export history.",
+    "submitExport": "Submit export",
+    "submitImport": "Submit import",
+    "fileLimit": ".xlsx only, up to 20 MiB and 10,000 data rows",
+    "requestFailed": "Request failed. Please retry.",
+    "import": "Import",
+    "export": "Export",
+    "organization": "Organization",
+    "created": "Submitted",
+    "expires": "Expires",
+    "rows": "rows",
+    "cancel": "Cancel queued task",
+    "delete": "Delete record",
+    "download": "Download file",
+    "download_errors": "Download error report",
+    "deleteConfirm": "Delete this record and its files? Imported instances will remain.",
+    "status": {
+      "queued": "Queued",
+      "running": "Processing",
+      "succeeded": "Succeeded",
+      "partial_success": "Partially succeeded",
+      "failed": "Failed",
+      "interrupted": "Needs verification",
+      "cancelled": "Cancelled"
+    },
+    "scope": {
+      "all": "All",
+      "selected": "Selected",
+      "currentPage": "Current page"
+    },
+    "phase": {
+      "authorizing": "Checking permissions",
+      "matching": "Matching instances",
+      "writing_instances": "Writing instances",
+      "writing_relations": "Writing relationships",
+      "generating_file": "Generating file",
+      "uploading_result": "Uploading result"
+    },
+    "count": {
+      "existing_relations": "Existing relationships",
+      "created": "Created instances",
+      "updated": "Updated instances",
+      "failed_rows": "Failed rows",
+      "created_relations": "Created relationships",
+      "failed_relations": "Failed relationships",
+      "exported": "Exported instances"
+    }
+  }
 }

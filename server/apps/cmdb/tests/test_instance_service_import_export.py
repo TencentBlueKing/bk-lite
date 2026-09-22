@@ -236,3 +236,55 @@ def test_inst_export_no_ids(monkeypatch, fake_graph):
     stream = InstanceManage.inst_export("host", ids=[], permissions_map={})
     data = stream.read()
     assert data[:2] == b"PK"
+
+
+def test_partial_import_still_records_successful_changes(monkeypatch, fake_graph):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    fake_graph(MODULE, query_entity=([], 0))
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_attr_v2", lambda _: [])
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_info", lambda _: {"model_name": "主机"})
+    successful = {"success": True, "data": {"_id": 9, "model_id": "host", "inst_name": "one"}}
+    importer = SimpleNamespace(
+        validation_errors=["第 5 行无效"], inst_list=[{}, {}], import_inst_list_support_edit=lambda *a, **k: ([successful], [], [])
+    )
+    monkeypatch.setattr(f"{MODULE}.Import", lambda *a: importer)
+    audit = Mock()
+    reconcile = Mock()
+    monkeypatch.setattr(f"{MODULE}.batch_create_change_record", audit)
+    monkeypatch.setattr("apps.cmdb.services.auto_relation_reconcile.schedule_instance_auto_relation_reconcile", reconcile)
+    result = InstanceManage().inst_import_support_edit("host", io.BytesIO(), "admin")
+    assert not result["success"]
+    assert audit.call_args_list[0].args[2][0]["inst_id"] == 9
+    reconcile.assert_called_once_with([9])
+
+
+def test_async_relation_creation_never_falls_back_to_model_wide_edge_query(monkeypatch, fake_graph):
+    from apps.cmdb.services.model import ModelManage
+
+    source = {"_id": 1, "model_id": "host", "inst_uuid": "123e4567-e89b-42d3-a456-426614174000"}
+    target = {"_id": 2, "model_id": "app", "inst_uuid": "123e4567-e89b-42d3-a456-426614174001"}
+    monkeypatch.setattr(InstanceManage, "query_entity_by_uuid", lambda uuid: source if uuid == source["inst_uuid"] else target)
+    monkeypatch.setattr(ModelManage, "model_association_info_search", lambda key: {"mapping": "n:n", "asst_id": "belong"})
+    monkeypatch.setattr(InstanceManage, "instance_association_by_asso_id", lambda _: {"src": source, "dst": target})
+    monkeypatch.setattr(f"{MODULE}.create_change_record_by_asso", lambda *a, **k: None)
+    graph = fake_graph(MODULE, query_edge=[], create_edge={"_id": 3})
+    InstanceManage.instance_association_create_by_uuid(
+        src_inst_uuid=source["inst_uuid"], dst_inst_uuid=target["inst_uuid"], model_asst_id="host_belong_app", operator="admin", bounded_lookup=True
+    )
+    queries = [args[1] for name, args, kwargs in graph.calls if name == "query_edge"]
+    assert len(queries) == 1
+    assert {item["field"] for item in queries[0]} == {"model_asst_id", "src_inst_uuid", "dst_inst_uuid"}
+
+
+def test_async_relation_repeat_is_idempotent_without_graph_write(monkeypatch, fake_graph):
+    src = "123e4567-e89b-42d3-a456-426614174000"
+    dst = "123e4567-e89b-42d3-a456-426614174001"
+    monkeypatch.setattr(InstanceManage, "query_entity_by_uuid", lambda uuid: {"_id": 1, "inst_uuid": uuid, "model_id": "host"})
+    graph = fake_graph(MODULE, query_edge=[{"_id": 3}])
+    result = InstanceManage.instance_association_create_by_uuid(
+        src_inst_uuid=src, dst_inst_uuid=dst, model_asst_id="host_belong_host", operator="admin", bounded_lookup=True, allow_existing=True
+    )
+    assert result == {"already_exists": True}
+    assert not [call for call in graph.calls if call[0] == "create_edge"]

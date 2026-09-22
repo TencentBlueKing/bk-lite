@@ -202,3 +202,15 @@ def test_release_startup_keeps_opspilot_celery_conf_when_install_apps_empty(tmp_
 
     assert result.returncode == 0
     assert (conf_dir / "opspilot_celery.conf").exists()
+
+
+def test_cmdb_transfer_uses_existing_celery_worker_without_extra_process():
+    from apps.cmdb.tasks.transfer import execute_transfer
+
+    result = subprocess.run(["make", "-n", "celery"], cwd=REPOSITORY_ROOT / "server", capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "--pool threads" in result.stdout
+    route = execute_transfer.app.amqp.router.route(execute_transfer._get_exec_options(), execute_transfer.name)
+    assert route["queue"].name == execute_transfer.app.conf.task_default_queue
+    assert "cmdb_transfer_worker.conf" not in (RELEASE_DIR / "Dockerfile").read_text()
+    assert not (RELEASE_DIR / "supervisor/cmdb_transfer_worker.conf").exists()

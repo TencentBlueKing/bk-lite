@@ -2018,7 +2018,7 @@ class InstanceManage(object):
         return edge
 
     @staticmethod
-    def _association_edges_by_business_key(*, src_inst_uuid: str, dst_inst_uuid: str, model_asst_id: str) -> list[dict]:
+    def _association_edges_by_business_key(*, src_inst_uuid: str, dst_inst_uuid: str, model_asst_id: str, legacy_fallback: bool = True) -> list[dict]:
         src_inst_uuid = normalize_inst_uuid(src_inst_uuid)
         dst_inst_uuid = normalize_inst_uuid(dst_inst_uuid)
         with GraphClient() as ag:
@@ -2031,7 +2031,7 @@ class InstanceManage(object):
                 ],
                 return_entity=True,
             )
-        if edges:
+        if edges or not legacy_fallback:
             return edges
         with GraphClient() as ag:
             items = ag.query_edge(
@@ -2054,6 +2054,8 @@ class InstanceManage(object):
         operator: str,
         scenario: str = RELATION_CHANGE,
         edge_properties: dict | None = None,
+        bounded_lookup: bool = False,
+        allow_existing: bool = False,
     ) -> dict:
         src = InstanceManage.query_entity_by_uuid(src_inst_uuid)
         dst = InstanceManage.query_entity_by_uuid(dst_inst_uuid)
@@ -2063,7 +2065,10 @@ class InstanceManage(object):
             src_inst_uuid=src["inst_uuid"],
             dst_inst_uuid=dst["inst_uuid"],
             model_asst_id=model_asst_id,
+            legacy_fallback=not bounded_lookup,
         ):
+            if allow_existing:
+                return {"already_exists": True}
             raise BaseAppException("instance association repetition")
 
         asso_info = ModelManage.model_association_info_search(model_asst_id)
@@ -2354,14 +2359,6 @@ class InstanceManage(object):
             file_stream,
             allowed_org_ids=allowed_org_ids,
         )
-        # 检查是否存在验证错误
-        if _import.validation_errors:
-            error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
-            error_details = "\n".join(_import.validation_errors)
-            logger.warning("[InstanceImport] 数据导入验证失败 model_id=%s, error_count=%s", model_id, len(_import.validation_errors))
-            success_count = len([i for i in add_results if i.get("success", False)])
-            error_summary += f"已成功导入 {success_count} 条数据，失败 {len(_import.inst_list) - success_count} 条数据。\n 错误信息: {error_summary + error_details}"
-            return {"success": False, "message": error_summary}
 
         add_changes = [
             dict(
@@ -2396,6 +2393,15 @@ class InstanceManage(object):
             [item["data"]["_id"] for item in add_results if item.get("success")]
             + [item["data"]["_id"] for item in update_results if item.get("success")]
         )
+
+        # 检查是否存在验证错误
+        if _import.validation_errors:
+            error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
+            error_details = "\n".join(_import.validation_errors)
+            logger.warning("[InstanceImport] 数据导入验证失败 model_id=%s, error_count=%s", model_id, len(_import.validation_errors))
+            success_count = len([i for i in add_results if i.get("success", False)])
+            error_summary += f"已成功导入 {success_count} 条数据，失败 {len(_import.inst_list) - success_count} 条数据。\n 错误信息: {error_summary + error_details}"
+            return {"success": False, "message": error_summary}
 
         res_status, result_message = self.format_result_message(_import.import_result_message)
         logger.info("[InstanceImport] 数据导入成功 model_id=%s", model_id)
@@ -2492,6 +2498,10 @@ class InstanceManage(object):
         association_list: list = [],
         *,
         file_backed: bool = False,
+        row_limit=None,
+        progress=None,
+        inspect_batch=None,
+        byte_limit=None,
     ):
         """实例导出"""
         started = perf_counter()
@@ -2525,6 +2535,8 @@ class InstanceManage(object):
             # 每批重新应用同一授权范围；按不可变 UUID 前进，不使用 offset。
             # 这是运行期读取，不承诺跨批次的数据库快照。
             while format_permission_dict:
+                if progress:
+                    progress(row_count)
                 query_started = perf_counter()
                 params = list(query_list)
                 if cursor is not None:
@@ -2542,7 +2554,12 @@ class InstanceManage(object):
                 instance_seconds += perf_counter() - query_started
                 if not batch:
                     break
+                if row_limit is not None and row_count + len(batch) > row_limit:
+                    from apps.cmdb.services.transfer_service import TransferError
+
+                    raise TransferError("export_limit", "导出超过 10 万行，请缩小范围", 413)
                 association_values = {}
+                rows = []
                 if association:
                     relation_started = perf_counter()
                     batch_uuids = {item["inst_uuid"] for item in batch}
@@ -2563,15 +2580,24 @@ class InstanceManage(object):
                         names = association_values.setdefault(row["inst_uuid"], {}).setdefault(row["model_asst_id"], [])
                         names.append(row["peer_name"] or "")
                     relation_seconds += perf_counter() - relation_started
+                if inspect_batch:
+                    inspect_batch(batch, rows)
                 exporter.append_inst_list(workbook, batch, association_values=association_values)
                 row_count += len(batch)
+                if progress:
+                    progress(row_count)
                 if len(batch) < EXPORT_BATCH_SIZE:
                     break
                 cursor = normalize_inst_uuid(batch[-1].get("inst_uuid"))
             if file_backed:
                 stream = TemporaryFile(mode="w+b")
                 try:
-                    workbook.save(stream)
+                    if byte_limit is not None:
+                        from apps.cmdb.services.transfer_files import BoundedWriter
+
+                        workbook.save(BoundedWriter(stream, byte_limit))
+                    else:
+                        workbook.save(stream)
                     stream.seek(0)
                 except BaseException:
                     stream.close()

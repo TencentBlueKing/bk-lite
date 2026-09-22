@@ -116,7 +116,7 @@ class Export:
             for values, color in ((attrs_name, "92D050"), (attrs_type, "C6EFCE"), (attrs_id, "C6EFCE")):
                 cells = []
                 for column, value in enumerate(values):
-                    cell = WriteOnlyCell(sheet, value=value)
+                    cell = self._literal_cell(sheet, value)
                     fill_color = color if column else "FFA500"
                     cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
                     cells.append(cell)
@@ -284,7 +284,17 @@ class Export:
                         _value = ""
                 sheet_data.append(_value)
             self.format_inst_asst_name(inst_info, sheet_data, association_values)
-            workbook.active.append(sheet_data)
+            if workbook.write_only:
+                workbook.active.append(self._literal_cell(workbook.active, value) for value in sheet_data)
+            else:
+                workbook.active.append(sheet_data)
+
+    @staticmethod
+    def _literal_cell(sheet, value):
+        cell = WriteOnlyCell(sheet, value=value)
+        if isinstance(value, str):
+            cell.data_type = "s"
+        return cell
 
     def format_inst_asst_name(self, inst_info, sheet_data, association_values=None):
         model_asst_name_map = (association_values or {}).get(inst_info.get("inst_uuid"), {})

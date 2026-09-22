@@ -1930,5 +1930,59 @@
         "sectionBasic": "基础信息",
         "sectionScope": "扫描范围与凭据",
         "timeoutSeconds": "秒（0 为默认超时）"
+    },
+  "Transfer": {
+    "activeHint": "已有进行中或待核对任务。若记录已过期，请联系管理员核对执行结果。",
+    "retry": "重新提交导出",
+    "title": "导入导出记录",
+    "retention": "仅保留最近 7 天的 5 条记录，超限自动清理最早的已结束任务，请及时下载。",
+    "empty": "暂无导入导出记录",
+    "accepted": "任务已创建，可在导入导出记录中查看处理结果",
+    "submitExport": "提交导出",
+    "submitImport": "提交导入",
+    "fileLimit": "仅支持 .xlsx，最大 20 MiB、1 万数据行",
+    "requestFailed": "请求失败，请重试",
+    "import": "导入",
+    "export": "导出",
+    "organization": "组织",
+    "created": "提交时间",
+    "expires": "到期时间",
+    "rows": "条",
+    "cancel": "取消排队",
+    "delete": "删除记录",
+    "download": "下载文件",
+    "download_errors": "下载错误报告",
+    "deleteConfirm": "删除记录及文件？已导入的实例不会撤销。",
+    "status": {
+      "queued": "排队中",
+      "running": "处理中",
+      "succeeded": "成功",
+      "partial_success": "部分成功",
+      "failed": "失败",
+      "interrupted": "结果待核对",
+      "cancelled": "已取消"
+    },
+    "scope": {
+      "all": "全部",
+      "selected": "已选择",
+      "currentPage": "当前页"
+    },
+    "phase": {
+      "authorizing": "复核权限",
+      "matching": "匹配实例",
+      "writing_instances": "写入实例",
+      "writing_relations": "写入关联",
+      "generating_file": "生成文件",
+      "uploading_result": "上传结果"
+    },
+    "count": {
+      "existing_relations": "已存在关联",
+      "created": "新增实例",
+      "updated": "更新实例",
+      "failed_rows": "失败行",
+      "created_relations": "新增关联",
+      "failed_relations": "失败关联",
+      "exported": "导出实例"
     }
+  }
 }
