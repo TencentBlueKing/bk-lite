@@ -2,7 +2,7 @@ Wireless Huawei AC SNMP:
   name: Huawei WLAN AC (Telegraf)
   desc: SNMP monitoring template for Huawei WLAN AC. It reports entity CPU, memory, temperature,
     chassis used/total power in watts, fan speed as a percent of full speed, fan state,
-    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, channel interference, uplink traffic,
+    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, channel interference, packet error rate, Tx/Rx ratio, uplink traffic,
     and optical module DDM.
 monitor_object:
   Wireless: Wireless
@@ -247,6 +247,22 @@ monitor_object_metric:
         0-100 percentage. Indexed by AP MAC and radio ID, same as utilization and noise.
         High interference with modest STA count often means co-channel or non-Wi-Fi energy
         on the working channel.
+    wlan_radio_per:
+      name: Radio Packet Error Rate
+      desc: Packet error rate of each radio (hwWlanRadioPER), as a 0-100 percentage. Indexed
+        by AP MAC and radio ID, same as utilization and interference. Value 255 is invalid
+        and is dropped. Persistently high PER with modest STA count often means RF quality
+        or retry pressure on the working channel.
+    wlan_radio_tx_ratio:
+      name: Radio Tx Ratio
+      desc: Packet transmitting ratio of each radio (hwWlanRadioTxRatio), as a 0-100 percentage.
+        Indexed by AP MAC and radio ID, same as utilization and interference. Value 255 is
+        invalid and is dropped; it is not 255%.
+    wlan_radio_rx_ratio:
+      name: Radio Rx Ratio
+      desc: Packet receiving ratio of each radio (hwWlanRadioRxRatio), as a 0-100 percentage.
+        Indexed by AP MAC and radio ID, same as utilization and interference. Value 255 is
+        invalid and is dropped; it is not 255%.
     wlan_radio_sta_num:
       name: Radio STA Count
       desc: Current station count of each radio (hwWlanRadioStaNum).
