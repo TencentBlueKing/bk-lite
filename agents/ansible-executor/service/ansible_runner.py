@@ -1439,6 +1439,146 @@ class BufferedStreamPublisher:
         }
 
 
+def _empty_output_meta(max_output_bytes: int, stream_line_chunks: int = 0) -> dict[str, Any]:
+    return {
+        "truncated": False,
+        "output_bytes_total": 0,
+        "output_bytes_retained": 0,
+        "output_max_bytes": max_output_bytes,
+        "stream_line_chunks": stream_line_chunks,
+    }
+
+
+def _exit_code_after_process_hang(output: str, returncode: int | None) -> int:
+    """stdout 已关闭但进程未退（如 SSH ControlPersist）时，按 Ansible 主机结果推断退出码。"""
+    exit_code = returncode if returncode is not None else 0
+    parsed_hosts = parse_ansible_output_per_host(output)
+    if parsed_hosts and all(item.get("status") == "success" for item in parsed_hosts):
+        return 0
+    if parsed_hosts:
+        failed = next(item for item in parsed_hosts if item.get("status") != "success")
+        return int(failed.get("exit_code") or 1)
+    if exit_code is None or exit_code < 0:
+        return 124
+    return exit_code
+
+
+async def _terminate_subprocess(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is not None:
+        return
+    if os.name == "posix":
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    else:
+        proc.kill()
+    with contextlib.suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(proc.wait(), timeout=5)
+    if proc.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=5)
+
+
+async def _collect_subprocess_output(
+    proc: asyncio.subprocess.Process,
+    *,
+    max_output_bytes: int,
+    streamer: LineEventStreamer | None,
+    stream_publisher: BufferedStreamPublisher | None,
+) -> tuple[bytes, dict[str, Any]]:
+    assert proc.stdout is not None
+    chunks: list[bytes] = []
+    retained_bytes = 0
+    total_bytes = 0
+    truncated = False
+
+    while True:
+        chunk = await proc.stdout.read(8192)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        remaining = max_output_bytes - retained_bytes
+        if remaining > 0:
+            kept = chunk[:remaining]
+            if kept:
+                chunks.append(kept)
+                retained_bytes += len(kept)
+        if len(chunk) > max(remaining, 0):
+            truncated = True
+        if streamer is not None and stream_publisher is not None:
+            for line in streamer.feed(chunk):
+                stream_publisher.offer(line)
+
+    if streamer is not None and stream_publisher is not None:
+        trailing = streamer.flush()
+        if trailing is not None:
+            stream_publisher.offer(trailing)
+
+    return b"".join(chunks), {
+        "truncated": truncated,
+        "output_bytes_total": total_bytes,
+        "output_bytes_retained": retained_bytes,
+        "output_max_bytes": max_output_bytes,
+        "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
+    }
+
+
+async def _execute_command_with_timeouts(
+    proc: asyncio.subprocess.Process,
+    cmd: list[str],
+    *,
+    timeout: int | float,
+    max_output_bytes: int,
+    streamer: LineEventStreamer | None,
+    stream_publisher: BufferedStreamPublisher | None,
+    stream_flush_timeout: float,
+) -> tuple[bytes, dict[str, Any], bool, bool]:
+    """采集 stdout 并等待进程退出；区分采集超时与输出关闭后的进程挂起。"""
+    collect_timed_out = False
+    process_wait_timed_out = False
+    stdout = b""
+    output_meta = _empty_output_meta(max_output_bytes)
+    try:
+        try:
+            stdout, output_meta = await asyncio.wait_for(
+                _collect_subprocess_output(
+                    proc,
+                    max_output_bytes=max_output_bytes,
+                    streamer=streamer,
+                    stream_publisher=stream_publisher,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            collect_timed_out = True
+            await _terminate_subprocess(proc)
+            logger.error("command timed out: %s", " ".join(shlex.quote(part) for part in cmd))
+            output_meta = _empty_output_meta(
+                max_output_bytes,
+                streamer.chunked_lines if streamer is not None else 0,
+            )
+        else:
+            # 输出已读完但进程未退出：常见于 Ansible SSH ControlPersist 收尾挂起。
+            # 保留已采集输出，避免流式日志已成功、终态回调却丢失/被清空。
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                process_wait_timed_out = True
+                await _terminate_subprocess(proc)
+                logger.warning(
+                    "command hung after output closed: %s",
+                    " ".join(shlex.quote(part) for part in cmd),
+                )
+    except asyncio.CancelledError:
+        await asyncio.shield(_terminate_subprocess(proc))
+        raise
+    finally:
+        if stream_publisher is not None:
+            output_meta.update(await stream_publisher.close(stream_flush_timeout))
+    return stdout, output_meta, collect_timed_out, process_wait_timed_out
+
+
 async def run_command(
     cmd: list[str],
     timeout: int | float,
@@ -1478,95 +1618,23 @@ async def run_command(
     if stream_publisher is not None:
         stream_publisher.start()
 
-    async def _terminate_process() -> None:
-        if proc.returncode is not None:
-            return
-        if os.name == "posix":
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-        else:
-            proc.kill()
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        if proc.returncode is None:
-            proc.kill()
-            await proc.wait()
+    stdout, output_meta, collect_timed_out, process_wait_timed_out = await _execute_command_with_timeouts(
+        proc,
+        cmd,
+        timeout=timeout,
+        max_output_bytes=max_output_bytes,
+        streamer=streamer,
+        stream_publisher=stream_publisher,
+        stream_flush_timeout=stream_flush_timeout,
+    )
 
-    async def _collect_output() -> tuple[bytes, dict[str, Any]]:
-        assert proc.stdout is not None
-        chunks: list[bytes] = []
-        retained_bytes = 0
-        total_bytes = 0
-        truncated = False
+    if collect_timed_out:
+        return 124, "command timed out", output_meta
 
-        while True:
-            chunk = await proc.stdout.read(8192)
-            if not chunk:
-                break
-            total_bytes += len(chunk)
-            remaining = max_output_bytes - retained_bytes
-            if remaining > 0:
-                kept = chunk[:remaining]
-                if kept:
-                    chunks.append(kept)
-                    retained_bytes += len(kept)
-            if len(chunk) > max(remaining, 0):
-                truncated = True
-            if streamer is not None:
-                for line in streamer.feed(chunk):
-                    stream_publisher.offer(line)
-
-        if streamer is not None:
-            trailing = streamer.flush()
-            if trailing is not None:
-                stream_publisher.offer(trailing)
-
-        return b"".join(chunks), {
-            "truncated": truncated,
-            "output_bytes_total": total_bytes,
-            "output_bytes_retained": retained_bytes,
-            "output_max_bytes": max_output_bytes,
-            "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
-        }
-
-    timed_out = False
-    output_meta = {
-        "truncated": False,
-        "output_bytes_total": 0,
-        "output_bytes_retained": 0,
-        "output_max_bytes": max_output_bytes,
-        "stream_line_chunks": 0,
-    }
-    try:
-        stdout, output_meta = await asyncio.wait_for(_collect_output(), timeout=timeout)
-        await asyncio.wait_for(proc.wait(), timeout=5)
-    except asyncio.CancelledError:
-        await asyncio.shield(_terminate_process())
-        raise
-    except asyncio.TimeoutError:
-        await _terminate_process()
-        logger.error("command timed out: %s", " ".join(shlex.quote(part) for part in cmd))
-        timed_out = True
-        stdout = b""
-        output_meta = {
-            "truncated": False,
-            "output_bytes_total": 0,
-            "output_bytes_retained": 0,
-            "output_max_bytes": max_output_bytes,
-            "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
-        }
-    finally:
-        if stream_publisher is not None:
-            output_meta.update(await stream_publisher.close(stream_flush_timeout))
-
-    if timed_out:
-        return (
-            124,
-            "command timed out",
-            output_meta,
-        )
     output, decode_strategy = decode_command_output(stdout)
-    exit_code = proc.returncode or 0
+    exit_code = proc.returncode if proc.returncode is not None else 0
+    if process_wait_timed_out:
+        exit_code = _exit_code_after_process_hang(output, proc.returncode)
     logger.info(
         "command output log: exit_code=%s strategy=%s bytes=%s retained=%s truncated=%s raw_prefix=%s decoded_prefix=%r",
         exit_code,
