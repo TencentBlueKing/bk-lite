@@ -18,9 +18,9 @@ Embedded chat does not use the console login session. Every request must send a 
 
 | Header | Value |
 |--------|------|
-| `Api-Authorization` | The plaintext secret created under System Management → Settings → API Keys |
+| `Api-Authorization` | The plaintext token created under System Management → Platform Management → API Token |
 
-The secret's organization must be in the skill's usage organizations, and the channel must be enabled.
+The token's organization must be in the skill's usage organizations, and the channel must be enabled.
 
 ## 3. Request contract
 
@@ -44,7 +44,7 @@ Body example:
 
 ## 4. Embed snippet
 
-Add the following before `</body>`. Replace `sseUrl` with the copied Publish URL and `YOUR_USER_API_SECRET` with the API key. Styles and scripts can use the console-origin `/webchat/` static files.
+Add the following before `</body>`. Replace `sseUrl` with the copied Publish URL and `YOUR_USER_API_SECRET` with the API token. Styles and scripts can use the console-origin `/webchat/` static files.
 
 ```html
 <script>
