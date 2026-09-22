@@ -15,6 +15,7 @@ import { useSession } from 'next-auth/react';
 import { showOperatorFailureMessages } from '@/app/alarm/utils/operatorResult';
 import { alarmActionsForStatus, canReassignAlert } from '@/app/alarm/utils/alertActionAccess';
 import { useUserInfoContext } from '@/context/userInfo';
+import { runManualActionTrigger } from './manualActionExecuteModal';
 
 const AlarmAction: React.FC<AlarmActionProps> = ({
   rowData,
@@ -191,9 +192,16 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     if (!rowData.length) return;
     const alertId = rowData[0][idKeyMap[from]];
     try {
-      await manualTriggerAction({ alert_id: alertId, rule_id: rule.id });
-      message.success(t('common.operationSuccess') || '已触发');
-      onAction();
+      const result = await runManualActionTrigger({
+        alertId,
+        rule,
+        trigger: manualTriggerAction,
+        t,
+      });
+      if (result === 'triggered') {
+        message.success(t('common.operationSuccess') || '已触发');
+        onAction();
+      }
     } catch (err) {
       console.error(err);
     }

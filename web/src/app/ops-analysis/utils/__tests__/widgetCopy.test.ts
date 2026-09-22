@@ -89,17 +89,11 @@ describe('cloneAnalysisWidget', () => {
 });
 
 describe('shouldShowAnalysisWidgetCopyAction', () => {
-  it('shows copy for data widgets in edit mode including room3D and topologyMap', () => {
+  it('shows copy for data widgets in edit mode including topologyMap', () => {
     expect(
       shouldShowAnalysisWidgetCopyAction({
         interaction: 'edit',
         chartType: 'line',
-      }),
-    ).toBe(true);
-    expect(
-      shouldShowAnalysisWidgetCopyAction({
-        interaction: 'edit',
-        chartType: 'room3D',
       }),
     ).toBe(true);
     expect(
@@ -146,6 +140,19 @@ describe('shouldShowAnalysisWidgetCopyAction', () => {
       shouldShowAnalysisWidgetCopyAction({
         interaction: 'edit',
         sceneWidgetType: 'application3D',
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowAnalysisWidgetCopyAction({
+        interaction: 'edit',
+        chartType: 'room3D',
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowAnalysisWidgetCopyAction({
+        interaction: 'edit',
+        sceneWidgetType: 'room3D',
+        chartType: 'room3D',
       }),
     ).toBe(false);
   });

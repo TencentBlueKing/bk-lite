@@ -79,12 +79,9 @@ assert.equal((clearComponentParamSwitch({ ...switchParam, inputConfig: invalidIn
 const resolvedRuntime = resolveComponentSwitchRuntime('topN', switchParam, options, 'missing');
 assert.deepEqual(resolvedRuntime, { value: 1, params: { group_by: 1 } });
 assert.equal(supportsComponentSwitch('topN'), true);
-assert.equal(supportsComponentSwitch('room3D'), true);
+assert.equal(supportsComponentSwitch('room3D'), false);
 assert.equal(supportsComponentSwitch('bar'), false);
-assert.deepEqual(resolveComponentSwitchRuntime('room3D', switchParam, options, '1'), {
-  value: '1',
-  params: { group_by: '1' },
-});
+assert.deepEqual(resolveComponentSwitchRuntime('room3D', switchParam, options, '1'), { value: undefined, params: {} });
 assert.deepEqual(resolveComponentSwitchRuntime('bar', switchParam, options, '1'), { value: undefined, params: {} });
 assert.equal(resolveComponentSwitchRequestGate({
   hasComponentSwitchParam: false,
@@ -264,10 +261,14 @@ assert.match(rendererSource, /componentSwitchRequestGate === "ready"/);
 assert.match(rendererSource, /componentSwitchRequestGate === "blocked"/);
 assert.match(rendererSource, /isWaitingForSwitchOptions/);
 assert.match(rendererSource, /requestExtraParams/);
-assert.match(rendererSource, /headerRuntimeSlot \? null : componentSwitchControl/);
+assert.match(
+  rendererSource,
+  /const inlineComponentSwitchControl = headerRuntimeSlot\s*\?\s*null\s*:\s*componentSwitchControl/,
+);
 assert.match(widgetRendererSource, /componentSwitchControl/);
 assert.match(topNSource, /\{componentSwitchControl\}/);
-assert.match(room3DSource, /\{componentSwitchControl\}/);
+assert.doesNotMatch(room3DSource, /\{componentSwitchControl\}/);
+assert.match(room3DSource, /showRoomSwitcher/);
 assert.match(controlSource, /inputConfig/);
 assert.match(controlSource, /<Segmented/);
 assert.match(controlSource, /<Select/);

@@ -612,7 +612,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
           title: t('Scan.middlewarePath'),
           key: 'middlewarePath',
           render: (_: unknown, record: ScanHitItem) =>
-            snapshotText(record, ['conf_path', 'config_path', 'install_path']),
+            snapshotText(record, ['conf_path', 'config_path', 'install_path', 'bin_path', 'nginx_path']),
         },
         credentialCol,
       ];

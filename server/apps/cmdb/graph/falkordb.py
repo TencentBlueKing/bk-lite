@@ -2128,6 +2128,7 @@ class FalkorDBClient:
         inst_name_params: str = "",
         created: str = "",
         case_sensitive: bool = False,
+        permission_params_dict: dict = None,
     ):
         """
         全文检索（兼容旧接口，参数化版本）
@@ -2148,8 +2149,7 @@ class FalkorDBClient:
         # 获取排除字段
         exclude_fields = ExcludeFieldsCache.get_exclude_fields()
 
-        # 参数化查询参数
-        query_params = {}
+        query_params = dict(permission_params_dict or {})
         conditions = []
 
         # 权限和实例名称过滤

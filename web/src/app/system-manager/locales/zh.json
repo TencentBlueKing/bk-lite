@@ -1,5 +1,10 @@
 {
   "system": {
+    "listCard": {
+      "owner": "负责人",
+      "team": "团队",
+      "loading": "加载中"
+    },
     "permission": {
       "type": "类型",
       "dataPermission": "数据权限",
@@ -1522,7 +1527,6 @@
       "addCredential": "新增凭据",
       "quickCreateTitle": "新建凭据并选用",
       "saveAndSelect": "保存并选用",
-      "taskLockedHint": "当前任务已指定，不可修改。",
       "selectTypeFirst": "请先选择凭据类型",
       "createCredential": "新建凭据",
       "editCredentialTitle": "编辑凭据-{name}",

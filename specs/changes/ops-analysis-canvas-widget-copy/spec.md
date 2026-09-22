@@ -30,7 +30,8 @@ Status: done
 - Report：新 section 插在源 section 正下方，id 唯一。
 - DataSource 当前组织不可见时仍显示复制；克隆失败表现与原组件一致。不按 hasAuth 隐藏复制。
 - 只脏本地草稿。无组件级撤销。复制不自动存草稿检查点。取消编辑回到上次成功保存。
-- room3D、topologyMap、cardList、eventTimeline、radar 是数据组件，必须有复制。
+- topologyMap、cardList、eventTimeline、radar 是数据组件，必须有复制。
+- room3D 是 Screen-only 场景组件，⋯ 菜单不出现「复制」。
 - 拓扑 `handleNodeCopy` 只作语义参考（复制被操作的那一个）；不把 +200px / graph.select / toast 带进分析画布。
 
 ## Testing Decisions

@@ -6,7 +6,4 @@ try {
 } catch {}
 $result['system'] = @{
     uptime_seconds = $uptime
-    load1 = 0
-    load5 = 0
-    load15 = 0
 }

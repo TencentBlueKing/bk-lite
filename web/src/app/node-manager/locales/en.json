@@ -158,6 +158,8 @@
         "downloadTemplate": "Download Template",
         "btntext2": "here",
         "installInfo": "Installation Information",
+        "installNodeCount": "Nodes to install: {count}",
+        "installNodeCountHint": "Only nodes with complete required information are counted",
         "btntext1": "If you do not have the configuration file you need, please click",
         "successInstall": "Installed successfully",
         "ipaddress": "IP Address",

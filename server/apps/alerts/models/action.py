@@ -10,6 +10,7 @@ class ActionRule(MaintainerInfo, TimeInfo):
 
     name = models.CharField(max_length=100, verbose_name="规则名称")
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    auto_execute = models.BooleanField(default=True, verbose_name="是否自动执行")
     team = JSONField(default=list, verbose_name="团队")
     match_rules = JSONField(default=list, verbose_name="匹配条件(OR-of-AND)")
     trigger_events = JSONField(default=list, verbose_name="触发事件")
@@ -45,9 +46,7 @@ class ActionExecution(TimeInfo):
     )
     trigger_event = models.CharField(max_length=32, verbose_name="触发事件")
     trigger_type = models.CharField(max_length=16, default="auto", verbose_name="触发方式")
-    idempotency_key = models.CharField(
-        max_length=255, null=True, blank=True, unique=True, verbose_name="幂等键"
-    )
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="幂等键")
     status = models.CharField(max_length=16, default="pending", db_index=True, verbose_name="状态")
     action_type = models.CharField(max_length=32, default="job", verbose_name="动作类型")
     job_task_id = models.IntegerField(null=True, blank=True, verbose_name="作业执行ID")

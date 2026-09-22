@@ -65,7 +65,7 @@ describe('五个正式配置页面的类型化保存', () => {
     ...cases.map(item => ({...item, submit:'settings.assignStrategy.submit', extra:{}})),
     {name:'相关性',Component:CorrelationModal,create:api.createCorrelationRule,update:api.updateCorrelationRule,submit:'common.confirm',extra:{strategy_type:'smart_denoise',team:[1],dispatch_team:[1],params:{window_size:5,group_by:['resource_name']}}},
     {name:'丰富',Component:EnrichmentModal,create:api.createEnrichment,update:api.updateEnrichment,submit:'common.confirm',extra:{provider_type:'cmdb',namespace:'custom',input_binding:{model_id:'resource_type',inst_uuid:'resource_id'},output_projection:[{source:'owner'}]}},
-    {name:'处理',Component:ActionModal,create:api.createActionRule,update:api.updateActionRule,submit:'common.confirm',extra:{team:[1],is_active:true,trigger_events:['created'],action_type:'job',action_config:{script_id:1,target_binding:{mode:'from_alert',host_field:'resource_name'},param_bindings:[]}}},
+    {name:'处理',Component:ActionModal,create:api.createActionRule,update:api.updateActionRule,submit:'common.confirm',extra:{team:[1],is_active:true,auto_execute:true,trigger_events:['created'],action_type:'job',action_config:{script_id:1,target_binding:{mode:'from_alert',host_field:'resource_name'},param_bindings:[]}}},
   ];
   const fieldCases = allCases.flatMap(item => {
     const context = ['分派', '处理'].includes(item.name) ? 'alert' : 'event';

@@ -71,17 +71,50 @@ def filter_my_handler_alerts(queryset, actor):
     return queryset.filter(build_json_membership_query(queryset, "handlers", handler_match_values(actor)))
 
 
-def _lock_assignable_alert(alert_id, *, operable_qs=None) -> MonitorAlert:
+def _actor_in_handlers(handlers, actor) -> bool:
+    allowed = set()
+    for item in handlers or []:
+        if item in (None, ""):
+            continue
+        allowed.add(item)
+        allowed.add(str(item))
+        if _is_int_identifier(item):
+            allowed.add(int(item))
+    for value in handler_match_values(actor):
+        if value in allowed or str(value) in allowed:
+            return True
+        if _is_int_identifier(value) and int(value) in allowed:
+            return True
+    return False
+
+
+def _lock_alert(alert_id, *, operable_qs=None) -> MonitorAlert:
     try:
         locked = MonitorAlert.objects.select_for_update().get(pk=alert_id)
     except MonitorAlert.DoesNotExist as exc:
         raise AlertHandlerForbidden("没有操作该告警的权限") from exc
     if operable_qs is not None and not operable_qs.filter(pk=locked.pk).exists():
         raise AlertHandlerForbidden("没有操作该告警的权限")
+    return locked
+
+
+def _lock_assignable_alert(alert_id, *, operable_qs=None) -> MonitorAlert:
+    locked = _lock_alert(alert_id, operable_qs=operable_qs)
     if locked.status != ACTIVE_STATUS:
         raise AlertHandlerConflict("只有空处理人的活跃告警可以认领或分派")
     if list(locked.handlers or []):
         raise AlertHandlerConflict("告警已有处理人")
+    return locked
+
+
+def _lock_reassignable_alert(alert_id, *, actor, operable_qs=None) -> MonitorAlert:
+    locked = _lock_alert(alert_id, operable_qs=operable_qs)
+    if locked.status != ACTIVE_STATUS:
+        raise AlertHandlerConflict("只有活跃告警可以转派")
+    if not list(locked.handlers or []):
+        raise AlertHandlerConflict("告警没有处理人，请先认领或分派")
+    if not _actor_in_handlers(locked.handlers, actor):
+        raise AlertHandlerConflict("只有当前处理人可以把告警转派给其他人")
     return locked
 
 
@@ -143,7 +176,7 @@ def normalize_policy_handlers(identifiers, organization_ids) -> list:
     return _normalize_handlers(identifiers, organization_ids, allow_empty=True, scope_label="策略")
 
 
-def _schedule_assign_notification(alert: MonitorAlert) -> None:
+def _schedule_assign_notification(alert: MonitorAlert, *, action="assigned") -> None:
     policy_id = alert.policy_id
     alert_id = alert.id
 
@@ -159,7 +192,7 @@ def _schedule_assign_notification(alert: MonitorAlert) -> None:
         current = MonitorAlert.objects.filter(id=alert_id).first()
         if current is None:
             return
-        AlertLifecycleNotifier(policy).notify_assigned([current])
+        AlertLifecycleNotifier(policy).notify_assigned([current], action=action)
 
     transaction.on_commit(_notify)
 
@@ -173,6 +206,8 @@ def _handler_event_content(action, *, actor, handlers) -> str:
     operator = _actor_name(actor)
     if action == MonitorEvent.Action.CLAIMED:
         return f"{operator} 认领，处理人变为 {names}"
+    if action == MonitorEvent.Action.REASSIGNED:
+        return f"{operator} 转派给 {names}"
     return f"{operator} 分派给 {names}"
 
 
@@ -211,4 +246,15 @@ def assign_alert(alert: MonitorAlert, *, handlers, actor, operable_qs=None) -> M
         _write_handler_event(locked, action=MonitorEvent.Action.ASSIGNED, actor=actor)
         _schedule_assign_notification(locked)
     logger.info("event=alert_assigned alert_id=%s handler_count=%s", alert.pk, len(locked.handlers))
+    return MonitorAlert.objects.get(pk=alert.pk)
+
+
+def reassign_alert(alert: MonitorAlert, *, handlers, actor, operable_qs=None) -> MonitorAlert:
+    with transaction.atomic():
+        locked = _lock_reassignable_alert(alert.pk, actor=actor, operable_qs=operable_qs)
+        locked.handlers = normalize_assign_handlers(handlers, locked.organizations)
+        locked.save(update_fields=["handlers", "updated_at"])
+        _write_handler_event(locked, action=MonitorEvent.Action.REASSIGNED, actor=actor)
+        _schedule_assign_notification(locked, action="reassigned")
+    logger.info("event=alert_reassigned alert_id=%s handler_count=%s", alert.pk, len(locked.handlers))
     return MonitorAlert.objects.get(pk=alert.pk)

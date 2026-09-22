@@ -13,9 +13,16 @@ def _alert(team=[1], aid="A1"):
     )
 
 
-def _rule(events, match_rules=None, team=[1], active=True):
+def _rule(events, match_rules=None, team=[1], active=True, auto_execute=True):
     return ActionRule.objects.create(
-        name="r", is_active=active, team=team, trigger_events=events, match_rules=match_rules or [], action_type="job", action_config={"script_id": 1}
+        name="r",
+        is_active=active,
+        team=team,
+        trigger_events=events,
+        match_rules=match_rules or [],
+        action_type="job",
+        action_config={"script_id": 1},
+        auto_execute=auto_execute,
     )
 
 
@@ -77,3 +84,26 @@ def test_inactive_rule_skipped(mock_get):
     _rule(events=["created"], active=False)
     ActionEngine().evaluate(alert, "created")
     assert ActionExecution.objects.count() == 0
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.action.engine.get_handler")
+def test_auto_execute_false_matches_but_does_not_dispatch(mock_get):
+    alert = _alert()
+    _rule(events=["created"], auto_execute=False)
+    ActionEngine().evaluate(alert, "created")
+    assert ActionExecution.objects.count() == 0
+    mock_get.return_value.execute.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.action.engine.get_handler")
+def test_auto_execute_default_true_still_dispatches(mock_get):
+    alert = _alert()
+    rule = ActionRule.objects.create(
+        name="legacy", is_active=True, team=[1], trigger_events=["created"], action_type="job", action_config={"script_id": 1}
+    )
+    assert rule.auto_execute is True
+    ActionEngine().evaluate(alert, "created")
+    assert ActionExecution.objects.filter(alert=alert, trigger_type="auto").count() == 1
+    mock_get.return_value.execute.assert_called_once()

@@ -211,6 +211,7 @@ const useIntegrationApi = () => {
           id?: string;
           name?: string;
           monitor_object_id?: React.Key;
+          interval?: number;
         } = {}
       ) => {
         return await post(

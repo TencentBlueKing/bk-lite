@@ -7,6 +7,7 @@ from apps.operation_analysis.services.string_param_multiple_migrate import migra
 _SCENE_WIDGET_SURFACES = {
     "networkStatusTopology": {ObjectType.DASHBOARD, ObjectType.SCREEN},
     "application3D": {ObjectType.SCREEN},
+    "room3D": {ObjectType.SCREEN},
 }
 
 

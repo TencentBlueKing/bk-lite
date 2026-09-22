@@ -19,6 +19,8 @@ class ActionEngine:
         for rule in rules:
             if event_name not in (rule.trigger_events or []):
                 continue
+            if not getattr(rule, "auto_execute", True):
+                continue
             rule_teams = set(rule.team or [])
             if alert_teams and rule_teams and not (alert_teams & rule_teams):
                 continue

@@ -3,11 +3,12 @@
 import React, { useState } from 'react';
 import { Button, Modal, Popconfirm, Select, Space, message } from 'antd';
 import Permission from '@/components/permission';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import { formatUserName } from '@/utils/userDisplay';
 import useMonitorApi from '@/app/monitor/api';
 import { TableDataItem, UserItem } from '@/app/monitor/types';
-import { canClaimOrAssignAlert } from './alertHandlerUtils';
+import { canClaimOrAssignAlert, canReassignAlert } from './alertHandlerUtils';
 
 interface AlertHandlerActionsProps {
   record: TableDataItem;
@@ -25,13 +26,17 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
   onSuccess
 }) => {
   const { t } = useTranslation();
-  const { patchMonitorAlert, claimMonitorAlert, assignMonitorAlert, getAllUsers } =
+  const { userId, username } = useUserInfoContext();
+  const { patchMonitorAlert, claimMonitorAlert, assignMonitorAlert, reassignMonitorAlert, getAllUsers } =
     useMonitorApi();
   const [actionLoading, setActionLoading] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [handlerAction, setHandlerAction] = useState<'assign' | 'reassign'>('assign');
   const [orgUsers, setOrgUsers] = useState<UserItem[]>([]);
   const [selectedHandlers, setSelectedHandlers] = useState<Array<string | number>>([]);
+  const actor = { id: userId, username };
   const canClaimOrAssign = canClaimOrAssignAlert(record.status, record.handlers);
+  const canReassign = canReassignAlert(record.status, record.handlers, actor);
 
   const handleClaim = async () => {
     setActionLoading(true);
@@ -55,12 +60,13 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
     }
   };
 
-  const openAssign = async (event?: React.MouseEvent) => {
+  const openHandlerModal = async (action: 'assign' | 'reassign', event?: React.MouseEvent) => {
     event?.stopPropagation();
     const orgs = Array.isArray(record.organizations) ? record.organizations : [];
     const users = await getAllUsers(orgs);
     setOrgUsers(Array.isArray(users) ? users : []);
     setSelectedHandlers([]);
+    setHandlerAction(action);
     setAssignOpen(true);
   };
 
@@ -68,8 +74,13 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
     if (!selectedHandlers.length) return;
     setActionLoading(true);
     try {
-      await assignMonitorAlert(record.id as React.Key, selectedHandlers);
-      message.success(t('monitor.events.successfullyAssigned'));
+      if (handlerAction === 'reassign') {
+        await reassignMonitorAlert(record.id as React.Key, selectedHandlers);
+        message.success(t('monitor.events.successfullyReassigned'));
+      } else {
+        await assignMonitorAlert(record.id as React.Key, selectedHandlers);
+        message.success(t('monitor.events.successfullyAssigned'));
+      }
       setAssignOpen(false);
       onSuccess();
     } finally {
@@ -98,10 +109,15 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
                   {t('monitor.events.claim')}
                 </Button>
               </Popconfirm>
-              <Button type="link" size={size} className="p-0" onClick={openAssign}>
+              <Button type="link" size={size} className="p-0" onClick={(event) => void openHandlerModal('assign', event)}>
                 {t('monitor.events.assign')}
               </Button>
             </>
+          ) : null}
+          {canReassign ? (
+            <Button type="link" size={size} className="p-0" onClick={(event) => void openHandlerModal('reassign', event)}>
+              {t('monitor.events.reassign')}
+            </Button>
           ) : null}
           <Popconfirm
             title={t('monitor.events.closeTitle')}
@@ -118,7 +134,7 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
         </Space>
       </Permission>
       <Modal
-        title={t('monitor.events.assignTitle')}
+        title={t(handlerAction === 'reassign' ? 'monitor.events.reassignTitle' : 'monitor.events.assignTitle')}
         open={assignOpen}
         confirmLoading={actionLoading}
         okButtonProps={{ disabled: !selectedHandlers.length }}
@@ -130,7 +146,11 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
           mode="multiple"
           showSearch
           optionFilterProp="label"
-          placeholder={t('monitor.events.assignPlaceholder')}
+          placeholder={t(
+            handlerAction === 'reassign'
+              ? 'monitor.events.reassignPlaceholder'
+              : 'monitor.events.assignPlaceholder'
+          )}
           value={selectedHandlers}
           onChange={setSelectedHandlers}
           options={orgUsers.map((item) => ({

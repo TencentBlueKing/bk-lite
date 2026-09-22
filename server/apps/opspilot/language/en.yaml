@@ -212,7 +212,7 @@ tools:
   monitor:
     name: Monitor
     description: |
-      [Host CPU] Query BK-Lite monitored objects, instances, metric series, and alerts with caller identity.
+      [Host CPU] Query BK-Lite monitored objects, instances, metric series, and monitor-policy alerts with caller identity. Colloquial "open tickets / is this host still alerting" belongs to alert-center alerts_*, not this pack.
       Typical flow: object type → match name to instance → filter metrics by the user's word → query series.
       Prefer these tools; do not suggest SSH/top/htop.
       If the user did not say the object type, list types then request_user_choice; do not guess Host/K8s Pod from the name.
@@ -230,9 +230,9 @@ tools:
       monitor_query_metric_data:
         description: "[Host CPU] Step 4: query metric time series; metric must come from list_object_metrics names, never guess cpu.util. instance_ids must be monitor IDs/name/IP, not CMDB inst_uuid."
       monitor_list_active_alerts:
-        description: "[Host alerts] List current active alerts; filter by object/instance/level. instance_ids accepts monitor instance_id, name, or IP, not CMDB inst_uuid."
+        description: "[Monitor-policy alerts] List scanner-produced active alerts, not alert-center tickets. Use only when the user names monitor/policy alerts; colloquial open tickets go to alerts_list_alerts. instance_ids accepts monitor instance_id, name, or IP, not CMDB inst_uuid."
       monitor_query_alert_segments:
-        description: "[Host alert history] Query alert segments in a time window."
+        description: "[Monitor-policy alert history] Query scanner alert segments in a time window."
       monitor_get_host_resource_snapshot:
         description: "[Host CPU] Query CPU/memory/disk avg and max snapshot by monitor instance_ids; not CMDB inst_uuid."
   cmdb:
@@ -287,9 +287,10 @@ tools:
     name: Alert Center
     description: |
       Query unified alert-center alerts, details, and related events with caller identity. Read-only; no acknowledge or close.
+      Colloquial "any open tickets / is this host still alerting / unassigned" must use this pack, not monitor_list_active_alerts.
     tools:
       alerts_list_alerts:
-        description: List alerts; filter by status/level/keyword.
+        description: List alert-center tickets. Open/unassigned/host-still-alerting must use this tool; put host/IP/title in keyword. Do not use monitor_list_active_alerts or ask the monitor object type first.
       alerts_get_alert_detail:
         description: Get alert details by alert_id.
       alerts_list_alert_events:

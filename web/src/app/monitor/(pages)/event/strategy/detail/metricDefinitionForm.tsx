@@ -242,6 +242,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                 className="mb-[16px]"
               >
                 <MetricExpressionEditor
+                  id="basic_metric"
                   rows={metricRows}
                   mode={metricExpressionMode}
                   resultName={resultName}

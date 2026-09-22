@@ -62,6 +62,27 @@ class TestPolicySourceCleanup:
         assert result["disabled_count"] == 1
         assert policy.id in result["disabled_policy_ids"]
 
+    def test_auto_disabled_policy_stops_beat_dispatch(self):
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        obj = _make_obj()
+        gone = _make_policy(obj, {"type": "instance", "values": ["('h1',)"]})
+        kept = _make_policy(obj, {"type": "instance", "values": ["('h1',)", "('h2',)"]})
+        crontab = CrontabSchedule.objects.create(minute="*/5")
+        for policy in (gone, kept):
+            PeriodicTask.objects.create(
+                name=f"scan_policy_task_{policy.id}",
+                task="apps.monitor.tasks.monitor_policy.scan_policy_task",
+                args=f"[{policy.id}]",
+                crontab=crontab,
+                enabled=True,
+            )
+
+        PolicySourceCleanupService.cleanup_by_instance_ids(["('h1',)"])
+
+        assert PeriodicTask.objects.get(name=f"scan_policy_task_{gone.id}").enabled is False
+        assert PeriodicTask.objects.get(name=f"scan_policy_task_{kept.id}").enabled is True
+
     def test_untouched_policy_not_updated(self):
         obj = _make_obj()
         policy = _make_policy(obj, {"type": "instance", "values": ["('keep',)"]})

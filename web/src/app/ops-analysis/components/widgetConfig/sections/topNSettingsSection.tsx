@@ -1,5 +1,6 @@
 import React from 'react';
-import { Form, Select } from 'antd';
+import { Button, Form, Select } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 
 interface TopNSettingsSectionProps {
@@ -8,6 +9,8 @@ interface TopNSettingsSectionProps {
   selectedDataSource?: DatasourceItem;
   topNLabelFieldOptions: Array<{ label: React.ReactNode; value: string }>;
   topNValueFieldOptions: Array<{ label: React.ReactNode; value: string }>;
+  loadingFields?: boolean;
+  onRefreshFields?: () => void;
 }
 
 export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
@@ -16,9 +19,26 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
   selectedDataSource,
   topNLabelFieldOptions,
   topNValueFieldOptions,
+  loadingFields = false,
+  onRefreshFields,
 }) => {
   const resolvedSectionTitle =
     sectionTitle !== undefined ? sectionTitle : t('topology.nodeConfig.dataSettings');
+  const fieldSelectorDisabled = !selectedDataSource || loadingFields;
+
+  const refreshFieldsButton = (
+    <Button
+      type="text"
+      size="small"
+      icon={<ReloadOutlined aria-hidden />}
+      onClick={onRefreshFields}
+      loading={loadingFields}
+      disabled={!selectedDataSource}
+      className="h-6 px-1.5 text-xs text-(--color-text-3) hover:text-(--color-primary)"
+    >
+      {t('dashboard.refreshFields')}
+    </Button>
+  );
 
   return (
     <div className="space-y-4">
@@ -30,21 +50,13 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
         </div>
       ) : null}
 
-      {!selectedDataSource ? (
-        <div className="text-center py-4 text-xs text-(--color-text-3)">
-          {t('topology.nodeConfig.selectDataSourceFirst')}
-        </div>
-      ) : null}
-
-      {selectedDataSource && topNLabelFieldOptions.length === 0 ? (
-        <div className="text-center py-4 text-xs text-(--color-text-3)">
-          {t('topology.nodeConfig.noAvailableFields')}
-        </div>
-      ) : null}
+      <div className="relative">
+        <div className="absolute right-0 top-0 z-10">{refreshFieldsButton}</div>
 
         <Form.Item
           label={t('topology.nodeConfig.displayField')}
           name="topNLabelField"
+          className="[&_.ant-form-item-label]:pr-24"
           rules={[
             {
               required: true,
@@ -55,7 +67,7 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           <Select
             placeholder={t('topology.nodeConfig.selectDisplayField')}
             options={topNLabelFieldOptions}
-            disabled={!selectedDataSource}
+            disabled={fieldSelectorDisabled}
             showSearch
             optionFilterProp="value"
           />
@@ -74,11 +86,12 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           <Select
             placeholder={t('topology.nodeConfig.selectValueField')}
             options={topNValueFieldOptions}
-            disabled={!selectedDataSource}
+            disabled={fieldSelectorDisabled}
             showSearch
             optionFilterProp="value"
           />
         </Form.Item>
+      </div>
     </div>
   );
 };

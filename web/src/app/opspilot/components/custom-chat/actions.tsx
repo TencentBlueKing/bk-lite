@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Tooltip } from 'antd';
 import { CheckOutlined, CopyOutlined, DeleteOutlined, RedoOutlined } from '@ant-design/icons';
 import { CustomChatMessage } from '@/app/opspilot/types/global';
-import { formatRelativeTime } from '@/app/opspilot/utils/relativeTime';
+import { formatRelativeTime } from '@/utils/relativeTime';
 import { useTranslation } from '@/utils/i18n';
 
 interface MessageActionsProps {

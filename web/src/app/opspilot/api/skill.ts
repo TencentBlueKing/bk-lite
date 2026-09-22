@@ -205,6 +205,28 @@ export const useSkillApi = () => {
     await post('/opspilot/skill_channel/conversations/delete/', { session_id: sessionId });
   };
 
+  const fetchAdminSkillConversations = async (params: Record<string, string | number | undefined>) => {
+    const res = await get('/opspilot/model_provider_mgmt/skill_channel/admin_conversations/', {
+      params,
+    });
+    const payload = res?.data ?? res;
+    return {
+      items: Array.isArray(payload?.items) ? payload.items : [],
+      count: Number(payload?.count || 0),
+    };
+  };
+
+  const fetchAdminSkillSessionMessages = async (sessionId: string) => {
+    const res = await get('/opspilot/model_provider_mgmt/skill_channel/admin_conversation_messages/', {
+      params: { session_id: sessionId },
+    });
+    const payload = res?.data ?? res;
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+    return Array.isArray(payload?.messages) ? payload.messages : [];
+  };
+
   return {
     fetchInvocationLogs,
     fetchSkill,
@@ -242,5 +264,7 @@ export const useSkillApi = () => {
     fetchSkillConversations,
     fetchSkillSessionMessages,
     deleteSkillSession,
+    fetchAdminSkillConversations,
+    fetchAdminSkillSessionMessages,
   };
 };

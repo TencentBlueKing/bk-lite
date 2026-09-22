@@ -159,6 +159,17 @@
     },
     {
       "metric_group": "Operations",
+      "name": "mongodb_total_docs_scanned_rate",
+      "display_name": "Documents Scanned Frequency",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of documents examined by the query executor; a sustained high value often indicates missing indexes or overly broad queries, not a per-collection count",
+      "query": "rate(mongodb_total_docs_scanned{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Operations",
       "name": "mongodb_inserts_rate",
       "display_name": "Insert Operations Frequency",
       "instance_id_keys": ["instance_id"],

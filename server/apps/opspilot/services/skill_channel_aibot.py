@@ -7,10 +7,16 @@ from typing import Any
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_log_value
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import SkillChannel
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCrypto, EnterpriseWechatAibotCryptoError
+
+SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE = (
+    "event=skill_channel_aibot_decrypt_failed channel_id=%s failed_stage=decrypt_callback "
+    "error_type=%s has_msg_signature=%s has_timestamp=%s has_nonce=%s token_len=%s"
+)
 
 
 def normalize_aibot_channel_config(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -24,12 +30,14 @@ def normalize_aibot_channel_config(config: dict[str, Any] | None) -> dict[str, A
     token = config.get("token")
     aes_key = config.get("encodingAESKey") or config.get("aes_key")
     webhook: dict[str, Any] = {}
+    if isinstance(token, str):
+        token = token.strip()
+    if isinstance(aes_key, str):
+        aes_key = aes_key.strip()
     if token:
         webhook["token"] = token
     if aes_key:
         webhook["encodingAESKey"] = aes_key
-    if config.get("aibotid"):
-        webhook["aibotid"] = config["aibotid"]
     return {"connectionMode": "webhook", "webhook": webhook}
 
 
@@ -78,22 +86,21 @@ class SkillChannelAibotUtils(EnterpriseWechatAibotChatFlowUtils):
                 nonce=request.GET.get("nonce", ""),
                 body=request.body,
             )
-        except EnterpriseWechatAibotCryptoError:
-            logger.warning("智能体企微机器人消息解密失败 channel_id=%s", self.channel_id, exc_info=True)
+        except EnterpriseWechatAibotCryptoError as exc:
+            logger.warning(
+                SKILL_CHANNEL_AIBOT_DECRYPT_FAILED_TEMPLATE,
+                self.channel_id,
+                safe_log_value(exc.args[0] if exc.args else type(exc).__name__),
+                bool(request.GET.get("msg_signature")),
+                bool(request.GET.get("timestamp")),
+                bool(request.GET.get("nonce")),
+                len((webhook.get("token") or "").strip()),
+            )
             return HttpResponse("success", content_type="text/plain")
 
         msg_id = message.get("msgid")
         if not msg_id:
             logger.warning("智能体企微机器人消息缺少 msgid channel_id=%s", self.channel_id)
-            return HttpResponse("success", content_type="text/plain")
-
-        expected_aibotid = webhook.get("aibotid")
-        if expected_aibotid and message.get("aibotid") != expected_aibotid:
-            logger.warning(
-                "智能体企微机器人 aibotid 不匹配 channel_id=%s msg_id=%s",
-                self.channel_id,
-                msg_id,
-            )
             return HttpResponse("success", content_type="text/plain")
 
         if self.is_message_processed(msg_id):

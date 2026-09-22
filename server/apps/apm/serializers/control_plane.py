@@ -703,7 +703,7 @@ class ApmEventQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     action = serializers.ChoiceField(
-        choices=("triggered", "escalated", "claimed", "assigned", "recovered", "closed"),
+        choices=("triggered", "escalated", "claimed", "assigned", "reassigned", "recovered", "closed"),
         required=False,
     )
     severity = serializers.ChoiceField(choices=("critical", "error", "warning"), required=False)

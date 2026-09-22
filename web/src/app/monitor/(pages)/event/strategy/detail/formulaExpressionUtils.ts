@@ -384,6 +384,75 @@ export const toMetricExpressionStateFromQueryCondition = (
   };
 };
 
+interface TemplateQuerySource {
+  query_condition?: MetricExpressionQueryCondition | Record<string, unknown>;
+  metric_name?: string;
+  metric_id?: number | null;
+  filter?: MetricQueryCondition['filter'];
+}
+
+export const resolveTemplateQueryCondition = (
+  data: TemplateQuerySource | null | undefined
+): MetricExpressionQueryCondition | undefined => {
+  if (!data) return undefined;
+  const query = data.query_condition;
+  if (query && typeof query === 'object' && query.type === 'formula') {
+    return query as FormulaQueryCondition;
+  }
+  if (query && typeof query === 'object' && query.type === 'metric') {
+    const metricName = String(
+      query.metric_name || data.metric_name || ''
+    ).trim();
+    return {
+      ...(query as MetricQueryCondition),
+      ...(metricName ? { metric_name: metricName } : {}),
+    };
+  }
+  if (query && typeof query === 'object' && 'type' in query && query.type) {
+    return query as MetricExpressionQueryCondition;
+  }
+  const metricName = String(data.metric_name || '').trim();
+  const metricId = data.metric_id ?? null;
+  if (!metricName && metricId == null) {
+    return undefined;
+  }
+  return {
+    type: 'metric',
+    ...(metricName ? { metric_name: metricName } : {}),
+    ...(metricId != null ? { metric_id: metricId } : {}),
+    filter: data.filter || [],
+  };
+};
+
+export const resolveQueryConditionMetricIds = (
+  condition: MetricExpressionQueryCondition | undefined,
+  metrics: MetricItem[]
+): MetricExpressionQueryCondition | undefined => {
+  if (!condition || !metrics.length) return condition;
+  const resolveId = (metricId?: number | null, metricName?: string) => {
+    if (metricId != null && metricId !== 0) return metricId;
+    const name = String(metricName || '').trim();
+    if (!name) return metricId;
+    return metrics.find((item) => item.name === name)?.id ?? metricId;
+  };
+  if (condition.type === 'formula') {
+    return {
+      ...condition,
+      queries: condition.queries.map((query) => ({
+        ...query,
+        metric_id: resolveId(query.metric_id, query.metric_name)
+      }))
+    };
+  }
+  if (condition.type === 'metric') {
+    return {
+      ...condition,
+      metric_id: resolveId(condition.metric_id, condition.metric_name)
+    };
+  }
+  return condition;
+};
+
 export const validateMetricExpressionPayload = ({
   resultName,
   expression,

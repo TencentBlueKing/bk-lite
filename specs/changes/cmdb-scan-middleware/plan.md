@@ -474,7 +474,7 @@ def test_finalize_explodes_middleware_listen_ports_and_drops_empty_host(mocker):
 - 从 `plugin_result[model_id]` 取行，host 用 `_row_host`，端口用 `listen_port` 或 `port`；逗号串取第一个数字作 `hit.port`，全文进 snapshot。
 - 按原 success hit 的 `(host, credential_id)` 找到通道行。
 - 有行：按 `(host, listen_port, credential_id)` upsert success，`cmdb_model_id=model_id`，snapshot 合并行字段；删除该 host 上 port 等于 SSH/0/22 且不在新端口集合里的旧行。
-- 无行：删除该 host 的 success 通道行。
+- 无行：**保留** success 通道行（VM 晚于凭据回传），把 22 改成该类型默认监听口；不得删除。有指标但无既有 hit 时按指标建行。
 
 `write_scan_execution`：对中间件 family_run 先 `collect_family_metrics`（失败记日志、不拆），再 explode，再 `polish_hit_snapshots`。网络 / 主机路径不变，测试里 `collect.assert_not_called()` 继续成立。
 

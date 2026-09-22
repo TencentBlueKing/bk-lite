@@ -205,7 +205,7 @@ const SpecificDataTable: React.FC<SpecificDataTableProps> = ({
           className="mt-4"
         />
       ) : (
-        <div className="text-gray-500 mt-4">{t('system.permission.noSpecificDataSupport')}</div>
+        <div className="mt-4 text-[var(--color-text-3)]">{t('system.permission.noSpecificDataSupport')}</div>
       )}
     </Spin>
   );

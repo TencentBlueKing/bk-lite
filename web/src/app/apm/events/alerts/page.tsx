@@ -44,7 +44,7 @@ import type {
 } from '@/app/apm/types';
 import AlertDetailDrawer from '@/app/apm/events/alerts/alert-detail-drawer';
 import AlertHandlerActions from '@/app/apm/events/alerts/alert-handler-actions';
-import { formatAlertHandlers } from '@/app/apm/events/alerts/alertHandlerUtils';
+import { formatAlertHandlers, isHandlerLifecycleEvent } from '@/app/apm/events/alerts/alertHandlerUtils';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/app/apm/events/event-workspace.module.scss';
 
@@ -250,7 +250,7 @@ export default function ApmAlertsPage() {
       setDeliveries([]);
       setEventEvidenceError(null);
       setDeliveriesError(null);
-      if (event.action === 'claimed' || event.action === 'assigned') {
+      if (isHandlerLifecycleEvent(event.action)) {
         setEventEvidenceLoading(false);
         setDeliveriesLoading(false);
         return;
@@ -265,7 +265,7 @@ export default function ApmAlertsPage() {
 
   const retryEventEvidence = useCallback(() => {
     if (!selected || !selectedEvent) return;
-    if (selectedEvent.action === 'claimed' || selectedEvent.action === 'assigned') return;
+    if (isHandlerLifecycleEvent(selectedEvent.action)) return;
     const requestId = eventRequestGuard.begin();
     setEventEvidenceLoading(true);
     setEventEvidenceError(null);
@@ -274,7 +274,7 @@ export default function ApmAlertsPage() {
 
   const retryEventDeliveries = useCallback(() => {
     if (!selected || !selectedEvent) return;
-    if (selectedEvent.action === 'claimed' || selectedEvent.action === 'assigned') return;
+    if (isHandlerLifecycleEvent(selectedEvent.action)) return;
     const requestId = deliveryRequestGuard.begin();
     setDeliveriesLoading(true);
     setDeliveriesError(null);
@@ -484,7 +484,7 @@ export default function ApmAlertsPage() {
   return (
     <ApmRouteShell
       title={t('apm.alerts.title', '告警')}
-      description={t('apm.alerts.lifecycleDescription', 'Alert 聚合完整生命周期；Event 记录触发、升级、认领、分派、恢复与人工关闭。')}
+      description={t('apm.alerts.lifecycleDescription', 'Alert 聚合完整生命周期；Event 记录触发、升级、认领、分派、转派、恢复与人工关闭。')}
       dependency="control"
     >
       <ApmSurface>

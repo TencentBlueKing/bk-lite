@@ -25,6 +25,12 @@ monitor_object_metric:
     elasticsearch_fs_data_0_available_in_bytes:
       name: 节点可用磁盘空间
       desc: 节点存储可用性指标，反映节点磁盘的剩余空间情况；磁盘空间耗尽会导致节点离线
+    elasticsearch_fs_io_stats_total_write_kilobytes_rate:
+      name: 节点磁盘写入速率
+      desc: 由累计写入 KB 换算的节点磁盘写入吞吐；持续偏高通常来自分段合并或批量索引，可能导致 IO 瓶颈
+    elasticsearch_indices_docs_deleted:
+      name: 未合并删除文档数
+      desc: 节点上已标记删除但尚未段合并回收的文档数；堆积过大会增加查询开销
     elasticsearch_process_cpu_percent:
       name: 进程 CPU 使用率
       desc: 进程计算负载指标，反映进程的 CPU 负载情况；高负载会导致集群的读写性能下降
@@ -37,6 +43,9 @@ monitor_object_metric:
     elasticsearch_breakers_request_tripped_rate:
       name: HTTP 请求断路器触发速率
       desc: 请求级内存保护监控，反映请求级内存保护断路器的触发情况；该值大于 0 表示近期存在请求内存过载的情况
+    elasticsearch_breakers_parent_tripped_rate:
+      name: 父级断路器触发速率
+      desc: 父级断路器触发速率；该值大于 0 表示节点因整体内存记账触顶而拒绝请求
     elasticsearch_http_current_open:
       name: HTTP 当前连接数
       desc: HTTP 服务可用性指标，反映 HTTP 服务的连接使用情况；当连接数接近上限时，会影响新请求的接收
