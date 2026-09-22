@@ -1229,7 +1229,7 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
-      "collectType": "snmp_cisco_asa",
+      "collectType": "snmp_cisco_firewall",
       "capabilities": [
         "uptime",
         "cpu",
