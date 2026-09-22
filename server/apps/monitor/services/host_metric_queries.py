@@ -116,5 +116,7 @@ def processes_zombies_query(*, labels: bool = False) -> str:
 
 def net_packets_recv_query(*, labels: bool = False, window: str = "5m") -> str:
     return (
-        f"rate(net_packets_recv{_sel(OS, labels=labels)}[{window}])" f" or rate(net_packets_recv_gauge_value{_sel(OS, WMI, labels=labels)}[{window}])"
+        f"rate(net_packets_recv{_sel(OS, labels=labels)}[{window}])"
+        f" or rate(net_packets_recv_gauge{_sel(OS, labels=labels)}[{window}])"
+        f" or rate(net_packets_recv_gauge_value{_sel(OS, WMI, labels=labels)}[{window}])"
     )

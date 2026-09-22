@@ -1,21 +1,19 @@
 $os = Get-MetricData 'Win32_OperatingSystem'
 $totalBytes = [int64]$os.TotalVisibleMemorySize * 1024
-$availableBytes = 0
+$availableBytes = $null
 $perfMem = Get-MetricData 'Win32_PerfRawData_PerfOS_Memory' | Select-Object -First 1
 if ($perfMem -and $null -ne $perfMem.AvailableBytes) {
     $availableBytes = [int64]$perfMem.AvailableBytes
 }
-if ($availableBytes -le 0) {
+if ($null -eq $availableBytes) {
     $fmtMem = Get-MetricData 'Win32_PerfFormattedData_PerfOS_Memory' | Select-Object -First 1
     if ($fmtMem -and $null -ne $fmtMem.AvailableMBytes) {
         $availableBytes = [int64]$fmtMem.AvailableMBytes * 1024 * 1024
     }
 }
-if ($totalBytes -gt 0 -and $availableBytes -gt $totalBytes) {
+if ($null -ne $availableBytes -and $totalBytes -gt 0 -and $availableBytes -gt $totalBytes) {
     $availableBytes = $totalBytes
 }
-$usedBytes = $totalBytes - $availableBytes
-if ($usedBytes -lt 0) { $usedBytes = 0 }
 
 $swapTotal = [int64]0
 $swapUsed = [int64]0
@@ -29,9 +27,16 @@ if ($swapFree -lt 0) { $swapFree = 0 }
 
 $result['mem'] = @{
     total_bytes = $totalBytes
-    used_bytes = $usedBytes
-    available_bytes = $availableBytes
     swap_total_bytes = $swapTotal
     swap_used_bytes = $swapUsed
     swap_free_bytes = $swapFree
+}
+if ($null -ne $availableBytes) {
+    $usedBytes = $totalBytes - $availableBytes
+    if ($usedBytes -lt 0) { $usedBytes = 0 }
+    $result['mem']['available_bytes'] = $availableBytes
+    $result['mem']['used_bytes'] = $usedBytes
+    if ($totalBytes -gt 0) {
+        $result['mem']['used_percent'] = [math]::Round(($usedBytes / $totalBytes) * 100, 2)
+    }
 }

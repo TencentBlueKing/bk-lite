@@ -356,8 +356,10 @@ def parse_metrics_to_prometheus(
 
     if "cpu" in data:
         cpu = data["cpu"]
-        _append_gauge(lines, "host_cpu_usage_percent", base_labels, cpu.get("usage_percent", 0), timestamp, "CPU usage percentage")
-        _append_gauge(lines, "cpu_usage_total", base_labels, cpu.get("usage_percent", 0), timestamp, "CPU usage percentage")
+        _append_gauge_if_present(
+            lines, "host_cpu_usage_percent", base_labels, cpu, "usage_percent", timestamp=timestamp, help_text="CPU usage percentage"
+        )
+        _append_gauge_if_present(lines, "cpu_usage_total", base_labels, cpu, "usage_percent", timestamp=timestamp, help_text="CPU usage percentage")
         _append_gauge_if_present(
             lines, "cpu_usage_user_total", base_labels, cpu, "usage_user_percent", timestamp=timestamp, help_text="CPU user usage percentage"
         )
@@ -383,20 +385,34 @@ def parse_metrics_to_prometheus(
 
     if "mem" in data:
         mem = data["mem"]
-        for key in ["total_bytes", "used_bytes", "available_bytes", "swap_total_bytes", "swap_used_bytes"]:
-            metric_name = f"host_mem_{key}"
-            _append_gauge(lines, metric_name, base_labels, mem.get(key, 0), timestamp, f"Memory {key}")
-        total_bytes = float(mem.get("total_bytes", 0) or 0)
-        used_bytes = float(mem.get("used_bytes", 0) or 0)
-        used_percent = round((used_bytes / total_bytes) * 100, 2) if total_bytes > 0 else 0
+        _append_gauge_if_present(lines, "host_mem_total_bytes", base_labels, mem, "total_bytes", timestamp=timestamp, help_text="Memory total_bytes")
+        _append_gauge_if_present(lines, "host_mem_used_bytes", base_labels, mem, "used_bytes", timestamp=timestamp, help_text="Memory used_bytes")
+        _append_gauge_if_present(
+            lines, "host_mem_available_bytes", base_labels, mem, "available_bytes", timestamp=timestamp, help_text="Memory available_bytes"
+        )
+        _append_gauge_if_present(
+            lines, "host_mem_swap_total_bytes", base_labels, mem, "swap_total_bytes", timestamp=timestamp, help_text="Memory swap_total_bytes"
+        )
+        _append_gauge_if_present(
+            lines, "host_mem_swap_used_bytes", base_labels, mem, "swap_used_bytes", timestamp=timestamp, help_text="Memory swap_used_bytes"
+        )
+        total_bytes = _metric_value(mem, "total_bytes", default=None)
+        available_bytes = _metric_value(mem, "available_bytes", default=None)
+        used_percent = mem.get("used_percent")
+        if used_percent is None and total_bytes and available_bytes is not None:
+            used_percent = round(((float(total_bytes) - float(available_bytes)) / float(total_bytes)) * 100, 2)
+        if used_percent is not None:
+            _append_gauge(lines, "host_mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
+            _append_gauge(lines, "mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
+        _append_gauge_if_present(lines, "mem_total", base_labels, mem, "total_bytes", timestamp=timestamp, help_text="Memory total bytes")
+        _append_gauge_if_present(lines, "mem_available", base_labels, mem, "available_bytes", timestamp=timestamp, help_text="Memory available bytes")
         swap_total = float(mem.get("swap_total_bytes", 0) or 0)
         swap_used = float(mem.get("swap_used_bytes", 0) or 0)
-        swap_free = mem.get("swap_free_bytes", max(swap_total - swap_used, 0))
-        _append_gauge(lines, "host_mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
-        _append_gauge(lines, "mem_total", base_labels, mem.get("total_bytes", 0), timestamp, "Memory total bytes")
-        _append_gauge(lines, "mem_available", base_labels, mem.get("available_bytes", 0), timestamp, "Memory available bytes")
-        _append_gauge(lines, "mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
-        _append_gauge(lines, "mem_swap_free", base_labels, swap_free, timestamp, "Swap free bytes")
+        swap_free = _metric_value(mem, "swap_free_bytes", default=None)
+        if swap_free is None and (swap_total or swap_used):
+            swap_free = max(swap_total - swap_used, 0)
+        if swap_free is not None:
+            _append_gauge(lines, "mem_swap_free", base_labels, swap_free, timestamp, "Swap free bytes")
         _append_gauge_if_present(lines, "mem_cached", base_labels, mem, "cached_bytes", timestamp=timestamp, help_text="Cached memory bytes")
         _append_gauge_if_present(lines, "mem_shared", base_labels, mem, "shared_bytes", timestamp=timestamp, help_text="Shared memory bytes")
         _append_gauge_if_present(lines, "mem_buffered", base_labels, mem, "buffered_bytes", timestamp=timestamp, help_text="Buffered memory bytes")

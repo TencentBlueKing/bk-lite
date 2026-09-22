@@ -489,7 +489,7 @@
       "query": "rate(diskio_reads_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[5m])",
       "display_name": "Disk Read Rate",
       "data_type": "Number",
-      "unit": "counts",
+      "unit": "cps",
       "dimensions": [
         {
           "name": "name"
@@ -506,7 +506,7 @@
       "query": "rate(diskio_writes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[5m])",
       "display_name": "Disk Write Rate",
       "data_type": "Number",
-      "unit": "counts",
+      "unit": "cps",
       "dimensions": [
         {
           "name": "name"

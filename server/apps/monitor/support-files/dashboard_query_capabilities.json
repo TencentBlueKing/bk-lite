@@ -911,6 +911,13 @@
       "template": "sum by (instance_id) (rate(etcd_server_proposals_failed_total_counter{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:1f63511d",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_available{instance_type=\"os\", __$labels__} or host_mem_available_bytes_gauge{instance_type=\"os\", __$labels__} or mem_available_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or mem_available_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|solaris)_remote\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:1f79c86d",
       "object_names": [
         "Mongodb"
@@ -3974,13 +3981,6 @@
         "Docker"
       ],
       "template": "docker_n_containers{__$labels__}"
-    },
-    {
-      "id": "dashboard:v1:a12d44b0",
-      "object_names": [
-        "Host"
-      ],
-      "template": "mem_available{instance_type=\"os\", __$labels__} or host_mem_available_bytes_gauge{instance_type=\"os\", __$labels__} or mem_available_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
     },
     {
       "id": "dashboard:v1:a154369f",
