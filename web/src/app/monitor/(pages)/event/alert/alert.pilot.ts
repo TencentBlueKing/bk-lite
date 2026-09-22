@@ -202,17 +202,37 @@ export function getTextContext(): Partial<AiPageContext> {
 }
 
 export async function getContext(toolkit: PageContextToolkit): Promise<Partial<AiPageContext>> {
-  void toolkit;
   if (!isHostAlertListView()) {
     return getTextContext();
   }
   const base = getTextContext();
   const stamp = readAlertListStamp();
+  const chartRoot = listRoot()?.querySelector<HTMLElement>('[class*="chartWrapper"] .collapse-content .recharts-wrapper, [class*="chart"] .recharts-wrapper');
+  const spinning = Boolean(listRoot()?.querySelector('[class*="chartWrapper"] .ant-spin-spinning'));
+  let images = base.images || [];
+  if (chartRoot && !spinning) {
+    images = await toolkit.captureRechartsFromDoms([chartRoot], 1);
+  }
   console.info('[ai-page-context] page data updated at', buildAlertListCurrentTime(stamp), {
     tab: stamp.tab,
     objId: stamp.objId,
     timeRange: stamp.filterText || '(none)',
     range: stamp.rangeText,
+    chartImages: images.length,
   });
-  return base;
+  return {
+    ...base,
+    images,
+    sections: [
+      ...(base.sections || []).filter((section) => section.id !== 'visible-charts'),
+      ...(images.length
+        ? [{
+          id: 'visible-charts',
+          label: '可见图表',
+          content: images.map((image, index) => `${index + 1}. ${image.caption || '告警级别分布'}`).join('\n'),
+          priority: 9,
+        }]
+        : []),
+    ],
+  };
 }

@@ -1,4 +1,5 @@
 'use client';
+import './register-strategy-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import { Spin, Input, Button, message, Switch, Popconfirm } from 'antd';
 import useApiClient from '@/utils/request';
