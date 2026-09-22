@@ -1,9 +1,9 @@
 """Contract tests for the ACKSYS Wireless SNMP plugin.
 
-ACKSYS public facts confirm AirLink industrial wireless devices and an official
-MIB download surface, but no stable public private CPU, memory, temperature,
-fan, power or radio-health leaf OID is available in this workspace. The plugin
-is intentionally a baseline Wireless SNMP child.
+ACKSYS WaveOS (IANA PEN 28097) deploys heap, motherboard temperature, dual PSU
+state, AP client count and bridge RSSI on top of the Wireless SNMP floor
+(sysUpTime + IF-MIB 64-bit HC traffic). CPU, fan and radio-utilization remain
+undeployed and must not be faked.
 """
 import json
 from collections import Counter
@@ -119,23 +119,65 @@ def test_config_type_consistent(ui, toml_text):
 @pytest.mark.unit
 def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    expected = {
+        "heap_free_bytes",
+        "heap_total_bytes",
+        "heap_low_water_bytes",
+        "device_memory_usage",
+        "device_temperature_celsius",
+        "device_psu_state",
+        "device_psu_state_backup",
+        "wireless_client_count",
+        "wireless_signal_strength",
+        "interface_ifHCInOctets",
+        "interface_ifHCOutOctets",
+        "snmp_uptime",
+    }
     assert names == expected
-    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
+    assert set(metrics.get("supplementary_indicators", [])) == {
+        "snmp_uptime",
+        "device_memory_usage",
+        "device_temperature_celsius",
+        "device_psu_state",
+        "wireless_client_count",
+    }
 
 
 @pytest.mark.unit
 def test_policy_templates_are_subset_of_metrics(metrics, policy):
     known = {metric["name"] for metric in metrics["metrics"]}
-    bad = [template["metric_name"] for template in policy["templates"] if template["metric_name"] not in known]
+    template_metrics = [template["metric_name"] for template in policy["templates"]]
+    bad = [name for name in template_metrics if name not in known]
     assert bad == []
-    assert policy["templates"] == []
+    assert len(policy["templates"]) == 3
 
 
 @pytest.mark.unit
-def test_private_health_oids_are_not_collected_without_leaf_evidence(toml_text):
-    forbidden_terms = ("fan", "power", "temperature", "cpu", "memory", "client", "radio", "signal")
-    assert not any(term in toml_text.lower() for term in forbidden_terms)
+def test_private_health_oids_collect_deployed_temperature_psu_heap_client_signal(toml_text):
+    required_tables = (
+        'name = "heap"',
+        'name = "device_temperature"',
+        'name = "device_psu"',
+        'name = "wireless_client"',
+        'name = "wireless_signal"',
+    )
+    missing_tables = [table for table in required_tables if table not in toml_text]
+    assert missing_tables == []
+
+    required_fields = (
+        'name = "free_bytes"',
+        'name = "celsius"',
+        'name = "state"',
+        'name = "count"',
+        'name = "strength"',
+    )
+    missing_fields = [field for field in required_fields if field not in toml_text]
+    assert missing_fields == []
+
+    code_only = "\n".join(line.split("#", 1)[0] for line in toml_text.splitlines()).lower()
+    undeployed_terms = ("fan", "cpu", "radio")
+    leaked = [term for term in undeployed_terms if term in code_only]
+    assert leaked == []
 
 
 @pytest.mark.unit
