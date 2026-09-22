@@ -108,6 +108,7 @@ export const useRouterConfig = () => {
       'Router Aethra SNMP': 'snmp_aethra',
       'Router VeloCloud SNMP': 'snmp_velocloud',
       'Router Benu SNMP': 'snmp_benu',
+      'Router Peplink SNMP': 'snmp_peplink',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
