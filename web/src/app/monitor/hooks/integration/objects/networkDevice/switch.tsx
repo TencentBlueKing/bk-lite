@@ -192,6 +192,7 @@ export const useSwitchConfig = () => {
       'Switch RuggedCOM SNMP': 'snmp_ruggedcom',
       'Switch Scalance SNMP': 'snmp_scalance',
       'Switch 3Com SNMP': 'snmp_3com',
+      'Switch DASAN SNMP': 'snmp_dasan',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }
