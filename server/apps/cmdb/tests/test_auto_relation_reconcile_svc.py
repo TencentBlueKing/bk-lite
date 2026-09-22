@@ -9,6 +9,8 @@
 
 只在 GraphClient / ModelManage / celery 这些真实外部边界打桩，断言真实输出与副作用。
 """
+from uuid import UUID
+
 import pydantic.root_model  # noqa: F401  预热，避免覆盖率插桩竞态
 import pytest
 
@@ -44,7 +46,7 @@ class FakeGraph:
     def __exit__(self, *a):
         return False
 
-    def query_entity(self, label, conds):
+    def query_entity(self, label, conds, **kwargs):
         return self.returns.get("query_entity", ([], 0))
 
     def query_entity_by_id(self, _id):
@@ -137,10 +139,10 @@ def test_get_mapping_default_and_explicit():
 # _calculate_desired_target_ids
 # --------------------------------------------------------------------------
 def test_calculate_desired_target_ids_matches_targets():
-    src = {"_id": 1, "ip": "10.0.0.1"}
+    src = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.1"}
     targets = [
-        {"_id": 11, "host_ip": "10.0.0.1"},
-        {"_id": 12, "host_ip": "10.0.0.2"},
+        {"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"},
+        {"_id": 12, "inst_uuid": str(UUID(int=12, version=4)), "host_ip": "10.0.0.2"},
     ]
     rules = [_rule([_pair("ip", "host_ip")])]
     assoc = {"dst_model_id": "host"}
@@ -149,17 +151,17 @@ def test_calculate_desired_target_ids_matches_targets():
 
 
 def test_calculate_desired_target_ids_skips_when_source_field_empty():
-    src = {"_id": 1, "ip": ""}  # 源字段为空 → 整条规则跳过
-    targets = [{"_id": 11, "host_ip": "10.0.0.1"}]
+    src = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": ""}  # 源字段为空 → 整条规则跳过
+    targets = [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
     rules = [_rule([_pair("ip", "host_ip")])]
     out = SVC._calculate_desired_target_ids(src, {"dst_model_id": "host"}, rules, target_instances=targets)
     assert out == set()
 
 
 def test_calculate_desired_target_ids_queries_when_targets_not_given(monkeypatch):
-    fake = FakeGraph(query_entity=([{"_id": 99, "host_ip": "1.1.1.1"}], 1))
+    fake = FakeGraph(query_entity=([{"_id": 99, "inst_uuid": str(UUID(int=99, version=4)), "host_ip": "1.1.1.1"}], 1))
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
-    src = {"_id": 1, "ip": "1.1.1.1"}
+    src = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "1.1.1.1"}
     rules = [_rule([_pair("ip", "host_ip")])]
     out = SVC._calculate_desired_target_ids(src, {"dst_model_id": "host"}, rules)
     assert out == {99}
@@ -204,7 +206,7 @@ def test_filter_mapping_empty_short_circuits():
 # reconcile_source_instance：创建 / 删除 / 幂等跳过
 # --------------------------------------------------------------------------
 def test_reconcile_source_instance_creates_missing_edge(monkeypatch):
-    src = {"_id": 1, "ip": "10.0.0.1", "model_id": "vm"}
+    src = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.1", "model_id": "vm"}
     assoc = {
         "model_asst_id": "vm_run_host",
         "src_model_id": "vm",
@@ -213,7 +215,7 @@ def test_reconcile_source_instance_creates_missing_edge(monkeypatch):
         "mapping": "n:n",
     }
     rules = [_rule([_pair("ip", "host_ip")])]
-    targets = [{"_id": 11, "host_ip": "10.0.0.1"}]
+    targets = [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
     fake = FakeGraph(query_edge=lambda *a: [])  # 无既有边
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
     monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
@@ -230,7 +232,7 @@ def test_reconcile_source_instance_creates_missing_edge(monkeypatch):
 
 
 def test_reconcile_source_instance_deletes_stale_auto_edge(monkeypatch):
-    src = {"_id": 1, "ip": "10.0.0.9", "model_id": "vm"}
+    src = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.9", "model_id": "vm"}
     assoc = {
         "model_asst_id": "vm_run_host",
         "src_model_id": "vm",
@@ -239,10 +241,10 @@ def test_reconcile_source_instance_deletes_stale_auto_edge(monkeypatch):
         "mapping": "n:n",
     }
     rules = [_rule([_pair("ip", "host_ip")])]
-    targets = [{"_id": 11, "host_ip": "10.0.0.1"}]  # 目标 11 不再匹配（src ip 变了）
+    targets = [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]  # 目标 11 不再匹配（src ip 变了）
     stale_edge = {
         "_id": "e-stale",
-        "dst_inst_id": 11,
+        "dst_inst_uuid": str(UUID(int=11, version=4)),
         AUTO_RELATION_EDGE_SOURCE_FIELD: AUTO_RELATION_EDGE_SOURCE,
         AUTO_RELATION_EDGE_RULE_ID_FIELD: "vm_run_host",
     }
@@ -255,7 +257,7 @@ def test_reconcile_source_instance_deletes_stale_auto_edge(monkeypatch):
 
 
 def test_reconcile_source_instance_skips_existing_target(monkeypatch):
-    src = {"_id": 1, "ip": "10.0.0.1", "model_id": "vm"}
+    src = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.1", "model_id": "vm"}
     assoc = {
         "model_asst_id": "vm_run_host",
         "src_model_id": "vm",
@@ -264,9 +266,9 @@ def test_reconcile_source_instance_skips_existing_target(monkeypatch):
         "mapping": "n:n",
     }
     rules = [_rule([_pair("ip", "host_ip")])]
-    targets = [{"_id": 11, "host_ip": "10.0.0.1"}]
+    targets = [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
     # 已存在到 11 的边（非 auto 来源也算 existing target），desired 命中应跳过
-    existing = {"_id": "e1", "dst_inst_id": 11, AUTO_RELATION_EDGE_SOURCE_FIELD: "manual"}
+    existing = {"_id": "e1", "dst_inst_uuid": str(UUID(int=11, version=4)), AUTO_RELATION_EDGE_SOURCE_FIELD: "manual"}
     fake = FakeGraph(query_edge=lambda *a: [existing])
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
     summary = SVC.reconcile_source_instance(src, assoc, rules, target_instances=targets)
@@ -278,7 +280,7 @@ def test_reconcile_source_instance_skips_existing_target(monkeypatch):
 def test_reconcile_source_instance_conflict_on_check_asso_mapping(monkeypatch):
     from apps.core.exceptions.base_app_exception import BaseAppException
 
-    src = {"_id": 1, "ip": "10.0.0.1", "model_id": "vm"}
+    src = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.1", "model_id": "vm"}
     assoc = {
         "model_asst_id": "vm_run_host",
         "src_model_id": "vm",
@@ -287,7 +289,7 @@ def test_reconcile_source_instance_conflict_on_check_asso_mapping(monkeypatch):
         "mapping": "n:n",
     }
     rules = [_rule([_pair("ip", "host_ip")])]
-    targets = [{"_id": 11, "host_ip": "10.0.0.1"}]
+    targets = [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
     fake = FakeGraph(query_edge=lambda *a: [])
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
 
@@ -393,7 +395,7 @@ def test_reconcile_for_instance_not_found(monkeypatch):
 
 
 def test_reconcile_for_instance_aggregates_source_rules(monkeypatch):
-    instance = {"_id": 1, "model_id": "vm", "ip": "10.0.0.1"}
+    instance = {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "model_id": "vm", "ip": "10.0.0.1"}
     fake = FakeGraph(query_entity_by_id=instance, query_edge=lambda *a: [])
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
 
@@ -407,7 +409,11 @@ def test_reconcile_for_instance_aggregates_source_rules(monkeypatch):
     rules = [_rule([_pair("ip", "host_ip")])]
     monkeypatch.setattr(SVC, "_list_enabled_rules_by_src_model", classmethod(lambda cls, mid: [(assoc, rules)]))
     monkeypatch.setattr(SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: []))
-    monkeypatch.setattr(SVC, "_query_instances_by_model", classmethod(lambda cls, mid: [{"_id": 11, "host_ip": "10.0.0.1"}]))
+    monkeypatch.setattr(
+        SVC,
+        "_query_instances_by_model",
+        classmethod(lambda cls, mid, **kwargs: [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]),
+    )
     monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
 
     out = SVC.reconcile_for_instance(1)
@@ -418,7 +424,7 @@ def test_reconcile_for_instance_aggregates_source_rules(monkeypatch):
 
 
 def test_reconcile_for_instance_schedules_full_sync_when_incoming(monkeypatch):
-    instance = {"_id": 5, "model_id": "host"}
+    instance = {"_id": 5, "inst_uuid": str(UUID(int=5, version=4)), "model_id": "host"}
     fake = FakeGraph(query_entity_by_id=instance)
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
     monkeypatch.setattr(SVC, "_list_enabled_rules_by_src_model", classmethod(lambda cls, mid: []))
@@ -433,9 +439,9 @@ def test_reconcile_for_instance_schedules_full_sync_when_incoming(monkeypatch):
 
 def test_reconcile_for_instances_dedupes_incoming_full_sync_rules(monkeypatch):
     instances = [
-        {"_id": 1, "model_id": "vmware_vm"},
-        {"_id": 2, "model_id": "vmware_vm"},
-        {"_id": 3, "model_id": "vmware_vm"},
+        {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "model_id": "vmware_vm"},
+        {"_id": 2, "inst_uuid": str(UUID(int=2, version=4)), "model_id": "vmware_vm"},
+        {"_id": 3, "inst_uuid": str(UUID(int=3, version=4)), "model_id": "vmware_vm"},
     ]
     fake = FakeGraph(query_entity=(instances, len(instances)))
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
@@ -459,12 +465,12 @@ def test_reconcile_for_instances_dedupes_incoming_full_sync_rules(monkeypatch):
 
 def test_reconcile_for_instances_runs_source_locally_and_reports_missing(monkeypatch):
     instances = [
-        {"_id": 1, "model_id": "vm", "ip": "10.0.0.1"},
-        {"_id": 2, "model_id": "vm", "ip": "10.0.0.2"},
+        {"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "model_id": "vm", "ip": "10.0.0.1"},
+        {"_id": 2, "inst_uuid": str(UUID(int=2, version=4)), "model_id": "vm", "ip": "10.0.0.2"},
     ]
     fake = FakeGraph(query_entity=(instances, len(instances)))
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
-    association = {"model_asst_id": "vm_run_host"}
+    association = {"model_asst_id": "vm_run_host", "dst_model_id": "host"}
     rules = [_rule([_pair("ip", "host_ip")])]
     monkeypatch.setattr(
         SVC,
@@ -474,7 +480,7 @@ def test_reconcile_for_instances_runs_source_locally_and_reports_missing(monkeyp
     monkeypatch.setattr(SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: []))
     reconciled = []
 
-    def fake_reconcile(cls, instance, assoc, enabled_rules):
+    def fake_reconcile(cls, instance, assoc, enabled_rules, **kwargs):
         reconciled.append(instance["_id"])
         return {"created": 1, "deleted": 0, "skipped": 0, "conflicts": 0}
 
@@ -514,7 +520,11 @@ def test_full_sync_rule_full_sync_path(monkeypatch):
     monkeypatch.setattr(
         SVC,
         "_query_instances_by_model",
-        classmethod(lambda cls, mid: [{"_id": 11, "host_ip": "10.0.0.1"}] if mid == "host" else [{"_id": 1, "ip": "10.0.0.1", "model_id": "vm"}]),
+        classmethod(
+            lambda cls, mid, **kwargs: [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
+            if mid == "host"
+            else [{"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.1", "model_id": "vm"}]
+        ),
     )
     fake = FakeGraph(query_edge=lambda *a: [])
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
