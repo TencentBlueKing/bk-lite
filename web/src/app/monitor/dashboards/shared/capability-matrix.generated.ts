@@ -1266,6 +1266,19 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_h3c_firewall",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "fan",
+        "psu",
+        "traffic",
+        "session"
+      ]
+    },
+    {
       "collectType": "snmp_hillstone",
       "capabilities": [
         "uptime",

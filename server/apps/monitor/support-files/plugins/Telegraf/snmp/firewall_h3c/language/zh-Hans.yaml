@@ -1,0 +1,47 @@
+Firewall H3C SNMP:
+  name: 新华三 SecPath（Telegraf）
+  desc: 面向 H3C SecPath 防火墙的 SNMP 监控模板。采集各实体 CPU、内存、温度（过滤 65535
+    不支持哨兵）、风扇/电源运行状态，以及当前会话数、会话容量与会话建立速率。接口流量使用内置 IF-MIB，本插件不声明
+    ifHC*。与交换机 H3C SNMP（snmp_h3c）相互独立。
+monitor_object:
+  Firewall: 防火墙
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标按实体报告 H3C SecPath 防火墙 CPU 使用率（HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage，0～100），维度
+        index 为 SNMP 表行。持续偏高可能意味着检测负载过重或攻击活动。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标按实体报告 H3C SecPath 防火墙内存使用率（hh3cEntityExtMemUsage，直接百分比）。内存压力过高时可能影响会话处理。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 该指标按实体报告 H3C SecPath 防火墙温度（hh3cEntityExtTemperature，单位摄氏度）。65535
+        表示该实体不支持温度，查询侧已过滤。温度异常升高可能由散热不良或环境过热导致。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标报告各风扇运行状态（hh3cEntityExtOperStatus 结合 ENTITY-MIB entPhysicalClass=7），归一为
+        1=正常 / 2=异常。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标报告各电源模块运行状态（hh3cEntityExtOperStatus 结合 ENTITY-MIB entPhysicalClass=6），归一为
+        1=正常 / 2=异常。
+    firewall_active_sessions:
+      name: 活动会话数
+      desc: 该指标报告 H3C SecPath 防火墙当前存在的连接数（HH3C-FIREWALL-MIB hh3cFWConnNumCurr）。数量快速上升可能意味着连接洪泛或会话表压力。
+    firewall_max_sessions:
+      name: 最大会话数
+      desc: 该指标报告 H3C SecPath 防火墙支持的最大连接数（hh3cFWMaxConnNum）。结合活动会话数可评估会话表余量。
+    firewall_session_rate:
+      name: 会话建立速率
+      desc: 该指标报告 H3C SecPath 防火墙连接建立速率（hh3cFWConnRate），单位为连接每秒。速率突增可能意味着连接洪泛或突发新建会话。
+monitor_object_metric_group:
+  Firewall:
+    Base: 基础
+    Firewall: 防火墙
+    Hardware Status: 硬件状态
