@@ -1,0 +1,40 @@
+Router Advantech SNMP:
+  name: Advantech ICR（Telegraf）
+  desc: 面向 Advantech ICR/Conel 蜂窝工业路由器的 SNMP 监控模板，可采集 CPU 使用率、内存已用/空闲/总量、内部温度和输入电压（企业号 30140）。
+monitor_object:
+  Router: 路由器
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Advantech ICR/Conel 蜂窝工业路由器的 CPU 使用率（statusCPUUsage），按 0-100 直接记为百分比。持续偏高可能意味着控制平面过载、蜂窝会话抖动或异常流量。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 Advantech ICR/Conel 蜂窝工业路由器的内存使用率（statusRAMUsage），按 0-100 直接记为百分比。持续偏高可能由内存泄漏、会话表过大或容量不足导致。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标表示 Advantech ICR/Conel 蜂窝工业路由器当前已使用的物理内存（statusRAMUsed），单位为字节。
+    device_memory_free:
+      name: 内存空闲量
+      desc: 该指标表示 Advantech ICR/Conel 蜂窝工业路由器当前空闲的物理内存（statusRAMFree），单位为字节。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标表示 Advantech ICR/Conel 蜂窝工业路由器的物理内存总量（statusRAMTotal），单位为字节。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 该指标表示 Advantech ICR/Conel 蜂窝工业路由器的内部温度（statusTemperature），单位摄氏度。ICR-2[0|4|5|6]xx 不暴露该叶，这些型号上无该序列。
+    device_voltage_volts:
+      name: 输入电压
+      desc: 该指标表示 Advantech ICR/Conel 蜂窝工业路由器的输入电源电压（statusVoltage）。ICR-2[0|4|5|6]xx 不暴露该叶。
+monitor_object_metric_group:
+  Router:
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Base: 基础

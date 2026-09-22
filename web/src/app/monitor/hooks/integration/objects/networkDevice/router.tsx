@@ -109,6 +109,7 @@ export const useRouterConfig = () => {
       'Router VeloCloud SNMP': 'snmp_velocloud',
       'Router Benu SNMP': 'snmp_benu',
       'Router Peplink SNMP': 'snmp_peplink',
+      'Router Advantech SNMP': 'snmp_advantech_router',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
