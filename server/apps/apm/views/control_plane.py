@@ -890,15 +890,6 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                         include_children=actor_context["include_children"],
                         recipient_ids=requested_recipient_ids,
                     )
-                except AttributeError:
-                    found = self.notification_directory.search_recipients(
-                        actor_context=actor_context,
-                        organization_id=organization_id,
-                        include_children=actor_context["include_children"],
-                        search="",
-                        limit=100,
-                    )
-                    valid_recipient_ids = {item.id for item in found} & requested_recipient_ids
                 except RuntimeError as exc:
                     return Response(
                         {"detail": str(exc), "code": "notification_recipients_unavailable"},
