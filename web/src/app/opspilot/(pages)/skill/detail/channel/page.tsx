@@ -36,6 +36,7 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import OperateModal from '@/components/operate-modal';
 import Icon from '@/components/icon';
 import OpsPilotChannelPageSkeleton from '@/app/opspilot/components/opspilot-channel-page-skeleton';
+import { rememberWebChatEntry } from '@/app/opspilot/(pages)/skill/chat/entry';
 
 interface SkillChannelItem {
   id: number;
@@ -411,8 +412,9 @@ const SkillChannelPage: React.FC = () => {
     }
   };
 
-  const openWebChat = () => {
-    window.open(WEB_CHAT_PATH, '_blank', 'noopener,noreferrer');
+  const openWebChat = (channelId: number) => {
+    const token = rememberWebChatEntry(channelId);
+    window.open(`${WEB_CHAT_PATH}?entry=${token}`, '_blank', 'noopener,noreferrer');
   };
 
   const copyEmbeddedLink = async (channelRef: number | string) => {
@@ -550,7 +552,7 @@ const SkillChannelPage: React.FC = () => {
           return (
             <Space size="small">
               {item.channel_type === 'web_chat' ? (
-                <Button type="link" size="small" onClick={openWebChat}>
+                <Button type="link" size="small" onClick={() => openWebChat(item.id)}>
                   {t('skill.channel.openChat', '对话')}
                 </Button>
               ) : null}
