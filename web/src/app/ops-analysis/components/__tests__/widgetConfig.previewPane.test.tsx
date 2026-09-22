@@ -110,6 +110,23 @@ describe('WidgetConfigPreview pane', () => {
       '3',
     );
     expect(screen.queryByTestId('widget-config-preview-stale')).toBeNull();
+    expect(rendererProps.mock.calls.at(-1)?.[0].layoutEditable).toBe(false);
+  });
+
+  it('hides room3D view-mode chrome in the config preview', async () => {
+    renderPreview({
+      widgetId: 'config-preview:room-1',
+      config: {
+        name: '3D机房',
+        chartType: 'room3D',
+        sceneWidgetType: 'room3D',
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-preview-renderer')).toBeTruthy();
+    });
+    expect(rendererProps.mock.calls.at(-1)?.[0].layoutEditable).toBe(true);
   });
 
   it('shows stale badge and refresh control when the draft diverged', async () => {
@@ -137,5 +154,21 @@ describe('WidgetConfigPreview pane', () => {
       JSON.stringify(rawData, null, 2),
     );
     expect(screen.getByTestId('widget-config-preview-copy-json')).toBeTruthy();
+  });
+
+  it('shows loading instead of empty json while a refresh is in flight', async () => {
+    const user = userEvent.setup();
+    const rawData = { items: [{ cpu: 1 }] };
+
+    renderPreview({ rawData, loading: true, onRefresh: vi.fn() });
+
+    await user.click(screen.getByText('dashboard.configPreviewRawJson'));
+
+    expect(screen.getByTestId('widget-config-preview-json-loading')).toBeTruthy();
+    expect(screen.queryByTestId('widget-config-preview-json')).toBeNull();
+    expect(screen.queryByText('dashboard.configPreviewRawJsonEmpty')).toBeNull();
+    expect(
+      screen.getByTestId('widget-config-preview-refresh').hasAttribute('disabled'),
+    ).toBe(true);
   });
 });

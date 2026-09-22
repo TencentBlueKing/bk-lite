@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models import MonitorAlert
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.monitor_policy import MonitorPolicy
@@ -60,6 +61,63 @@ class TestScanPolicyTask:
         assert out["success"] is True
         # gap < period(300s) → 单次扫描
         assert scan.return_value.run.call_count == 1
+
+    def test_backfill_is_chunked_per_task_and_watermark_advances(self, mocker, caplog):
+        """落后 10 个周期时，一次任务只补 MAX_BACKFILL_PER_TASK 个窗口，其余留给下次调度（issue #5777）。"""
+        import logging
+
+        behind = datetime.now(timezone.utc) - timedelta(minutes=5 * 10 + 1)
+        policy = _make_policy(last_run_time=behind)
+        scan = mocker.patch("apps.monitor.tasks.monitor_policy.MonitorPolicyScan")
+        with caplog.at_level(logging.INFO, logger="celery"):
+            out = scan_policy_task(policy.id)
+
+        assert out["success"] is True
+        assert scan.return_value.run.call_count == AlertConstants.MAX_BACKFILL_PER_TASK
+        policy.refresh_from_db()
+        assert policy.last_run_time == behind + timedelta(minutes=5 * AlertConstants.MAX_BACKFILL_PER_TASK)
+
+        planned = next(r for r in caplog.records if "event=policy_backfill_planned" in r.getMessage())
+        assert planned.args == (policy.id, 10, AlertConstants.MAX_BACKFILL_PER_TASK)
+        deferred = next(r for r in caplog.records if "event=policy_backfill_deferred" in r.getMessage())
+        assert deferred.getMessage() == (
+            f"event=policy_backfill_deferred policy_id={policy.id} "
+            f"completed={AlertConstants.MAX_BACKFILL_PER_TASK} remaining={10 - AlertConstants.MAX_BACKFILL_PER_TASK}"
+        )
+
+        # 下一次调度从推进后的水位继续，不重扫已完成窗口
+        windows = []
+        scan.reset_mock()
+        scan.side_effect = lambda policy_obj: windows.append(policy_obj.last_run_time) or scan.return_value
+        scan_policy_task(policy.id)
+        assert windows[0] == behind + timedelta(minutes=5 * (AlertConstants.MAX_BACKFILL_PER_TASK + 1))
+
+    def test_backfill_stops_opening_new_windows_after_soft_time_limit(self, mocker):
+        behind = datetime.now(timezone.utc) - timedelta(minutes=5 * 6 + 1)
+        policy = _make_policy(last_run_time=behind)
+        scan = mocker.patch("apps.monitor.tasks.monitor_policy.MonitorPolicyScan")
+        clock = iter([0.0, 0.0, 100.0, 100.0, 100.0, 100.0])
+        mocker.patch("apps.monitor.tasks.monitor_policy.time.time", side_effect=lambda: next(clock, 100.0))
+
+        out = scan_policy_task(policy.id)
+
+        assert out["success"] is True
+        # 第一个窗口总会执行，第二个窗口前发现已超软时限 → 停止
+        assert scan.return_value.run.call_count == 1
+        policy.refresh_from_db()
+        assert policy.last_run_time == behind + timedelta(minutes=5)
+
+    def test_backfill_failure_keeps_watermark_at_last_success(self, mocker):
+        behind = datetime.now(timezone.utc) - timedelta(minutes=5 * 6 + 1)
+        policy = _make_policy(last_run_time=behind)
+        scan = mocker.patch("apps.monitor.tasks.monitor_policy.MonitorPolicyScan")
+        scan.return_value.run.side_effect = [None, RuntimeError("vm down")]
+
+        with pytest.raises(RuntimeError):
+            scan_policy_task(policy.id)
+
+        policy.refresh_from_db()
+        assert policy.last_run_time == behind + timedelta(minutes=5)
 
 
 class TestRetryAlertCenterNotify:
@@ -194,3 +252,73 @@ class TestInfraService:
         data = InfraService.validate_and_get_token_data(token)
 
         assert data["image_registry_prefix"] == "harbor.internal/bklite"
+
+    def test_stale_payload_cannot_reuse_exhausted_counter(self, locmem_cache):
+        from apps.core.exceptions.base_app_exception import BaseAppException
+        from apps.monitor.constants.infra import InfraConstants
+        from apps.monitor.services import infra as infra_mod
+
+        token = InfraService.generate_install_token("c1", "5")
+        payload_key = f"infra_install_token:{token}"
+        payload = infra_mod.cache.get(payload_key)
+        payload["usage_count"] = InfraConstants.TOKEN_MAX_USAGE - 1
+        infra_mod.cache.set(payload_key, payload, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+        infra_mod.cache.set(f"{payload_key}:usage_count", InfraConstants.TOKEN_MAX_USAGE, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+
+        with pytest.raises(BaseAppException, match="exceeded maximum usage limit"):
+            InfraService.validate_and_get_token_data(token)
+
+    def test_last_quota_is_atomic_under_concurrency(self, monkeypatch):
+        import copy
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        from apps.core.exceptions.base_app_exception import BaseAppException
+        from apps.monitor.constants.infra import InfraConstants
+
+        class RaceyCache:
+            def __init__(self):
+                self._data = {}
+                self._lock = threading.Lock()
+
+            def get(self, key, default=None):
+                value = self._data.get(key, default)
+                if isinstance(key, str) and key.startswith("infra_install_token:") and ":usage_count" not in key:
+                    threading.Event().wait(0.01)
+                return copy.deepcopy(value)
+
+            def set(self, key, value, timeout=None):
+                self._data[key] = copy.deepcopy(value)
+
+            def add(self, key, value, timeout=None):
+                with self._lock:
+                    if key in self._data:
+                        return False
+                    self._data[key] = copy.deepcopy(value)
+                    return True
+
+            def incr(self, key, delta=1):
+                with self._lock:
+                    if key not in self._data:
+                        raise ValueError("Key not found")
+                    self._data[key] += delta
+                    return self._data[key]
+
+            def delete(self, key):
+                self._data.pop(key, None)
+
+        monkeypatch.setattr("apps.monitor.services.infra.cache", RaceyCache())
+        token = InfraService.generate_install_token("c1", "5")
+
+        def consume():
+            try:
+                InfraService.validate_and_get_token_data(token)
+                return True
+            except BaseAppException:
+                return False
+
+        workers = InfraConstants.TOKEN_MAX_USAGE * 2
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(lambda _: consume(), range(workers)))
+
+        assert results.count(True) == InfraConstants.TOKEN_MAX_USAGE

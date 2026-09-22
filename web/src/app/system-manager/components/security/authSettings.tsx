@@ -138,7 +138,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   );
 
   return (
-    <div className="bg-(--color-bg) p-4 rounded-lg shadow-sm mb-4">
+    <div className="mb-4 rounded-lg bg-[var(--color-bg)] p-4">
       <h3 className="text-base font-semibold mb-4">{t('system.security.loginSettings')}</h3>
       <section className="mb-6 space-y-4" aria-labelledby="otp-settings-heading">
         <h4 id="otp-settings-heading" className="text-sm font-semibold text-[var(--color-text-1)]">

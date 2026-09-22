@@ -1,9 +1,9 @@
 import React from 'react';
 import { Skeleton } from 'antd';
-import OpsPilotCardGridSkeleton from '@/app/opspilot/components/opspilot-card-grid-skeleton';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
 
 export const ProviderGridSkeleton: React.FC = () => {
-  return <OpsPilotCardGridSkeleton />;
+  return <CardGridSkeleton />;
 };
 
 export const ModelTreeSkeleton: React.FC = () => {

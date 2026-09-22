@@ -243,3 +243,86 @@ def test_summarize_permission_loader_exception_owns_traceback(caplog):
     assert record.exc_info[0] is RuntimeError
     assert boom_message not in record.msg
     assert boom_message not in str(record.args)
+
+
+def test_summarize_default_instance_loader_scopes_requested_ids(monkeypatch):
+    _patch_actor_scope(monkeypatch)
+    captured = {}
+
+    class _PolicyQS:
+        def values_list(self, *args, **kwargs):
+            captured["policy_values_list"] = {"args": args, "kwargs": kwargs, "returned": self}
+            return self
+
+    class _InstanceQS:
+        def filter(self, **kwargs):
+            captured["instance_filter"] = kwargs
+            return self
+
+        def values_list(self, *args, **kwargs):
+            return [MON_A]
+
+    def fake_instance_loader(user_info, instance_ids=None):
+        captured["instance_ids"] = list(instance_ids or [])
+        return _InstanceQS(), None
+
+    monkeypatch.setattr(
+        "apps.monitor.nats.monitor._get_nats_accessible_instance_queryset",
+        fake_instance_loader,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.nats.monitor._get_nats_accessible_policy_queryset",
+        lambda user_info: (_PolicyQS(), None),
+    )
+
+    class _AlertQS:
+        def filter(self, *args, **kwargs):
+            captured.setdefault("alert_filters", []).append({"args": args, "kwargs": kwargs})
+            return self
+
+        def values(self, *args):
+            return self
+
+        def annotate(self, **kwargs):
+            return []
+
+    monkeypatch.setattr(
+        "apps.monitor.services.active_alert_summaries.MonitorAlert.objects",
+        _AlertQS(),
+    )
+
+    result = summarize_active_alerts_by_monitor_ids(
+        [MON_A, MON_B],
+        user_info={"user": "u"},
+    )
+
+    assert captured["instance_ids"] == [MON_A, MON_B]
+
+    def _policy_in(node):
+        from django.db.models import Q
+
+        if isinstance(node, Q):
+            for child in node.children:
+                found = _policy_in(child)
+                if found is not None:
+                    return found
+            return None
+        if isinstance(node, tuple) and node and node[0] == "policy_id__in":
+            return node[1]
+        return None
+
+    policy_in = None
+    for item in captured.get("alert_filters", []):
+        if "policy_id__in" in item["kwargs"]:
+            policy_in = item["kwargs"]["policy_id__in"]
+            break
+        for arg in item["args"]:
+            policy_in = _policy_in(arg)
+            if policy_in is not None:
+                break
+        if policy_in is not None:
+            break
+    assert policy_in is captured["policy_values_list"]["returned"]
+    assert not isinstance(policy_in, list)
+    assert result["result"] is True
+    assert [item["monitor_id"] for item in result["data"]["items"]] == [MON_A]

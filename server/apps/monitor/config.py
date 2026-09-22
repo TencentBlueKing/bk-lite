@@ -17,4 +17,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task',
         'schedule': beat_crontab(minute='*/5'),  # 每5分钟执行一次
     },
+    'purge_collect_detect_terminal_tasks': {
+        'task': 'apps.monitor.tasks.collect_detect.purge_collect_detect_terminal_tasks',
+        'schedule': beat_crontab(minute='17'),
+    },
 }

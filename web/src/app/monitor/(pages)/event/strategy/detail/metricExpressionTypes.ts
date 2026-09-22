@@ -12,6 +12,7 @@ export interface MetricExpressionRow {
 export interface MetricQueryCondition {
   type: 'metric';
   metric_id?: number;
+  metric_name?: string;
   filter?: FilterItem[];
 }
 
@@ -21,7 +22,8 @@ export interface FormulaQueryCondition {
   expression: string;
   queries: Array<{
     ref: string;
-    metric_id: number;
+    metric_id?: number;
+    metric_name?: string;
     filter?: FilterItem[];
     group_algorithm: string;
     group_by: string[];

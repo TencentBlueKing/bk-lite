@@ -1,0 +1,39 @@
+Wireless Aruba SNMP:
+  name: Aruba AOS（Telegraf）
+  desc: 面向 Aruba AOS 无线控制器的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、内部温度、AP 数量和关联终端数量（企业号 PEN 14823）。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 Aruba AOS 无线控制器自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Aruba AOS 无线控制器的整体 CPU 使用率（WLSX-SYSTEMEXT-MIB wlsxSysExtCpuUsedPercent），以 0-100
+        百分比直接上报。持续偏高可能表示 AP 或终端管理负载过重，会影响漫游与管理响应。
+    device_memory_usage:
+      name: 内存使用率
+      desc: Aruba AOS 无线控制器的整体内存使用率（WLSX-SYSTEMEXT-MIB wlsxSysExtMemoryUsedPercent），以 0-100
+        百分比直接上报。内存压力过高可能导致控制器丢弃终端关联或延迟 AP 上线。
+    device_temperature_celsius:
+      name: 温度
+      desc: Aruba AOS 无线控制器内部温度（摄氏度，WLSX-SYSTEMEXT-MIB wlsxSysExtInternalTemparature，MIB
+        拼写为 Temparature）。温度异常升高可能意味着散热故障或环境过热。
+    wireless_ap_count:
+      name: AP 数量
+      desc: 该 Aruba AOS 无线控制器上的接入点总数（WLSX-SWITCH-MIB wlsxSwitchTotalNumAccessPoints）。数值突然下降可能表示
+        AP 断连或控制器发生切换。
+    wireless_station_count:
+      name: 关联终端数
+      desc: 当前经该 Aruba AOS 无线控制器关联的无线终端数量（WLSX-SWITCH-MIB wlsxSwitchTotalNumStationsAssociated）。数量快速增长可能伴随控制器
+        CPU 与内存压力上升。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Wireless: 无线

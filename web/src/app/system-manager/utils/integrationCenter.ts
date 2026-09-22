@@ -274,6 +274,17 @@ export function resolveIntegrationPrimaryStatusColor(tone: IntegrationPrimarySta
   return 'default';
 }
 
+export type IntegrationCardStatusTone = 'ok' | 'mute' | 'run' | 'warn' | 'error';
+
+export function toIntegrationCardStatusTone(
+  meta: { key: IntegrationPrimaryStatusKey; tone: IntegrationPrimaryStatusTone },
+): IntegrationCardStatusTone {
+  if (meta.tone === 'success') return 'ok';
+  if (meta.tone === 'error') return 'error';
+  if (meta.key === 'pending') return 'run';
+  return 'mute';
+}
+
 export function formatIntegrationInstanceDisplayName(
   instance: {
     name: string;

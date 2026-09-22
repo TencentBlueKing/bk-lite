@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
-import EntityList from '@/components/entity-list';
+import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
+import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
 
 const ChannelPage = () => {
   const { t } = useTranslation();
@@ -37,7 +38,7 @@ const ChannelPage = () => {
     },
   ]);
 
-  const handleCardClick = (item: any) => {
+  const handleCardClick = (item: typeof dataList[number]) => {
     if (item.url) {
       router.push(item.url);
       return;
@@ -47,11 +48,20 @@ const ChannelPage = () => {
   };
 
   return (
-    <div className='w-full'>
-      <EntityList
+    <div className="w-full">
+      <SystemManagerEntityGrid
+        items={dataList}
         loading={false}
-        data={dataList}
-        onCardClick={handleCardClick}
+        compactSkeleton
+        getItemKey={(item) => item.id}
+        renderCard={(item) => (
+          <SystemManagerUnifiedCard
+            name={item.name}
+            description={item.description}
+            icon={item.icon}
+            onClick={() => handleCardClick(item)}
+          />
+        )}
       />
     </div>
   );

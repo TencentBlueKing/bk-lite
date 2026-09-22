@@ -6,6 +6,8 @@ from apps.monitor.models import Metric
 
 
 def _query_condition(policy: Any) -> dict[str, Any]:
+    if policy is None:
+        return {}
     raw = getattr(policy, "query_condition", None)
     return raw if isinstance(raw, dict) else {}
 

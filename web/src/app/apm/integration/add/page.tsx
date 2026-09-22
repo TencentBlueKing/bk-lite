@@ -15,10 +15,11 @@ import {
   KubernetesOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tabs, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import { getProbeCapability, type ProbeLanguage } from '@/app/apm/integration/probe-capability-matrix';
 import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -60,7 +61,7 @@ type PageState = 'loading' | 'empty' | 'ready' | 'error';
 type SnippetMode = 'agent' | 'docker' | 'kubernetes';
 type SnippetForm = Omit<ApmIngestSnippetInput, 'language' | 'runtime'>;
 type CatalogSource = 'applications' | 'cloud-regions';
-type Translate = (id: string, defaultMessage?: string) => string;
+type Translate = (id: string, defaultMessage?: string, values?: Record<string, string | number>) => string;
 
 interface CatalogLoadFailure {
   source: CatalogSource;
@@ -121,17 +122,132 @@ async function copyText(value: string) {
   }
 }
 
-function requestErrorMessage(error: unknown, t: Translate) {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  const rawMessage = typeof detail === 'string' && detail.trim()
-    ? detail.trim()
-    : error instanceof Error && error.message
-      ? error.message
-      : '';
-  if (/没有可用的被动接收地址|云区域(?:代理|接收)地址/.test(rawMessage)) {
-    return t('apm.integration.noReceiver', '所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。');
+interface GenerationIssue {
+  alertType: 'warning' | 'error';
+  title: string;
+  description: string;
+}
+
+function requestGenerationIssue(error: unknown, t: Translate): GenerationIssue {
+  const handled = error instanceof HandledRequestError ? error : null;
+  const payload = (handled?.payload ?? (error as { response?: { data?: unknown } })?.response?.data) as
+    | { code?: unknown; detail?: unknown; message?: unknown }
+    | undefined;
+  const detail = typeof payload?.detail === 'string' ? payload.detail.trim() : '';
+  const code = handled?.code ?? (typeof payload?.code === 'string' ? payload.code : '');
+  const rawMessage = detail
+    || (typeof payload?.message === 'string' ? payload.message.trim() : '')
+    || (error instanceof Error && error.message ? error.message : '');
+  if (code === 'probe_artifact_not_found' || /探针文件不存在/.test(rawMessage)) {
+    return {
+      alertType: 'warning',
+      title: t('apm.integration.probeMissingTitle', '探针包未就绪'),
+      description: t(
+        'apm.integration.probeMissing',
+        '主机和 Docker 接入需要从平台下载探针文件。当前环境还没有这份文件，请联系管理员完成探针初始化后再试。',
+      ),
+    };
   }
-  return rawMessage || t('apm.integration.generateFailed', '生成接入配置失败，请稍后重试。');
+  if (code === 'probe_artifact_unavailable' || /探针文件暂时不可用/.test(rawMessage)) {
+    return {
+      alertType: 'warning',
+      title: t('apm.integration.probeUnavailableTitle', '探针包暂时不可用'),
+      description: t(
+        'apm.integration.probeUnavailable',
+        '暂时无法读取探针文件，请稍后重试。若持续失败，请联系管理员检查探针存储。',
+      ),
+    };
+  }
+  return {
+    alertType: 'error',
+    title: t('apm.integration.generateFailedTitle', '配置生成失败'),
+    description: /没有可用的被动接收地址|云区域(?:代理|接收)地址/.test(rawMessage)
+      ? t('apm.integration.noReceiver', '所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。')
+      : (rawMessage || t('apm.integration.generateFailed', '生成接入配置失败，请稍后重试。')),
+  };
+}
+
+function snippetOperationGuide(
+  language: ApmIngestSnippetInput['language'],
+  mode: SnippetMode,
+  t: Translate,
+): string {
+  const guides: Record<ApmIngestSnippetInput['language'], Record<SnippetMode, string>> = {
+    nodejs: {
+      agent: t('apm.integration.guideNodeHost', '在原有 Node.js 启动命令末尾追加以下内容，并重启应用。'),
+      docker: t('apm.integration.guideNodeDocker', '将以下安装命令写入 Dockerfile，并用 `-e` 注入环境变量后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideNodeKubernetes', '将以下环境变量合并到应用 Pod，确保镜像已预装 Node.js 自动探针后滚动重启。'),
+    },
+    java: {
+      agent: t('apm.integration.guideJavaHost', '在原有 Java 启动命令中加入以下内容，并重启应用。'),
+      docker: t('apm.integration.guideJavaDocker', '将 Java Agent 安装命令写入 Dockerfile，通过 `JAVA_TOOL_OPTIONS` 注入后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideJavaKubernetes', '将以下环境变量（含 `JAVA_TOOL_OPTIONS`）合并到应用 Pod，确保镜像包含 Java Agent 后滚动重启。'),
+    },
+    python: {
+      agent: t('apm.integration.guidePythonHost', '按以下脚本安装探针后，用 `opentelemetry-instrument` 包装原有 Python 启动命令并重启应用。'),
+      docker: t('apm.integration.guidePythonDocker', '将探针安装命令写入 Dockerfile，用 `-e` 注入环境变量并以 `opentelemetry-instrument` 启动容器。'),
+      kubernetes: t('apm.integration.guidePythonKubernetes', '将以下环境变量合并到应用 Pod，确保镜像以 `opentelemetry-instrument` 启动后滚动重启。'),
+    },
+    dotnet: {
+      agent: t('apm.integration.guideDotnetHost', '按以下脚本安装自动探针并导出环境变量后，用原有 `dotnet` 启动命令重启应用。'),
+      docker: t('apm.integration.guideDotnetDocker', '将自动探针安装进镜像，用 `-e` 注入 CLR 分析器环境变量后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideDotnetKubernetes', '将以下环境变量合并到应用 Pod，确保镜像包含 .NET 自动探针后滚动重启。'),
+    },
+    go: {
+      agent: t('apm.integration.guideGoHost', '按以下指南审阅 OpenTelemetry Go SDK 示例，接入应用代码后重新编译并重启。'),
+      docker: t('apm.integration.guideGoDocker', '将 SDK 依赖安装进镜像，完成 Go SDK 初始化后重新构建、启动容器。'),
+      kubernetes: t('apm.integration.guideGoKubernetes', '将以下环境变量合并到应用 Pod；应用二进制需先完成 OpenTelemetry Go SDK 初始化，然后滚动重启。'),
+    },
+  };
+  return guides[language][mode];
+}
+
+function CapabilityTagList({ items }: { items: readonly string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <Tag key={item}>{item}</Tag>
+      ))}
+    </div>
+  );
+}
+
+function ProbeCapabilityPane({
+  language,
+  kind,
+  t,
+}: {
+  language: ProbeLanguage;
+  kind: 'frameworks' | 'discovery';
+  t: Translate;
+}) {
+  const capability = getProbeCapability(language);
+  const items = kind === 'frameworks' ? capability.frameworks : capability.inferredComponents;
+  return (
+    <div className="flex flex-col gap-3 pt-1">
+      <Typography.Text type="secondary" className="text-xs">
+        {t('apm.integration.probeVersion', '探针版本 {version}', { version: capability.version })}
+      </Typography.Text>
+      {kind === 'frameworks' && capability.manualInstrumentation ? (
+        <Alert
+          showIcon
+          type="info"
+          message={t('apm.integration.manualFrameworkHint', '该语言需在代码中加入对应 contrib 插桩；下列为精选常见框架。')}
+        />
+      ) : null}
+      <Typography.Paragraph type="secondary" className="!mb-0 text-xs">
+        {kind === 'frameworks'
+          ? t('apm.integration.frameworksHint', '以下为当前钉死探针版本精选支持的 Web / RPC 框架，不是完整 instrumentation 清单。')
+          : t('apm.integration.discoveryHint', '以下类型会在该探针打出 Client Span 后，出现在应用详情拓扑上，作为推断下游。')}
+      </Typography.Paragraph>
+      <CapabilityTagList items={items} />
+      {kind === 'discovery' ? (
+        <Typography.Paragraph type="secondary" className="!mb-0 text-xs">
+          {t('apm.integration.discoveryFooter', '这是应用详情拓扑上的推断节点，不是 CMDB 或监控自动发现，也不会进入服务目录或应用列表。给 Web 服务装探针后，mysql 不会作为独立应用出现。')}
+        </Typography.Paragraph>
+      ) : null}
+    </div>
+  );
 }
 
 export default function ApmIntegrationAddPage() {
@@ -148,7 +264,7 @@ export default function ApmIntegrationAddPage() {
   const [mode, setMode] = useState<SnippetMode>('agent');
   const [snippet, setSnippet] = useState<ApmIngestSnippet | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<GenerationIssue | null>(null);
   const [form] = Form.useForm<SnippetForm>();
   const formValues = Form.useWatch([], form);
   const requestSequence = useRef(0);
@@ -289,7 +405,7 @@ export default function ApmIntegrationAddPage() {
     } catch (error) {
       if (sequence !== requestSequence.current) return;
       setSnippet(null);
-      setGenerationError(requestErrorMessage(error, t));
+      setGenerationError(requestGenerationIssue(error, t));
     } finally {
       if (sequence === requestSequence.current) setGenerating(false);
     }
@@ -385,6 +501,13 @@ export default function ApmIntegrationAddPage() {
         styles={{ body: { overflowY: 'auto' } }}
         onClose={() => setSelectedMethod(null)}
       >
+        <Tabs
+          defaultActiveKey="guide"
+          items={[
+            {
+              key: 'guide',
+              label: t('apm.integration.tabGuide', '接入指引'),
+              children: (
         <div className="flex flex-col gap-4 pt-2">
           <div className="rounded-lg bg-[var(--color-fill-1)] p-4">
             <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">1</span><Typography.Text strong>{t('apm.integration.configTitle', '接入配置')}</Typography.Text></div>
@@ -437,9 +560,9 @@ export default function ApmIntegrationAddPage() {
                 <Alert
                   className="mb-4"
                   showIcon
-                  type="error"
-                  message={t('apm.integration.generateFailedTitle', '配置生成失败')}
-                  description={generationError}
+                  type={generationError.alertType}
+                  message={generationError.title}
+                  description={generationError.description}
                   action={<Button size="small" onClick={() => void form.validateFields().then(generate)}>{t('common.retry', '重试')}</Button>}
                 />
               ) : generating ? <Typography.Text type="secondary">{t('apm.integration.generating', '正在自动生成配置…')}</Typography.Text> : null}
@@ -448,11 +571,9 @@ export default function ApmIntegrationAddPage() {
 
           {snippet ? (
             <div className="rounded-lg bg-[var(--color-fill-1)] p-4">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">2</span><Typography.Text strong>{t('apm.integration.resultTitle', '生成结果')}</Typography.Text></div>
-                  <Typography.Text type="secondary" className="mt-1 block text-xs">{t('apm.integration.windowOnly', '{name} · 仅在本窗口保留', { name: snippet.cloud_region.name })}</Typography.Text>
-                </div>
+              <div className="mb-4 flex items-center gap-2">
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">2</span>
+                <Typography.Text strong>{t('apm.integration.resultTitle', '生成结果')}</Typography.Text>
               </div>
               <div>
                 <Typography.Text type="secondary" className="mb-1 block text-xs">{t('apm.integration.otlpHttpEndpoint', 'OTLP/HTTP 上报端点')}</Typography.Text>
@@ -472,12 +593,7 @@ export default function ApmIntegrationAddPage() {
               </div>
               <div className="mt-4 border-t border-[var(--color-border)] pt-4">
                 <div role="group" aria-labelledby="apm-shell-snippet-title" className="mb-2 flex items-center justify-between gap-3">
-                  <div>
-                    <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
-                    <Typography.Text type="secondary" className="mt-1 block text-xs">
-                      {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
-                    </Typography.Text>
-                  </div>
+                  <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
                   <Button
                     aria-label={isGo && mode !== 'kubernetes'
                       ? t('apm.integration.copyGoGuide', '复制 Go SDK 接入指南')
@@ -492,10 +608,36 @@ export default function ApmIntegrationAddPage() {
                   >{t('apm.integration.copySnippet', '复制片段')}</Button>
                 </div>
                 <pre className="max-h-[420px] overflow-auto rounded-lg border border-[var(--color-code-block-border)] bg-[var(--color-code-block-bg)] p-4 font-mono text-sm leading-6 text-[var(--color-code-block-text)]"><code>{snippet.code}</code></pre>
+                {selectedMethod?.language ? (
+                  <Typography.Text className="mt-2 block text-sm text-[var(--color-text-2)]">
+                    {snippetOperationGuide(selectedMethod.language, mode, t)}
+                  </Typography.Text>
+                ) : null}
+                <Typography.Text type="secondary" className="mt-1 block text-xs">
+                  {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
+                </Typography.Text>
               </div>
             </div>
           ) : null}
         </div>
+              ),
+            },
+            {
+              key: 'frameworks',
+              label: t('apm.integration.tabFrameworks', '支持框架'),
+              children: selectedMethod?.language ? (
+                <ProbeCapabilityPane language={selectedMethod.language} kind="frameworks" t={t} />
+              ) : null,
+            },
+            {
+              key: 'discovery',
+              label: t('apm.integration.tabDiscovery', '发现能力'),
+              children: selectedMethod?.language ? (
+                <ProbeCapabilityPane language={selectedMethod.language} kind="discovery" t={t} />
+              ) : null,
+            },
+          ]}
+        />
       </Drawer>
     </ApmRouteShell>
   );

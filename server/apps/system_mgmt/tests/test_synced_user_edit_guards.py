@@ -61,36 +61,148 @@ def _patch_externals():
         yield
 
 
-def test_update_synced_user_preserves_basic_information_and_organization(super_client, synced_user):
+def _update_user_payload(user, **overrides):
+    payload = {
+        "user_id": user.id,
+        "username": user.username,
+        "lastName": user.display_name,
+        "email": user.email,
+        "phone": user.phone,
+        "locale": "en",
+        "timezone": "UTC",
+        "groups": user.group_list,
+        "roles": [],
+        "rules": [],
+        "is_superuser": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _create_local_user(suffix):
+    Role.objects.get_or_create(name="admin", app="")
+    local_group = Group.objects.create(name=f"本地用户组织-{suffix}", parent_id=0)
+    return User.objects.create(
+        username=f"local-user-{suffix}",
+        display_name="本地用户",
+        email=f"local-{suffix}@example.com",
+        phone="13800000003",
+        password="x",
+        locale="en",
+        timezone="UTC",
+        group_list=[local_group.id],
+    )
+
+
+def test_update_synced_user_preserves_name_and_organization_but_allows_contact_change(super_client, synced_user):
     Role.objects.get_or_create(name="admin", app="")
     platform_role = Role.objects.create(name="synced-user-platform-role", app="cmdb")
 
     response = super_client.post(
         f"{BASE}/update_user/",
-        {
-            "user_id": synced_user.id,
-            "username": synced_user.username,
-            "lastName": "不允许修改的姓名",
-            "email": "changed@example.com",
-            "phone": "13900000000",
-            "locale": "en",
-            "timezone": "UTC",
-            "groups": [],
-            "roles": [platform_role.id],
-            "rules": [],
-            "is_superuser": False,
-        },
+        _update_user_payload(
+            synced_user,
+            lastName="不允许修改的姓名",
+            email="  changed@example.com  ",
+            phone=" 13900000000 ",
+            groups=[],
+            roles=[platform_role.id],
+        ),
         format="json",
     )
 
     synced_user.refresh_from_db()
     assert response.json()["result"] is True
     assert synced_user.display_name == "同步用户"
-    assert synced_user.email == "synced-user@example.com"
-    assert synced_user.phone == "13800000000"
+    assert synced_user.email == "changed@example.com"
+    assert synced_user.phone == "13900000000"
     assert synced_user.group_list != []
     assert synced_user.locale == "en"
     assert synced_user.timezone == "UTC"
+    assert synced_user.role_list == [platform_role.id]
+
+
+def test_update_synced_user_rejects_empty_email(super_client, synced_user):
+    Role.objects.get_or_create(name="admin", app="")
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        _update_user_payload(synced_user, email="  "),
+        format="json",
+    )
+
+    synced_user.refresh_from_db()
+    assert response.status_code == 400
+    assert response.json() == {"result": False, "message": "Email cannot be empty"}
+    assert synced_user.email == "synced-user@example.com"
+
+
+def test_update_synced_user_rejects_invalid_phone(super_client, synced_user):
+    Role.objects.get_or_create(name="admin", app="")
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        _update_user_payload(synced_user, phone="not-a-phone"),
+        format="json",
+    )
+
+    synced_user.refresh_from_db()
+    assert response.status_code == 400
+    assert response.json() == {"result": False, "message": "Invalid phone number format"}
+    assert synced_user.phone == "13800000000"
+
+
+def test_update_synced_user_rejects_non_string_email(super_client, synced_user):
+    Role.objects.get_or_create(name="admin", app="")
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        _update_user_payload(synced_user, email=["not-a-string"]),
+        format="json",
+    )
+
+    synced_user.refresh_from_db()
+    assert response.status_code == 400
+    assert response.json() == {"result": False, "message": "Email cannot be empty"}
+    assert synced_user.email == "synced-user@example.com"
+
+
+def test_update_synced_user_can_fill_empty_contact_fields(super_client, synced_user):
+    Role.objects.get_or_create(name="admin", app="")
+    synced_user.email = ""
+    synced_user.phone = ""
+    synced_user.save(update_fields=["email", "phone"])
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        _update_user_payload(synced_user, email="filled@example.com", phone="13600000000"),
+        format="json",
+    )
+
+    synced_user.refresh_from_db()
+    assert response.json()["result"] is True
+    assert synced_user.email == "filled@example.com"
+    assert synced_user.phone == "13600000000"
+
+
+def test_update_synced_user_omits_email_and_phone_when_not_submitted(super_client, synced_user):
+    Role.objects.get_or_create(name="admin", app="")
+    platform_role = Role.objects.create(name="synced-user-omit-role", app="cmdb")
+    payload = _update_user_payload(
+        synced_user,
+        locale="en",
+        timezone="UTC",
+        roles=[platform_role.id],
+    )
+    payload.pop("email")
+    payload.pop("phone")
+
+    response = super_client.post(f"{BASE}/update_user/", payload, format="json")
+
+    synced_user.refresh_from_db()
+    assert response.json()["result"] is True
+    assert synced_user.email == "synced-user@example.com"
+    assert synced_user.phone == "13800000000"
     assert synced_user.role_list == [platform_role.id]
 
 
@@ -103,19 +215,14 @@ def test_update_synced_user_allows_retained_archived_groups(super_client, synced
 
     response = super_client.post(
         f"{BASE}/update_user/",
-        {
-            "user_id": synced_user.id,
-            "username": synced_user.username,
-            "lastName": "不允许修改的姓名",
-            "email": "changed@example.com",
-            "phone": "13900000000",
-            "locale": "en",
-            "timezone": "UTC",
-            "groups": [],
-            "roles": [platform_role.id],
-            "rules": [],
-            "is_superuser": False,
-        },
+        _update_user_payload(
+            synced_user,
+            lastName="不允许修改的姓名",
+            email="changed@example.com",
+            phone="13900000000",
+            groups=[],
+            roles=[platform_role.id],
+        ),
         format="json",
     )
 
@@ -184,3 +291,52 @@ def test_update_local_user_cannot_change_synced_group_membership(super_client, s
     local_user.refresh_from_db()
     assert response.json()["result"] is False
     assert local_user.group_list == synced_user.group_list
+
+
+def test_update_local_user_strips_contact_fields_on_write(super_client):
+    local_user = _create_local_user("contact-strip")
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        _update_user_payload(
+            local_user,
+            email="  local-stripped@example.com  ",
+            phone=" 13800000003 ",
+        ),
+        format="json",
+    )
+
+    local_user.refresh_from_db()
+    assert response.json()["result"] is True
+    assert local_user.email == "local-stripped@example.com"
+    assert local_user.phone == "13800000003"
+
+
+def test_update_local_user_rejects_empty_email(super_client):
+    local_user = _create_local_user("empty-email")
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        _update_user_payload(local_user, email="  "),
+        format="json",
+    )
+
+    local_user.refresh_from_db()
+    assert response.status_code == 400
+    assert response.json() == {"result": False, "message": "Email cannot be empty"}
+    assert local_user.email == "local-empty-email@example.com"
+
+
+def test_update_local_user_rejects_non_string_email(super_client):
+    local_user = _create_local_user("non-string-email")
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        _update_user_payload(local_user, email=["not-a-string"]),
+        format="json",
+    )
+
+    local_user.refresh_from_db()
+    assert response.status_code == 400
+    assert response.json() == {"result": False, "message": "Email cannot be empty"}
+    assert local_user.email == "local-non-string-email@example.com"

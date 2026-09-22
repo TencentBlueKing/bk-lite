@@ -1,0 +1,115 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_cisco_wireless",
+  "plugin": "Wireless Cisco SNMP",
+  "plugin_desc": "Cisco wireless LAN controller SNMP collection for AireOS WLC and Catalyst 9800. Private increment: AireOS controller CPU (agentCurrentCPUUtilization, 0-100) and memory (agentTotalMemory / agentFreeMemory, KBytes, used = total − free), plus connected AP count (cLApGlobalAPConnectCount). Catalyst 9800 falls back to CISCO-PROCESS-MIB 5-minute CPU and CPU-wide used/free memory when AireOS agent scalars are absent. Interface traffic comes from the built-in IF-MIB table. Per-station and per-AP tables are not collected. Applicable brands/models — Cisco AireOS WLC (5500/2500/3504/5520/8540 and virtual WLC) and Catalyst 9800 IOS-XE wireless controllers.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_cisco_wireless'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "wireless_ap_count"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the wireless controller since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_cpu_usage",
+      "query": "avg(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id) or avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Cisco wireless LAN controller. AireOS reports agentCurrentCPUUtilization as a 0-100 percentage; Catalyst 9800 falls back to the CISCO-PROCESS-MIB 5-minute average (cpmCPUTotal5minRev). Sustained high CPU usage can indicate heavy AP or client-management load affecting roaming and controller responsiveness."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_total",
+      "query": "(avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id) * 1024) or ((avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) + avg(device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)) * 1024)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes × 1024); Catalyst 9800 derives total from CISCO-PROCESS-MIB CPU-wide used plus free memory (KBytes × 1024)."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_free",
+      "query": "(avg(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id) * 1024) or (avg(device_memory_free{instance_type='wireless', __$labels__}) by (instance_id) * 1024)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free controller memory in bytes (KBytes × 1024). AireOS uses agentFreeMemory; Catalyst 9800 uses CISCO-PROCESS-MIB cpmCPUMemoryFree."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_used",
+      "query": "((avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id) - avg(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)) * 1024) or (avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) * 1024)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used controller memory in bytes. AireOS derives used as agentTotalMemory − agentFreeMemory (KBytes × 1024); Catalyst 9800 uses CISCO-PROCESS-MIB cpmCPUMemoryUsed (KBytes × 1024)."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_usage",
+      "query": "(100 * (avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id) - avg(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)) / avg(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id)) or (100 * avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) / (avg(device_memory_used{instance_type='wireless', __$labels__}) by (instance_id) + avg(device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)))",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Cisco wireless LAN controller. AireOS is 100 × (total − free) / total; Catalyst 9800 is 100 × used / (used + free). High memory pressure can affect AP join handling and client roaming."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_ap_count",
+      "query": "avg(snmp_wireless_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Connected AP Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of access points currently connected to the wireless LAN controller (cLApGlobalAPConnectCount). A sudden drop can indicate AP connectivity loss or a controller failover."
+    }
+  ]
+}

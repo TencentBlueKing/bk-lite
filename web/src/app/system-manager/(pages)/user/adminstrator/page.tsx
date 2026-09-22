@@ -5,11 +5,14 @@ import { Button, Popconfirm, Space, Select } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { getRandomColor } from '@/app/system-manager/utils';
-import PageLayout from '@/components/page-layout';
 import TopSection from '@/components/top-section';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
+import SystemManagerWorkbenchShell, {
+  SystemManagerWorkbenchPanel,
+} from '@/app/system-manager/components/system-manager-workbench-shell';
 import {
   useAdminUsersList,
   useAdminActions,
@@ -52,10 +55,10 @@ const AdminUsers: React.FC = () => {
         render: (text: string) => {
           const color = getRandomColor();
           return (
-            <div className="flex" style={{ height: '17px', lineHeight: '17px' }}>
+            <div className="flex h-[17px] items-center leading-[17px]">
               <span
-                className="h-5 w-5 rounded-[10px] text-center mr-1"
-                style={{ color: '#ffffff', backgroundColor: color }}
+                className="mr-1 flex h-5 w-5 items-center justify-center rounded-[10px] text-center text-[var(--color-bg)]"
+                style={{ backgroundColor: color }}
               >
                 {text?.substring(0, 1)}
               </span>
@@ -97,49 +100,49 @@ const AdminUsers: React.FC = () => {
 
   return (
     <>
-      <PageLayout
-        height='calc(100vh - 240px)'
-        topSection={
-          <TopSection 
-            title={t('system.administrator.title')} 
-            content={t('system.administrator.desc')} 
+      <SystemManagerWorkbenchShell
+        header={(
+          <TopSection
+            title={t('system.administrator.title')}
+            content={t('system.administrator.desc')}
           />
-        }
-        rightSection={
-          <div>
-            <div className="w-full mb-4 flex justify-end">
+        )}
+        right={(
+          <SystemManagerWorkbenchPanel bodyClassName="flex min-h-0 flex-col p-4">
+            <div className="mb-4 flex justify-end">
               <PermissionWrapper requiredPermissions={['Add']}>
-                <Button 
-                  type="primary" 
+                <Button
+                  type="primary"
                   icon={<PlusOutlined />}
                   onClick={openAddAdminModal}
                 >
-                  {t('system.administrator.addAdmin')}
+                  {t('common.new')}
                 </Button>
               </PermissionWrapper>
             </div>
-            <CustomTable
-              loading={loading}
-              columns={columns}
-              dataSource={adminUsers}
-              pagination={{
-                current: currentPage,
-                pageSize,
-                total,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total: number, range: [number, number]) => 
-                  `${range[0]}-${range[1]} / ${total}`,
-                onChange: (page: number, size?: number) => {
-                  if (page !== currentPage || (size && size !== pageSize)) {
-                    handleTableChange(page, size);
-                  }
-                },
-              }}
-              scroll={{ y: 'calc(100vh - 430px)' }}
-            />
-          </div>
-        }
+            <SystemManagerFillTable>
+              <CustomTable
+                loading={loading}
+                columns={columns}
+                dataSource={adminUsers}
+                pagination={{
+                  current: currentPage,
+                  pageSize,
+                  total,
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total: number, range: [number, number]) =>
+                    `${range[0]}-${range[1]} / ${total}`,
+                  onChange: (page: number, size?: number) => {
+                    if (page !== currentPage || (size && size !== pageSize)) {
+                      handleTableChange(page, size);
+                    }
+                  },
+                }}
+              />
+            </SystemManagerFillTable>
+          </SystemManagerWorkbenchPanel>
+        )}
       />
 
       <OperateModal
@@ -152,16 +155,16 @@ const AdminUsers: React.FC = () => {
         destroyOnHidden={true}
       >
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="mb-2 block text-sm font-medium text-[var(--color-text-1)]">
             {t('system.administrator.selectUsers')}
           </label>
           <Select
             showSearch
             mode="multiple"
             allowClear
+            className="w-full"
             disabled={addAdminLoading}
             loading={addAdminLoading}
-            style={{ width: '100%' }}
             placeholder={t('system.administrator.selectUsersPlaceholder')}
             value={selectedUsers}
             onChange={setSelectedUsers}
@@ -176,7 +179,7 @@ const AdminUsers: React.FC = () => {
             ))}
           </Select>
         </div>
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-[var(--color-text-3)]">
           {t('system.administrator.addAdminTip')}
         </div>
       </OperateModal>

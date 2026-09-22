@@ -15,12 +15,15 @@ import {
   Tooltip,
 } from 'antd';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import Icon from '@/components/icon';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from '@/components/permission';
-import PageLayout from '@/components/page-layout';
 import TopSection from '@/components/top-section';
+import SystemManagerWorkbenchShell, {
+  SystemManagerWorkbenchPanel,
+} from '@/app/system-manager/components/system-manager-workbench-shell';
 import IconFontSelector from '@/app/system-manager/components/user/IconFontSelector';
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import {
@@ -328,17 +331,13 @@ const LoginAuthPage: React.FC = () => {
       dataIndex: 'name',
       render: (_, record) => {
         return (
-          <div className='flex content-center'>
-            <div className='w-[26px] mr-2 flex justify-center items-center'>
-              {
-                record.icon
-                  ? <Icon type={record.icon} className="w-[26px]! h-[26px]!" />
-                  : ''
-              }
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-[var(--color-fill-1)] text-[var(--color-primary)]">
+              {record.icon ? <Icon type={record.icon} className="text-lg" /> : null}
             </div>
-            <div>
-              <p className='font-semibold'>{record.name}</p>
-              <span className='text-xs text-[var(--color-text-3)]'>{t(`system.user.loginAuthPage.currentOrder`)}：{record.order}</span>
+            <div className="min-w-0">
+              <p className="text-[var(--color-text-1)]">{record.name}</p>
+              <span className="text-xs text-[var(--color-text-3)]">{t(`system.user.loginAuthPage.currentOrder`)}：{record.order}</span>
             </div>
           </div>
         )
@@ -435,28 +434,26 @@ const LoginAuthPage: React.FC = () => {
 
   return (
     <>
-      <PageLayout
-        height="calc(100vh - 260px)"
-        topSection={
+      <SystemManagerWorkbenchShell
+        header={(
           <TopSection
             title={t('system.user.loginAuth')}
             content={t('system.user.loginAuthPage.pageDesc')}
           />
-        }
-        rightSection={
-          <div className="flex h-full flex-col  bg-[var(--color-bg-1)] p-1">
-            <div className="mb-2 flex flex-wrap items-start justify-end border-[var(--color-border-1)] pb-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <PermissionWrapper requiredPermissions={['Add']}>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-                    {t('common.add')}
-                  </Button>
-                </PermissionWrapper>
-                <Button type='text' icon={<ReloadOutlined />} onClick={handleRefresh} loading={refreshing} />
-              </div>
+        )}
+        right={(
+          <SystemManagerWorkbenchPanel bodyClassName="flex min-h-0 flex-col p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+              <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={refreshing}>
+                {t('common.refresh')}
+              </Button>
+              <PermissionWrapper requiredPermissions={['Add']}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+                  {t('common.new')}
+                </Button>
+              </PermissionWrapper>
             </div>
-
-            <div className="min-h-0 flex-1 bg-[var(--color-bg)] p-1">
+            <SystemManagerFillTable>
               <CustomTable
                 rowKey="id"
                 loading={loading || sorting}
@@ -472,9 +469,9 @@ const LoginAuthPage: React.FC = () => {
                   onChange: handleTableChange,
                 }}
               />
-            </div>
-          </div>
-        }
+            </SystemManagerFillTable>
+          </SystemManagerWorkbenchPanel>
+        )}
       />
 
       <OperateModal

@@ -62,17 +62,17 @@
     },
     {
       "name": "interval",
-      "label": "间隔",
+      "label": "采集周期",
       "type": "inputNumber",
       "required": true,
-      "default_value": 60,
-      "description": "监控数据的采集时间间隔（单位：秒）",
+      "default_value": 300,
+      "description": "单次采集预算与触发周期（单位：秒）。同一值同时作为采集间隔与采集超时：超时则丢弃结果不入库。vCenter 规模较大时可调高（建议 ≥ 300）。",
       "widget_props": {
         "min": 1,
         "precision": 0,
-        "placeholder": "间隔",
+        "placeholder": "采集周期",
         "addonAfter": "s",
-        "placeholder_en": "Interval"
+        "placeholder_en": "Collection Period"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.interval",
@@ -83,8 +83,8 @@
           "suffix": "s"
         }
       },
-      "label_en": "Interval",
-      "description_en": "Collection time interval (unit: seconds)"
+      "label_en": "Collection Period",
+      "description_en": "Single value for both collection interval and timeout (seconds). Timed-out results are discarded and not published. Raise if the vCenter inventory is large (recommend >= 300)."
     }
   ],
   "table_columns": [

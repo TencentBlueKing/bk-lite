@@ -1,0 +1,128 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_advantech_router",
+  "plugin": "Router Advantech SNMP",
+  "plugin_desc": "Advantech ICR/Conel cellular industrial router SNMP collection (enterprise PEN 30140, formerly Conel). Collects CPU utilization (statusCPUUsage, 0-100 percent), RAM utilization (statusRAMUsage) plus used/free/total RAM in bytes (statusRAMUsed/Free/Total), internal temperature (statusTemperature), and input supply voltage (statusVoltage). Temperature and voltage are omitted on ICR-2[0|4|5|6]xx platforms that do not expose those leaves. sysObjectID under 1.3.6.1.4.1.30140.1.* identifies ICR-32xx, ICR-323x, ICR-416x and related families. Interface traffic comes from the built-in IF-MIB table. This plugin does not share discovery or OIDs with switch_advantech (EKI industrial Ethernet switches, PEN 10297).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='router', collect_type='snmp_advantech_router'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the Advantech ICR/Conel cellular router (statusCPUUsage) as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, cellular session churn, or abnormal traffic."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "snmp_device_memory_usage{instance_type='router', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports RAM utilization of the Advantech ICR/Conel cellular router (statusRAMUsage) as a 0-100 percentage. High memory usage may indicate leaks, oversized connection tables, or insufficient capacity."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "snmp_device_memory_used{instance_type='router', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports used RAM of the Advantech ICR/Conel cellular router in bytes (statusRAMUsed)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='router', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports free RAM of the Advantech ICR/Conel cellular router in bytes (statusRAMFree)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='router', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports total RAM of the Advantech ICR/Conel cellular router in bytes (statusRAMTotal)."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "snmp_device_temperature_celsius{instance_type='router', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Internal temperature of the Advantech ICR/Conel cellular router in degrees Celsius (statusTemperature). ICR-2[0|4|5|6]xx platforms do not expose this leaf, so the series is absent on those models rather than filled with a sentinel."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "snmp_device_voltage_volts{instance_type='router', __$labels__}",
+      "display_name": "Input Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Input supply voltage of the Advantech ICR/Conel cellular router as reported by statusVoltage. ICR-2[0|4|5|6]xx platforms do not expose this leaf, so the series is absent on those models."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

@@ -40,13 +40,31 @@ def _policy(**kwargs):
 
 
 def _mq(**kwargs):
+    calls = kwargs.setdefault("calls", [])
+
+    def query_policy_window_metrics(period, instance_ids=None, end_timestamp=None):
+        calls.append({"period": period, "instance_ids": instance_ids, "end_timestamp": end_timestamp})
+        if "raise" in kwargs:
+            raise kwargs["raise"]
+        return kwargs.get("raw", {"data": {"result": []}})
+
     return SimpleNamespace(
-        query_raw_metrics=lambda period: kwargs.get("raw", {"data": {"result": []}}),
-        format_pmq=lambda: kwargs.get("pmq", "up"),
+        query_policy_window_metrics=query_policy_window_metrics,
+        calls=calls,
+        format_pmq=lambda base_filters=None: kwargs.get("pmq", "up"),
         format_period=lambda period: kwargs.get("step", "5m"),
         get_result_group_by=lambda: kwargs.get("group_by", ["instance_id"]),
         query_overlay_last_values=lambda: kwargs.get("overlay", ({}, {})),
         get_effective_calculation_unit=lambda: kwargs.get("result_unit", ""),
+    )
+
+
+def _alert(metric_instance_id, monitor_instance_id, alert_type="alert"):
+    return SimpleNamespace(
+        id=hash((metric_instance_id, alert_type)) & 0xFFFF,
+        metric_instance_id=metric_instance_id,
+        monitor_instance_id=monitor_instance_id,
+        alert_type=alert_type,
     )
 
 
@@ -77,16 +95,94 @@ class TestBuildInstanceRawDataMap:
 
 
 class TestQueryFallbackRawData:
-    def test_builds_and_caches_fallback_map(self):
+    """兜底补查只针对本轮 miss 的告警实例（issue #5777）。"""
+
+    def test_queries_only_missing_alert_instances_in_one_call(self):
         raw = {"data": {"result": [
             {"metric": {"instance_id": "h1"}, "values": [[0, "5"]]},
+            {"metric": {"instance_id": "h3"}, "values": [[0, "7"]]},
+            {"metric": {"instance_id": "other"}, "values": [[0, "9"]]},
         ]}}
-        rec = SnapshotRecorder(_policy(), {}, [], _mq(raw=raw))
-        out = rec._query_fallback_raw_data("('h1',)")
-        assert out["metric"]["instance_id"] == "h1"
-        # 缓存命中
-        assert rec._fallback_raw_data_map is not None
-        assert rec._query_fallback_raw_data("('missing',)") == {}
+        mq = _mq(raw=raw)
+        rec = SnapshotRecorder(_policy(), {}, [], mq)
+        alerts = [
+            _alert("('h1',)", "('h1',)"),
+            _alert("('h2',)", "('h2',)"),            # 本轮已有 raw_data，不进兜底
+            _alert("('h3',)", "('h3',)"),
+            _alert("('h4',)", "('h4',)", "no_data"),  # 无数据告警不兜底
+        ]
+        out = rec._query_fallback_raw_data_map(alerts, {"('h2',)": {"values": [[0, "1"]]}})
+
+        assert len(mq.calls) == 1
+        assert mq.calls[0]["instance_ids"] == ["('h1',)", "('h3',)"]
+        assert mq.calls[0]["end_timestamp"] is None
+        assert set(out) == {"('h1',)", "('h3',)"}
+        assert out["('h1',)"]["metric"]["instance_id"] == "h1"
+        assert "('other',)" not in out
+
+    def test_no_missing_alerts_issues_no_query(self):
+        mq = _mq()
+        rec = SnapshotRecorder(_policy(), {}, [], mq)
+        out = rec._query_fallback_raw_data_map(
+            [_alert("('h1',)", "('h1',)")], {"('h1',)": {"values": [[0, "1"]]}}
+        )
+        assert out == {}
+        assert mq.calls == []
+
+    def test_group_by_changed_skips_fallback_instead_of_full_scan(self, caplog):
+        """磁盘策略 group_by 四维收窄成一维后，历史告警身份对不上，不能整库拉取空转。"""
+        import logging
+
+        mq = _mq(group_by=["instance_id"])
+        rec = SnapshotRecorder(_policy(group_by=["instance_id"]), {}, [], mq)
+        legacy_alerts = [
+            _alert("('h1', '/dev/sda1', '/', 'ext4')", "('h1',)"),
+            _alert("('h1', '/dev/sdb1', '/data', 'xfs')", "('h1',)"),
+        ]
+        with caplog.at_level(logging.DEBUG, logger="celery"):
+            out = rec._query_fallback_raw_data_map(legacy_alerts, {})
+
+        assert out == {}
+        assert mq.calls == []
+        skipped = [r for r in caplog.records if "event=snapshot_fallback_skipped" in r.getMessage()]
+        assert len(skipped) == 1
+        assert skipped[0].levelno == logging.DEBUG
+        assert skipped[0].args == (1, 2)
+        assert skipped[0].getMessage() == (
+            "event=snapshot_fallback_skipped policy_id=1 reason=group_by_mismatch count=2"
+        )
+        # 历史身份原文不进日志
+        assert "/dev/sda1" not in skipped[0].getMessage()
+
+    def test_mixed_alerts_only_query_aligned_ones(self):
+        raw = {"data": {"result": [
+            {"metric": {"instance_id": "h2"}, "values": [[0, "5"]]},
+        ]}}
+        mq = _mq(raw=raw)
+        rec = SnapshotRecorder(_policy(), {}, [], mq)
+        alerts = [
+            _alert("('h1', '/dev/sda1', '/', 'ext4')", "('h1',)"),
+            _alert("('h2',)", "('h2',)"),
+        ]
+        out = rec._query_fallback_raw_data_map(alerts, {})
+        assert mq.calls[0]["instance_ids"] == ["('h2',)"]
+        assert set(out) == {"('h2',)"}
+
+    def test_record_snapshots_uses_fallback_for_missing_active_alert(self, stub_s3):
+        alert = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="('h1',)", metric_instance_id="('h1',)",
+            alert_type="alert", status="new",
+        )
+        raw = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}, "values": [[200, "42"]]},
+        ]}}
+        mq = _mq(raw=raw)
+        rec = SnapshotRecorder(_policy(), {}, [alert], mq)
+        rec.record_snapshots_for_active_alerts(info_events=[])
+        assert mq.calls[0]["instance_ids"] == ["('h1',)"]
+        snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
+        info_snap = next(s for s in snap.snapshots if s["type"] == "info")
+        assert info_snap["compared_value"] == 42.0
 
 
 class TestRecordSnapshotsForActiveAlerts:
@@ -214,37 +310,40 @@ class TestRecordSnapshotsForActiveAlerts:
 
 
 class TestBuildPreAlertSnapshot:
-    def test_invalid_algorithm_returns_none(self):
-        rec = SnapshotRecorder(_policy(algorithm="bogus"), {}, [], _mq())
+    def test_query_failure_returns_none(self):
+        from apps.core.exceptions.base_app_exception import BaseAppException
+
+        mq = _mq(**{"raise": BaseAppException("bad algorithm")})
+        rec = SnapshotRecorder(_policy(algorithm="bogus"), {}, [], mq)
         now = datetime.now(timezone.utc)
         assert rec._build_pre_alert_snapshot("('h1',)", now) is None
 
     def test_too_early_returns_none(self):
         # last_run_time 远在 7 天前 → pre_alert_time 早于 min_time → None
         old_policy = _policy(last_run_time=datetime(2020, 1, 1, tzinfo=timezone.utc))
-        rec = SnapshotRecorder(old_policy, {}, [], _mq())
+        mq = _mq()
+        rec = SnapshotRecorder(old_policy, {}, [], mq)
         assert rec._build_pre_alert_snapshot("('h1',)", old_policy.last_run_time) is None
+        assert mq.calls == []
 
-    def test_builds_snapshot_when_data_matches(self, mocker):
+    def test_builds_snapshot_scoped_to_alert_instance(self):
         now = datetime.now(timezone.utc)
         pre_metrics = {"data": {"result": [
             {"metric": {"instance_id": "h1"}, "values": [[0, "9"]]},
         ]}}
-        rec = SnapshotRecorder(_policy(), {}, [], _mq())
-        mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.snapshot_recorder.VictoriaMetricsAPI"
-        ).return_value.query_range.return_value = pre_metrics
-        snap = rec._build_pre_alert_snapshot("('h1',)", now)
+        mq = _mq(raw=pre_metrics)
+        rec = SnapshotRecorder(_policy(), {}, [], mq)
+        snap = rec._build_pre_alert_snapshot("('h1',)", now, monitor_instance_id="('h1',)")
         assert snap["type"] == "pre_alert"
         assert snap["raw_data"]["metric"]["instance_id"] == "h1"
+        assert mq.calls[0]["instance_ids"] == ["('h1',)"]
+        # 窗口右端是告警前一个周期
+        assert mq.calls[0]["end_timestamp"] == int(now.timestamp()) - 300
 
-    def test_returns_none_when_no_matching_data(self, mocker):
+    def test_returns_none_when_no_matching_data(self):
         now = datetime.now(timezone.utc)
         pre_metrics = {"data": {"result": [
             {"metric": {"instance_id": "other"}, "values": [[0, "9"]]},
         ]}}
-        rec = SnapshotRecorder(_policy(), {}, [], _mq())
-        mocker.patch(
-            "apps.monitor.tasks.services.policy_scan.snapshot_recorder.VictoriaMetricsAPI"
-        ).return_value.query_range.return_value = pre_metrics
+        rec = SnapshotRecorder(_policy(), {}, [], _mq(raw=pre_metrics))
         assert rec._build_pre_alert_snapshot("('h1',)", now) is None

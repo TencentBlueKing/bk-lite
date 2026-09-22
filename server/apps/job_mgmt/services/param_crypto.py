@@ -3,21 +3,58 @@
 处理脚本/Playbook 参数中的加密字段。
 - 创建/更新时：对 is_encrypted=true 的参数 default 值进行加密
 - 返回前端时：隐藏 is_encrypted=true 的参数 default 值
+- 更新时若收到脱敏占位符，沿用库中原密文，不当新明文写入
 - 执行时：解密参数值
 """
 
 from apps.core.mixinx import EncryptMixin
+
+# 读接口回填占位符；写接口收到同值表示「未改，沿用原密文」
+MASKED_DEFAULT = "******"
 
 
 class ParamCrypto:
     """参数加解密工具类"""
 
     @staticmethod
+    def prepare_param_defaults_for_save(params: list, existing_params: list | None = None) -> list:
+        """
+        保存前处理加密参数默认值。
+
+        - 明文新值：加密后写入
+        - 脱敏占位符：按参数名从 existing_params 取回原密文（已加密则不再二次加密）
+        - 占位符但无对应原值：清空，避免把掩码当真实密码落库
+        """
+        if not params:
+            return params
+
+        existing_by_name = {p.get("name"): p for p in (existing_params or []) if isinstance(p, dict) and p.get("name")}
+
+        for param in params:
+            if not isinstance(param, dict):
+                continue
+            if not param.get("is_encrypted"):
+                continue
+            default = param.get("default")
+            if not default:
+                continue
+            if default == MASKED_DEFAULT:
+                old = existing_by_name.get(param.get("name"))
+                if old and old.get("is_encrypted") and old.get("default") and old.get("default") != MASKED_DEFAULT:
+                    param["default"] = old["default"]
+                else:
+                    param["default"] = ""
+                continue
+            EncryptMixin.encrypt_field("default", param)
+
+        return params
+
+    @staticmethod
     def encrypt_param_defaults(params: list) -> list:
         """
-        加密参数定义中的默认值
+        加密参数定义中的默认值（无既有密文可回填的创建场景）。
 
-        对 is_encrypted=true 的参数，加密其 default 字段
+        对 is_encrypted=true 的参数，加密其 default 字段；脱敏占位符不会被当作明文加密。
 
         Args:
             params: 参数定义列表 [{name, label, description, default, is_encrypted}, ...]
@@ -25,21 +62,14 @@ class ParamCrypto:
         Returns:
             处理后的参数列表（原地修改）
         """
-        if not params:
-            return params
-
-        for param in params:
-            if param.get("is_encrypted") and param.get("default"):
-                EncryptMixin.encrypt_field("default", param)
-
-        return params
+        return ParamCrypto.prepare_param_defaults_for_save(params, existing_params=None)
 
     @staticmethod
     def mask_encrypted_defaults(params: list) -> list:
         """
         隐藏加密参数的默认值（用于返回前端）
 
-        对 is_encrypted=true 的参数，将 default 替换为 ***
+        对 is_encrypted=true 的参数，将 default 替换为脱敏占位符
 
         Args:
             params: 参数定义列表
@@ -54,7 +84,7 @@ class ParamCrypto:
         for param in params:
             param_copy = param.copy()
             if param_copy.get("is_encrypted") and param_copy.get("default"):
-                param_copy["default"] = "******"
+                param_copy["default"] = MASKED_DEFAULT
             result.append(param_copy)
 
         return result

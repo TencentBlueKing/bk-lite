@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
@@ -204,16 +205,160 @@ class TestQueryAggregationMetrics:
             svc.query_comparison_metrics({"type": "min", "value": 5})
 
 
-class TestQueryRawMetrics:
-    def test_uses_vm_query_range(self, mocker):
-        svc = MetricQueryService(_policy(), {})
+def _host_object():
+    return SimpleNamespace(instance_id_keys=["instance_id"])
+
+
+def _metric_policy(instances_map, **kwargs):
+    base = dict(
+        query_condition={"type": "metric", "metric_id": 9, "filter": []},
+        group_by=["instance_id"],
+        algorithm="max",
+        monitor_object=_host_object(),
+    )
+    base.update(kwargs)
+    svc = MetricQueryService(_policy(**base), instances_map)
+    svc.metric = SimpleNamespace(
+        query='cpu{instance_type="os", __$labels__}', data_type="Number", unit=""
+    )
+    return svc
+
+
+class TestScopePushdown:
+    """策略实例范围必须编进 PromQL selector，而不是回包后在 Python 里丢弃（issue #5777）。"""
+
+    def _patch_vm(self, mocker):
         vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
-        vm.return_value.query_range.return_value = {"data": {"result": [1]}}
-        out = svc.query_raw_metrics({"type": "min", "value": 5})
-        assert out == {"data": {"result": [1]}}
-        call = vm.return_value.query_range.call_args.args
-        assert call[0] == "up"
-        assert call[3] == "5m"
+        vm.return_value.query_range.return_value = {"status": "success", "data": {"result": []}}
+        return vm.return_value.query_range
+
+    def test_metric_query_injects_instance_matcher(self, mocker):
+        query_range = self._patch_vm(mocker)
+        svc = _metric_policy({"('h-1',)": "主机1", "('h2',)": "主机2"})
+        svc.query_comparison_metrics({"type": "min", "value": 5})
+        query = query_range.call_args.args[0]
+        assert 'cpu{instance_type="os", instance_id=~"h\\\\-1|h2"}' in query
+        assert query.endswith("by (instance_id))[5m:10s])")
+
+    def test_metric_query_combines_scope_with_policy_filter(self, mocker):
+        query_range = self._patch_vm(mocker)
+        svc = _metric_policy(
+            {"('h1',)": "主机1"},
+            query_condition={
+                "type": "metric",
+                "metric_id": 9,
+                "filter": [{"name": "path", "method": "=", "value": "/"}],
+            },
+        )
+        svc.query_existence_metrics({"type": "min", "value": 5})
+        query = query_range.call_args.args[0]
+        assert 'instance_id=~"h1",path="/"' in query
+
+    def test_no_source_keeps_unscoped_query(self, mocker):
+        query_range = self._patch_vm(mocker)
+        svc = _metric_policy({})
+        svc.query_comparison_metrics({"type": "min", "value": 5})
+        assert 'cpu{instance_type="os", }' in query_range.call_args.args[0]
+
+    def test_pmq_query_is_not_rewritten(self, mocker):
+        query_range = self._patch_vm(mocker)
+        svc = MetricQueryService(
+            _policy(query_condition={"type": "pmq", "query": "up"}, monitor_object=_host_object()),
+            {"('h1',)": "主机1"},
+        )
+        svc.query_comparison_metrics({"type": "min", "value": 5})
+        assert query_range.call_count == 1
+        assert "max_over_time((max(up) by (instance_id))" in query_range.call_args.args[0]
+
+    def test_derivative_object_scopes_every_identity_key(self, mocker):
+        query_range = self._patch_vm(mocker)
+        svc = _metric_policy(
+            {"('cluster-a', 'orders-7f9')": "orders", "('cluster-a', 'pay-1')": "pay"},
+            monitor_object=SimpleNamespace(instance_id_keys=["instance_id", "pod"]),
+            group_by=["instance_id", "pod"],
+        )
+        svc.query_comparison_metrics({"type": "min", "value": 5})
+        query = query_range.call_args.args[0]
+        assert 'instance_id=~"cluster\\\\-a"' in query
+        assert 'pod=~"orders\\\\-7f9|pay\\\\-1"' in query
+
+    def test_identity_shorter_than_keys_falls_back_to_unscoped(self, mocker):
+        query_range = self._patch_vm(mocker)
+        svc = _metric_policy(
+            {"('cluster-a',)": "c"},
+            monitor_object=SimpleNamespace(instance_id_keys=["instance_id", "pod"]),
+        )
+        svc.query_comparison_metrics({"type": "min", "value": 5})
+        assert "=~" not in query_range.call_args.args[0]
+
+    def test_large_scope_is_batched_and_merged(self, mocker):
+        mocker.patch.object(AlertConstants, "SCAN_SCOPE_BATCH_SIZE", 2)
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
+        seen = []
+
+        def fake_query_range(query, start, end, step):
+            seen.append(query)
+            return {
+                "status": "success",
+                "data": {"resultType": "matrix", "result": [{"metric": {"q": len(seen)}, "values": []}]},
+            }
+
+        vm.return_value.query_range.side_effect = fake_query_range
+        svc = _metric_policy({f"('h{i}',)": f"主机{i}" for i in range(5)})
+        out = svc.query_comparison_metrics({"type": "min", "value": 5})
+
+        assert len(seen) == 3
+        assert 'instance_id=~"h0|h1"' in seen[0]
+        assert 'instance_id=~"h2|h3"' in seen[1]
+        assert 'instance_id=~"h4"' in seen[2]
+        assert out["status"] == "success"
+        assert out["data"]["resultType"] == "matrix"
+        assert [item["metric"]["q"] for item in out["data"]["result"]] == [1, 2, 3]
+
+    def test_batch_error_payload_is_returned_as_is(self, mocker):
+        mocker.patch.object(AlertConstants, "SCAN_SCOPE_BATCH_SIZE", 1)
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
+        error = {"status": "error", "errorType": "execution", "error": "boom"}
+        vm.return_value.query_range.side_effect = [
+            {"status": "success", "data": {"result": [{"metric": {}, "values": []}]}},
+            error,
+        ]
+        svc = _metric_policy({"('h1',)": "a", "('h2',)": "b"})
+        assert svc.query_comparison_metrics({"type": "min", "value": 5}) == error
+
+
+class TestQueryPolicyWindowMetrics:
+    def test_scopes_to_given_instances_and_end_time(self, mocker):
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
+        vm.return_value.query_range.return_value = {"data": {"result": []}}
+        svc = _metric_policy({f"('h{i}',)": "x" for i in range(10)})
+        end = int(svc.policy.last_run_time.timestamp()) - 300
+
+        svc.query_policy_window_metrics({"type": "min", "value": 5}, ["('h3',)"], end_timestamp=end)
+
+        query, start, end_arg, step = vm.return_value.query_range.call_args.args
+        assert 'instance_id=~"h3"' in query
+        assert "by (instance_id)" in query
+        assert "max_over_time(" in query
+        assert end_arg == end
+        assert end_arg - start == 300
+        assert step == "5m"
+
+    def test_empty_instance_list_does_not_query(self, mocker):
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
+        svc = _metric_policy({"('h1',)": "x"})
+        assert svc.query_policy_window_metrics({"type": "min", "value": 5}, []) == {"data": {"result": []}}
+        vm.return_value.query_range.assert_not_called()
+
+    def test_none_instances_uses_policy_scope(self, mocker):
+        vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
+        vm.return_value.query_range.return_value = {"data": {"result": []}}
+        svc = _metric_policy({"('h1',)": "x"})
+        svc.query_policy_window_metrics({"type": "min", "value": 5})
+        assert 'instance_id=~"h1"' in vm.return_value.query_range.call_args.args[0]
+
+    def test_raw_unaggregated_query_is_gone(self):
+        assert not hasattr(MetricQueryService, "query_raw_metrics")
 
 
 class TestConvertMetricValues:

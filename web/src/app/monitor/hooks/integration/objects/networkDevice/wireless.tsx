@@ -69,7 +69,9 @@ export const useWirelessConfig = () => {
       'Wireless Xirrus SNMP': 'snmp_xirrus',
       'Wireless Huawei AC SNMP': 'snmp_huawei_ac',
       'Wireless H3C SNMP': 'snmp_h3c',
-      'Wireless Ruckus SNMP': 'snmp_ruckus_wireless'
+      'Wireless Ruckus SNMP': 'snmp_ruckus_wireless',
+      'Wireless Aruba SNMP': 'snmp_aruba_wireless',
+      'Wireless Cisco SNMP': 'snmp_cisco_wireless'
     }
   };
 };

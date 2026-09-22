@@ -18,6 +18,7 @@ from apps.apm.models import (
 )
 from apps.apm.services import DjangoApmPolicyService
 from apps.apm.services.contracts import NotificationChannel, NotificationRecipient, ServiceRed
+from apps.apm.services.notifications import NotificationChannelDirectory
 from apps.apm.tests.helpers import bind_policy_organizations
 
 pytestmark = pytest.mark.django_db
@@ -413,6 +414,7 @@ def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_cli
             availability="available",
         )
     ]
+    directory.validate_recipient_ids.return_value = {42}
     payload = _payload(_service(10))
     payload.update(
         {
@@ -438,6 +440,89 @@ def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_cli
         }
     ]
     assert ApmPolicyNotificationTarget.objects.filter(policy_id=created.data["id"]).count() == 1
+
+
+def test_policy_rejects_system_user_outside_current_organization(apm_api_client, mocker):
+    directory = mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory")
+    directory.list_available.return_value = [
+        NotificationChannel(
+            id=23,
+            name="邮件",
+            channel_type="email",
+            description="值班邮件",
+            delivery_mode="message",
+            recipient_mode="system_user",
+            availability="available",
+        )
+    ]
+    directory.validate_recipient_ids.return_value = set()
+    payload = _payload(_service(10))
+    payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
+
+    response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+
+    assert response.status_code == 400
+    assert "当前组织不可用" in response.data["notification_targets"]
+
+
+def test_policy_validates_system_users_by_recipient_ids(apm_api_client, mocker):
+    client = mocker.Mock()
+    client.list_notification_channels_scoped.return_value = {
+        "result": True,
+        "data": [
+            {
+                "id": 23,
+                "name": "邮件",
+                "channel_type": "email",
+                "description": "值班邮件",
+                "delivery_mode": "message",
+                "recipient_mode": "system_user",
+                "availability": "available",
+            }
+        ],
+    }
+    client.search_notification_recipients_scoped.return_value = {
+        "result": True,
+        "data": [{"id": 42, "username": "alice", "display_name": "Alice"}],
+    }
+    mocker.patch(
+        "apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory",
+        NotificationChannelDirectory(client=client),
+    )
+    payload = _payload(_service(10))
+    payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
+
+    created = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+
+    assert created.status_code == 201
+    client.search_notification_recipients_scoped.assert_called_once()
+    kwargs = client.search_notification_recipients_scoped.call_args.kwargs
+    assert kwargs["recipient_ids"] == [42]
+    assert kwargs["limit"] == 1
+
+
+def test_policy_recipient_validation_fails_closed_without_directory_scan(apm_api_client, mocker):
+    directory = mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory")
+    directory.list_available.return_value = [
+        NotificationChannel(
+            id=23,
+            name="邮件",
+            channel_type="email",
+            description="值班邮件",
+            delivery_mode="message",
+            recipient_mode="system_user",
+            availability="available",
+        )
+    ]
+    directory.validate_recipient_ids.side_effect = RuntimeError("unexpected keyword argument recipient_ids")
+    payload = _payload(_service(10))
+    payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
+
+    response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+
+    assert response.status_code == 503
+    assert response.data["code"] == "notification_recipients_unavailable"
+    directory.search_recipients.assert_not_called()
 
 
 def test_notification_directory_outage_only_blocks_notification_configuration(apm_api_client, mocker):

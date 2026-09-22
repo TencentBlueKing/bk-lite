@@ -51,8 +51,6 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "get_group_users_scoped",
         "get_authorized_groups_scoped",
         "get_all_users",
-        "search_groups",
-        "search_users",
         "init_user_default_attributes",
         "create_guest_role",
         "create_default_rule",
@@ -295,7 +293,7 @@ def test_get_user_menus_with_role_filter():
 
 
 # ---------------------------------------------------------------------------
-# get_group_users / get_all_users / search_*
+# get_group_users / get_all_users
 # ---------------------------------------------------------------------------
 def test_get_group_users_all():
     User.objects.create(username="gu1", password="x", display_name="g1", email="g1@x.com", group_list=[1])
@@ -314,27 +312,22 @@ def test_get_group_users_by_group():
 
 
 def test_get_all_users():
-    User.objects.create(username="allu", password="x", display_name="A", email="a@x.com")
+    user = User.objects.create(
+        username="allu",
+        password="x",
+        display_name="A",
+        email="a@x.com",
+        phone="13800009999",
+        role_list=[1],
+    )
     result = nats_api.get_all_users()
     assert result["result"] is True
-    assert any(u["username"] == "allu" for u in result["data"])
-
-
-def test_search_groups():
-    Group.objects.create(name="FindMeGroup", parent_id=0)
-    Group.objects.create(name="OtherGrp", parent_id=0)
-    result = nats_api.search_groups({"search": "FindMe"})
-    names = {g["name"] for g in result["data"]}
-    assert names == {"FindMeGroup"}
-
-
-def test_search_users_pagination():
-    for i in range(15):
-        User.objects.create(username=f"su{i:02d}", password="x", display_name=f"S{i}", email=f"s{i}@x.com")
-    result = nats_api.search_users({"page": 1, "page_size": 10, "search": "su"})
-    assert result["result"] is True
-    assert result["data"]["count"] >= 15
-    assert len(result["data"]["users"]) == 10
+    returned_user = next(item for item in result["data"] if item["username"] == "allu")
+    assert returned_user == {
+        "id": user.id,
+        "username": "allu",
+        "display_name": "A",
+    }
 
 
 def test_get_group_id():

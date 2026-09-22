@@ -348,6 +348,12 @@ const useApmApi = () => {
     [post]
   );
 
+  const reassignAlert = useCallback(
+    (alertId: string, handlers: Array<string | number>) =>
+      post<ApmAlert>(`/apm/alerts/${alertId}/reassign/`, { handlers }),
+    [post]
+  );
+
   const getNotificationChannels = useCallback(
     () => get<ApmNotificationChannel[]>('/apm/notification-channels/'),
     [get]
@@ -419,6 +425,7 @@ const useApmApi = () => {
     closeAlert,
     claimAlert,
     assignAlert,
+    reassignAlert,
     getNotificationChannels,
     getNotificationDeliveries,
     getNotificationRecipients,

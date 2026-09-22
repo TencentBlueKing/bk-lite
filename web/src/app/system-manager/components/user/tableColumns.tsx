@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Popconfirm, Dropdown, Menu, Tooltip } from 'antd';
 import { ColumnsType } from 'antd/es/table';
 import PermissionWrapper from '@/components/permission';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import Icon from '@/components/icon';
 import type { Key } from 'react';
 import type { ChangeUserStatusAction, UserDataType } from '@/app/system-manager/types/user';
@@ -38,16 +39,14 @@ export const createUserTableColumns = ({
       render: (text: string) => {
         const color = getRandomColor();
         return (
-          <div className="flex items-center" style={{ height: '17px' }}>
+          <div className="flex h-[17px] min-w-0 items-center">
             <span
-              className="h-5 w-5 rounded-[10px] text-center mr-1 flex-shrink-0"
-              style={{ color: '#ffffff', backgroundColor: color, lineHeight: '20px' }}
+              className="mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[10px] text-center leading-5 text-[var(--color-bg)]"
+              style={{ backgroundColor: color }}
             >
               {text?.substring(0, 1)}
             </span>
-            <Tooltip title={text} placement="topLeft">
-              <span className="truncate">{text}</span>
-            </Tooltip>
+            <EllipsisWithTooltip text={text} className="min-w-0 truncate" />
           </div>
         );
       },
@@ -111,7 +110,7 @@ export const createUserTableColumns = ({
     {
       title: t('system.user.table.role'),
       dataIndex: 'roles',
-      width: 200,
+      width: 280,
       render: (_: string[], record: UserDataType) => {
         const personalRoles = (record.roles || []).reduce((acc: Record<string, string[]>, role: any) => {
           const roleName = typeof role === 'string' ? role : role.name;
@@ -165,11 +164,11 @@ export const createUserTableColumns = ({
                 )}
                 <span className="text-xs">
                   {gRoles.length > 0 && (
-                    <span className="text-green-600">{gRoles.join(', ')}</span>
+                    <span className="text-[var(--color-success)]">{gRoles.join(', ')}</span>
                   )}
                   {gRoles.length > 0 && pRoles.length > 0 && <span>, </span>}
                   {pRoles.length > 0 && (
-                    <span className="text-blue-600">{pRoles.join(', ')}</span>
+                    <span className="text-[var(--color-primary)]">{pRoles.join(', ')}</span>
                   )}
                 </span>
               </div>
@@ -190,11 +189,11 @@ export const createUserTableColumns = ({
                           )}
                           <span>
                             {gRoles.length > 0 && (
-                              <span className="text-green-600">{gRoles.join(', ')}</span>
+                              <span className="text-[var(--color-success)]">{gRoles.join(', ')}</span>
                             )}
                             {gRoles.length > 0 && pRoles.length > 0 && <span>, </span>}
                             {pRoles.length > 0 && (
-                              <span className="text-blue-600">{pRoles.join(', ')}</span>
+                              <span className="text-[var(--color-primary)]">{pRoles.join(', ')}</span>
                             )}
                           </span>
                         </div>

@@ -52,24 +52,24 @@
     },
     {
       "name": "进风口温度过高",
-      "alert_name": "硬件服务器${resource_name} 传感器 ${metric_name} 温度过高",
-      "description": "Redfish 温度读数超过阈值时告警，覆盖进风口与 CPU 等传感器。",
-      "metric_name": "redfish_temperature_celsius",
+      "alert_name": "硬件服务器${resource_name} 进风口温度过高",
+      "description": "Redfish 进风口温度超过机房常用阈值时告警。",
+      "metric_name": "redfish_inlet_temperature_celsius",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 80,
+          "value": 45,
           "method": ">="
         },
         {
           "level": "error",
-          "value": 70,
+          "value": 40,
           "method": ">="
         },
         {
           "level": "warning",
-          "value": 60,
+          "value": 35,
           "method": ">="
         }
       ]
@@ -127,6 +127,78 @@
       "alert_name": "硬件服务器${resource_name} 电源 ${metric_name} 健康异常",
       "description": "Redfish 电源模块 Status.Health 不是 OK 时告警。",
       "metric_name": "redfish_psu_health",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 3,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "电源冗余丢失",
+      "alert_name": "硬件服务器${resource_name} 电源冗余丢失",
+      "description": "正在供电的电源少于两路时告警。Health=OK 的空闲电源不计入冗余。",
+      "metric_name": "redfish_psu_redundant",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "error",
+          "value": 0,
+          "method": "="
+        },
+        {
+          "level": "warning",
+          "value": 0,
+          "method": "="
+        }
+      ]
+    },
+    {
+      "name": "功耗超限",
+      "alert_name": "硬件服务器${resource_name} 功耗超过功率上限",
+      "description": "PowerConsumedWatts 超过 PowerLimit.LimitInWatts 时告警。",
+      "metric_name": "redfish_power_over_limit",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "="
+        },
+        {
+          "level": "error",
+          "value": 1,
+          "method": "="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": "="
+        }
+      ]
+    },
+    {
+      "name": "磁盘健康异常",
+      "alert_name": "硬件服务器${resource_name} 磁盘 ${metric_name} 健康异常",
+      "description": "Redfish Storage.Drives.Status.Health 不是 OK 时告警。",
+      "metric_name": "redfish_drive_health",
       "algorithm": "last_over_time",
       "threshold": [
         {

@@ -36,6 +36,14 @@ monitor_object_metric:
       name: Node Available Disk Space
       desc: Node storage availability metric, reflects remaining disk space on nodes;
         disk exhaustion causes node offline
+    elasticsearch_fs_io_stats_total_write_kilobytes_rate:
+      name: Node Disk Write Rate
+      desc: Node disk write throughput derived from cumulative kilobytes written;
+        sustained high values indicate IO pressure from indexing or segment merges
+    elasticsearch_indices_docs_deleted:
+      name: Unmerged Deleted Documents
+      desc: Node-level count of documents marked deleted but not yet merged; a large
+        backlog increases query overhead until segment merges reclaim space
     elasticsearch_process_cpu_percent:
       name: Process CPU Usage
       desc: Process compute load metric, reflects CPU load of the process; high load
@@ -52,6 +60,10 @@ monitor_object_metric:
       name: Rate of HTTP Request Circuit Breaker Triggering
       desc: Request-level memory protection monitoring, reflects triggers of the request-level
         memory protection breaker; >0 indicates recent request memory overload
+    elasticsearch_breakers_parent_tripped_rate:
+      name: Parent Circuit Breaker Trigger Rate
+      desc: Parent circuit breaker trip rate; any value above 0 means the node recently
+        rejected work because overall memory accounting hit its limit
     elasticsearch_http_current_open:
       name: HTTP Current Connections
       desc: HTTP service availability metric, reflects connection usage of the HTTP

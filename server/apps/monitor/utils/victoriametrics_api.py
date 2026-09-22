@@ -21,13 +21,20 @@ class VictoriaMetricsAPI:
         self.timeout = VictoriaMetricsConstants.REQUEST_TIMEOUT
 
     def _do_get(self, api_path, params):
+        return self._do_request("get", api_path, params=params)
+
+    def _do_post(self, api_path, data):
+        # 策略扫描会把实例范围编进 selector，GET 会撞 URL 长度上限；VM 支持 form POST。
+        return self._do_request("post", api_path, data=data)
+
+    def _do_request(self, method, api_path, **request_kwargs):
         try:
-            response = _SESSION.get(
+            response = getattr(_SESSION, method)(
                 f"{self.host}{api_path}",
-                params=params,
                 auth=(self.username, self.password),
                 verify=self.ssl_verify,  # 添加SSL验证配置
                 timeout=self.timeout,
+                **request_kwargs,
             )
             response.raise_for_status()
             return response.json()
@@ -122,7 +129,7 @@ class VictoriaMetricsAPI:
         return self._do_get_allow_error("/api/v1/query", params)
 
     def query_range(self, query, start, end, step="5m"):
-        return self._do_get(
+        return self._do_post(
             "/api/v1/query_range",
             {"query": query, "start": start, "end": end, "step": step},
         )

@@ -1,0 +1,56 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Cisco SNMP",
+  "templates": [
+    {
+      "name": "Cisco无线控制器CPU使用率过高",
+      "alert_name": "无线设备${resource_name} CPU 使用率过高",
+      "description": "监控 Cisco AireOS WLC / Catalyst 9800 无线控制器的整体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在接入点或客户端管理负载过高，避免影响漫游与管理响应。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco无线控制器内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Cisco AireOS WLC / Catalyst 9800 无线控制器的整体内存使用率，当超过阈值时触发告警。内存压力过高会影响接入点加入与客户端漫游，需及时排查负载或容量。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

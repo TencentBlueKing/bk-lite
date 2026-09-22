@@ -56,9 +56,48 @@ class DummyNATSClient:
         return DummyNATSResponse(self.payload)
 
 
+class DummyRPCSubscriptionClient:
+    def __init__(self):
+        self.subscribed = []
+        self.flush_calls = 0
+
+    async def subscribe(self, subject, cb):
+        subscription = object()
+        self.subscribed.append((subject, cb, subscription))
+        return subscription
+
+    async def flush(self):
+        self.flush_calls += 1
+
+
 class DummyMetadata:
     def __init__(self, num_delivered):
         self.num_delivered = num_delivered
+
+
+@pytest.mark.asyncio
+async def test_rpc_subscriptions_are_retained_and_flushed_before_ready(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    client = DummyRPCSubscriptionClient()
+
+    await service._subscribe_rpc_handlers(client)
+
+    assert [subject for subject, _, _ in client.subscribed] == [
+        "ansible.adhoc.default",
+        "ansible.playbook.default",
+        "ansible.task.query.default",
+    ]
+    assert service.rpc_subscriptions == [subscription for _, _, subscription in client.subscribed]
+    assert client.flush_calls == 1
 
 
 @pytest.mark.asyncio

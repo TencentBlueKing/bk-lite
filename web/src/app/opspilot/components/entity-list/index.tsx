@@ -6,8 +6,8 @@ import { PlusOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
-import OpsPilotListPageHeader from '@/app/opspilot/components/opspilot-list-page-header';
-import OpsPilotCardGridSkeleton from '@/app/opspilot/components/opspilot-card-grid-skeleton';
+import ListPageHeader from '@/components/list-page-header';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
 
 const { Search } = Input;
 
@@ -301,7 +301,7 @@ const EntityList = <T,>({
   return (
     <div className="w-full h-full">
       {pageTitle ? (
-        <OpsPilotListPageHeader
+        <ListPageHeader
           title={pageTitle}
           description={pageDescription}
           actions={
@@ -378,7 +378,7 @@ const EntityList = <T,>({
         </div>
       )}
       {loading ? (
-        <OpsPilotCardGridSkeleton />
+        <CardGridSkeleton />
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">

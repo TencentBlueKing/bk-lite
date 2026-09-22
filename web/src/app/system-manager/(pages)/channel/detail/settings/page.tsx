@@ -237,7 +237,7 @@ const ChannelSettingsPage: React.FC = () => {
       </div>
       <Spin spinning={loading}>
         <CustomTable
-          scroll={{ y: "calc(100vh - 365px)" }}
+          scroll={{ y: "calc(100vh - 405px)" }}
           pagination={{
             pageSize,
             current: currentPage,

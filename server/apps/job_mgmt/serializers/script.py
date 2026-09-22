@@ -139,9 +139,10 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
         return normalize_script_line_endings(value, script_type or "")
 
     def validate_params(self, value):
-        """加密参数定义中的默认值"""
+        """加密默认值；脱敏占位符沿用 instance 中原密文，避免二次保存把掩码写进库。"""
         if value:
-            ParamCrypto.encrypt_param_defaults(value)
+            existing = self.instance.params if self.instance is not None else None
+            ParamCrypto.prepare_param_defaults_for_save(value, existing_params=existing)
         return value
 
     def validate_team(self, value):

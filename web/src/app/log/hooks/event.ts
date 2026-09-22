@@ -127,6 +127,7 @@ export const useEventActionMap = () => {
     () => ({
       claimed: t('log.event.eventClaimed'),
       assigned: t('log.event.eventAssigned'),
+      reassigned: t('log.event.eventReassigned'),
       closed: t('log.event.eventClosed')
     }),
     [t]

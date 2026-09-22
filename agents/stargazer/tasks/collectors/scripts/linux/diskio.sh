@@ -3,7 +3,7 @@ echo '"diskio":['
 _diskio_first=1
 while read major minor device reads reads_merged sectors_read read_ms writes writes_merged sectors_written write_ms io_in_progress io_ms weighted_io_ms rest; do
   case "$device" in
-    loop*|ram*|sr*|dm-*)
+    loop*|ram*|sr*)
       continue
       ;;
   esac
