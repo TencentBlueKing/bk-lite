@@ -12,11 +12,14 @@ from apps.operation_analysis.serializers.scene_widget_serializers import (
     Application3DWallRequestSerializer,
     NetworkStatusTopologyRequestSerializer,
     RelatedTopologyRequestSerializer,
+    Room3DLayoutRequestSerializer,
+    Room3DRoomsRequestSerializer,
 )
 from apps.operation_analysis.services.application3d import Application3DQueryService
 from apps.operation_analysis.services.application3d.errors import Application3DError
 from apps.operation_analysis.services.network_status_topology import NetworkStatusTopologyService
 from apps.operation_analysis.services.related_topology import RelatedTopologyError, RelatedTopologyService
+from apps.operation_analysis.services.room3d import Room3DError, Room3DService
 
 
 class SceneWidgetViewSet(ViewSet):
@@ -129,6 +132,37 @@ class SceneWidgetViewSet(ViewSet):
                 {"code": exc.code, "detail": exc.message},
                 status=self._APPLICATION3D_ERROR_STATUS.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
             )
+
+    def _room3d_error_response(self, exc: Room3DError):
+        return Response(
+            {"code": exc.code, "detail": exc.message},
+            status=self._APPLICATION3D_ERROR_STATUS.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR),
+        )
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["post"], url_path="room3d/rooms")
+    def room3d_rooms(self, request):
+        serializer = Room3DRoomsRequestSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        try:
+            return Response(Room3DService.list_rooms(request))
+        except Room3DError as exc:
+            return self._room3d_error_response(exc)
+
+    @HasPermission("view-View")
+    @action(detail=False, methods=["post"], url_path="room3d/layout")
+    def room3d_layout(self, request):
+        serializer = Room3DLayoutRequestSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        try:
+            return Response(
+                Room3DService.layout(
+                    request,
+                    server_room_id=str(serializer.validated_data["server_room_id"]),
+                )
+            )
+        except Room3DError as exc:
+            return self._room3d_error_response(exc)
 
     @HasPermission("view-View")
     @action(detail=False, methods=["post"], url_path="application3d/metric")

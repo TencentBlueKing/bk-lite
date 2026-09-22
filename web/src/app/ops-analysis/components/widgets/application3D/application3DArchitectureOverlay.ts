@@ -154,7 +154,14 @@ export const expandArchitectureCabinetWorldBox = (
 export const formatArchitectureHostState = (
   state: string | undefined,
   t: Application3DTranslate,
+  reason?: string,
 ) => {
+  if (reason === 'unmonitored') {
+    return t('dashboard.application3DHostUnmonitored', '未接入监控');
+  }
+  if (reason === 'monitor_unreadable') {
+    return t('dashboard.application3DHostMonitorUnreadable', '监控不可读');
+  }
   if (state === 'normal') return t('dashboard.application3DStatus_normal', '运行正常');
   if (state === 'alarming') return t('dashboard.application3DStatus_alarming', '告警');
   return t('dashboard.application3DStatus_unknown', '状态未知');

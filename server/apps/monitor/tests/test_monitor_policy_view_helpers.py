@@ -222,6 +222,35 @@ class TestHandlePolicyEnableChange:
         policy.refresh_from_db()
         assert policy.last_run_time is not None
 
+    def test_enable_toggle_syncs_periodic_task(self, mocker):
+        """停用策略必须同步停掉 Beat 派发，重新启用再恢复（issue #5777 P2）。"""
+        from django_celery_beat.models import PeriodicTask
+
+        mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
+        obj = MonitorObject.objects.create(name="HPECObj3", level="base")
+        policy = MonitorPolicy.objects.create(
+            monitor_object=obj, name="p", algorithm="max",
+            query_condition={}, source={}, group_by=[], enable=True,
+        )
+        vs = _vs()
+        vs.update_or_create_task(policy.id, {"type": "min", "value": 5})
+        task_name = f"scan_policy_task_{policy.id}"
+        assert PeriodicTask.objects.get(name=task_name).enabled is True
+
+        MonitorPolicy.objects.filter(id=policy.id).update(enable=False)
+        vs.handle_policy_enable_change(policy.id, True, False)
+        assert PeriodicTask.objects.get(name=task_name).enabled is False
+
+        # 停用状态下修改 schedule，不得把任务重新派发
+        vs.update_or_create_task(policy.id, {"type": "min", "value": 10})
+        task = PeriodicTask.objects.get(name=task_name)
+        assert task.enabled is False
+        assert task.crontab.minute == "*/10"
+
+        MonitorPolicy.objects.filter(id=policy.id).update(enable=True)
+        vs.handle_policy_enable_change(policy.id, False, True)
+        assert PeriodicTask.objects.get(name=task_name).enabled is True
+
 
 class TestGetBulkPolicyAssets:
     def test_empty_ids(self):

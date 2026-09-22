@@ -108,9 +108,15 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
     try {
       setSubmitLoading(true);
       const values = await form.validateFields();
+      const intervalSeconds =
+        unit === 'minutes'
+          ? values.interval * 60
+          : unit === 'hours'
+            ? values.interval * 3600
+            : values.interval;
       const commandParams = {
         cloud_region_id: values.cloud_region_id,
-        interval: values.interval,
+        interval: intervalSeconds,
         image_registry_prefix: values.image_registry_prefix,
         tolerations: toRequestTolerations(values.tolerations),
       };
@@ -122,6 +128,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           organizations: values.organizations,
           monitor_object_id: objectId,
           id,
+          interval: intervalSeconds,
         };
         const createResult = await createK8sInstance(createParams);
         const commandResult = await getK8sCommand({

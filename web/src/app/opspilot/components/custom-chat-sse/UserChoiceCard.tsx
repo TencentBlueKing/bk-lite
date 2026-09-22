@@ -13,9 +13,10 @@ interface UserChoiceCardProps {
   request: UserChoiceRequest;
   token: string;
   onSubmit: (choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => void;
+  readOnly?: boolean;
 }
 
-const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit }) => {
+const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit, readOnly = false }) => {
   const { t } = useTranslation();
   const imeEnterGuard = useImeEnterGuard();
   const a2uiComponent = request.a2ui?.component || 'user-choice';
@@ -54,6 +55,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   }, [request.received_at, request.timeout_seconds, request.status]);
 
   const handleSubmit = useCallback(async (keys: string[]) => {
+    if (readOnly) return;
     if (keys.length < request.min_select) {
       antMessage.warning(t('chat.choiceMinSelect', undefined, { min: request.min_select }));
       return;
@@ -82,7 +84,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [token, request, onSubmit, t]);
+  }, [token, request, onSubmit, t, readOnly]);
 
   const handleButtonClick = useCallback((key: string) => {
     handleSubmit([key]);
@@ -124,14 +126,14 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
     <button
       key={option.key}
       type="button"
-      disabled={option.disabled || submitting}
+        disabled={option.disabled || submitting || readOnly}
       onClick={onClick}
       className={[
         'flex w-full items-center gap-2 rounded-lg px-3.5 py-2 text-left text-[13px] text-[var(--color-text-1)] transition-all duration-150',
         isSelected
           ? 'border-[1.5px] border-[var(--color-primary)] bg-[var(--color-primary-light-1)]'
           : 'border border-[var(--color-border-1)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-light-1)]',
-        option.disabled || submitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+        option.disabled || submitting || readOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
       ].join(' ')}
     >
       {request.multiple && (
@@ -296,12 +298,11 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
       )}
 
       {/* Options */}
-      {isPending && (
+      {isPending && !readOnly && (
         <>
           {displayMode === 'buttons' && renderButtons()}
           {displayMode === 'dropdown' && renderDropdown()}
           {displayMode === 'checkbox' && renderCheckboxes()}
-          {/* Always show text input: user can click an option OR type freely */}
           {displayMode !== 'checkbox' && (
             <div className={choiceOptions.length > 0 && displayMode !== 'text' ? 'mt-2.5' : 'mt-0'}>
               {choiceOptions.length > 0 && displayMode !== 'text' && (
@@ -314,9 +315,15 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           )}
         </>
       )}
+      {isPending && readOnly && choiceOptions.length > 0 && (
+        <div className="flex flex-col gap-1 text-[13px] text-[var(--color-text-2)]">
+          {choiceOptions.map((option) => (
+            <div key={option.key}>{option.label}</div>
+          ))}
+        </div>
+      )}
 
-      {/* Timer：倒计时仅作提示，到 0 不收起卡片 */}
-      {isPending && remainingSeconds > 0 && (
+      {isPending && !readOnly && remainingSeconds > 0 && (
         <div className={[
           'mt-2.5 flex items-center gap-1 text-[11px]',
           remainingSeconds <= 10 ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-4)]',

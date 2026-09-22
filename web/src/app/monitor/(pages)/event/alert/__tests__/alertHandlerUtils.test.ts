@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canClaimOrAssignAlert,
+  canReassignAlert,
   formatAlertHandlers,
   hasAlertHandlers
 } from '../alertHandlerUtils';
@@ -11,6 +12,14 @@ describe('监控告警处理人操作', () => {
     expect(canClaimOrAssignAlert('new', [])).toBe(true);
     expect(canClaimOrAssignAlert('new', [7])).toBe(false);
     expect(canClaimOrAssignAlert('closed', [])).toBe(false);
+  });
+
+  it('当前处理人的活跃告警可转派，空单或非处理人不可', () => {
+    expect(canReassignAlert('new', [7], { id: 7, username: 'bob' })).toBe(true);
+    expect(canReassignAlert('new', ['7'], { id: 7, username: 'bob' })).toBe(true);
+    expect(canReassignAlert('new', [7], { id: 8, username: 'bob' })).toBe(false);
+    expect(canReassignAlert('new', [], { id: 7, username: 'bob' })).toBe(false);
+    expect(canReassignAlert('closed', [7], { id: 7, username: 'bob' })).toBe(false);
   });
 
   it('优先用 handlers_display，否则回退到用户列表映射', () => {

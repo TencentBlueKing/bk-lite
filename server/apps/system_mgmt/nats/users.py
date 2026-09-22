@@ -106,13 +106,14 @@ def _actor_scope_response(actor_context, include_children=False):
 
 # SECURITY COMPATIBILITY: actor_context 仍来自消息体，不构成可信调用身份；见 #4533。
 @nats_client.register
-def get_group_users_scoped(actor_context, group=None, include_children=False):
+def get_group_users_scoped(actor_context, group=None, include_children=False, search=""):
     """
     在调用方授权范围内查询组织用户列表。
 
     :param actor_context: 调用方上下文，包含 username、domain、current_team、is_superuser 等字段
     :param group: 可选，指定查询的组织 ID；若不传则使用调用方当前授权范围
     :param include_children: 是否包含目标组织下的已授权子组织用户
+    :param search: 可选，按 username / display_name 做 icontains 过滤
     :return: 标准 NATS 返回结构，data 为用户列表
     """
     user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
@@ -142,7 +143,10 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
     user_filter = Q()
     for group_id in query_groups:
         user_filter |= Q(group_list__contains=int(group_id))
-    users = User.objects.filter(user_filter).values("id", "user_id", "username", "display_name")
+    users = User.objects.filter(user_filter)
+    if search:
+        users = users.filter(Q(username__icontains=search) | Q(display_name__icontains=search))
+    users = users.values("id", "user_id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 
@@ -183,31 +187,11 @@ def get_assignable_groups(actor_context):
 
 
 # SECURITY COMPATIBILITY: 限时风险接受的 legacy subject；见 #4533。
+# 仅保留 alerts/cmdb 实际消费的目录字段，不再带 display_fields() 全量。
 @nats_client.register
 def get_all_users():
-    data = User.objects.all().values(*User.display_fields())
+    data = User.objects.all().values("id", "username", "display_name")
     return {"result": True, "data": list(data)}
-
-
-@nats_client.register
-def search_groups(query_params):
-    groups = GroupUtils.active_queryset(name__contains=query_params["search"]).values()
-    return {"result": True, "data": list(groups)}
-
-
-# SECURITY COMPATIBILITY: 限时风险接受的 legacy subject；见 #4533。
-@nats_client.register
-def search_users(query_params):
-    page = int(query_params.get("page", 1))
-    page_size = int(query_params.get("page_size", 10))
-    search = query_params.get("search", "")
-    queryset = User.objects.filter(Q(username__icontains=search) | Q(display_name__icontains=search) | Q(email__icontains=search))
-    start = (page - 1) * page_size
-    end = page * page_size
-    total = queryset.count()
-    display_fields = User.display_fields() + ["group_list"]
-    data = queryset.values(*display_fields)[start:end]
-    return {"result": True, "data": {"count": total, "users": list(data)}}
 
 
 @nats_client.register

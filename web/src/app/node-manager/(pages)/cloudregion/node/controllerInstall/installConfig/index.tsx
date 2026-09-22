@@ -55,6 +55,7 @@ import {
   isWinrmSchemePortMismatch,
   type WinrmScheme
 } from '@/app/node-manager/utils/winrm';
+import { countAccessAssets } from './installNodeCount';
 
 interface InstallConfigProps {
   onNext: (data: any) => void;
@@ -166,6 +167,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   // 获取表格配置
   const tableConfig = useTableConfig(installMethod, os);
+  const installNodeCount = useMemo(
+    () => countAccessAssets(tableData, tableConfig, INFO_ITEM),
+    [tableData, tableConfig, INFO_ITEM]
+  );
 
   // 添加行
   const addInfoItem = useCallback(
@@ -898,15 +903,28 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           </Form.Item>
         )}
         <div className="flex items-center justify-between mb-[10px]">
-          <span className="text-[14px]">
-            {t('node-manager.cloudregion.node.installInfo')}
-            <span
-              className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
-              style={{ fontFamily: 'SimSun, sans-serif' }}
-            >
-              *
+          <div className="flex items-center gap-[8px]">
+            <span className="text-[14px]">
+              {t('node-manager.cloudregion.node.installInfo')}
+              <span
+                className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+                style={{ fontFamily: 'SimSun, sans-serif' }}
+              >
+                *
+              </span>
             </span>
-          </span>
+            <span
+              aria-live="polite"
+              className="text-[13px] tabular-nums text-[var(--color-text-2)]"
+            >
+              {t('node-manager.cloudregion.node.installNodeCount', '', {
+                count: installNodeCount
+              })}
+            </span>
+            <span className="text-[12px] text-[var(--color-text-3)]">
+              {t('node-manager.cloudregion.node.installNodeCountHint')}
+            </span>
+          </div>
           <div className="flex gap-[8px]">
             <Button
               icon={<UploadOutlined />}

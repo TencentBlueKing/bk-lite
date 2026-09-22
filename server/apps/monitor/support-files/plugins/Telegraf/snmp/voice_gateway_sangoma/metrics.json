@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_sangoma",
   "plugin": "VoiceGateway Sangoma Vega SNMP",
-  "plugin_desc": "Sangoma Vega voice gateway SNMP baseline child template. This child template relies on the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Vega voice-gateway family and enterprise MIB subtree are verified, but stable shared CPU, memory, temperature, fan and power health leaf OIDs are not proven in this pass, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "Sangoma Dialogic IMG 2020 voice gateway SNMP collection (Dialogic private MIB, IANA PEN 3028). Beyond the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable), it collects Dialogic health tables: CPU busy as a whole percent (table by cpuInfoIndex, mapped as cpu_usage_percent / device_cpu_usage), free memory in bytes from the same table (mapped as memory_free_bytes; the table has no total-memory column, so memory percent is not derived), and temperature in degrees Celsius (table by temperatureLocationIndex, mapped as device_temperature / temperature_celsius, with optional location name tag). Empty or unanswered health tables are skipped. Interface error counters, ifOperStatus and 32-bit octet counters are not expanded. Supported brands/models — Sangoma Dialogic IMG 2020 voice gateway (enterprise 3028).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_sangoma'}) by (instance_id)",
   "name": "VoiceGateway",
@@ -14,9 +14,56 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "memory_free_bytes",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Dialogic IMG 2020 CPU busy as a whole percent from the cpu info table (IANA PEN 3028), walked by cpuInfoIndex and mapped as cpu_usage_percent. Values are already 0-100 percentages. The query takes the maximum across CPU indexes so the busiest CPU is visible. Sustained high CPU usage can affect call processing and management responsiveness."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "memory_free_bytes",
+      "query": "min(memory_free_bytes{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Dialogic IMG 2020 free memory in bytes from the cpu info table (IANA PEN 3028). The table has no total-memory column, so memory utilization percent is not derived. The query takes the minimum across CPU indexes so a duplicated chassis reading is not summed. A falling free-memory reading can indicate a leak or overload."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='voice_gateway', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "location",
+          "description": "Temperature location name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Dialogic IMG 2020 temperature in degrees Celsius from the temperature location table (IANA PEN 3028), walked by temperatureLocationIndex. An optional location name tag identifies the sensor. High temperature can indicate cooling or airflow problems."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

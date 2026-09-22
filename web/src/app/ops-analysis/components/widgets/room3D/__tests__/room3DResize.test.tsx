@@ -37,6 +37,21 @@ vi.mock("@/utils/i18n", () => ({
   useTranslation: () => ({ t: translate }),
 }));
 
+vi.mock("@/app/ops-analysis/api/room3D", () => ({
+  useRoom3DApi: () => ({
+    getRooms: vi.fn(),
+    getLayout: vi.fn(),
+  }),
+}));
+
+vi.mock("@/app/ops-analysis/context/shareMode", () => ({
+  useShareMode: () => false,
+}));
+
+vi.mock("next/navigation", () => ({
+  useParams: () => ({}),
+}));
+
 import Room3D from "../index";
 
 const roomData = {
@@ -163,5 +178,34 @@ describe("Room3D screen resize", () => {
       sceneCallbacks.current?.onFirstRender?.();
     });
     await waitFor(() => expect(onReady).toHaveBeenCalledWith(true));
+  });
+
+  it("passes configured rack-top lines into the scene", async () => {
+    render(
+      <Room3D
+        rawData={{
+          room: { id: "room-1", name: "Room 1" },
+          racks: [
+            {
+              rack_id: "rack-1",
+              rack_name: "Rack 1",
+              row: 1,
+              col: 1,
+              rack_state_name: "启用",
+            },
+          ],
+        }}
+        config={{
+          chartType: "room3D",
+          sceneWidgetType: "room3D",
+          room3D: { rackTopLine1: "location", rackTopLine2: "state" },
+        }}
+      />,
+    );
+    await waitFor(() => expect(createRoom3DSceneMock).toHaveBeenCalled());
+    expect(createRoom3DSceneMock.mock.calls[0][3]).toEqual({
+      line1: "location",
+      line2: "state",
+    });
   });
 });

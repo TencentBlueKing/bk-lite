@@ -95,7 +95,11 @@ def summarize_active_alerts_by_monitor_ids(
         from apps.monitor.nats import monitor as monitor_nats
 
         policy_loader = policy_loader or monitor_nats._get_nats_accessible_policy_queryset
-        instance_loader = instance_loader or monitor_nats._get_nats_accessible_instance_queryset
+        if instance_loader is None:
+            requested_ids = ordered_ids
+
+            def instance_loader(user_info, *, _instance_ids=requested_ids):
+                return monitor_nats._get_nats_accessible_instance_queryset(user_info, instance_ids=_instance_ids)
 
     try:
         policy_qs, policy_error = policy_loader(user_info)
@@ -119,7 +123,6 @@ def summarize_active_alerts_by_monitor_ids(
     try:
         from apps.monitor.nats import monitor as monitor_nats
 
-        policy_ids = list(policy_qs.values_list("id", flat=True))
         authorized_ids = set(instance_qs.filter(id__in=ordered_ids).values_list("id", flat=True))
         _, _, _, scope_ids, _, scope_error = monitor_nats._get_nats_actor_scope(user_info)
         if scope_error:
@@ -150,7 +153,7 @@ def summarize_active_alerts_by_monitor_ids(
                     level__in=ACTIVE_ALERT_SEVERITY_LEVELS,
                 )
                 queryset = filter_alerts_by_organizations(queryset, scope_ids)
-                queryset = queryset.filter(Q(policy_id__in=policy_ids) | orphaned_monitor_policy_q())
+                queryset = queryset.filter(Q(policy_id__in=policy_qs.values_list("id", flat=True)) | orphaned_monitor_policy_q())
                 rows = queryset.values("monitor_instance_id", "level").annotate(count=Count("id"))
                 for row in rows:
                     monitor_id = str(row["monitor_instance_id"])

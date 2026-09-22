@@ -5,7 +5,8 @@ import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import {
   isFullySelected,
   processLeftTreeData,
-  isNodeDisabled
+  isNodeDisabled,
+  TRANSFER_TREE_HEIGHT,
 } from '@/app/system-manager/utils/roleTreeUtils';
 
 const hasKey = (keys: React.Key[], targetKey: React.Key) =>
@@ -228,9 +229,11 @@ const TransferLeftTree: React.FC<TransferLeftTreeProps> = ({
           allowClear
         />
       </div>
-      <div className="overflow-auto p-1" style={{ maxHeight: 250 }}>
+      <div className="p-1">
         <Tree
           blockNode
+          virtual
+          height={TRANSFER_TREE_HEIGHT}
           checkable={mode === 'group'}
           selectable={false}
           checkStrictly={mode === 'group'}

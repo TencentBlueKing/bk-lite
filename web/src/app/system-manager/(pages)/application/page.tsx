@@ -1,13 +1,15 @@
 'use client';
 
 import React from 'react';
-import { Menu, Button } from 'antd';
+import { Button } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import EntityList from '@/components/entity-list';
-import styles from '@/app/system-manager/styles/common.module.scss';
 import PermissionWrapper from '@/components/permission';
 import ApplicationFormModal from '@/app/system-manager/components/application/modify-applicaiton';
 import { useApplicationPage } from '@/app/system-manager/hooks/useApplicationPage';
+import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
+import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 
 const ApplicationPage = () => {
   const { t } = useTranslation();
@@ -27,41 +29,50 @@ const ApplicationPage = () => {
     handleFormSuccess
   } = useApplicationPage();
 
-  const getMenuActions = (item: any) => (
-    <Menu className={styles.batchOperationMenu}>
-      <Menu.Item key="edit" onClick={() => handleEdit(item)}>
-        <PermissionWrapper requiredPermissions={['Edit']}>
-          <Button type="text" className="w-full">{t('common.edit')}</Button>
-        </PermissionWrapper>
-      </Menu.Item>
-      {!item.is_build_in && (
-        <Menu.Item key="delete" onClick={() => handleDelete(item)}>
-          <PermissionWrapper requiredPermissions={['Delete']}>
-            <Button type="text" className="w-full">{t('common.delete')}</Button>
-          </PermissionWrapper>
-        </Menu.Item>
-      )}
-    </Menu>
-  );
-
   const addButton = (
     <PermissionWrapper requiredPermissions={['Add']}>
-      <Button type="primary" onClick={handleAddNew} className="ml-2">
-        {t('common.add')}
+      <Button type="primary" icon={<PlusOutlined />} onClick={handleAddNew}>
+        {t('common.new')}
       </Button>
     </PermissionWrapper>
   );
 
   return (
     <div className="w-full">
-      <EntityList
-        data={dataList}
+      <SystemManagerEntityGrid
+        items={dataList}
         loading={loading || refreshing}
-        nameField="display_name"
         onSearch={handleSearch}
-        onCardClick={handleCardClick}
-        menuActions={getMenuActions}
-        operateSection={addButton}
+        getSearchText={(item) => item.display_name || item.name || ''}
+        actions={addButton}
+        getItemKey={(item) => item.id}
+        renderCard={(item) => {
+          const menuItems: MoreActionsDropdownItem[] = [
+            {
+              key: 'edit',
+              label: t('common.edit'),
+              permission: 'Edit',
+              onClick: () => handleEdit(item),
+            },
+            ...(!item.is_build_in ? [{
+              key: 'delete',
+              label: t('common.delete'),
+              permission: 'Delete',
+              danger: true,
+              onClick: () => handleDelete(item),
+            } satisfies MoreActionsDropdownItem] : []),
+          ];
+          return (
+            <SystemManagerUnifiedCard
+              name={item.display_name || item.name}
+              description={item.description}
+              icon={item.icon || item.name}
+              origin={item.is_build_in ? 'builtin' : 'external'}
+              menuItems={menuItems}
+              onClick={() => handleCardClick(item)}
+            />
+          );
+        }}
       />
       <ApplicationFormModal
         visible={modalVisible}

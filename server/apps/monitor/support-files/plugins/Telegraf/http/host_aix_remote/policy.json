@@ -9,9 +9,21 @@
       "metric_name": "cpu_usage_total",
       "algorithm": "max_over_time",
       "threshold": [
-        {"level": "critical", "value": 95, "method": ">"},
-        {"level": "error", "value": 90, "method": ">"},
-        {"level": "warning", "value": 80, "method": ">"}
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
       ],
       "group_algorithm": "max"
     },
@@ -22,9 +34,21 @@
       "metric_name": "mem_used_percent",
       "algorithm": "max_over_time",
       "threshold": [
-        {"level": "critical", "value": 95, "method": ">"},
-        {"level": "error", "value": 90, "method": ">"},
-        {"level": "warning", "value": 80, "method": ">"}
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
       ],
       "group_algorithm": "max"
     },
@@ -35,11 +59,131 @@
       "metric_name": "disk_used_percent",
       "algorithm": "max_over_time",
       "threshold": [
-        {"level": "critical", "value": 95, "method": ">"},
-        {"level": "error", "value": 90, "method": ">"},
-        {"level": "warning", "value": 80, "method": ">"}
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
       ],
       "group_algorithm": "max"
+    },
+    {
+      "name": "网卡入流量过高",
+      "alert_name": "主机${instance_id}接口${metric__interface} 网卡入流量过高",
+      "description": "监控主机网卡入流量速率，当超出设定阈值时触发告警。",
+      "metric_name": "net_bytes_recv_rate",
+      "algorithm": "max_over_time",
+      "group_by": [
+        "instance_id",
+        "interface"
+      ],
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 104857600,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 52428800,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10485760,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "网卡出流量过高",
+      "alert_name": "主机${instance_id}接口${metric__interface} 网卡出流量过高",
+      "description": "监控主机网卡出流量速率，当超出设定阈值时触发告警。",
+      "metric_name": "net_bytes_sent_rate",
+      "algorithm": "max_over_time",
+      "group_by": [
+        "instance_id",
+        "interface"
+      ],
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 104857600,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 52428800,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10485760,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "平均负载过高 (5 分钟)",
+      "alert_name": "主机${instance_id} 平均5分钟负载过高",
+      "description": "定期评估主机 5 分钟内的平均负载，若处于高负载状态会触发告警。",
+      "metric_name": "system_load5",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 8,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 6,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "系统重启",
+      "alert_name": "主机${instance_id} 系统运行时间过短",
+      "description": "监控主机系统运行时间，当运行时间过短时触发告警，用于识别异常重启。",
+      "metric_name": "system_uptime",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 300,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 600,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 900,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

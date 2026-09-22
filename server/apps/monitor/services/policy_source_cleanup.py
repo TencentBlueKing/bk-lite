@@ -80,8 +80,21 @@ class PolicySourceCleanupService:
             logger.warning(
                 f"以下策略因监控实例全部被删除而自动禁用: {result['disabled_policy_ids']}"
             )
+            PolicySourceCleanupService._disable_periodic_tasks(result["disabled_policy_ids"])
 
         return result
+
+    @staticmethod
+    def _disable_periodic_tasks(policy_ids: list):
+        """自动禁用的策略同步停掉 Beat 派发，避免每个周期空投一次扫描任务。"""
+        from django_celery_beat.models import PeriodicTask
+
+        for start in range(0, len(policy_ids), BATCH_SIZE):
+            names = [
+                f"scan_policy_task_{policy_id}"
+                for policy_id in policy_ids[start : start + BATCH_SIZE]
+            ]
+            PeriodicTask.objects.filter(name__in=names).update(enabled=False)
 
     @staticmethod
     def _flush_updates(updates: list):

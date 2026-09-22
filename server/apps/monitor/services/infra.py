@@ -52,6 +52,7 @@ class InfraService:
             include_stored_tolerations(token_data, normalize_k8s_daemonset_tolerations(tolerations))
 
         cache.set(cache_key, token_data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+        cache.set(f"{cache_key}:usage_count", 0, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
         logger.info(
             f"生成 infra 安装令牌成功: token={token[:8]}***, "
@@ -76,6 +77,7 @@ class InfraService:
             raise BaseAppException("Token is required")
 
         cache_key = f"infra_install_token:{token}"
+        usage_cache_key = f"{cache_key}:usage_count"
         data = cache.get(cache_key)
 
         if not data:
@@ -86,33 +88,34 @@ class InfraService:
             )
             raise BaseAppException("Invalid or expired token")
 
-        # 检查使用次数
-        usage_count = data.get("usage_count", 0)
         max_usage = data.get("max_usage", InfraConstants.TOKEN_MAX_USAGE)
+        # 旧令牌只有 payload 计数；add 只在计数键缺失时播种，权威次数走 incr。
+        cache.add(usage_cache_key, data.get("usage_count", 0), timeout=InfraConstants.TOKEN_EXPIRE_TIME)
+        try:
+            claimed_usage = cache.incr(usage_cache_key)
+        except ValueError as error:
+            raise BaseAppException("Invalid or expired token") from error
 
-        if usage_count >= max_usage:
-            # 超过最大使用次数，删除令牌
+        if claimed_usage > max_usage:
+            # 保留计数键，避免并发请求重新 add 后再次领取额度。
             cache.delete(cache_key)
-            logger.warning(f"Token 已达到最大使用次数: token={token[:8]}***, " f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}")
+            logger.warning(
+                f"Token 已达到最大使用次数: token={token[:8]}***, "
+                f"usage={claimed_usage}/{max_usage}, cluster={data.get('cluster_name')}"
+            )
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
-
-        # 增加使用次数
-        data["usage_count"] = usage_count + 1
-
-        # 更新 cache
-        cache.set(cache_key, data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
         logger.info(
             f"Token 验证成功: token={token[:8]}***, "
             f"cluster={data['cluster_name']}, region={data['cloud_region_id']}, "
-            f"使用次数={data['usage_count']}/{max_usage}, 剩余次数={max_usage - data['usage_count']}"
+            f"使用次数={claimed_usage}/{max_usage}, 剩余次数={max_usage - claimed_usage}"
         )
 
         result = {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
             "image_registry_prefix": normalize_k8s_image_registry_prefix(data.get("image_registry_prefix")),
-            "remaining_usage": max_usage - data["usage_count"],
+            "remaining_usage": max_usage - claimed_usage,
         }
         include_stored_tolerations(result, data.get("tolerations"))
         return result

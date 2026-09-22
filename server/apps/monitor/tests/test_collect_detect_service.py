@@ -1,5 +1,6 @@
 import pytest
 from django.test import RequestFactory
+from django.utils import timezone
 
 from apps.monitor.models import CollectDetectTask, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
@@ -696,6 +697,9 @@ def test_create_collect_detect_task_caps_timeout(monkeypatch):
 @pytest.mark.django_db
 def test_collect_detect_viewset_retrieve_returns_task_result(monkeypatch):
     from apps.monitor.views.collect_detect import CollectDetectViewSet
+    from apps.system_mgmt.models import Group
+
+    team = Group.objects.create(name="collect-detect-retrieve", parent_id=0)
 
     task = CollectDetectTask.objects.create(
         status="failed",
@@ -707,15 +711,15 @@ def test_collect_detect_viewset_retrieve_returns_task_result(monkeypatch):
         node_id="node-1",
         request_fingerprint="fp-1",
         created_by="admin",
-        organization=3,
+        organization=team.id,
         result={"success": False, "stdout": "", "stderr": "authentication failed", "exit_code": 1},
     )
     request = RequestFactory().get(f"/monitor/api/collect_detect/{task.id}/")
     request.user = type("User", (), {"username": "admin", "domain": "default", "is_superuser": True, "group_list": []})()
-    request.COOKIES["current_team"] = "3"
+    request.COOKIES["current_team"] = str(team.id)
     monkeypatch.setattr(
         "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
-        lambda *args, **kwargs: {"result": True, "data": [3]},
+        lambda *args, **kwargs: {"result": True, "data": [team.id]},
     )
     monkeypatch.setattr("apps.monitor.views.collect_detect.WebUtils.response_success", staticmethod(lambda data=None: data))
 
@@ -729,6 +733,9 @@ def test_collect_detect_viewset_retrieve_returns_task_result(monkeypatch):
 @pytest.mark.django_db
 def test_collect_detect_viewset_retrieve_hides_other_user_task(monkeypatch):
     from apps.monitor.views.collect_detect import CollectDetectViewSet
+    from apps.system_mgmt.models import Group
+
+    team = Group.objects.create(name="collect-detect-hide", parent_id=0)
 
     task = CollectDetectTask.objects.create(
         status="failed",
@@ -740,15 +747,15 @@ def test_collect_detect_viewset_retrieve_hides_other_user_task(monkeypatch):
         node_id="node-1",
         request_fingerprint="fp-1",
         created_by="other",
-        organization=3,
+        organization=team.id,
         result={"success": False, "stdout": "", "stderr": "authentication failed", "exit_code": 1},
     )
     request = RequestFactory().get(f"/monitor/api/collect_detect/{task.id}/")
     request.user = type("User", (), {"username": "admin", "domain": "default", "is_superuser": False, "group_list": []})()
-    request.COOKIES["current_team"] = "3"
+    request.COOKIES["current_team"] = str(team.id)
     monkeypatch.setattr(
         "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
-        lambda *args, **kwargs: {"result": True, "data": [3]},
+        lambda *args, **kwargs: {"result": True, "data": [team.id]},
     )
     monkeypatch.setattr(
         "apps.monitor.views.collect_detect.WebUtils.response_error",
@@ -758,3 +765,80 @@ def test_collect_detect_viewset_retrieve_hides_other_user_task(monkeypatch):
     response = CollectDetectViewSet().retrieve(request, pk=task.id)
 
     assert response == {"message": "任务不存在或无权访问", "status_code": 404}
+
+
+def _detect_task(**kwargs):
+    payload = {
+        "status": "success",
+        "phase": "parse_output",
+        "monitor_plugin_id": 1,
+        "monitor_object_id": 1,
+        "collector": "Telegraf",
+        "collect_type": "cpu",
+        "node_id": "n1",
+        "request_fingerprint": kwargs.pop("request_fingerprint", "fp-detect"),
+        "created_by": "admin",
+        "organization": 1,
+        "finished_at": timezone.now(),
+    }
+    payload.update(kwargs)
+    return CollectDetectTask.objects.create(**payload)
+
+
+@pytest.mark.django_db
+def test_purge_deletes_old_terminal_tasks_and_keeps_active_ones():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    now = timezone.now()
+    stale = now - timedelta(days=31)
+    fresh = now - timedelta(hours=1)
+    stale_success = _detect_task(status="success", finished_at=stale, request_fingerprint="stale-success")
+    stale_failed = _detect_task(status="failed", finished_at=stale, request_fingerprint="stale-failed")
+    fresh_success = _detect_task(status="success", finished_at=fresh, request_fingerprint="fresh-success")
+    running = _detect_task(status="running", finished_at=stale, request_fingerprint="running")
+    pending = _detect_task(status="pending", finished_at=None, request_fingerprint="pending")
+
+    deleted = CollectDetectService.purge_terminal_tasks(now=now)
+
+    assert deleted == 2
+    remaining = set(CollectDetectTask.objects.values_list("id", flat=True))
+    assert remaining == {fresh_success.id, running.id, pending.id}
+    assert stale_success.id not in remaining
+    assert stale_failed.id not in remaining
+
+
+@pytest.mark.django_db
+def test_purge_respects_batch_size(settings):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    now = timezone.now()
+    stale = now - timedelta(days=31)
+    first = _detect_task(status="success", finished_at=stale, request_fingerprint="batch-1")
+    second = _detect_task(status="failed", finished_at=stale, request_fingerprint="batch-2")
+    settings.COLLECT_DETECT_TASK_CLEANUP_BATCH_SIZE = 1
+
+    deleted = CollectDetectService.purge_terminal_tasks(now=now)
+
+    assert deleted == 1
+    assert CollectDetectTask.objects.filter(id__in=[first.id, second.id]).count() == 1
+
+
+@pytest.mark.django_db
+def test_purge_can_be_disabled(settings):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    now = timezone.now()
+    stale = now - timedelta(days=31)
+    task = _detect_task(status="success", finished_at=stale, request_fingerprint="disabled")
+    settings.COLLECT_DETECT_TASK_CLEANUP_ENABLED = False
+
+    deleted = CollectDetectService.purge_terminal_tasks(now=now)
+
+    assert deleted == 0
+    assert CollectDetectTask.objects.filter(id=task.id).exists()

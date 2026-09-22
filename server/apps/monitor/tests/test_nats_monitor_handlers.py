@@ -118,6 +118,32 @@ class TestMonitorObjectInstanceCount:
         out = nm.monitor_object_instance_count()
         assert out["data"]["NMCntObj"] == 2
 
+    def test_user_info_counts_only_authorized_org(self, mocker):
+        obj = MonitorObject.objects.create(name="NMCntScope", level="base")
+        inst1 = MonitorInstance.objects.create(id="('s1',)", name="s1", monitor_object=obj, is_active=True)
+        inst2 = MonitorInstance.objects.create(id="('s2',)", name="s2", monitor_object=obj, is_active=True)
+        MonitorInstanceOrganization.objects.create(monitor_instance=inst1, organization=1)
+        MonitorInstanceOrganization.objects.create(monitor_instance=inst2, organization=2)
+        mocker.patch("apps.monitor.nats.monitor.get_permissions_rules", return_value={"data": {}})
+
+        unscoped = nm.monitor_object_instance_count()
+        scoped = nm.monitor_object_instance_count(
+            user_info={"user": "u", "domain": "domain.com", "team": 1},
+        )
+
+        assert unscoped["result"] is True
+        assert unscoped["data"]["NMCntScope"] == 2
+        assert scoped["result"] is True
+        assert scoped["data"].get("NMCntScope") == 1
+
+    def test_locale_only_user_info_keeps_global_count(self):
+        obj = MonitorObject.objects.create(name="NMCntLocale", level="base")
+        MonitorInstance.objects.create(id="('l1',)", name="l1", monitor_object=obj)
+        MonitorInstance.objects.create(id="('l2',)", name="l2", monitor_object=obj)
+        out = nm.monitor_object_instance_count(user_info={"locale": "en"})
+        assert out["result"] is True
+        assert out["data"]["NMCntLocale"] == 2
+
 
 class TestLicenseMonitorInstanceCount:
     def test_counts_enabled_catalog_instances_only(self):
@@ -313,7 +339,7 @@ class TestHostResourceTop:
         out = nm.get_host_resource_top("cpu", user_info={"user": "u", "team": 1})
 
         assert out["result"] is True
-        assert out["data"][0]["usage_percent"] == 42.0
+        assert out["data"][0]["usage_percent"] == 58.0
 
     def test_rejects_invalid_metric_type_without_query(self, mocker):
         vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")

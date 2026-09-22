@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { useOpsAnalysisQueryState } from '@/app/ops-analysis/hooks/useOpsAnalysisQueryState';
 import type { UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
+import { buildRelativeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
 
 const ORGANIZATION_FILTER: UnifiedFilterDefinition = {
   id: 'organization__string',
@@ -47,5 +48,53 @@ describe('useOpsAnalysisQueryState applyQuery organization seed', () => {
       result.current.applyQuery({ organization__string: '' }, undefined);
     });
     expect(result.current.filterValues.organization__string).toBe('');
+  });
+});
+
+describe('useOpsAnalysisQueryState applyFilterConfigConfirm defaults', () => {
+  test('确认全局筛选时，仍停在旧相对默认的 time 改用新默认', () => {
+    const { result } = renderHook(() => useOpsAnalysisQueryState());
+    const previousDefault = buildRelativeTimeRangeFilterValue(
+      360,
+      '2026-09-22T02:00:00.000Z',
+    );
+    const runtimeValue = buildRelativeTimeRangeFilterValue(
+      360,
+      '2026-09-22T02:00:00.001Z',
+    );
+    const nextDefault = buildRelativeTimeRangeFilterValue(
+      15,
+      '2026-09-22T02:33:00.000Z',
+    );
+    const previous: UnifiedFilterDefinition = {
+      id: 'time__timeRange',
+      key: 'time',
+      name: '时间范围',
+      type: 'timeRange',
+      defaultValue: previousDefault,
+      order: 0,
+      enabled: true,
+    };
+
+    act(() => {
+      result.current.resetQueryState({
+        definitions: [previous],
+        filterValues: { 'time__timeRange': runtimeValue },
+        appliedFilterValues: { 'time__timeRange': runtimeValue },
+      });
+    });
+
+    act(() => {
+      result.current.applyFilterConfigConfirm([
+        { ...previous, defaultValue: nextDefault },
+      ]);
+    });
+
+    expect(result.current.filterValues['time__timeRange']).toMatchObject({
+      selectValue: 15,
+    });
+    expect(result.current.appliedFilterValues['time__timeRange']).toMatchObject({
+      selectValue: 15,
+    });
   });
 });

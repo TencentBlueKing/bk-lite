@@ -59,7 +59,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '其他 CPU 占比',
       description: '除用户态、内核态和 I/O Wait 以外的 CPU 占比。',
       unit: 'percent',
-      query: 'clamp_min(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type="os", __$labels__} - cpu_usage_user_total_gauge{instance_type="os", __$labels__} - cpu_usage_system_total_gauge{instance_type="os", __$labels__} - cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}, 0)',
+      query: 'clamp_min(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type="os", __$labels__} - cpu_usage_user_total_gauge{instance_type="os", __$labels__} - cpu_usage_system_total_gauge{instance_type="os", __$labels__} - cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}, 0) or clamp_min(cpu_usage_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__} - cpu_usage_user_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__} - cpu_usage_system_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__} - cpu_usage_iowait_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}, 0)',
       color: HOST_PALETTE.neutral
     },
     {
@@ -67,7 +67,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '1 分钟负载',
       description: '主机最近 1 分钟平均负载。',
       unit: 'none',
-      query: 'system_load1{instance_type="os", __$labels__} or system_load1_gauge{instance_type="os", __$labels__} or host_cpu_load_1m_gauge{instance_type="os", __$labels__} or system_load1_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'system_load1{instance_type="os", __$labels__} or system_load1_gauge{instance_type="os", __$labels__} or host_cpu_load_1m_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.indigo
     },
     {
@@ -75,7 +75,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '5 分钟负载',
       description: '主机最近 5 分钟平均负载。',
       unit: 'none',
-      query: 'system_load5{instance_type="os", __$labels__} or system_load5_gauge{instance_type="os", __$labels__} or host_cpu_load_5m_gauge{instance_type="os", __$labels__} or system_load5_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'system_load5{instance_type="os", __$labels__} or system_load5_gauge{instance_type="os", __$labels__} or host_cpu_load_5m_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.cyan
     },
     {
@@ -83,7 +83,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '15 分钟负载',
       description: '主机最近 15 分钟平均负载。',
       unit: 'none',
-      query: 'system_load15{instance_type="os", __$labels__} or system_load15_gauge{instance_type="os", __$labels__} or host_cpu_load_15m_gauge{instance_type="os", __$labels__} or system_load15_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'system_load15{instance_type="os", __$labels__} or system_load15_gauge{instance_type="os", __$labels__} or host_cpu_load_15m_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.emerald
     },
     {
@@ -117,7 +117,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '可用内存',
       description: '主机当前可用内存。',
       unit: 'bytes',
-      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or mem_available_gauge{instance_type="os", config_type=~"host_(aix|freebsd|solaris)_remote", __$labels__}',
       color: HOST_PALETTE.cyan
     },
     {
@@ -125,7 +125,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '阻塞进程数',
       description: '当前处于不可中断等待（常与慢 I/O 相关）的进程数量。',
       unit: 'counts',
-      query: 'processes_blocked{instance_type="os", __$labels__} or processes_blocked_gauge{instance_type="os", __$labels__} or processes_blocked_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'processes_blocked{instance_type="os", __$labels__} or processes_blocked_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.orange
     },
     {
@@ -133,7 +133,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '僵尸进程数',
       description: '当前处于僵尸状态的进程数量。',
       unit: 'counts',
-      query: 'processes_zombies{instance_type="os", __$labels__} or processes_zombies_gauge{instance_type="os", __$labels__} or processes_zombies_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'processes_zombies{instance_type="os", __$labels__} or processes_zombies_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.rose
     },
     {

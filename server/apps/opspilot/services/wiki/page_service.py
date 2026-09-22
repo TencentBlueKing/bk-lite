@@ -383,20 +383,33 @@ def edit_page(
     )
 
     revision, base_generation = _active_pair_locked(locked_kb)
-    try:
-        member = base_generation.page_members.select_related("page_version", "directory").get(
+    member = (
+        base_generation.page_members.select_related("page_version", "directory")
+        .filter(
             page=locked_page,
             page_status="active",
         )
-    except base_generation.page_members.model.DoesNotExist as error:
-        raise PageServiceError(
-            "page_not_in_active_generation",
-            "页面不属于当前 active generation",
-            status_code=409,
-            retryable=True,
-            details={"page_id": locked_page.pk, "active_generation_id": base_generation.pk},
-        ) from error
-    target = _target_directory(locked_kb, revision, next_page_type, member.directory_id)
+        .first()
+    )
+    source_body = None
+    if member is not None:
+        source_body = member.page_version.body
+        directory_id = member.directory_id
+        assignment_mode = member.assignment_mode
+    else:
+        current = locked_page.current_version
+        if current is None:
+            raise PageServiceError(
+                "page_not_in_active_generation",
+                "页面不属于当前 active generation，且没有可恢复的当前版本",
+                status_code=409,
+                retryable=True,
+                details={"page_id": locked_page.pk, "active_generation_id": base_generation.pk},
+            )
+        source_body = current.body
+        directory_id = locked_page.directory_id
+        assignment_mode = locked_page.directory_assignment_mode or "auto"
+    target = _target_directory(locked_kb, revision, next_page_type, directory_id)
     candidate = _begin_manual_candidate(locked_kb, revision, base_generation, updated_by)
     if next_subject_key != old_subject_key:
         revoke_rules_for_identity_change(
@@ -428,7 +441,7 @@ def edit_page(
     version = _new_candidate_version(
         locked_page,
         candidate,
-        body=body if body is not None else member.page_version.body,
+        body=body if body is not None else source_body,
         change_type=change_type,
         created_by=updated_by,
         meta_snapshot=meta_snapshot,
@@ -440,7 +453,7 @@ def edit_page(
             page_id=locked_page.pk,
             page_version_id=version.pk,
             directory_id=target.pk,
-            assignment_mode=member.assignment_mode,
+            assignment_mode=assignment_mode,
             page_status="active",
         )
     except GenerationServiceError as error:

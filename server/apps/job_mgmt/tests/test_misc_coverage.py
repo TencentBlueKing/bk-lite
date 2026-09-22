@@ -22,7 +22,7 @@ class TestParamCrypto:
         ParamCrypto.encrypt_param_defaults(params)
         assert params[0]["default"] != "secret"  # 已加密
         masked = ParamCrypto.mask_encrypted_defaults(params)
-        assert masked[0]["default"] == "******"
+        assert masked[0]["default"] == "******"  # MASKED_DEFAULT
         assert masked[1]["default"] == "plain"
 
     def test_encrypt_decrypt_execution_params_roundtrip(self):

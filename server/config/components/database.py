@@ -57,8 +57,10 @@ elif db_engine == "dameng":
             "PORT": os.getenv("DB_PORT", "5236"),
             # 达梦数据库连接选项
             "OPTIONS": {
-                "connection_timeout": 30,  # 连接超时时间(秒)
-                "login_timeout": 10,  # 登录超时时间(秒)
+                # dmPython 的超时参数单位是毫秒，不是秒；10 会被当作 10ms，
+                # 握手来不及完成，直接报 [CODE:-70028]Create SOCKET connection failure
+                "connection_timeout": 30000,  # 连接超时时间(毫秒)
+                "login_timeout": 10000,  # 登录超时时间(毫秒)
             },
             # 每次请求后关闭连接，避免连接状态异常导致后续请求卡死
             "CONN_MAX_AGE": 0,

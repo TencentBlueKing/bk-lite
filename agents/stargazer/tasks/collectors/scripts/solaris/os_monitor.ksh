@@ -267,6 +267,7 @@ CPU_USAGE=$(${AWK} -v u="${CPU_USER}" -v s="${CPU_SYS}" -v w="${CPU_WAIT}" 'BEGI
 MEM_TOTAL=0
 MEM_FREE=0
 MEM_USED=0
+MEM_AVAILABLE=0
 MEM_USED_PCT=0
 
 KSTAT_PHYS=$(_run kstat -p unix:0:system_pages:physmem)
@@ -317,16 +318,25 @@ if [ "${MEM_FREE}" = "0" ]; then
   fi
 fi
 
-if [ "${MEM_USED}" = "0" ] && [ "${MEM_TOTAL}" != "0" ]; then
-  MEM_USED=$(${AWK} -v t="${MEM_TOTAL}" -v f="${MEM_FREE}" 'BEGIN {
-    u = t - f
-    if (u < 0) u = 0
-    printf "%.0f", u
-  }')
-fi
 [ -z "${MEM_TOTAL}" ] && MEM_TOTAL=0
-[ -z "${MEM_USED}" ] && MEM_USED=0
 [ -z "${MEM_FREE}" ] && MEM_FREE=0
+ARC_SIZE=0
+KSTAT_ARC=$(_run kstat -p zfs:0:arc:size)
+if [ -n "${KSTAT_ARC}" ]; then
+  ARC_SIZE=$(printf '%s\n' "${KSTAT_ARC}" | ${AWK} '{ print $NF+0; exit }')
+  [ -z "${ARC_SIZE}" ] && ARC_SIZE=0
+fi
+MEM_AVAILABLE=$(${AWK} -v t="${MEM_TOTAL}" -v f="${MEM_FREE}" -v a="${ARC_SIZE}" 'BEGIN {
+  avail = (f + 0) + (a + 0)
+  if (t + 0 > 0 && avail > t) avail = t
+  if (avail < 0) avail = 0
+  printf "%.0f", avail
+}')
+MEM_USED=$(${AWK} -v t="${MEM_TOTAL}" -v a="${MEM_AVAILABLE}" 'BEGIN {
+  u = t - a
+  if (u < 0) u = 0
+  printf "%.0f", u
+}')
 MEM_USED_PCT=$(${AWK} -v t="${MEM_TOTAL}" -v u="${MEM_USED}" 'BEGIN {
   if (t > 0) printf "%.2f", u * 100 / t
   else printf "0"
@@ -627,8 +637,8 @@ printf '"os":{"version":"%s","release":"%s","arch":"%s","machine":"%s"},' \
   "${OS_REL_J}" "${OS_VER_J}" "${OS_ARCH_J}" "${OS_MACH_J}"
 printf '"cpu":{"usage_percent":%s,"usage_user_percent":%s,"usage_system_percent":%s,"usage_iowait_percent":%s},' \
   "$(_num "${CPU_USAGE}")" "$(_num "${CPU_USER}")" "$(_num "${CPU_SYS}")" "$(_num "${CPU_WAIT}")"
-printf '"mem":{"total_bytes":%s,"used_bytes":%s,"free_bytes":%s,"swap_total_bytes":%s,"swap_free_bytes":%s,"used_percent":%s},' \
-  "$(_num "${MEM_TOTAL}")" "$(_num "${MEM_USED}")" "$(_num "${MEM_FREE}")" "$(_num "${SWAP_TOTAL}")" "$(_num "${SWAP_FREE}")" "$(_num "${MEM_USED_PCT}")"
+printf '"mem":{"total_bytes":%s,"used_bytes":%s,"free_bytes":%s,"available_bytes":%s,"swap_total_bytes":%s,"swap_free_bytes":%s,"used_percent":%s},' \
+  "$(_num "${MEM_TOTAL}")" "$(_num "${MEM_USED}")" "$(_num "${MEM_FREE}")" "$(_num "${MEM_AVAILABLE}")" "$(_num "${SWAP_TOTAL}")" "$(_num "${SWAP_FREE}")" "$(_num "${MEM_USED_PCT}")"
 printf '"disk":%s,' "${DISK_JSON}"
 printf '"diskio":%s,' "${DISKIO_JSON}"
 printf '"net":%s,' "${NET_JSON}"

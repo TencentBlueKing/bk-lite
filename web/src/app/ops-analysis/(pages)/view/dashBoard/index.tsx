@@ -1489,6 +1489,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         newDefinitions,
         filterValues,
         appliedFilterValues,
+        definitions,
       );
       updateDefinitions(snapshot.definitions);
       setAppliedFilterDefinitions(snapshot.definitions);

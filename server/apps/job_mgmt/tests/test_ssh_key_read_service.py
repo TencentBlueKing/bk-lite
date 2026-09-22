@@ -3,7 +3,8 @@
 验证抽取的 :func:`ExecutionTaskBaseService._read_ssh_key_file`：
 
 - 使用 ``with`` 上下文管理器，异常路径不泄漏文件句柄；
-- 精确捕获 ``FileNotFoundError`` / ``OSError``，不再吞掉非预期异常；
+- 精确捕获 ``FileNotFoundError`` / ``OSError`` / MinIO ``ValueError``，不再吞掉非预期异常；
+- 以 ``rb`` 打开（MinIO storage 仅接受二进制读）；
 - 字节内容自动 ``decode("utf-8")``。
 """
 
@@ -26,11 +27,13 @@ class _FakeFieldFile:
         self._content = content
         self._raise_on_open = raise_on_open
         self.close_called = False
+        self.last_mode = None
 
     def __bool__(self):
         return True
 
-    def open(self, mode="r"):
+    def open(self, mode="rb"):
+        self.last_mode = mode
         if self._raise_on_open is not None:
             raise self._raise_on_open
         outer = self
@@ -62,6 +65,12 @@ class TestReadSshKeyFile:
         target = _make_target(ssh_key_file=None)
         assert ExecutionTaskBaseService._read_ssh_key_file(target) is None
 
+    def test_opens_in_binary_mode(self):
+        fake = _FakeFieldFile(content=b"line-bytes")
+        target = _make_target(fake)
+        assert ExecutionTaskBaseService._read_ssh_key_file(target) == "line-bytes"
+        assert fake.last_mode == "rb"
+
     def test_decodes_bytes_content(self):
         target = _make_target(_FakeFieldFile(content=b"line-bytes"))
         assert ExecutionTaskBaseService._read_ssh_key_file(target) == "line-bytes"
@@ -84,11 +93,15 @@ class TestReadSshKeyFile:
         target = _make_target(_FakeFieldFile(raise_on_open=OSError("permission denied")))
         assert ExecutionTaskBaseService._read_ssh_key_file(target) is None
 
+    def test_returns_none_on_minio_value_error(self):
+        target = _make_target(_FakeFieldFile(raise_on_open=ValueError("Files retrieved from MinIO are read-only")))
+        assert ExecutionTaskBaseService._read_ssh_key_file(target) is None
+
     def test_non_file_io_exceptions_propagate(self):
         """非文件 IO 类异常不再被静默吞掉（旧实现 except Exception 会屏蔽问题）"""
 
         class _Boom(_FakeFieldFile):
-            def open(self, mode="r"):
+            def open(self, mode="rb"):
                 raise RuntimeError("unexpected")
 
         target = _make_target(_Boom())

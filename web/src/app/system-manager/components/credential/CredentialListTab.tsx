@@ -15,6 +15,7 @@ import {
   ShareAltOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import PermissionWrapper from '@/components/permission';
 import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
@@ -461,42 +462,41 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
               spacing="flush"
               searchProps={{
                 placeholder: t('system.credential.searchPlaceholder'),
-                enterButton: false,
                 onSearch: (value) => {
                   setSearch(value);
                   void loadList({ page: 1, keyword: value });
                 },
               }}
+              filters={(
+                <div className="w-48">
+                  <GroupTreeSelect
+                    multiple={false}
+                    mode="ownership"
+                    allowClear
+                    showSearch
+                    placeholder={t('system.credential.organization')}
+                    value={ownerId}
+                    onChange={(value) => {
+                      const next = typeof value === 'number' ? value : undefined;
+                      setOwnerId(next);
+                      void loadList({ page: 1, owner: next ?? null });
+                    }}
+                  />
+                </div>
+              )}
               actions={(
-                <>
-                  <div className="w-48">
-                    <GroupTreeSelect
-                      multiple={false}
-                      mode="ownership"
-                      allowClear
-                      showSearch
-                      placeholder={t('system.credential.organization')}
-                      value={ownerId}
-                      onChange={(value) => {
-                        const next = typeof value === 'number' ? value : undefined;
-                        setOwnerId(next);
-                        void loadList({ page: 1, owner: next ?? null });
-                      }}
-                    />
-                  </div>
-                  <PermissionWrapper requiredPermissions={['Add']}>
-                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                      {t('system.credential.addCredential')}
-                    </Button>
-                  </PermissionWrapper>
-                </>
+                <PermissionWrapper requiredPermissions={['Add']}>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                    {t('common.new')}
+                  </Button>
+                </PermissionWrapper>
               )}
             />
           </div>
         </div>
 
         {/* Content Table / Empty */}
-        <div className="min-h-0 flex-1">
+        <SystemManagerFillTable>
           {!typesInCategory.length && !loading ? (
             <div className="flex h-full min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-2)] bg-[var(--color-fill-1)]/20 p-8 text-center">
               <Empty
@@ -528,7 +528,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
               }}
             />
           )}
-        </div>
+        </SystemManagerFillTable>
       </div>
       <CredentialFormDrawer
         open={drawerOpen}

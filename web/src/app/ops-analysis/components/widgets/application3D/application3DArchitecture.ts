@@ -214,6 +214,7 @@ export const ARCH_TITLE_FILL = '#FFFFFF';
 export const ARCH_TITLE_SHADOW_COLOR = '#00A3FF';
 export const ARCH_TITLE_SHADOW_BLUR = 10;
 export const ARCH_LABEL_FILL = '#FFFFFF';
+export const ARCH_LABEL_FILL_DIM = '#8B93A0';
 export const ARCH_LABEL_HAS_BACKGROUND = false;
 /** Layer titles and node labels always face the camera. */
 export const ARCH_LABEL_BILLBOARD = true;

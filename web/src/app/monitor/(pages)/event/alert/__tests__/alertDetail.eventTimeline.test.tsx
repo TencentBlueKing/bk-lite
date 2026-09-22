@@ -96,6 +96,14 @@ beforeEach(() => {
         content: 'sre 分派给 bob',
         value: 95,
         level: 'critical'
+      },
+      {
+        id: 'ev-4',
+        action: 'reassigned',
+        event_time: '2026-01-01 12:07:00',
+        content: 'sre 转派给 alice',
+        value: 95,
+        level: 'critical'
       }
     ]
   });
@@ -174,6 +182,7 @@ describe('告警详情事件时间线', { timeout: 15000 }, () => {
 
     expect(await screen.findByText('认领')).toBeTruthy();
     expect(await screen.findByText('分派')).toBeTruthy();
+    expect(await screen.findByText('转派')).toBeTruthy();
     expect(screen.getAllByText('严重').length).toBeGreaterThanOrEqual(2);
     expect(document.querySelector('svg.heatmap, .event-heat-map')).toBeNull();
     expect(screen.queryByText('monitor.events.eventTriggered')).toBeNull();

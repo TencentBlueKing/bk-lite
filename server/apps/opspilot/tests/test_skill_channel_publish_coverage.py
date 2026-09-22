@@ -253,15 +253,20 @@ class TestChatServiceUnit:
         assert e.value.status == 404
 
         skill = _skill()
-        ch = _channel(skill, enabled=False)
+        ch = _channel(skill, enabled=False, name="disabled")
         with pytest.raises(chat_svc.SkillChannelChatError) as e2:
             chat_svc.get_enabled_channel(ch.id)
         assert e2.value.status == 403
 
-        ch2 = _channel(skill, channel_type=SkillChannelChoices.PLATFORM, enabled=True)
+        ch2 = _channel(skill, channel_type=SkillChannelChoices.PLATFORM, enabled=True, name="enabled")
         with pytest.raises(chat_svc.SkillChannelChatError) as e3:
             chat_svc.get_enabled_channel(ch2.id, {SkillChannelChoices.EMBEDDED_CHAT})
         assert e3.value.status == 400
+
+        found = chat_svc.get_enabled_channel(ch2.public_id)
+        assert found.id == ch2.id
+        found_by_str = chat_svc.get_enabled_channel(str(ch2.public_id))
+        assert found_by_str.id == ch2.id
 
     def test_assert_org_access_guest_and_deny(self):
         skill = _skill()

@@ -1,7 +1,7 @@
 $netAdapters = Get-MetricData 'Win32_PerfRawData_Tcpip_NetworkInterface'
 $netArr = @()
 foreach ($n in $netAdapters) {
-    if (-not $n.Name) { continue }
+    if (-not $n.Name -or $n.Name -eq '_Total') { continue }
     $netArr += @{
         interface = $n.Name
         rx_bytes = [int64]$n.BytesReceivedPersec

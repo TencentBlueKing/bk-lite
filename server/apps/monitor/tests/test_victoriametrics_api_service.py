@@ -41,14 +41,20 @@ def test_query_includes_lookback_delta_when_supplied():
     assert g.call_args.kwargs["params"] == {"query": "cpu", "step": "5m", "lookback_delta": "600s"}
 
 
-def test_query_range_builds_params():
+def test_query_range_posts_form_params():
+    """范围下推后 selector 可能很长，query_range 必须走 form POST 而不是 GET 查询串。"""
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", return_value=_resp({"r": []})) as g:
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.post", return_value=_resp({"r": []})) as p, patch(
+        "apps.monitor.utils.victoriametrics_api._SESSION.get"
+    ) as g:
         out = api.query_range("cpu", "s", "e", step="30s")
     assert out == {"r": []}
-    args, kwargs = g.call_args
+    g.assert_not_called()
+    args, kwargs = p.call_args
     assert args[0].endswith("/api/v1/query_range")
-    assert kwargs["params"] == {"query": "cpu", "start": "s", "end": "e", "step": "30s"}
+    assert kwargs["data"] == {"query": "cpu", "start": "s", "end": "e", "step": "30s"}
+    assert "params" not in kwargs
+    assert kwargs["auth"] == (api.username, api.password)
 
 
 def test_timeout_is_propagated():
@@ -60,7 +66,7 @@ def test_timeout_is_propagated():
 
 def test_request_exception_is_propagated():
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", side_effect=requests.ConnectionError("x")):
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.post", side_effect=requests.ConnectionError("x")):
         with pytest.raises(requests.RequestException):
             api.query_range("cpu", "s", "e")
 

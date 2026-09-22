@@ -45,6 +45,8 @@
     "settings": "Settings",
     "addNew": "Add New",
     "new": "New",
+    "owner": "Owner",
+    "team": "Team",
     "justNow": "Just now",
     "secondsAgo": "{count}s ago",
     "minutesAgo": "{count}m ago",

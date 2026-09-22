@@ -1,7 +1,9 @@
 import hashlib
 import json
 import uuid
+from datetime import timedelta
 
+from django.conf import settings
 from django.utils import timezone
 
 from apps.monitor.models import CollectDetectTask, MonitorPlugin, MonitorPluginConfigTemplate
@@ -31,6 +33,9 @@ SENSITIVE_KEYS = {
 
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 600
+DEFAULT_TERMINAL_TTL_SECONDS = 30 * 24 * 60 * 60
+DEFAULT_CLEANUP_BATCH_SIZE = 500
+TERMINAL_STATUSES = ("success", "failed")
 
 
 class CollectDetectService:
@@ -260,3 +265,23 @@ class CollectDetectService:
             ensure_ascii=True,
         )
         return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def purge_terminal_tasks(cls, now=None) -> int:
+        if not getattr(settings, "COLLECT_DETECT_TASK_CLEANUP_ENABLED", True):
+            return 0
+
+        current = now or timezone.now()
+        ttl_seconds = int(getattr(settings, "COLLECT_DETECT_TASK_TTL_SECONDS", DEFAULT_TERMINAL_TTL_SECONDS))
+        batch_size = int(getattr(settings, "COLLECT_DETECT_TASK_CLEANUP_BATCH_SIZE", DEFAULT_CLEANUP_BATCH_SIZE))
+        cutoff = current - timedelta(seconds=ttl_seconds)
+        stale_ids = list(
+            CollectDetectTask.objects.filter(
+                status__in=TERMINAL_STATUSES,
+                finished_at__lt=cutoff,
+            ).values_list("id", flat=True)[:batch_size]
+        )
+        if not stale_ids:
+            return 0
+        deleted, _ = CollectDetectTask.objects.filter(id__in=stale_ids).delete()
+        return deleted

@@ -88,7 +88,10 @@ export const resolveInitialMetricPluginId = ({
   policyCollectType?: string | number | null;
 }): string | number | undefined => {
   if (!pluginList.length) return undefined;
-  if (!['add', 'builtIn'].includes(type) && policyCollectType) {
+  if (!['add', 'builtIn'].includes(type)) {
+    if (policyCollectType == null || policyCollectType === '') {
+      return undefined;
+    }
     const matched = pluginList.find(
       (item) => String(item.value) === String(policyCollectType)
     );

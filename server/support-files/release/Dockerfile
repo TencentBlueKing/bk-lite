@@ -24,6 +24,12 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
 
 RUN pip3 install -e ".[cmdb,dev,mlops,opspilot]"
 
+# 构建期拉取 tiktoken 词表到本地缓存，运行容器无需访问 Azure。
+# cl100k_base：未知模型回退；o200k_base：gpt-4o 等默认编码器。
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken_cache
+RUN mkdir -p /opt/tiktoken_cache \
+    && python3 -c "import tiktoken; tiktoken.get_encoding('cl100k_base'); tiktoken.get_encoding('o200k_base')"
+
 RUN chmod +x ./support-files/release/startup.sh
 
 RUN apt-get reinstall -y supervisor

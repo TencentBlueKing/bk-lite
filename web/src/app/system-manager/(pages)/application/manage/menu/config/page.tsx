@@ -78,7 +78,7 @@ const MenuConfigPage = () => {
   }, [menuId, sourceMenus]);
 
   return (
-    <div className="flex w-full gap-4" style={{ height: 'calc(100vh - 185px)' }}>
+    <div className="flex h-full min-h-0 w-full overflow-hidden rounded-md bg-[var(--color-bg)]">
       <SourceMenuTree
         sourceMenus={sourceMenus}
         selectedKeys={selectedKeys}
@@ -87,7 +87,7 @@ const MenuConfigPage = () => {
         onCheck={handleCheck}
       />
 
-      <div className="flex-1 bg-[var(--color-bg)] rounded-lg overflow-hidden flex flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="px-4 py-3 border-b border-[var(--color-border-2)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             {isEditingName ? (

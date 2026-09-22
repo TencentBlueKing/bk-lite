@@ -214,7 +214,7 @@ def test_deepagent_does_not_expose_internal_repair_workflow_tools():
         tools = node._collect_deepagent_tools(object())
 
     names = {tool.name for tool in tools}
-    assert "request_user_choice" in names
+    assert "request_user_choice" not in names
     assert names.isdisjoint({"generate_repair_report", "report_config_diff"})
 
 
@@ -228,7 +228,7 @@ def test_deepagent_does_not_expose_repair_workflow_tools_for_single_capability(c
         tools = node._collect_deepagent_tools(object())
 
     names = {tool.name for tool in tools}
-    assert "request_user_choice" in names
+    assert "request_user_choice" not in names
     assert names.isdisjoint({"generate_repair_report", "report_config_diff"})
 
 

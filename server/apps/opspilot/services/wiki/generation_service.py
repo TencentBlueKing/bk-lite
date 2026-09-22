@@ -376,7 +376,9 @@ def _candidate_validation_issues(candidate):  # noqa: C901
         else:
             title_owners[identity] = member.page_id
 
-    for page in KnowledgePage.objects.filter(knowledge_base_id=candidate.knowledge_base_id).exclude(pk__in=page_ids).values("id", "title"):
+    for page in (
+        KnowledgePage.objects.filter(knowledge_base_id=candidate.knowledge_base_id, status="active").exclude(pk__in=page_ids).values("id", "title")
+    ):
         identity = title_identity_key(page["title"])
         if not identity:
             continue

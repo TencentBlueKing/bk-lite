@@ -32,6 +32,7 @@ from apps.log.services.alert_handlers import (
     claim_alert,
     filter_my_handler_alerts,
     is_my_alert_query,
+    reassign_alert,
     record_closed_events,
 )
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
@@ -794,6 +795,30 @@ class AlertViewSet(viewsets.ModelViewSet):
         operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
         try:
             updated = assign_alert(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                actor=request.user,
+                operable_qs=operable_qs,
+            )
+        except AlertHandlerForbidden as exc:
+            return WebUtils.response_403(str(exc))
+        except AlertHandlerInvalid as exc:
+            return WebUtils.response_error(str(exc), status_code=400)
+        except AlertHandlerConflict as exc:
+            return WebUtils.response_error(str(exc), status_code=409)
+        return WebUtils.response_success(self.get_serializer(updated).data)
+
+    @action(methods=["post"], detail=True, url_path="reassign")
+    def reassign(self, request, pk=None):
+        alert = self.get_object()
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+        serializer = AssignHandlersSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
+        try:
+            updated = reassign_alert(
                 alert,
                 handlers=serializer.validated_data["handlers"],
                 actor=request.user,

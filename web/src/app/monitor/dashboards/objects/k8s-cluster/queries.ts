@@ -10,9 +10,10 @@ export const RING_DONE = '#dfe5ef';    // 良性终态(Succeeded):更浅的中�
 export const NEUTRAL_INK = '#1f2937';  // KPI 数值「健康/中性」深色
 export const SATURATION_WARN = 70;
 export const SATURATION_CRIT = 85;
-// 排行榜统一展示条数:同时驱动 topk(N) 拉取与前端 buildTopBars 截断,
-// 避免「后端取 8、前端只显示 5」式的取多丢少和散落的魔法数 5。
-export const TOP_N = 5;
+// Pod/Node 排行卡条数:同时驱动 topk(N) 拉取与前端 buildTopBars 截断。
+// 命名空间 Top 用工单原条数，不跟排行卡一起扩。
+export const TOP_N = 10;
+export const NS_TOP_N = 5;
 
 const L = '{instance_type="k8s",__$labels__}';
 
@@ -60,7 +61,7 @@ export const QUERIES: Record<string, ClusterQuery> = {
   topPodCpu: { query: `topk(${TOP_N}, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total${L}[__$window__])))`, unit: 'none' },
   topPodMem: { query: `topk(${TOP_N}, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes${L}))`, unit: 'bytes' },
   // 按 namespace 聚合：relabel 后已有短标签；未滚动采集器时把 docker 长 label 写成 namespace。不用 pod 名 join，避免跨 ns 同名叠在一起。
-  topNsMem: { query: `topk(${TOP_N}, sum by (namespace) (label_replace(prometheus_remote_write_container_memory_working_set_bytes${L}, "namespace", "$1", "container_label_io_kubernetes_pod_namespace", "(.+)")))`, unit: 'bytes' },
+  topNsMem: { query: `topk(${NS_TOP_N}, sum by (namespace) (label_replace(prometheus_remote_write_container_memory_working_set_bytes${L}, "namespace", "$1", "container_label_io_kubernetes_pod_namespace", "(.+)")))`, unit: 'bytes' },
 
   memPct: { query: `100 * sum(prometheus_remote_write_mem_used${L}) / sum(prometheus_remote_write_mem_total${L})`, unit: 'percent' },
   cpuPct: { query: `100 - avg(prometheus_remote_write_cpu_usage_idle{instance_type="k8s",cpu="cpu-total",__$labels__})`, unit: 'percent' },

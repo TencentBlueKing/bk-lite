@@ -43,6 +43,7 @@ class K3SOnboardingViewSet(viewsets.ViewSet):
                 "name",
                 "organizations",
             },
+            optional={"interval"},
         )
         actor_context = _build_actor_context(request)
         _ensure_target_organizations(

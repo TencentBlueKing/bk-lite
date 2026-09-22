@@ -82,6 +82,28 @@
     },
     {
       "metric_group": "Node",
+      "name": "elasticsearch_fs_io_stats_total_write_kilobytes_rate",
+      "display_name": "Node Disk Write Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "node_name", "description": "节点"}],
+      "description": "Node disk write throughput derived from cumulative kilobytes written; sustained high values indicate IO pressure from indexing or segment merges",
+      "query": "rate(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[5m]) * 1024"
+    },
+    {
+      "metric_group": "Node",
+      "name": "elasticsearch_indices_docs_deleted",
+      "display_name": "Unmerged Deleted Documents",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "node_name", "description": "节点"}],
+      "description": "Node-level count of documents marked deleted but not yet merged; a large backlog increases query overhead until segment merges reclaim space",
+      "query": "elasticsearch_indices_docs_deleted{__$labels__}"
+    },
+    {
+      "metric_group": "Node",
       "name": "elasticsearch_process_cpu_percent",
       "display_name": "Process CPU Usage",
       "instance_id_keys": ["instance_id"],
@@ -123,6 +145,17 @@
       "dimensions": [{"name": "node_name", "description": "节点"}],
       "description": "Request-level memory protection monitoring, reflects triggers of the request-level memory protection breaker; >0 indicates recent request memory overload",
       "query": "rate(elasticsearch_breakers_request_tripped{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Breaker",
+      "name": "elasticsearch_breakers_parent_tripped_rate",
+      "display_name": "Parent Circuit Breaker Trigger Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [{"name": "node_name", "description": "节点"}],
+      "description": "Parent circuit breaker trip rate; any value above 0 means the node recently rejected work because overall memory accounting hit its limit",
+      "query": "rate(elasticsearch_breakers_parent_tripped{__$labels__}[5m])"
     },
     {
       "metric_group": "HTTP",

@@ -158,6 +158,8 @@
         "downloadTemplate": "下载模板",
         "btntext2": "这里",
         "installInfo": "安装信息",
+        "installNodeCount": "安装节点数：{count}",
+        "installNodeCountHint": "仅统计必填信息完整的节点",
         "btntext1": "如果您没有所需的配置文件，请单击",
         "successInstall": "安装成功",
         "ipaddress": "IP地址",

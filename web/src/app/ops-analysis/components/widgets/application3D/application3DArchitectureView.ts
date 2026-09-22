@@ -11,6 +11,7 @@ import {
   ARCH_LABEL_CANVAS_HEIGHT,
   ARCH_LABEL_CANVAS_WIDTH,
   ARCH_LABEL_FILL,
+  ARCH_LABEL_FILL_DIM,
   ARCH_LABEL_HAS_BACKGROUND,
   ARCH_LABEL_WORLD_HEIGHT,
   ARCH_LABEL_WORLD_WIDTH,
@@ -140,6 +141,12 @@ export const ARCH_RING_ALARM = 0xff3b3b;
 export const hostHasAlarm = (
   node: { kind: string; health?: { state: string } } | undefined,
 ) => node?.kind === 'host' && node.health?.state === 'alarming';
+
+export const hostMonitorGap = (
+  node: { kind: string; health?: { reason?: string } } | undefined,
+) =>
+  node?.kind === 'host'
+  && (node.health?.reason === 'unmonitored' || node.health?.reason === 'monitor_unreadable');
 
 /**
  * Own-node alarm only. Applications never inherit host alarms.
@@ -628,7 +635,7 @@ const paintNodeLabel = (node: Application3DArchitecturePlacedNode) =>
   paintCanvasTexture(ARCH_LABEL_CANVAS_WIDTH, ARCH_LABEL_CANVAS_HEIGHT, (context, canvas) => {
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillStyle = ARCH_LABEL_FILL;
+    context.fillStyle = hostMonitorGap(node) ? ARCH_LABEL_FILL_DIM : ARCH_LABEL_FILL;
     context.font = `600 58px ${CARD_GLASS.fontFamily}`;
     context.fillText(node.name.slice(0, 18), canvas.width / 2, canvas.height / 2);
   });
@@ -925,6 +932,7 @@ const addRackMeshes = (
   geos: RackKitGeometries,
   materials: RackKitMaterials,
   alarming: boolean,
+  dimmed = false,
 ) => {
   const width = node.width;
   const height = node.height;
@@ -963,6 +971,7 @@ const addRackMeshes = (
     led.userData.alarmTint = alarming;
     led.userData.ledIndex = index;
     led.userData.ledColor = ledColor;
+    led.visible = !dimmed;
     group.add(led);
   }
 
@@ -1929,12 +1938,14 @@ export const createArchitectureTreeGroup = (
     nodeGroup.userData.nodeId = node.id;
     nodeGroup.userData.nodeKind = node.kind;
     const alarming = hostHasAlarm(node);
+    const monitorGap = hostMonitorGap(node);
     nodeGroup.userData.alarming = alarming;
     nodeGroup.userData.plainMetal = !alarming;
+    nodeGroup.userData.monitorGap = monitorGap;
     if (node.kind === 'application') {
       addAppChipMeshes(nodeGroup, node, rackGeos, chipGeo, chipMats, rackMats, disposables);
     } else {
-      addRackMeshes(nodeGroup, node, rackGeos, rackMats, alarming);
+      addRackMeshes(nodeGroup, node, rackGeos, rackMats, alarming, monitorGap);
     }
     // Y-up node sitting ON the horizontal XZ platform — do not pitch the body.
     nodeGroup.rotation.x = 0;
@@ -1952,7 +1963,7 @@ export const createArchitectureTreeGroup = (
       label.userData.archRole = 'node-label';
       label.userData.billboard = ARCH_LABEL_BILLBOARD;
       label.userData.labelHasBackground = ARCH_LABEL_HAS_BACKGROUND;
-      label.userData.labelFill = ARCH_LABEL_FILL;
+      label.userData.labelFill = hostMonitorGap(node) ? ARCH_LABEL_FILL_DIM : ARCH_LABEL_FILL;
       label.scale.set(0, 0, 1);
       label.position.set(0, node.height / 2 + 0.28, 0);
       nodeGroup.add(label);

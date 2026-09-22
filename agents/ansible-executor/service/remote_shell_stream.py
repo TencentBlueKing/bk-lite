@@ -184,6 +184,108 @@ def _parse_poll_body(body: str) -> tuple[bytes, str]:
     return chunk, status_value
 
 
+async def _seed_host_states_from_start(
+    start_results: list[dict[str, Any]],
+    *,
+    stream_max_line_bytes: int,
+    append_chunk: Callable,
+) -> dict[str, _HostState]:
+    states: dict[str, _HostState] = {}
+    for result in start_results:
+        host = str(result.get("host", ""))
+        state = _HostState(host=host, streamer=LineEventStreamer(max_line_bytes=stream_max_line_bytes))
+        if result.get("status") != "success" or _STARTED_MARKER not in str(result.get("stdout", "")):
+            state.running = False
+            state.exit_code = int(result.get("exit_code") or 1)
+            await append_chunk(state, str(result.get("stderr") or result.get("stdout") or "start failed").encode("utf-8"))
+        states[host] = state
+    return states
+
+
+async def _apply_poll_result_to_host(
+    state: _HostState,
+    result: dict[str, Any] | None,
+    *,
+    poll_code: int,
+    poll_output: str,
+    append_chunk: Callable,
+    publish_line: Callable[[str], Awaitable[None]],
+) -> bool:
+    """处理单主机一轮 poll；返回是否产生进展。"""
+    if result is None or result.get("status") != "success":
+        if poll_code != 0:
+            state.running = False
+            state.exit_code = int((result or {}).get("exit_code") or poll_code or 1)
+            message = str((result or {}).get("stderr") or poll_output or "stream poll failed")
+            await append_chunk(state, message.encode("utf-8"))
+            return True
+        return False
+    try:
+        chunk, remote_status = _parse_poll_body(str(result.get("stdout", "")))
+    except (ValueError, binascii.Error) as error:
+        state.running = False
+        state.exit_code = 1
+        await append_chunk(state, f"stream poll failed: {error}\n".encode("utf-8"))
+        return True
+    await append_chunk(state, chunk)
+    if remote_status != _RUNNING_STATUS:
+        state.running = False
+        state.exit_code = int(remote_status)
+        trailing = state.streamer.flush()
+        if trailing is not None:
+            await publish_line(trailing)
+    return True
+
+
+async def _abort_empty_poll_loop(
+    states: dict[str, _HostState],
+    *,
+    poll_code: int,
+    append_chunk: Callable,
+) -> None:
+    for state in states.values():
+        if not state.running:
+            continue
+        state.running = False
+        state.exit_code = int(poll_code or 1)
+        await append_chunk(
+            state,
+            b"stream poll returned no host result; aborting empty poll loop\n",
+        )
+
+
+def _compose_stream_result(
+    states: dict[str, _HostState],
+    *,
+    truncated: bool,
+    retained_bytes: int,
+    max_output_bytes: int,
+    stream_meta: dict[str, Any],
+) -> tuple[int, str, dict[str, Any]]:
+    output_parts: list[str] = []
+    for state in states.values():
+        exit_code = state.exit_code if state.exit_code is not None else 1
+        raw_status = "CHANGED" if exit_code == 0 else "FAILED"
+        host_output = state.retained.decode("utf-8", errors="replace").rstrip("\n")
+        output_parts.append(f"{state.host} | {raw_status} | rc={exit_code} >>\n{host_output}")
+
+    output = "\n".join(output_parts)
+    total_bytes = sum(state.total_bytes for state in states.values())
+    code = 0 if states and all(state.exit_code == 0 for state in states.values()) else 1
+    return (
+        code,
+        output,
+        {
+            "truncated": truncated,
+            "output_bytes_total": total_bytes,
+            "output_bytes_retained": retained_bytes,
+            "output_max_bytes": max_output_bytes,
+            "stream_line_chunks": sum(state.streamer.chunked_lines for state in states.values()),
+            **stream_meta,
+        },
+    )
+
+
 async def run_remote_shell_stream(
     base_command: list[str],
     *,
@@ -212,7 +314,6 @@ async def run_remote_shell_stream(
     poll_command = _replace_adhoc_action(base_command, "raw", poll_args)
     stop_command = _replace_adhoc_action(base_command, "raw", stop_args)
     deadline = asyncio.get_running_loop().time() + timeout
-    states: dict[str, _HostState] = {}
     retained_bytes = 0
     truncated = False
     stream_publisher = BufferedStreamPublisher(
@@ -224,6 +325,7 @@ async def run_remote_shell_stream(
     )
     stream_publisher.start()
     stream_meta: dict[str, Any] = {}
+    states: dict[str, _HostState] = {}
 
     async def publish_line(line: str) -> None:
         stream_publisher.offer(line)
@@ -244,15 +346,11 @@ async def run_remote_shell_stream(
     try:
         start_timeout = max(1, math.ceil(deadline - asyncio.get_running_loop().time()))
         start_code, start_output, _ = await command_runner(start_command, start_timeout)
-        start_results = parse_ansible_output_per_host(start_output)
-        for result in start_results:
-            host = str(result.get("host", ""))
-            state = _HostState(host=host, streamer=LineEventStreamer(max_line_bytes=stream_max_line_bytes))
-            if result.get("status") != "success" or _STARTED_MARKER not in str(result.get("stdout", "")):
-                state.running = False
-                state.exit_code = int(result.get("exit_code") or 1)
-                await append_chunk(state, str(result.get("stderr") or result.get("stdout") or "start failed").encode("utf-8"))
-            states[host] = state
+        states = await _seed_host_states_from_start(
+            parse_ansible_output_per_host(start_output),
+            stream_max_line_bytes=stream_max_line_bytes,
+            append_chunk=append_chunk,
+        )
         if not states:
             stream_meta = await stream_publisher.close(stream_flush_timeout)
             return (
@@ -268,6 +366,9 @@ async def run_remote_shell_stream(
                 },
             )
 
+        # Ansible 偶发 exit=0 但无主机行（如仅 Shared connection closed）时，避免空转直到整段 timeout。
+        empty_poll_streak = 0
+        max_empty_polls = 3
         while any(state.running for state in states.values()):
             remaining_seconds = deadline - asyncio.get_running_loop().time()
             if remaining_seconds <= 0:
@@ -277,31 +378,27 @@ async def run_remote_shell_stream(
             poll_timeout = max(1, math.ceil(remaining_seconds))
             poll_code, poll_output, _ = await command_runner(poll_command, poll_timeout)
             poll_results = {str(item.get("host", "")): item for item in parse_ansible_output_per_host(poll_output)}
+            made_progress = False
             for host, state in states.items():
                 if not state.running:
                     continue
-                result = poll_results.get(host)
-                if result is None or result.get("status") != "success":
-                    if poll_code != 0:
-                        state.running = False
-                        state.exit_code = int((result or {}).get("exit_code") or poll_code or 1)
-                        message = str((result or {}).get("stderr") or poll_output or "stream poll failed")
-                        await append_chunk(state, message.encode("utf-8"))
-                    continue
-                try:
-                    chunk, remote_status = _parse_poll_body(str(result.get("stdout", "")))
-                except (ValueError, binascii.Error) as error:
-                    state.running = False
-                    state.exit_code = 1
-                    await append_chunk(state, f"stream poll failed: {error}\n".encode("utf-8"))
-                    continue
-                await append_chunk(state, chunk)
-                if remote_status != _RUNNING_STATUS:
-                    state.running = False
-                    state.exit_code = int(remote_status)
-                    trailing = state.streamer.flush()
-                    if trailing is not None:
-                        await publish_line(trailing)
+                if await _apply_poll_result_to_host(
+                    state,
+                    poll_results.get(host),
+                    poll_code=poll_code,
+                    poll_output=poll_output,
+                    append_chunk=append_chunk,
+                    publish_line=publish_line,
+                ):
+                    made_progress = True
+
+            if made_progress:
+                empty_poll_streak = 0
+            else:
+                empty_poll_streak += 1
+                if empty_poll_streak >= max_empty_polls and any(state.running for state in states.values()):
+                    await _abort_empty_poll_loop(states, poll_code=poll_code, append_chunk=append_chunk)
+                    break
 
             if any(state.running for state in states.values()):
                 await sleep(poll_interval)
@@ -311,25 +408,10 @@ async def run_remote_shell_stream(
         stream_meta = await stream_publisher.close(stream_flush_timeout)
         logger.info("remote stream workspace cleaned: %s", remote_dir)
 
-    output_parts: list[str] = []
-    for state in states.values():
-        exit_code = state.exit_code if state.exit_code is not None else 1
-        raw_status = "CHANGED" if exit_code == 0 else "FAILED"
-        host_output = state.retained.decode("utf-8", errors="replace").rstrip("\n")
-        output_parts.append(f"{state.host} | {raw_status} | rc={exit_code} >>\n{host_output}")
-
-    output = "\n".join(output_parts)
-    total_bytes = sum(state.total_bytes for state in states.values())
-    code = 0 if states and all(state.exit_code == 0 for state in states.values()) else 1
-    return (
-        code,
-        output,
-        {
-            "truncated": truncated,
-            "output_bytes_total": total_bytes,
-            "output_bytes_retained": retained_bytes,
-            "output_max_bytes": max_output_bytes,
-            "stream_line_chunks": sum(state.streamer.chunked_lines for state in states.values()),
-            **stream_meta,
-        },
+    return _compose_stream_result(
+        states,
+        truncated=truncated,
+        retained_bytes=retained_bytes,
+        max_output_bytes=max_output_bytes,
+        stream_meta=stream_meta,
     )

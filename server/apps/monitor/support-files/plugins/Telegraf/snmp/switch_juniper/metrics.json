@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_juniper",
   "plugin": "Switch Juniper SNMP",
-  "plugin_desc": "Juniper-specific SNMP collection for switches (Junos). In addition to standard IF-MIB interface metrics, it collects JUNIPER-MIB jnxOperating OIDs for device health: per-module CPU and memory utilization, temperature sensors, fan and power-supply status. Juniper reports memory as a utilization percentage directly; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Juniper EX-series campus switches (EX2300/3400/4300/4600, etc., Junos).",
+  "plugin_desc": "Juniper switch SNMP collection (JUNIPER-MIB and JUNIPER-DOM-MIB, IANA PEN 2636). Private device-health objects: per-module CPU utilization (jnxOperatingCPU), memory buffer utilization (jnxOperatingBuffer, already a percent), temperature (jnxOperatingTemp), plus fan and power-supply operational state from jnxOperatingState (fan container .4 / power container .2) normalized to 1=ok / 2=bad. Optical DDM is per-ifIndex from jnxDomCurrentTable: tx/rx power (0.01 dBm), module temperature, optional bias current (0.001 mA) and module voltage (0.001 V). Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — Juniper EX-series campus switches (EX2300/3400/4300/4600, etc., Junos).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_juniper'}) by (instance_id)",
   "name": "Switch",
@@ -16,7 +16,10 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_usage"
+    "device_memory_usage",
+    "device_optical_rx_power",
+    "device_optical_tx_power",
+    "device_optical_temperature"
   ],
   "metrics": [
     {
@@ -108,6 +111,116 @@
         "instance_id"
       ],
       "description": "This metric reports the operational state of each Juniper power supply unit, normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_tx_power",
+      "query": "device_optical_tx_power{instance_type='switch', __$labels__} / 100",
+      "display_name": "SFP TX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex SFP/optical transmit power in dBm (JUNIPER-DOM-MIB jnxDomCurrentTxLaserOutputPower). The device reports 0.01 dBm units; this query scales by 1/100. An abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_rx_power",
+      "query": "device_optical_rx_power{instance_type='switch', __$labels__} / 100",
+      "display_name": "SFP RX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex SFP/optical receive power in dBm (JUNIPER-DOM-MIB jnxDomCurrentRxLaserPower). The device reports 0.01 dBm units; this query scales by 1/100. A dropping RX level is an early sign of fiber attenuation, dirty optics, or a failing peer transmitter."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_temperature",
+      "query": "device_optical_temperature{instance_type='switch', __$labels__}",
+      "display_name": "Optical Module Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex optical-module temperature in degrees Celsius (JUNIPER-DOM-MIB jnxDomCurrentModuleTemperature). Abnormally high module temperature can precede laser degradation or link errors."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_voltage",
+      "query": "device_optical_voltage{instance_type='switch', __$labels__} / 1000",
+      "display_name": "Optical Module Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex optical-module supply voltage in volts (JUNIPER-DOM-MIB jnxDomCurrentModuleVoltage, 0.001 V units scaled by 1/1000). Readings far from the module's rated range can indicate a failing transceiver or host-board power issue."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_bias",
+      "query": "device_optical_bias{instance_type='switch', __$labels__} / 1000",
+      "display_name": "Optical Module Bias",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        },
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex optical-module laser bias current in milliamperes (JUNIPER-DOM-MIB jnxDomCurrentTxLaserBiasCurrent, 0.001 mA units scaled by 1/1000). Rising bias current at constant TX power is a common aging signal for the laser."
     },
     {
       "metric_group": "Base",

@@ -16,6 +16,8 @@ import {
 } from '@/app/system-manager/utils/userFormUtils';
 import type { TreeSelectNode } from '@/app/system-manager/utils/userFormUtils';
 
+const EMPTY_GROUP_IDS: React.Key[] = [];
+
 interface ModalProps {
   onSuccess: () => void;
   treeData: TreeDataNode[];
@@ -74,12 +76,15 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     });
   }, [filteredTreeData, selectedGroups]);
 
+  const syncedGroupIdsKey = type === 'edit'
+    ? historicalSyncedGroupIds.map(String).slice().sort().join('\0')
+    : '';
   const selectableGroupTreeData = useMemo(
     () => filterSyncedGroupsForLocalUser(
       filteredTreeData,
-      type === 'edit' ? historicalSyncedGroupIds : []
+      type === 'edit' ? historicalSyncedGroupIds : EMPTY_GROUP_IDS
     ),
-    [filteredTreeData, historicalSyncedGroupIds, type]
+    [filteredTreeData, type, syncedGroupIdsKey]
   );
 
   const isGroupSelectionLocked = isSyncedUser || historicalSyncedGroupIds.length > 0;
@@ -226,16 +231,18 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             label={t('common.organization')}
             required={!isSuperuser}
           >
-            <RoleTransfer
-              mode="group"
-              enableSubGroupSelect={true}
-              groupRules={groupRules}
-              treeData={selectableGroupTreeData}
-              selectedKeys={selectedGroups}
-              onChange={handleGroupChange}
-              onChangeRule={handleChangeRule}
-              disabled={isGroupSelectionLocked}
-            />
+            {visible && (type !== 'edit' || !loading) ? (
+              <RoleTransfer
+                mode="group"
+                enableSubGroupSelect={true}
+                groupRules={groupRules}
+                treeData={selectableGroupTreeData}
+                selectedKeys={selectedGroups}
+                onChange={handleGroupChange}
+                onChangeRule={handleChangeRule}
+                disabled={isGroupSelectionLocked}
+              />
+            ) : null}
           </Form.Item>
           <Form.Item
             label={t('system.user.form.role')}
@@ -249,17 +256,19 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
               </Radio.Group>
             </Form.Item>
             {!isSuperuser ? (
-              <RoleTransfer
-                groupRules={groupRules}
-                treeData={roleTreeData}
-                selectedKeys={selectedRoles}
-                personalRoleIds={personalRoleIds}
-                loading={roleLoading}
-                forceOrganizationRole={false}
-                organizationRoleIds={organizationRoleIds}
-                organizationRoleSourceMap={organizationRoleSourceMap}
-                onChange={handleRoleChange}
-              />
+              visible ? (
+                <RoleTransfer
+                  groupRules={groupRules}
+                  treeData={roleTreeData}
+                  selectedKeys={selectedRoles}
+                  personalRoleIds={personalRoleIds}
+                  loading={roleLoading}
+                  forceOrganizationRole={false}
+                  organizationRoleIds={organizationRoleIds}
+                  organizationRoleSourceMap={organizationRoleSourceMap}
+                  onChange={handleRoleChange}
+                />
+              ) : null
             ) : (
               <div>{t('system.user.form.superuser')}</div>
             )}

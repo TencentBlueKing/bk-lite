@@ -17,6 +17,7 @@ import {
 import type {
   NetworkStatusTopologyConfig,
   RelatedTopologyConfig,
+  Room3DConfig,
   SceneWidgetType,
 } from '@/app/ops-analysis/types/sceneWidget';
 import {
@@ -25,6 +26,7 @@ import {
 } from '@/app/ops-analysis/utils/cardList';
 import { buildPersistedNetworkStatusTopologyConfig } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
+import { persistRoom3DConfig } from '@/app/ops-analysis/utils/room3DConfig';
 
 export interface WidgetConfigFormValues {
   name: string;
@@ -33,6 +35,7 @@ export interface WidgetConfigFormValues {
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
+  room3D?: Room3DConfig;
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
@@ -158,6 +161,16 @@ const buildSceneWidgetConfig = (
       sceneWidgetType: 'relatedTopology',
       relatedTopology: persistRelatedTopologyConfig(values.relatedTopology),
       appearance: values.appearance,
+    };
+  }
+  if (values.sceneWidgetType === 'room3D') {
+    return {
+      name: values.name,
+      description: values.description,
+      chartType: 'room3D',
+      sceneWidgetType: 'room3D',
+      room3D: persistRoom3DConfig(values.room3D),
+      appearance: values.appearance || { frame: 'bare' },
     };
   }
   const topologyConfig = values.networkStatusTopology;

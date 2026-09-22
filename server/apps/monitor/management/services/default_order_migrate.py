@@ -1,3 +1,5 @@
+from django.core.management import CommandError
+
 from apps.monitor.constants.database import DatabaseConstants
 from apps.core.logger import monitor_logger as logger
 
@@ -71,3 +73,4 @@ def migrate_default_order():
         logger.error(f'初始化默认顺序失败: {e}')
         import traceback
         logger.error(traceback.format_exc())
+        raise CommandError(f"初始化默认顺序失败: {e}") from e

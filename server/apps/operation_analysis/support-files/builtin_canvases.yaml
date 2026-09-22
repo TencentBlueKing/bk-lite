@@ -16,7 +16,7 @@ meta:
     screens: 3
     reports: 0
     architectures: 0
-    datasources: 20
+    datasources: 19
     namespaces: 1
 dashboards:
 - key: dashboard::CMDB仪表盘_内置
@@ -1977,8 +1977,7 @@ screens:
       chartType: room3D
       valueConfig:
         chartType: room3D
-        dataSource: CMDB 3D机房布局::cmdb/get_room3d_layout
-        chartThemeMode: screen-dark
+        sceneWidgetType: room3D
         appearance:
           frame: bare
     viewport:
@@ -1993,10 +1992,8 @@ screens:
       showClock: true
       showTitle: true
   refs:
-    datasource_keys:
-    - CMDB 3D机房布局::cmdb/get_room3d_layout
-    namespace_keys:
-    - 默认命名空间
+    datasource_keys: []
+    namespace_keys: []
 - key: screen::3D应用大屏_内置
   name: 3D应用大屏
   desc: 以 3D 应用墙展示当前可见应用的健康状态、活跃告警和详情
@@ -2034,34 +2031,6 @@ screens:
 reports: []
 architectures: []
 datasources:
-- key: CMDB 3D机房布局::cmdb/get_room3d_layout
-  name: CMDB 3D机房布局
-  rest_api: cmdb/get_room3d_layout
-  desc: 查询指定 CMDB 机房的 3D 机柜布局数据
-  is_active: true
-  params:
-  - name: server_room_id
-    type: string
-    value: ''
-    alias_name: 机房ID
-    filterType: params
-    inputConfig:
-      control: select
-      componentSwitch: true
-      optionsSource:
-        type: dynamic
-        sourceRef:
-          type: rest_api
-          value: cmdb/get_room_list
-        valueField: inst_uuid
-        labelField: inst_name
-  tags:
-  - CMDB
-  chart_type:
-  - room3D
-  field_schema: []
-  namespace_keys:
-  - 默认命名空间
 - key: CMDB 变更趋势::cmdb/get_change_trend
   name: CMDB 变更趋势
   rest_api: cmdb/get_change_trend

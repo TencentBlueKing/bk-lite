@@ -53,10 +53,10 @@
       "group_algorithm": "max"
     },
     {
-      "name": "全表扫描风险告警",
-      "alert_name": "MongoDB 集合 ${resource_name} 扫描文档数超标",
-      "description": "监控全集合扫描文档数量，全表扫描会严重拖慢查询性能。需检查缺失索引或优化查询条件。",
-      "metric_name": "mongodb_total_docs_scanned",
+      "name": "文档扫描速率过高",
+      "alert_name": "MongoDB 实例 ${resource_name} 文档扫描速率过高",
+      "description": "监控查询执行器每秒扫描的文档数。该值持续偏高通常表示缺索引或查询条件过宽，会放大磁盘读和 CPU。这是实例级 scannedObjects，不是某个集合的文档总量。",
+      "metric_name": "mongodb_total_docs_scanned_rate",
       "algorithm": "max_over_time",
       "threshold": [
         {
@@ -66,12 +66,12 @@
         },
         {
           "level": "error",
-          "value": 100000,
+          "value": 500000,
           "method": ">="
         },
         {
           "level": "warning",
-          "value": 10000,
+          "value": 100000,
           "method": ">="
         }
       ],

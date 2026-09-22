@@ -140,6 +140,15 @@ class MetricSerializer(serializers.ModelSerializer):
         if "query" in attrs and attrs.get("query") is not None:
             attrs["query"] = ensure_metric_labels_placeholder(attrs.get("query"))
 
+        metric_group = attrs.get("metric_group", getattr(self.instance, "metric_group", None))
+        if metric_group is not None:
+            group_object_id = getattr(metric_group, "monitor_object_id", None)
+            group_plugin_id = getattr(metric_group, "monitor_plugin_id", None)
+            object_id = getattr(monitor_object, "id", monitor_object)
+            plugin_id = getattr(monitor_plugin, "id", monitor_plugin) if monitor_plugin is not None else None
+            if group_object_id != object_id or group_plugin_id != plugin_id:
+                raise serializers.ValidationError({"metric_group": "指标分组必须属于同一监控对象和插件"})
+
         return attrs
 
     def get_unique_together_validators(self):

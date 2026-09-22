@@ -9,7 +9,7 @@ This capability uses Telegraf `inputs.elasticsearch` to access the Elasticsearch
 - Authenticated endpoints should use HTTPS and a server certificate whose chain is trusted by the collector node.
 - If the target supports only HTTP, use it only over an isolated, trusted path. Basic Auth credentials are merely reversibly encoded and cross the network without transport encryption.
 - The account can access at least `/_cluster/health` and `/_nodes/stats`.
-- The current template always enables cluster health and collects JVM, filesystem, process, breaker, HTTP, and thread-pool node statistics.
+- The current template always enables cluster health and collects JVM, filesystem, process, breaker, HTTP, thread-pool, and indices node statistics.
 - The current template always skips server-certificate verification for HTTPS, and the page has no CA or verification switch. Do not treat this as a routine reason to deploy an untrusted certificate.
 
 ## Setup Steps
@@ -65,5 +65,5 @@ After saving and waiting for one interval, confirm that these metrics are querya
 
 ### Only some data is present
 
-- Node statistics are limited to the six categories listed in the template; unconfigured categories are not collected.
+- Node statistics are limited to the seven categories listed in the template; unconfigured categories are not collected.
 - Use the Telegraf log to determine whether cluster health or a specific node-statistics request failed.

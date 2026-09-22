@@ -23,10 +23,11 @@ import json
 import threading
 import time
 
-from apps.core.logger import logger
 from django.db import IntegrityError
 from django.db.models import Q, QuerySet
 from django.db.models.fields.json import JSONField
+
+from apps.core.logger import logger
 
 # 标记早期补丁是否已应用，避免重复
 _early_patches_applied = False
@@ -143,8 +144,12 @@ def _patch_cursor_execute_with_lock():
 
     base_execute = BaseCursorWrapper.execute
 
-    # 保存原始的 replace_sql_params 静态方法
-    replace_sql_params = CursorWrapper.replace_sql_params
+    # 保存原始的 replace_sql_params 静态方法。
+    # 该方法仅存在于部分 cw_cornerstone 版本，缺失时降级：-70005 不再走参数内联重试，
+    # 直接抛出原异常，避免 settings 加载期因 AttributeError 中断启动。
+    replace_sql_params = getattr(CursorWrapper, "replace_sql_params", None)
+    if replace_sql_params is None:
+        logger.warning("[DAMENG_LOCK] CursorWrapper.replace_sql_params not available, -70005 inline-param retry disabled")
 
     def locked_execute(self, sql, params=None):
         """
@@ -212,7 +217,7 @@ def _patch_cursor_execute_with_lock():
                 error_code = getattr(e.args[0], "code", None) if e.args else None
 
                 # 处理 -70005 错误（text 字段过长问题，保留原逻辑）
-                if sanitized_params and error_code == -70005:
+                if sanitized_params and error_code == -70005 and replace_sql_params is not None:
                     new_sql = replace_sql_params(sql)
                     whole_sql = new_sql % tuple(sanitized_params)
                     try:
@@ -498,9 +503,7 @@ def _filter_bulk_create_conflicts(queryset, objs):
     if not conflict_field_sets:
         return objs
 
-    existing_keys = {
-        field_names: _get_existing_conflict_keys(queryset, objs, field_names) for field_names in conflict_field_sets
-    }
+    existing_keys = {field_names: _get_existing_conflict_keys(queryset, objs, field_names) for field_names in conflict_field_sets}
     seen_keys = {field_names: set() for field_names in conflict_field_sets}
     filtered = []
 
