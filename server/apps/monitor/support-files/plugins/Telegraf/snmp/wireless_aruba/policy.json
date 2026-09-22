@@ -1,0 +1,81 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Aruba SNMP",
+  "templates": [
+    {
+      "name": "Aruba无线控制器CPU使用率过高",
+      "alert_name": "无线控制器${resource_name} CPU 使用率过高",
+      "description": "监控 Aruba AOS 无线控制器的整体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在 AP 或终端管理负载过重，避免影响漫游与管理响应。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aruba无线控制器内存使用率过高",
+      "alert_name": "无线控制器${resource_name} 内存使用率过高",
+      "description": "监控 Aruba AOS 无线控制器的整体内存使用率，当超过阈值时触发告警。内存压力过高可能导致控制器丢弃终端关联或延迟 AP 上线，需及时排查容量或异常负载。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aruba无线控制器温度过高",
+      "alert_name": "无线控制器${resource_name} 温度过高",
+      "description": "监控 Aruba AOS 无线控制器内部温度，当温度超过安全阈值时触发告警，提示可能存在散热故障或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
