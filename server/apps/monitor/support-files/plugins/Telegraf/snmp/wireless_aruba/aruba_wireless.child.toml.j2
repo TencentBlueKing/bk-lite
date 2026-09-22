@@ -33,35 +33,20 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- WLSX-SYSTEMEXT scalars (PEN 14823, AOS controller). GET with .0; not CX 47196. ----
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
+    # ---- WLSX-SYSTEMEXT scalars, top-level field GET with instance .0 ----
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14823.2.2.1.2.1.30.0"
-        name = "usage"
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14823.2.2.1.2.1.31.0"
-        name = "usage"
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14823.2.2.1.2.1.10.0"
-        name = "celsius"
-    # ---- WLSX-SWITCH controller AP/STA scalars. Instant/IAP is out of scope. ----
-    [[inputs.snmp.table]]
-        name = "wireless_ap"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
+        name = "device_temperature_celsius"
+    # ---- WLSX-SWITCH AP/STA scalars, top-level field GET with instance .0 ----
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14823.2.2.1.1.3.1.0"
-        name = "count"
-    [[inputs.snmp.table]]
-        name = "wireless_station"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
+        name = "wireless_ap_count"
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14823.2.2.1.1.3.2.0"
-        name = "count"
+        name = "wireless_station_count"

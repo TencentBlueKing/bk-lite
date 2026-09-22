@@ -38,7 +38,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "snmp_device_cpu_usage{instance_type='wireless', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -51,7 +51,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "snmp_device_memory_usage{instance_type='wireless', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -64,7 +64,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "avg(device_temperature_celsius{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "snmp_device_temperature_celsius{instance_type='wireless', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -77,7 +77,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_ap_count",
-      "query": "avg(wireless_ap_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "snmp_wireless_ap_count{instance_type='wireless', __$labels__}",
       "display_name": "Access Point Count",
       "data_type": "Number",
       "unit": "counts",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_station_count",
-      "query": "avg(wireless_station_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "snmp_wireless_station_count{instance_type='wireless', __$labels__}",
       "display_name": "Associated Station Count",
       "data_type": "Number",
       "unit": "counts",
