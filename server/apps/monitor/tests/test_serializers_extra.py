@@ -182,3 +182,21 @@ class TestMetricSerializer:
         )
         data = MetricSerializer(metric).data
         assert data["instance_id_keys"] == ["instance_id"]
+
+    def test_rejects_metric_group_from_another_object(self):
+        obj_a = MonitorObject.objects.create(name="MSObjA", level="base", instance_id_keys=["instance_id"])
+        obj_b = MonitorObject.objects.create(name="MSObjB", level="base", instance_id_keys=["instance_id"])
+        plugin_a = MonitorPlugin.objects.create(name="MSPluginA")
+        plugin_b = MonitorPlugin.objects.create(name="MSPluginB")
+        group_b = MetricGroup.objects.create(monitor_object=obj_b, monitor_plugin=plugin_b, name="g")
+        serializer = MetricSerializer(
+            data={
+                "monitor_object": obj_a.id,
+                "monitor_plugin": plugin_a.id,
+                "metric_group": group_b.id,
+                "name": "m",
+                "instance_id_keys": [],
+            }
+        )
+        assert not serializer.is_valid()
+        assert "metric_group" in serializer.errors
