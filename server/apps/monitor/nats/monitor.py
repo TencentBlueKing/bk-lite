@@ -370,6 +370,17 @@ def _delete_monitor_policy_record(policy: MonitorPolicy, operator: str):
     return policy_id
 
 
+def _has_instance_count_actor(user_info: Optional[dict]) -> bool:
+    """实例计数兼容切片：仅在报文带可解析用户和组织时进入授权聚合。"""
+    if not isinstance(user_info, dict):
+        return False
+    user = _normalize_permission_user(user_info.get("user"), domain=user_info.get("domain"))
+    username = getattr(user, "username", None)
+    if not isinstance(username, str) or not username.strip():
+        return False
+    return user_info.get("team") not in (None, "")
+
+
 def _require_authenticated_actor(user_info: Optional[dict]):
     """写接口身份闸：必须携带可解析的已认证身份才允许写库。
 
@@ -750,14 +761,30 @@ def monitor_objects(*args, **kwargs):
 
 @nats_client.register
 def monitor_object_instance_count(*args, **kwargs):
-    """统计全部监控对象实例数量（不过滤权限）"""
+    """统计监控对象实例数量。
+
+    兼容切片：携带可解析身份时按授权实例聚合；无身份的旧调用方保持全局未删除计数。
+    许可管理全局规模走独立 subject license_monitor_instance_count。
+    """
     logger.info(
         "=== monitor_object_instance_count called , args=%s, kwargs=%s===",
         args,
         kwargs,
     )
-    queryset = MonitorInstance.objects.filter(is_deleted=False).values("monitor_object__name").annotate(instance_count=Count("id"))
-    data = {item["monitor_object__name"]: item["instance_count"] for item in queryset}
+    user_info = kwargs.get("user_info")
+    queryset = MonitorInstance.objects.filter(is_deleted=False)
+    if _has_instance_count_actor(user_info):
+        _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+        if error:
+            return error
+        authorized, error = _get_authorized_monitor_instances(user_info, scope_ids)
+        if error:
+            return error
+        queryset = queryset.filter(id__in=list(authorized.keys()))
+    data = {
+        item["monitor_object__name"]: item["instance_count"]
+        for item in queryset.values("monitor_object__name").annotate(instance_count=Count("id"))
+    }
     return {"result": True, "data": data, "message": ""}
 
 
