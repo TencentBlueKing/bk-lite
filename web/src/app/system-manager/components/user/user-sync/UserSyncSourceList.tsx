@@ -63,13 +63,18 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
   const actionItemsFor = (item: T): MoreActionsDropdownItem[] => [
     {
       key: 'edit',
-      label: t('common.edit'),
+      label: t('system.user.userSyncPage.basicConfig'),
       onClick: () => onEdit(item),
     },
     {
       key: 'config',
-      label: t('system.user.userSyncPage.accessConfigMenu'),
+      label: t('system.user.userSyncPage.accessConfig'),
       onClick: () => onConfig(item),
+    },
+    {
+      key: 'strategy',
+      label: t('system.user.userSyncPage.syncStrategy'),
+      onClick: () => onStrategy(item),
     },
     {
       key: 'delete',
@@ -113,50 +118,47 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
             )}
             menuItems={actionItemsFor(item)}
             body={(
-              <div className="grid grid-cols-2 gap-1">
-                <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
-                  <div className="text-sm font-medium leading-none tabular-nums text-[var(--color-text-1)]">
-                    {item.syncedUsersText}
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-1">
+                  <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
+                    <div className="text-sm font-medium leading-none tabular-nums text-[var(--color-text-1)]">
+                      {item.syncedUsersText}
+                    </div>
+                    <div className="mt-1.5 text-xs text-[var(--color-text-3)]">
+                      {t('system.user.userSyncPage.syncedUsers')}
+                    </div>
                   </div>
-                  <div className="mt-1.5 text-xs text-[var(--color-text-3)]">
-                    {t('system.user.userSyncPage.syncedUsers')}
+                  <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
+                    <div className="text-sm font-medium leading-none text-[var(--color-text-1)]">
+                      {item.syncCycleText}
+                    </div>
+                    <div className="mt-1.5 text-xs text-[var(--color-text-3)]">
+                      {t('system.user.userSyncPage.syncCycle')}
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5">
-                  <div className="text-sm font-medium leading-none text-[var(--color-text-1)]">
-                    {item.syncCycleText}
+                <div
+                  className="flex min-w-0 items-center justify-between gap-2"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="min-w-0 truncate text-xs leading-5 text-[var(--color-text-3)]">
+                    <span>{t('system.user.userSyncPage.latestSyncLabel')}</span>
+                    <span className="tabular-nums">{item.latestSyncTimeText}</span>
+                    <span className="mx-1">·</span>
+                    <span className={STATUS_TEXT[item.latestStatusTone]}>{item.latestStatusText}</span>
                   </div>
-                  <div className="mt-1.5 text-xs text-[var(--color-text-3)]">
-                    {t('system.user.userSyncPage.syncCycle')}
-                  </div>
+                  <Tooltip title={item.dependencyStatusText}>
+                    <Button
+                      type="primary"
+                      size="small"
+                      className="shrink-0 font-mini"
+                      disabled={item.syncDisabled}
+                      onClick={() => onSyncNow(item)}
+                    >
+                      {t('system.user.userSyncPage.syncNow')}
+                    </Button>
+                  </Tooltip>
                 </div>
-              </div>
-            )}
-            footer="custom"
-            footerLeft={(
-              <div className="text-xs leading-5 text-[var(--color-text-3)]">
-                <span>{t('system.user.userSyncPage.latestSyncLabel')}</span>
-                <span className="tabular-nums">{item.latestSyncTimeText}</span>
-                <span className="mx-1">·</span>
-                <span className={STATUS_TEXT[item.latestStatusTone]}>{item.latestStatusText}</span>
-              </div>
-            )}
-            footerActions={(
-              <div className="flex items-center gap-1">
-                <Tooltip title={item.dependencyStatusText}>
-                  <Button
-                    type="primary"
-                    size="small"
-                    className="font-mini"
-                    disabled={item.syncDisabled}
-                    onClick={() => onSyncNow(item)}
-                  >
-                    {t('system.user.userSyncPage.syncNow')}
-                  </Button>
-                </Tooltip>
-                <Button size="small" className="font-mini" onClick={() => onStrategy(item)}>
-                  {t('system.user.userSyncPage.syncStrategy')}
-                </Button>
               </div>
             )}
           />
