@@ -16,7 +16,6 @@ from apps.cmdb.services.application_resource_overview import ApplicationResource
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.service_tree import applications_by_system as project_system_applications
-from apps.cmdb.services.service_tree import service_tree_membership
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
@@ -188,18 +187,7 @@ class Application3DQueryService:
             associated_app_ids = list(dict.fromkeys(apps_by_system.get(system_id, [])))
             visible_app_rows = cls._visible_model_instances(request, "application", associated_app_ids)
             visible_app_map = {cls._instance_uuid(item): item for item in visible_app_rows}
-            membership = service_tree_membership(system_id)
-            visible_group_rows = cls._visible_model_instances(request, "biz_group", membership.get("group_ids") or [])
-            visible_group_map = {cls._instance_uuid(item): item for item in visible_group_rows}
-            visible_group_ids = [group_id for group_id in membership.get("group_ids") or [] if group_id in visible_group_map]
-            application_parents = {
-                app_id: parent_id
-                for app_id, parent_id in (membership.get("application_parents") or {}).items()
-                if app_id in visible_app_map and (parent_id == system_id or parent_id in visible_group_map)
-            }
-            if not application_parents:
-                application_parents = {app_id: system_id for app_id in visible_app_map}
-            visible_app_ids = [app_id for app_id in associated_app_ids if app_id in application_parents]
+            visible_app_ids = [app_id for app_id in associated_app_ids if app_id in visible_app_map]
 
             host_ids_by_app = project_application_hosts(visible_app_ids) if visible_app_ids else {}
             all_host_ids = list(dict.fromkeys(host_id for app_id in visible_app_ids for host_id in host_ids_by_app.get(app_id, [])))
@@ -241,31 +229,6 @@ class Application3DQueryService:
                 }
                 for host_id, host in visible_host_map.items()
             },
-            group_ids=visible_group_ids,
-            groups={
-                group_id: {
-                    "name": cls._instance_name(visible_group_map[group_id]),
-                    "health": cls._architecture_member_health(
-                        scope,
-                        system_id,
-                        hosts=[
-                            visible_host_map[host_id]
-                            for app_id in visible_app_ids
-                            if application_parents.get(app_id) == group_id
-                            for host_id in visible_hosts_by_app.get(app_id, [])
-                        ],
-                        expected_host_ids=[
-                            host_id
-                            for app_id in visible_app_ids
-                            if application_parents.get(app_id) == group_id
-                            for host_id in host_ids_by_app.get(app_id, [])
-                        ],
-                    ),
-                }
-                for group_id in visible_group_ids
-            },
-            group_parents=membership.get("group_parents") or {},
-            application_parents=application_parents,
         )
         return {**tree, "refreshedAt": timezone.now().isoformat()}
 

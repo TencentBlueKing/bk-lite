@@ -365,30 +365,6 @@ describe('application3D architecture layout', () => {
     expect(layout.edges.some((edge) => edge.start.y !== edge.end.y)).toBe(true);
   });
 
-  it('places business groups on the application plane without adding a third floor', () => {
-    const layout = layoutApplication3DArchitecture(tree({
-      nodes: [
-        { id: 'sys-1', kind: 'system', name: '门户系统', health },
-        { id: 'g1', kind: 'biz_group', name: '生产', health },
-        { id: 'app-1', kind: 'application', name: '门户', health },
-        { id: 'host-1', kind: 'host', name: 'web-1', health },
-      ],
-      edges: [
-        { id: 'e1', sourceId: 'sys-1', targetId: 'g1', relation: 'system_contains_biz_group' },
-        { id: 'e2', sourceId: 'g1', targetId: 'app-1', relation: 'biz_group_contains_application' },
-        { id: 'e3', sourceId: 'app-1', targetId: 'host-1', relation: 'application_run_host' },
-      ],
-    }));
-    const byId = Object.fromEntries(layout.nodes.map((node) => [node.id, node]));
-    expect(byId.g1).toBeDefined();
-    expect(byId.g1.y).toBeGreaterThan(ARCH_PLANE_Y.application);
-    expect(byId['app-1'].y).toBeGreaterThan(ARCH_PLANE_Y.application);
-    expect(byId.g1.y).toBeGreaterThan(byId['host-1'].y);
-    expect(byId.g1.z).not.toBeCloseTo(byId['app-1'].z);
-    expect(layout.planes).toHaveLength(2);
-    expect(ARCH_PLANE_Y.biz_group).toBe(ARCH_PLANE_Y.application);
-  });
-
   it('uses a lampshade frustum, see-through glass, and small grid-spaced racks', () => {
     const layout = layoutApplication3DArchitecture(tree());
     const rack = layout.nodes.find((node) => node.kind === 'application');
