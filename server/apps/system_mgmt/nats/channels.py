@@ -275,6 +275,7 @@ def search_notification_recipients_scoped(
     include_children=False,
     search="",
     limit=100,
+    recipient_ids=None,
 ):
     """返回通知配置可引用的组织内系统用户稳定 ID，不暴露用户敏感字段。"""
     user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
@@ -285,14 +286,24 @@ def search_notification_recipients_scoped(
     try:
         requested = {int(value) for value in teams} if teams else set(authorized_groups)
         bounded_limit = min(max(int(limit), 1), 100)
+        requested_recipient_ids = None
+        if recipient_ids is not None:
+            if not isinstance(recipient_ids, list) or not 1 <= len(recipient_ids) <= 100:
+                raise ValueError
+            requested_recipient_ids = {int(value) for value in recipient_ids}
+            if len(requested_recipient_ids) != len(recipient_ids) or any(value <= 0 for value in requested_recipient_ids):
+                raise ValueError
     except (TypeError, ValueError):
         return _notification_failure("invalid_payload", "接收人查询参数无效。")
     scoped_groups = set(authorized_groups).intersection(requested)
     if not scoped_groups:
         return {"result": True, "data": []}
     needle = str(search or "").strip().casefold()[:100]
+    users = User.objects.order_by("id")
+    if requested_recipient_ids is not None:
+        users = users.filter(id__in=requested_recipient_ids)
     result = []
-    for user in User.objects.order_by("id").only("id", "username", "display_name", "group_list"):
+    for user in users.only("id", "username", "display_name", "group_list"):
         group_ids = set()
         for value in user.group_list or []:
             try:
