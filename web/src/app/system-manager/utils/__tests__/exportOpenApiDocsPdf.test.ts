@@ -7,7 +7,7 @@ import {
 } from '@/app/system-manager/utils/exportOpenApiDocsPdf';
 
 const labels = {
-  title: '接口文档',
+  title: 'API 文档',
   catalog: '接口目录',
   generatedAt: '2026-09-10 15:30',
   totalCount: '共 2 个接口',
@@ -37,8 +37,8 @@ const labels = {
   unrestricted: '无特殊限制',
   orgScope: '组织范围',
   tabExample: '调用示例',
-  examplePersonal: '个人密钥',
-  exampleSystem: '系统密钥',
+  examplePersonal: '个人令牌',
+  exampleSystem: '系统令牌',
   origin: 'https://bklite.example.com',
   inject: (value: string) => `inject:${value}`,
 };
@@ -101,8 +101,8 @@ describe('buildOpenApiDocsExportHtml', () => {
     expect(html).not.toContain('取值');
     expect(html).not.toContain('<th>范围</th>');
     expect(html).toContain('curl -X GET');
-    expect(html).toContain('个人密钥');
-    expect(html).toContain('系统密钥');
+    expect(html).toContain('个人令牌');
+    expect(html).toContain('系统令牌');
     expect(html).toContain('X-Bklite-Acting-User: &lt;username&gt;');
     expect(html).not.toContain('@&lt;domain&gt;');
     expect(html).toContain('X-Bklite-Acting-Team: &lt;team_id&gt;');
