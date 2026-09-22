@@ -1,6 +1,9 @@
 class MonitorObjConstants:
     """监控实例相关常量"""
 
+    INSTANCE_ID_MAX_LENGTH = 200
+    INSTANCE_NAME_MAX_LENGTH = 200
+
     # 监控对象关键字段
     OBJ_KEYS = ["name", "type", "default_metric", "instance_id_keys", "supplementary_indicators", "display_fields"]
 
