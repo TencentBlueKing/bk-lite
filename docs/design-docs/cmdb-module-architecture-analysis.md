@@ -203,6 +203,14 @@ mode(create|update|upsert|reconcile)
 
 各插件只负责把外部数据映射到 Envelope；`Ingestion Module` 负责批次上限、字段校验、身份归一和去重；最终仍调用统一 `AssetCommand`。这样插件扩展不会形成另一套资产写入内核。
 
+### JOB 主机发现补充（2026-09-21）
+
+JOB 数据库、中间件及物理服务器 SSH 入口现在通过有效采集目录的 `supports_host_discovery` 开放主机选择。任务的 `model_id` 仍决定插件；`params.target_source=host` 下，`instances` 保存服务端按 UUID、可见性、任务组织和接入点云区域校验后的 host 快照，作为脚本执行来源。重新保存刷新 IP；运行期使用保存快照。
+
+可信接入点区域写入 `params.target_cloud_region_id`，节点配置将它作为 `cmdbcloud_region_id` 传给已有 JOB 节点定位。首次采集复用已下发的 Telegraf 子配置 one-shot，周期采集、Stargazer local/SSH、VM 轮次对账沿用原链路。发现结果使用任务组织和插件身份，不以来源主机名称、UUID 作为 Nginx 等资源身份。切换为 IP 时显式清空旧 `instances` 和新模式区域字段。
+
+本次未实现“选择已有资产仅更新该资产”的严格结果过滤。实现和验证边界见 [JOB 主机发现实施记录](../../specs/changes/cmdb-job-host-discovery/validation.md)。
+
 ### 5.3 NodeMgmt 同步、快照与对账
 
 `NodeMgmtSyncService` 已具备值得保留的可靠性机制：运行状态、active scope、超时、配置重试、采集 claim、节点和字节硬上限、快照配额与 lease，见 [node_mgmt_sync_service.py:68](../../server/apps/cmdb/services/node_mgmt_sync_service.py#L68)。它说明模块已经从“定时拉取”演进为真正的同步状态机。

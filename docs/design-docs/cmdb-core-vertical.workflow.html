@@ -4869,7 +4869,7 @@
       </div>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"main-write-path","label":"纵向资产主链","focus":["accept","dispatch","normalize","write_fact","project"],"note":"从准入请求一路向下，直到资产图事实和派生投影完成。"},{"id":"collection-branch","label":"外部采集支线","focus":["dispatch","external_runtime","normalize"],"note":"NodeMgmt、Stargazer 和 Job 返回结果后进入统一规范化阶段。"},{"id":"reliability","label":"幂等与补偿","focus":["write_fact","operation_ledger","recovery","project","delivery"],"note":"操作账本、租约和补偿需要覆盖所有写入口。"}]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"main-write-path","label":"纵向资产主链","focus":["accept","dispatch","normalize","write_fact","project"],"note":"从准入请求一路向下，直到资产图事实和派生投影完成。"},{"id":"collection-branch","label":"外部采集支线","focus":["dispatch","external_runtime","normalize"],"note":"JOB 主机发现：可信 host 快照提供执行 IP 和区域，任务模型决定脚本；配置下发后 one-shot/周期执行，结果按原插件与任务组织对账。"},{"id":"reliability","label":"幂等与补偿","focus":["write_fact","operation_ledger","recovery","project","delivery"],"note":"操作账本、租约和补偿需要覆盖所有写入口。"}]</script>
 
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>

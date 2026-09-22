@@ -5,6 +5,7 @@ import {
   Tabs,
   Spin,
   Descriptions,
+  Collapse,
   Empty,
   Card,
   Input,
@@ -826,6 +827,33 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
           <StatisticCard key={index} {...card} />
         ))}
       </div>
+
+      {task.params?.target_source === 'host' && (
+        <Collapse
+          className="mb-4"
+          items={[{
+            key: 'host-source',
+            label: t('Collection.hostDiscoverySnapshot'),
+            children: (
+              <CustomTable
+                rowKey="inst_uuid"
+                size="small"
+                columns={[
+                  { title: t('common.name'), dataIndex: 'inst_name', key: 'inst_name' },
+                  { title: 'IP', dataIndex: 'ip_addr', key: 'ip_addr' },
+                  {
+                    title: t('Collection.hostDiscoveryCloud'),
+                    key: 'cloud',
+                    render: () => String(task.params?.target_cloud_region_id ?? '--'),
+                  },
+                ]}
+                dataSource={Array.isArray(task.instances) ? task.instances : []}
+                pagination={{ pageSize: 5, showSizeChanger: false }}
+              />
+            ),
+          }]}
+        />
+      )}
 
       {renderTopologySummary()}
 

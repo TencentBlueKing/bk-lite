@@ -147,6 +147,9 @@ class CollectModelService(object):
         }
 
         for key in not_required:
+            if key == "instances" and key in data:
+                params[key] = data[key]
+                continue
             if key == "ip_range" and "ip_range" in data:
                 # 扫描生成路径会显式传空串以清掉旧 IP 段；falsy 判断会把这次更新吞掉。
                 params[key] = data.get(key) or ""

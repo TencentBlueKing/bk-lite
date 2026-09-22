@@ -108,10 +108,15 @@ import {
   message,
 } from 'antd';
 
+export type CollectionTargetSource = 'ip' | 'asset' | 'host';
+const MAX_HOST_DISCOVERY_TARGETS = 2048;
+
 interface TableItem {
   inst_uuid?: string;
   model_id?: string;
   model_name?: string;
+  ip_addr?: string;
+  cloud?: number | string;
 }
 
 interface BaseTaskFormProps {
@@ -141,7 +146,7 @@ export interface BaseTaskRef {
   accessPoints: { label: string; value: string;[key: string]: any }[];
   selectedData: TableItem[];
   ipRange: string[];
-  collectionType: string;
+  collectionType: CollectionTargetSource;
   organization: number[];
   initCollectionType: (value: any, type: string) => void;
 }
@@ -191,7 +196,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [instOptLoading, setOptLoading] = useState(false);
     const [instOptions, setOptions] = useState<CmdbInstanceOption[]>([]);
     const [ipRange, setIpRange] = useState<string[]>([]);
-    const [collectionType, setCollectionType] = useState('ip');
+    const [collectionType, setCollectionType] = useState<CollectionTargetSource>('ip');
     const [selectedData, setSelectedData] = useState<TableItem[]>([]);
     const [accessPoints, setAccessPoints] = useState<
       { label: string; value: string; [key: string]: any }[]
@@ -256,7 +261,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       normalizedTaskType
     ) && !isNetworkConfigFileTask;
     const isHostTask = normalizedTaskType === 'host';
-    const isHostAssetMode = isHostTask && collectionType === 'asset';
+    const isHostDiscovery = collectionType === 'host';
+    const isHostAssetMode = (isHostTask && collectionType === 'asset') || isHostDiscovery;
+    const selectionModelId = isHostDiscovery ? 'host' : instanceModelId;
     const selectedAccessPoint = accessPoints.find(
       (item: any) => item.value === accessPointId,
     );
@@ -268,14 +275,17 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     );
     const canSelectHostAssets =
       !isHostAssetMode ||
-      (hasSelectedAccessPoint && hasSelectedAccessPointCloudRegion);
+      (hasSelectedAccessPoint && hasSelectedAccessPointCloudRegion &&
+        (!isHostDiscovery || normalizeOrganizationValue(organizationValue).length > 0));
     const hostAssetSelectTooltip = !isHostAssetMode
       ? undefined
       : !hasSelectedAccessPoint
-        ? t('Collection.hostAssetSelectionNeedsProxy')
+        ? t(isHostDiscovery ? 'Collection.hostDiscoveryNeedsProxy' : 'Collection.hostAssetSelectionNeedsProxy')
         : !hasSelectedAccessPointCloudRegion
           ? t('Collection.proxyCloudUnavailable')
-          : undefined;
+          : isHostDiscovery && !normalizeOrganizationValue(organizationValue).length
+            ? t('Collection.hostDiscoveryNeedsOrganization')
+            : undefined;
 
     useEffect(() => {
       const orgArray = normalizeOrganizationValue(organizationValue);
@@ -330,7 +340,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     };
 
     const getHostCloudQueryList = () => {
-      if (!isHostTask || !hasSelectedAccessPointCloudRegion) {
+      if ((!isHostTask && !isHostDiscovery) || !hasSelectedAccessPointCloudRegion) {
         return [];
       }
       return buildHostCloudQueryList(selectedAccessPointCloudRegion);
@@ -343,7 +353,12 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       setCollectionType('asset');
     }, [supportsAssetOnlySelection]);
 
+    const hostCloudColumn = {
+      title: t('Collection.hostDiscoveryCloud'), dataIndex: 'cloud', key: 'cloud',
+      render: (value: number | string) => String(value ?? '--'),
+    };
     const instColumns = [
+      ...(isHostDiscovery ? [hostCloudColumn] : []),
       {
         title: t('Collection.instanceName'),
         dataIndex: 'inst_name',
@@ -371,14 +386,14 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     ];
 
     useEffect(() => {
-      if (selectedData.length && instData.length) {
+      if (!isHostDiscovery && selectedData.length && instData.length) {
         const selectedInsts = instData.filter((item) =>
           selectedData.some((d) => d.inst_uuid === item.inst_uuid)
         );
         setSelectedRows(selectedInsts);
         setSelectedKeys(selectedInsts.map((item) => item.inst_uuid));
       }
-    }, [selectedData, instData]);
+    }, [selectedData, instData, isHostDiscovery]);
 
     useEffect(() => {
       if (cleanupStrategyValue === 'after_expiration') {
@@ -391,7 +406,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const fetchInstData = async (modelId: string, page = 1, pageSize = 10) => {
       try {
-        if (isHostTask && !hasSelectedAccessPointCloudRegion) {
+        if ((isHostTask || isHostDiscovery) && !hasSelectedAccessPointCloudRegion) {
           setInstData([]);
           resetInstPagination();
           return;
@@ -404,8 +419,11 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           page_size: pageSize,
         };
 
-        if (isHostTask) {
+        if (isHostTask || isHostDiscovery) {
           params.query_list = getHostCloudQueryList();
+          if (isHostDiscovery) {
+            params.query_list.push({ field: 'organization', type: 'list[]', value: normalizeOrganizationValue(organizationValue) });
+          }
         }
 
         const res = await instanceApi.searchInstances(params);
@@ -476,26 +494,27 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         return;
       }
 
+      if (isHostDiscovery) {
+        setSelectedRows(selectedData);
+        setSelectedKeys(selectedData.map((row) => row.inst_uuid as string));
+      }
       setInstVisible(true);
       if (isNetworkCollectionAssetTask) {
         fetchNetworkInstData(assetModelIds);
         return;
       }
       if (isCommonSelectInstTask) {
-        fetchInstData(instanceModelId);
+        fetchInstData(selectionModelId);
       }
     };
 
-    const handleCollectionTypeChange = (nextType: 'ip' | 'asset') => {
+    const handleCollectionTypeChange = (nextType: CollectionTargetSource) => {
       if (nextType === collectionType) {
         return;
       }
 
-      if (nextType === 'ip') {
-        clearAssetSelection();
-      } else {
-        clearIpRangeSelection();
-      }
+      clearAssetSelection();
+      clearIpRangeSelection();
 
       setCollectionType(nextType);
     };
@@ -503,6 +522,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const handleAccessPointChange = (value: string) => {
       if (isHostAssetMode && accessPointId !== value) {
         clearAssetSelection();
+        if (isHostDiscovery) message.info(t('Collection.hostDiscoverySelectionReset'));
       }
     };
 
@@ -514,13 +534,24 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const handleRowSelect = (
       selectedRowKeys: React.Key[],
-      selectedRows: any[]
+      checkedRows: TableItem[]
     ) => {
+      if (isHostDiscovery) {
+        const merged = mergeVisibleNetworkAssetSelection({
+          previouslySelected: selectedRows,
+          visibleInstUuids: instData.map((row) => row.inst_uuid),
+          checkedRows,
+        });
+        setSelectedKeys(merged.map((row) => row.inst_uuid));
+        setSelectedRows(merged);
+        return;
+      }
       setSelectedKeys(selectedRowKeys);
-      setSelectedRows(selectedRows);
+      setSelectedRows(checkedRows);
     };
 
     const getNetworkConfigDisabledReason = (record: any) => {
+      if (isHostDiscovery && !record?.ip_addr) return t('Collection.hostDiscoveryMissingIp');
       if (!isNetworkConfigFileTask) {
         return '';
       }
@@ -547,7 +578,11 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           checkedRows: selectedRows,
         })
         : selectedRows.map((item) => item);
-      const duplicateIp = isNetworkCollectionAssetTask
+      if (isHostDiscovery && nextSelected.length > MAX_HOST_DISCOVERY_TARGETS) {
+        message.error(t('Collection.hostDiscoveryLimit'));
+        return;
+      }
+      const duplicateIp = (isNetworkCollectionAssetTask || isHostDiscovery)
         ? findDuplicateNetworkAssetIp(nextSelected)
         : null;
       if (duplicateIp) {
@@ -586,6 +621,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     };
 
     const assetColumns = [
+      ...(isHostDiscovery ? [
+        { title: t('Collection.manageIp'), dataIndex: 'ip_addr', key: 'ip_addr' }, hostCloudColumn,
+      ] : []),
       {
         title: t('name'),
         dataIndex: 'inst_name',
@@ -766,7 +804,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         setSelectedData(value || []);
         form.setFieldValue('assetInst', value || []);
       }
-      setCollectionType(type);
+      setCollectionType(type as CollectionTargetSource);
     };
 
     useImperativeHandle(ref, () => ({
@@ -881,6 +919,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     : value
                       ? [value]
                       : [];
+                  if (isHostDiscovery && !isSameOrganizationValue(ipRangeOrg, orgArray)) {
+                    clearAssetSelection();
+                    message.info(t('Collection.hostDiscoverySelectionReset'));
+                  }
                   setIpRangeOrg(orgArray);
                   form.setFieldValue('organization', orgArray);
                 }}
@@ -972,6 +1014,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <Radio value="asset">
                       {assetOptionLabel || t('Collection.chooseAsset')}
                     </Radio>
+                    {modelItem.supports_host_discovery && <Radio value="host">{t('Collection.chooseHost')}</Radio>}
                   </Radio.Group>
                 ) : null}
 
@@ -1040,7 +1083,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   /* 选择资产 */
                   <Form.Item
                     name="assetInst"
-                    label={instPlaceholder}
+                    label={isHostDiscovery ? t('Collection.chooseHost') : instPlaceholder}
+                    extra={isHostDiscovery ? t('Collection.hostDiscoveryTip', '', { plugin: modelItem.name || modelId }) : undefined}
                     required
                     rules={rules.assetInst}
                     trigger="onChange"
@@ -1261,7 +1305,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
         <Drawer
           title={
-            isCommonSelectInstTask || isNetworkCollectionAssetTask
+            isHostDiscovery ? t('Collection.chooseHost') : isCommonSelectInstTask || isNetworkCollectionAssetTask
               ? t('Collection.chooseAsset')
               : `选择${dropdownItems.items.find((item) => item.key === relateType)?.label || '资产'}`
           }
@@ -1330,7 +1374,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     return;
                   }
                   fetchInstData(
-                    isCommonSelectInstTask ? modelId : relateType,
+                    isCommonSelectInstTask ? selectionModelId : relateType,
                     page,
                     pageSize,
                   );
