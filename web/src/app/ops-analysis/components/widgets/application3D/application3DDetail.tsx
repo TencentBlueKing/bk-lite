@@ -23,6 +23,7 @@ import {
   SEVERITY_DOT,
   type DetailProperty,
 } from './application3DDetailChrome';
+import { formatDegradedText } from './application3DLayout';
 
 interface Application3DDetailProps {
   selected: Application3DWallItem;
@@ -486,7 +487,7 @@ export default function Application3DDetail({
                     <div className="min-w-0 flex-1">
                       <div className="app3d-alarm-row__title">{alarmDetail.alarm.content}</div>
                       <div className="app3d-alarm-row__meta">
-                        {`${alarmDetail.alarm.resource.name} · ${alarmDetail.alarm.policy.name}`}
+                        {`${alarmDetail.alarm.resource.name} · ${formatDegradedText(alarmDetail.alarm.policy.name)}`}
                       </div>
                     </div>
                     <SeverityBadge
@@ -527,15 +528,13 @@ export default function Application3DDetail({
                         {
                           key: 'policy',
                           label: t('dashboard.application3DPolicy'),
-                          value: alarmDetail.alarm.policy.name,
+                          value: formatDegradedText(alarmDetail.alarm.policy.name),
                         },
-                        ...(alarmDetail.alarm.metric.name
-                          ? [{
-                            key: 'metric',
-                            label: t('dashboard.application3DMetric'),
-                            value: alarmDetail.alarm.metric.name,
-                          }]
-                          : []),
+                        {
+                          key: 'metric',
+                          label: t('dashboard.application3DMetric'),
+                          value: formatDegradedText(alarmDetail.alarm.metric.name),
+                        },
                         {
                           key: 'notification',
                           label: t('dashboard.application3DNotification'),
@@ -683,7 +682,7 @@ export default function Application3DDetail({
                           <div className="min-w-0 flex-1">
                             <div className="app3d-alarm-row__title">{alarm.content}</div>
                             <div className="app3d-alarm-row__meta">
-                              {`${alarm.resource.name} · ${alarm.policyName}`}
+                              {`${alarm.resource.name} · ${formatDegradedText(alarm.policyName)}`}
                             </div>
                           </div>
                           <SeverityBadge

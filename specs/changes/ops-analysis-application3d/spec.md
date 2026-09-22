@@ -2,6 +2,8 @@
 
 Status: implemented (pending review) — 部署架构 scene state added on 2026-09-01
 
+> 后续修订：partial permission / 隐藏策略 / 不可见 Host 或子 Application 不再把整张系统打成 `unknown/unavailable`；策略对象不可见也不再因「策略不完整」丢掉可见告警。现行是可见范围健康与监控覆盖，告警与监控告警列表同一套可见性。下文一期正文里「整张系统 unavailable / 不得产生部分计数」两条已被该修订取代，不再作为现行契约。
+
 ## Implementation Evidence (WIP)
 
 - Backend domain: `server/apps/operation_analysis/services/application3d/`（QueryService、health/severity/notifications、exact relation projection、Share/Normal 共用）。

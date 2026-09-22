@@ -4,8 +4,8 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import {
+  buildFilterConfigConfirmSnapshot,
   syncAndFillOrganizationFilterValues,
-  syncFilterValuesWithDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 interface QuerySnapshot {
@@ -64,15 +64,17 @@ export const useOpsAnalysisQueryState = () => {
 
   const applyFilterConfigConfirm = useCallback(
     (nextDefinitions: UnifiedFilterDefinition[]) => {
-      setDefinitionsState(nextDefinitions);
-      setFilterValuesState((current) =>
-        syncFilterValuesWithDefinitions(nextDefinitions, current),
+      const snapshot = buildFilterConfigConfirmSnapshot(
+        nextDefinitions,
+        filterValues,
+        appliedFilterValues,
+        definitions,
       );
-      setAppliedFilterValuesState((current) =>
-        syncFilterValuesWithDefinitions(nextDefinitions, current),
-      );
+      setDefinitionsState(snapshot.definitions);
+      setFilterValuesState(snapshot.filterValues);
+      setAppliedFilterValuesState(snapshot.appliedFilterValues);
     },
-    [],
+    [appliedFilterValues, definitions, filterValues],
   );
 
   const setDefinitions = applyFilterConfigConfirm;
