@@ -64,6 +64,7 @@ const IM_CALLBACK_TYPES = new Set([
   'enterprise_wechat',
   'enterprise_wechat_aibot',
   'dingtalk',
+  'feishu',
   'wechat_official',
 ]);
 
@@ -150,6 +151,7 @@ const CHANNEL_OPTIONS = [
   { value: 'enterprise_wechat' },
   { value: 'enterprise_wechat_aibot' },
   { value: 'dingtalk' },
+  { value: 'feishu' },
   { value: 'wechat_official' },
 ];
 
@@ -160,6 +162,7 @@ const CHANNEL_META: Record<string, { icon: string; color: string }> = {
   enterprise_wechat: { icon: 'qiwei2', color: 'green' },
   enterprise_wechat_aibot: { icon: 'qiwei2', color: 'green' },
   dingtalk: { icon: 'dingding', color: 'orange' },
+  feishu: { icon: 'feishu', color: 'blue' },
   wechat_official: { icon: 'weixingongzhonghao', color: 'lime' },
 };
 
@@ -167,6 +170,7 @@ const CONFIG_FIELDS: Record<string, string[]> = {
   enterprise_wechat: ['token', 'secret', 'aes_key', 'corp_id', 'agent_id'],
   enterprise_wechat_aibot: ['token', 'encodingAESKey'],
   dingtalk: ['client_id', 'client_secret'],
+  feishu: ['app_id', 'app_secret', 'encrypt_key', 'verification_token'],
   wechat_official: ['token', 'secret', 'aes_key', 'app_id'],
   platform: [],
   web_chat: [],
@@ -181,7 +185,7 @@ const channelFieldLabel = (t: (key: string, fallback?: string) => string, field:
 
 const isSecretConfigField = (field: string) => {
   const key = field.toLowerCase();
-  return key.includes('secret') || key.includes('token') || key.includes('aes');
+  return key.includes('secret') || key.includes('token') || key.includes('aes') || key.includes('key');
 };
 
 const ChannelTypeIcon: React.FC<{ channelType: string; className?: string }> = ({
@@ -773,7 +777,7 @@ const SkillChannelPage: React.FC = () => {
               label={t('skill.channel.callbackUrl', '回调地址')}
               extra={t(
                 'skill.channel.callbackUrlHint',
-                '复制此地址到企微 / 钉钉 / 公众号后台。请先点确定保存，再让对方校验该 URL。'
+                '复制此地址到企微 / 钉钉 / 飞书 / 公众号后台。请先点确定保存，再让对方校验该 URL。'
               )}
             >
               <Space.Compact className="w-full">

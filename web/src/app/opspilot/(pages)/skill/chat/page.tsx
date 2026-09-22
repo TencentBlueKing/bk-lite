@@ -35,6 +35,7 @@ const CHANNEL_TYPE_TAG: Record<string, { color: string; label: string }> = {
   enterprise_wechat: { color: 'green', label: '企微' },
   enterprise_wechat_aibot: { color: 'green', label: '企微机器人' },
   dingtalk: { color: 'orange', label: '钉钉' },
+  feishu: { color: 'blue', label: '飞书' },
   wechat_official: { color: 'green', label: '公众号' },
 };
 

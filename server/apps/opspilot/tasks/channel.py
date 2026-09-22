@@ -1,8 +1,8 @@
 from celery import shared_task
 
 from apps.core.logger import opspilot_logger as logger
-
 from apps.opspilot.tasks._common import _get_bot_chat_flow, _run_channel_message, _run_in_native_thread
+
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_wechat_message", queue="opspilot_channel")
 def process_wechat_message(self, bot_id, msg_id, message, sender_id, config):
@@ -25,7 +25,9 @@ def process_wechat_message(self, bot_id, msg_id, message, sender_id, config):
     return _run_channel_message(self, WechatChatFlowUtils, bot_id, msg_id, message, sender_id, config, "微信")
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_enterprise_wechat_aibot_message", queue="opspilot_channel")
+@shared_task(
+    bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_enterprise_wechat_aibot_message", queue="opspilot_channel"
+)
 def process_enterprise_wechat_aibot_message(self, bot_id, msg_id, message, sender_id, config):
     """处理企微智能机器人短连接消息的 Celery 任务。"""
     from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
@@ -56,7 +58,9 @@ def process_enterprise_wechat_aibot_message(self, bot_id, msg_id, message, sende
         raise self.retry(exc=e)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_enterprise_wechat_aibot_reply", queue="opspilot_channel")
+@shared_task(
+    bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_enterprise_wechat_aibot_reply", queue="opspilot_channel"
+)
 def process_enterprise_wechat_aibot_reply(self, bot_id, msg_id, response_url, content):
     """异步发送企微智能机器人回复，发送成功后再标记消息完成。"""
     from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
@@ -163,7 +167,9 @@ def process_skill_channel_im_message(self, channel_id, channel_type, method, que
     return {"accepted": True, "channel_id": channel_id, "skill_id": channel.skill_id}
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_aibot_message", queue="opspilot_channel")
+@shared_task(
+    bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_aibot_message", queue="opspilot_channel"
+)
 def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sender_id, config):
     """智能体企微 aibot：异步单 Agent 执行后投递回覆任务。"""
     from apps.opspilot.models import SkillChannel
@@ -231,7 +237,9 @@ def process_skill_channel_aibot_reply(self, channel_id, msg_id, response_url, co
         raise self.retry(exc=e)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_wechat_message", queue="opspilot_channel")
+@shared_task(
+    bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_wechat_message", queue="opspilot_channel"
+)
 def process_skill_channel_wechat_message(self, channel_id, msg_id, message, sender_id, config):
     """智能体企微应用：异步单 Agent 执行并 API 回覆。"""
     from apps.opspilot.models import SkillChannel
@@ -276,7 +284,13 @@ def process_skill_channel_wechat_message(self, channel_id, msg_id, message, send
         raise self.retry(exc=e)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_wechat_official_message", queue="opspilot_channel")
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    name="apps.opspilot.tasks.process_skill_channel_wechat_official_message",
+    queue="opspilot_channel",
+)
 def process_skill_channel_wechat_official_message(self, channel_id, msg_id, message, sender_id, config):
     """智能体微信公众号：异步单 Agent 执行并客服消息回覆。"""
     from apps.opspilot.models import SkillChannel
@@ -321,7 +335,9 @@ def process_skill_channel_wechat_official_message(self, channel_id, msg_id, mess
         raise self.retry(exc=e)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_dingtalk_message", queue="opspilot_channel")
+@shared_task(
+    bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_dingtalk_message", queue="opspilot_channel"
+)
 def process_skill_channel_dingtalk_message(self, channel_id, msg_id, text_content, sender_id, webhook_url, config):
     """智能体钉钉 HTTP：异步单 Agent 执行并 webhook markdown 回覆。"""
     from apps.opspilot.models import SkillChannel
@@ -358,6 +374,56 @@ def process_skill_channel_dingtalk_message(self, channel_id, msg_id, text_conten
             return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}
         except Exception:
             logger.exception("skill dingtalk 消息处理失败 channel_id=%s msg_id=%s", channel_id, msg_id)
+            handler.mark_message_failed(msg_id)
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        raise self.retry(exc=e)
+
+
+@shared_task(
+    bind=True, max_retries=3, default_retry_delay=60, name="apps.opspilot.tasks.process_skill_channel_feishu_message", queue="opspilot_channel"
+)
+def process_skill_channel_feishu_message(self, channel_id, msg_id, text_content, sender_id, config):
+    """智能体飞书：异步单 Agent 执行，并用消息 ID 回复。"""
+    from apps.opspilot.models import SkillChannel
+    from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
+    from apps.opspilot.services.skill_channel_feishu import SkillChannelFeishuUtils
+
+    def _execute():
+        handler = SkillChannelFeishuUtils(channel_id)
+        try:
+            channel = (
+                SkillChannel.objects.filter(
+                    id=channel_id,
+                    channel_type="feishu",
+                    enabled=True,
+                )
+                .select_related("skill")
+                .first()
+            )
+            if not channel:
+                logger.info("skill feishu 跳过：渠道不存在或已下线 channel_id=%s", channel_id)
+                handler.mark_message_failed(msg_id)
+                return {"skipped": True}
+
+            reply_text = execute_skill_channel_im_sync(
+                channel=channel,
+                user_message=text_content or "",
+                external_user_id=sender_id or "",
+                session_id=sender_id or None,
+            )
+            reply_config = dict(config or {})
+            reply_config["message_id"] = msg_id
+            if reply_text:
+                handler.send_reply(reply_text, sender_id or "", reply_config)
+            handler.mark_message_completed(msg_id)
+            logger.info("skill feishu 处理完成 channel_id=%s msg_id=%s", channel_id, msg_id)
+            return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}
+        except Exception:
+            logger.exception("skill feishu 消息处理失败 channel_id=%s msg_id=%s", channel_id, msg_id)
             handler.mark_message_failed(msg_id)
             raise
 

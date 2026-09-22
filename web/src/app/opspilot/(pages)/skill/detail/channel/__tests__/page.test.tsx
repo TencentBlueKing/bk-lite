@@ -185,7 +185,7 @@ describe('SkillChannelPage', () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue(expectedUrl)).toBeTruthy();
       expect(
-        screen.getByText('复制此地址到企微 / 钉钉 / 公众号后台。请先点确定保存，再让对方校验该 URL。')
+        screen.getByText('复制此地址到企微 / 钉钉 / 飞书 / 公众号后台。请先点确定保存，再让对方校验该 URL。')
       ).toBeTruthy();
     });
 

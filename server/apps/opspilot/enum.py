@@ -20,6 +20,7 @@ class SkillChannelChoices(models.TextChoices):
     ENTERPRISE_WECHAT = ("enterprise_wechat", _("Enterprise WeChat"))
     ENTERPRISE_WECHAT_AIBOT = ("enterprise_wechat_aibot", _("Enterprise WeChat AI Bot"))
     DINGTALK = ("dingtalk", _("Ding Talk"))
+    FEISHU = ("feishu", _("Feishu"))
     WECHAT_OFFICIAL = ("wechat_official", _("WeChat Official Account"))
 
 
@@ -29,6 +30,7 @@ SKILL_CHANNEL_SKIP_ORG_CHECK = frozenset(
         SkillChannelChoices.ENTERPRISE_WECHAT,
         SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT,
         SkillChannelChoices.DINGTALK,
+        SkillChannelChoices.FEISHU,
         SkillChannelChoices.WECHAT_OFFICIAL,
     }
 )
