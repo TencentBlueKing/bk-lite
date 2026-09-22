@@ -364,6 +364,19 @@
     },
     {
       "metric_group": "Memory",
+      "name": "mem_available",
+      "query": "mem_available_gauge{instance_type=\"os\", config_type=\"host_solaris_remote\", __$labels__}",
+      "display_name": "Available Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available physical memory in bytes (free pages plus ZFS ARC when present)"
+    },
+    {
+      "metric_group": "Memory",
       "name": "mem_swap_free",
       "query": "mem_swap_free_gauge{instance_type=\"os\", config_type=\"host_solaris_remote\", __$labels__}",
       "display_name": "Swap Free Memory",

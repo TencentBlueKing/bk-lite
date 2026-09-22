@@ -29,6 +29,15 @@ def _to_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _to_optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _to_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
@@ -46,17 +55,17 @@ class CpuModule(WmiModule):
     name = "cpu"
 
     def collect(self, client):
-        usage = 0.0
         processor_rows = client.query_class("Win32_PerfFormattedData_PerfOS_Processor")
         total_row = next((row for row in processor_rows if str(row.get("Name") or "") == "_Total"), None)
         percent = _to_float((total_row or {}).get("PercentProcessorTime"))
-        if percent is not None:
-            usage = _clamp_percent(percent)
 
         cpu_rows = client.query_class("Win32_Processor")
         logical_counts = [_to_int(row.get("NumberOfLogicalProcessors")) for row in cpu_rows]
         cores = sum(logical_counts) or len(cpu_rows)
-        return {"usage_percent": usage, "core_count": cores}
+        result = {"core_count": cores}
+        if percent is not None:
+            result["usage_percent"] = _clamp_percent(percent)
+        return result
 
 
 class MemoryModule(WmiModule):
@@ -68,21 +77,23 @@ class MemoryModule(WmiModule):
         total = int(row.get("TotalVisibleMemorySize") or 0) * 1024
         raw_memory = client.query_class("Win32_PerfRawData_PerfOS_Memory")
         raw_row = raw_memory[0] if raw_memory else {}
-        available = _to_int(raw_row.get("AvailableBytes"))
-        if available <= 0:
+        available = _to_optional_int(raw_row.get("AvailableBytes"))
+        if available is None:
             formatted = client.query_class("Win32_PerfFormattedData_PerfOS_Memory")
             formatted_row = formatted[0] if formatted else {}
-            available = _to_int(formatted_row.get("AvailableMBytes")) * 1024 * 1024
+            available_mb = _to_optional_int(formatted_row.get("AvailableMBytes"))
+            if available_mb is not None:
+                available = available_mb * 1024 * 1024
+        result = {"total_bytes": total}
+        if available is None:
+            return result
         if total and available > total:
             available = total
         used = max(total - available, 0)
-        used_percent = round((used / total) * 100, 2) if total else 0
-        return {
-            "total_bytes": total,
-            "available_bytes": available,
-            "used_bytes": used,
-            "used_percent": used_percent,
-        }
+        result["available_bytes"] = available
+        result["used_bytes"] = used
+        result["used_percent"] = round((used / total) * 100, 2) if total else 0
+        return result
 
 
 class DiskModule(WmiModule):

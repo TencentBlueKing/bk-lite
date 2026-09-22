@@ -71,6 +71,9 @@ monitor_object_metric:
     mem_used_percent:
       name: 内存使用率
       desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    mem_available:
+      name: 可用内存
+      desc: 表示当前可回收的可用物理内存（空闲页加 client 文件页）。
     mem_swap_free:
       name: 空闲交换内存
       desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。

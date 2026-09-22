@@ -89,6 +89,9 @@ monitor_object_metric:
     mem_used_percent:
       name: Memory Usage
       desc: Represents the percentage of memory currently in use, indicating overall memory pressure.
+    mem_available:
+      name: Available Memory
+      desc: Available physical memory in bytes, treating free plus client file pages as reclaimable.
     mem_swap_free:
       name: Swap Free Memory
       desc: Represents the amount of free swap space available, used to monitor buffering capacity under

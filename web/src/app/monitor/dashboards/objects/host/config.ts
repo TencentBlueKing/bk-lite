@@ -117,7 +117,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '可用内存',
       description: '主机当前可用内存。',
       unit: 'bytes',
-      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or mem_available_gauge{instance_type="os", config_type=~"host_(aix|freebsd|solaris)_remote", __$labels__}',
       color: HOST_PALETTE.cyan
     },
     {
