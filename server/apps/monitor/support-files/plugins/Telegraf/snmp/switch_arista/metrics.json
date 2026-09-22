@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_arista",
   "plugin": "Switch Arista SNMP",
-  "plugin_desc": "Arista EOS switch SNMP collection. Beyond standard IF-MIB interface metrics, it collects HOST-RESOURCES CPU (hrProcessorLoad, averaged across cores) and RAM (hrStorageUsed/hrStorageSize, RAM rows selected by hrStorageDescr), plus ENTITY-SENSOR temperature (entPhySensorValue with type celsius, converted by scale and precision). Fan and power-supply state are not collected because ENTITY-STATE still requires an entity-class join. Supported brands/models — Arista Networks EOS data-center switches (7050/7060/7280/7300/7500 series and other EOS platforms).",
+  "plugin_desc": "Arista EOS switch SNMP collection (HOST-RESOURCES, ENTITY-SENSOR-MIB, ENTITY-STATE-MIB). Device-health objects include CPU via hrProcessorLoad (per-core, averaged), RAM used/total via hrStorageUsed/hrStorageSize with RAM rows selected by hrStorageDescr (allocation units converted to bytes), temperature via entPhySensorValue filtered to celsius(8) and converted by scale/precision, plus fan and power-supply operational state from entStateOper joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad. Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — Arista Networks EOS data-center switches (7050/7060/7280/7300/7500 series and other EOS platforms).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_arista'}) by (instance_id)",
   "name": "Switch",
@@ -17,7 +17,9 @@
     "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage",
-    "device_temperature_celsius"
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
@@ -89,6 +91,50 @@
         "instance_id"
       ],
       "description": "This metric reports the highest ENTITY-SENSOR temperature reading on the Arista EOS switch, in degrees Celsius. Only sensors whose type is celsius are kept, and the raw value is converted with entPhySensorScale and entPhySensorPrecision. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', entPhysicalClass='7', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each Arista EOS cooling fan (ENTITY-STATE-MIB entStateOper joined with ENTITY-MIB entPhysicalClass fan=7), normalized so that 1 means ok (enabled) and 2 means bad. A non-ok state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', entPhysicalClass='6', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each Arista EOS power supply (ENTITY-STATE-MIB entStateOper joined with ENTITY-MIB entPhysicalClass powerSupply=6), normalized so that 1 means ok (enabled) and 2 means bad. A non-ok state signals a power redundancy or hardware fault and must be remediated promptly."
     },
     {
       "metric_group": "Traffic",
