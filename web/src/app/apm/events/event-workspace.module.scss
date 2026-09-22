@@ -29,15 +29,13 @@
 
 .filterRow,
 .filterGroup,
-.timeGroup,
-.policyToolbar {
+.timeGroup {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
 }
 
-.filterRow,
-.policyToolbar {
+.filterRow {
   justify-content: space-between;
   gap: 12px;
 }
@@ -618,10 +616,6 @@
   min-width: 0;
 }
 
-.policyToolbar {
-  margin-bottom: 0;
-}
-
 .policyNameLink,
 .policyServiceName {
   display: block;
@@ -948,8 +942,7 @@
 }
 
 @media (max-width: 900px) {
-  .filterRow,
-  .policyToolbar {
+  .filterRow {
     align-items: stretch;
     flex-direction: column;
   }
