@@ -1,0 +1,35 @@
+Wireless Cisco SNMP:
+  name: Cisco（Telegraf）
+  desc: 面向 Cisco AireOS WLC 与 Catalyst 9800 无线控制器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率与已连接 AP 数。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示无线控制器自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Cisco 无线控制器的整体 CPU 使用率。AireOS 以 0-100 百分比直接上报；Catalyst 9800 回退为 5 分钟平均。持续偏高可能表示接入点或客户端管理负载过高，会影响漫游与管理响应。
+    device_memory_total:
+      name: 内存总量
+      desc: 无线控制器内存总量（字节）。AireOS 来自 agentTotalMemory（KBytes×1024）；Catalyst 9800 由已用加空闲内存推导。
+    device_memory_free:
+      name: 内存空闲
+      desc: 无线控制器空闲内存（字节，KBytes×1024）。AireOS 来自 agentFreeMemory；Catalyst 9800 来自 CPU 范围空闲内存。
+    device_memory_used:
+      name: 内存已用
+      desc: 无线控制器已用内存（字节）。AireOS 按 总量 − 空闲 推导；Catalyst 9800 直接采集已用内存。
+    device_memory_usage:
+      name: 内存使用率
+      desc: Cisco 无线控制器的整体内存使用率。AireOS 按 100×（总量−空闲）/总量；Catalyst 9800 按 100×已用/（已用+空闲）。内存压力过高会影响接入点加入与客户端漫游。
+    wireless_ap_count:
+      name: 已连接 AP 数
+      desc: 当前已连接到无线控制器的接入点数量。数值突然下降可能表示接入点断连或控制器发生切换。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    Traffic: 流量
+    Wireless: 无线
