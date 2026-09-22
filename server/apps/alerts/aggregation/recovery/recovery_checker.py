@@ -126,10 +126,13 @@ class AlertRecoveryChecker:
                 len(created_events),
             )
 
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
         from apps.alerts.service.recovery_notify import notify_alert_recovered
         from apps.alerts.service.reminder_service import ReminderService
 
         ReminderService.stop_reminder_task(alert)
+        recovered_alert_id = alert.alert_id
         transaction.on_commit(lambda a=alert: notify_alert_recovered(a))
+        transaction.on_commit(lambda aid=recovered_alert_id: dispatch_alert_lifecycle([aid], "resolved"))
 
         return True

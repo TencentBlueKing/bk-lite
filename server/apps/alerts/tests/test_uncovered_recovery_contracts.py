@@ -48,6 +48,11 @@ def test_auto_closer_skips_unidentifiable_events_and_closes_all_matches(
         "objects",
         SimpleNamespace(filter=filter_alerts),
     )
+    dispatched = []
+    monkeypatch.setattr(
+        "apps.alerts.service.alert_lifecycle.dispatch_alert_lifecycle",
+        lambda alert_ids, event_name: dispatched.append((list(alert_ids), event_name)),
+    )
     events = _Events(
         [
             SimpleNamespace(external_id=""),
@@ -72,4 +77,8 @@ def test_auto_closer_skips_unidentifiable_events_and_closes_all_matches(
     assert saved == [
         ("A-1", {"update_fields": ["status", "updated_at", "closed_at"]}),
         ("A-2", {"update_fields": ["status", "updated_at", "closed_at"]}),
+    ]
+    assert dispatched == [
+        (["A-1"], "closed"),
+        (["A-2"], "closed"),
     ]
