@@ -680,8 +680,7 @@ export default function AlertDetailDrawer({
                 <div className={styles.alertDetailCloseRow}>
                   <AlertHandlerActions
                     alert={alert}
-                    closeText={t('apm.alerts.closeAlert', '关闭告警')}
-                    closeDanger
+                    closeText={t('apm.common.close', '关闭')}
                     size="middle"
                     onSuccess={onHandlerActionSuccess}
                   />

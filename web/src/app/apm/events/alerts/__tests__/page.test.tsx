@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmAlertsPage from '../page';
@@ -373,7 +373,7 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
 
     expect(await screen.findByText('告警信息')).not.toBeNull();
     expect(screen.getByText(/所属服务/)).not.toBeNull();
-    expect(screen.getByRole('button', { name: '关闭告警' })).not.toBeNull();
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: '关闭' })).not.toBeNull();
     expect(await screen.findByText('评估值 / 当时阈值 / 生命周期事件')).not.toBeNull();
     expect(screen.getByText(/告警指标快照/)).not.toBeNull();
     expect(screen.getByText(/每点一次策略扫描/)).not.toBeNull();

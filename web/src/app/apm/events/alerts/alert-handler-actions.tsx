@@ -13,7 +13,6 @@ import { canClaimOrAssignAlert, canReassignAlert } from './alertHandlerUtils';
 interface AlertHandlerActionsProps {
   alert: ApmAlert;
   closeText: string;
-  closeDanger?: boolean;
   size?: 'small' | 'middle';
   onSuccess: () => void;
 }
@@ -21,7 +20,6 @@ interface AlertHandlerActionsProps {
 export default function AlertHandlerActions({
   alert,
   closeText,
-  closeDanger = false,
   size = 'small',
   onSuccess,
 }: AlertHandlerActionsProps) {
@@ -127,9 +125,9 @@ export default function AlertHandlerActions({
             onConfirm={handleClose}
           >
             <Button
-              type={closeDanger ? 'primary' : 'link'}
-              danger
+              type="link"
               size={size}
+              className="p-0"
               disabled={alert.status !== 'active'}
               onClick={(event) => event.stopPropagation()}
             >
