@@ -1,7 +1,8 @@
 Switch Juniper SNMP:
   name: Juniper (Telegraf)
-  desc: SNMP monitoring template for Juniper switch. It reports CPU utilization, memory
-    utilization, system uptime, and other key metrics
+  desc: SNMP monitoring template for Juniper switches. Device health comes
+    from JUNIPER-MIB jnxOperating; optical DDM comes from JUNIPER-DOM-MIB;
+    interface traffic uses the built-in IF-MIB floor.
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -14,12 +15,27 @@ monitor_object_metric:
         may indicate unstable power and hardware risk.
     device_optical_rx_power:
       name: SFP RX Power
-      desc: Optical receive power reading of the SFP/SFP+ module. Abnormally low Rx
-        power may indicate link attenuation, dirty fiber, or a faulty peer transmitter.
+      desc: Optical receive power reading of the SFP/SFP+ module. The device reports
+        0.01 dBm units; the query scales by 1/100. Abnormally low Rx power may indicate
+        link attenuation, dirty fiber, or a faulty peer transmitter.
     device_optical_tx_power:
       name: SFP TX Power
-      desc: Optical transmit power reading of the SFP/SFP+ module. Abnormal Tx power
-        may indicate an aging or failing optical module.
+      desc: Optical transmit power reading of the SFP/SFP+ module. The device reports
+        0.01 dBm units; the query scales by 1/100. Abnormal Tx power may indicate
+        an aging or failing optical module.
+    device_optical_temperature:
+      name: Optical Module Temperature
+      desc: Temperature of each optical module, in degrees Celsius. High module
+        temperature accelerates laser aging and can precede optical power failure.
+    device_optical_voltage:
+      name: Optical Module Voltage
+      desc: Supply voltage of each optical module in volts (0.001 V units scaled by
+        1/1000). Out-of-range voltage can cause unstable optics.
+    device_optical_bias:
+      name: Optical Module Bias
+      desc: Laser bias current of each optical module in milliamperes (0.001 mA units
+        scaled by 1/1000). Rising bias at constant TX power is a common aging signal
+        for the laser.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.
