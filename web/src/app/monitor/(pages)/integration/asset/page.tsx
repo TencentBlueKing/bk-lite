@@ -64,6 +64,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { buildAssetViewUrl } from './viewRoute';
 import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
+import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -1315,8 +1316,8 @@ const Asset = () => {
           <div className={assetStyle.search}>
             <Input
               allowClear
-              className="w-full max-w-[320px] min-w-0"
-              placeholder={t('common.searchPlaceHolder')}
+              placeholder={t(getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId)))}
+              className="w-full max-w-[420px] min-w-0"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               onPressEnter={() => getAssetInsts(objectId)}

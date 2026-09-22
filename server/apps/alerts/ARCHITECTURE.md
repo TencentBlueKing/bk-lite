@@ -422,7 +422,7 @@ sequenceDiagram
 
 关键约束：
 
-- 当前已接入 Action 的生命周期事件包括 `created`、`assigned`、`acknowledged`、`reassigned`、`closed` 和 `resolved`；自动恢复目前只更新告警状态并停止提醒，不派发独立的 `recovered` Action。
+- 当前已接入 Action 的生命周期事件包括 `created`、`assigned`、`acknowledged`、`reassigned`、`closed` 和 `resolved`。人工关闭与超时自动关闭派发 `closed`；人工标记已处理与自动恢复派发 `resolved`。
 - 自动触发使用稳定幂等键，同一规则、告警和已接入 Action 的生命周期事件只产生一次执行。
 - 手工触发要求调用方提供幂等键，网络重试不会重复执行远程作业。
 - 脚本查询、目标解析和作业下发统一使用 `alert.team ∩ rule.team`，禁止通过多团队规则扩大执行范围。

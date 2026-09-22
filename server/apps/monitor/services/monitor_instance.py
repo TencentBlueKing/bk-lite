@@ -5,6 +5,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
+from django.db.models import Q
+from django.db.models.fields.json import KeyTextTransform
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
@@ -33,6 +36,9 @@ FIELD_PARAM_PREFIX = "field:"
 
 # 字段展示列候选项上限：label 取值是开放集合，配合下拉内检索使用，避免下发超大列表。
 FIELD_OPTION_LIMIT = int(os.getenv("MONITOR_FIELD_OPTION_LIMIT", "500"))
+
+PROBE_OBJECT_NAMES = {"Website", "Ping", "TCPPort"}
+PROBE_SEARCH_FACTS = frozenset({"collector.nodes", "probe.target"})
 
 
 class InstanceSearch:
@@ -945,15 +951,91 @@ class InstanceSearch:
         """兼容旧测试：仅保留 0/1。"""
         return InstanceSearch.normalize_csv_values(alive_raw) & {"0", "1"}
 
+    @staticmethod
+    def apply_keyword_search(qs, monitor_obj, keyword):
+        """资产搜索框：名称/IP 模糊匹配；拨测补节点与目标；进程补进程名、主机名和主机 IP。"""
+        text = str(keyword or "").strip()
+        if not text:
+            return qs
+
+        qs = qs.annotate(_keyword_asset_ip=KeyTextTransform("asset.ip", "summary_facts"))
+        filters = Q(name__icontains=text) | Q(ip__icontains=text) | Q(_keyword_asset_ip__icontains=text)
+
+        if InstanceSearch._supports_probe_keyword_search(monitor_obj):
+            qs = qs.annotate(_keyword_probe_target=KeyTextTransform("probe.target", "summary_facts"))
+            filters |= Q(_keyword_probe_target__icontains=text)
+            node_ids = InstanceSearch._probe_node_keyword_ids(qs, text)
+            if node_ids:
+                filters |= Q(id__in=node_ids)
+
+        if getattr(monitor_obj, "name", None) == "Process":
+            filters |= Q(id__icontains=text)
+            host_q = InstanceSearch._process_host_keyword_q(text)
+            if host_q is not None:
+                filters |= host_q
+
+        return qs.filter(filters)
+
+    @staticmethod
+    def _probe_node_keyword_ids(qs, keyword):
+        """拨测节点是 JSON 列表，跨库没有稳定的子串提取，按当前对象实例做名称/IP 匹配。"""
+        needle = str(keyword).casefold()
+        matched_ids = []
+        for instance_id, facts in qs.values_list("id", "summary_facts"):
+            if InstanceSearch._probe_nodes_match(facts, needle):
+                matched_ids.append(instance_id)
+        return matched_ids
+
+    @staticmethod
+    def _probe_nodes_match(facts, needle):
+        if not isinstance(facts, dict):
+            return False
+        nodes = facts.get("collector.nodes")
+        if not isinstance(nodes, list):
+            return False
+        for node in nodes:
+            values = [node] if not isinstance(node, dict) else [node.get("name"), node.get("ip"), node.get("id")]
+            for value in values:
+                if value not in (None, "") and needle in str(value).casefold():
+                    return True
+        return False
+
+    @staticmethod
+    def _supports_probe_keyword_search(monitor_obj):
+        if getattr(monitor_obj, "name", None) in PROBE_OBJECT_NAMES:
+            return True
+        columns = getattr(monitor_obj, "instance_summary_columns", None) or []
+        facts = {column.get("fact") for column in columns if isinstance(column, dict)}
+        return bool(facts & PROBE_SEARCH_FACTS)
+
+    @staticmethod
+    def _process_host_keyword_q(keyword):
+        host_ids = (
+            MonitorInstance.objects.filter(
+                monitor_object__name="Host",
+                is_deleted=False,
+            )
+            .annotate(_keyword_asset_ip=KeyTextTransform("asset.ip", "summary_facts"))
+            .filter(Q(name__icontains=keyword) | Q(ip__icontains=keyword) | Q(_keyword_asset_ip__icontains=keyword))
+            .values_list("id", flat=True)
+        )
+        host_q = Q()
+        matched = False
+        for host_id in host_ids:
+            parts = parse_instance_id(host_id)
+            if not parts:
+                continue
+            matched = True
+            host_q |= Q(id__startswith=f"('{parts[0]}',")
+        return host_q if matched else None
+
     def get_objs(self):
         qs = self.qs.filter(
             monitor_object_id=self.monitor_obj.id,
             is_deleted=False,
             is_active=True,
         )
-        name = self.query_data.get("name")
-        if name:
-            qs = qs.filter(name__icontains=name)
+        qs = InstanceSearch.apply_keyword_search(qs, self.monitor_obj, self.query_data.get("name"))
         qs = self._apply_process_filters(qs)
 
         # 去除重复
@@ -968,9 +1050,7 @@ class InstanceSearch:
             is_deleted=False,
             is_active=True,
         )
-        name = self.query_data.get("name")
-        if name:
-            qs = qs.filter(name__icontains=name)
+        qs = InstanceSearch.apply_keyword_search(qs, self.monitor_obj, self.query_data.get("name"))
         qs = self._apply_process_filters(qs)
         from apps.monitor.services.collect_config_update import CollectConfigUpdateService
 

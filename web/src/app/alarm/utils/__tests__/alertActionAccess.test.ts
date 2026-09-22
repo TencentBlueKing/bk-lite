@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   alarmActionsForStatus,
+  canManuallyTriggerAlertAction,
   canReassignAlert,
 } from '../alertActionAccess';
 
@@ -48,4 +49,20 @@ describe('alarmActionsForStatus', () => {
   it('never exposes close on pending, even for a superuser', () => {
     expect(alarmActionsForStatus('pending', { isSuperUser: true })).not.toContain('close');
   });
+});
+
+describe('canManuallyTriggerAlertAction', () => {
+  it.each(['pending', 'processing', 'unassigned'])(
+    'allows manual action on %s alerts',
+    (status) => {
+      expect(canManuallyTriggerAlertAction(status)).toBe(true);
+    }
+  );
+
+  it.each(['closed', 'auto_close', 'auto_recovery', 'resolved'])(
+    'forbids manual action on ended %s alerts',
+    (status) => {
+      expect(canManuallyTriggerAlertAction(status)).toBe(false);
+    }
+  );
 });

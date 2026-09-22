@@ -160,6 +160,7 @@ class TimeoutChecker:
         )
 
         closed_count = 0
+        closed_alert_ids = []
         from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
 
         for batch in iter_queryset_in_pk_batches(observing_alerts, batch_size=200):
@@ -170,6 +171,7 @@ class TimeoutChecker:
                 Alert.stamp_closed_at(alert)
                 alert.save(update_fields=["status", "updated_at", "session_status", "closed_at"])
                 closed_count += 1
+                closed_alert_ids.append(alert.alert_id)
 
                 logger.info(
                     "[AlertRecovery] 会话策略删除关闭告警: strategy_id=%s, alert_id=%s, fingerprint=%s, 原状态=%s, session_status=OBSERVING",
@@ -178,6 +180,11 @@ class TimeoutChecker:
                     alert.fingerprint,
                     original_status,
                 )
+
+        if closed_alert_ids:
+            from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
+
+            dispatch_alert_lifecycle(closed_alert_ids, "closed")
 
         logger.info(
             "[AlertRecovery] 会话策略删除关闭完成: strategy_id=%s, 关闭观察中告警数=%s",

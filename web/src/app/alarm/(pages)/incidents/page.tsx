@@ -18,6 +18,7 @@ import { incidentStates } from '@/app/alarm/constants/alarm';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useCommon } from '@/app/alarm/context/common';
 import { toIncidentLevelFilterOptions } from '@/app/alarm/utils/incidentLevelFilters';
+import { getIncidentDetailTriggerCellProps } from '@/app/alarm/utils/incidentTableColumns';
 import { KeepAlive, useActivate } from 'react-activation';
 
 const IncidentsPage: React.FC = () => {
@@ -54,12 +55,20 @@ const IncidentsPage: React.FC = () => {
     fetchIncidentList();
   };
 
+  const onOpenDetail = (record: IncidentTableDataItem) => {
+    router.push(
+      `/alarm/incidents/detail?id=${record.id}&incident_id=${record.incident_id}`
+    );
+  };
+
   const columns: ColumnsType<IncidentTableDataItem> = [
     {
       title: t('alarms.level'),
       dataIndex: 'level',
       key: 'level',
       width: 100,
+      onCell: (record) =>
+        getIncidentDetailTriggerCellProps(record, 'level', onOpenDetail),
       render: (_: any, { level }: IncidentTableDataItem) => {
         const target = levelListIncident.find(
           (item) => item.level_id === Number(level)
@@ -87,6 +96,8 @@ const IncidentsPage: React.FC = () => {
       dataIndex: 'title',
       key: 'title',
       width: 180,
+      onCell: (record) =>
+        getIncidentDetailTriggerCellProps(record, 'title', onOpenDetail),
     },
     {
       title: t('alarms.source'),
@@ -99,12 +110,16 @@ const IncidentsPage: React.FC = () => {
       dataIndex: 'alert_count',
       key: 'alert_count',
       width: 140,
+      onCell: (record) =>
+        getIncidentDetailTriggerCellProps(record, 'alert_count', onOpenDetail),
     },
     {
       title: t('alarms.state'),
       dataIndex: 'status',
       key: 'status',
       width: 120,
+      onCell: (record) =>
+        getIncidentDetailTriggerCellProps(record, 'status', onOpenDetail),
       render: (val: string) => t(`alarms.${val}`),
     },
     {
@@ -112,6 +127,8 @@ const IncidentsPage: React.FC = () => {
       dataIndex: 'duration',
       key: 'duration',
       width: 120,
+      onCell: (record) =>
+        getIncidentDetailTriggerCellProps(record, 'duration', onOpenDetail),
     },
     {
       title: t('alarms.assignee'),
@@ -132,14 +149,7 @@ const IncidentsPage: React.FC = () => {
       width: 100,
       render: (_: any, record: IncidentTableDataItem) => (
         <div className="flex items-center">
-          <Button
-            type="link"
-            onClick={() => {
-              router.push(
-                `/alarm/incidents/detail?id=${record.id}&incident_id=${record.incident_id}`
-              );
-            }}
-          >
+          <Button type="link" onClick={() => onOpenDetail(record)}>
             {t('common.detail')}
           </Button>
         </div>
