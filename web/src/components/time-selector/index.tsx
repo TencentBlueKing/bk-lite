@@ -286,13 +286,19 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
   };
 
   const isToolbar = appearance === 'toolbar';
-  const timeFieldWidthClass = isToolbar ? 'w-full' : 'w-[350px]';
+  const fillParentWidth = Boolean(
+    className && /(^|\s)w-full(\s|$)/.test(className),
+  );
+  const timeFieldWidthClass =
+    isToolbar || fillParentWidth ? 'w-full' : 'w-[350px]';
 
   return (
     <div
       className={`${timeSelectorStyle.timeSelector} ${
         isToolbar ? timeSelectorStyle.toolbar : ''
-      } ${selectValue === 0 ? timeSelectorStyle.customActive : ''} ${
+      } ${fillParentWidth ? timeSelectorStyle.fillWidth : ''} ${
+        selectValue === 0 ? timeSelectorStyle.customActive : ''
+      } ${
         pickerVisible ? timeSelectorStyle.pickerVisible : ''
       } ${className || ''}`}
     >
