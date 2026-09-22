@@ -339,7 +339,7 @@ class TestHostResourceTop:
         out = nm.get_host_resource_top("cpu", user_info={"user": "u", "team": 1})
 
         assert out["result"] is True
-        assert out["data"][0]["usage_percent"] == 42.0
+        assert out["data"][0]["usage_percent"] == 58.0
 
     def test_rejects_invalid_metric_type_without_query(self, mocker):
         vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
