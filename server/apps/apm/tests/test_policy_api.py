@@ -413,6 +413,7 @@ def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_cli
             availability="available",
         )
     ]
+    directory.validate_recipient_ids.return_value = {42}
     payload = _payload(_service(10))
     payload.update(
         {
@@ -438,6 +439,29 @@ def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_cli
         }
     ]
     assert ApmPolicyNotificationTarget.objects.filter(policy_id=created.data["id"]).count() == 1
+
+
+def test_policy_rejects_system_user_outside_current_organization(apm_api_client, mocker):
+    directory = mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory")
+    directory.list_available.return_value = [
+        NotificationChannel(
+            id=23,
+            name="邮件",
+            channel_type="email",
+            description="值班邮件",
+            delivery_mode="message",
+            recipient_mode="system_user",
+            availability="available",
+        )
+    ]
+    directory.validate_recipient_ids.return_value = set()
+    payload = _payload(_service(10))
+    payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
+
+    response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+
+    assert response.status_code == 400
+    assert "当前组织不可用" in response.data["notification_targets"]
 
 
 def test_notification_directory_outage_only_blocks_notification_configuration(apm_api_client, mocker):
