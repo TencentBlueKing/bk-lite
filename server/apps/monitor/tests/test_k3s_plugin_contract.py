@@ -68,13 +68,27 @@ def test_k3s_plugin_queries_and_metric_references_are_self_contained():
 
 
 def test_k3s_plugin_has_independent_localized_copy():
-    for locale in ("zh-Hans", "en"):
-        translations = yaml.safe_load(
-            (PLUGIN_DIR / "language" / f"{locale}.yaml").read_text(encoding="utf-8")
-        )
-        serialized = json.dumps(translations, ensure_ascii=False)
+    plugin = _load_plugin()
+    zh = yaml.safe_load((PLUGIN_DIR / "language" / "zh-Hans.yaml").read_text(encoding="utf-8"))
+    en = yaml.safe_load((PLUGIN_DIR / "language" / "en.yaml").read_text(encoding="utf-8"))
+
+    for locale_data in (zh, en):
+        serialized = json.dumps(locale_data, ensure_ascii=False)
         assert "K3S" in serialized
         assert "K8S" not in serialized
+
+    zh_metrics = zh["monitor_object_metric"]
+    zh_groups = zh["monitor_object_metric_group"]
+    for monitor_object in plugin["objects"]:
+        object_name = monitor_object["name"]
+        object_metrics = zh_metrics[object_name]
+        object_groups = zh_groups[object_name]
+        for metric in monitor_object["metrics"]:
+            assert metric["name"] in object_metrics
+            assert object_metrics[metric["name"]]["name"]
+            assert object_metrics[metric["name"]]["desc"]
+            assert metric["metric_group"] in object_groups
+            assert object_groups[metric["metric_group"]]
 
 
 @pytest.mark.django_db
