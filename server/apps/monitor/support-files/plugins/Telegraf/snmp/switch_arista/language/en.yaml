@@ -1,8 +1,8 @@
 Switch Arista SNMP:
   name: Arista (Telegraf)
-  desc: SNMP monitoring template for Arista switch. It reports CPU utilization,
-    memory used and total, temperature, per-port inbound traffic rate, per-port
-    outbound traffic rate, and other key metrics
+  desc: SNMP monitoring template for Arista EOS switches. Device health comes
+    from HOST-RESOURCES, ENTITY-SENSOR-MIB and ENTITY-STATE-MIB; interface
+    traffic uses the built-in IF-MIB floor.
 monitor_object:
   Switch: Switch
 monitor_object_type:
