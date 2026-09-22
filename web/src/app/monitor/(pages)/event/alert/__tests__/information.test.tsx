@@ -175,6 +175,31 @@ describe('告警详情信息', () => {
     expect(screen.getByRole('button', { name: /^关\s*闭$/ })).not.toBeNull();
   });
 
+  it('不是当前处理人时不展示关闭', () => {
+    const formData = {
+      id: 'alert-5',
+      status: 'new',
+      handlers: [8],
+      handlers_display: ['Alice(alice)'],
+      permission: ['Operate', 'Detail'],
+      policy: { notice: false, query_condition: { type: 'metric' } },
+    } as unknown as TableDataItem;
+
+    render(
+      <Information
+        formData={formData}
+        chartData={[]}
+        objects={[]}
+        userList={[]}
+        onClose={vi.fn()}
+        trapData={{}}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^关\s*闭$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^转\s*派$/ })).toBeNull();
+  });
+
   it('does not throw when objects is omitted or empty and falls back to --', () => {
     const formData = {
       id: 'alert-4',

@@ -71,6 +71,11 @@ def filter_my_handler_alerts(queryset, actor):
     return queryset.filter(build_json_membership_query(queryset, "handlers", handler_match_values(actor)))
 
 
+def ensure_manual_close_allowed(handlers, actor) -> None:
+    if list(handlers or []) and not _actor_in_handlers(handlers, actor):
+        raise AlertHandlerConflict("只有当前处理人可以关闭该告警")
+
+
 def _actor_in_handlers(handlers, actor) -> bool:
     allowed = set()
     for item in handlers or []:
