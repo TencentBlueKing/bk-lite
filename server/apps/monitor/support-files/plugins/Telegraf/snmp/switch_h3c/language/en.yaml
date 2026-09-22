@@ -1,7 +1,8 @@
 Switch H3C SNMP:
   name: H3C (Telegraf)
   desc: SNMP monitoring template for H3C / HPE Comware switches. Device health comes
-    from HH3C-ENTITY-EXT-MIB; interface traffic uses the built-in IF-MIB floor.
+    from HH3C-ENTITY-EXT-MIB; optical DDM comes from HH3C-TRANSCEIVER-INFO-MIB;
+    interface traffic uses the built-in IF-MIB floor.
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -24,6 +25,21 @@ monitor_object_metric:
       name: SFP TX Power
       desc: Optical transmit power reading of the SFP/SFP+ module. Abnormal Tx power
         may indicate an aging or failing optical module.
+    device_optical_temperature:
+      name: Optical Module Temperature
+      desc: Temperature of each optical module, in degrees Celsius. The 2147483647
+        unsupported sentinel is dropped. High module temperature accelerates laser
+        aging and can precede optical power failure.
+    device_optical_voltage:
+      name: Optical Module Voltage
+      desc: Supply voltage of each optical module in volts (0.01 V units scaled by
+        1/100). The 2147483647 unsupported sentinel is dropped. Out-of-range voltage
+        can cause unstable optics.
+    device_optical_bias:
+      name: Optical Module Bias
+      desc: Laser bias current of each optical module in milliamperes (0.01 mA units
+        scaled by 1/100). The 2147483647 unsupported sentinel is dropped. Rising bias
+        at constant TX power is a common aging signal for the laser.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_h3c",
   "plugin": "Switch H3C SNMP",
-  "plugin_desc": "H3C / HPE Comware switch SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). Private device-health objects: per-entity CPU utilization (hh3cEntityExtCpuUsage, with optional 1-minute and 5-minute averages), memory utilization (hh3cEntityExtMemUsage), temperature (hh3cEntityExtTemperature; 65535 unsupported sentinel filtered), optional voltage (hh3cEntityExtVoltage) and optional current power (hh3cEntityExtCurrentPower), plus fan and power-supply operational state from hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad. Device-level CPU and memory are taken as the maximum across entities because most rows return 0. Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).",
+  "plugin_desc": "H3C / HPE Comware switch SNMP collection (HH3C-ENTITY-EXT-MIB and HH3C-TRANSCEIVER-INFO-MIB, IANA PEN 25506). Private device-health objects: per-entity CPU utilization (hh3cEntityExtCpuUsage, with optional 1-minute and 5-minute averages), memory utilization (hh3cEntityExtMemUsage), temperature (hh3cEntityExtTemperature; 65535 unsupported sentinel filtered), optional voltage (hh3cEntityExtVoltage) and optional current power (hh3cEntityExtCurrentPower), plus fan and power-supply operational state from hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad. Optical DDM is per-ifIndex from hh3cTransceiverInfoTable: tx/rx power (0.01 dBm), module temperature, optional voltage (0.01 V) and bias current (0.01 mA); 2147483647 unsupported sentinel is filtered, and rows with hh3cTransceiverDiagnostic false are skipped. Device-level CPU and memory are taken as the maximum across entities because most rows return 0. Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_h3c'}) by (instance_id)",
   "name": "Switch",
@@ -20,7 +20,10 @@
     "device_temperature_celsius",
     "device_fan_state",
     "device_psu_state",
-    "device_voltage_volts"
+    "device_voltage_volts",
+    "device_optical_rx_power",
+    "device_optical_tx_power",
+    "device_optical_temperature"
   ],
   "metrics": [
     {
@@ -190,6 +193,96 @@
         "instance_id"
       ],
       "description": "This metric reports current power consumption in watts of H3C / HPE Comware physical entities (HH3C-ENTITY-EXT-MIB hh3cEntityExtCurrentPower). It is a consumption reading, not power-supply health; PSU health uses hh3cEntityExtOperStatus with entPhysicalClass powerSupply=6."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_tx_power",
+      "query": "(device_optical_tx_power{instance_type='switch', __$labels__} != 2147483647) / 100",
+      "display_name": "SFP TX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex SFP/optical transmit power in dBm (HH3C-TRANSCEIVER-INFO-MIB hh3cTransceiverCurTXPower). The device reports 0.01 dBm units; this query scales by 1/100 and drops the 2147483647 unsupported sentinel. An abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_rx_power",
+      "query": "(device_optical_rx_power{instance_type='switch', __$labels__} != 2147483647) / 100",
+      "display_name": "SFP RX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex SFP/optical receive power in dBm (HH3C-TRANSCEIVER-INFO-MIB hh3cTransceiverCurRXPower). The device reports 0.01 dBm units; this query scales by 1/100 and drops the 2147483647 unsupported sentinel. A dropping RX level is an early sign of fiber attenuation, dirty optics, or a failing peer transmitter."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_temperature",
+      "query": "device_optical_temperature{instance_type='switch', __$labels__} != 2147483647",
+      "display_name": "Optical Module Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex optical-module temperature in degrees Celsius (HH3C-TRANSCEIVER-INFO-MIB hh3cTransceiverTemperature). The 2147483647 unsupported sentinel is filtered out. Abnormally high module temperature can precede laser degradation or link errors."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_voltage",
+      "query": "(device_optical_voltage{instance_type='switch', __$labels__} != 2147483647) / 100",
+      "display_name": "Optical Module Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex optical-module supply voltage in volts (HH3C-TRANSCEIVER-INFO-MIB hh3cTransceiverVoltage, 0.01 V units scaled by 1/100). The 2147483647 unsupported sentinel is filtered out. Readings far from the module's rated range can indicate a failing transceiver or host-board power issue."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_bias",
+      "query": "(device_optical_bias{instance_type='switch', __$labels__} != 2147483647) / 100",
+      "display_name": "Optical Module Bias",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (ifIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-ifIndex optical-module laser bias current in milliamperes (HH3C-TRANSCEIVER-INFO-MIB hh3cTransceiverBiasCurrent, 0.01 mA units scaled by 1/100). The 2147483647 unsupported sentinel is filtered out. Rising bias current at constant TX power is a common aging signal for the laser."
     },
     {
       "metric_group": "Traffic",

@@ -132,6 +132,34 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.25506.2.6.1.1.1.1.3"
         name = "state"
+    # ---- 光模块 DDM：HH3C-TRANSCEIVER-INFO-MIB hh3cTransceiverInfoTable，按 ifIndex，表列禁止 .0 ----
+    # 表 OID 1.3.6.1.4.1.25506.2.70.1.1。TX/RX 单位 0.01 dBm；温度摄氏度；电压 0.01 V；偏置 0.01 mA。
+    # 不支持/无模块回填 Integer32 最大值 2147483647，starlark 丢弃该哨兵字段。
+    # hh3cTransceiverDiagnostic ...1.8：false(0/2) 的行跳过 DDM；true(1) 或该列缺失则保留。
+    # 接口计数仍走内置 IF-MIB 底座，本表不扩 ifHC*/ifXTable。
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.70.1.1.1.8"
+        name = "diagnostic"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.70.1.1.1.9"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.70.1.1.1.12"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.70.1.1.1.15"
+        name = "temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.70.1.1.1.16"
+        name = "voltage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25506.2.70.1.1.1.17"
+        name = "bias"
 
 # ---- 温度：丢弃 65535 不支持哨兵，避免 max() / 告警被哨兵污染。----
 [[processors.starlark]]
@@ -172,6 +200,29 @@ def apply(metric):
     source = '''
 def apply(metric):
     if metric.tags.get("entPhysicalClass") != "6":
+        return None
+    return metric
+'''
+# ---- 光模块：Diagnostic false(0/2) 跳过；DDM 列丢弃 2147483647 不支持哨兵。----
+[[processors.starlark]]
+    namepass = ["device_optical"]
+    source = '''
+def apply(metric):
+    diag = metric.tags.get("diagnostic")
+    if diag == "0" or diag == "2":
+        return None
+    sentinel = 2147483647
+    keys = ["tx_power", "rx_power", "temperature", "voltage", "bias"]
+    kept = 0
+    for key in keys:
+        value = metric.fields.get(key)
+        if value == None:
+            continue
+        if value == sentinel:
+            metric.fields.pop(key)
+            continue
+        kept = kept + 1
+    if kept == 0:
         return None
     return metric
 '''
