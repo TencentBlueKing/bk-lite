@@ -13,7 +13,10 @@ import {
   buildFiltersFromNodes,
   syncFilterValuesWithDefinitions,
 } from '../utils/namespaceUtils';
-import { fillMissingOrganizationFilterValues } from '@/app/ops-analysis/utils/unifiedFilterState';
+import {
+  buildFilterConfigConfirmSnapshot,
+  fillMissingOrganizationFilterValues,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
 
 type RefreshScope =
   | 'filter-search'
@@ -252,15 +255,24 @@ export const useTopologyRefresh = ({
 
   const handleFilterConfigConfirm = useCallback(
     (newDefinitions: UnifiedFilterDefinition[]) => {
-      updateDefinitions(newDefinitions);
-      setFilterValues(
-        syncFilterValuesWithDefinitions(newDefinitions, filterValues),
+      const snapshot = buildFilterConfigConfirmSnapshot(
+        newDefinitions,
+        filterValues,
+        appliedFilterValues,
+        definitions,
       );
-      setAppliedFilterValues((prev) =>
-        syncFilterValuesWithDefinitions(newDefinitions, prev),
-      );
+      updateDefinitions(snapshot.definitions);
+      setFilterValues(snapshot.filterValues);
+      setAppliedFilterValues(snapshot.appliedFilterValues);
     },
-    [filterValues, setAppliedFilterValues, setFilterValues, updateDefinitions],
+    [
+      appliedFilterValues,
+      definitions,
+      filterValues,
+      setAppliedFilterValues,
+      setFilterValues,
+      updateDefinitions,
+    ],
   );
 
   const resolveTopologyNamespaceId = useCallback(
