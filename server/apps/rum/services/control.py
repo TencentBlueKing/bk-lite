@@ -183,16 +183,27 @@ class NatsControlClient:
         }
         if expected_revision is not None:
             envelope["expectedRevision"] = expected_revision
-        try:
-            loop = self._ensure_loop()
-            future = asyncio.run_coroutine_threadsafe(self._request(subject, envelope), loop)
-            # Budget covers one (re)connect plus the request itself.
-            return future.result(timeout=self._timeout * 2)
-        except ControlError:
-            raise
-        except Exception as exc:  # noqa: BLE001 — map transport failures
-            logger.warning("rum control nats request failed: %s", exc)
-            raise ControlError("unavailable", "RUM control NATS connection is unavailable") from exc
+        last_exc: BaseException | None = None
+        # One retry: a long-lived connection can sit in a reconnect loop and
+        # time out even while a fresh socket reaches the controller.
+        for attempt in range(2):
+            try:
+                loop = self._ensure_loop()
+                future = asyncio.run_coroutine_threadsafe(self._request(subject, envelope), loop)
+                # Budget covers one (re)connect plus the request itself.
+                return future.result(timeout=self._timeout * 2)
+            except ControlError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — map transport failures
+                last_exc = exc
+                self._abandon_loop()
+                if attempt == 0:
+                    continue
+        logger.warning(
+            "rum control nats request failed failed_stage=request error_type=%s",
+            type(last_exc).__name__ if last_exc else "unknown",
+        )
+        raise ControlError("unavailable", "RUM control NATS connection is unavailable") from last_exc
 
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         with self._lock:
@@ -208,6 +219,21 @@ class NatsControlClient:
                 self._connect_lock = asyncio.Lock()
             assert self._loop is not None
             return self._loop
+
+    def _abandon_loop(self) -> None:
+        with self._lock:
+            loop = self._loop
+            self._loop = None
+            self._thread = None
+            self._pid = None
+            self._nc = None
+            self._connect_lock = None
+        if loop is None or loop.is_closed():
+            return
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except RuntimeError:
+            return
 
     async def _connection(self) -> Any:
         import nats

@@ -265,7 +265,15 @@
       "replayPlay": "播放回放",
       "replayPause": "暂停回放",
       "replayRestart": "从头播放",
-      "replayRecordings": "录制分段"
+      "replayRecordings": "录制分段",
+      "replayPlayable": "本段可播",
+      "replaySnapshotOnly": "仅快照",
+      "replaySnapshotOnlyHint": "这段几乎只有页面快照，没有可播放的操作时间轴。",
+      "replaySnapshotBar": "静态快照 · 无可播时间轴",
+      "replayPlaying": "正在查看",
+      "replayRecordingOrdinal": "录制 {n}",
+      "replayRecordingMeta": "{segments} 段 · {events} 事件",
+      "replayNotSessionFilm": "多页会话会拆成多段录制；一次播放一段，不是整段会话电影。"
     },
     "filter": {
       "allApps": "全部应用"

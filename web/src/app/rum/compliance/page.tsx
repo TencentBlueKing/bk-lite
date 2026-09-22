@@ -239,19 +239,21 @@ export default function RumCompliancePage() {
         }
       >
         {!pending && filteredRecords.length === 0 ? (
-          <Empty
-            description={
-              <div className="flex flex-col gap-1">
-                <span>{t('rum.compliance.empty', '还没有删除记录')}</span>
-                <span className="text-xs text-[var(--color-text-3)]">
-                  {t(
-                    'rum.compliance.emptyHint',
-                    '提交后会写入服务端审计台账，可在此追踪受理状态。',
-                  )}
-                </span>
-              </div>
-            }
-          />
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <Empty
+              description={
+                <div className="flex flex-col gap-1">
+                  <span>{t('rum.compliance.empty', '还没有删除记录')}</span>
+                  <span className="text-xs text-[var(--color-text-3)]">
+                    {t(
+                      'rum.compliance.emptyHint',
+                      '提交后会写入服务端审计台账，可在此追踪受理状态。',
+                    )}
+                  </span>
+                </div>
+              }
+            />
+          </div>
         ) : pending && records.length === 0 ? (
           <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
         ) : filteredRecords.length > 0 ? (

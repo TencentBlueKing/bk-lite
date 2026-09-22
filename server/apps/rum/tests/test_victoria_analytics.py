@@ -269,6 +269,7 @@ def test_session_journey_formats_event_timestamps():
         )
         assert journey["views"][0]["timestamp"] == "2026-08-18T12:00:00Z"
         assert journey["errors"][0]["timestamp"] == "2026-08-18T12:00:00Z"
+        assert '"rum.session.key":"s1"' in _VLHandler.got_query
         assert '"rum.session.id":"s1"' in _VLHandler.got_query
     finally:
         server.shutdown()
@@ -510,3 +511,16 @@ def test_parse_event_matches_product_kpi_fields():
     assert row["application"] == "storefront"
     assert row["eventType"] == "view"
     assert row["sessionId"] == "sess-1"
+
+
+def test_parse_event_prefers_product_session_key_for_replay_index():
+    row = parse_event(
+        {
+            "rum.application": "storefront",
+            "rum.session.id": "faro-raw-id",
+            "rum.session.key": "d334781a5de70001265c68b0f5e7b082",
+            "rum.event.type": "view",
+            "_time": datetime(2026, 8, 18, 1, 0, 0, tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+    )
+    assert row["sessionId"] == "d334781a5de70001265c68b0f5e7b082"

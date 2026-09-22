@@ -7386,6 +7386,7 @@
         blockSelector: REPLAY_BLOCK,
         recordCanvas: false,
         collectFonts: false,
+        inlineStylesheet: true,
         inlineImages: false,
         recordCrossOriginIframes: false
       }));
@@ -7442,4 +7443,4 @@
   root.initCoreRum = initCoreRum;
 })();
 
-//# debugId=8CE137882E43C8BB64756E2164756E21
+//# debugId=986A062B278DC47164756E2164756E21

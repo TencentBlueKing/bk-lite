@@ -68,6 +68,9 @@ export function initCoreRum(config: InitCoreRumConfig): Faro {
         blockSelector: REPLAY_BLOCK,
         recordCanvas: false,
         collectFonts: false,
+        // Required for replay fidelity: collector turns link[_cssText] into <style>,
+        // and the console player CSP blocks external stylesheets.
+        inlineStylesheet: true,
         inlineImages: false,
         recordCrossOriginIframes: false,
       }) as unknown as Instrumentation,

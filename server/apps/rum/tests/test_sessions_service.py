@@ -39,9 +39,11 @@ def test_parse_range_accepts_named_windows():
 
 
 def test_list_and_trend_degrade_when_analytics_unavailable():
+    from apps.rum.services.analytics import UnavailableAnalytics
+
     control = MemoryControl()
     _seed_app(control)
-    service = SessionsService(control=control)
+    service = SessionsService(control=control, analytics=UnavailableAnalytics())
     listed = service.list_sessions("tester", {"range": "24h"})
     assert listed["analyticsUnavailable"] is True
     assert listed["sessions"] == []

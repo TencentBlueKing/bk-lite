@@ -265,7 +265,15 @@
       "replayPlay": "Play replay",
       "replayPause": "Pause replay",
       "replayRestart": "Restart replay",
-      "replayRecordings": "Recordings"
+      "replayRecordings": "Recordings",
+      "replayPlayable": "Playable",
+      "replaySnapshotOnly": "Snapshot only",
+      "replaySnapshotOnlyHint": "This recording is mostly a page snapshot with no playable interaction timeline.",
+      "replaySnapshotBar": "Static snapshot · no playable timeline",
+      "replayPlaying": "Viewing",
+      "replayRecordingOrdinal": "Recording {n}",
+      "replayRecordingMeta": "{segments} segments · {events} events",
+      "replayNotSessionFilm": "Multi-page visits split into recordings; the player plays one at a time, not a full-session film."
     },
     "filter": {
       "allApps": "All applications"

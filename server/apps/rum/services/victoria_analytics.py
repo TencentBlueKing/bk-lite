@@ -209,7 +209,7 @@ class VictoriaAnalytics:
             [application],
             opts["from"],
             opts["to"],
-            extra=f'"rum.session.id":{quote_logsql(session_id)}',
+            extra=(f'("rum.session.key":{quote_logsql(session_id)}' f' OR "rum.session.id":{quote_logsql(session_id)})'),
             limit=4000,
         )
         for event in events:

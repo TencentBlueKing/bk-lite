@@ -26,4 +26,9 @@ describe('bklite-rum-sdk CDN facade', () => {
     expect(window.__coreRumReplay).toBeDefined();
     expect(typeof window.__coreRumReplay?.takeFullSnapshot).toBe('function');
   });
+
+  it('enables inlineStylesheet so replay keeps page CSS under player CSP', () => {
+    const source = readFileSync(resolve(import.meta.dirname, './cdn.ts'), 'utf8');
+    expect(source).toMatch(/inlineStylesheet:\s*true/);
+  });
 });

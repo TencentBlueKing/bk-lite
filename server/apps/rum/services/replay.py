@@ -10,6 +10,8 @@ from typing import Protocol
 
 from django.conf import settings
 
+from apps.core.logger import rum_logger as logger
+
 
 class ReplayIndex(Protocol):
     def available(self) -> bool:
@@ -39,6 +41,7 @@ class MemoryReplayIndex:
     def __init__(self):
         self._ready: set[tuple[str, str]] = set()
         self._manifests: dict[tuple[str, str], dict] = {}
+        self._blobs: dict[str, bytes] = {}
 
     def available(self) -> bool:
         return True
@@ -70,6 +73,9 @@ class MemoryReplayIndex:
             ],
         }
 
+    def put_blob(self, object_key: str, blob: bytes) -> None:
+        self._blobs[object_key] = blob
+
     def has_ready(self, application: str, session_id: str) -> bool:
         return (application, session_id) in self._ready
 
@@ -84,6 +90,9 @@ class MemoryReplayIndex:
                 }
             )
         )
+
+    def segment_blob(self, object_key: str) -> bytes | None:
+        return self._blobs.get(object_key)
 
 
 def _signing_secret() -> bytes:
@@ -130,13 +139,37 @@ def verify_payload(token: str, kind: str) -> dict | None:
     return body
 
 
+def build_replay_index_from_settings():
+    """Assemble Redis/MinIO-backed index when env is present; otherwise degrade."""
+    from apps.rum.services.replay_store import RedisReplayIndex, connect_minio_store, connect_redis
+
+    url = (
+        getattr(settings, "RUM_REPLAY_INDEX_REDIS_URL", None)
+        or os.getenv("RUM_REPLAY_INDEX_REDIS_URL", "")
+        or getattr(settings, "RUM_REPLAY_REDIS_URL", None)
+        or os.getenv("RUM_REPLAY_REDIS_URL", "")
+    ).strip()
+    if not url:
+        return UnavailableReplayIndex()
+    try:
+        client = connect_redis(url)
+        client.ping()
+        return RedisReplayIndex(client, object_store=connect_minio_store())
+    except Exception as exc:
+        logger.warning(
+            "rum replay index unavailable failed_stage=connect error_type=%s",
+            type(exc).__name__,
+        )
+        return UnavailableReplayIndex()
+
+
 _replay_index: ReplayIndex | None = None
 
 
 def get_replay_index() -> ReplayIndex:
     global _replay_index
     if _replay_index is None:
-        _replay_index = UnavailableReplayIndex()
+        _replay_index = build_replay_index_from_settings()
     return _replay_index
 
 

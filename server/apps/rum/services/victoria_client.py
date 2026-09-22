@@ -162,7 +162,7 @@ def parse_event(row: dict[str, str]) -> dict:
     event = {
         "time": None,
         "application": field(row, "rum.application", "rumcore.application"),
-        "sessionId": field(row, "rum.session.id", "rumcore.session.id") or field(row, "rum.session.key", "rumcore.session.key"),
+        "sessionId": field(row, "rum.session.key", "rumcore.session.key") or field(row, "rum.session.id", "rumcore.session.id"),
         "eventType": field(row, "rum.event.type", "rumcore.event.type"),
         "environment": field(row, "rum.environment", "rumcore.environment"),
         "release": field(row, "rum.release", "rumcore.release"),

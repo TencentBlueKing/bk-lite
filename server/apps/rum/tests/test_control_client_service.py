@@ -97,6 +97,31 @@ def test_transport_failure_maps_to_unavailable_and_recovers(fake_nats):
     assert revision == 7
 
 
+def test_stuck_connection_is_replaced_on_the_same_request(monkeypatch):
+    import nats
+
+    connects = {"n": 0}
+
+    async def connect(url, **kwargs):
+        connects["n"] += 1
+        if connects["n"] == 1:
+            stuck = _FakeNC(lambda subject, envelope: {})
+
+            async def request(subject, data, timeout):
+                raise TimeoutError("nats: timeout")
+
+            stuck.request = request
+            return stuck
+        return _FakeNC(lambda subject, envelope: {"requestId": envelope["requestId"], "revision": 7, "data": {"ok": True}})
+
+    monkeypatch.setattr(nats, "connect", connect)
+    client = NatsControlClient("nats://127.0.0.1:4222", timeout_seconds=1)
+    revision, data = client.request("rum.v1.control.application.list", "tester", {})
+    assert revision == 7
+    assert data == {"ok": True}
+    assert connects["n"] == 2
+
+
 def test_controller_error_envelope_is_surfaced(monkeypatch):
     import nats
 
