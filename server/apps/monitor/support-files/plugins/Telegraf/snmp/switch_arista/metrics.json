@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_arista",
   "plugin": "Switch Arista SNMP",
-  "plugin_desc": "Arista EOS switch SNMP collection (HOST-RESOURCES, ENTITY-SENSOR-MIB, ENTITY-STATE-MIB). Device-health objects include CPU via hrProcessorLoad (per-core, averaged), RAM used/total via hrStorageUsed/hrStorageSize with RAM rows selected by hrStorageDescr (allocation units converted to bytes), temperature via entPhySensorValue filtered to celsius(8) and converted by scale/precision, plus fan and power-supply operational state from entStateOper joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad. Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — Arista Networks EOS data-center switches (7050/7060/7280/7300/7500 series and other EOS platforms).",
+  "plugin_desc": "Arista EOS switch SNMP collection (HOST-RESOURCES, ENTITY-SENSOR-MIB, ENTITY-STATE-MIB). Device-health objects include CPU via hrProcessorLoad (per-core, averaged), RAM used/total via hrStorageUsed/hrStorageSize with RAM rows selected by hrStorageDescr (allocation units converted to bytes), chassis temperature via entPhySensorValue filtered to celsius(8) and converted by scale/precision, plus fan and power-supply operational state from entStateOper joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad. Optical DDM reuses the same entPhySensorTable walk: descr matching DOM RX Power / DOM TX Power (case-insensitive) yields receive/transmit power in dBm after scale/precision conversion, and descr containing DOM with type celsius is module temperature. Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — Arista Networks EOS data-center switches (7050/7060/7280/7300/7500 series and other EOS platforms).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_arista'}) by (instance_id)",
   "name": "Switch",
@@ -19,7 +19,10 @@
     "device_memory_usage",
     "device_temperature_celsius",
     "device_fan_state",
-    "device_psu_state"
+    "device_psu_state",
+    "device_optical_rx_power",
+    "device_optical_tx_power",
+    "device_optical_temperature"
   ],
   "metrics": [
     {
@@ -90,7 +93,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the highest ENTITY-SENSOR temperature reading on the Arista EOS switch, in degrees Celsius. Only sensors whose type is celsius are kept, and the raw value is converted with entPhySensorScale and entPhySensorPrecision. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat."
+      "description": "This metric reports the highest chassis ENTITY-SENSOR temperature reading on the Arista EOS switch, in degrees Celsius. Only sensors whose type is celsius and whose descr is not a DOM module sensor are kept, and the raw value is converted with entPhySensorScale and entPhySensorPrecision. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat."
     },
     {
       "metric_group": "Hardware Status",
@@ -135,6 +138,72 @@
         "instance_id"
       ],
       "description": "This metric reports the operational state of each Arista EOS power supply (ENTITY-STATE-MIB entStateOper joined with ENTITY-MIB entPhysicalClass powerSupply=6), normalized so that 1 means ok (enabled) and 2 means bad. A non-ok state signals a power redundancy or hardware fault and must be remediated promptly."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_rx_power",
+      "query": "device_optical_rx_power{instance_type='switch', __$labels__}",
+      "display_name": "SFP RX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (entPhysicalIndex)"
+        },
+        {
+          "name": "descr",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor optical receive power in dBm from ENTITY-SENSOR-MIB entPhySensorTable. Rows are selected when entPhysicalDescr or entPhysicalName contains DOM RX Power (case-insensitive). The raw value is converted with entPhySensorScale and entPhySensorPrecision. A dropping RX level is an early sign of fiber attenuation, dirty optics, or a failing peer transmitter."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_tx_power",
+      "query": "device_optical_tx_power{instance_type='switch', __$labels__}",
+      "display_name": "SFP TX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (entPhysicalIndex)"
+        },
+        {
+          "name": "descr",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor optical transmit power in dBm from ENTITY-SENSOR-MIB entPhySensorTable. Rows are selected when entPhysicalDescr or entPhysicalName contains DOM TX Power (case-insensitive). The raw value is converted with entPhySensorScale and entPhySensorPrecision. An abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_temperature",
+      "query": "device_optical_temperature{instance_type='switch', __$labels__}",
+      "display_name": "Optical Module Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index (entPhysicalIndex)"
+        },
+        {
+          "name": "descr",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor optical-module temperature in degrees Celsius from ENTITY-SENSOR-MIB. Rows are selected when sensor type is celsius and descr contains DOM. The raw value is converted with entPhySensorScale and entPhySensorPrecision. Abnormally high module temperature can precede laser degradation or link errors."
     },
     {
       "metric_group": "Traffic",
