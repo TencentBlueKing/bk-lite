@@ -241,7 +241,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         # 校验 filter 中的 label name 和运算符，防止注入
         filter_list = value.get("filter", [])
         if not isinstance(filter_list, list):
-            return value
+            raise serializers.ValidationError("query_condition.filter 必须是数组")
 
         for idx, condition in enumerate(filter_list):
             if not isinstance(condition, dict):
