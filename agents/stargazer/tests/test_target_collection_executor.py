@@ -1525,7 +1525,7 @@ async def test_collection_info_is_bounded_and_target_details_are_debug(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
+async def test_network_publish_failures_keep_every_ip_and_aggregate_run_summary(monkeypatch):
     warning_logs = []
 
     def capture_warning(message, *args):
@@ -1563,11 +1563,12 @@ async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
     old_terminal = [item for item in warning_logs if "event=result_publish_terminal" in item]
     run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
     assert summary.publish_failed == 10
-    assert len(publish_failures) == 3
+    assert len(publish_failures) == 10
+    assert all(any(f"target={target} " in line for line in publish_failures) for target in request.targets)
     assert old_terminal == []
     assert all("phase=enqueue" in item for item in publish_failures)
     assert all("reason=publish_queue_timeout" in item for item in publish_failures)
-    assert all("timeout_seconds=0.001" in item for item in publish_failures)
+    assert all("budget_limit_seconds=0.001" in item for item in publish_failures)
     assert all("instance_id=cmdb-network-2" in item for item in publish_failures)
     assert all("task_id=" not in item for item in publish_failures)
     assert "instance_id=cmdb-network-2" in run_summaries[0]

@@ -410,8 +410,7 @@ class SnmpTopo:
                     if null_var_binds[col]:
                         row[col] = (previous_var_binds[col][0], endOfMibView)
                         continue
-                    stop_flag = False
-                    if isinstance(val, Null):
+                    if isinstance(val, Null) or _is_ended_value(val):
                         row[col] = (previous_var_binds[col][0], endOfMibView)
                         null_var_binds[col] = True
                         continue
@@ -419,6 +418,7 @@ class SnmpTopo:
                         row[col] = (previous_var_binds[col][0], endOfMibView)
                         null_var_binds[col] = True
                         continue
+                    stop_flag = False
                 if stop_flag:
                     break
                 processed_rows.append(row)
