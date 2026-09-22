@@ -307,7 +307,7 @@
         "rootGroupNameConflict": "The root organization name is already used by another organization.",
         "integrationSystem": "Integrated System",
         "integrationSystemPlaceholder": "Please select an integrated system",
-        "basicConfig": "Basic Configuration",
+        "basicConfig": "Basic Information",
         "addSource": "Add a user source",
         "editSource": "Edit source",
         "accessConfig": "Configuration Parameters",

@@ -68,7 +68,6 @@ const ApplicationPage = () => {
               description={item.description}
               icon={item.icon || item.name}
               origin={item.is_build_in ? 'builtin' : 'external'}
-              meta={item.tags || []}
               menuItems={menuItems}
               onClick={() => handleCardClick(item)}
             />
