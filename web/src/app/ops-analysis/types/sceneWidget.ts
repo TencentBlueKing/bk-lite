@@ -12,6 +12,8 @@ export type ApplicationHealthReason =
   | 'unavailable'
   | 'no_application'
   | 'no_host'
+  | 'unmonitored'
+  | 'monitor_unreadable'
   | 'stale_after_refresh_failure';
 
 export interface Application3DSeverity {
@@ -45,10 +47,16 @@ export interface Application3DFilterDefinition {
   options: Array<{ value: string; label: string }>;
 }
 
+export interface Application3DHostCoverage {
+  monitored: number;
+  total: number;
+}
+
 export interface Application3DWallItem {
   id: string;
   name: string;
   health: Application3DHealth;
+  hostCoverage?: Application3DHostCoverage;
 }
 
 export interface Application3DWallData {

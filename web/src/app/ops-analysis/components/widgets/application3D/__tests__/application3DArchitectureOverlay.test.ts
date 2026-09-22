@@ -193,6 +193,8 @@ describe('architecture host overlay copy', () => {
     expect(formatArchitectureHostState('normal', t)).toBe('运行正常');
     expect(formatArchitectureHostState('alarming', t)).toBe('告警');
     expect(formatArchitectureHostState('unknown', t)).toBe('状态未知');
+    expect(formatArchitectureHostState('unknown', t, 'unmonitored')).toBe('未接入监控');
+    expect(formatArchitectureHostState('unknown', t, 'monitor_unreadable')).toBe('监控不可读');
   });
 
   it('shows the wall unknown glyph when count or severity is missing', () => {

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   APPLICATION3D_CAMERA_FOV,
+  bindApplication3DTranslate,
   buildApplication3DLayout,
   fitApplication3DCameraDistance,
   fitApplication3DCameraDistanceToWall,
   formatApplication3DCardTitle,
+  formatApplication3DHostCoverage,
   formatApplicationAlarmBadge,
+  formatDegradedText,
   parkedApplication3DWallSize,
   resolveApplication3DBadge,
   resolveApplication3DCardDensity,
@@ -15,6 +18,7 @@ import {
   UNKNOWN_STATUS_BADGE,
   WALL_CAMERA_HEIGHT_FACTOR,
   WALL_VIEW_COVERAGE,
+  type Application3DTranslate,
 } from '../application3DLayout';
 import {
   CARD_GAP,
@@ -277,6 +281,104 @@ describe('application3D layout', () => {
       },
     );
     expect(english.statusLabel).toBe('Critical alarm 1');
+    expect(english.coverageLabel).toBe('');
+  });
+
+  it('shows host coverage on the status row only when monitored is below total', () => {
+    const gap = resolveApplication3DCardVisual({
+      name: '财务结算平台',
+      health: {
+        state: 'alarming',
+        reason: 'active_alarm',
+        activeAlarmCount: 2,
+        highestSeverity: { id: 'critical', label: '严重', color: 'critical' },
+      },
+      hostCoverage: { monitored: 6, total: 9 },
+    });
+    expect(gap.statusLabel).toBe('严重告警 2');
+    expect(gap.coverageLabel).toBe('监控覆盖 6/9');
+    expect(formatApplication3DHostCoverage({ monitored: 6, total: 9 }, (id, fallback, values) => {
+      const map: Record<string, string> = {
+        'dashboard.application3DHostCoverage': 'Monitor coverage {monitored}/{total}',
+      };
+      const template = map[id] ?? fallback ?? id;
+      if (!values) return template;
+      return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? `{${key}}`));
+    })).toBe('Monitor coverage 6/9');
+    const dropped: { current: Application3DTranslate } = {
+      current: (id, fallback) => fallback ?? id,
+    };
+    expect(
+      formatApplication3DHostCoverage({ monitored: 6, total: 9 }, bindApplication3DTranslate(dropped)),
+    ).toBe('监控覆盖 {monitored}/{total}');
+    dropped.current = (id, fallback, values) => {
+      const template = fallback ?? id;
+      if (!values) return template;
+      return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? `{${key}}`));
+    };
+    expect(
+      formatApplication3DHostCoverage({ monitored: 6, total: 9 }, bindApplication3DTranslate(dropped)),
+    ).toBe('监控覆盖 6/9');
+
+    const complete = resolveApplication3DCardVisual({
+      name: '财务结算平台',
+      health: {
+        state: 'normal',
+        reason: 'no_active_alarm',
+        activeAlarmCount: 0,
+        highestSeverity: { id: 'normal', label: '正常', color: 'success' },
+      },
+      hostCoverage: { monitored: 9, total: 9 },
+    });
+    expect(complete.statusLabel).toBe('运行正常');
+    expect(complete.coverageLabel).toBe('');
+
+    const empty = resolveApplication3DCardVisual({
+      name: '空系统',
+      health: {
+        state: 'unknown',
+        reason: 'no_host',
+        activeAlarmCount: null,
+        highestSeverity: null,
+      },
+    });
+    expect(empty.coverageLabel).toBe('');
+    expect(formatDegradedText('')).toBe(UNKNOWN_STATUS_BADGE);
+    expect(formatDegradedText('CPU')).toBe('CPU');
+
+    const fillCalls: Array<{ text: string; x: number; y: number }> = [];
+    const ctx = {
+      canvas: { width: 512, height: 640 },
+      clearRect: () => undefined,
+      save: () => undefined,
+      restore: () => undefined,
+      beginPath: () => undefined,
+      moveTo: () => undefined,
+      lineTo: () => undefined,
+      arcTo: () => undefined,
+      closePath: () => undefined,
+      clip: () => undefined,
+      fill: () => undefined,
+      stroke: () => undefined,
+      fillRect: () => undefined,
+      fillText: (text: string, x: number, y: number) => {
+        fillCalls.push({ text, x, y });
+      },
+      measureText: (text: string) => ({ width: text.length * 18 }),
+      arc: () => undefined,
+      createRadialGradient: () => ({ addColorStop: () => undefined }),
+      createLinearGradient: () => ({ addColorStop: () => undefined }),
+    } as unknown as CanvasRenderingContext2D;
+    paintApplication3DCard(ctx, gap, 'finance', 'front');
+    const status = fillCalls.find((call) => call.text === '严重告警 2');
+    const coverage = fillCalls.find((call) => call.text === '监控覆盖 6/9');
+    expect(status).toBeTruthy();
+    expect(coverage).toBeTruthy();
+    expect(coverage?.y).toBe(status?.y);
+    expect(coverage?.x ?? 0).toBeGreaterThan(status?.x ?? 0);
+    const badge = badgeRect('6/9', 512, 640);
+    expect(coverage?.y).not.toBe(badge.centerY + 1);
+    expect(coverage?.x).not.toBe(badge.centerX);
   });
 
   it('uses a landscape card matching the HUD mock', () => {

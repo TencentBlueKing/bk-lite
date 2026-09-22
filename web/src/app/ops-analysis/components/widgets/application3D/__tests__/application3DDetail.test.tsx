@@ -263,6 +263,65 @@ describe('application3D detail panels', () => {
     expect(view.container.textContent).not.toContain('共 0 条');
   });
 
+  it('shows an empty alarm list instead of unavailable when health is unknown with zero readable hosts', () => {
+    const unknownHealth: Application3DHealth = {
+      state: 'unknown',
+      reason: 'unavailable',
+      activeAlarmCount: null,
+      severityCounts: null,
+      noDataAlarmCount: null,
+      highestSeverity: null,
+      stale: false,
+    };
+    const emptyAvailable: Application3DDetailData = {
+      application: {
+        id: 'sys-1',
+        name: '财务结算平台',
+        health: unknownHealth,
+        properties: [{ key: 'system_code', label: '系统编码', displayValue: 'SYS-1' }],
+      },
+      alarms: {
+        state: 'available',
+        activeAlarmCount: 0,
+        severityCounts: { critical: 0, error: 0, warning: 0, info: 0 },
+        noDataAlarmCount: 0,
+        highestSeverity: null,
+        items: [],
+        page: { nextCursor: null, hasMore: false },
+      },
+      refreshedAt: '2026-08-26T00:00:00Z',
+    };
+    const view = render(
+      <Application3DDetail
+        selected={{ id: 'sys-1', name: '财务结算平台', health: unknownHealth }}
+        detail={emptyAvailable}
+        loading={false}
+        {...panelHandlers}
+      />,
+    );
+
+    expect(view.container.textContent).toContain('dashboard.application3DNoAlarms');
+    expect(view.container.textContent).not.toContain('dashboard.application3DAlarmsUnavailable');
+  });
+
+  it('does not render host coverage chrome in the detail shell', () => {
+    const covered: Application3DWallItem = {
+      ...selected,
+      hostCoverage: { monitored: 6, total: 9 },
+    };
+    const view = render(
+      <Application3DDetail
+        selected={covered}
+        detail={detail}
+        loading={false}
+        {...panelHandlers}
+      />,
+    );
+    expect(view.container.textContent).not.toContain('监控覆盖');
+    expect(view.container.textContent).not.toContain('Monitor coverage');
+    expect(view.container.textContent).not.toContain('6/9');
+  });
+
   it('keeps left panel border uncolored for no_data critical while detail is loading', () => {
     const noDataSelected: Application3DWallItem = {
       ...selected,
@@ -381,7 +440,7 @@ describe('application3D detail panels', () => {
     expect(markerX).not.toBe(150);
   });
 
-  it('omits metric row when metric.name is null and still shows no_data alert type', () => {
+  it('shows a dash for empty metric name and still shows no_data alert type', () => {
     const alarmDetail = {
       applicationId: 'app-1',
       alarm: {
@@ -434,7 +493,8 @@ describe('application3D detail panels', () => {
     const right = view.container.querySelector('.app3d-alarm-panel')?.textContent ?? '';
     expect(right).toContain('主机无数据');
     expect(right).toContain('dashboard.application3DAlertType_no_data');
-    expect(right).not.toMatch(/dashboard\.application3DMetric(?!Trend|Failed|No)/);
+    expect(right).toContain('dashboard.application3DMetric');
+    expect(right).toContain('--');
     expect(right).toContain('dashboard.application3DNotificationNotConfigured');
     expect(view.container.querySelector('[data-testid="app3d-metric-legend"]')).toBeNull();
     expect(right).not.toContain('CPU 策略 (%)');
