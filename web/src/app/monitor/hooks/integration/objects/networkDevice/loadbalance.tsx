@@ -78,6 +78,7 @@ export const useLoadbalanceConfig = () => {
       'Loadbalance RELIANOID SNMP': 'snmp_relianoid',
       'Loadbalance Radware Alteon SNMP': 'snmp_alteon',
       'Loadbalance Radware SNMP': 'snmp_radware',
+      'Loadbalance Array SNMP': 'snmp_array',
       'Loadbalance Flow NetFlow': 'netflow',
       'Loadbalance Flow sFlow': 'sflow'
     }

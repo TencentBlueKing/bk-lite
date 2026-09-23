@@ -1533,6 +1533,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_array",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_f5",
       "capabilities": [
         "uptime",
