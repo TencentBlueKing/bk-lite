@@ -65,7 +65,7 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
       setVisible(false);
 
       Toast.show({
-        content: t('common.switchedToLanguage', '已切换到{language}', { language: language.label }),
+        content: t('common.switchedToLanguage', undefined, { language: language.label }),
         icon: 'success',
         position: 'center',
       });

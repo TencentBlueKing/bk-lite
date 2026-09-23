@@ -302,7 +302,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
             // 检查总数是否超过9个
             if (selectedFiles.length + fileArray.length > 9) {
                 Toast.show({
-                    content: t('chat.fileCountLimit') || '最多只能添加9个文件',
+                    content: t('chat.fileCountLimit'),
                     icon: 'fail',
                     duration: 2000
                 });

@@ -66,7 +66,7 @@ const InformationCardComponent: React.FC<InformationCardProps> = ({ content, onB
                             <Image
                                 key={idx}
                                 src={img.src}
-                                alt={img.alt || t('chat.imageAlt', '图片 {index}', { index: idx + 1 })}
+                                alt={img.alt || t('chat.imageAlt', undefined, { index: idx + 1 })}
                                 fit="cover"
                                 style={{ width: '100%', borderRadius: '8px', aspectRatio: '1' }}
                             />

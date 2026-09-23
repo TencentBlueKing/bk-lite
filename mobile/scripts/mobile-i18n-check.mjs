@@ -213,28 +213,6 @@ function isConsoleCall(node) {
   return false;
 }
 
-function isTranslationDefault(node) {
-  const parent = node.parent;
-  if (!parent) return false;
-  const call = ts.isCallExpression(parent) ? parent : parent.parent;
-  if (!call || !ts.isCallExpression(call) || !ts.isIdentifier(call.expression) || call.expression.text !== 't') {
-    return false;
-  }
-  return call.arguments[1] === node || call.arguments[1] === parent;
-}
-
-function isCatalogFallback(node, messages) {
-  const parent = node.parent;
-  if (!parent || !ts.isBinaryExpression(parent) || parent.operatorToken.kind !== ts.SyntaxKind.BarBarToken || parent.right !== node) {
-    return false;
-  }
-  const left = parent.left;
-  if (!ts.isCallExpression(left) || !ts.isIdentifier(left.expression) || left.expression.text !== 't') return false;
-  const keyNode = left.arguments[0];
-  if (!keyNode || (!ts.isStringLiteral(keyNode) && !ts.isNoSubstitutionTemplateLiteral(keyNode))) return false;
-  return messages[keyNode.text] === node.text;
-}
-
 function recordCopy(findings, filePath, line, text) {
   const trimmed = text.trim();
   if (!CJK.test(trimmed) || keptCopy.has(trimmed)) return;
@@ -286,14 +264,14 @@ test('静态翻译引用存在，用户可见中文只保留已确认项', async
         }
       }
 
-      if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && !isConsoleCall(node) && !isTranslationDefault(node) && !isCatalogFallback(node, zh.messages)) {
+      if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && !isConsoleCall(node)) {
         recordCopy(hardcoded, filePath, lineOf(sourceFile, node), node.text);
         if (rootPattern.test(node.text) && !(node.text in zh.messages)) {
           missingKeys.push(`${filePath}:${lineOf(sourceFile, node)} ${node.text}`);
         }
       }
 
-      if (ts.isTemplateExpression(node) && !isConsoleCall(node) && !isTranslationDefault(node)) {
+      if (ts.isTemplateExpression(node) && !isConsoleCall(node)) {
         recordCopy(hardcoded, filePath, lineOf(sourceFile, node), node.head.text);
         for (const span of node.templateSpans) recordCopy(hardcoded, filePath, lineOf(sourceFile, span.literal), span.literal.text);
       }

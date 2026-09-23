@@ -95,7 +95,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
         if (missingFields.length > 0) {
             Toast.show({
                 icon: 'fail',
-                content: t('chat.requiredFields', '请填写必填字段: {fields}', { fields: missingFields.join(', ') }),
+                content: t('chat.requiredFields', undefined, { fields: missingFields.join(', ') }),
             });
             return;
         }
@@ -172,7 +172,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                         <Input
                             value={displayValue}
                             onChange={(val) => handleFieldChange(name, val)}
-                            placeholder={placeholder || t('chat.pleaseEnter', '请输入{label}', { label })}
+                            placeholder={placeholder || t('chat.pleaseEnter', undefined, { label })}
                             disabled={!editable || formState === 'submitted'}
                             className="border border-[var(--color-border)] rounded-lg"
                             style={{ '--font-size': '13px' } as any}
@@ -184,7 +184,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                         <TextArea
                             value={displayValue}
                             onChange={(val) => handleFieldChange(name, val)}
-                            placeholder={placeholder || t('chat.pleaseEnter', '请输入{label}', { label })}
+                            placeholder={placeholder || t('chat.pleaseEnter', undefined, { label })}
                             disabled={!editable || formState === 'submitted'}
                             rows={rows || 3}
                             className="border border-[var(--color-border)] rounded-lg"
@@ -198,7 +198,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                             type="number"
                             value={value}
                             onChange={(val) => handleFieldChange(name, Number(val))}
-                            placeholder={placeholder || t('chat.pleaseEnter', '请输入{label}', { label })}
+                            placeholder={placeholder || t('chat.pleaseEnter', undefined, { label })}
                             disabled={!editable || formState === 'submitted'}
                             min={min}
                             max={max}
@@ -227,7 +227,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     day: '2-digit',
                                     hour: '2-digit',
                                     minute: '2-digit'
-                                }) : placeholder || t('chat.pleaseSelect', '请选择{label}', { label })}
+                                }) : placeholder || t('chat.pleaseSelect', undefined, { label })}
                             </div>
                             <DatePicker
                                 visible={datePickerVisible === name}
@@ -256,7 +256,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     : 'bg-white text-[var(--color-text-1)] cursor-pointer'
                                     }`}
                             >
-                                {dateValue ? dateValue.toLocaleDateString('zh-CN') : placeholder || t('chat.pleaseSelect', '请选择{label}', { label })}
+                                {dateValue ? dateValue.toLocaleDateString('zh-CN') : placeholder || t('chat.pleaseSelect', undefined, { label })}
                             </div>
                             <DatePicker
                                 visible={datePickerVisible === name}
@@ -288,7 +288,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                 {dateValue ? dateValue.toLocaleTimeString('zh-CN', {
                                     hour: '2-digit',
                                     minute: '2-digit'
-                                }) : placeholder || t('chat.pleaseSelect', '请选择{label}', { label })}
+                                }) : placeholder || t('chat.pleaseSelect', undefined, { label })}
                             </div>
                             <DatePicker
                                 visible={datePickerVisible === name}
@@ -383,7 +383,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                 style={{ '--fill-color': '#1677ff' } as any}
                             />
                             <div className="text-xs text-[var(--color-text-3)] text-right mt-1">
-                                {t('chat.formCurrentValue', '当前值: {value}', { value: value || min || 0 })}
+                                {t('chat.formCurrentValue', undefined, { value: value || min || 0 })}
                             </div>
                         </div>
                     )}
