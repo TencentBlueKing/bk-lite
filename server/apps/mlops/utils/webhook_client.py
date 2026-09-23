@@ -14,6 +14,7 @@ from apps.mlops.utils.i18n import (
     WEBHOOK_SERVER_URL_NOT_CONFIGURED,
     WEBHOOK_TIMEOUT,
 )
+from apps.mlops.utils.serving_port import parse_serving_port
 
 # 敏感字段列表，日志输出时会被脱敏
 # _SENSITIVE_KEYS = frozenset(
@@ -330,6 +331,11 @@ class WebhookClient:
         Raises:
             WebhookError: 启动失败
         """
+        try:
+            port = parse_serving_port(port)
+        except ValueError as exc:
+            raise WebhookError(str(exc)) from exc
+
         payload: dict[str, Any] = {
             "id": serving_id,
             "mlflow_tracking_uri": mlflow_tracking_uri,

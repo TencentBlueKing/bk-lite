@@ -25,6 +25,7 @@ from apps.mlops.utils.group_scope import (
     validate_requested_teams,
 )
 from apps.mlops.utils.i18n import serializer_message
+from apps.mlops.utils.serving_port import ServingPortValidationMixin
 
 
 class LogClusteringDatasetSerializer(AuthSerializer):
@@ -297,7 +298,7 @@ class LogClusteringTrainJobSerializer(AuthSerializer):
         return validate_requested_teams(self.context["request"], value)
 
 
-class LogClusteringServingSerializer(AuthSerializer):
+class LogClusteringServingSerializer(ServingPortValidationMixin, AuthSerializer):
     """日志聚类服务序列化器"""
 
     permission_key = "serving.log_clustering_serving"
