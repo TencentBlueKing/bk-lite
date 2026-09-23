@@ -25,6 +25,7 @@ from apps.mlops.utils.group_scope import (
     validate_requested_teams,
 )
 from apps.mlops.utils.i18n import serializer_message
+from apps.mlops.utils.serving_port import ServingPortValidationMixin
 
 
 class AnomalyDetectionDatasetSerializer(AuthSerializer):
@@ -389,7 +390,7 @@ class AnomalyDetectionPredictResponseSerializer(serializers.Serializer):
     predictions = PredictionResultSerializer(many=True, help_text="预测结果列表")
 
 
-class AnomalyDetectionServingSerializer(AuthSerializer):
+class AnomalyDetectionServingSerializer(ServingPortValidationMixin, AuthSerializer):
     permission_key = "serving.anomaly_detection_serving"
 
     train_job_algorithm = serializers.CharField(source="train_job.algorithm", read_only=True)

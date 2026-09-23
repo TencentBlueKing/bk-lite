@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.image_classification import *
 from apps.mlops.utils.i18n import serializer_message
+from apps.mlops.utils.serving_port import ServingPortValidationMixin
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
@@ -292,7 +293,7 @@ class ImageClassificationTrainJobSerializer(AuthSerializer):
         return validate_requested_teams(self.context["request"], value)
 
 
-class ImageClassificationServingSerializer(AuthSerializer):
+class ImageClassificationServingSerializer(ServingPortValidationMixin, AuthSerializer):
     """图片分类服务序列化器"""
 
     permission_key = "serving.image_classification_serving"
