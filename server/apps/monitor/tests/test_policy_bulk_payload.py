@@ -243,5 +243,8 @@ def test_build_bulk_policy_payloads_keeps_rate_and_defaults_new_fields():
     assert payload["count_predicate"] == {}
     assert payload["forecast_target"] is None
     assert payload["forecast_target_unit"] == ""
+    assert payload["compare_offset_hours"] is None
+    assert payload["compare_offset_days"] is None
+    assert payload["compare_baseline_weeks"] is None
     assert payload["forecast_lookback"] == {}
     assert payload["recovery_threshold"] == {}

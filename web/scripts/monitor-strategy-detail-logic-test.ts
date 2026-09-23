@@ -41,6 +41,10 @@ import {
   shouldAnnotatePerSecond,
   formatUnitLabelWithRateSuffix,
   resolveCompareFieldsForSave,
+  compareOffsetHoursConflict,
+  compareSpanConflict,
+  compareBaselineFamily,
+  resolveLoadedCompareOffset,
   resolveForecastTargetUnit,
   resolveRecoveryThresholdForSave,
   resolveNoDataPeriodsForSave,
@@ -906,16 +910,45 @@ assert.equal(
 assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5 }), [
   'absolute',
   'previous_window',
-  'offset_1h',
-  'offset_24h',
-  'offset_7d',
-  'offset_30d',
-  'baseline_4w',
+  'offset_hours',
+  'offset_days',
+  'baseline_weeks',
   'timeleft',
 ]);
-assert.ok(!getEnabledCompareModes({ periodType: 'hour', periodValue: 1 }).includes('offset_1h'));
-assert.ok(!getEnabledCompareModes({ periodType: 'day', periodValue: 1 }).includes('offset_24h'));
-assert.ok(getEnabledCompareModes({ periodType: 'min', periodValue: 60 }).every((mode) => mode !== 'offset_1h'));
+assert.ok(getEnabledCompareModes({ periodType: 'hour', periodValue: 1 }).includes('offset_hours'));
+assert.ok(getEnabledCompareModes({ periodType: 'day', periodValue: 7 }).includes('offset_days'));
+assert.ok(compareOffsetHoursConflict(1, 'hour', 1));
+assert.ok(!compareOffsetHoursConflict(3, 'hour', 1));
+assert.ok(compareSpanConflict('offset_days', 1, 'day', 1));
+assert.ok(!compareSpanConflict('offset_days', 7, 'day', 1));
+assert.ok(compareSpanConflict('baseline_weeks', 4, 'day', 7));
+assert.ok(!compareSpanConflict('baseline_weeks', 4, 'day', 1));
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_1h' }), {
+  mode: 'offset_hours',
+  amount: 1,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_24h' }), {
+  mode: 'offset_hours',
+  amount: 24,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_7d' }), {
+  mode: 'offset_days',
+  amount: 7,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_30d' }), {
+  mode: 'offset_days',
+  amount: 30,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'baseline_4w' }), {
+  mode: 'baseline_weeks',
+  amount: 4,
+});
+assert.equal(compareBaselineFamily('previous_window'), 'previous_window');
+assert.equal(compareBaselineFamily('offset_hours'), 'yoy');
+assert.equal(compareBaselineFamily('offset_days'), 'yoy');
+assert.equal(compareBaselineFamily('baseline_weeks'), 'yoy');
+assert.equal(compareBaselineFamily('timeleft'), 'timeleft');
+assert.equal(compareBaselineFamily('absolute'), 'absolute');
 assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5, algorithm: 'count_if_over_time' }), [
   'absolute',
 ]);
@@ -966,6 +999,9 @@ assert.deepEqual(
     forecast_target: null,
     forecast_target_unit: '',
     forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
   }
 );
 assert.deepEqual(
@@ -981,6 +1017,66 @@ assert.deepEqual(
     forecast_target: null,
     forecast_target_unit: '',
     forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'offset_hours',
+    compareValueKind: 'percent',
+    compareOffsetHours: 3,
+  }),
+  {
+    compare_mode: 'offset_hours',
+    compare_value_kind: 'percent',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: 3,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'offset_days',
+    compareValueKind: 'percent',
+    compareOffsetHours: 30,
+  }),
+  {
+    compare_mode: 'offset_days',
+    compare_value_kind: 'percent',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: 30,
+    compare_baseline_weeks: null,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'baseline_weeks',
+    compareValueKind: 'delta',
+    compareOffsetHours: 4,
+  }),
+  {
+    compare_mode: 'baseline_weeks',
+    compare_value_kind: 'delta',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: 4,
   }
 );
 assert.deepEqual(
@@ -999,6 +1095,9 @@ assert.deepEqual(
     forecast_target: 90,
     forecast_target_unit: 'gibibytes',
     forecast_lookback: { type: 'hour', value: 4 },
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
   }
 );
 assert.equal(
@@ -1169,20 +1268,11 @@ assert.deepEqual(
   }
 );
 
-const offset1hOption = getCompareModeSelectOptions({
+const offsetHoursOption = getCompareModeSelectOptions({
   periodType: 'hour',
   periodValue: 1,
-}).find((item) => item.value === 'offset_1h');
-assert.equal(offset1hOption?.disabled, true);
-assert.equal(
-  offset1hOption?.reasonKey,
-  'monitor.events.compareModeDisabledPeriod'
-);
-assert.ok(
-  getCompareModeSelectOptions({ periodType: 'hour', periodValue: 1 }).some(
-    (item) => item.value === 'offset_1h'
-  )
-);
+}).find((item) => item.value === 'offset_hours');
+assert.equal(offsetHoursOption?.disabled, false);
 
 const countIfCompare = getCompareModeSelectOptions({
   algorithm: 'count_if_over_time',
@@ -1192,11 +1282,11 @@ assert.equal(
   false
 );
 assert.equal(
-  countIfCompare.find((item) => item.value === 'offset_1h')?.disabled,
+  countIfCompare.find((item) => item.value === 'offset_hours')?.disabled,
   true
 );
 assert.equal(
-  countIfCompare.find((item) => item.value === 'offset_1h')?.reasonKey,
+  countIfCompare.find((item) => item.value === 'offset_hours')?.reasonKey,
   'monitor.events.compareModeDisabledCountIf'
 );
 
@@ -1263,6 +1353,48 @@ assert.equal(
     thresholdValue: 50,
   }),
   '这条策略在判断：CPU 使用率的P95，比 1 小时前高出 50%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU 使用率',
+    algorithmLabel: 'P95',
+    algorithm: 'p95_over_time',
+    compareMode: 'offset_hours',
+    compareValueKind: 'percent',
+    compareOffsetHours: 3,
+    thresholdMethod: '>',
+    thresholdValue: 50,
+  }),
+  '这条策略在判断：CPU 使用率的P95，比 3 小时前高出 50%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU 使用率',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'offset_days',
+    compareValueKind: 'percent',
+    compareOffsetHours: 30,
+    thresholdMethod: '>',
+    thresholdValue: 20,
+  }),
+  '这条策略在判断：CPU 使用率的平均，比 30 天前高出 20%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘用量',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'baseline_weeks',
+    compareValueKind: 'percent',
+    compareOffsetHours: 4,
+    thresholdMethod: '>',
+    thresholdValue: 10,
+  }),
+  '这条策略在判断：磁盘用量的平均，比 近 4 周同窗均值高出 10%。'
 );
 assert.equal(
   buildPolicyRestatement({

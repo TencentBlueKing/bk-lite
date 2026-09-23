@@ -75,18 +75,21 @@ import {
   scaleThresholdValuesForUnitChange,
   scheduleValueToMinutes,
   COMPARE_MODE_ABSOLUTE,
-  COMPARE_MODE_TIMELEFT,
+  COMPARE_MODE_OFFSET_HOURS,
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
   coerceRecoveryForThresholds,
   coerceThresholdsForCompareMode,
+  COMPARE_MODE_TIMELEFT,
   completedThresholds,
-  defaultCompareValueKind,
   getAllowedThresholdMethods,
+  defaultCompareValueKind,
   getCompareModeSelectOptions,
   getCompareValueKinds,
   getThresholdUnitOptions,
-  resolveForecastTargetUnit
+  resolveForecastTargetUnit,
+  resolveLoadedCompareOffset,
+  compareSpanSpec
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import { resolveTemplateDuration } from '../../template/templateBulkUtils';
@@ -234,6 +237,7 @@ const StrategyOperation = () => {
   const [algorithm, setAlgorithm] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState<string>(COMPARE_MODE_ABSOLUTE);
   const [compareValueKind, setCompareValueKind] = useState<string>('');
+  const [compareOffsetHours, setCompareOffsetHours] = useState<number | null>(1);
   const [countPredicate, setCountPredicate] = useState<{
     method: string;
     value: number | null;
@@ -730,7 +734,14 @@ const StrategyOperation = () => {
     setPeriodUnit(period?.type || 'min');
     setGroupAlgorithm(data.group_algorithm || 'avg');
     setAlgorithm(data.algorithm || null);
-    setCompareMode((data.compare_mode as string) || COMPARE_MODE_ABSOLUTE);
+    const loadedOffset = resolveLoadedCompareOffset({
+      mode: data.compare_mode as string,
+      hours: data.compare_offset_hours as number | null,
+      days: data.compare_offset_days as number | null,
+      weeks: data.compare_baseline_weeks as number | null
+    });
+    setCompareMode(loadedOffset.mode);
+    setCompareOffsetHours(loadedOffset.amount);
     setCompareValueKind((data.compare_value_kind as string) || '');
     const savedRecovery = data.recovery_threshold as
       | { method?: string; value?: number }
@@ -1093,6 +1104,21 @@ const StrategyOperation = () => {
 
   const handleCompareModeChange = (val: string) => {
     setCompareMode(val);
+    const nextSpan = compareSpanSpec(val);
+    if (nextSpan) {
+      const previousSpan = compareSpanSpec(compareMode);
+      setCompareOffsetHours((current) => {
+        if (
+          previousSpan &&
+          current != null &&
+          current >= nextSpan.min &&
+          current <= nextSpan.max
+        ) {
+          return Math.floor(current);
+        }
+        return nextSpan.fallback;
+      });
+    }
     const nextThresholds = coerceThresholdsForCompareMode(val, threshold);
     setThreshold(nextThresholds);
     setRecoveryThreshold(
@@ -1252,10 +1278,14 @@ const StrategyOperation = () => {
         countPredicate,
         forecastTarget,
         forecastTargetUnit: forecastTargetUnitForQuery,
-        forecastLookback
+        forecastLookback,
+        compareOffsetHours
       });
       params.compare_mode = compareFields.compare_mode;
       params.compare_value_kind = compareFields.compare_value_kind;
+      params.compare_offset_hours = compareFields.compare_offset_hours;
+      params.compare_offset_days = compareFields.compare_offset_days;
+      params.compare_baseline_weeks = compareFields.compare_baseline_weeks;
       params.count_predicate = compareFields.count_predicate;
       params.forecast_target = compareFields.forecast_target;
       params.forecast_target_unit = compareFields.forecast_target_unit;
@@ -1685,6 +1715,7 @@ const StrategyOperation = () => {
                           periodUnit={periodUnit}
                           compareMode={compareMode}
                           compareValueKind={compareValueKind}
+                          compareOffsetHours={compareOffsetHours}
                           algorithm={algorithm}
                           forecastTarget={forecastTarget}
                           forecastTargetUnit={forecastTargetUnit}
@@ -1713,6 +1744,7 @@ const StrategyOperation = () => {
                           onNoDataAlertNameChange={handleNoDataAlertNameChange}
                           onCompareModeChange={handleCompareModeChange}
                           onCompareValueKindChange={setCompareValueKind}
+                          onCompareOffsetHoursChange={setCompareOffsetHours}
                           onForecastTargetChange={setForecastTarget}
                           onForecastTargetUnitChange={setForecastTargetUnit}
                           onForecastLookbackChange={setForecastLookback}
@@ -1762,6 +1794,7 @@ const StrategyOperation = () => {
                 thresholdUnit={effectiveThresholdUnit}
                 compareMode={compareMode}
                 compareValueKind={compareValueKind}
+                compareOffsetHours={compareOffsetHours}
                 countPredicate={countPredicate}
                 forecastTarget={forecastTarget}
                 forecastTargetUnit={forecastTargetUnitForQuery}

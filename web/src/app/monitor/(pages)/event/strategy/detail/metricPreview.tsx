@@ -43,6 +43,7 @@ interface MetricPreviewProps {
   thresholdUnit?: string | null;
   compareMode?: string | null;
   compareValueKind?: string | null;
+  compareOffsetHours?: number | null;
   countPredicate?: { method?: string; value?: number | null } | null;
   forecastTarget?: number | null;
   forecastTargetUnit?: string | null;
@@ -93,6 +94,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   thresholdUnit,
   compareMode,
   compareValueKind,
+  compareOffsetHours,
   countPredicate,
   forecastTarget,
   forecastTargetUnit,
@@ -256,6 +258,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       thresholdUnit,
       compareMode,
       compareValueKind,
+      compareOffsetHours,
       countPredicate,
       forecastTarget,
       forecastTargetUnit,
@@ -457,6 +460,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     thresholdUnit,
     compareMode,
     compareValueKind,
+    compareOffsetHours,
     forecastTarget,
     forecastTargetUnit,
     forecastLookback,

@@ -125,6 +125,21 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
         blank=True,
         verbose_name="比较值类型",
     )
+    compare_offset_hours = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="对照小时数",
+    )
+    compare_offset_days = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="对照天数",
+    )
+    compare_baseline_weeks = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="对照周数",
+    )
     count_predicate = models.JSONField(default=dict, verbose_name="条件计数内阈")
     forecast_target = models.FloatField(blank=True, null=True, verbose_name="容量线目标")
     forecast_target_unit = models.CharField(

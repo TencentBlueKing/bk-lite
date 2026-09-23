@@ -393,8 +393,14 @@ export const COMPARE_MODE_ABSOLUTE = 'absolute';
 export const COMPARE_MODE_PREVIOUS_WINDOW = 'previous_window';
 export const COMPARE_MODE_OFFSET_1H = 'offset_1h';
 export const COMPARE_MODE_OFFSET_24H = 'offset_24h';
+export const COMPARE_MODE_OFFSET_HOURS = 'offset_hours';
+export const COMPARE_MODE_OFFSET_DAYS = 'offset_days';
+export const MAX_COMPARE_OFFSET_HOURS = 8760;
+export const MAX_COMPARE_OFFSET_DAYS = 365;
+export const MAX_COMPARE_BASELINE_WEEKS = 52;
 export const COMPARE_MODE_OFFSET_7D = 'offset_7d';
 export const COMPARE_MODE_OFFSET_30D = 'offset_30d';
+export const COMPARE_MODE_BASELINE_WEEKS = 'baseline_weeks';
 export const COMPARE_MODE_BASELINE_4W = 'baseline_4w';
 export const COMPARE_MODE_TIMELEFT = 'timeleft';
 export const LOW_SIDE_THRESHOLD_METHODS = new Set(['<', '<=']);
@@ -428,11 +434,9 @@ export const timeleftRequiresLowSideThresholds = (
 export const ENABLED_COMPARE_MODES = [
   COMPARE_MODE_ABSOLUTE,
   COMPARE_MODE_PREVIOUS_WINDOW,
-  COMPARE_MODE_OFFSET_1H,
-  COMPARE_MODE_OFFSET_24H,
-  COMPARE_MODE_OFFSET_7D,
-  COMPARE_MODE_OFFSET_30D,
-  COMPARE_MODE_BASELINE_4W,
+  COMPARE_MODE_OFFSET_HOURS,
+  COMPARE_MODE_OFFSET_DAYS,
+  COMPARE_MODE_BASELINE_WEEKS,
   COMPARE_MODE_TIMELEFT
 ] as const;
 
@@ -595,6 +599,14 @@ export const COMPARE_VALUE_KINDS_BY_MODE: Record<string, string[]> = {
     COMPARE_VALUE_KIND_PERCENT,
     COMPARE_VALUE_KIND_RATIO
   ],
+  [COMPARE_MODE_OFFSET_HOURS]: [
+    COMPARE_VALUE_KIND_PERCENT,
+    COMPARE_VALUE_KIND_RATIO
+  ],
+  [COMPARE_MODE_OFFSET_DAYS]: [
+    COMPARE_VALUE_KIND_PERCENT,
+    COMPARE_VALUE_KIND_RATIO
+  ],
   [COMPARE_MODE_OFFSET_7D]: [
     COMPARE_VALUE_KIND_PERCENT,
     COMPARE_VALUE_KIND_RATIO
@@ -602,6 +614,10 @@ export const COMPARE_VALUE_KINDS_BY_MODE: Record<string, string[]> = {
   [COMPARE_MODE_OFFSET_30D]: [
     COMPARE_VALUE_KIND_PERCENT,
     COMPARE_VALUE_KIND_RATIO
+  ],
+  [COMPARE_MODE_BASELINE_WEEKS]: [
+    COMPARE_VALUE_KIND_DELTA,
+    COMPARE_VALUE_KIND_PERCENT
   ],
   [COMPARE_MODE_BASELINE_4W]: [
     COMPARE_VALUE_KIND_DELTA,
@@ -621,6 +637,133 @@ export const policyPeriodToSeconds = (
   if (type === 'hour') return value * 3600;
   if (type === 'day') return value * 86400;
   return null;
+};
+
+export const compareSpanSpec = (
+  mode?: string | null
+): { min: number; max: number; fallback: number } | null => {
+  if (mode === COMPARE_MODE_OFFSET_HOURS) {
+    return { min: 1, max: MAX_COMPARE_OFFSET_HOURS, fallback: 1 };
+  }
+  if (mode === COMPARE_MODE_OFFSET_DAYS) {
+    return { min: 1, max: MAX_COMPARE_OFFSET_DAYS, fallback: 7 };
+  }
+  if (mode === COMPARE_MODE_BASELINE_WEEKS) {
+    return { min: 2, max: MAX_COMPARE_BASELINE_WEEKS, fallback: 4 };
+  }
+  return null;
+};
+
+export const COMPARE_BASELINE_YOY = 'yoy';
+
+export const compareBaselineFamily = (mode?: string | null): string => {
+  if (
+    mode === COMPARE_MODE_OFFSET_HOURS ||
+    mode === COMPARE_MODE_OFFSET_DAYS ||
+    mode === COMPARE_MODE_BASELINE_WEEKS ||
+    mode === COMPARE_MODE_OFFSET_1H ||
+    mode === COMPARE_MODE_OFFSET_24H ||
+    mode === COMPARE_MODE_OFFSET_7D ||
+    mode === COMPARE_MODE_OFFSET_30D ||
+    mode === COMPARE_MODE_BASELINE_4W
+  ) {
+    return COMPARE_BASELINE_YOY;
+  }
+  if (mode === COMPARE_MODE_PREVIOUS_WINDOW) {
+    return COMPARE_MODE_PREVIOUS_WINDOW;
+  }
+  if (mode === COMPARE_MODE_TIMELEFT) {
+    return COMPARE_MODE_TIMELEFT;
+  }
+  return COMPARE_MODE_ABSOLUTE;
+};
+
+const normalizeCompareSpan = (
+  value: number | null | undefined,
+  fallback: number
+): number =>
+  value != null && Number.isFinite(value) && value >= 1
+    ? Math.floor(value)
+    : fallback;
+
+export const compareOffsetHoursConflict = (
+  hours: number | null | undefined,
+  periodType?: string | null,
+  periodValue?: number | null
+): boolean =>
+  compareSpanConflict(COMPARE_MODE_OFFSET_HOURS, hours, periodType, periodValue);
+
+export const compareSpanConflict = (
+  mode: string | null | undefined,
+  amount: number | null | undefined,
+  periodType?: string | null,
+  periodValue?: number | null
+): boolean => {
+  if (amount == null || !Number.isFinite(amount) || amount < 1) {
+    return false;
+  }
+  const periodSeconds = policyPeriodToSeconds(periodType, periodValue);
+  if (periodSeconds == null) return false;
+  if (mode === COMPARE_MODE_OFFSET_HOURS) {
+    return periodSeconds === amount * 3600;
+  }
+  if (mode === COMPARE_MODE_OFFSET_DAYS) {
+    return periodSeconds === amount * 86400;
+  }
+  if (mode === COMPARE_MODE_BASELINE_WEEKS) {
+    const weekSeconds = 7 * 86400;
+    if (periodSeconds % weekSeconds !== 0) return false;
+    const weeks = periodSeconds / weekSeconds;
+    return weeks >= 1 && weeks <= amount;
+  }
+  return false;
+};
+
+export const resolveLoadedCompareOffset = ({
+  mode,
+  hours,
+  days,
+  weeks
+}: {
+  mode?: string | null;
+  hours?: number | null;
+  days?: number | null;
+  weeks?: number | null;
+}): { mode: string; amount: number } => {
+  if (mode === COMPARE_MODE_OFFSET_1H) {
+    return { mode: COMPARE_MODE_OFFSET_HOURS, amount: 1 };
+  }
+  if (mode === COMPARE_MODE_OFFSET_24H) {
+    return { mode: COMPARE_MODE_OFFSET_HOURS, amount: 24 };
+  }
+  if (mode === COMPARE_MODE_OFFSET_7D) {
+    return { mode: COMPARE_MODE_OFFSET_DAYS, amount: 7 };
+  }
+  if (mode === COMPARE_MODE_OFFSET_30D) {
+    return { mode: COMPARE_MODE_OFFSET_DAYS, amount: 30 };
+  }
+  if (mode === COMPARE_MODE_BASELINE_4W) {
+    return { mode: COMPARE_MODE_BASELINE_WEEKS, amount: 4 };
+  }
+  if (mode === COMPARE_MODE_OFFSET_HOURS) {
+    return {
+      mode: COMPARE_MODE_OFFSET_HOURS,
+      amount: normalizeCompareSpan(hours, 1)
+    };
+  }
+  if (mode === COMPARE_MODE_OFFSET_DAYS) {
+    return {
+      mode: COMPARE_MODE_OFFSET_DAYS,
+      amount: normalizeCompareSpan(days, 7)
+    };
+  }
+  if (mode === COMPARE_MODE_BASELINE_WEEKS) {
+    return {
+      mode: COMPARE_MODE_BASELINE_WEEKS,
+      amount: normalizeCompareSpan(weeks, 4)
+    };
+  }
+  return { mode: mode || COMPARE_MODE_ABSOLUTE, amount: 1 };
 };
 
 export const isCompareModeAvailable = (
@@ -849,7 +992,8 @@ export const buildPolicyRestatement = ({
   thresholdUnitLabel,
   countPredicateMethod,
   countPredicateValue,
-  forecastTarget
+  forecastTarget,
+  compareOffsetHours
 }: {
   t: TranslateFn;
   metricLabel?: string | null;
@@ -864,6 +1008,7 @@ export const buildPolicyRestatement = ({
   countPredicateMethod?: string | null;
   countPredicateValue?: number | null;
   forecastTarget?: number | null;
+  compareOffsetHours?: number | null;
 }): string => {
   const metric =
     metricLabel?.trim() ||
@@ -936,9 +1081,28 @@ export const buildPolicyRestatement = ({
   const baselineKey = compareMode
     ? COMPARE_RESTATEMENT_BASELINE_KEYS[compareMode]
     : undefined;
-  const baseline = baselineKey
-    ? t(baselineKey.key, baselineKey.fallback)
-    : compareModeLabel || '';
+  const spanText =
+    compareOffsetHours != null && Number.isFinite(compareOffsetHours)
+      ? compareOffsetHours
+      : '…';
+  const baseline =
+    compareMode === COMPARE_MODE_OFFSET_HOURS
+      ? t('monitor.events.compareModeOffsetHoursRestate', '{n} 小时前', {
+        n: spanText
+      })
+      : compareMode === COMPARE_MODE_OFFSET_DAYS
+        ? t('monitor.events.compareModeOffsetDaysRestate', '{n} 天前', {
+          n: spanText
+        })
+        : compareMode === COMPARE_MODE_BASELINE_WEEKS
+          ? t(
+            'monitor.events.compareModeBaselineWeeksRestate',
+            '近 {n} 周同窗均值',
+            { n: spanText }
+          )
+          : baselineKey
+            ? t(baselineKey.key, baselineKey.fallback)
+            : compareModeLabel || '';
   return t(
     'monitor.events.policyRestatementCompare',
     '这条策略在判断：{metric}的{algorithm}，比 {baseline}{direction} {value}。',
@@ -966,7 +1130,8 @@ export const resolveCompareFieldsForSave = ({
   countPredicate,
   forecastTarget,
   forecastTargetUnit,
-  forecastLookback
+  forecastLookback,
+  compareOffsetHours
 }: {
   isTrap: boolean;
   compareMode?: string | null;
@@ -976,6 +1141,7 @@ export const resolveCompareFieldsForSave = ({
   forecastTarget?: number | null;
   forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number } | null;
+  compareOffsetHours?: number | null;
 }): {
   compare_mode: string;
   compare_value_kind: string;
@@ -983,6 +1149,9 @@ export const resolveCompareFieldsForSave = ({
   forecast_target: number | null;
   forecast_target_unit: string;
   forecast_lookback: Record<string, unknown>;
+  compare_offset_hours: number | null;
+  compare_offset_days: number | null;
+  compare_baseline_weeks: number | null;
 } => {
   if (isTrap) {
     return {
@@ -991,10 +1160,24 @@ export const resolveCompareFieldsForSave = ({
       count_predicate: {},
       forecast_target: null,
       forecast_target_unit: '',
-      forecast_lookback: {}
+      forecast_lookback: {},
+      compare_offset_hours: null,
+      compare_offset_days: null,
+      compare_baseline_weeks: null
     };
   }
   const mode = compareMode || COMPARE_MODE_ABSOLUTE;
+  const spanSpec = compareSpanSpec(mode);
+  const span =
+    spanSpec &&
+    compareOffsetHours != null &&
+    Number.isFinite(compareOffsetHours) &&
+    compareOffsetHours >= 1
+      ? Math.min(
+        spanSpec.max,
+        Math.max(spanSpec.min, Math.floor(compareOffsetHours))
+      )
+      : null;
   if (mode === COMPARE_MODE_ABSOLUTE) {
     return {
       compare_mode: COMPARE_MODE_ABSOLUTE,
@@ -1008,7 +1191,10 @@ export const resolveCompareFieldsForSave = ({
           : {},
       forecast_target: null,
       forecast_target_unit: '',
-      forecast_lookback: {}
+      forecast_lookback: {},
+      compare_offset_hours: null,
+      compare_offset_days: null,
+      compare_baseline_weeks: null
     };
   }
   const allowed = getCompareValueKinds(mode);
@@ -1027,7 +1213,10 @@ export const resolveCompareFieldsForSave = ({
     forecast_lookback:
       mode === COMPARE_MODE_TIMELEFT
         ? forecastLookback || DEFAULT_FORECAST_LOOKBACK
-        : {}
+        : {},
+    compare_offset_hours: mode === COMPARE_MODE_OFFSET_HOURS ? span : null,
+    compare_offset_days: mode === COMPARE_MODE_OFFSET_DAYS ? span : null,
+    compare_baseline_weeks: mode === COMPARE_MODE_BASELINE_WEEKS ? span : null
   };
 };
 

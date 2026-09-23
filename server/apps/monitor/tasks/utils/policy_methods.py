@@ -118,9 +118,15 @@ COMPARE_MODE_ABSOLUTE = "absolute"
 COMPARE_MODE_PREVIOUS_WINDOW = "previous_window"
 COMPARE_MODE_OFFSET_1H = "offset_1h"
 COMPARE_MODE_OFFSET_24H = "offset_24h"
+COMPARE_MODE_OFFSET_HOURS = "offset_hours"
+COMPARE_MODE_OFFSET_DAYS = "offset_days"
 COMPARE_MODE_OFFSET_7D = "offset_7d"
 COMPARE_MODE_OFFSET_30D = "offset_30d"
+COMPARE_MODE_BASELINE_WEEKS = "baseline_weeks"
 COMPARE_MODE_BASELINE_4W = "baseline_4w"
+MAX_COMPARE_OFFSET_HOURS = 8760
+MAX_COMPARE_OFFSET_DAYS = 365
+MAX_COMPARE_BASELINE_WEEKS = 52
 COMPARE_MODE_TIMELEFT = "timeleft"
 
 COMPARE_MODES = {
@@ -128,8 +134,11 @@ COMPARE_MODES = {
     COMPARE_MODE_PREVIOUS_WINDOW,
     COMPARE_MODE_OFFSET_1H,
     COMPARE_MODE_OFFSET_24H,
+    COMPARE_MODE_OFFSET_HOURS,
+    COMPARE_MODE_OFFSET_DAYS,
     COMPARE_MODE_OFFSET_7D,
     COMPARE_MODE_OFFSET_30D,
+    COMPARE_MODE_BASELINE_WEEKS,
     COMPARE_MODE_BASELINE_4W,
     COMPARE_MODE_TIMELEFT,
 }
@@ -139,8 +148,11 @@ COMPARE_VALUE_KINDS_BY_MODE = {
     COMPARE_MODE_PREVIOUS_WINDOW: {"delta", "percent"},
     COMPARE_MODE_OFFSET_1H: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_24H: {"percent", "ratio"},
+    COMPARE_MODE_OFFSET_HOURS: {"percent", "ratio"},
+    COMPARE_MODE_OFFSET_DAYS: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_7D: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_30D: {"percent", "ratio"},
+    COMPARE_MODE_BASELINE_WEEKS: {"delta", "percent"},
     COMPARE_MODE_BASELINE_4W: {"delta", "percent"},
     COMPARE_MODE_TIMELEFT: {"hours"},
 }
@@ -390,11 +402,26 @@ def compile_timeleft_query(policy_like, base_query, step, group_by=None):
     )
 
 
+def _baseline_weeks_expr(query, weeks):
+    terms = " + ".join(f"{query} offset {week * 7}d" for week in range(1, weeks + 1))
+    return f"({terms}) / {weeks}"
+
+
 def _baseline_4w_expr(query):
-    return (
-        f"({query} offset 7d + {query} offset 14d + "
-        f"{query} offset 21d + {query} offset 28d) / 4"
-    )
+    return _baseline_weeks_expr(query, 4)
+
+
+def _positive_span(policy_like, field, maximum, minimum=1):
+    raw = _policy_get(policy_like, field)
+    if isinstance(raw, bool):
+        raise BaseAppException(f"{field} must be a positive integer")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as err:
+        raise BaseAppException(f"{field} must be a positive integer") from err
+    if value < minimum or value > maximum:
+        raise BaseAppException(f"{field} must be a positive integer")
+    return value
 
 
 def _window_range_selector(group_algorithm, metric_query, group_by, step):
@@ -480,9 +507,16 @@ def _compile_window_query(policy_like, base_query, step, group_by):
     return build_policy_query(algorithm, base_query, step, group_by, group_algorithm)
 
 
-def _compare_offset(mode, step):
+def _compare_offset(policy_like, step):
+    mode = _policy_get(policy_like, "compare_mode") or COMPARE_MODE_ABSOLUTE
     if mode == COMPARE_MODE_PREVIOUS_WINDOW:
         return step
+    if mode == COMPARE_MODE_OFFSET_HOURS:
+        hours = _positive_span(policy_like, "compare_offset_hours", MAX_COMPARE_OFFSET_HOURS)
+        return f"{hours}h"
+    if mode == COMPARE_MODE_OFFSET_DAYS:
+        days = _positive_span(policy_like, "compare_offset_days", MAX_COMPARE_OFFSET_DAYS)
+        return f"{days}d"
     offset = COMPARE_OFFSET_BY_MODE.get(mode)
     if not offset:
         raise BaseAppException(f"unsupported compare_mode: {mode}")
@@ -496,8 +530,18 @@ def apply_compare_mode(query, policy_like, step):
         return query
     if _policy_get(policy_like, "algorithm") == COUNT_IF_ALGORITHM:
         raise BaseAppException("count_if_over_time only allows absolute compare_mode")
-    if mode == COMPARE_MODE_BASELINE_4W:
-        baseline = _baseline_4w_expr(query)
+    if mode in (COMPARE_MODE_BASELINE_4W, COMPARE_MODE_BASELINE_WEEKS):
+        weeks = (
+            4
+            if mode == COMPARE_MODE_BASELINE_4W
+            else _positive_span(
+                policy_like,
+                "compare_baseline_weeks",
+                MAX_COMPARE_BASELINE_WEEKS,
+                minimum=2,
+            )
+        )
+        baseline = _baseline_weeks_expr(query, weeks)
         if kind == "delta":
             return f"{query} - ({baseline})"
         if kind == "percent":
@@ -505,7 +549,7 @@ def apply_compare_mode(query, policy_like, step):
         raise BaseAppException(f"unsupported compare_value_kind: {kind}")
     if mode == COMPARE_MODE_TIMELEFT:
         raise BaseAppException("timeleft must use compile_timeleft_query")
-    offset = _compare_offset(mode, step)
+    offset = _compare_offset(policy_like, step)
     baseline = f"{query} offset {offset}"
     if kind == "delta":
         return f"{query} - {baseline}"
@@ -531,7 +575,15 @@ def compile_baseline_query(policy_like, base_query, step, group_by=None):
         return query
     if mode == COMPARE_MODE_BASELINE_4W:
         return _baseline_4w_expr(query)
-    return f"{query} offset {_compare_offset(mode, step)}"
+    if mode == COMPARE_MODE_BASELINE_WEEKS:
+        weeks = _positive_span(
+            policy_like,
+            "compare_baseline_weeks",
+            MAX_COMPARE_BASELINE_WEEKS,
+            minimum=2,
+        )
+        return _baseline_weeks_expr(query, weeks)
+    return f"{query} offset {_compare_offset(policy_like, step)}"
 
 
 def compile_policy_query(policy_like, base_query, step, group_by=None):

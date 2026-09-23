@@ -39,6 +39,9 @@ POLICY_RECIPE_SYNC_FIELDS = (
     "threshold_unit",
     "compare_mode",
     "compare_value_kind",
+    "compare_offset_hours",
+    "compare_offset_days",
+    "compare_baseline_weeks",
     "count_predicate",
     "forecast_target",
     "forecast_target_unit",
@@ -501,6 +504,9 @@ class PolicyService:
                     portable["metric_name"] = metric_name
         portable.setdefault("compare_mode", "absolute")
         portable.setdefault("compare_value_kind", "")
+        portable.setdefault("compare_offset_hours", None)
+        portable.setdefault("compare_offset_days", None)
+        portable.setdefault("compare_baseline_weeks", None)
         portable.setdefault("count_predicate", {})
         portable.setdefault("forecast_lookback", {})
         portable.setdefault("recovery_threshold", {})
@@ -665,6 +671,9 @@ class PolicyService:
             "threshold_unit": (config.get("threshold_unit") or config.get("calculation_unit") or default_calculation_unit or ""),
             "compare_mode": config.get("compare_mode") or "absolute",
             "compare_value_kind": config.get("compare_value_kind") or "",
+            "compare_offset_hours": config.get("compare_offset_hours"),
+            "compare_offset_days": config.get("compare_offset_days"),
+            "compare_baseline_weeks": config.get("compare_baseline_weeks"),
             "count_predicate": copy.deepcopy(config.get("count_predicate") or {}),
             "forecast_target": forecast_target,
             "forecast_target_unit": config.get("forecast_target_unit") or "",

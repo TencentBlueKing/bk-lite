@@ -9,16 +9,24 @@ import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shar
 import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
 import { useMethodList } from '@/app/monitor/hooks/event';
 import {
+  COMPARE_BASELINE_YOY,
   COMPARE_MODE_ABSOLUTE,
+  COMPARE_MODE_BASELINE_WEEKS,
+  COMPARE_MODE_OFFSET_DAYS,
+  COMPARE_MODE_OFFSET_HOURS,
+  COMPARE_MODE_PREVIOUS_WINDOW,
   COMPARE_MODE_TIMELEFT,
+  compareBaselineFamily,
+  compareSpanConflict,
+  compareSpanSpec,
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
   FORECAST_LOOKBACK_OPTIONS,
   buildPolicyRestatement,
+  completedThresholds,
   defaultCompareValueKind,
   formatUnitLabelWithRateSuffix,
   getAllowedRecoveryMethods,
-  completedThresholds,
   getAllowedThresholdMethods,
   getCompareModeSelectOptions,
   getCompareValueKinds,
@@ -38,7 +46,7 @@ import AlertDurationFields, {
 } from './alertDurationFields';
 
 const { Option } = Select;
-const COMPARE_KIND_SELECT_WIDTH = 108;
+type YoyUnit = 'hour' | 'day' | 'week_mean';
 
 interface AlertConditionsFormProps {
   enableAlerts: string[];
@@ -58,6 +66,7 @@ interface AlertConditionsFormProps {
   periodUnit: string;
   compareMode: string;
   compareValueKind: string;
+  compareOffsetHours?: number | null;
   algorithm?: string | null;
   forecastTarget?: number | null;
   forecastTargetUnit?: string | null;
@@ -73,6 +82,7 @@ interface AlertConditionsFormProps {
   onNoDataAlertNameChange: (val: string) => void;
   onCompareModeChange: (val: string) => void;
   onCompareValueKindChange: (val: string) => void;
+  onCompareOffsetHoursChange?: (val: number | null) => void;
   onForecastTargetChange?: (val: number | null) => void;
   onForecastTargetUnitChange?: (val: string) => void;
   onForecastLookbackChange?: (val: { type: string; value: number }) => void;
@@ -105,6 +115,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   periodUnit,
   compareMode,
   compareValueKind,
+  compareOffsetHours,
   algorithm,
   forecastTarget,
   forecastTargetUnit,
@@ -121,6 +132,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onNoDataAlertNameChange,
   onCompareModeChange,
   onCompareValueKindChange,
+  onCompareOffsetHoursChange,
   onForecastTargetChange,
   onForecastTargetUnitChange,
   onForecastLookbackChange,
@@ -220,20 +232,13 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     previous_window: t('monitor.events.compareModePreviousWindow'),
     offset_1h: t('monitor.events.compareModeOffset1h'),
     offset_24h: t('monitor.events.compareModeOffset24h'),
+    offset_hours: t('monitor.events.compareModeOffsetHours', '小时前同窗'),
+    offset_days: t('monitor.events.compareModeOffsetDays', '天前同窗'),
+    baseline_weeks: t('monitor.events.compareModeBaselineWeeks', '周同窗均值'),
     offset_7d: t('monitor.events.compareModeOffset7d'),
     offset_30d: t('monitor.events.compareModeOffset30d'),
     baseline_4w: t('monitor.events.compareModeBaseline4w'),
     timeleft: t('monitor.events.compareModeTimeleft')
-  };
-  const compareModeTips: Record<string, string> = {
-    absolute: t('monitor.events.compareModeAbsoluteTip'),
-    previous_window: t('monitor.events.compareModePreviousWindowTip'),
-    offset_1h: t('monitor.events.compareModeOffset1hTip'),
-    offset_24h: t('monitor.events.compareModeOffset24hTip'),
-    offset_7d: t('monitor.events.compareModeOffset7dTip'),
-    offset_30d: t('monitor.events.compareModeOffset30dTip'),
-    baseline_4w: t('monitor.events.compareModeBaseline4wTip'),
-    timeleft: t('monitor.events.compareModeTimeleftTip')
   };
   const compareKindLabels: Record<string, string> = {
     delta: t('monitor.events.compareValueKindDelta'),
@@ -322,7 +327,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       countPredicateMethod: countPredicate?.method,
       countPredicateValue:
         typeof countPredicate?.value === 'number' ? countPredicate.value : null,
-      forecastTarget
+      forecastTarget,
+      compareOffsetHours
     });
   }, [
     t,
@@ -335,7 +341,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     threshold,
     recoveryThresholdUnitLabel,
     countPredicate,
-    forecastTarget
+    forecastTarget,
+    compareOffsetHours
   ]);
 
   const handleCompareModeChange = (val: string) => {
@@ -349,8 +356,96 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       onCompareValueKindChange(defaultCompareValueKind(val));
     }
   };
+  const yoyUnit: YoyUnit =
+    compareMode === COMPARE_MODE_OFFSET_DAYS
+      ? 'day'
+      : compareMode === COMPARE_MODE_BASELINE_WEEKS
+        ? 'week_mean'
+        : 'hour';
+  const yoyModeForUnit = (unit: YoyUnit) =>
+    unit === 'day'
+      ? COMPARE_MODE_OFFSET_DAYS
+      : unit === 'week_mean'
+        ? COMPARE_MODE_BASELINE_WEEKS
+        : COMPARE_MODE_OFFSET_HOURS;
+  const handleFamilyChange = (family: string) => {
+    if (family === COMPARE_BASELINE_YOY) {
+      if (compareBaselineFamily(compareMode) !== COMPARE_BASELINE_YOY) {
+        handleCompareModeChange(COMPARE_MODE_OFFSET_HOURS);
+      }
+      return;
+    }
+    handleCompareModeChange(family);
+  };
+  const handleYoyUnitChange = (unit: YoyUnit) => {
+    const mode = yoyModeForUnit(unit);
+    const spec = compareSpanSpec(mode);
+    handleCompareModeChange(mode);
+    if (
+      spec &&
+      (compareOffsetHours == null ||
+        compareOffsetHours < spec.min ||
+        compareOffsetHours > spec.max)
+    ) {
+      onCompareOffsetHoursChange?.(spec.fallback);
+    }
+  };
+  const compareFamily = compareBaselineFamily(compareMode);
+  const optionByMode = Object.fromEntries(
+    compareModeOptions.map((item) => [item.value, item])
+  );
+  const yoyDisabled = [
+    COMPARE_MODE_OFFSET_HOURS,
+    COMPARE_MODE_OFFSET_DAYS,
+    COMPARE_MODE_BASELINE_WEEKS
+  ].every((mode) => optionByMode[mode]?.disabled);
+  const familyOptions: Array<{
+    value: string;
+    disabled: boolean;
+    reasonKey?: string;
+  }> = [
+    { value: COMPARE_MODE_ABSOLUTE, disabled: false },
+    {
+      value: COMPARE_MODE_PREVIOUS_WINDOW,
+      disabled: !!optionByMode[COMPARE_MODE_PREVIOUS_WINDOW]?.disabled,
+      reasonKey: optionByMode[COMPARE_MODE_PREVIOUS_WINDOW]?.reasonKey
+    },
+    {
+      value: COMPARE_BASELINE_YOY,
+      disabled: yoyDisabled,
+      reasonKey: optionByMode[COMPARE_MODE_OFFSET_HOURS]?.reasonKey
+    },
+    {
+      value: COMPARE_MODE_TIMELEFT,
+      disabled: !!optionByMode[COMPARE_MODE_TIMELEFT]?.disabled,
+      reasonKey: optionByMode[COMPARE_MODE_TIMELEFT]?.reasonKey
+    }
+  ];
+  const familyLabels: Record<string, string> = {
+    [COMPARE_MODE_ABSOLUTE]: t('monitor.events.compareModeAbsolute'),
+    [COMPARE_MODE_PREVIOUS_WINDOW]: t('monitor.events.compareModeMom', '环比'),
+    [COMPARE_BASELINE_YOY]: t('monitor.events.compareModeYoy', '同比'),
+    [COMPARE_MODE_TIMELEFT]: t('monitor.events.compareModeTimeleft')
+  };
+  const familyTips: Record<string, string> = {
+    [COMPARE_MODE_ABSOLUTE]: t('monitor.events.compareModeAbsoluteTip'),
+    [COMPARE_MODE_PREVIOUS_WINDOW]: t(
+      'monitor.events.compareModeMomTip',
+      '和上一个同样长度的汇聚周期比较。'
+    ),
+    [COMPARE_BASELINE_YOY]: t(
+      'monitor.events.compareModeYoyTip',
+      '和更早的同一段窗口比较。可以指定小时、天，或近若干周的平均值。'
+    ),
+    [COMPARE_MODE_TIMELEFT]: t('monitor.events.compareModeTimeleftTip')
+  };
+  const spanSpec = compareSpanSpec(compareMode);
+  const showCompareKind =
+    compareMode !== COMPARE_MODE_ABSOLUTE &&
+    compareMode !== COMPARE_MODE_TIMELEFT &&
+    compareKindOptions.length > 0;
 
-  const renderCompareOption = (item: {
+  const renderFamilyOption = (item: {
     value: string;
     disabled: boolean;
     reasonKey?: string;
@@ -359,7 +454,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       key={item.value}
       value={item.value}
       disabled={item.disabled}
-      label={compareModeLabels[item.value] || item.value}
+      label={familyLabels[item.value] || item.value}
     >
       <Tooltip
         overlayInnerStyle={{ whiteSpace: 'pre-line' }}
@@ -367,14 +462,44 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         title={
           item.disabled && item.reasonKey
             ? t(item.reasonKey)
-            : compareModeTips[item.value]
+            : familyTips[item.value]
         }
       >
         <span className="flex w-full min-w-0 items-center">
-          {compareModeLabels[item.value] || item.value}
+          {familyLabels[item.value] || item.value}
         </span>
       </Tooltip>
     </Option>
+  );
+  const renderCompareKindSelect = () => (
+    <Select
+      value={
+        compareKindOptions.includes(compareValueKind)
+          ? compareValueKind
+          : defaultCompareValueKind(compareMode)
+      }
+      onChange={onCompareValueKindChange}
+      aria-label={t('monitor.events.compareValueKind')}
+      style={{ width: '100%' }}
+    >
+      {compareKindOptions.map((kind) => (
+        <Option
+          key={kind}
+          value={kind}
+          label={compareKindLabels[kind] || kind}
+        >
+          <Tooltip
+            overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+            placement="right"
+            title={compareKindTips[kind]}
+          >
+            <span className="flex w-full min-w-0 items-center">
+              {compareKindLabels[kind] || kind}
+            </span>
+          </Tooltip>
+        </Option>
+      ))}
+    </Select>
   );
 
   // 是否显示无数据告警名称（选择了非"不触发"的选项时显示）
@@ -400,6 +525,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           isTrap(getFieldValue) ? null : (
             <>
               {!isEnumMetric && (
+                <>
                 <Form.Item
                   required
                   label={
@@ -408,52 +534,94 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     </span>
                   }
                 >
-                  <Space.Compact block>
-                    <Select
-                      value={compareMode}
-                      onChange={handleCompareModeChange}
-                      style={{
-                        width:
-                          compareKindOptions.length > 0
-                            ? `calc(100% - ${COMPARE_KIND_SELECT_WIDTH}px)`
-                            : '100%'
-                      }}
-                    >
-                      {compareModeOptions.map(renderCompareOption)}
-                    </Select>
-                    {compareKindOptions.length > 0 ? (
-                      <Select
-                        value={
-                          compareKindOptions.includes(compareValueKind)
-                            ? compareValueKind
-                            : defaultCompareValueKind(compareMode)
-                        }
-                        onChange={onCompareValueKindChange}
-                        aria-label={t('monitor.events.compareValueKind')}
-                        popupMatchSelectWidth={false}
-                        style={{ width: COMPARE_KIND_SELECT_WIDTH }}
-                      >
-                        {compareKindOptions.map((kind) => (
-                          <Option
-                            key={kind}
-                            value={kind}
-                            label={compareKindLabels[kind] || kind}
-                          >
-                            <Tooltip
-                              overlayInnerStyle={{ whiteSpace: 'pre-line' }}
-                              placement="right"
-                              title={compareKindTips[kind]}
-                            >
-                              <span className="flex w-full min-w-0 items-center">
-                                {compareKindLabels[kind] || kind}
-                              </span>
-                            </Tooltip>
-                          </Option>
-                        ))}
-                      </Select>
-                    ) : null}
-                  </Space.Compact>
+                  <Select
+                    value={compareFamily}
+                    onChange={handleFamilyChange}
+                    style={{ width: '100%' }}
+                  >
+                    {familyOptions.map(renderFamilyOption)}
+                  </Select>
                 </Form.Item>
+                {compareFamily === COMPARE_BASELINE_YOY && spanSpec ? (
+                  <Form.Item
+                    required
+                    label={
+                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
+                        {t('monitor.events.compareOffsetPeriod', '对照周期')}
+                      </span>
+                    }
+                  >
+                    <Space.Compact block>
+                      <InputNumber
+                        className="w-[88px]"
+                        min={spanSpec.min}
+                        max={spanSpec.max}
+                        precision={0}
+                        value={compareOffsetHours}
+                        onChange={(val) =>
+                          onCompareOffsetHoursChange?.(
+                            val == null ? null : Number(val)
+                          )
+                        }
+                      />
+                      <Select
+                        value={yoyUnit}
+                        onChange={handleYoyUnitChange}
+                        style={{ width: 'calc(100% - 88px)' }}
+                      >
+                        <Option value="hour">
+                          {t('monitor.events.compareOffsetUnitHour', '小时')}
+                        </Option>
+                        <Option value="day">
+                          {t('monitor.events.compareOffsetUnitDay', '天')}
+                        </Option>
+                        <Option value="week_mean">
+                          {t(
+                            'monitor.events.compareOffsetUnitWeekMean',
+                            '周均值'
+                          )}
+                        </Option>
+                      </Select>
+                    </Space.Compact>
+                    {compareOffsetHours == null ||
+                    compareSpanConflict(
+                      compareMode,
+                      compareOffsetHours,
+                      periodUnit,
+                      period
+                    ) ? (
+                        <div className="mt-1 text-xs text-[var(--color-text-3)]">
+                          {compareOffsetHours == null
+                            ? t(
+                              yoyUnit === 'day'
+                                ? 'monitor.events.compareOffsetDaysRequired'
+                                : yoyUnit === 'week_mean'
+                                  ? 'monitor.events.compareBaselineWeeksRequired'
+                                  : 'monitor.events.compareOffsetHoursRequired',
+                              yoyUnit === 'day'
+                                ? '请填写对照天数'
+                                : yoyUnit === 'week_mean'
+                                  ? '请填写对照周数'
+                                  : '请填写对照小时数'
+                            )
+                            : t('monitor.events.compareModeDisabledPeriod')}
+                        </div>
+                      ) : null}
+                  </Form.Item>
+                ) : null}
+                {showCompareKind ? (
+                  <Form.Item
+                    required
+                    label={
+                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
+                        {t('monitor.events.compareValueKind')}
+                      </span>
+                    }
+                  >
+                    {renderCompareKindSelect()}
+                  </Form.Item>
+                ) : null}
+                </>
               )}
               {compareMode === COMPARE_MODE_TIMELEFT && !isEnumMetric && (
                 <>

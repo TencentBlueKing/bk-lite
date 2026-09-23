@@ -316,6 +316,9 @@ def test_old_template_gets_new_field_defaults():
     assert portable["recovery_threshold"] == {}
     assert portable["forecast_target"] is None
     assert portable["forecast_target_unit"] == ""
+    assert portable["compare_offset_hours"] is None
+    assert portable["compare_offset_days"] is None
+    assert portable["compare_baseline_weeks"] is None
 
 
 def test_portable_config_keeps_new_fields():

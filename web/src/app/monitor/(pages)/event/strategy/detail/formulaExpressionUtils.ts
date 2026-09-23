@@ -611,7 +611,8 @@ export const buildMetricExpressionPreviewPayload = ({
   countPredicate,
   forecastTarget,
   forecastTargetUnit,
-  forecastLookback
+  forecastLookback,
+  compareOffsetHours
 }: {
   monitorObjId: string | number | null;
   source: SourceFeild;
@@ -638,6 +639,7 @@ export const buildMetricExpressionPreviewPayload = ({
   forecastTarget?: number | null;
   forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number } | null;
+  compareOffsetHours?: number | null;
 }) => {
   if (!monitorObjId || !selectedInstance || !algorithm) {
     return null;
@@ -709,6 +711,27 @@ export const buildMetricExpressionPreviewPayload = ({
     threshold_unit: previewThresholdUnit,
     compare_mode: resolvedCompareMode,
     compare_value_kind: resolvedCompareKind,
+    compare_offset_hours:
+      resolvedCompareMode === 'offset_hours' &&
+      compareOffsetHours != null &&
+      Number.isFinite(compareOffsetHours) &&
+      compareOffsetHours >= 1
+        ? Math.floor(compareOffsetHours)
+        : null,
+    compare_offset_days:
+      resolvedCompareMode === 'offset_days' &&
+      compareOffsetHours != null &&
+      Number.isFinite(compareOffsetHours) &&
+      compareOffsetHours >= 1
+        ? Math.floor(compareOffsetHours)
+        : null,
+    compare_baseline_weeks:
+      resolvedCompareMode === 'baseline_weeks' &&
+      compareOffsetHours != null &&
+      Number.isFinite(compareOffsetHours) &&
+      compareOffsetHours >= 1
+        ? Math.floor(compareOffsetHours)
+        : null,
     count_predicate:
       algorithm === 'count_if_over_time' && countPredicate?.method
         ? {

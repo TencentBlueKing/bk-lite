@@ -7,7 +7,13 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.tasks.utils.policy_methods import (
     ALLOWED_FORECAST_LOOKBACK,
+    COMPARE_MODE_BASELINE_WEEKS,
+    COMPARE_MODE_OFFSET_DAYS,
+    COMPARE_MODE_OFFSET_HOURS,
     COMPARE_MODES,
+    MAX_COMPARE_BASELINE_WEEKS,
+    MAX_COMPARE_OFFSET_DAYS,
+    MAX_COMPARE_OFFSET_HOURS,
     COMPARE_OFFSET_SECONDS,
     COMPARE_VALUE_KINDS,
     COMPARE_VALUE_KINDS_BY_MODE,
@@ -494,6 +500,60 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
 
         period = self._get_value(attrs, "period", {}) or {}
         offset_seconds = COMPARE_OFFSET_SECONDS.get(compare_mode)
+        span_fields = {
+            COMPARE_MODE_OFFSET_HOURS: (
+                "compare_offset_hours",
+                MAX_COMPARE_OFFSET_HOURS,
+                3600,
+                "对照小时数",
+            ),
+            COMPARE_MODE_OFFSET_DAYS: (
+                "compare_offset_days",
+                MAX_COMPARE_OFFSET_DAYS,
+                86400,
+                "对照天数",
+            ),
+            COMPARE_MODE_BASELINE_WEEKS: (
+                "compare_baseline_weeks",
+                MAX_COMPARE_BASELINE_WEEKS,
+                None,
+                "对照周数",
+            ),
+        }
+        span = span_fields.get(compare_mode)
+        if span:
+            field, limit, unit_seconds, label = span
+            raw_span = self._get_value(attrs, field, None)
+            minimum = 2 if compare_mode == COMPARE_MODE_BASELINE_WEEKS else 1
+            if isinstance(raw_span, bool) or not isinstance(raw_span, int) or raw_span < minimum:
+                errors[field] = (
+                    f"{label}至少为 {minimum}" if minimum > 1 else f"{label}必须是正整数"
+                )
+            elif raw_span > limit:
+                errors[field] = f"{label}不能超过 {limit}"
+            else:
+                attrs[field] = raw_span
+                if unit_seconds:
+                    offset_seconds = raw_span * unit_seconds
+                elif "compare_mode" not in errors:
+                    try:
+                        period_seconds = period_to_seconds(period)
+                    except BaseAppException:
+                        period_seconds = None
+                    week_seconds = 7 * 86400
+                    if (
+                        period_seconds
+                        and period_seconds % week_seconds == 0
+                        and 1 <= period_seconds // week_seconds <= raw_span
+                    ):
+                        errors["compare_mode"] = "汇聚周期不能等于对照 offset"
+            if "compare_mode" in attrs:
+                for other, *_rest in span_fields.values():
+                    if other != field:
+                        attrs[other] = None
+        elif "compare_mode" in attrs:
+            for other, *_rest in span_fields.values():
+                attrs[other] = None
         if offset_seconds:
             try:
                 if period_to_seconds(period) == offset_seconds:

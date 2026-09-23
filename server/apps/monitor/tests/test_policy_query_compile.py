@@ -101,6 +101,19 @@ def test_compare_mode_wraps_window_query(algorithm, compare_mode, kind, expected
         assert compiled == f"{window}{expected_suffix.format(q=window)}"
 
 
+def test_offset_hours_compiles_custom_hour():
+    policy = _policy(
+        compare_mode="offset_hours",
+        compare_value_kind="percent",
+        compare_offset_hours=3,
+    )
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == (
+        f"({window} - {window} offset 3h) / ({window} offset 3h) * 100"
+    )
+
+
 def test_formula_path_then_compare_percent():
     policy = _policy(
         query_condition={"type": "formula", "expression": "a / b"},
@@ -166,6 +179,31 @@ def test_old_policy_existence_matches_pre_upgrade_aggregation():
     assert expected == "avg_over_time((avg(up) by (instance_id))[5m:10s])"
     assert pm.compile_existence_query(policy, "up", "5m", "instance_id") == expected
     assert pm.compile_policy_query(policy, "up", "5m", "instance_id") == expected
+
+
+def test_offset_days_compiles_custom_day():
+    policy = _policy(
+        compare_mode="offset_days",
+        compare_value_kind="percent",
+        compare_offset_days=30,
+    )
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == (
+        f"({window} - {window} offset 30d) / ({window} offset 30d) * 100"
+    )
+
+
+def test_baseline_weeks_compiles_custom_count():
+    policy = _policy(
+        compare_mode="baseline_weeks",
+        compare_value_kind="percent",
+        compare_baseline_weeks=2,
+    )
+    q = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    baseline = f"({q} offset 7d + {q} offset 14d) / 2"
+    assert compiled == f"({q} - ({baseline})) / ({baseline}) * 100"
 
 
 def test_offset_7d_compiles_percent():
