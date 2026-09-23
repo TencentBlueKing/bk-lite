@@ -2077,6 +2077,27 @@ def test_should_skip_planned_summary_for_multi_step_table():
     assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=1, require_formatted_report=True) is False
 
 
+def test_should_not_skip_planned_summary_for_transitional_last_step():
+    """最后一步写成「接下来将…」过渡句时，即使前面有表也不跳过总结轮。"""
+    from langchain_core.messages import AIMessage
+
+    transitional = "工单 ALERT-2023-0824-001：nginx 返回 403。\n\n" "| 工单 | 现象 |\n| --- | --- |\n| ALERT-001 | 403 |\n\n" "已获取该工单中的集群信息。接下来将进行排查这些业务组件告警详情。"
+    assert ToolsNodes._looks_like_transitional_step_answer(transitional) is True
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=transitional)]) is False
+    assert ToolsNodes._should_skip_planned_summary([AIMessage(content=transitional)], completed_step_count=4) is False
+
+    earlier_table = "| Pod | 状态 |\n| --- | --- |\n| nginx | Ready |"
+    later_transition = "已拿到节点列表。接下来我们将验证这些业务组件的告警详情。"
+    messages = [AIMessage(content=earlier_table), AIMessage(content=later_transition)]
+    assert ToolsNodes._planned_output_has_markdown_table(messages) is True
+    assert ToolsNodes._looks_like_transitional_step_answer(later_transition) is True
+    assert ToolsNodes._should_skip_planned_summary(messages, completed_step_count=4) is False
+
+    finished = "根因是上游 upstream 超时导致 502，建议扩容并检查健康检查配置。"
+    assert ToolsNodes._looks_like_transitional_step_answer(finished) is False
+    assert ToolsNodes._should_skip_planned_summary([AIMessage(content=finished)], completed_step_count=1) is True
+
+
 def test_select_visible_planned_messages_keeps_last_table_not_cumulative():
     from langchain_core.messages import AIMessage, ToolMessage
 
