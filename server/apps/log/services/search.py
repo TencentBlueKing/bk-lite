@@ -1,7 +1,6 @@
 from django.http import StreamingHttpResponse
 import time
 import asyncio
-from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import AsyncIterator
 
@@ -20,17 +19,11 @@ from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.core.logger import log_logger as logger
 
-DEFAULT_TIME_WINDOW_MINUTES = 15
-
 
 class SearchService:
     @staticmethod
     def _apply_default_time_window(start_time: str, end_time: str) -> tuple[str, str]:
-        if not start_time and not end_time:
-            now = datetime.now(timezone.utc)
-            end_time = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            start_time = (now - timedelta(minutes=DEFAULT_TIME_WINDOW_MINUTES)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        return start_time, end_time
+        return VictoriaLogsConstants.normalize_query_time_window(start_time, end_time)
 
     @staticmethod
     def _compact_query(query, limit=300):

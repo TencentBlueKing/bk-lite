@@ -6,6 +6,87 @@ from apps.log.nats.log import _build_paginated_alert_segments, _normalize_bounde
 from apps.log.serializers.search import LogFieldValuesSerializer, LogHitsSerializer, LogSearchSerializer, LogTopStatsSerializer
 from apps.log.utils.query_log import VictoriaMetricsAPI
 
+OVERSIZED_WINDOW = {
+    "start_time": "2026-01-01T00:00:00.000Z",
+    "end_time": "2026-02-02T00:00:00.000Z",
+}
+THIRTY_DAY_WINDOW = {
+    "start_time": "2026-04-01T00:00:00.000Z",
+    "end_time": "2026-05-01T00:00:00.000Z",
+}
+
+
+def test_log_search_serializer_fills_empty_time_window():
+    serializer = LogSearchSerializer(data={"query": "*", "log_groups": ["g1"]})
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["start_time"].endswith("Z")
+    assert serializer.validated_data["end_time"].endswith("Z")
+    assert serializer.validated_data["start_time"] < serializer.validated_data["end_time"]
+
+
+def test_log_search_serializer_rejects_illegal_time():
+    serializer = LogSearchSerializer(
+        data={
+            "query": "*",
+            "log_groups": ["g1"],
+            "start_time": "2024-01-01",
+            "end_time": "2024-01-02",
+        }
+    )
+
+    assert not serializer.is_valid()
+    assert "start_time" in serializer.errors
+
+
+def test_log_search_serializer_rejects_timezone_less_and_inverted_range():
+    timezone_less = LogSearchSerializer(
+        data={
+            "query": "*",
+            "log_groups": ["g1"],
+            "start_time": "2026-04-22T00:00:00",
+            "end_time": "2026-04-22T00:15:00",
+        }
+    )
+    inverted = LogSearchSerializer(
+        data={
+            "query": "*",
+            "log_groups": ["g1"],
+            "start_time": "2026-04-22T00:15:00.000Z",
+            "end_time": "2026-04-22T00:00:00.000Z",
+        }
+    )
+
+    assert not timezone_less.is_valid()
+    assert not inverted.is_valid()
+
+
+def test_log_search_serializer_accepts_thirty_day_window():
+    serializer = LogSearchSerializer(data={"query": "*", "log_groups": ["g1"], **THIRTY_DAY_WINDOW})
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["start_time"] == THIRTY_DAY_WINDOW["start_time"]
+    assert serializer.validated_data["end_time"] == THIRTY_DAY_WINDOW["end_time"]
+
+
+def test_log_query_serializers_reject_oversized_time_window():
+    search = LogSearchSerializer(data={"query": "*", "log_groups": ["g1"], **OVERSIZED_WINDOW})
+    hits = LogHitsSerializer(data={"query": "*", "field": "host", "log_groups": ["g1"], **OVERSIZED_WINDOW})
+    top_stats = LogTopStatsSerializer(data={"attr": "host", "log_groups": ["g1"], **OVERSIZED_WINDOW})
+    field_values = LogFieldValuesSerializer(data={"filed": "host", **OVERSIZED_WINDOW})
+
+    assert not search.is_valid()
+    assert not hits.is_valid()
+    assert not top_stats.is_valid()
+    assert not field_values.is_valid()
+
+
+def test_query_max_window_minutes_default_and_floor():
+    assert VictoriaLogsConstants.QUERY_MAX_WINDOW_MINUTES >= 10080
+    assert VictoriaLogsConstants.normalize_query_max_window_minutes(5000) == 10080
+    assert VictoriaLogsConstants.normalize_query_max_window_minutes(50000) == 50000
+    assert VictoriaLogsConstants.normalize_query_max_window_minutes("") == 43200
+
 
 def test_log_search_serializer_rejects_oversized_limit():
     serializer = LogSearchSerializer(data={"query": "*", "limit": VictoriaLogsConstants.QUERY_LIMIT_MAX + 1})
