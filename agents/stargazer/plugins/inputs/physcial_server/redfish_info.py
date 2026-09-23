@@ -5,6 +5,7 @@ from urllib.parse import unquote, urlsplit
 import httpx
 from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from core.logger import logger, safe_exception_info, safe_log_value
+from plugins.inputs.physcial_server.redfish_inventory import build_redfish_result
 
 
 class RedfishCollectionError(ValueError):
@@ -134,6 +135,143 @@ class PhyscialServerRedfishInfo:
                 return members
         raise RedfishCollectionError("Redfish Systems pagination exceeds page limit")
 
+    async def _get_collection_members(self, client, collection_link):
+        members = []
+        next_link = collection_link
+        visited = set()
+        for _ in range(self.MAX_COLLECTION_PAGES):
+            canonical_url = self._resource_url(next_link)
+            if canonical_url in visited:
+                raise RedfishCollectionError("Redfish collection pagination contains a cycle")
+            visited.add(canonical_url)
+            page = await self._get_json(client, next_link)
+            page_members = page.get("Members")
+            if not isinstance(page_members, list):
+                raise RedfishCollectionError("Redfish collection must contain Members")
+            members.extend(page_members)
+            next_link = page.get("Members@odata.nextLink")
+            if not next_link:
+                return members
+        raise RedfishCollectionError("Redfish collection pagination exceeds page limit")
+
+    async def _read_optional_collection(self, client, link):
+        if not link:
+            return None
+        try:
+            return await self._get_collection_members(client, link)
+        except RedfishCollectionError as exc:
+            self._log_child_skip(exc)
+            return None
+
+    async def _read_resource(self, client, link):
+        try:
+            return await self._get_json(client, link)
+        except RedfishCollectionError as exc:
+            self._log_child_skip(exc)
+            return None
+
+    def _log_child_skip(self, exc):
+        logger.warning(
+            "event=physical_server_redfish_child_skipped host=%s task_id=%s failed_stage=child_collection error_type=%s",
+            safe_log_value(self.host),
+            safe_log_value(self.collection_task_id or "-"),
+            type(exc).__name__,
+        )
+
+    def _as_links(self, value):
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            return [value]
+        return []
+
+    async def _read_linked_resources(self, client, links):
+        resources = []
+        seen = set()
+        for link in links:
+            try:
+                canonical_url = self._resource_url(link)
+            except RedfishCollectionError as exc:
+                self._log_child_skip(exc)
+                continue
+            if canonical_url in seen:
+                continue
+            seen.add(canonical_url)
+            resource = await self._read_resource(client, link)
+            if resource is not None:
+                resources.append(resource)
+        return resources
+
+    async def _read_inventory(self, client, system):
+        processors = await self._read_processor_members(client, system.get("Processors"))
+        memory_links = await self._read_optional_collection(client, system.get("Memory"))
+        memory = None if memory_links is None else await self._read_linked_resources(client, memory_links)
+        drives = await self._read_drives(client, system.get("Storage"))
+        assemblies, nic_records = await self._read_chassis_inventory(client, system)
+        return {
+            "processors": processors,
+            "memory": memory,
+            "drives": drives,
+            "nic_records": nic_records,
+            "assemblies": assemblies,
+        }
+
+    async def _read_processor_members(self, client, link):
+        links = await self._read_optional_collection(client, link)
+        if links is None:
+            return None
+        return await self._read_linked_resources(client, links)
+
+    async def _read_drives(self, client, storage_link):
+        storage_links = await self._read_optional_collection(client, storage_link)
+        if storage_links is None:
+            return None
+        drive_links = []
+        for storage_link_item in storage_links:
+            storage = await self._read_resource(client, storage_link_item)
+            if storage is None:
+                continue
+            members = await self._read_optional_collection(client, storage.get("Drives"))
+            if members:
+                drive_links.extend(members)
+        return await self._read_linked_resources(client, drive_links)
+
+    async def _read_chassis_inventory(self, client, system):
+        links = system.get("Links") if isinstance(system.get("Links"), dict) else {}
+        chassis_resources = await self._read_linked_resources(client, self._as_links(links.get("Chassis")))
+        assemblies = []
+        nic_records = []
+        adapter_sources = []
+        if system.get("NetworkAdapters"):
+            adapter_sources.append(system.get("NetworkAdapters"))
+        saw_assembly = False
+        for chassis in chassis_resources:
+            if chassis.get("Assembly"):
+                saw_assembly = True
+                assembly = await self._read_resource(client, chassis.get("Assembly"))
+                members = assembly.get("Assemblies") if isinstance(assembly, dict) else None
+                if isinstance(members, list):
+                    assemblies.extend(members)
+            if chassis.get("NetworkAdapters"):
+                adapter_sources.append(chassis.get("NetworkAdapters"))
+        successful_adapter_sources = 0
+        for source in adapter_sources:
+            adapters = await self._read_optional_collection(client, source)
+            if adapters is None:
+                continue
+            successful_adapter_sources += 1
+            for adapter in await self._read_linked_resources(client, adapters):
+                functions = await self._read_optional_collection(client, adapter.get("NetworkDeviceFunctions"))
+                if not functions:
+                    continue
+                for function in await self._read_linked_resources(client, functions):
+                    nic_records.append({"adapter": adapter, "function": function})
+        if not saw_assembly:
+            assemblies = None
+        if not adapter_sources or successful_adapter_sources == 0:
+            nic_records = None
+        return assemblies, nic_records
+
     async def probe(self):
         try:
             async with self._client() as client:
@@ -189,8 +327,9 @@ class PhyscialServerRedfishInfo:
                 if len(members) != 1:
                     raise RedfishCollectionError("Redfish target must expose exactly one ComputerSystem")
                 system = await self._get_json(client, members[0])
+                inventory = await self._read_inventory(client, system)
 
-            raw = {
+            server = {
                 "ip_addr": self.host,
                 "port": self.port,
                 "serial_number": system.get("SerialNumber"),
@@ -198,8 +337,7 @@ class PhyscialServerRedfishInfo:
                 "brand": system.get("Manufacturer"),
                 "asset_code": system.get("AssetTag"),
             }
-            result_data = {key: value for key, value in raw.items() if value not in (None, "")}
-            return {"success": True, "result": {self.model_id: [result_data]}}
+            return {"success": True, "result": build_redfish_result(server, **inventory)}
         except RedfishCollectionError as exc:
             logger.warning(
                 "event=physical_server_redfish_collect_rejected host=%s task_id=%s failed_stage=inventory error_type=%s",

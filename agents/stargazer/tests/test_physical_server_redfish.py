@@ -349,3 +349,106 @@ async def test_redfish_protocol_rejects_oversized_response():
         "result": {"cmdb_collect_error": "Redfish response exceeds size limit"},
         "success": False,
     }
+
+
+async def test_redfish_protocol_collects_standard_child_inventory():
+    requested = []
+
+    def handler(request):
+        requested.append(request.url.path)
+        payloads = {
+            "/redfish/v1/": {"Systems": {"@odata.id": "/redfish/v1/Systems"}},
+            "/redfish/v1/Systems": {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+            "/redfish/v1/Systems/1": {
+                "Manufacturer": "Huawei",
+                "Model": "2288H V5",
+                "SerialNumber": "SERVER-SN-8",
+                "Processors": {"@odata.id": "/redfish/v1/Systems/1/Processors"},
+                "Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"},
+                "Storage": {"@odata.id": "/redfish/v1/Systems/1/Storage"},
+                "Links": {"Chassis": [{"@odata.id": "/redfish/v1/Chassis/1"}]},
+            },
+            "/redfish/v1/Systems/1/Processors": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Processors/1"}]},
+            "/redfish/v1/Systems/1/Processors/1": {
+                "Manufacturer": "Intel",
+                "Model": "Xeon",
+                "TotalCores": 8,
+                "TotalThreads": 16,
+                "InstructionSet": "x86-64",
+            },
+            "/redfish/v1/Systems/1/Memory": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Memory/1"}]},
+            "/redfish/v1/Systems/1/Memory/1": {
+                "DeviceLocator": "DIMM_A1",
+                "CapacityMiB": 32768,
+                "SerialNumber": "MEM-1",
+            },
+            "/redfish/v1/Systems/1/Storage": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Storage/1"}]},
+            "/redfish/v1/Systems/1/Storage/1": {"Drives": {"@odata.id": "/redfish/v1/Systems/1/Storage/1/Drives"}},
+            "/redfish/v1/Systems/1/Storage/1/Drives": {
+                "Members": [
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                ]
+            },
+            "/redfish/v1/Chassis/1/Drives/1": {
+                "Id": "Disk.Bay.0",
+                "Manufacturer": "Samsung",
+                "MediaType": "SSD",
+                "CapacityBytes": 480 * 1024**3,
+            },
+            "/redfish/v1/Chassis/1": {
+                "Assembly": {"@odata.id": "/redfish/v1/Chassis/1/Assembly"},
+                "NetworkAdapters": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters"},
+            },
+            "/redfish/v1/Chassis/1/Assembly": {
+                "Assemblies": [
+                    {
+                        "PhysicalContext": "SystemBoard",
+                        "Vendor": "Huawei",
+                        "Model": "BC11",
+                        "SerialNumber": "BOARD-SN",
+                    }
+                ]
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters": {"Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1"}]},
+            "/redfish/v1/Chassis/1/NetworkAdapters/1": {
+                "Manufacturer": "Broadcom",
+                "Model": "BCM5720",
+                "NetworkDeviceFunctions": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions"},
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions": {
+                "Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions/1"}]
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions/1": {
+                "NetDevFuncType": "Ethernet",
+                "Ethernet": {"MACAddress": "AA:BB:CC:DD:EE:FF"},
+            },
+        }
+        if request.url.path not in payloads:
+            raise AssertionError(request.url.path)
+        return _response(request, payloads[request.url.path])
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "port": 443,
+            "username": "Administrator",
+            "password": "secret",
+            "model_id": "physcial_server",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    server = result["result"]["physcial_server"][0]
+    assert server["cpu_cores"] == 8
+    assert server["cpu_arch"] == "x86_64"
+    assert server["board_serial"] == "BOARD-SN"
+    assert result["result"]["memory"][0]["mem_locator"] == "DIMM_A1"
+    assert result["result"]["disk"][0]["disk_name"] == "Disk.Bay.0"
+    assert result["result"]["nic"][0]["nic_mac"] == "aa:bb:cc:dd:ee:ff"
+    assert "EthernetInterfaces" not in "".join(requested)
+    assert requested.count("/redfish/v1/Chassis/1/Drives/1") == 1
