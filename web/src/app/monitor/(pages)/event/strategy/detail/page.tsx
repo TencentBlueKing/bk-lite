@@ -2112,7 +2112,7 @@ const StrategyOperation = () => {
             {t('common.confirm')}
           </Button>
           <Button loading={dryRunLoading} onClick={runDryRun}>
-            {translateWithFallback('monitor.events.dryRun', '试跑')}
+            {translateWithFallback('monitor.events.dryRun', '预检')}
           </Button>
             {isCreateFlow && templateSavedOnce ? (
             <Button onClick={goBack}>{t('common.back')}</Button>
