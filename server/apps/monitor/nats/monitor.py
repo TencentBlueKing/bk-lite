@@ -2482,9 +2482,19 @@ MONITOR_INSTANCE_ALERT_RANKING_MOST = "most_alerts"
 MONITOR_INSTANCE_ALERT_RANKING_LEAST = "least_policy_alerts"
 
 
+def _coerce_policy_organization_id(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _policy_covered_instance_ids(policy_qs, instance_qs):
     instance_ids = set(instance_qs.values_list("id", flat=True))
     covered = set()
+    org_policies = []
+    org_ids = set()
+    object_ids = set()
     for policy in policy_qs.filter(enable=True).only("id", "monitor_object_id", "source"):
         source = policy.source if isinstance(policy.source, dict) else {}
         source_type = source.get("type")
@@ -2493,15 +2503,27 @@ def _policy_covered_instance_ids(policy_qs, instance_qs):
             covered.update(value for value in source_values if value in instance_ids)
             continue
         if source_type == "organization":
-            covered.update(
-                MonitorInstanceOrganization.objects.filter(
-                    monitor_instance__monitor_object_id=policy.monitor_object_id,
-                    monitor_instance_id__in=instance_ids,
-                    organization__in=source_values,
-                ).values_list("monitor_instance_id", flat=True)
-            )
+            org_policies.append((policy.monitor_object_id, source_values))
+            org_ids.update(source_values)
+            object_ids.add(policy.monitor_object_id)
             continue
         covered.update(instance_qs.filter(monitor_object_id=policy.monitor_object_id).values_list("id", flat=True))
+
+    if org_policies and instance_ids and org_ids:
+        memberships = MonitorInstanceOrganization.objects.filter(
+            monitor_instance__monitor_object_id__in=object_ids,
+            monitor_instance_id__in=instance_ids,
+            organization__in=org_ids,
+        ).values_list("monitor_instance_id", "organization", "monitor_instance__monitor_object_id")
+        by_object_org = {}
+        for instance_id, organization, object_id in memberships:
+            by_object_org.setdefault((object_id, organization), set()).add(instance_id)
+        for object_id, source_values in org_policies:
+            for organization in source_values:
+                covered.update(by_object_org.get((object_id, organization), ()))
+                coerced = _coerce_policy_organization_id(organization)
+                if coerced is not None and coerced != organization:
+                    covered.update(by_object_org.get((object_id, coerced), ()))
     return covered
 
 
