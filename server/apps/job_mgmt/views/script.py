@@ -1,5 +1,6 @@
 """脚本视图"""
 
+from django.http import FileResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -11,12 +12,15 @@ from apps.job_mgmt.models import Script
 from apps.job_mgmt.serializers.script import (
     ScriptBatchDeleteSerializer,
     ScriptCreateSerializer,
+    ScriptExportSerializer,
+    ScriptImportSerializer,
     ScriptListSerializer,
     ScriptSerializer,
     ScriptUpdateSerializer,
     validate_script_name_unique_in_organizations,
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.script_pack_service import ScriptPackService
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -43,6 +47,10 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
             return ScriptUpdateSerializer
         elif self.action == "batch_delete":
             return ScriptBatchDeleteSerializer
+        elif self.action == "export":
+            return ScriptExportSerializer
+        elif self.action == "import_scripts":
+            return ScriptImportSerializer
         return ScriptSerializer
 
     @HasPermission("script_library-View")
@@ -122,3 +130,59 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
     def batch_delete(self, request):
         """批量删除脚本"""
         return self.perform_batch_delete(request)
+
+    @action(detail=False, methods=["post"])
+    @HasPermission("script_library-View")
+    def export(self, request):
+        """批量导出脚本为 ZIP。"""
+        serializer = ScriptExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        queryset = self.filter_queryset(self.get_queryset()).filter(id__in=ids)
+        found_ids = set(queryset.values_list("id", flat=True))
+        missing = sorted(set(ids) - found_ids)
+        if missing:
+            return Response(
+                {"error": f"部分脚本不存在或无权导出: {', '.join(str(i) for i in missing)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 保持请求 ids 顺序，避免 zip 内目录顺序抖动
+        scripts_by_id = {script.id: script for script in queryset}
+        scripts = [scripts_by_id[script_id] for script_id in ids if script_id in scripts_by_id]
+        buffer = ScriptPackService.build_export_zip(scripts)
+        log_operation(request, "export", "job", f"批量导出脚本: {len(scripts)} 条")
+        return FileResponse(
+            buffer,
+            as_attachment=True,
+            filename="script-pack.zip",
+            content_type="application/zip",
+        )
+
+    @action(detail=False, methods=["post"], url_path="import")
+    @HasPermission("script_library-Add")
+    def import_scripts(self, request):
+        """批量导入脚本 ZIP。"""
+        serializer = ScriptImportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        team = serializer.validated_data["team"]
+        upload = serializer.validated_data["file"]
+
+        self._validate_org_field_permission(request, team)
+
+        try:
+            drafts = ScriptPackService.parse_import_zip(upload)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        username = getattr(request.user, "username", "") or ""
+        result = ScriptPackService.import_scripts(drafts, team, username=username)
+        payload = result.to_dict()
+        log_operation(
+            request,
+            "import",
+            "job",
+            f"批量导入脚本: 成功 {len(result.created)} 跳过 {len(result.skipped)} 失败 {len(result.failed)}",
+        )
+        return Response(payload, status=status.HTTP_200_OK)

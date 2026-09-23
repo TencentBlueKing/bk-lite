@@ -255,6 +255,30 @@ const useJobApi = () => {
     return await del(`/job_mgmt/api/script/${id}/`);
   };
 
+  const exportScripts = async (ids: number[]): Promise<Blob> => {
+    return await post('/job_mgmt/api/script/export/', { ids }, {
+      responseType: 'blob',
+    });
+  };
+
+  const importScripts = async (
+    file: File,
+    team: number[],
+  ): Promise<{
+    created: Array<{ name: string; id: number }>;
+    skipped: Array<{ name: string; reason: string }>;
+    failed: Array<{ name: string; reason: string }>;
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    team.forEach((id) => {
+      formData.append('team', String(id));
+    });
+    return await post('/job_mgmt/api/script/import/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  };
+
   // Playbook management
   const getPlaybookList = async (
     params: PlaybookParams = {},
@@ -553,6 +577,8 @@ const useJobApi = () => {
     createScript,
     updateScript,
     deleteScript,
+    exportScripts,
+    importScripts,
     getPlaybookList,
     getPlaybookDetail,
     createPlaybook,
