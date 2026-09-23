@@ -241,9 +241,24 @@ def test_host_plugin_does_not_ingest_nic_components():
     assert "nic_info_gauge" not in HostCollectionPlugin.metric_names
 
 
-def test_ipmi_plugin_does_not_emit_nic_metrics():
-    assert "nic_info_gauge" not in PhysicalServerProtocolCollectionPlugin.metric_names
-    assert "nic" not in getattr(PhysicalServerProtocolCollectionPlugin, "related_field_mappings", {})
+def test_ipmi_metrics_without_child_gauges_do_not_create_nic(monkeypatch):
+    monkeypatch.setattr(
+        PhysicalServerProtocolCollectionPlugin,
+        "model_id",
+        property(lambda self: "physcial_server"),
+    )
+    plugin = PhysicalServerProtocolCollectionPlugin("10.0.0.8", "cmdb_2", 2)
+    plugin.collection_metrics_dict["physcial_server_info_gauge"] = [
+        {
+            "ip_addr": "10.0.0.8",
+            "serial_number": "SERVER-SN-8",
+            "collect_status": "success",
+        }
+    ]
+    plugin.format_metrics()
+
+    assert "nic" not in plugin.result
+    assert plugin.result["physcial_server"][0]["serial_number"] == "SERVER-SN-8"
 
 
 def test_ssh_and_ipmi_build_same_instance_name_from_collection_target(monkeypatch):
