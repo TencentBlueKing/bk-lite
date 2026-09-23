@@ -3,17 +3,18 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("monitor", "0074_monitorpolicy_forecast_target_unit"),
+        ("monitor", "0074_widen_alert_instance_snapshots"),
     ]
 
     operations = [
         migrations.AddField(
             model_name="monitorpolicy",
-            name="compare_offset_hours",
-            field=models.PositiveIntegerField(
+            name="forecast_target_unit",
+            field=models.CharField(
                 blank=True,
-                null=True,
-                verbose_name="对照小时数",
+                default="",
+                max_length=50,
+                verbose_name="容量线单位",
             ),
         ),
     ]

@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("monitor", "0075_monitorpolicy_compare_offset_hours"),
+        ("monitor", "0076_monitorpolicy_compare_offset_hours"),
     ]
 
     operations = [
