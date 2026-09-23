@@ -5,24 +5,56 @@
 ## 前置要求
 
 - 采集节点能够访问 Oracle 数据库主机和实际监听端口。
-- 准备专用监控账号；账号需能登录指定 `service_name`，并读取 exporter 查询涉及的动态性能视图，例如 `v$session`、`v$sysstat` 和 `v$database`。
+- 准备专用监控账号；账号需能登录指定 `service_name`，并读取 exporter 默认指标和已开启的 RAC、ASM、归档、Data Guard 查询。授权对象使用底层名 `V_$` / `DBA_`，不要授予 `DBA` 或 `SELECT ANY DICTIONARY`。
 - 页面要求填写 Oracle `service_name`，不是 SID。
 - 在采集节点上准备一个未占用的 exporter 监听端口。该端口与 Oracle 数据库端口是两个独立字段。
 - 当前页面不提供 SID、TCPS、Wallet 或自定义连接串字段。
 
 ## 接入步骤
 
-1. 由 DBA 创建专用账号。授权对象是底层视图 `sys.v_$*`，不是同名公共同义词。将 `<monitor_user>`、`<password>` 换成现场值，不要把密码写入命令历史，也不要授予 `DBA` 或 `SELECT ANY DICTIONARY`：
+1. 由 DBA 在采集器实际连接的容器中创建专用账号。`GRANT` 的对象是 `V_$` / `DBA_`，不能对同义词 `V$` 授权。将 `<monitor_user>`、`<password>` 换成现场值。不要授予 `DBA` 或 `SELECT ANY DICTIONARY`：
 
 ```sql
 CREATE USER <monitor_user> IDENTIFIED BY "<password>";
 GRANT CREATE SESSION TO <monitor_user>;
-GRANT SELECT ON sys.v_$session TO <monitor_user>;
-GRANT SELECT ON sys.v_$sysstat TO <monitor_user>;
-GRANT SELECT ON sys.v_$database TO <monitor_user>;
+
+-- 默认指标
+GRANT SELECT ON V_$INSTANCE TO <monitor_user>;
+GRANT SELECT ON V_$SESSION TO <monitor_user>;
+GRANT SELECT ON V_$RESOURCE_LIMIT TO <monitor_user>;
+GRANT SELECT ON V_$SYSSTAT TO <monitor_user>;
+GRANT SELECT ON V_$PROCESS TO <monitor_user>;
+GRANT SELECT ON V_$SYSMETRIC TO <monitor_user>;
+GRANT SELECT ON V_$WAITCLASSMETRIC TO <monitor_user>;
+GRANT SELECT ON V_$SYSTEM_WAIT_CLASS TO <monitor_user>;
+GRANT SELECT ON V_$SGA TO <monitor_user>;
+GRANT SELECT ON V_$SGASTAT TO <monitor_user>;
+GRANT SELECT ON V_$PGASTAT TO <monitor_user>;
+GRANT SELECT ON V_$PARAMETER TO <monitor_user>;
+GRANT SELECT ON V_$DATAFILE TO <monitor_user>;
+GRANT SELECT ON V_$LOG_HISTORY TO <monitor_user>;
+GRANT SELECT ON V_$EVENTMETRIC TO <monitor_user>;
+GRANT SELECT ON V_$EVENT_NAME TO <monitor_user>;
+GRANT SELECT ON V_$LOCKED_OBJECT TO <monitor_user>;
+GRANT SELECT ON V_$ASM_DISKGROUP_STAT TO <monitor_user>;
+GRANT SELECT ON DBA_TABLESPACE_USAGE_METRICS TO <monitor_user>;
+GRANT SELECT ON DBA_TABLESPACES TO <monitor_user>;
+GRANT SELECT ON DBA_INDEXES TO <monitor_user>;
+GRANT SELECT ON DBA_OBJECTS TO <monitor_user>;
+GRANT SELECT ON DBA_USERS TO <monitor_user>;
+
+-- 当前采集器固定启用 --isRAC --isASM --isArchiveLog --isDataGuard
+GRANT SELECT ON GV_$INSTANCE TO <monitor_user>;
+GRANT SELECT ON V_$ASM_DISK_STAT TO <monitor_user>;
+GRANT SELECT ON V_$ASM_ALIAS TO <monitor_user>;
+GRANT SELECT ON V_$ASM_DISKGROUP TO <monitor_user>;
+GRANT SELECT ON V_$ASM_FILE TO <monitor_user>;
+GRANT SELECT ON V_$DATAGUARD_STATS TO <monitor_user>;
+GRANT SELECT ON V_$DATABASE TO <monitor_user>;
+GRANT SELECT ON V_$ARCHIVE_DEST TO <monitor_user>;
 ```
 
-当前仓库只明确这三项动态性能视图。表空间、SGA、PGA、等待、RAC、ASM、归档和 Data Guard 的 SQL 在 exporter 二进制中；某项指标失败时，只按日志里的 `ORA-` 对象补 `SELECT`。
+这些对象与 exporter 的 `default_metrics.toml`、`rac_metrics.toml`、`asm_metrics.toml`、`dg_metrics.toml` 和归档查询一致。非 CDB 或单个 PDB 使用本地用户；只有从 CDB 根容器监控多个容器时才改用 `C##` 公共用户。
 
 2. 从实际采集节点验证数据库主机、端口、`service_name` 和监控账号。
 3. 填写用户名、密码、服务名称、数据库主机和端口。
