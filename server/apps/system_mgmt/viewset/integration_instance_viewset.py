@@ -34,12 +34,16 @@ def collect_integration_instance_capability_references(instance):
     return references
 
 
-def build_instance_in_use_response(references):
+def build_instance_in_use_response(references, locale="en"):
+    loader = LanguageLoader(app="system_mgmt", default_lang=locale or "en")
     return JsonResponse(
         {
             "result": False,
             "code": INTEGRATION_INSTANCE_IN_USE_CODE,
-            "message": "该集成实例仍被其他配置引用，请先删除这些配置后再试",
+            "message": loader.get(
+                "error.integration_instance_in_use",
+                "This integration instance is still referenced by other configs. Delete those configs first.",
+            ),
             "data": {"references": references},
         },
         status=409,
@@ -184,7 +188,7 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         instance_name = obj.name
         references = collect_integration_instance_capability_references(obj)
         if references:
-            return build_instance_in_use_response(references)
+            return build_instance_in_use_response(references, request_locale(request))
 
         response = super().destroy(request, *args, **kwargs)
         if response.status_code == 204:

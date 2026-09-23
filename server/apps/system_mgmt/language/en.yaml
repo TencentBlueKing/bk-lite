@@ -3,6 +3,9 @@ error:
   go_to_network_whitelist: Open Network Allowlist
   detail_not_supported: Detail view is not supported
   update_not_supported: Update is not supported
+  im_channel_in_use: This IM notification channel is still used by other business configs and cannot be deleted
+  integration_instance_in_use: This integration instance is still referenced by other configs. Delete those configs first.
+  system_token_full_update_not_supported: System tokens cannot be fully replaced
   not_authorized: Not Authorized
   cannot_delete_builtin_app: Cannot delete built-in application
   is_enabled_required: Enabled status cannot be empty
@@ -240,6 +243,8 @@ export:
   login_log_filename: user_login_logs
   operation_log_sheet: User operation logs
   operation_log_filename: user_operation_logs
+  openapi_call_log_sheet: API Call Log
+  openapi_call_log_filename: API_Call_Log
   column_username: Username
   column_domain: Domain
   column_login_time: Login time

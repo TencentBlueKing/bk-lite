@@ -5,11 +5,17 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import SystemAPIToken
 from apps.system_mgmt.serializers.system_api_token_serializer import SystemAPITokenSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 _SECRET_LOG_VERBS = {"create": "创建", "update": "更新", "delete": "删除"}
+
+
+def _get_loader(request) -> LanguageLoader:
+    locale = getattr(getattr(request, "user", None), "locale", None) or "en"
+    return LanguageLoader(app="system_mgmt", default_lang=locale)
 
 
 class SystemAPITokenViewSet(viewsets.ModelViewSet):
@@ -59,7 +65,13 @@ class SystemAPITokenViewSet(viewsets.ModelViewSet):
     @HasPermission("system_api_secret-Edit", "system-manager")
     def update(self, request, *args, **kwargs):
         if not kwargs.get("partial"):
-            return JsonResponse({"result": False, "message": "系统令牌不支持全量修改"})
+            loader = _get_loader(request)
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": loader.get("error.system_token_full_update_not_supported", "System tokens cannot be fully replaced"),
+                }
+            )
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
