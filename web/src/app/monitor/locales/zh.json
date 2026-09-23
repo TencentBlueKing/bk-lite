@@ -282,6 +282,7 @@
       "metricPreview": "指标预览",
       "dryRun": "预检",
       "dryRunResult": "预检结果",
+      "dryRunVerdict": "判定",
       "dryRunTruncated": "实例超过 200，已截断",
       "dryRunVerdictWouldTrigger": "会触发",
       "dryRunVerdictOk": "不触发",

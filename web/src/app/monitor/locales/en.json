@@ -272,6 +272,7 @@
       "metricPreview": "Metric Preview",
       "dryRun": "Pre-check",
       "dryRunResult": "Pre-check result",
+      "dryRunVerdict": "Verdict",
       "dryRunTruncated": "More than 200 instances; results were truncated.",
       "dryRunVerdictWouldTrigger": "Would trigger",
       "dryRunVerdictOk": "Would not trigger",
