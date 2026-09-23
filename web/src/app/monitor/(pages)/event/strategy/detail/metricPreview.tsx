@@ -23,7 +23,7 @@ import {
   buildMetricExpressionPreviewPayload,
   MetricExpressionMode
 } from './formulaExpressionUtils';
-import { resolvePreviewChartUnit, OVERLAY_ROLE_LABEL, shouldDrawPreviewThreshold, COMPARE_MODE_ABSOLUTE, COMPARE_MODE_TIMELEFT } from './strategyDetailUtils';
+import { resolvePreviewChartUnit, OVERLAY_ROLE_LABEL, shouldDrawPreviewThreshold, COMPARE_MODE_TIMELEFT } from './strategyDetailUtils';
 
 const { Option } = Select;
 
@@ -116,6 +116,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const [instanceLoading, setInstanceLoading] = useState<boolean>(false);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [previewChartUnit, setPreviewChartUnit] = useState<string | null>(null);
+  const [previewOverlay, setPreviewOverlay] = useState(false);
   const [previewError, setPreviewError] = useState<string>('');
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [previewThreshold, setPreviewThreshold] = useState<ThresholdField[]>([]);
@@ -309,6 +310,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
+      setPreviewOverlay(false);
       return;
     }
     let payload = null;
@@ -319,6 +321,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
+      setPreviewOverlay(false);
       setPreviewError(
         error instanceof Error
           ? error.message
@@ -332,6 +335,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       setPreviewWarnings([]);
       setPreviewThreshold([]);
       setPreviewChartUnit(null);
+      setPreviewOverlay(false);
       return;
     }
     // 取消之前的请求
@@ -358,13 +362,10 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         Array.isArray(responseData?.threshold) ? responseData.threshold : []
       );
       setPreviewChartUnit(
-        resolvePreviewChartUnit(
-          responseData?.chart_unit,
-          thresholdUnit,
-          calculationUnit
-        )
+        responseData?.chart_unit != null ? responseData.chart_unit : null
       );
       const overlay = Boolean(responseData?.overlay);
+      setPreviewOverlay(overlay);
       const overlayRoleLabel = t('monitor.events.compareBaseline');
       const overlayRoleValues: Record<string, string> = {
         current: t('monitor.events.compareRoleCurrent'),
@@ -425,6 +426,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         setPreviewWarnings([]);
         setPreviewThreshold([]);
         setPreviewChartUnit(null);
+        setPreviewOverlay(false);
         setPreviewError(
           error?.response?.data?.message ||
             error?.message ||
@@ -491,23 +493,18 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   }
 
   // 过滤掉空值的阈值
-  const overlayPreview =
-    Boolean(compareMode) &&
-    compareMode !== COMPARE_MODE_ABSOLUTE &&
-    compareMode !== COMPARE_MODE_TIMELEFT;
   const validThreshold = (
     shouldDrawPreviewThreshold({
-      overlay: overlayPreview,
+      overlay: previewOverlay,
       compareValueKind
     })
       ? previewThreshold
       : []
   ).filter((item) => item.value !== null && item.value !== undefined);
-  const effectiveChartUnit = resolvePreviewChartUnit(
-    previewChartUnit,
-    thresholdUnit,
-    calculationUnit
-  );
+  const effectiveChartUnit =
+    previewChartUnit != null
+      ? previewChartUnit || null
+      : resolvePreviewChartUnit(null, thresholdUnit, calculationUnit);
 
   const showUnit = (val) => {
     const unitName = findUnitNameById(val);
