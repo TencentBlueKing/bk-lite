@@ -68,6 +68,8 @@ import {
   resolveEffectiveCalculationUnit,
   resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
+  resolveEditFormCollectType,
+  shouldHydrateMetricOnEdit,
   resolveThresholdUnit,
   resolveThresholdUnitBase,
   resolveUnitOnMetricSelect,
@@ -594,9 +596,12 @@ const StrategyOperation = () => {
 
   useEffect(() => {
     if (
-      initMetricData.length > 0 &&
       formData &&
-      !['builtIn', 'add'].includes(type)
+      shouldHydrateMetricOnEdit({
+        type,
+        initMetricCount: initMetricData.length,
+        policyId: formData.id
+      })
     ) {
       processMetricData(formData);
     }
@@ -632,7 +637,8 @@ const StrategyOperation = () => {
     const targetPluginId = resolveInitialMetricPluginId({
       type,
       pluginList,
-      policyCollectType: formData?.collect_type
+      policyCollectType: formData?.collect_type,
+      policyDetailReady: formData?.id != null
     });
     if (!monitorObjId || !targetPluginId) return;
     if (initialMetricPluginIdRef.current === targetPluginId) return;
@@ -644,7 +650,7 @@ const StrategyOperation = () => {
       },
       'init'
     );
-  }, [type, pluginList, formData?.collect_type, monitorObjId]);
+  }, [type, pluginList, formData?.collect_type, formData?.id, monitorObjId]);
 
   const getObjects = async () => {
     const data = await getMonitorObject();
@@ -704,7 +710,7 @@ const StrategyOperation = () => {
     } = data;
     form.setFieldsValue({
       ...data,
-      collect_type: collect_type ? +collect_type : '',
+      collect_type: resolveEditFormCollectType(collect_type, pluginList),
       trigger_count: trigger_count || 1,
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,

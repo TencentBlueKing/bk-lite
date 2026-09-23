@@ -82,14 +82,20 @@ export const resolveInitialMetricPluginId = ({
   type,
   pluginList,
   policyCollectType,
+  policyDetailReady = false,
 }: {
   type: string;
   pluginList: SegmentedItem[];
   policyCollectType?: string | number | null;
+  policyDetailReady?: boolean;
 }): string | number | undefined => {
   if (!pluginList.length) return undefined;
   if (!['add', 'builtIn'].includes(type)) {
     if (policyCollectType == null || policyCollectType === '') {
+      // 详情未到时 collect_type 一定为空，不能猜第一个插件；多插件对象也不猜。
+      if (policyDetailReady && pluginList.length === 1) {
+        return pluginList[0]?.value;
+      }
       return undefined;
     }
     const matched = pluginList.find(
@@ -98,6 +104,34 @@ export const resolveInitialMetricPluginId = ({
     if (matched) return matched.value;
   }
   return pluginList[0]?.value;
+};
+
+/** 编辑回填表单里的采集插件：空值且对象只有一个插件时补上，避免再存成空串。 */
+export const resolveEditFormCollectType = (
+  policyCollectType: string | number | null | undefined,
+  pluginList: SegmentedItem[]
+): string | number => {
+  if (policyCollectType != null && policyCollectType !== '') {
+    return +policyCollectType;
+  }
+  if (pluginList.length === 1) {
+    return pluginList[0].value;
+  }
+  return '';
+};
+
+/** 编辑态何时跑指标回填：目录已到，或策略详情已到（可按 id 补名称）。 */
+export const shouldHydrateMetricOnEdit = ({
+  type,
+  initMetricCount,
+  policyId,
+}: {
+  type: string;
+  initMetricCount: number;
+  policyId?: number | string | null;
+}): boolean => {
+  if (['builtIn', 'add'].includes(type)) return false;
+  return initMetricCount > 0 || policyId != null;
 };
 
 export const getValidThresholdUnitOptions = (

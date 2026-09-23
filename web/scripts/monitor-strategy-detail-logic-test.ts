@@ -23,6 +23,8 @@ import {
   resolveFormulaResultUnit,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
+  resolveEditFormCollectType,
+  shouldHydrateMetricOnEdit,
   resolveMetricDisplayUnit,
   resolvePreviewChartUnit,
   resolveThresholdUnit,
@@ -89,6 +91,60 @@ assert.equal(resolveInitialMetricPluginId({
   pluginList: plugins,
   policyCollectType: 99,
 }), 1);
+
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: '',
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: [{ label: 'BifrostPull', value: 452 }],
+  policyCollectType: '',
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: [{ label: 'BifrostPull', value: 452 }],
+  policyCollectType: '',
+  policyDetailReady: true,
+}), 452);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: '',
+  policyDetailReady: true,
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: [{ label: 'BifrostPull', value: 452 }],
+  policyCollectType: null,
+  policyDetailReady: true,
+}), 452);
+
+assert.equal(resolveEditFormCollectType('', [{ label: 'BifrostPull', value: 452 }]), 452);
+assert.equal(resolveEditFormCollectType('452', plugins), 452);
+assert.equal(resolveEditFormCollectType('', plugins), '');
+
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'add',
+  initMetricCount: 0,
+  policyId: 17,
+}), false);
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'edit',
+  initMetricCount: 0,
+  policyId: undefined,
+}), false);
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'edit',
+  initMetricCount: 0,
+  policyId: 17,
+}), true);
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'edit',
+  initMetricCount: 3,
+  policyId: undefined,
+}), true);
 
 const unitList: UnitListItem[] = [
   {
@@ -712,6 +768,26 @@ assert.match(
   strategyDetailSource,
   /else if \(formData\?\.id != null\)/,
   '编辑策略必须等详情 id 就绪后再 dealDetail，避免空数据冲掉频率'
+);
+assert.match(
+  strategyDetailSource,
+  /policyDetailReady: formData\?\.id != null/,
+  '编辑态空 collect_type 必须等详情 id 就绪后再决定是否回退插件'
+);
+assert.match(
+  strategyDetailSource,
+  /formData\?\.collect_type, formData\?\.id, monitorObjId/,
+  '插件目录加载必须在策略 id 到达后重跑，避免空 collect_type 错过回退'
+);
+assert.match(
+  strategyDetailSource,
+  /shouldHydrateMetricOnEdit/,
+  '编辑回填不得只等指标目录，详情 id 到达后也要按 metric_id 补名称'
+);
+assert.match(
+  strategyDetailSource,
+  /resolveEditFormCollectType\(collect_type, pluginList\)/,
+  '编辑回填空 collect_type 且单插件时写入表单，避免再次存成空串'
 );
 assert.match(
   strategyDetailSource,
