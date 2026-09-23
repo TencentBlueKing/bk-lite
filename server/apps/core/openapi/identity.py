@@ -96,7 +96,7 @@ def _authenticate_api_token(token: str) -> CallerIdentity:
 
     user = APISecretAuthBackend().authenticate(request=None, api_token=token)
     if user is None:
-        row = UserAPISecret.find_by_api_secret(token)
+        row = UserAPISecret.find_by_api_secret_including_expired(token)
         raise AuthenticationFailed(
             "invalid api token",
             identity=_audit_identity(
@@ -177,10 +177,11 @@ def _authenticate_system_token(request, token: str) -> CallerIdentity:
     if not SYSTEM_TOKEN_RE.fullmatch(token):
         raise AuthenticationFailed("invalid system token")
 
-    token_row = SystemAPIToken.find_live_by_secret(token)
+    token_row = SystemAPIToken.find_by_secret_including_disabled(token)
     if token_row is None:
         raise AuthenticationFailed("invalid system token")
 
+    live = token_row.is_live()
     audit = _audit_identity(
         credential_type=CREDENTIAL_SYSTEM_TOKEN,
         token_id=token_row.pk,
@@ -192,10 +193,6 @@ def _authenticate_system_token(request, token: str) -> CallerIdentity:
     except AuthenticationFailed as exc:
         raise AuthenticationFailed(str(exc), code=exc.code, identity=audit)
 
-    audit.user = username
-    audit.domain = domain
-    audit.team_ids = [team_id]
-
     try:
         user = BaseUser._default_manager.get(username=username, domain=domain)
     except ObjectDoesNotExist:
@@ -206,6 +203,13 @@ def _authenticate_system_token(request, token: str) -> CallerIdentity:
     sys_user = SystemUser.objects.filter(username=username, domain=domain, disabled=False).first()
     if sys_user is None:
         raise AuthenticationFailed("acting user not found or disabled", identity=audit)
+
+    audit.user = user.username
+    audit.domain = user.domain
+    audit.team_ids = [team_id]
+
+    if not live:
+        raise AuthenticationFailed("invalid system token", identity=audit)
 
     if team_id not in _normalize_group_ids(sys_user.group_list):
         raise AuthenticationFailed("team out of scope", code=ErrorCode.TEAM_OUT_OF_SCOPE, identity=audit)

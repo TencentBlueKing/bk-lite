@@ -1,5 +1,6 @@
 import useApiClient from '@/utils/request';
 import { SystemSettings } from '@/app/system-manager/types/security';
+import type { OpenApiCallLogList } from '@/app/system-manager/utils/openapiCallLogs';
 
 export const useSecurityApi = () => {
   const { get, post, patch, del } = useApiClient();
@@ -171,6 +172,16 @@ export const useSecurityApi = () => {
     return await get('/system_mgmt/error_log/', { params });
   }
 
+  async function getOpenApiCallLogs(params?: Record<string, unknown>): Promise<OpenApiCallLogList> {
+    return await get('/system_mgmt/openapi_call_log/', { params });
+  }
+
+  async function exportOpenApiCallLogs(data?: Record<string, unknown>): Promise<Blob> {
+    return await post('/system_mgmt/openapi_call_log/export_excel/', data, {
+      responseType: 'blob',
+    });
+  }
+
   return {
     getSystemSettings,
     updateOtpSettings,
@@ -181,6 +192,8 @@ export const useSecurityApi = () => {
     deleteAuthSource,
     getUserLoginLogs,
     getOperationLogs,
-    getErrorLogs
+    getErrorLogs,
+    getOpenApiCallLogs,
+    exportOpenApiCallLogs,
   };
 };

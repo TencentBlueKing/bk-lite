@@ -3,7 +3,6 @@ import hashlib
 import os
 
 from django.db import models
-from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.models.time_info import TimeInfo
@@ -46,16 +45,24 @@ class SystemAPIToken(TimeInfo):
     def is_hashed(cls, secret: str) -> bool:
         return bool(secret and secret.startswith(cls.HASH_PREFIX))
 
+    def is_live(self) -> bool:
+        if not self.enabled:
+            return False
+        return self.expires_at is None or self.expires_at > timezone.now()
+
     @classmethod
-    def find_live_by_secret(cls, secret: str):
+    def find_by_secret_including_disabled(cls, secret: str):
+        """按哈希查钥匙行，含过期与已禁用。仅供网关审计身份，不放宽认证。"""
         if not secret or cls.is_hashed(secret):
             return None
-        live = Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
-        return cls._default_manager.filter(
-            live,
-            secret_hash=cls.hash_secret(secret),
-            enabled=True,
-        ).first()
+        return cls._default_manager.filter(secret_hash=cls.hash_secret(secret)).first()
+
+    @classmethod
+    def find_live_by_secret(cls, secret: str):
+        row = cls.find_by_secret_including_disabled(secret)
+        if row is None or not row.is_live():
+            return None
+        return row
 
     def get_secret_preview(self) -> str:
         return "bksys_********" if self.secret_hash else ""

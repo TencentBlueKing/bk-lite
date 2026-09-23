@@ -63,6 +63,19 @@ class UserAPISecret(TimeInfo):
         # 滚动发布兼容：迁移尚未执行到的旧明文记录仍可认证。
         return cls._default_manager.filter(live, api_secret=api_secret).first()
 
+    @classmethod
+    def find_by_api_secret_including_expired(cls, api_secret: str):
+        """按哈希查钥匙行，含已过期。仅供网关审计身份，不放宽认证。"""
+        if not api_secret:
+            return None
+        if cls.is_hashed_api_secret(api_secret):
+            return None
+        hashed_secret = cls.hash_api_secret(api_secret)
+        row = cls._default_manager.filter(api_secret=hashed_secret).first()
+        if row:
+            return row
+        return cls._default_manager.filter(api_secret=api_secret).first()
+
     def get_api_secret_preview(self) -> str:
         return "********" if self.api_secret else ""
 
