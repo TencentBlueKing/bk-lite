@@ -491,6 +491,15 @@ importers:
 
   src/app/patch-manager: {}
 
+  src/app/rum:
+    dependencies:
+      '@grafana/rrweb':
+        specifier: 2.0.0-grafana.2
+        version: 2.0.0-grafana.2
+      '@grafana/rrweb-replay':
+        specifier: 2.0.0-grafana.2
+        version: 2.0.0-grafana.2
+
   src/app/system-manager:
     dependencies:
       '@dnd-kit/core':
@@ -1943,6 +1952,24 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  '@grafana/rrdom@2.0.0-grafana.2':
+    resolution: {integrity: sha512-eZFrDVTaoaiERuKyxv378XyzndcLz/oji8aWIIv9PD0yzCAnNA9jL9pCZvwrbas86ZEJmwKISWhioHAycPF2VA==}
+
+  '@grafana/rrweb-replay@2.0.0-grafana.2':
+    resolution: {integrity: sha512-iA/UyqS1QJNTvg6DAma0XwXyzTpj6H+d6eBlrMVxf7VNvpqYP9YUJdZPwADAvxAQ3Ua/KdA98bgecx/5MVWDzQ==}
+
+  '@grafana/rrweb-snapshot@2.0.0-grafana.2':
+    resolution: {integrity: sha512-IFJnlW+3MmOxI53B1t1Fsu2sqrfWkA2c8pLo0jkqNmUnTqQbqEp9iuwA/mXRViMnQRm9QrpCnHf/Y5P/K5Mq6w==}
+
+  '@grafana/rrweb-types@2.0.0-grafana.2':
+    resolution: {integrity: sha512-/xFgQ8ztj5N0R1G6EBWoUXthcdosue9MdSIjLgLOrhAQrr6JhFzrH04NAEWzKmXSBzMEBTvbBu6L6R4NLzV2pA==}
+
+  '@grafana/rrweb-utils@2.0.0-grafana.2':
+    resolution: {integrity: sha512-UytD4i76BZRruGUZ1O2th32FzbcItqIlcdGTXm2neW93xrhMCHXNyMTUr9OnN/rjxRcLzcjNCfFzSXD86Aq85w==}
+
+  '@grafana/rrweb@2.0.0-grafana.2':
+    resolution: {integrity: sha512-sQZj50i0t6YjLL8vY5CogSAXusmWusWhLifGK7RXLluQhlUZLB5Qfz+DUGN17UuJoE/Zrhe0nEF2gA+LqEEUDg==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -3490,6 +3517,9 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
+  '@types/css-font-loading-module@0.0.7':
+    resolution: {integrity: sha512-nl09VhutdjINdWyXxHWN/w9zlNCfr60JUqJbd24YXUuCwgeL0TpFSdElCwb6cxfB6ybE19Gjj4g0jsgkXxKv1Q==}
+
   '@types/d3-array@3.2.2':
     resolution: {integrity: sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==}
 
@@ -3866,6 +3896,9 @@ packages:
 
   '@webcontainer/env@1.1.1':
     resolution: {integrity: sha512-6aN99yL695Hi9SuIk1oC88l9o0gmxL1nGWWQ/kNy81HigJ0FoaoTXpytCj6ItzgyCEwA9kF1wixsTuv5cjsgng==}
+
+  '@xstate/fsm@1.6.5':
+    resolution: {integrity: sha512-b5o1I6aLNeYlU/3CPlj/Z91ybk1gUsKT+5NAJI+2W4UjvS5KLG28K9v5UvNoFVjHV8PajVZ00RH3vnjyQO7ZAw==}
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
@@ -6908,6 +6941,9 @@ packages:
   minipass@7.1.3:
     resolution: {integrity: sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==}
     engines: {node: '>=16 || 14 >=14.17'}
+
+  mitt@3.0.1:
+    resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
   mkdirp@0.3.5:
     resolution: {integrity: sha512-8OCq0De/h9ZxseqzCH8Kw/Filf5pF/vMI6+BH7Lu0jXz2pqYCjTAQRolSxRIi+Ax+oCCjlxoJMP0YQ4XlrQNHg==}
@@ -11433,6 +11469,34 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.2
 
+  '@grafana/rrdom@2.0.0-grafana.2':
+    dependencies:
+      '@grafana/rrweb-snapshot': 2.0.0-grafana.2
+
+  '@grafana/rrweb-replay@2.0.0-grafana.2':
+    dependencies:
+      '@grafana/rrweb': 2.0.0-grafana.2
+      '@grafana/rrweb-types': 2.0.0-grafana.2
+
+  '@grafana/rrweb-snapshot@2.0.0-grafana.2':
+    dependencies:
+      postcss: 8.5.25
+
+  '@grafana/rrweb-types@2.0.0-grafana.2': {}
+
+  '@grafana/rrweb-utils@2.0.0-grafana.2': {}
+
+  '@grafana/rrweb@2.0.0-grafana.2':
+    dependencies:
+      '@grafana/rrdom': 2.0.0-grafana.2
+      '@grafana/rrweb-snapshot': 2.0.0-grafana.2
+      '@grafana/rrweb-types': 2.0.0-grafana.2
+      '@grafana/rrweb-utils': 2.0.0-grafana.2
+      '@types/css-font-loading-module': 0.0.7
+      '@xstate/fsm': 1.6.5
+      base64-arraybuffer: 1.0.2
+      mitt: 3.0.1
+
   '@humanfs/core@0.19.2':
     dependencies:
       '@humanfs/types': 0.15.0
@@ -12841,6 +12905,8 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
+  '@types/css-font-loading-module@0.0.7': {}
+
   '@types/d3-array@3.2.2': {}
 
   '@types/d3-color@3.1.3': {}
@@ -13286,6 +13352,8 @@ snapshots:
       '@xtuc/long': 4.2.2
 
   '@webcontainer/env@1.1.1': {}
+
+  '@xstate/fsm@1.6.5': {}
 
   '@xtuc/ieee754@1.2.0': {}
 
@@ -16893,6 +16961,8 @@ snapshots:
       uglify-js: 2.2.5
 
   minipass@7.1.3: {}
+
+  mitt@3.0.1: {}
 
   mkdirp@0.3.5: {}
 
