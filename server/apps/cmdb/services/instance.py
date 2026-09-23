@@ -778,6 +778,99 @@ class InstanceManage(object):
                 candidates[key] = row
         return list(candidates.values())
 
+    IMPORT_EXIST_QUERY_CHUNK_SIZE = 200
+    IMPORT_EXIST_CANDIDATE_LIMIT = 5000
+
+    @staticmethod
+    def _chunk_values(values: list, size: int = None):
+        chunk_size = size or InstanceManage.IMPORT_EXIST_QUERY_CHUNK_SIZE
+        for start in range(0, len(values), chunk_size):
+            yield values[start : start + chunk_size]
+
+    @classmethod
+    def _add_import_exist_candidates(cls, candidates: dict, rows) -> None:
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            key = row.get("_id")
+            if key is None:
+                key = repr(sorted(row.items()))
+            candidates[key] = row
+        if len(candidates) > cls.IMPORT_EXIST_CANDIDATE_LIMIT:
+            raise BaseAppException("导入唯一性候选超过 5000 条，请缩小本次导入范围后重试")
+
+    @classmethod
+    def _collect_import_field_values(cls, items: list[dict], field: str) -> tuple[list, list]:
+        int_values = []
+        str_values = []
+        seen_int = set()
+        seen_str = set()
+        for item in items:
+            param = cls._unique_candidate_param(field, item.get(field))
+            if not param:
+                continue
+            value = param["value"]
+            if param["type"] == "int=":
+                if value not in seen_int:
+                    seen_int.add(value)
+                    int_values.append(value)
+            elif value not in seen_str:
+                seen_str.add(value)
+                str_values.append(value)
+        return int_values, str_values
+
+    @classmethod
+    def _query_import_exist_items(cls, graph, model_id: str, items: list[dict], check_attr_map: dict) -> list[dict]:
+        """按导入行的唯一字段值与实例名加载候选，禁止只按 model_id 全表扫描。"""
+        if not items:
+            return []
+
+        candidates = {}
+        model_param = {"field": "model_id", "type": "str=", "value": model_id}
+
+        for field in check_attr_map.get("is_only", {}) or {}:
+            int_values, str_values = cls._collect_import_field_values(items, field)
+            for chunk in cls._chunk_values(int_values):
+                rows, _ = graph.query_entity(
+                    INSTANCE,
+                    [model_param, {"field": field, "type": "int[]", "value": chunk}],
+                )
+                cls._add_import_exist_candidates(candidates, rows)
+            for chunk in cls._chunk_values(str_values):
+                rows, _ = graph.query_entity(
+                    INSTANCE,
+                    [model_param, {"field": field, "type": "str[]", "value": chunk}],
+                )
+                cls._add_import_exist_candidates(candidates, rows)
+
+        seen_combos = set()
+        for rule in check_attr_map.get("unique_rules", []) or []:
+            field_ids = getattr(rule, "field_ids", None) or []
+            for item in items:
+                params = [cls._unique_candidate_param(field, item.get(field)) for field in field_ids]
+                if not params or not all(params):
+                    continue
+                combo_key = tuple((param["field"], param["type"], param["value"]) for param in params)
+                if combo_key in seen_combos:
+                    continue
+                seen_combos.add(combo_key)
+                rows, _ = graph.query_entity(INSTANCE, [model_param, *params])
+                cls._add_import_exist_candidates(candidates, rows)
+
+        inst_names = []
+        seen_names = set()
+        for item in items:
+            name = item.get("inst_name")
+            if not name or name in seen_names:
+                continue
+            seen_names.add(name)
+            inst_names.append(name)
+        for chunk in cls._chunk_values(inst_names):
+            rows = graph.query_entity_by_inst_names(chunk, model_id=model_id) or []
+            cls._add_import_exist_candidates(candidates, rows)
+
+        return list(candidates.values())
+
     @staticmethod
     def _apply_display_fields_to_update(attrs: list, update_attr: dict) -> None:
         from apps.cmdb.display_field import DisplayFieldConverter
@@ -2305,9 +2398,8 @@ class InstanceManage(object):
         attrs = ModelManage.search_model_attr_v2(model_id)
         model_info = ModelManage.search_model_info(model_id)
 
-        with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
-        results = Import(model_id, attrs, exist_items, operator).import_inst_list(file_stream)
+        importer = Import(model_id, attrs, [], operator)
+        results = importer.import_inst_list(file_stream)
 
         change_records = [
             dict(
@@ -2339,10 +2431,7 @@ class InstanceManage(object):
         attrs = ModelManage.search_model_attr_v2(model_id)
         model_info = ModelManage.search_model_info(model_id)
 
-        with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
-
-        _import = Import(model_id, attrs, exist_items, operator)
+        _import = Import(model_id, attrs, [], operator)
         add_results, update_results, asso_result = _import.import_inst_list_support_edit(
             file_stream,
             allowed_org_ids=allowed_org_ids,
@@ -2367,7 +2456,7 @@ class InstanceManage(object):
             for i in add_results
             if i["success"]
         ]
-        exist_items__id_map = {i["_id"]: i for i in exist_items}
+        exist_items__id_map = {i["_id"]: i for i in _import.exist_items}
         update_changes = [
             dict(
                 inst_id=i["data"]["_id"],
