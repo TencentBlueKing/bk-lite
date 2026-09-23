@@ -915,7 +915,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
   { match: /exinda|gfi\s*exos/i, label: 'Exinda / GFI ExOS', icon: 'mm-exinda_exinda' },
-  { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
+  { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' },
+  { match: /riverbed|steelhead/i, label: 'Riverbed SteelHead' }
 ];
 
 // 失败降级:window undefined / __ENTERPRISE_BRANDS 缺失 → 返回 [],等价走纯 CE BRANDS。

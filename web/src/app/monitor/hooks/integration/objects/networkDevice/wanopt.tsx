@@ -77,7 +77,8 @@ export const useWanoptConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Wanopt Exinda SNMP': 'snmp_exinda'
+      'Wanopt Exinda SNMP': 'snmp_exinda',
+      'Wanopt Riverbed SNMP': 'snmp_riverbed'
     }
   };
 };

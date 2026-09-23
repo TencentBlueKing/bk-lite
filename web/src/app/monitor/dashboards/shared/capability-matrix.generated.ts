@@ -1613,6 +1613,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "temperature",
         "traffic"
       ]
+    },
+    {
+      "collectType": "snmp_riverbed",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "temperature",
+        "traffic"
+      ]
     }
   ]
 };

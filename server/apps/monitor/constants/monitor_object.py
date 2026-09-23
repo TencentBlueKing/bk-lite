@@ -42,6 +42,7 @@ class MonitorObjConstants:
                 "Router",
                 "Firewall",
                 "Loadbalance",
+                "Wanopt",
                 "Detection Device",
                 "Scanning Device",
                 "Cisco Meraki",
