@@ -385,7 +385,7 @@ class ConversationManager {
         nodeId: string,
         userMessage: string | MessageContentItem[],
         renderMarkdown: RenderMarkdownFn,
-        errorMessage: string = '响应异常，请稍后再试',
+        errorMessage: string,
         addUserMessage: boolean = true
     ): Promise<void> {
         // 初始化会话

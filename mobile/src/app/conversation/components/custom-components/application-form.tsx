@@ -1,5 +1,6 @@
 import React, { useState, useRef, memo, useEffect } from 'react';
 import { Button, Input, Toast, DatePicker, Selector, Radio, Checkbox, TextArea, Stepper, Slider, Switch } from 'antd-mobile';
+import { useTranslation } from '@/utils/i18n';
 
 interface FormField {
     label: string;
@@ -29,6 +30,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
     onSubmit,
     onFormSubmit
 }) => {
+    const { t } = useTranslation();
     const [formState, setFormState] = useState<'noSubmitted' | 'submitted'>(initialState);
     const [formData, setFormData] = useState<Record<string, any>>(() => {
         // 使用惰性初始化，只在组件挂载时执行一次
@@ -121,7 +123,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                     }
                 }
             } else if (f.type === 'switch') {
-                displayValue = value ? '是' : '否';
+                displayValue = value ? t('chat.yes') : t('chat.no');
             } else if (f.type === 'radio' && f.options) {
                 const option = f.options.find(opt => opt.value === value);
                 displayValue = option ? option.label : String(value);
@@ -131,7 +133,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                     .map(opt => opt.label);
                 displayValue = selectedLabels.join(', ');
             } else if (f.type === 'file') {
-                displayValue = value?.name || '未上传';
+                displayValue = value?.name || t('chat.notUploaded');
             } else {
                 displayValue = String(value);
             }
@@ -141,7 +143,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
 
         // 发送用户消息（使用 Markdown 列表格式）
         if (onFormSubmit) {
-            onFormSubmit(`**表单提交**\n\n${formattedItems}`);
+            onFormSubmit(`**${t('chat.formSubmittedTitle')}**\n\n${formattedItems}`);
         }
     };
 
@@ -381,7 +383,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                 style={{ '--fill-color': '#1677ff' } as any}
                             />
                             <div className="text-xs text-[var(--color-text-3)] text-right mt-1">
-                                当前值: {value || min || 0}
+                                {t('chat.formCurrentValue', '当前值: {value}', { value: value || min || 0 })}
                             </div>
                         </div>
                     )}
@@ -419,7 +421,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                 {/* 滚动提示 - 仅当内容真正超出时显示 */}
                 {hasScroll && (
                     <div className="text-xs text-[var(--color-text-3)] text-center mt-2 mb-2">
-                        ↕ 滑动查看更多
+                        {t('chat.formScrollForMore')}
                     </div>
                 )}
 
@@ -435,7 +437,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     '--adm-font-size-9': '15px'
                                 } as React.CSSProperties}
                         >
-                            提交
+                            {t('chat.formSubmit')}
                         </Button>
                     ) : (
                         <Button
@@ -444,7 +446,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                             disabled
                             className="rounded-lg"
                         >
-                            <span>已提交</span>
+                            <span>{t('chat.formSubmitted')}</span>
                         </Button>
                     )}
                 </div>

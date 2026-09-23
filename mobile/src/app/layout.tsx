@@ -2,11 +2,12 @@ import '@/styles/globals.css';
 import type { Metadata, Viewport } from 'next';
 import { MobilePolyfills } from '@/polyfills';
 import { withBasePath } from '@/utils/basePath';
+import zhMessages from '@/locales/zh.json';
 import { AppProviders } from './app-providers';
 
 export const metadata: Metadata = {
-  title: 'BlueKing Lite - AI 原生的轻量化运维平台',
-  description: 'AI 原生的轻量化运维平台',
+  title: zhMessages.common.portalTitle,
+  description: zhMessages.common.portalDescription,
 };
 
 const isTauriBuild = process.env.BK_MOBILE_BUILD_TARGET === 'tauri';
@@ -29,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh-Hans">
       <head>
         <link rel="stylesheet" href={withBasePath('/icon/font/iconfont.css')}></link>
         <link rel="icon" href={withBasePath('/logo-site.png')} type="image/png" />

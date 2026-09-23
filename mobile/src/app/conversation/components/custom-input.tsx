@@ -2,18 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Toast, Popover, ImageViewer } from 'antd-mobile';
 import { Sender } from '@ant-design/x';
 import { AddOutline, ExclamationCircleFill } from 'antd-mobile-icons';
-import { RobotOutlined, BarChartOutlined, RadarChartOutlined, BookOutlined, FileOutlined, FileExcelFilled, FileMarkdownFilled, FilePdfFilled, FilePptFilled, FileTextFilled, FileUnknownFilled, FileWordFilled, FileZipFilled } from '@ant-design/icons';
+import { FileExcelFilled, FileMarkdownFilled, FilePdfFilled, FilePptFilled, FileTextFilled, FileUnknownFilled, FileWordFilled, FileZipFilled } from '@ant-design/icons';
 import { useTheme } from '@/context/theme';
 import { VoiceRecorder } from './voice-recorder';
 import { useTranslation } from '@/utils/i18n';
-
-const MOCK_TOOLS = [
-    { id: 'tool1', name: 'Linux 性能监控', icon: <RobotOutlined style={{ color: 'red' }} /> },
-    { id: 'tool2', name: '抓包与网络分析', icon: <BarChartOutlined style={{ color: 'blue' }} /> },
-    { id: 'tool3', name: '错误监控', icon: <RadarChartOutlined style={{ color: 'purple' }} /> },
-    { id: 'tool4', name: '日志服务', icon: <BookOutlined style={{ color: 'orange' }} /> },
-    { id: 'tool5', name: '文件同步', icon: <FileOutlined style={{ color: 'green' }} /> }
-];
 
 // 消息类型定义
 export type MessageContent =
@@ -300,25 +292,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
             onSend(text);
             setContent('');
         }
-    };
-
-    const handleToolClick = (toolId: string) => {
-        if (isAIRunning) {
-            Toast.show({
-                content: t('chat.aiProcessing'),
-                icon: 'loading',
-                duration: 2000
-            });
-            return;
-        }
-
-        // 找到对应的工具
-        const tool = MOCK_TOOLS.find(t => t.id === toolId);
-        if (!tool) return;
-
-        // 发送用户消息：执行xxx工具
-        const message = `执行${tool.name}`;
-        onSend(message);
     };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -622,22 +595,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                     </div>
                 </div>
             )}
-
-            {/* 工具列表 */}
-            <div className="mb-2 mx-1 overflow-x-auto scrollbar-hide">
-                <div className="flex gap-2">
-                    {MOCK_TOOLS.map((tool) => (
-                        <button
-                            key={tool.id}
-                            onClick={() => handleToolClick(tool.id)}
-                            className="flex flex-shrink-0 items-center justify-center gap-1 rounded-full border border-[var(--color-border-3)] bg-transparent px-3 py-1 active:bg-[var(--color-fill-2)]"
-                        >
-                            {tool.icon}
-                            <span className="text-xs text-[var(--color-text-2)]">{tool.name}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
 
             {isRecording && (
                 <div className="text-center">
