@@ -81,7 +81,7 @@ const ThresholdList: React.FC<ThresholdListProps> = ({
 
   // 获取当前选中单位的显示文本
   const getUnitLabel = () => {
-    if (unitAddonLabel) {
+    if (unitAddonLabel != null) {
       return unitAddonLabel;
     }
     const selectedUnit = unitOptions.find(

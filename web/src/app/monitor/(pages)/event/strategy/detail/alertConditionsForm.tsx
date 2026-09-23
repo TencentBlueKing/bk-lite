@@ -309,6 +309,21 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       algorithm
     );
   }, [thresholdUnit, unitList, algorithm]);
+  const resolvedCompareKind = compareKindOptions.includes(compareValueKind)
+    ? compareValueKind
+    : defaultCompareValueKind(compareMode);
+  const thresholdUnitFixed =
+    resolvedCompareKind === 'percent' ||
+    resolvedCompareKind === 'ratio' ||
+    resolvedCompareKind === 'hours';
+  const thresholdValueUnitLabel =
+    resolvedCompareKind === 'percent'
+      ? '%'
+      : resolvedCompareKind === 'ratio'
+        ? ''
+        : resolvedCompareKind === 'hours'
+          ? t('monitor.events.compareValueKindHours')
+          : recoveryThresholdUnitLabel;
   const restatement = useMemo(() => {
     const primary = threshold.find((item) => item.method && item.value != null) ||
       threshold[0];
@@ -323,7 +338,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       thresholdMethod: primary?.method,
       thresholdValue:
         typeof primary?.value === 'number' ? primary.value : null,
-      thresholdUnitLabel: recoveryThresholdUnitLabel,
+      thresholdUnitLabel: thresholdValueUnitLabel,
       countPredicateMethod: countPredicate?.method,
       countPredicateValue:
         typeof countPredicate?.value === 'number' ? countPredicate.value : null,
@@ -339,7 +354,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     compareValueKind,
     compareModeLabels,
     threshold,
-    recoveryThresholdUnitLabel,
+    thresholdValueUnitLabel,
     countPredicate,
     forecastTarget,
     compareOffsetHours
@@ -473,11 +488,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   );
   const renderCompareKindSelect = () => (
     <Select
-      value={
-        compareKindOptions.includes(compareValueKind)
-          ? compareValueKind
-          : defaultCompareValueKind(compareMode)
-      }
+      value={resolvedCompareKind}
       onChange={onCompareValueKindChange}
       aria-label={t('monitor.events.compareValueKind')}
       style={{ width: '100%' }}
@@ -612,11 +623,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 {showCompareKind ? (
                   <Form.Item
                     required
-                    label={
-                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
-                        {t('monitor.events.compareValueKind')}
-                      </span>
-                    }
+                    label={strategyConditionLabelWithTip(
+                      t('monitor.events.compareValueKind'),
+                      t('monitor.events.compareValueKindTip')
+                    )}
                   >
                     {renderCompareKindSelect()}
                   </Form.Item>
@@ -727,11 +737,11 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   unitOptions={filteredUnitOptions}
                   isEnumMetric={isEnumMetric}
                   enumOptions={enumOptions}
-                  showUnitSelector={showUnitSelector}
+                  showUnitSelector={showUnitSelector && !thresholdUnitFixed}
                   allowedMethods={
                     isEnumMetric ? undefined : allowedThresholdMethods
                   }
-                  unitAddonLabel={recoveryThresholdUnitLabel}
+                  unitAddonLabel={thresholdValueUnitLabel}
                 />
               </Form.Item>
               <p
@@ -744,7 +754,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 recoveryThreshold={recoveryThreshold}
                 onRecoveryThresholdChange={onRecoveryThresholdChange}
                 allowedRecoveryMethods={allowedRecoveryMethods}
-                recoveryThresholdUnitLabel={recoveryThresholdUnitLabel}
+                recoveryThresholdUnitLabel={thresholdValueUnitLabel}
                 noDataAlert={noDataAlert}
                 nodataUnit={nodataUnit}
                 noDataRecovery={noDataRecovery}

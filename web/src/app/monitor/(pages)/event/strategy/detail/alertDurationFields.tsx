@@ -56,7 +56,7 @@ const fieldLabel = (text: string) => (
 export const strategyConditionLabelWithTip = (text: string, tip: string) => (
   <span className="inline-flex w-[100px] items-center justify-end gap-1 whitespace-nowrap">
     <span>{text}</span>
-    <Tooltip title={tip}>
+    <Tooltip title={tip} overlayInnerStyle={{ whiteSpace: 'pre-line' }}>
       <QuestionCircleOutlined className="text-[var(--color-text-3)]" />
     </Tooltip>
   </span>
