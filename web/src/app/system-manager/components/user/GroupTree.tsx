@@ -1,13 +1,16 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Input, Button, Tree, Skeleton, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { CaretDownFilled, PlusOutlined } from '@ant-design/icons';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import Icon from '@/components/icon';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import usePermissions from '@/hooks/usePermissions';
+import {
+  collectExpandableKeys,
+} from '@/app/system-manager/utils/userTreeUtils';
 
 interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
@@ -128,18 +131,19 @@ const GroupTree: React.FC<GroupTreeProps> = ({
 
       return {
         ...node,
+        key: String(node.key),
         parentIsVirtual,
         selectable: node.hasAuth !== false,
         title: (
-          <div className="flex justify-between items-center w-full pr-1">
-            <div className="flex items-center gap-1 flex-1 min-w-0">
+          <div className="flex w-full min-w-0 items-center gap-1 overflow-hidden pr-2">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
               <Icon type={iconType} className="flex-shrink-0 font-mini" />
               <EllipsisWithTooltip
                 text={typeof node.title === 'function' ? String(node.title(node)) : String(node.title)}
-                className={`truncate max-w-[100px] flex-1 ${node.hasAuth === false ? 'opacity-50' : ''}`}
+                className={`min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${node.hasAuth === false ? 'opacity-50' : ''}`}
               />
             </div>
-            <span className="flex-shrink-0 ml-2">
+            <span className="ml-1 flex-shrink-0">
               {renderGroupActions(node.key as number)}
             </span>
           </div>
@@ -147,6 +151,48 @@ const GroupTree: React.FC<GroupTreeProps> = ({
         children: node.children ? renderTreeNode(node.children, childParentIsVirtual) : [],
       };
     });
+
+  const processedTreeData = useMemo(
+    () => renderTreeNode(treeData),
+    [treeData, t, onGroupAction]
+  );
+
+  // 线上旧版是 defaultExpandAll。虚拟树对该 props 不稳定，改用首次挂载的
+  // defaultExpandedKeys 铺开全部文件夹；不要用 key 重挂载，否则搜索/刷新会把用户折叠打回。
+  const defaultExpandedKeys = useMemo(
+    () => collectExpandableKeys(treeData).map(String),
+    [treeData],
+  );
+
+  const treeHostRef = useRef<HTMLDivElement | null>(null);
+  const [treeHeight, setTreeHeight] = useState(0);
+
+  const applyTreeHostHeight = useCallback((host: HTMLDivElement | null) => {
+    if (!host) {
+      return;
+    }
+    const nextHeight = Math.floor(host.clientHeight);
+    if (nextHeight > 0) {
+      setTreeHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+    }
+  }, []);
+
+  const setTreeHostNode = useCallback((node: HTMLDivElement | null) => {
+    treeHostRef.current = node;
+    applyTreeHostHeight(node);
+  }, [applyTreeHostHeight]);
+
+  useLayoutEffect(() => {
+    const host = treeHostRef.current;
+    if (!host || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    applyTreeHostHeight(host);
+    const observer = new ResizeObserver(() => applyTreeHostHeight(host));
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [applyTreeHostHeight, loading]);
 
   const rootMenuItems = useMemo((): MenuProps['items'] => {
     const items: MenuProps['items'] = [];
@@ -168,7 +214,7 @@ const GroupTree: React.FC<GroupTreeProps> = ({
   }, [canAddGroup, canDeleteGroup, onAddRootGroup, onOpenArchivedDrawer, t]);
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full min-h-0 flex flex-col">
       <div className="flex items-center mb-4">
         <Input
           size="small"
@@ -189,19 +235,30 @@ const GroupTree: React.FC<GroupTreeProps> = ({
         )}
       </div>
       {loading ? (
-        <div className="w-full flex-1 overflow-auto p-4">
-          <Skeleton active paragraph={{ rows: 6 }} />
+        <div className="relative w-full min-h-0 flex-1">
+          <div className="absolute inset-0 overflow-auto p-4">
+            <Skeleton active paragraph={{ rows: 6 }} />
+          </div>
         </div>
       ) : (
-        <Tree
-          className="w-full flex-1 overflow-auto bg-transparent"
-          showLine
-          blockNode
-          expandAction={false}
-          defaultExpandAll
-          treeData={renderTreeNode(treeData)}
-          onSelect={onTreeSelect}
-        />
+        <div className="relative w-full min-h-0 flex-1">
+          <div ref={setTreeHostNode} className="absolute inset-y-0 left-0 -right-4 overflow-hidden">
+            {treeHeight > 0 ? (
+              <Tree
+                className="w-full bg-transparent [&_.ant-tree-treenode]:w-full [&_.ant-tree-node-content-wrapper]:min-w-0 [&_.ant-tree-node-content-wrapper]:flex-1 [&_.ant-tree-node-content-wrapper]:overflow-hidden [&_.ant-tree-title]:block [&_.ant-tree-title]:min-w-0 [&_.ant-tree-title]:overflow-hidden"
+                showLine={{ showLeafIcon: false }}
+                switcherIcon={<CaretDownFilled className="!text-[12px] text-[var(--color-text-3)]" />}
+                blockNode
+                expandAction={false}
+                virtual
+                height={treeHeight}
+                treeData={processedTreeData}
+                defaultExpandedKeys={defaultExpandedKeys}
+                onSelect={onTreeSelect}
+              />
+            ) : null}
+          </div>
+        </div>
       )}
     </div>
   );

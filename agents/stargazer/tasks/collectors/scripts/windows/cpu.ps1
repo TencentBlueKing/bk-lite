@@ -1,16 +1,13 @@
+$cpuTotal = Get-MetricData 'Win32_PerfFormattedData_PerfOS_Processor' | Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1
 $cpuData = Get-MetricData 'Win32_Processor'
-$cpuLoad = ($cpuData | Measure-Object -Property LoadPercentage -Average).Average
 $cpuCount = ($cpuData | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
 if (-not $cpuCount) { $cpuCount = ($cpuData | Measure-Object).Count }
 $result['cpu'] = @{
-    usage_percent = [math]::Round($cpuLoad, 2)
-    usage_user_percent = 0
-    usage_system_percent = 0
-    usage_iowait_percent = 0
-    usage_irq_percent = 0
-    usage_steal_percent = 0
     core_count = $cpuCount
-    load_1m = 0
-    load_5m = 0
-    load_15m = 0
+}
+if ($cpuTotal -and $null -ne $cpuTotal.PercentProcessorTime) {
+    $usage = [math]::Round([double]$cpuTotal.PercentProcessorTime, 2)
+    if ($usage -lt 0) { $usage = 0 }
+    if ($usage -gt 100) { $usage = 100 }
+    $result['cpu']['usage_percent'] = $usage
 }

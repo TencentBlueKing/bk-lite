@@ -18,10 +18,15 @@ const api = {
   closeAlert: vi.fn(),
   claimAlert: vi.fn(),
   assignAlert: vi.fn(),
+  reassignAlert: vi.fn(),
   getNotificationRecipients: vi.fn(),
 };
 
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
+vi.mock('@/context/userInfo', () => ({
+  useUserInfoContext: () => ({ userId: '7', username: 'apm-user' }),
+}));
+
 vi.mock('@/hooks/usePermissions', () => ({
   default: (permissionPath?: string) => {
     permissionState.path = permissionPath;
@@ -71,6 +76,7 @@ beforeEach(() => {
   api.closeAlert.mockResolvedValue(undefined);
   api.claimAlert.mockResolvedValue(undefined);
   api.assignAlert.mockResolvedValue(undefined);
+  api.reassignAlert.mockResolvedValue(undefined);
   api.getNotificationRecipients.mockResolvedValue([]);
 });
 
@@ -97,6 +103,22 @@ describe('APM 告警写操作权限', () => {
     await user.click(screen.getByRole('button', { name: '认领' }));
     await user.click(await screen.findByRole('button', { name: /^确\s*定$/ }));
     await waitFor(() => expect(api.claimAlert).toHaveBeenCalledWith('a1'));
+    expect(screen.queryByRole('button', { name: '转派' })).toBeNull();
+  });
+
+  it('当前处理人的活跃告警展示转派，不展示认领和分派', async () => {
+    renderWithApmIntl(
+      <AlertHandlerActions
+        alert={{ ...alert, handlers: [7], handlers_display: ['Bob(bob)'] }}
+        closeText="关闭"
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole('button', { name: '转派' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '关闭' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '认领' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '分派' })).toBeNull();
   });
 
   it('仅 events-View 时按钮不可点且不调用 claimAlert/assignAlert/closeAlert', async () => {
@@ -115,6 +137,7 @@ describe('APM 告警写操作权限', () => {
 
     expect(api.claimAlert).not.toHaveBeenCalled();
     expect(api.assignAlert).not.toHaveBeenCalled();
+    expect(api.reassignAlert).not.toHaveBeenCalled();
     expect(api.closeAlert).not.toHaveBeenCalled();
     expect(api.getNotificationRecipients).not.toHaveBeenCalled();
 

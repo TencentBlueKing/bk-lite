@@ -46,6 +46,8 @@ Markdown 不复制维护运行时颜色值。修改品牌色或主题值时先�
 
 如果为了满足单一页面而修改 shared 组件，优先增加清晰、可复用的 variant；不能把业务字段、API 请求或 app 类型塞进 shared 组件。
 
+视觉改造只动布局、间距、token 与组件壳。不要擅自改文案、展示字段、状态色，也不要增删或改换表单字段与控件。这些如果必须动，先讨论并确认。
+
 ## 1. Overview
 
 **气质：浅色、克制的企业控制台（Light Operations Desk）**
@@ -253,25 +255,25 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 控制台里「网格实体卡」类列表页（工作台、智能体、知识库、工具、记忆、供应商等）统一走同一套解剖与页壳，便于跨模块继用。OpsPilot 为首个完整落地；新模块或旧列表改造按本节执行，不要再发明平行卡片壳。
 
-**参考实现（OpsPilot，app-local）：**
+**参考实现（shared）：**
 
 | 能力 | 路径 |
 | --- | --- |
-| 统一卡 | `web/src/app/opspilot/components/unified-ops-card` |
-| 列表页头 | `web/src/app/opspilot/components/opspilot-list-page-header` |
-| 加载骨架 | `web/src/app/opspilot/components/opspilot-card-grid-skeleton` |
-| 相对时间 | `web/src/app/opspilot/utils/relativeTime`（`updated_at` 优先，否则 `created_at`） |
+| 统一卡 | `web/src/components/grid-entity-card` |
+| 列表页头 | `web/src/components/list-page-header` |
+| 加载骨架 | `web/src/components/card-grid-skeleton` |
+| 相对时间 | `web/src/utils/relativeTime.ts`（`updated_at` 优先，否则 `created_at`） |
 
-第二个及以上真实 app 接入同一抽象后，再按 `COMPONENT_GOVERNANCE.md` 升到 `src/components` 并补 Storybook；升 shared 前禁止在别的 app 复制一份平行实现。
+OpsPilot 与系统管理已接入上述抽象。域内差异（置顶、厂商图标、模型色、暂停条）留在 app 包装层，不要再复制一份卡片壳。
 
 #### 卡片解剖（Look B）
 
 自上而下固定为：
 
-1. **头行：** 左上图标（`40×40`、圆角 `md`、底 `fill-1`）+ 标题（`15px` / semibold / `leading-snug`，单行省略 + tooltip）+ 右上置顶（可选）与更多菜单。
+1. **头行：** 左上图标（`40×40`、圆角 `md`、底 `fill-1`）+ 标题（`15px` / semibold / `leading-snug`，单行省略；完整内容用 `EllipsisWithTooltip`，**仅文字真正溢出时**出 tooltip）+ 右上置顶（可选）与更多菜单。
 2. **副行（标题下）：** 有状态点 / 相对时间时渲染，并与图标顶对齐；**无内容时不占位**，标题与 `40×40` 图标垂直居中。类型 tag 不要塞进这一行。
 3. **描述：** 最多两行，辅助色，无内容用 `--`。
-4. **Meta tags（描述下，固定 `min-h-5`）：** 能力/类型/模型等短标签；可空。状态类 tag（上线/下线）**字重正常（400）**。与副行分工：副行 = 状态点/时间，meta = 类型标签。
+4. **Meta tags（描述下，固定 `min-h-5`）：** 能力/类型/模型等短标签；可空。状态类 tag（上线/下线）**字重正常（400）**。与副行分工：副行 = 状态点/时间，meta = 类型标签。**来源类（内置 / 外部）不是能力 tag**：用 `SourceOriginBadge`（内置 primary、外部 success），禁止和能力标签混成同色灰片。计数、周期等度量不要写成 tag。
 5. **底栏：** 默认 `Owner · 名称` 左、`Team · 名称`（多团队 `+N`）右；供应商类可用「模型数 + Switch」。分割线用 `fill-2`。
 
 - 卡片 `min-h` 与 `h-full` 保证同排等高；meta 行保留 `min-h`。副行有无内容时卡头高度可不同，由下方弹性区消化。
@@ -281,7 +283,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 #### 列表页壳
 
-- **页头一行：** 左标题 + 短描述，右 **搜索与操作成组**。参考 `OpsPilotListPageHeader`。细则见 **List / Table Toolbar**。
+- **页头一行：** 左标题 + 短描述，右 **搜索与操作成组**。参考 `ListPageHeader`。细则见 **List / Table Toolbar**。
 - **主新建按钮：** 文案统一为「新建」（`common.new`），`type="primary"` + `PlusOutlined`。弹窗标题仍可用「添加…」；导入类动作保留「导入…」等专名，不硬改成「新建」。
 - **入口位置：** 新建在工具条主按钮，不在网格里塞「新增」空卡（除非产品明确要求）。
 - **筛选 / 视图切换：** 分段/类型筛选放在搜索左侧、仍在右侧成组内；不要单独占一行，除非筛选项非常多。
@@ -290,7 +292,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 列表、表格上方的搜索和操作是全平台最容易乱的一行。统一规则：**标题靠左，搜索与操作成组靠右，中间不要拉空。**
 
-参考：OpsPilot 智能体列表、`OpsPilotListPageHeader`、`SearchActionBar`、`ToolbarSplitShell`。
+参考：OpsPilot 智能体列表、`ListPageHeader`、`SearchActionBar`、`ToolbarSplitShell`。
 
 ```
 [标题 + 短描述]                         [筛选] [搜索] [刷新] [新建]
@@ -316,7 +318,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - 搜索默认宽 `w-60`（240px），需要更长时再用 `w-80`，不要拉满整行
 
 **实现：**
-- 有标题的列表页：`OpsPilotListPageHeader`，`actions` 里放搜索 + 新建。
+- 有标题的列表页：`ListPageHeader`，`actions` 里放搜索 + 新建。
 - 无标题的表格页：`SearchActionBar`（搜索与 actions 已成组靠右）。
 - 左视图切换 + 右搜索操作：`ToolbarSplitShell`（`leading` / `trailing`）。
 - 禁止手写 `justify-between` 把 `Input.Search` 和「新建」拆到两端。
@@ -343,6 +345,8 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 **The New Not Add Rule.** 列表页主创建按钮文案用「新建」；「添加」留给弹窗标题或表单项内追加行。
 
+**The Preserve Meaning Rule.** 统一视觉不能改页面含义。文案、展示字段、状态色保持原样；也不要增删或改换表单字段与控件。这些如果必须动，先讨论、经确认后再改。
+
 ### Inputs / Fields
 - **Style:** 使用 AntD 表单控件，桌面最小高度 `40px`，移动/触摸场景目标热区不低于 `44px`。
 - **Editable surface:** 可输入区域必须是 `var(--color-bg)` 白底。`fill-1` 只给只读弱容器、禁用态或分组底。灰底输入框会被当成不能输入。
@@ -355,7 +359,9 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 配置 + 实时预览（如智能体设置）走同一套工作台，不要做成左右两堆互不相干的卡片墙。参考：`web/src/app/opspilot/(pages)/skill/detail/settings/page.tsx`。
 
-- **两栏：** 各一块白底面板（`rounded-lg` + `1px` 边框），`h-full min-h-0` 内部滚动。禁止用 `calc(100vh - Npx)` 估高度。
+- **两栏：** 仅适用于配置 + 实时预览这类设置工作台。各一块白底面板（`rounded-lg` + `1px` 边框），`h-full min-h-0` 内部滚动。禁止用 `calc(100vh - Npx)` 估高度。
+- **树 + 表格页（如组织架构）：** 沿用 `PageLayout` 分层：标题条与内容区各一块白底圆角，**不加 1px 描边**；左右用背景和留白分开。不要套 Studio 设置双栏的线框。
+- **嵌套侧栏：** 「左右各一块描边面板」不要用在树 + 表格页。内容已经套在 `SideMenu` 里时（应用管理的角色 / 数据权限 / 自定义菜单），内容区只铺 **一块** 白底圆角，**不加 1px 描边**；栏内主从用 `border-r` 和留白分割，不要再 `gap` 出第二套白卡，避免页面底色从缝里露出来（卡套卡）。
 - **栏头：** `fill-1/60` 浅底 + 小图标 + 标题；右侧轻量徽章（ID、模型名），不要再套卡。
 - **章节：** 短竖条 + `13px semibold` 标题；章节之间 `border-t` + 较大 `pt`。表单横向标签、统一标签宽。
 - **设置行：** 开关做成「一行一项」`divide-y`，不要每个开关一张小卡。
@@ -473,17 +479,17 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 | 页面类型 | 骨架 | 不要 |
 | --- | --- | --- |
-| 实体网格列表 | `OpsPilotCardGridSkeleton`（与 Look B 卡同解剖） | `Spin` 罩住旧卡或空白网格 |
+| 实体网格列表 | `CardGridSkeleton`（与 Look B 卡同解剖） | `Spin` 罩住旧卡或空白网格 |
 | 设置双栏 / Studio | `OpsPilotStudioWorkbenchSkeleton`（左右面板同构） | 整页居中 `Spin` |
 | 详情页 / 概览页 | `RumSessionDetailSkeleton` / `RumErrorDetailSkeleton` / `RumOverviewSkeleton`（KPI 格 + 分区卡栏头 + 属性行同构） | 只留 KPI 转圈、主区空白 |
 | 表格 | 表头保留，行用 Skeleton；或表格 `loading` 配骨架行 | 整表消失只剩转圈 |
 | 分页加载更多 | 底部小 `Spin` | 再刷一整页骨架 |
 
-参考实现（OpsPilot，app-local）：
+参考实现：
 
 | 能力 | 路径 |
 | --- | --- |
-| 列表卡骨架 | `web/src/app/opspilot/components/opspilot-card-grid-skeleton` |
+| 列表卡骨架 | `web/src/components/card-grid-skeleton` |
 | 设置双栏骨架 | `web/src/app/opspilot/components/opspilot-studio-workbench-skeleton` |
 | 详情 / 概览骨架 | `web/src/app/rum/components/rum-skeleton.tsx` |
 
@@ -491,8 +497,9 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 
 ### Tables
 - **Density:** 表格可以高密度，但列头、操作列和筛选条件必须清晰。
+- **Cells:** 主行 Body `14px` / 常规 / `text-1`；双行时副行 Label `12px` / `text-3`。禁止把 Title `16px` 或标题级 `semibold` 放进单元格。空值用 `text-3` 常规字重，不要做成标题。时间与数字列 `tabular-nums`。
 - **Actions:** 操作列固定右侧，行内按钮保持 `link small`，不要混用大按钮。
-- **Overflow:** 长文本用 `EllipsisWithTooltip`，不要只用原生 `title`。
+- **Overflow:** 长文本用 `EllipsisWithTooltip`（**仅溢出时**出 tooltip），不要没超出也包一层常驻 Tooltip，也不要只用原生 `title`。
 - **States:** loading 用 Skeleton，empty 用 `Empty` + 简短说明 + 下一步动作，error 用错误提示 + retry。
 - **Pagination:** 默认 20 条，提供 10 / 20 / 50 / 100，显示总数。
 
@@ -545,7 +552,7 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Do** 给 loading、empty、error、permission denied、readonly 状态写清楚下一步。
 - **Do** 让中文、英文、长资源名、命令、路径、emoji 都能安全换行或省略。
 - **Do** 保持浅色、克制的企业控制台：干净、扁平、少框、留白分层；让操作更清楚，而不是让界面更热闹。
-- **Do** 列表/表格工具条：标题靠左，搜索与操作成组靠右（`gap-2`，到内容 `mb-4`）；优先 `OpsPilotListPageHeader` / `SearchActionBar` / `ToolbarSplitShell`。
+- **Do** 列表/表格工具条：标题靠左，搜索与操作成组靠右（`gap-2`，到内容 `mb-4`）；优先 `ListPageHeader` / `SearchActionBar` / `ToolbarSplitShell`。
 - **Do** 设置双栏、已选对象小卡、对话过程态对齐 Studio Workbench 与 Chat 节；其他 app 靠这套，不要平行发明皮肤。
 - **Do** 首次加载与整页刷新用与最终布局同构的骨架屏（列表卡网格 / 设置双栏 / 详情 KPI+分区卡）；局部提交用按钮 `loading`。
 - **Do** 详情/概览页统一「KPI 指标格 → 主区分区卡 → 右栏属性面板」；分区卡栏头 = `fill-1/35` 浅底 + 语义图标 + `13px semibold` 标题 + 可选计数胶囊，右侧放该卡操作。见 Detail / Overview Workbench。
@@ -575,7 +582,9 @@ BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表
 - **Don't** 新增大段行内布局对象（`style={{ display:'flex', gap, padding, width... }}`）替代 Tailwind/`className`。
 - **Don't** 复制已有组件只为改变颜色、圆角、边框或间距；优先复用现有 variant 或补一个稳定 variant。
 - **Don't** 把搜索甩到最左、新建甩到最右，中间拉一条空白。搜索和主操作必须成组。
+- **Don't** 为了统一卡片壳而改文案、替换展示字段、发明状态/时间、或抹平有含义的 tag 颜色；这些要改必须先讨论并确认。
 - **Don't** 为实体列表另起一套卡片壳或用 Spin 罩住旧卡冒充刷新；没有时间字段时不要为展示去改后端加列。
+- **Don't** 在文字没有溢出时给标题或单元格加常驻 Tooltip；省略场景用 `EllipsisWithTooltip`，只在真正截断时出现。
 - **Don't** 用居中 `Spin` 代替整页加载。骨架必须与最终分栏、栏头、底栏同构；失败时不要假骨架假装有数据。
 - **Don't** 用 placeholder 当 label，不要只靠 toast 汇总表单错误。
 - **Don't** 把 `div onClick` 当按钮。可点击就用 `button`、AntD Button、链接或正确 ARIA 语义。

@@ -21,6 +21,9 @@ export const canReassignAlert = (
   return false;
 };
 
+export const canManuallyTriggerAlertAction = (status?: string): boolean =>
+  status === 'pending' || status === 'processing' || status === 'unassigned';
+
 export const alarmActionsForStatus = (
   status: string | undefined,
   options: AlertActionAccessOptions

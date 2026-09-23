@@ -29,17 +29,32 @@ describe('scene widget capabilities', () => {
     expect(getSceneWidgetCapability('networkStatusTopology')?.reportSupported).toBe(false);
   });
 
-  it('keeps relatedTopology on Dashboard and Screen, not report or share', () => {
+  it('keeps relatedTopology on Dashboard and Screen, not report', () => {
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'dashboard')).toBe(true);
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'screen')).toBe(true);
     expect(isSceneWidgetAllowedOnSurface('relatedTopology', 'report')).toBe(false);
     expect(isSelfFetchSceneWidget('relatedTopology')).toBe(true);
-    expect(getSceneWidgetCapability('relatedTopology')?.shareSupported).toBe(false);
+    expect(getSceneWidgetCapability('relatedTopology')?.shareSupported).toBe(true);
     expect(getSceneWidgetCapability('relatedTopology')?.reportSupported).toBe(false);
   });
 
+  it('registers room3D as a Screen-only self-fetch scene', () => {
+    expect(getSceneWidgetCapability('room3D')).toEqual({
+      type: 'room3D',
+      selfFetch: true,
+      surfaces: ['screen'],
+      shareSupported: true,
+      reportSupported: false,
+    });
+    expect(isSceneWidgetType('room3D')).toBe(true);
+    expect(isSelfFetchSceneWidget('room3D')).toBe(true);
+    expect(isSceneWidgetAllowedOnSurface('room3D', 'screen')).toBe(true);
+    expect(isSceneWidgetAllowedOnSurface('room3D', 'dashboard')).toBe(false);
+    expect(isSceneWidgetAllowedOnSurface('room3D', 'report')).toBe(false);
+  });
+
   it('rejects unknown scene types', () => {
-    expect(isSceneWidgetType('room3D')).toBe(false);
+    expect(isSceneWidgetType('unknown')).toBe(false);
     expect(isSelfFetchSceneWidget('unknown')).toBe(false);
   });
 });

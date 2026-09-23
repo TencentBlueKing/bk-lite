@@ -13,8 +13,10 @@ import { useIncidentsApi } from '@/app/alarm/api/incidents';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useSession } from 'next-auth/react';
 import { showOperatorFailureMessages } from '@/app/alarm/utils/operatorResult';
-import { alarmActionsForStatus, canReassignAlert } from '@/app/alarm/utils/alertActionAccess';
+import { alarmActionsForStatus, canManuallyTriggerAlertAction, canReassignAlert } from '@/app/alarm/utils/alertActionAccess';
+import { shouldPromptActionOnClose } from '@/app/alarm/utils/closeActionPrompt';
 import { useUserInfoContext } from '@/context/userInfo';
+import { runManualActionTrigger } from './manualActionExecuteModal';
 
 const AlarmAction: React.FC<AlarmActionProps> = ({
   rowData,
@@ -120,6 +122,57 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     return !allStatusValid || (needMine && !isMine());
   };
 
+  const maybeRunCloseActions = async () => {
+    if (from !== 'alarm' || idList.length !== 1) return;
+    const alert = rowData[0];
+    const alertId = alert?.[idKeyMap[from]];
+    if (!alertId) return;
+    try {
+      const res = await getActionRuleList({
+        action_type: 'job',
+        is_active: true,
+        page: 1,
+        page_size: 100,
+      });
+      const rules = Array.isArray(res?.items)
+        ? res.items
+        : Array.isArray(res)
+          ? res
+          : [];
+      const eligible = rules.filter((rule: ActionRuleListItem) =>
+        shouldPromptActionOnClose(rule, { team: alert.team })
+      );
+      if (!eligible.length) return;
+      const names = eligible.map((rule: ActionRuleListItem) => rule.name).join('、');
+      const shouldRun = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: t('settings.actionClosePromptTitle'),
+          content: t(
+            'settings.actionClosePromptContent',
+            '规则「{names}」勾选了关闭触发且未开启自动执行。关闭前是否执行告警处理？',
+            { names }
+          ),
+          okText: t('settings.actionManualTrigger'),
+          cancelText: t('settings.actionSkipAndClose'),
+          centered: true,
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!shouldRun) return;
+      for (const rule of eligible) {
+        await runManualActionTrigger({
+          alertId: String(alertId),
+          rule,
+          trigger: manualTriggerAction,
+          t,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleOperate = (type: ActionType) => {
     if (!['acknowledge', 'close', 'reopen'].includes(type)) {
       setActionType(type);
@@ -136,6 +189,9 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
       onOk: async () => {
         const fallback = `${t(`alarms.${type}`)}${t(`alarms.alert`)}${t('alarmCommon.partialFailure')}`;
         try {
+          if (type === 'close' && from === 'alarm') {
+            await maybeRunCloseActions();
+          }
           const data = await apiNameMap[from](type, {
             [idKeyMap[from]]: idList,
             assignee: [],
@@ -191,9 +247,16 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     if (!rowData.length) return;
     const alertId = rowData[0][idKeyMap[from]];
     try {
-      await manualTriggerAction({ alert_id: alertId, rule_id: rule.id });
-      message.success(t('common.operationSuccess') || '已触发');
-      onAction();
+      const result = await runManualActionTrigger({
+        alertId,
+        rule,
+        trigger: manualTriggerAction,
+        t,
+      });
+      if (result === 'triggered') {
+        message.success(t('common.operationSuccess') || '已触发');
+        onAction();
+      }
     } catch (err) {
       console.error(err);
     }
@@ -232,7 +295,12 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
         };
       });
 
-  const manualTriggerDropdown = from === 'alarm' ? (
+  const canShowManualTrigger =
+    from === 'alarm' &&
+    rowData.length > 0 &&
+    rowData.every((item) => canManuallyTriggerAlertAction(item.status));
+
+  const manualTriggerDropdown = canShowManualTrigger ? (
     <PermissionWrapper requiredPermissions={['Edit']}>
       <Dropdown
         overlay={<Menu items={jobRuleMenuItems} />}

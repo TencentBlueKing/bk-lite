@@ -56,9 +56,48 @@ class DummyNATSClient:
         return DummyNATSResponse(self.payload)
 
 
+class DummyRPCSubscriptionClient:
+    def __init__(self):
+        self.subscribed = []
+        self.flush_calls = 0
+
+    async def subscribe(self, subject, cb):
+        subscription = object()
+        self.subscribed.append((subject, cb, subscription))
+        return subscription
+
+    async def flush(self):
+        self.flush_calls += 1
+
+
 class DummyMetadata:
     def __init__(self, num_delivered):
         self.num_delivered = num_delivered
+
+
+@pytest.mark.asyncio
+async def test_rpc_subscriptions_are_retained_and_flushed_before_ready(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    client = DummyRPCSubscriptionClient()
+
+    await service._subscribe_rpc_handlers(client)
+
+    assert [subject for subject, _, _ in client.subscribed] == [
+        "ansible.adhoc.default",
+        "ansible.playbook.default",
+        "ansible.task.query.default",
+    ]
+    assert service.rpc_subscriptions == [subscription for _, _, subscription in client.subscribed]
+    assert client.flush_calls == 1
 
 
 @pytest.mark.asyncio
@@ -1067,7 +1106,8 @@ async def test_run_task_forwards_stream_context_to_run_command(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkeypatch):
+@pytest.mark.parametrize("module", ["raw", "shell"])
+async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkeypatch, module):
     service = _make_service(tmp_path)
     service.nc = RecordingNATSClient()
     captured = {}
@@ -1078,7 +1118,7 @@ async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkey
         {
             "execute_timeout": 90,
             "stream_remote_output": True,
-            "module": "shell",
+            "module": module,
             "module_args": "echo first; sleep 20; echo second",
             "extra_vars": {"ansible_shell_executable": "/bin/bash"},
         },

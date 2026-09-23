@@ -1,6 +1,7 @@
-"""CMDB 服务树：系统 → 业务分组* → 应用 → 主机。
+"""CMDB 服务树：系统 → 应用 → 主机。
 
-组织脊柱是树；主机只挂应用，且可多归属。旧的两跳展开仍由
+组织脊柱是树；主机只挂应用，且可多归属。系统与应用之间可以有用户自建的
+自定义中间模型，但不预置业务分组。旧的两跳展开仍由
 `application_system.expand_systems_to_host_uuids` 负责，本模块不得改它。
 """
 
@@ -22,22 +23,13 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import cmdb_logger as logger
 
-BIZ_GROUP_MODEL = "biz_group"
 APPLICATION_MODEL = "application"
 SYSTEM_MODEL = "system"
 HOST_MODEL = "host"
 
-SYSTEM_CONTAINS_BIZ_GROUP = "system_contains_biz_group"
-BIZ_GROUP_CONTAINS_BIZ_GROUP = "biz_group_contains_biz_group"
-BIZ_GROUP_CONTAINS_APPLICATION = "biz_group_contains_application"
-
-MAX_GROUP_DEPTH = 2
-
 EdgeLoader = Callable[[str, list[str]], list[dict[str, Any]]]
 
 IMPORT_SYSTEM_KEYS = ("system", "应用系统", "系统")
-IMPORT_GROUP_KEYS = ("group", "业务分组", "分组")
-IMPORT_GROUP_L2_KEYS = ("group_l2", "二级分组", "二级业务分组")
 IMPORT_APP_KEYS = ("application", "应用")
 IMPORT_HOST_KEYS = ("host", "主机标识", "主机")
 
@@ -47,14 +39,6 @@ def _cell(row: dict[str, Any], keys: tuple[str, ...]) -> str:
         if key in row:
             return _nonempty_text(row.get(key))
     return ""
-
-
-def can_add_group(parent_kind: str, parent_depth: int) -> bool:
-    if parent_kind == SYSTEM_MODEL:
-        return True
-    if parent_kind == BIZ_GROUP_MODEL:
-        return int(parent_depth or 0) < MAX_GROUP_DEPTH
-    return False
 
 
 def _model_is_pre(model: dict[str, Any] | None) -> bool:
@@ -102,7 +86,7 @@ def custom_layer_models(
     associations: Iterable[dict[str, Any]] | None,
     models: Iterable[dict[str, Any]] | None,
 ) -> list[dict[str, str]]:
-    """系统到应用之间、用户自建的中间模型。内置业务分组不算。"""
+    """系统到应用之间、用户自建的中间模型。内置模型不算。"""
     adj = _contains_adj(associations)
     by_id = {str(item.get("model_id") or ""): item for item in models or [] if isinstance(item, dict)}
     ordered: list[str] = []
@@ -176,13 +160,10 @@ def layer_schema_from(
     names = {str(item.get("model_id") or ""): str(item.get("model_name") or item.get("model_id") or "") for item in model_list}
     create_layers_by_model: dict[str, list[dict[str, str]]] = {}
     can_create_app: dict[str, bool] = {}
-    parents = {SYSTEM_MODEL, BIZ_GROUP_MODEL, *layer_ids}
+    parents = {SYSTEM_MODEL, *layer_ids}
     for parent in parents:
         create_layers_by_model[parent] = create_layer_models(parent, assoc_list, model_list)
-        if parent == BIZ_GROUP_MODEL:
-            can_create_app[parent] = True
-        else:
-            can_create_app[parent] = can_create_application_model(parent, assoc_list)
+        can_create_app[parent] = can_create_application_model(parent, assoc_list)
     can_create_app[APPLICATION_MODEL] = False
     org_specs: list[tuple[str, str, str]] = []
     for item in assoc_list:
@@ -257,26 +238,6 @@ def _layer_schema() -> dict[str, Any]:
     return layer_schema_from(associations, models)
 
 
-def group_has_children(group_uuid: str, edges: Iterable[dict[str, Any]] | None) -> bool:
-    group_uuid = _nonempty_text(group_uuid)
-    if not group_uuid:
-        return False
-    child_assts = {BIZ_GROUP_CONTAINS_BIZ_GROUP, BIZ_GROUP_CONTAINS_APPLICATION}
-    for edge in edges or []:
-        if not isinstance(edge, dict):
-            continue
-        if edge.get("model_asst_id") not in child_assts:
-            continue
-        if _nonempty_text(edge.get("src_inst_uuid")) == group_uuid:
-            return True
-        if _nonempty_text(edge.get("dst_inst_uuid")) == group_uuid and edge.get("src_model_id") in {
-            BIZ_GROUP_MODEL,
-            APPLICATION_MODEL,
-        }:
-            return True
-    return False
-
-
 def _unique(values: Iterable[str]) -> list[str]:
     ordered: list[str] = []
     seen: set[str] = set()
@@ -299,44 +260,14 @@ def collect_service_tree_application_uuids(
     if not systems:
         return []
 
-    apps = _peer_uuids_from_edges(
-        loader(SYSTEM_CONTAINS_APPLICATION, systems),
-        systems,
-        SYSTEM_MODEL,
-        APPLICATION_MODEL,
+    return _unique(
+        _peer_uuids_from_edges(
+            loader(SYSTEM_CONTAINS_APPLICATION, systems),
+            systems,
+            SYSTEM_MODEL,
+            APPLICATION_MODEL,
+        )
     )
-    groups_l1 = _peer_uuids_from_edges(
-        loader(SYSTEM_CONTAINS_BIZ_GROUP, systems),
-        systems,
-        SYSTEM_MODEL,
-        BIZ_GROUP_MODEL,
-    )
-    groups_l2: list[str] = []
-    if groups_l1:
-        apps.extend(
-            _peer_uuids_from_edges(
-                loader(BIZ_GROUP_CONTAINS_APPLICATION, groups_l1),
-                groups_l1,
-                BIZ_GROUP_MODEL,
-                APPLICATION_MODEL,
-            )
-        )
-        groups_l2 = _peer_uuids_from_edges(
-            loader(BIZ_GROUP_CONTAINS_BIZ_GROUP, groups_l1),
-            groups_l1,
-            BIZ_GROUP_MODEL,
-            BIZ_GROUP_MODEL,
-        )
-    if groups_l2:
-        apps.extend(
-            _peer_uuids_from_edges(
-                loader(BIZ_GROUP_CONTAINS_APPLICATION, groups_l2),
-                groups_l2,
-                BIZ_GROUP_MODEL,
-                APPLICATION_MODEL,
-            )
-        )
-    return _unique(apps)
 
 
 def applications_by_system(system_uuids, edge_loader: EdgeLoader | None = None) -> dict[str, list[str]]:
@@ -348,19 +279,6 @@ def applications_by_system(system_uuids, edge_loader: EdgeLoader | None = None) 
         return result
     edges: list[dict[str, Any]] = []
     edges.extend(loader(SYSTEM_CONTAINS_APPLICATION, systems))
-    edges.extend(loader(SYSTEM_CONTAINS_BIZ_GROUP, systems))
-    groups_l1 = _peer_uuids_from_edges(edges, systems, SYSTEM_MODEL, BIZ_GROUP_MODEL)
-    if groups_l1:
-        edges.extend(loader(BIZ_GROUP_CONTAINS_APPLICATION, groups_l1))
-        edges.extend(loader(BIZ_GROUP_CONTAINS_BIZ_GROUP, groups_l1))
-        groups_l2 = _peer_uuids_from_edges(
-            [edge for edge in edges if edge.get("model_asst_id") == BIZ_GROUP_CONTAINS_BIZ_GROUP],
-            groups_l1,
-            BIZ_GROUP_MODEL,
-            BIZ_GROUP_MODEL,
-        )
-        if groups_l2:
-            edges.extend(loader(BIZ_GROUP_CONTAINS_APPLICATION, groups_l2))
     children = _children_by_parent(edges)
     for system_uuid in systems:
         apps: list[str] = []
@@ -377,57 +295,11 @@ def applications_by_system(system_uuids, edge_loader: EdgeLoader | None = None) 
     return result
 
 
-def service_tree_membership(system_uuid: str, edge_loader: EdgeLoader | None = None) -> dict[str, Any]:
-    """3D/详情用：分组父子与应用挂载，不含主机。"""
-    system_uuid = _nonempty_text(system_uuid)
-    loader = edge_loader or query_association_edges
-    if not system_uuid:
-        return {"group_ids": [], "group_parents": {}, "application_ids": [], "application_parents": {}}
-    edges: list[dict[str, Any]] = []
-    edges.extend(loader(SYSTEM_CONTAINS_APPLICATION, [system_uuid]))
-    edges.extend(loader(SYSTEM_CONTAINS_BIZ_GROUP, [system_uuid]))
-    groups_l1 = _peer_uuids_from_edges(edges, [system_uuid], SYSTEM_MODEL, BIZ_GROUP_MODEL)
-    if groups_l1:
-        edges.extend(loader(BIZ_GROUP_CONTAINS_APPLICATION, groups_l1))
-        edges.extend(loader(BIZ_GROUP_CONTAINS_BIZ_GROUP, groups_l1))
-        groups_l2 = _peer_uuids_from_edges(
-            [edge for edge in edges if edge.get("model_asst_id") == BIZ_GROUP_CONTAINS_BIZ_GROUP],
-            groups_l1,
-            BIZ_GROUP_MODEL,
-            BIZ_GROUP_MODEL,
-        )
-        if groups_l2:
-            edges.extend(loader(BIZ_GROUP_CONTAINS_APPLICATION, groups_l2))
-    children = _children_by_parent(edges)
-    group_ids: list[str] = []
-    group_parents: dict[str, str] = {}
-    application_ids: list[str] = []
-    application_parents: dict[str, str] = {}
-
-    def walk(uuid: str) -> None:
-        for kind, child_uuid in children.get(uuid, []):
-            if kind == BIZ_GROUP_MODEL:
-                group_ids.append(child_uuid)
-                group_parents[child_uuid] = uuid
-                walk(child_uuid)
-            elif kind == APPLICATION_MODEL:
-                application_ids.append(child_uuid)
-                application_parents[child_uuid] = uuid
-
-    walk(system_uuid)
-    return {
-        "group_ids": _unique(group_ids),
-        "group_parents": group_parents,
-        "application_ids": _unique(application_ids),
-        "application_parents": application_parents,
-    }
-
-
 def expand_systems_to_host_uuids_via_service_tree(
     system_uuids,
     edge_loader: EdgeLoader | None = None,
 ) -> list[str]:
-    """系统 → 业务分组* → 应用 → 主机。不改旧两跳函数。"""
+    """系统 → 应用 → 主机。不改旧两跳函数。"""
     loader = edge_loader or query_association_edges
     app_uuids = collect_service_tree_application_uuids(system_uuids, edge_loader=loader)
     if not app_uuids:
@@ -480,12 +352,7 @@ def _hosts_by_application(edges: Iterable[dict[str, Any]] | None) -> dict[str, l
     return mapping
 
 
-DEFAULT_ORG_SPECS = (
-    (SYSTEM_CONTAINS_BIZ_GROUP, SYSTEM_MODEL, BIZ_GROUP_MODEL),
-    (BIZ_GROUP_CONTAINS_BIZ_GROUP, BIZ_GROUP_MODEL, BIZ_GROUP_MODEL),
-    (SYSTEM_CONTAINS_APPLICATION, SYSTEM_MODEL, APPLICATION_MODEL),
-    (BIZ_GROUP_CONTAINS_APPLICATION, BIZ_GROUP_MODEL, APPLICATION_MODEL),
-)
+DEFAULT_ORG_SPECS = ((SYSTEM_CONTAINS_APPLICATION, SYSTEM_MODEL, APPLICATION_MODEL),)
 
 
 def _org_specs(extra_specs: Iterable[tuple[str, str, str]] | None = None) -> tuple[tuple[str, str, str], ...]:
@@ -499,7 +366,7 @@ def _org_specs(extra_specs: Iterable[tuple[str, str, str]] | None = None) -> tup
 
 
 def _org_models(extra_specs: Iterable[tuple[str, str, str]] | None = None) -> set[str]:
-    models = {SYSTEM_MODEL, BIZ_GROUP_MODEL, APPLICATION_MODEL}
+    models = {SYSTEM_MODEL, APPLICATION_MODEL}
     for spec in _org_specs(extra_specs):
         if spec[1]:
             models.add(spec[1])
@@ -598,7 +465,7 @@ def build_service_tree(
         for child_kind, child_uuid in children_map.get(uuid, []):
             if visible_uuids is not None and child_uuid not in visible_uuids:
                 continue
-            child = _walk(child_kind, child_uuid, depth + (1 if child_kind == BIZ_GROUP_MODEL else 0))
+            child = _walk(child_kind, child_uuid, depth + 1)
             child_nodes.append(child)
             if child_kind == APPLICATION_MODEL:
                 descendant_apps.append(child_uuid)
@@ -613,7 +480,7 @@ def build_service_tree(
             "depth": depth,
             "host_count": host_count if kind != APPLICATION_MODEL else len(hosts_by_app.get(uuid, [])),
             "create_layers": list(layers_by_model.get(kind) or []),
-            "can_create_application": bool(create_app_by_model[kind] if kind in create_app_by_model else kind in {SYSTEM_MODEL, BIZ_GROUP_MODEL}),
+            "can_create_application": bool(create_app_by_model[kind] if kind in create_app_by_model else kind == SYSTEM_MODEL),
             "children": child_nodes,
         }
         if kind != APPLICATION_MODEL:
@@ -678,8 +545,6 @@ def unbind_host_plan(
 
 def parse_import_row(row: dict[str, Any], *, expected_system_name: str) -> dict[str, str]:
     system_name = _cell(row, IMPORT_SYSTEM_KEYS)
-    group = _cell(row, IMPORT_GROUP_KEYS)
-    group_l2 = _cell(row, IMPORT_GROUP_L2_KEYS)
     application = _cell(row, IMPORT_APP_KEYS)
     host = _cell(row, IMPORT_HOST_KEYS)
     expected = _nonempty_text(expected_system_name)
@@ -691,12 +556,8 @@ def parse_import_row(row: dict[str, Any], *, expected_system_name: str) -> dict[
         raise ValidationAppException("导入行缺少应用")
     if not host:
         raise ValidationAppException("导入行缺少主机标识")
-    if group_l2 and not group:
-        raise ValidationAppException("填写二级分组前必须填写业务分组")
     return {
         "system": system_name,
-        "group": group,
-        "group_l2": group_l2,
         "application": application,
         "host": host,
     }
@@ -732,18 +593,8 @@ def match_host(identifier: str, hosts: Iterable[dict[str, Any]] | None) -> dict[
     raise ValidationAppException("找不到对应的主机")
 
 
-def _group_key(name: str) -> str:
-    return f"g:{name}"
-
-
-def _app_key(group: str, group_l2: str, application: str) -> str:
-    if group_l2:
-        prefix = f"{group}/{group_l2}"
-    elif group:
-        prefix = group
-    else:
-        prefix = ""
-    return f"a:{prefix}/{application}" if prefix else f"a:/{application}"
+def _app_key(application: str) -> str:
+    return f"a:/{application}"
 
 
 def plan_import_rows(
@@ -754,56 +605,25 @@ def plan_import_rows(
     existing_tree: dict[str, Any],
     hosts: Iterable[dict[str, Any]] | None,
 ) -> dict[str, Any]:
-    existing_groups: dict[str, str] = dict(existing_tree.get("groups") or {})
     existing_apps: dict[str, str] = dict(existing_tree.get("apps") or {})
     create_nodes: list[dict[str, Any]] = []
     created_keys: set[str] = set()
     assign: list[dict[str, str]] = []
     errors: list[dict[str, Any]] = []
 
-    def ensure_group(name: str, parent_key: str, parent_kind: str, path_key: str) -> str:
-        if path_key in existing_groups:
-            return existing_groups[path_key]
-        if path_key in created_keys:
-            return path_key
-        create_nodes.append(
-            {
-                "key": path_key,
-                "model_id": BIZ_GROUP_MODEL,
-                "inst_name": name,
-                "parent_key": parent_key,
-                "parent_kind": parent_kind,
-            }
-        )
-        created_keys.add(path_key)
-        return path_key
-
     for index, raw in enumerate(rows or [], start=1):
         try:
             parsed = parse_import_row(raw, expected_system_name=system_name)
             host = match_host(parsed["host"], hosts)
-            parent_key = system_uuid
-            parent_kind = SYSTEM_MODEL
-            if parsed["group"]:
-                parent_key = ensure_group(parsed["group"], system_uuid, SYSTEM_MODEL, _group_key(parsed["group"]))
-                parent_kind = BIZ_GROUP_MODEL
-            if parsed["group_l2"]:
-                parent_key = ensure_group(
-                    parsed["group_l2"],
-                    parent_key,
-                    BIZ_GROUP_MODEL,
-                    f"g:{parsed['group']}/{parsed['group_l2']}",
-                )
-                parent_kind = BIZ_GROUP_MODEL
-            app_key = _app_key(parsed["group"], parsed["group_l2"], parsed["application"])
+            app_key = _app_key(parsed["application"])
             if app_key not in existing_apps and app_key not in created_keys:
                 create_nodes.append(
                     {
                         "key": app_key,
                         "model_id": APPLICATION_MODEL,
                         "inst_name": parsed["application"],
-                        "parent_key": parent_key,
-                        "parent_kind": parent_kind,
+                        "parent_key": system_uuid,
+                        "parent_kind": SYSTEM_MODEL,
                     }
                 )
                 created_keys.add(app_key)
@@ -884,7 +704,7 @@ def _system_for_application(
             parent_name = names.get(parent_uuid) or parent_uuid
             if parent_model == SYSTEM_MODEL:
                 return {"inst_uuid": parent_uuid, "inst_name": parent_name}
-            pending.append((parent_uuid, parent_model or BIZ_GROUP_MODEL))
+            pending.append((parent_uuid, parent_model))
     return {}
 
 
@@ -1263,24 +1083,14 @@ class ServiceTreeService:
         parent = _find_tree_node(tree, parent_uuid)
         if parent is None:
             raise ValidationAppException("父节点不在当前服务树中")
-        if kind == BIZ_GROUP_MODEL:
-            if not can_add_group(parent["kind"], parent.get("depth") or 0):
-                raise ValidationAppException("业务分组最多嵌套两层")
-            created = _create_instance(
-                BIZ_GROUP_MODEL,
-                {"inst_name": inst_name, "organization": system.get("organization")},
-                operator,
-                allowed_org_ids,
-            )
-            asst = SYSTEM_CONTAINS_BIZ_GROUP if parent["kind"] == SYSTEM_MODEL else BIZ_GROUP_CONTAINS_BIZ_GROUP
-        elif kind == APPLICATION_MODEL:
-            if parent["kind"] in {SYSTEM_MODEL, BIZ_GROUP_MODEL}:
-                asst = SYSTEM_CONTAINS_APPLICATION if parent["kind"] == SYSTEM_MODEL else BIZ_GROUP_CONTAINS_APPLICATION
+        if kind == APPLICATION_MODEL:
+            if parent["kind"] == SYSTEM_MODEL:
+                asst = SYSTEM_CONTAINS_APPLICATION
             else:
                 schema = _layer_schema()
                 asst = contains_model_asst_id(parent["kind"], APPLICATION_MODEL, schema.get("associations"))
                 if not asst:
-                    raise ValidationAppException("应用只能挂在系统、业务分组或服务树中间层下")
+                    raise ValidationAppException("应用只能挂在系统或服务树中间层下")
             created = _create_instance(
                 APPLICATION_MODEL,
                 {
@@ -1362,9 +1172,6 @@ class ServiceTreeService:
         node = _find_tree_node(tree, node_uuid)
         if node is None or node["kind"] == SYSTEM_MODEL:
             raise ValidationAppException("不能删除该节点")
-        edges = _load_tree_edges(_nonempty_text(system.get("inst_uuid")), extra_uuids=[node_uuid])
-        if node["kind"] == BIZ_GROUP_MODEL and group_has_children(node_uuid, edges):
-            raise ValidationAppException("业务分组下还有子节点，无法删除")
         InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [node_uuid], operator)
         logger.info(
             "event=service_tree_node_deleted system_uuid=%s node_uuid=%s kind=%s",
@@ -1468,36 +1275,23 @@ class ServiceTreeService:
             hosts=hosts,
         )
         created_ids: dict[str, str] = {system_uuid: system_uuid}
-        for name, uuid in (existing.get("groups") or {}).items():
-            created_ids[_group_key(name)] = uuid
         for name, uuid in (existing.get("apps") or {}).items():
             created_ids[name] = uuid
         for node in plan["create_nodes"]:
             parent_uuid = created_ids.get(node["parent_key"], node["parent_key"])
-            if node["model_id"] == BIZ_GROUP_MODEL:
-                created = _create_instance(
-                    BIZ_GROUP_MODEL,
-                    {"inst_name": node["inst_name"], "organization": system.get("organization")},
-                    operator,
-                    allowed_org_ids,
-                )
-                asst = SYSTEM_CONTAINS_BIZ_GROUP if node["parent_kind"] == SYSTEM_MODEL else BIZ_GROUP_CONTAINS_BIZ_GROUP
-            else:
-                created = _create_instance(
-                    APPLICATION_MODEL,
-                    {
-                        "inst_name": node["inst_name"],
-                        "organization": system.get("organization"),
-                        "app_id": f"st-{uuid4().hex[:12]}",
-                    },
-                    operator,
-                    allowed_org_ids,
-                )
-                asst = SYSTEM_CONTAINS_APPLICATION if node["parent_kind"] == SYSTEM_MODEL else BIZ_GROUP_CONTAINS_APPLICATION
-            _create_association(parent_uuid, created["inst_uuid"], asst, operator)
+            created = _create_instance(
+                APPLICATION_MODEL,
+                {
+                    "inst_name": node["inst_name"],
+                    "organization": system.get("organization"),
+                    "app_id": f"st-{uuid4().hex[:12]}",
+                },
+                operator,
+                allowed_org_ids,
+            )
+            _create_association(parent_uuid, created["inst_uuid"], SYSTEM_CONTAINS_APPLICATION, operator)
             created_ids[node["key"]] = created["inst_uuid"]
-            if node["model_id"] == APPLICATION_MODEL:
-                created_ids[node["inst_name"]] = created["inst_uuid"]
+            created_ids[node["inst_name"]] = created["inst_uuid"]
         assigned = 0
         for item in plan["assign"]:
             app_uuid = created_ids.get(item["app_key"], existing.get("apps", {}).get(item["app_key"], item["app_key"]))
@@ -1527,7 +1321,7 @@ class ServiceTreeService:
         rows: list[dict[str, str]] = []
         system_name = str(system.get("inst_name") or "")
 
-        def walk(node: dict[str, Any], group: str, group_l2: str):
+        def walk(node: dict[str, Any]):
             if node["kind"] == APPLICATION_MODEL:
                 hosts = hosts_by_app.get(node["inst_uuid"], [])
                 if not hosts:
@@ -1538,62 +1332,24 @@ class ServiceTreeService:
                     rows.append(
                         {
                             "应用系统": system_name,
-                            "业务分组": group,
-                            "二级分组": group_l2,
                             "应用": node["inst_name"],
                             "主机标识": identifier,
                         }
                     )
                 return
-            next_group, next_l2 = group, group_l2
-            if node["kind"] == BIZ_GROUP_MODEL:
-                if not group:
-                    next_group = node["inst_name"]
-                else:
-                    next_l2 = node["inst_name"]
             for child in node.get("children") or []:
-                walk(child, next_group, next_l2)
+                walk(child)
 
-        walk(tree, "", "")
+        walk(tree)
         return rows
 
 
 def _existing_tree_index(tree: dict[str, Any]) -> dict[str, Any]:
-    groups: dict[str, str] = {}
     apps: dict[str, str] = {}
     for node in _iter_tree_nodes(tree):
-        if node["kind"] == BIZ_GROUP_MODEL:
-            groups[_group_key_from_node(tree, node)] = node["inst_uuid"]
         if node["kind"] == APPLICATION_MODEL:
-            apps[_app_key_from_node(tree, node)] = node["inst_uuid"]
-    return {"groups": groups, "apps": apps, "app_parents": {}, "group_parents": {}}
-
-
-def _group_key_from_node(tree: dict[str, Any], node: dict[str, Any]) -> str:
-    parent = _parent_of(tree, node["inst_uuid"])
-    if parent is None or parent["kind"] == SYSTEM_MODEL:
-        return _group_key(node["inst_name"])
-    return f"g:{parent['inst_name']}/{node['inst_name']}"
-
-
-def _app_key_from_node(tree: dict[str, Any], app_node: dict[str, Any]) -> str:
-    parent = _parent_of(tree, app_node["inst_uuid"])
-    if parent is None or parent["kind"] == SYSTEM_MODEL:
-        return _app_key("", "", app_node["inst_name"])
-    if parent["kind"] == BIZ_GROUP_MODEL:
-        grand = _parent_of(tree, parent["inst_uuid"])
-        if grand is None or grand["kind"] == SYSTEM_MODEL:
-            return _app_key(parent["inst_name"], "", app_node["inst_name"])
-        return _app_key(grand["inst_name"], parent["inst_name"], app_node["inst_name"])
-    return _app_key("", "", app_node["inst_name"])
-
-
-def _parent_of(tree: dict[str, Any], uuid: str) -> dict[str, Any] | None:
-    for node in _iter_tree_nodes(tree):
-        for child in node.get("children") or []:
-            if child["inst_uuid"] == uuid:
-                return node
-    return None
+            apps[_app_key(node["inst_name"])] = node["inst_uuid"]
+    return {"apps": apps}
 
 
 def _iter_tree_nodes(node: dict[str, Any]):

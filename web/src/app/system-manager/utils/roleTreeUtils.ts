@@ -1,6 +1,8 @@
 import React from 'react';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 
+export const TRANSFER_TREE_HEIGHT = 250;
+
 export interface FlattenedRole {
   key: React.Key;
   title: string;
@@ -105,6 +107,73 @@ export function getAllKeys(nodes: TreeDataNode[]): React.Key[] {
     }
     return acc;
   }, []);
+}
+
+/**
+ * Keys that must be expanded so `targetKeys` are visible, without opening
+ * the selected nodes themselves. A long sibling list (e.g. Guest children)
+ * stays collapsed until the user expands it.
+ */
+export function getAncestorKeys(nodes: TreeDataNode[], targetKeys: React.Key[]): React.Key[] {
+  if (targetKeys.length === 0) {
+    return [];
+  }
+
+  const targets = new Set(targetKeys.map(String));
+  const ancestors: React.Key[] = [];
+
+  const visit = (node: TreeDataNode): boolean => {
+    const childMatched = Boolean(node.children?.some((child) => visit(child)));
+    if (childMatched) {
+      ancestors.push(node.key);
+      return true;
+    }
+    return targets.has(String(node.key));
+  };
+
+  nodes.forEach((node) => {
+    visit(node);
+  });
+
+  return ancestors;
+}
+
+export function resolveLeftExpandedKeys(input: {
+  searchValue: string;
+  mode: 'group' | 'role';
+  treeData: TreeDataNode[];
+  selectedKeys: React.Key[];
+  prevExpandedKeys: React.Key[];
+  keysBeforeSearch: React.Key[] | null;
+  userHasExpanded: boolean;
+}): { expandedKeys: React.Key[]; keysBeforeSearch: React.Key[] | null } {
+  if (input.searchValue) {
+    return {
+      expandedKeys: getSearchExpandedKeys(input.treeData, input.searchValue),
+      keysBeforeSearch: input.keysBeforeSearch ?? input.prevExpandedKeys,
+    };
+  }
+
+  if (input.keysBeforeSearch !== null) {
+    return {
+      expandedKeys: input.keysBeforeSearch,
+      keysBeforeSearch: null,
+    };
+  }
+
+  if (input.userHasExpanded) {
+    return {
+      expandedKeys: input.prevExpandedKeys,
+      keysBeforeSearch: null,
+    };
+  }
+
+  return {
+    expandedKeys: input.mode === 'group'
+      ? getAncestorKeys(input.treeData, input.selectedKeys)
+      : getAllKeys(input.treeData),
+    keysBeforeSearch: null,
+  };
 }
 
 export function isNodeDisabled(node: TreeDataNode): boolean {

@@ -55,3 +55,30 @@ class AlertBatchActionRequestSerializer(OpenAPIRequestSerializer):
     assignee = serializers.ListField(child=serializers.CharField(), required=False)
     assignment_id = serializers.IntegerField(required=False)
     reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+_SHIELD_MATCH_TYPES = ("all", "filter")
+
+
+class AlertShieldCreateRequestSerializer(OpenAPIRequestSerializer):
+    name = serializers.CharField(max_length=200)
+    match_type = serializers.ChoiceField(choices=_SHIELD_MATCH_TYPES)
+    match_rules = serializers.JSONField(required=False, default=list)
+    suppression_time = serializers.DictField(required=False, default=dict)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+
+class AlertShieldOperateRequestSerializer(OpenAPIRequestSerializer):
+    name = serializers.CharField(max_length=200)
+    is_active = serializers.BooleanField()
+
+
+class AlertShieldUpdateRequestSerializer(OpenAPIRequestSerializer):
+    name = serializers.CharField(max_length=200)
+    match_type = serializers.ChoiceField(choices=_SHIELD_MATCH_TYPES)
+    match_rules = serializers.JSONField(required=False, default=list)
+    suppression_time = serializers.DictField(required=False, default=dict)
+
+
+class AlertShieldDeleteRequestSerializer(OpenAPIRequestSerializer):
+    name = serializers.CharField(max_length=200)

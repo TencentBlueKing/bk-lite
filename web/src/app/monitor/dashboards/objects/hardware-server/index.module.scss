@@ -1,0 +1,68 @@
+@use '../common/simple-dashboard.module.scss';
+
+.chartLegendHeader {
+  justify-content: flex-end;
+  max-width: none;
+  white-space: nowrap;
+}
+
+.compactTrend {
+  .chartWrap {
+    height: 200px;
+  }
+}
+
+.dimTablePanel {
+  margin-top: 0;
+  border-radius: 12px;
+}
+
+.dimTableWrap {
+  overflow-x: auto;
+
+  :global(.ant-table-thead > tr > th) {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-2);
+    background: color-mix(in srgb, var(--color-fill-1) 80%, transparent);
+  }
+
+  :global(.ant-table-tbody > tr > td) {
+    font-size: 13px;
+  }
+}
+
+.statusCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .chartLegendHeader {
+    justify-content: flex-start;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .compactTrend {
+    .chartWrap {
+      height: 140px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .compactTrend {
+    .chartWrap {
+      height: 120px;
+    }
+  }
+}

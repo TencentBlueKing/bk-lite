@@ -59,6 +59,10 @@ monitor_object_metric:
       name: Query Operations Frequency
       desc: Frequency of query type operations execution, indicating database query
         processing load
+    mongodb_total_docs_scanned_rate:
+      name: Documents Scanned Frequency
+      desc: Rate of documents examined by the query executor; a sustained high value
+        often indicates missing indexes or overly broad queries
     mongodb_inserts_rate:
       name: Insert Operations Frequency
       desc: Frequency of insert type operations execution, indicating data write load

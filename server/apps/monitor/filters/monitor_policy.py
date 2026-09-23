@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django_filters import CharFilter, FilterSet
 
 from apps.monitor.filters.id_filters import filter_positive_int_field
@@ -50,17 +51,17 @@ def source_covers_instance(source, instance_ids) -> bool:
 
 
 def filter_policy_queryset_by_instance(queryset, instance_id):
-    """按实例显式绑定过滤策略。不依赖 JSON contains，SQLite / PostgreSQL 均可。"""
+    """按实例显式绑定过滤策略，在数据库完成 JSON 匹配以便后续分页。"""
     instance_ids = set(policy_instance_id_candidates(instance_id))
     if not instance_ids:
         return queryset.none()
 
-    matched_ids = [
-        policy_id
-        for policy_id, source in queryset.filter(source__type="instance").values_list("id", "source")
-        if source_covers_instance(source, instance_ids)
-    ]
-    return queryset.filter(id__in=matched_ids)
+    lookup = Q()
+    for candidate in instance_ids:
+        lookup |= Q(source__contains={"type": "instance", "values": [candidate]})
+        if isinstance(candidate, str) and candidate.isdigit():
+            lookup |= Q(source__contains={"type": "instance", "values": [int(candidate)]})
+    return queryset.filter(lookup)
 
 
 class MonitorPolicyFilter(FilterSet):

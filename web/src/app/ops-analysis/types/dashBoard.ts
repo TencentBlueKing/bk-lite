@@ -17,6 +17,7 @@ import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type {
   NetworkStatusTopologyConfig,
   RelatedTopologyConfig,
+  Room3DConfig,
   SceneWidgetType,
 } from './sceneWidget';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
@@ -71,6 +72,7 @@ export interface AddComponentConfig {
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
+  room3D?: Room3DConfig;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
 }
@@ -109,6 +111,7 @@ export interface ValueConfig {
   sceneWidgetType?: SceneWidgetType;
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
+  room3D?: Room3DConfig;
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;

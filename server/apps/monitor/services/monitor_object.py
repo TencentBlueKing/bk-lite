@@ -4,8 +4,6 @@ import time
 import uuid
 
 from django.db import transaction
-from django.db.models import Q
-from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -203,6 +201,10 @@ class MonitorObjectService:
 
         ordering_key, order_dir = parse_ordering_params(ordering, order)
 
+        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        if not monitor_obj:
+            raise BaseAppException("Monitor object does not exist")
+
         qs = qs.filter(
             monitor_object_id=monitor_object_id,
             is_deleted=False,
@@ -214,15 +216,9 @@ class MonitorObjectService:
             qs = qs.filter(id__in=list(instance_ids))
         elif instance_id:
             qs = qs.filter(id=instance_id)
-        if name:
-            # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
-            qs = qs.annotate(_asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")).filter(
-                Q(name__icontains=name) | Q(ip__icontains=name) | Q(_asset_ip_fact__icontains=name)
-            )
+        from apps.monitor.services.monitor_instance import InstanceSearch
 
-        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
-        if not monitor_obj:
-            raise BaseAppException("Monitor object does not exist")
+        qs = InstanceSearch.apply_keyword_search(qs, monitor_obj, name)
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
@@ -230,8 +226,6 @@ class MonitorObjectService:
             raise BaseAppException("Monitor object default metric does not exist")
 
         # Process 主机 / asset.ip / Enum 指标过滤在 list 与 search 共用同一套规则。
-        from apps.monitor.services.monitor_instance import InstanceSearch
-
         qs = InstanceSearch.apply_process_instance_filters(
             qs,
             monitor_obj.name,

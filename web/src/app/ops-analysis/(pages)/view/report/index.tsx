@@ -337,6 +337,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       definitions,
       filterValues,
       appliedFilterValues,
+      draftViewSets.filters,
     );
     setDraftViewSets((previous) => ({ ...previous, filters: snapshot.definitions }));
     setAppliedFilterDefinitions(snapshot.definitions);

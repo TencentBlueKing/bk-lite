@@ -90,6 +90,10 @@ class TestBuildTitle:
         notifier = AlertLifecycleNotifier(policy=SimpleNamespace(name="磁盘策略"))
         assert notifier._build_title(_alert(), "assigned") == "告警分派：磁盘策略"
 
+    def test_转派动作标题(self):
+        notifier = AlertLifecycleNotifier(policy=SimpleNamespace(name="磁盘策略"))
+        assert notifier._build_title(_alert(), "reassigned") == "告警转派：磁盘策略"
+
 
 class TestBuildContent:
     def test_关闭动作含操作人与原因(self):
@@ -116,6 +120,11 @@ class TestBuildContent:
         notifier = AlertLifecycleNotifier(policy=None)
         content = notifier._build_content(_alert(), "assigned", "", "")
         assert "状态：已分派" in content
+
+    def test_转派动作状态行(self):
+        notifier = AlertLifecycleNotifier(policy=None)
+        content = notifier._build_content(_alert(), "reassigned", "", "")
+        assert "状态：已转派" in content
 
     def test_无实例名回退实例ID(self):
         notifier = AlertLifecycleNotifier(policy=None)
@@ -237,11 +246,16 @@ def test_per_event_ack_legacy_path_forwards_shared_token(monkeypatch):
 
     monkeypatch.setattr(lifecycle_notify, "ALERT_CENTER_PER_EVENT_ACK_ENABLED", True)
     monkeypatch.setattr(lifecycle_notify, "ALERT_CENTER_ACK_TOKEN", "receiver-secret")
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_ENABLED",
+        False,
+    )
     monkeypatch.setattr(notifier, "_build_instance_org_map", lambda alerts: {})
+    monkeypatch.setattr(notifier, "_build_monitor_identity_map", lambda alerts: {})
     monkeypatch.setattr(
         lifecycle_notify.SystemMgmtUtils,
         "send_msg_with_channel",
-        lambda channel_id, title, content, receivers: sent.update(content=content)
+        lambda channel_id, title, content, receivers, **kwargs: sent.update(content=content)
         or {
             "result": True,
             "data": {
@@ -371,3 +385,24 @@ class TestShouldNotifyChannel:
         notifier = AlertLifecycleNotifier(policy=SimpleNamespace(notice=False))
         alert = _alert(notice_logs=[{"action": "created", "channel_id": 1, "success": True}])
         assert notifier._should_notify_channel(alert, self._normal_channel(), 1, "recovered", "all_configured") is True
+
+
+class TestNotifyAlertsChannelQuery:
+    def test_批量通知只查询一次渠道(self, mocker):
+        channel = SimpleNamespace(id=3, channel_type="email", name="mail", config={})
+        in_bulk = mocker.patch.object(lifecycle_notify.Channel.objects, "in_bulk", return_value={3: channel})
+        filt = mocker.patch.object(lifecycle_notify.Channel.objects, "filter")
+        notifier = AlertLifecycleNotifier(policy=SimpleNamespace(notice=True, notice_type_ids=[3], notice_users=["alice"]))
+        mocker.patch.object(notifier, "enqueue_alert_center_deliveries")
+        mocker.patch.object(notifier, "_send_to_channel", return_value=[])
+        mocker.patch.object(notifier, "_persist_notice_logs")
+        mocker.patch.object(notifier, "_reset_alert_center_flags_by_ids")
+
+        notifier.notify_alerts(
+            [_alert(notice_type_ids=[3]), _alert(id="alert-2", notice_type_ids=[3])],
+            "created",
+        )
+
+        in_bulk.assert_called_once()
+        filt.assert_not_called()
+

@@ -95,6 +95,22 @@ def _view_sets_has_scene_widget(value, scene_widget_type: str) -> bool:
     return False
 
 
+def _collect_related_topology_inst_uuids(value) -> set[str]:
+    found: set[str] = set()
+    if isinstance(value, dict):
+        related = value.get("relatedTopology")
+        if isinstance(related, dict):
+            inst = str(related.get("instUuid") or related.get("inst_uuid") or "").strip()
+            if inst:
+                found.add(inst)
+        for child in value.values():
+            found.update(_collect_related_topology_inst_uuids(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.update(_collect_related_topology_inst_uuids(child))
+    return found
+
+
 def _resource_has_organization_filter(resource) -> bool:
     """仅已启用的组织控件才下发树；关掉后定义仍在也不吐 group_tree。"""
     return any(item.get("enabled") is True and is_organization_param_spec(item) for item in _resource_filter_definitions(resource))
@@ -420,7 +436,19 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             ]
         )
 
-    def _application3d_operation(self, request, session_id, *, action_name: str, view_action: str):
+    def _delegated_scene_widget_operation(
+        self,
+        request,
+        session_id,
+        *,
+        action_name: str,
+        view_action: str,
+        widget_type: str,
+        allowed_resource_types: frozenset[str],
+        undeclared_reason: str,
+        undeclared_detail: str,
+        extra_reject: Callable | None = None,
+    ):
         try:
             principal = resolve_session(session_id=session_id, visitor=request.user)
         except ShareRateLimited:
@@ -430,9 +458,9 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             log_share_access(request, action=action_name, result="reject", reason="invalid")
             return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
 
-        if principal.resource_type != "screen" or not _view_sets_has_scene_widget(
+        if principal.resource_type not in allowed_resource_types or not _view_sets_has_scene_widget(
             getattr(principal.resource, "view_sets", None),
-            "application3D",
+            widget_type,
         ):
             log_share_access(
                 request,
@@ -440,9 +468,14 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 principal=principal,
                 visitor=request.user,
                 result="reject",
-                reason="application3d_not_declared",
+                reason=undeclared_reason,
             )
-            return Response({"detail": "分享大屏未声明 3D 应用组件"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": undeclared_detail}, status=status.HTTP_403_FORBIDDEN)
+
+        if extra_reject is not None:
+            rejected = extra_reject(request, principal)
+            if rejected is not None:
+                return rejected
 
         factory = APIRequestFactory()
         delegated_request = factory.post("/", request.data or {}, format="json")
@@ -461,6 +494,34 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             result="ok" if getattr(response, "status_code", 500) < 400 else "reject",
         )
         return response
+
+    def _application3d_operation(self, request, session_id, *, action_name: str, view_action: str):
+        return self._delegated_scene_widget_operation(
+            request,
+            session_id,
+            action_name=action_name,
+            view_action=view_action,
+            widget_type="application3D",
+            allowed_resource_types=frozenset({"screen"}),
+            undeclared_reason="application3d_not_declared",
+            undeclared_detail="分享大屏未声明 3D 应用组件",
+        )
+
+    def _reject_undeclared_related_topology_inst(self, request, principal):
+        data = request.data if isinstance(request.data, dict) else {}
+        inst_uuid = str(data.get("inst_uuid") or data.get("instUuid") or "").strip()
+        allowed = _collect_related_topology_inst_uuids(getattr(principal.resource, "view_sets", None))
+        if inst_uuid in allowed:
+            return None
+        log_share_access(
+            request,
+            action="related_topology",
+            principal=principal,
+            visitor=request.user,
+            result="reject",
+            reason="related_topology_inst_not_declared",
+        )
+        return Response({"detail": "分享画布未声明该关联拓扑实例"}, status=status.HTTP_403_FORBIDDEN)
 
     @action(
         detail=False,
@@ -525,6 +586,62 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             session_id,
             action_name="application3d_metric",
             view_action="application3d_metric",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/related_topology",
+    )
+    def related_topology(self, request, session_id=None):
+        return self._delegated_scene_widget_operation(
+            request,
+            session_id,
+            action_name="related_topology",
+            view_action="related_topology",
+            widget_type="relatedTopology",
+            allowed_resource_types=frozenset({"dashboard", "screen"}),
+            undeclared_reason="related_topology_not_declared",
+            undeclared_detail="分享画布未声明关联拓扑组件",
+            extra_reject=self._reject_undeclared_related_topology_inst,
+        )
+
+    def _room3d_operation(self, request, session_id, *, action_name: str, view_action: str):
+        return self._delegated_scene_widget_operation(
+            request,
+            session_id,
+            action_name=action_name,
+            view_action=view_action,
+            widget_type="room3D",
+            allowed_resource_types=frozenset({"screen"}),
+            undeclared_reason="room3d_not_declared",
+            undeclared_detail="分享大屏未声明 3D 机房组件",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/room3d/rooms",
+    )
+    def room3d_rooms(self, request, session_id=None):
+        return self._room3d_operation(
+            request,
+            session_id,
+            action_name="room3d_rooms",
+            view_action="room3d_rooms",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/room3d/layout",
+    )
+    def room3d_layout(self, request, session_id=None):
+        return self._room3d_operation(
+            request,
+            session_id,
+            action_name="room3d_layout",
+            view_action="room3d_layout",
         )
 
     def _resolve_network_topology_principal(self, request, session_id, *, action_name: str):

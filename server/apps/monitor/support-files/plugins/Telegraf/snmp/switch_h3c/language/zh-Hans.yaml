@@ -1,6 +1,6 @@
 Switch H3C SNMP:
   name: H3C（Telegraf）
-  desc: 面向 H3C / HPE Comware 交换机的 SNMP 监控模板。设备健康来自 HH3C-ENTITY-EXT-MIB；接口流量使用内置 IF-MIB 底座。
+  desc: 面向 H3C / HPE Comware 交换机的 SNMP 监控模板。设备健康来自 HH3C-ENTITY-EXT-MIB；光模块 DDM 来自 HH3C-TRANSCEIVER-INFO-MIB；接口流量使用内置 IF-MIB 底座。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -19,6 +19,15 @@ monitor_object_metric:
     device_optical_tx_power:
       name: 光模块发送功率
       desc: 该指标报告光模块（SFP/SFP+）发送光功率读数。发送功率异常可能意味着光模块老化或故障。
+    device_optical_temperature:
+      name: 光模块温度
+      desc: 该指标报告光模块温度读数，单位摄氏度。已过滤 2147483647 不支持哨兵。模块温度异常升高会加速激光器老化，并可能先于光功率异常出现。
+    device_optical_voltage:
+      name: 光模块电压
+      desc: 该指标报告光模块供电电压，单位伏特（原始 0.01 V，查询侧除以 100）。已过滤 2147483647 不支持哨兵。偏离额定范围可能导致光模块工作不稳。
+    device_optical_bias:
+      name: 光模块偏置电流
+      desc: 该指标报告光模块激光器偏置电流，单位毫安（原始 0.01 mA，查询侧除以 100）。已过滤 2147483647 不支持哨兵。发送功率不变而偏置电流持续升高是激光器老化的常见信号。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。

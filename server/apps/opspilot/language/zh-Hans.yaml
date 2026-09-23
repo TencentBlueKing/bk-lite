@@ -207,7 +207,7 @@ tools:
   monitor:
     name: 监控
     description: |
-      【主机CPU使用率】用当前用户身份查 BK-Lite 已纳管对象、实例、指标时序与告警。
+      【主机CPU使用率】用当前用户身份查 BK-Lite 已纳管对象、实例、指标时序与监控策略告警。口语「没关的告警/某台还在告」走告警中心 alerts_*，不要用本工具集。
       典型顺序：对象类型 → 按名称匹配实例 → 按用户词筛选指标名 → 查时序。优先本工具集，不要 SSH/top/htop。
       用户未说明对象类型时，列出类型后必须 request_user_choice，禁止按名称猜 Host/K8s Pod。
       查 CPU 时先列指标并按 CPU 筛选，禁止猜测 cpu.util，不要让用户手填指标名。
@@ -224,9 +224,9 @@ tools:
       monitor_query_metric_data:
         description: 【主机CPU】第4步，查询指标时序；metric 必须来自 list_object_metrics 返回的 name，禁止猜测 cpu.util。instance_ids 须用监控 ID/主机名/IP，禁止 CMDB inst_uuid。
       monitor_list_active_alerts:
-        description: 【主机告警】查询当前活跃告警，可按对象/实例/级别过滤；实例须用监控 instance_id、实例名或 IP，禁止 CMDB inst_uuid。
+        description: 【监控策略告警】查询监控扫描产生的主机/实例活跃告警，不是告警中心工单。仅当用户点名监控告警/策略告警时使用；口语没关的告警用 alerts_list_alerts。实例须用监控 instance_id、实例名或 IP，禁止 CMDB inst_uuid。
       monitor_query_alert_segments:
-        description: 【主机告警历史】按时间窗查询告警片段。
+        description: 【监控策略告警历史】按时间窗查询监控扫描告警片段。
       monitor_get_host_resource_snapshot:
         description: 【主机CPU】按监控 instance_ids 查询 CPU/内存/磁盘均值与最高值快照；禁止 CMDB inst_uuid。
   cmdb:
@@ -281,9 +281,10 @@ tools:
     name: 告警中心
     description: |
       用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不做认领或关闭。
+      口语「还有没有没关的告警」「某台还在告警」「未分派」必须用本工具集，不要用 monitor_list_active_alerts。
     tools:
       alerts_list_alerts:
-        description: 查询告警列表，可按状态/级别/关键词过滤。
+        description: 查询告警中心工单列表。没关/未分派/某台还在告必须用本工具；主机名/IP/标题放 keyword。不要用 monitor_list_active_alerts，也不要先问监控对象类型。
       alerts_get_alert_detail:
         description: 按 alert_id 查询告警详情。
       alerts_list_alert_events:

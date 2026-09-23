@@ -46,6 +46,9 @@ monitor_object_metric:
     mongodb_queries_rate:
       name: 查询操作频率
       desc: 查询类型操作执行的频率，反映数据库查询处理负载
+    mongodb_total_docs_scanned_rate:
+      name: 文档扫描频率
+      desc: 查询执行器每秒检查的文档数；持续偏高通常表示缺索引或查询条件过宽
     mongodb_inserts_rate:
       name: 插入操作频率
       desc: 插入类型操作执行的频率，反映数据写入负载

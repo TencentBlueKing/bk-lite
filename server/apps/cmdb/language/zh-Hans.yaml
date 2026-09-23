@@ -57,6 +57,7 @@ MODEL:
   kafka: Kafka
   ibmmq: IBM MQ
   zookeeper: ZooKeeper
+  consul: Consul
   nacos: Nacos
   minio: MinIO
   docker: Docker
@@ -100,7 +101,6 @@ MODEL:
   aliyun_pgsql: 阿里云PgSQL
   aliyun_redis: 阿里云Redis
   application: 应用
-  biz_group: 业务分组
   aws_cf: AWS CloudFront分配
   aws_docdb: AWS DocumentDB集群
   aws_ec2: AWS EC2
@@ -396,9 +396,6 @@ ATTR:
     operator: 主要维护人
     bak_operator: 备份维护人
     app_type: 应用类型
-  biz_group:
-    inst_name: 分组名称
-    organization: 组织
   biz:
     inst_name: 应用名称
     organization: 所属组织
@@ -935,6 +932,22 @@ ATTR:
     collect_time: 上次更新时间
     collect_task: 采集任务
     tag: 标签
+  consul:
+    inst_name: 实例名
+    organization: 组织
+    ip_addr: IP
+    port: 端口
+    tag: 标签
+    version: 版本
+    install_path: 安装路径
+    conf_path: 配置文件路径
+    data_dir: 数据目录
+    role: 角色
+    operator: 主要维护人
+    bak_operator: 备份维护人
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
   etcd:
     inst_name: 实例名
     organization: 组织

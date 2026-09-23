@@ -10,11 +10,13 @@ _set_auth_cookie_on_response）以及各登录/用户/客户端视图函数。
 """
 
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.test import RequestFactory
 
+from apps.core.logger import SafeLogException
 from apps.core.views import index_view
 
 
@@ -101,26 +103,54 @@ class TestParseRequestData:
         assert index_view._parse_request_data(req) == {"k": "v"}
 
 
+@pytest.mark.django_db
 class TestSafeGetUserIdByUsername:
     def test_returns_matching_user_id(self):
-        client = MagicMock()
-        client.search_users.return_value = {"data": {"users": [{"username": "alice", "id": 7}, {"username": "bob", "id": 8}]}}
-        assert index_view._safe_get_user_id_by_username(client, "bob") == 8
+        from apps.system_mgmt.models import User
+
+        user = User.objects.create(
+            username="index-lookup-bob",
+            password="x",
+            display_name="Bob",
+            email="index-lookup-bob@example.com",
+            domain="domain.com",
+        )
+        assert index_view._safe_get_user_id_by_username("index-lookup-bob", "domain.com") == user.id
 
     def test_returns_none_when_no_users(self):
-        client = MagicMock()
-        client.search_users.return_value = {"data": {"users": []}}
-        assert index_view._safe_get_user_id_by_username(client, "bob") is None
+        assert index_view._safe_get_user_id_by_username("index-lookup-missing", "domain.com") is None
 
     def test_returns_none_when_no_username_match(self):
-        client = MagicMock()
-        client.search_users.return_value = {"data": {"users": [{"username": "alice", "id": 7}]}}
-        assert index_view._safe_get_user_id_by_username(client, "bob") is None
+        from apps.system_mgmt.models import User
 
-    def test_returns_none_on_exception(self):
-        client = MagicMock()
-        client.search_users.side_effect = RuntimeError("boom")
-        assert index_view._safe_get_user_id_by_username(client, "bob") is None
+        User.objects.create(
+            username="index-lookup-alice",
+            password="x",
+            display_name="Alice",
+            email="index-lookup-alice@example.com",
+            domain="domain.com",
+        )
+        assert index_view._safe_get_user_id_by_username("index-lookup-bob", "domain.com") is None
+
+    def test_returns_none_on_exception(self, mocker, caplog):
+        secret = "password=SUPER-SECRET-TOKEN"
+        original = RuntimeError(secret)
+        mocker.patch.object(index_view.SystemMgmtUser.objects, "filter", side_effect=original)
+        caplog.set_level(logging.ERROR, logger="app")
+        assert index_view._safe_get_user_id_by_username("index-lookup-bob", "domain.com") is None
+        records = [record for record in caplog.records if record.name == "app" and "event=user_id_lookup_failed" in record.getMessage()]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == "event=user_id_lookup_failed failed_stage=username_lookup error_type=%s"
+        assert record.args == ("RuntimeError",)
+        assert record.getMessage() == "event=user_id_lookup_failed failed_stage=username_lookup error_type=RuntimeError"
+        assert record.exc_info is not None
+        assert record.exc_info[0] is SafeLogException
+        assert record.exc_info[2] is original.__traceback__
+        formatted = logging.Formatter().format(record)
+        assert secret not in record.getMessage()
+        assert secret not in formatted
+        assert secret not in caplog.text
 
 
 @pytest.mark.django_db
@@ -296,10 +326,7 @@ class TestLoginInfoView:
             timezone="UTC",
         )
         req = self._get(user)
-        with (
-            patch.object(index_view, "_create_system_mgmt_client"),
-            patch.object(index_view, "_safe_get_user_id_by_username", return_value=42),
-        ):
+        with patch.object(index_view, "_safe_get_user_id_by_username", return_value=42):
             resp = index_view.login_info(req)
         data = json.loads(resp.content)
         assert data["result"] is True
@@ -310,10 +337,7 @@ class TestLoginInfoView:
     def test_user_not_found_returns_error(self):
         user = MagicMock(username="ghost", group_list=[])
         req = self._get(user)
-        with (
-            patch.object(index_view, "_create_system_mgmt_client"),
-            patch.object(index_view, "_safe_get_user_id_by_username", return_value=None),
-        ):
+        with patch.object(index_view, "_safe_get_user_id_by_username", return_value=None):
             resp = index_view.login_info(req)
         assert json.loads(resp.content)["result"] is False
 

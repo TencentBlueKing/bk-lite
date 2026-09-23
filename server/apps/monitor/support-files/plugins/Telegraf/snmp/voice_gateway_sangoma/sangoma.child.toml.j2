@@ -33,6 +33,8 @@
         name = "source"
         is_tag = true
 
+    # Chassis IF pattern: ifXTable 64-bit HC only. Do not expand ifInErrors,
+    # ifOperStatus, or 32-bit octet counters.
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
@@ -47,3 +49,37 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+    # CPU busy (PEN 3028, table by cpuInfoIndex) → cpu_usage_percent / device_cpu_usage, whole %.
+    # Empty or unanswered tables are skipped.
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3028.6.1.7.1.1.1.4"
+        name = "usage"
+
+    # Free memory bytes (PEN 3028, same cpu info table) → memory_free_bytes.
+    # No total-memory column, so memory percent is not derived.
+    [[inputs.snmp.table]]
+        name = "memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3028.6.1.7.1.1.1.5"
+        name = "free_bytes"
+
+    # Temperature Celsius (PEN 3028, table by temperatureLocationIndex) → device_temperature / temperature_celsius.
+    # Optional location name tag. Empty or unanswered tables are skipped.
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3028.6.1.7.1.3.1.4"
+        name = "location"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3028.6.1.7.1.3.1.5"
+        name = "celsius"

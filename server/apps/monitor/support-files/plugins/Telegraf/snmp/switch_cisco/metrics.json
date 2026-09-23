@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cisco",
   "plugin": "Switch Cisco SNMP",
-  "plugin_desc": "Cisco-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Cisco private OIDs for device health: CPU utilization, memory pools, temperature sensors, fan and power-supply status. Supported brands/models — Cisco Catalyst campus switches (2960/3650/3850/9200/9300/9500, etc.) and IOS/IOS-XE switches; Nexus (NX-OS) partially compatible.",
+  "plugin_desc": "Cisco IOS-XE / Catalyst switch SNMP collection (CISCO-PROCESS-MIB, CISCO-MEMORY-POOL-MIB, CISCO-ENVMON-MIB, CISCO-ENTITY-SENSOR-MIB). Device-health objects include CPU via cpmCPUTotal5minRev, memory pools via ciscoMemoryPoolUsed/Free, chassis temperature and fan/PSU state via CISCO-ENVMON, and optical DDM from entSensorValueTable: dBm(14) rows split by entPhysicalName matching Rx Power / Tx Power, converted with entSensorScale and entSensorPrecision to dBm. Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — Cisco Catalyst campus switches (2960/3650/3850/9200/9300/9500, etc.) and IOS/IOS-XE switches; Nexus (NX-OS) partially compatible.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_cisco'}) by (instance_id)",
   "name": "Switch",
@@ -16,7 +16,9 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_usage"
+    "device_memory_usage",
+    "device_optical_rx_power",
+    "device_optical_tx_power"
   ],
   "metrics": [
     {
@@ -144,6 +146,50 @@
         "instance_id"
       ],
       "description": "This metric reports the operational state of each Cisco power supply unit (CISCO-ENVMON-MIB ciscoEnvMonSupplyState). A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_rx_power",
+      "query": "(device_optical_value{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__} != -1000000000) * (10 ^ ((device_optical_scale{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__} - 9) * 3 - device_optical_precision{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Rx Power|Receive Power).*\", __$labels__}))",
+      "display_name": "SFP RX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Sensor description (entPhysicalName)"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index (entPhysicalIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor SFP/optical receive power in dBm (CISCO-ENTITY-SENSOR-MIB entSensorValue, type dBm=14, descr matching Rx Power / Receive Power). Raw value is converted with entSensorScale and entSensorPrecision as value * 10^((scale-9)*3 - precision). The -1000000000 unread sentinel is dropped. A dropping RX level is an early sign of fiber attenuation, dirty optics, or a failing peer transmitter. IOS-XE/Catalyst path."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_optical_tx_power",
+      "query": "(device_optical_value{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__} != -1000000000) * (10 ^ ((device_optical_scale{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__} - 9) * 3 - device_optical_precision{instance_type='switch', sensor_type=\"14\", descr=~\"(?i).*(Tx Power|Transmit Power).*\", __$labels__}))",
+      "display_name": "SFP TX Power",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Sensor description (entPhysicalName)"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index (entPhysicalIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor SFP/optical transmit power in dBm (CISCO-ENTITY-SENSOR-MIB entSensorValue, type dBm=14, descr matching Tx Power / Transmit Power). Raw value is converted with entSensorScale and entSensorPrecision as value * 10^((scale-9)*3 - precision). The -1000000000 unread sentinel is dropped. An abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone. IOS-XE/Catalyst path."
     },
     {
       "metric_group": "Traffic",

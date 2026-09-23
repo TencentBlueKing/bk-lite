@@ -17,6 +17,11 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     MonitorPlugin,
 )
+from apps.monitor.services.child_instance_discovery import (
+    enqueue_child_instance_discovery,
+    normalize_collect_interval,
+    parent_has_child_objects,
+)
 from apps.monitor.services.host_deployment import HostDeploymentStatus
 from apps.monitor.services.instance_facts import InstanceFactResolver
 from apps.monitor.services.website_config import validate_rendered_website_config
@@ -27,6 +32,42 @@ from apps.monitor.utils.plugin_controller import Controller
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.models import User
+
+_REDACTED_CONFIG_KEYS = {"community"}
+_REDACTED_CONFIG_PLACEHOLDER = "***"
+
+
+def _redact_config_secrets(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            if str(key).lower() in _REDACTED_CONFIG_KEYS and item not in (None, ""):
+                redacted[key] = _REDACTED_CONFIG_PLACEHOLDER
+            else:
+                redacted[key] = _redact_config_secrets(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_config_secrets(item) for item in value]
+    return value
+
+
+def _restore_config_secrets(new_value, old_value):
+    if isinstance(new_value, dict):
+        old_map = old_value if isinstance(old_value, dict) else {}
+        restored = {}
+        for key, item in new_value.items():
+            if str(key).lower() in _REDACTED_CONFIG_KEYS and item in ("", _REDACTED_CONFIG_PLACEHOLDER):
+                restored[key] = old_map.get(key, item)
+            else:
+                restored[key] = _restore_config_secrets(item, old_map.get(key))
+        return restored
+    if isinstance(new_value, list):
+        old_items = old_value if isinstance(old_value, list) else []
+        return [
+            _restore_config_secrets(item, old_items[index] if index < len(old_items) else None)
+            for index, item in enumerate(new_value)
+        ]
+    return new_value
 
 
 class InstanceConfigService:
@@ -270,6 +311,10 @@ class InstanceConfigService:
                     id=instance["instance_id"],
                     name=instance.get("instance_name", ""),
                     summary_facts=summary_facts,
+                    interval=normalize_collect_interval(
+                        instance.get("interval"),
+                        default=current.interval,
+                    ),
                     auto=False,
                     is_deleted=False,
                     is_active=True,
@@ -279,7 +324,7 @@ class InstanceConfigService:
 
         MonitorInstance.objects.bulk_update(
             instances_to_update,
-            ["name", "summary_facts", "auto", "is_active", "updated_by", "updated_by_domain"],
+            ["name", "summary_facts", "interval", "auto", "is_active", "updated_by", "updated_by_domain"],
             batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
         )
         return len(instances_to_update)
@@ -324,6 +369,7 @@ class InstanceConfigService:
                 config["content"] = ConfigFormat.yaml_to_dict(config[content_key])
             else:
                 raise BaseAppException("file_type must be toml or yaml")
+            config["content"] = _redact_config_secrets(config["content"])
             if config_obj.is_child:
                 result["child"] = config
             else:
@@ -547,6 +593,16 @@ class InstanceConfigService:
         if duplicate_ids:
             raise BaseAppException(f"请求中存在重复的监控实例标识: {', '.join(sorted(duplicate_ids))}")
 
+        config_intervals = [config.get("interval") for config in configs or []]
+        for instance in instances:
+            resolved_interval = normalize_collect_interval(
+                instance.get("interval"),
+                *config_intervals,
+                default=None,
+            )
+            if resolved_interval is not None:
+                instance["interval"] = resolved_interval
+
         # 主键是全局唯一的，必须跨监控对象检查占用。调用方保证当前位于事务内。
         existing_instances_qs = (
             MonitorInstance.objects.select_for_update().filter(id__in=instance_ids).values_list("id", "is_deleted", "monitor_object_id")
@@ -682,6 +738,7 @@ class InstanceConfigService:
                     id=instance_id,
                     name=instance["instance_name"],
                     monitor_object_id=monitor_object_id,
+                    interval=normalize_collect_interval(instance.get("interval")),
                     ip=str(instance["ip"]).strip() if instance.get("ip") not in (None, "") else None,
                     cloud_region_id=instance.get("cloud_region_id"),
                     node_id=str(instance["node_id"]).strip() if instance.get("node_id") not in (None, "") else None,
@@ -1000,6 +1057,9 @@ class InstanceConfigService:
             raise BaseAppException("创建监控实例失败，请稍后重试") from e
 
         logger.info(f"创建监控实例成功,共 {len(created_instance_ids)} 个新实例,{len(existing_instances)} 个复用实例")
+        if processed_instance_ids and parent_has_child_objects(monitor_object_id):
+            for instance_id in processed_instance_ids:
+                enqueue_child_instance_discovery(instance_id)
         return processed_instance_ids
 
     @staticmethod
@@ -1079,6 +1139,11 @@ class InstanceConfigService:
                     child_interval,
                 )
             from apps.monitor.utils.disk_fstype_filters import sync_disk_fstype_filters_on_writeback
+
+            existing_rows = NodeMgmt().get_child_configs_by_ids([child_info["id"]])
+            if existing_rows and existing_rows[0].get("content"):
+                old_content = ConfigFormat.toml_to_dict(existing_rows[0]["content"])
+                child_info["content"] = _restore_config_secrets(child_info.get("content") or {}, old_content)
 
             # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
             child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))

@@ -3,6 +3,7 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.monitor.constants.monitor_object import MonitorObjConstants
 
 
 class MonitorObjectType(TimeInfo, MaintainerInfo):
@@ -105,8 +106,8 @@ class MonitorObject(TimeInfo, MaintainerInfo):
 
 
 class MonitorInstance(TimeInfo, MaintainerInfo):
-    id = models.CharField(primary_key=True, max_length=200, verbose_name="监控对象实例ID")
-    name = models.CharField(db_index=True, max_length=200, default="", verbose_name="监控对象实例名称")
+    id = models.CharField(primary_key=True, max_length=MonitorObjConstants.INSTANCE_ID_MAX_LENGTH, verbose_name="监控对象实例ID")
+    name = models.CharField(db_index=True, max_length=MonitorObjConstants.INSTANCE_NAME_MAX_LENGTH, default="", verbose_name="监控对象实例名称")
     interval = models.IntegerField(default=60, verbose_name="监控实例采集间隔(s)")
     monitor_object = models.ForeignKey(MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象")
     auto = models.BooleanField(default=False, verbose_name="是否自动发现")

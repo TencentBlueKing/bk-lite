@@ -142,7 +142,12 @@ async def test_remote_shell_stream_keeps_script_out_of_process_arguments():
 
     assert commands
     assert all(secret_script not in argument for command in commands for argument in command)
-    assert any("setsid -f" in argument for argument in commands[0])
+    for command in commands:
+        module_index = command.index("-m")
+        args_index = command.index("-a")
+        assert command[module_index + 1] == "raw"
+        assert "_raw_params" in json.loads(command[args_index + 1])
+    assert "setsid -f" in json.loads(commands[0][commands[0].index("-a") + 1])["_raw_params"]
 
 
 def test_remote_shell_commands_cap_target_file_and_clean_workspace():
@@ -194,3 +199,48 @@ def test_remote_shell_commands_cap_target_file_and_clean_workspace():
         )
 
     assert not Path(remote_dir).exists()
+
+
+@pytest.mark.asyncio
+async def test_remote_shell_stream_aborts_empty_poll_loop_before_full_timeout():
+    """Ansible exit=0 但无主机结果时，不得空转直到整段 timeout。"""
+    responses = iter(
+        [
+            (0, _ansible_result("192.0.2.10", "__BKLITE_STREAM_STARTED__"), {}),
+            (0, "Shared connection to 192.0.2.10 closed.\n", {}),
+            (0, "Shared connection to 192.0.2.10 closed.\n", {}),
+            (0, "Shared connection to 192.0.2.10 closed.\n", {}),
+            (0, "cleaned", {}),
+        ]
+    )
+    calls = {"n": 0}
+
+    async def command_runner(_command, _timeout, **_kwargs):
+        calls["n"] += 1
+        return next(responses)
+
+    async def publisher(_subject: str, _payload: bytes) -> None:
+        return None
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    started = time.monotonic()
+    code, output, _meta = await run_remote_shell_stream(
+        ["ansible", "all", "-i", "inventory", "-m", "shell", "-a", "ignored"],
+        script_content="echo hello",
+        shell_executable="/bin/sh",
+        timeout=30,
+        stream_publish=publisher,
+        stream_log_topic="job.stream.26.ansible",
+        execution_id="26",
+        poll_interval=0,
+        command_runner=command_runner,
+        sleep=no_sleep,
+    )
+    elapsed = time.monotonic() - started
+
+    assert code == 1
+    assert "no host result" in output
+    assert calls["n"] == 5  # start + 3 empty polls + stop
+    assert elapsed < 2

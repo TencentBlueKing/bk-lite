@@ -183,6 +183,9 @@ class CMDB(object):
     def get_room3d_layout(self, **kwargs):
         return self.client.run("get_room3d_layout", **kwargs)
 
+    def get_room_list(self, **kwargs):
+        return self.client.run("get_room_list", **kwargs)
+
     def ingest_from_source(self, **kwargs):
         """跨模块推送写入 CMDB（host：node_id 优先 + 存量认领）。
 

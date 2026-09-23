@@ -34,6 +34,7 @@ operation_analysis_logger = logging.getLogger("operation_analysis")
 alert_logger = logging.getLogger("alert")
 monitor_logger = logging.getLogger("monitor")
 node_logger = logging.getLogger("node")
+node_mgmt_logger = node_logger
 console_mgmt_logger = logging.getLogger("ops-console")
 opspilot_logger = logging.getLogger("opspilot")
 system_mgmt_logger = logging.getLogger("system-manager")

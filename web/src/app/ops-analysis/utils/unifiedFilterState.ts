@@ -1,5 +1,6 @@
 import type {
   FilterValue,
+  TimeRangeValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
@@ -8,6 +9,8 @@ import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { isOrganizationControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import {
   coerceFilterValuesForDefinitions,
+  coerceValueForMultiple,
+  isMultipleSelectInputConfig,
   logStringParamMigrationWarnings,
   migrateUnifiedFilterDefinitions,
   type LegacyUnifiedFilterDefinition,
@@ -255,6 +258,190 @@ export const syncAndFillOrganizationFilterValues = (
   selectedOrganizationId,
 );
 
+const isEmptyFilterValue = (value: FilterValue | undefined): boolean =>
+  value === undefined || value === null;
+
+const getTimeRangeIdentity = (value: FilterValue | undefined): string => {
+  if (isEmptyFilterValue(value)) {
+    return 'empty';
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return `relative:${value}`;
+  }
+  if (Array.isArray(value) && value.length === 2 && value[0] && value[1]) {
+    return `custom:${String(value[0])}:${String(value[1])}`;
+  }
+  if (typeof value === 'object') {
+    const candidate = value as Partial<TimeRangeValue>;
+    if (
+      typeof candidate.selectValue === 'number'
+      && Number.isFinite(candidate.selectValue)
+      && candidate.selectValue > 0
+    ) {
+      return `relative:${candidate.selectValue}`;
+    }
+    if (candidate.start && candidate.end) {
+      return `custom:${String(candidate.start)}:${String(candidate.end)}`;
+    }
+  }
+  return `other:${JSON.stringify(value)}`;
+};
+
+const isSameDateRangeValue = (
+  left: FilterValue | undefined,
+  right: FilterValue | undefined,
+): boolean => {
+  if (isEmptyFilterValue(left) && isEmptyFilterValue(right)) {
+    return true;
+  }
+  if (isEmptyFilterValue(left) || isEmptyFilterValue(right)) {
+    return false;
+  }
+  if (
+    typeof left !== 'object'
+    || typeof right !== 'object'
+    || Array.isArray(left)
+    || Array.isArray(right)
+  ) {
+    return false;
+  }
+  const leftRange = left as DateRangeValue;
+  const rightRange = right as DateRangeValue;
+  if (leftRange.rangeType !== rightRange.rangeType) {
+    return false;
+  }
+  if (leftRange.rangeType === 'custom' && rightRange.rangeType === 'custom') {
+    return leftRange.startDate === rightRange.startDate
+      && leftRange.endDate === rightRange.endDate;
+  }
+  return true;
+};
+
+const isSamePlainFilterValue = (
+  left: FilterValue | undefined,
+  right: FilterValue | undefined,
+): boolean => {
+  if (isEmptyFilterValue(left) && isEmptyFilterValue(right)) {
+    return true;
+  }
+  if (isEmptyFilterValue(left) || isEmptyFilterValue(right)) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    return left.every((item, index) => item === right[index]);
+  }
+  return left === right;
+};
+
+const shapeStringValue = (
+  definition: UnifiedFilterDefinition,
+  value: FilterValue | undefined,
+): FilterValue | undefined => {
+  if (definition.type !== 'string' || isEmptyFilterValue(value)) {
+    return value;
+  }
+  return coerceValueForMultiple(
+    value,
+    isMultipleSelectInputConfig(definition.inputConfig),
+  ) ?? null;
+};
+
+const isSameFilterValue = (
+  type: UnifiedFilterDefinition['type'],
+  left: FilterValue | undefined,
+  right: FilterValue | undefined,
+): boolean => {
+  if (type === 'timeRange') {
+    return getTimeRangeIdentity(left) === getTimeRangeIdentity(right);
+  }
+  if (type === 'dateRange') {
+    return isSameDateRangeValue(left, right);
+  }
+  return isSamePlainFilterValue(left, right);
+};
+
+const materializeDefaultValue = (
+  definition: UnifiedFilterDefinition,
+): FilterValue => {
+  const raw = definition.defaultValue;
+  if (raw === undefined || raw === null) {
+    return null;
+  }
+  if (definition.type === 'timeRange') {
+    return normalizeTimeRangeFilterValue(raw) ?? null;
+  }
+  if (definition.type === 'dateRange') {
+    return validateDateRangeValue(raw).valid
+      ? { ...(raw as DateRangeValue) }
+      : null;
+  }
+  if (definition.type === 'string') {
+    return coerceValueForMultiple(
+      raw,
+      isMultipleSelectInputConfig(definition.inputConfig),
+    );
+  }
+  return raw;
+};
+
+/**
+ * 确认配置时：仅当某项默认值语义变化，且顶部筛选仍停在旧默认上，才写入新默认。
+ * 相对时间只比 selectValue，避免 start/end 毫秒差误判；组织项不覆盖。
+ */
+const applyChangedDefaultsIfStillOnPrevious = (
+  previousDefinitions: UnifiedFilterDefinition[],
+  nextDefinitions: UnifiedFilterDefinition[],
+  values: Record<string, FilterValue>,
+): { values: Record<string, FilterValue>; updatedIds: string[] } => {
+  if (!previousDefinitions.length) {
+    return { values, updatedIds: [] };
+  }
+
+  const previousById = new Map(
+    previousDefinitions.map((definition) => [definition.id, definition]),
+  );
+  const nextValues = { ...values };
+  const updatedIds: string[] = [];
+
+  nextDefinitions.forEach((definition) => {
+    const previous = previousById.get(definition.id);
+    if (!previous || !definition.enabled || isOrganizationFilterDefinition(definition)) {
+      return;
+    }
+
+    const previousDefault = shapeStringValue(definition, previous.defaultValue);
+    const nextDefault = shapeStringValue(definition, definition.defaultValue);
+    const defaultChanged = previous.type !== definition.type
+      || !isSameFilterValue(definition.type, previousDefault, nextDefault);
+    if (!defaultChanged) {
+      return;
+    }
+
+    const current = nextValues[definition.id];
+    const compareType = previous.type === definition.type
+      ? definition.type
+      : previous.type;
+    if (!isSameFilterValue(
+      compareType,
+      shapeStringValue(definition, current),
+      shapeStringValue(previous, previous.defaultValue),
+    )) {
+      return;
+    }
+
+    nextValues[definition.id] = materializeDefaultValue(definition);
+    updatedIds.push(definition.id);
+  });
+
+  return {
+    values: coerceFilterValuesForDefinitions(nextDefinitions, nextValues),
+    updatedIds,
+  };
+};
+
 /** 筛选配置确认：draft/applied 使用同一版 definitions 规范化 values。 */
 export interface FilterConfigConfirmSnapshot {
   definitions: UnifiedFilterDefinition[];
@@ -266,14 +453,28 @@ export const buildFilterConfigConfirmSnapshot = (
   newDefinitions: UnifiedFilterDefinition[],
   currentFilterValues: Record<string, FilterValue>,
   currentAppliedFilterValues: Record<string, FilterValue>,
-): FilterConfigConfirmSnapshot => ({
-  definitions: newDefinitions,
-  filterValues: syncFilterValuesWithDefinitions(
+  previousDefinitions: UnifiedFilterDefinition[] = [],
+): FilterConfigConfirmSnapshot => {
+  const syncedFilterValues = syncFilterValuesWithDefinitions(
     newDefinitions,
     currentFilterValues,
-  ),
-  appliedFilterValues: syncFilterValuesWithDefinitions(
+  );
+  const syncedAppliedFilterValues = syncFilterValuesWithDefinitions(
     newDefinitions,
     currentAppliedFilterValues,
-  ),
-});
+  );
+  const { values: nextFilterValues, updatedIds } = applyChangedDefaultsIfStillOnPrevious(
+    previousDefinitions,
+    newDefinitions,
+    syncedFilterValues,
+  );
+  const nextAppliedFilterValues = { ...syncedAppliedFilterValues };
+  updatedIds.forEach((filterId) => {
+    nextAppliedFilterValues[filterId] = nextFilterValues[filterId];
+  });
+  return {
+    definitions: newDefinitions,
+    filterValues: nextFilterValues,
+    appliedFilterValues: nextAppliedFilterValues,
+  };
+};

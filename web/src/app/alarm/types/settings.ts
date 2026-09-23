@@ -288,13 +288,14 @@ export interface TargetBinding {
 export interface ActionConfig {
   script_id?: number;
   target_binding: TargetBinding;
-  param_bindings: Array<{ name: string; from: 'field' | 'const'; value: string }>;
+  param_bindings: Array<{ name: string; from: 'field' | 'const'; value: string; allow_adjust?: boolean }>;
   timeout?: number;
 }
 export interface ActionRuleListItem {
   id: number;
   name: string;
   is_active: boolean;
+  auto_execute?: boolean;
   team: number[];
   trigger_events: string[];
   match_rules: Array<Array<{ key: string; operator: string; value: string | number | (string | number)[] }>>;

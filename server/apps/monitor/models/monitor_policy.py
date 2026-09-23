@@ -6,6 +6,7 @@ from apps.core.fields.s3_json_field import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
+from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorObject
 
@@ -126,9 +127,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
         verbose_name="比较值类型",
     )
     count_predicate = models.JSONField(default=dict, verbose_name="条件计数内阈")
-    forecast_target = models.FloatField(
-        blank=True, null=True, verbose_name="容量线目标"
-    )
+    forecast_target = models.FloatField(blank=True, null=True, verbose_name="容量线目标")
     forecast_lookback = models.JSONField(default=dict, verbose_name="斜率回看窗")
     recovery_threshold = models.JSONField(default=dict, verbose_name="恢复阈值")
 
@@ -147,6 +146,14 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     enable = models.BooleanField(default=True, verbose_name="是否启用")
     enable_alerts = models.JSONField(default=list, verbose_name="启用的告警类型")
     last_run_time = models.DateTimeField(blank=True, null=True, verbose_name="最后一次执行时间")
+    source_template = models.ForeignKey(
+        PolicyTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issued_policies",
+        verbose_name="来源策略模板",
+    )
 
     class Meta:
         verbose_name = "监控策略"
@@ -169,6 +176,7 @@ class MonitorEvent(models.Model):
         ESCALATED = "escalated", "级别升级"
         CLAIMED = "claimed", "认领"
         ASSIGNED = "assigned", "分派"
+        REASSIGNED = "reassigned", "转派"
         RECOVERED = "recovered", "恢复"
         CLOSED = "closed", "人工关闭"
 
@@ -192,7 +200,11 @@ class MonitorEvent(models.Model):
     )
 
     policy_id = models.IntegerField(db_index=True, verbose_name="监控策略ID")
-    monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name="监控对象实例ID")
+    monitor_instance_id = models.CharField(
+        db_index=True,
+        max_length=MonitorObjConstants.INSTANCE_ID_MAX_LENGTH,
+        verbose_name="监控对象实例ID",
+    )
     metric_instance_id = models.CharField(db_index=True, default="", max_length=255, verbose_name="指标实例ID")
     dimensions = models.JSONField(default=dict, verbose_name="维度值")
     created_at = models.DateTimeField(db_index=True, auto_now_add=True, verbose_name="事件生成时间")
@@ -246,8 +258,17 @@ class MonitorAlert(TimeInfo):
     ALERT_TYPE_CHOICES = [("alert", "Alert"), ("no_data", "No Data")]
 
     policy_id = models.IntegerField(db_index=True, default=0, verbose_name="监控策略ID")
-    monitor_instance_id = models.CharField(db_index=True, default="", max_length=100, verbose_name="监控对象实例ID")
-    monitor_instance_name = models.CharField(default="", max_length=100, verbose_name="监控对象实例名称")
+    monitor_instance_id = models.CharField(
+        db_index=True,
+        default="",
+        max_length=MonitorObjConstants.INSTANCE_ID_MAX_LENGTH,
+        verbose_name="监控对象实例ID",
+    )
+    monitor_instance_name = models.CharField(
+        default="",
+        max_length=MonitorObjConstants.INSTANCE_NAME_MAX_LENGTH,
+        verbose_name="监控对象实例名称",
+    )
     metric_instance_id = models.CharField(db_index=True, default="", max_length=255, verbose_name="指标实例ID")
     dimensions = models.JSONField(default=dict, verbose_name="维度值")
     alert_type = models.CharField(
@@ -339,7 +360,11 @@ class MonitorAlertMetricSnapshot(TimeInfo):
 
     alert = models.OneToOneField("MonitorAlert", on_delete=models.CASCADE, verbose_name="关联告警", db_index=True)
     policy_id = models.IntegerField(db_index=True, verbose_name="监控策略ID")
-    monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name="监控对象实例ID")
+    monitor_instance_id = models.CharField(
+        db_index=True,
+        max_length=MonitorObjConstants.INSTANCE_ID_MAX_LENGTH,
+        verbose_name="监控对象实例ID",
+    )
 
     # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间
     # 格式: [
@@ -367,7 +392,11 @@ class PolicyInstanceBaseline(TimeInfo):
     """策略实例基准表 - 记录策略监控的所有维度组合，用于无数据检测"""
 
     policy = models.ForeignKey(MonitorPolicy, on_delete=models.CASCADE, verbose_name="监控策略")
-    monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name="监控实例ID")
+    monitor_instance_id = models.CharField(
+        db_index=True,
+        max_length=MonitorObjConstants.INSTANCE_ID_MAX_LENGTH,
+        verbose_name="监控实例ID",
+    )
     metric_instance_id = models.CharField(max_length=255, verbose_name="指标实例ID")
 
     class Meta:

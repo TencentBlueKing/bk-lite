@@ -1,0 +1,57 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_peplink"
+        config_type = "peplink"
+        brand = "peplink"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 型号 / 固件：DEVICE.mib 标量，顶层 field 带实例 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.23695.200.1.1.1.1.1.0"
+        name = "device_model"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.23695.200.1.1.1.1.3.0"
+        name = "device_firmware_version"
+        is_tag = true
+    # ---- CPU：DEVICE.mib deviceCpuLoad，INTEGER(0..100) 直接百分比，标量 field 带 .0 ----
+    # 按 SYNTAX 记 0–100，不按 DESCRIPTION 再除以 100。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.23695.200.1.1.1.3.1.0"
+        name = "device_cpu_usage"
+    # ---- 内存：DEVICE.mib deviceTotalMemory / deviceMemoryUsage，单位 KB，标量 field 带 .0 ----
+    # 查询侧 *1024 转为字节；利用率 used/total（KB 相消）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.23695.200.1.1.1.3.2.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.23695.200.1.1.1.3.3.0"
+        name = "device_memory_used"

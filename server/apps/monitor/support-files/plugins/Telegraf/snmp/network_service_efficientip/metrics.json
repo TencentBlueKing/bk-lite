@@ -66,7 +66,7 @@
       "query": "max(device_psu_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -79,7 +79,7 @@
       "query": "max(network_service_dns_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "DNS Service Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -105,7 +105,7 @@
       "query": "max(network_service_dhcp_service_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "DHCP Service Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"

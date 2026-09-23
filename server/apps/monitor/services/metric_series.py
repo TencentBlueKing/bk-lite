@@ -374,7 +374,10 @@ def fold_instant_rows(series: list[dict[str, Any]], dimensions: list[str], limit
         else:
             current["value"] += value
 
-    ranked = sorted(grouped.values(), key=lambda item: (-float(item["value"]), item["labels"]))
+    ranked = sorted(
+        grouped.values(),
+        key=lambda item: (-float(item["value"]), tuple(sorted(item["labels"].items()))),
+    )
     rows = []
     for rank, item in enumerate(ranked[:limit], 1):
         row = dict(item["labels"])

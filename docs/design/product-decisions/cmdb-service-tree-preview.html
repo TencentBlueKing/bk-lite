@@ -212,7 +212,7 @@
   <div class="shell">
     <div class="banner">
       <strong>已确认展示 · 左树右表</strong>
-      <span>左侧只放系统 / 业务分组 / 应用。主机在右侧列表，避免多归属把图画乱。</span>
+      <span>左侧只放系统 / 应用。主机在右侧列表，避免多归属把图画乱。</span>
       <label class="banner-toggle"><input id="notesToggle" type="checkbox" checked /> 显示设计说明</label>
     </div>
     <div class="crumb">
@@ -241,7 +241,7 @@
           <div class="tree-head">服务树<small>主机不进左树</small></div>
           <div class="tree" id="tree" role="tree" aria-label="服务树"></div>
           <div class="tree-foot" id="treeFoot">
-            点应用才出现添加/转移/解除挂靠。点系统或分组只能看汇总、建子节点。勾选哪些主机就操作哪些。
+            点应用才出现添加/转移/解除挂靠。点系统只能看汇总、建子节点。勾选哪些主机就操作哪些。
           </div>
         </aside>
         <section class="main">
@@ -262,7 +262,6 @@
           <div class="card"><small>应用</small><b>支付核心</b></div>
           <div class="card"><small>应用</small><b>清算服务</b></div>
           <div class="card"><small>应用</small><b>对账服务</b></div>
-          <div class="card"><small>业务分组不会单独成层</small><b>支付域 / 清算组会混进这一带</b></div>
         </div></div>
         <div class="band"><h3>主机层</h3><div class="cards">
           <div class="card"><small>主机</small><b>pay-app-01</b></div>
@@ -321,16 +320,16 @@
   <div class="modal" id="importModal" style="width:min(820px, calc(100vw - 32px))">
     <header>服务树导入<button class="close" data-close>×</button></header>
     <div class="body">
-      <p class="hint">一行 = 已有主机 + 路径。空分组列 = 应用直挂系统。缺分组/应用则创建，主机对不上该行失败。</p>
+      <p class="hint">一行 = 已有主机 + 路径。缺应用则创建，主机对不上该行失败。</p>
       <table class="sheet">
         <thead>
-          <tr><th>应用系统</th><th>业务分组</th><th>二级分组</th><th>应用</th><th>主机标识</th><th>结果</th></tr>
+          <tr><th>应用系统</th><th>应用</th><th>主机标识</th><th>结果</th></tr>
         </thead>
         <tbody>
-          <tr><td>核心交易系统</td><td>支付域</td><td></td><td>支付核心</td><td>10.0.12.8</td><td class="ok">分配到已有主机</td></tr>
-          <tr><td>核心交易系统</td><td>支付域</td><td>清算组</td><td>清算服务</td><td>10.0.12.21</td><td class="ok">创建「清算组」并分配</td></tr>
-          <tr><td>核心交易系统</td><td></td><td></td><td>对账服务</td><td>10.0.12.9</td><td class="ok">应用直挂系统</td></tr>
-          <tr><td>核心交易系统</td><td>支付域</td><td></td><td>支付核心</td><td>10.0.99.1</td><td class="miss">主机不存在，该行失败</td></tr>
+          <tr><td>核心交易系统</td><td>支付核心</td><td>10.0.12.8</td><td class="ok">分配到已有主机</td></tr>
+          <tr><td>核心交易系统</td><td>清算服务</td><td>10.0.12.21</td><td class="ok">创建应用并分配</td></tr>
+          <tr><td>核心交易系统</td><td>对账服务</td><td>10.0.12.9</td><td class="ok">应用直挂系统</td></tr>
+          <tr><td>核心交易系统</td><td>支付核心</td><td>10.0.99.1</td><td class="miss">主机不存在，该行失败</td></tr>
         </tbody>
       </table>
     </div>
@@ -341,10 +340,8 @@
   <script>
     const nodes = [
       { id: "sys", type: "system", name: "核心交易系统", parent: null },
-      { id: "pay", type: "group", name: "支付域", parent: "sys" },
-      { id: "clear", type: "group", name: "清算组", parent: "pay" },
-      { id: "clearApp", type: "app", name: "清算服务", parent: "clear" },
-      { id: "payCore", type: "app", name: "支付核心", parent: "pay" },
+      { id: "clearApp", type: "app", name: "清算服务", parent: "sys" },
+      { id: "payCore", type: "app", name: "支付核心", parent: "sys" },
       { id: "recon", type: "app", name: "对账服务", parent: "sys" }
     ];
     const hosts = [
@@ -354,7 +351,7 @@
       { id: "h4", name: "recon-01", ip: "10.0.12.33", apps: ["recon"] }
     ];
     const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
-    const kindLabel = { system: "应用系统", group: "业务分组", app: "应用" };
+    const kindLabel = { system: "应用系统", app: "应用" };
     let selected = "sys";
 
     function childrenOf(id) { return nodes.filter((n) => n.parent === id); }
@@ -378,9 +375,6 @@
       let d = 0, cur = byId[id];
       while (cur.parent) { d += 1; cur = byId[cur.parent]; }
       return d;
-    }
-    function isNestedGroup(n) {
-      return n.type === "group" && n.parent && byId[n.parent].type === "group";
     }
 
     function renderTree() {
@@ -432,7 +426,7 @@
       document.getElementById("kind").textContent = kindLabel[n.type];
       document.getElementById("title").textContent = n.name;
       document.getElementById("path").textContent = pathOf(n.id);
-      const canNewApp = n.type === "system" || n.type === "group";
+      const canNewApp = n.type === "system";
       document.getElementById("btnNewApp").disabled = !canNewApp;
       document.getElementById("btnAssign").disabled = n.type !== "app";
       document.getElementById("btnTransfer").disabled = n.type !== "app" || hostsOf(n.id).length === 0;
@@ -443,10 +437,7 @@
         document.getElementById("list").innerHTML = hostTable(hostsOf(n.id), false);
       } else {
         const kids = childrenOf(n.id);
-        const nested = isNestedGroup(n);
-        document.getElementById("hint").textContent = n.type === "group"
-          ? (nested ? "已是二级分组，不能再套一层。其下主机只读汇总。" : "分组管结构。要挂主机，点到具体应用。")
-          : "系统/分组管结构。右侧是子节点和其下主机汇总，不能在这里分配。";
+        document.getElementById("hint").textContent = "系统管结构。右侧是子节点和其下主机汇总，不能在这里分配。";
         document.getElementById("list").innerHTML = `
           <table>
             <thead><tr><th>子节点</th><th>类型</th><th>其下主机</th></tr></thead>

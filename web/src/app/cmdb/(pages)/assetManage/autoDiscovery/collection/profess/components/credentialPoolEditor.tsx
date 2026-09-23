@@ -296,6 +296,19 @@ const ensureClientIds = (items: CredentialPoolItem[]) =>
     _client_id: item._client_id || makeClientId(),
   }));
 
+const withDefaultSnmpVersion = (item: CredentialPoolItem): CredentialPoolItem => {
+  const version = String(item?.version || '').trim();
+  if (version === 'v2' || version === 'v2c' || version === 'v3') {
+    return item;
+  }
+  const community = String(item?.community || '').trim();
+  const username = String(item?.username || '').trim();
+  return {
+    ...item,
+    version: username && !community ? 'v3' : 'v2',
+  };
+};
+
 const createEmptyCredential = (
   shape: CredentialShape,
   showDatabase?: boolean,
@@ -1389,7 +1402,13 @@ export default function CredentialPoolEditor({
 }: CredentialPoolEditorProps): React.ReactElement {
   const { t } = useTranslation();
   const sensors = useSensors(useSensor(PointerSensor));
-  const normalizedValue = useMemo(() => ensureClientIds(value), [value]);
+  const normalizedValue = useMemo(
+    () =>
+      ensureClientIds(
+        credentialShape === 'snmp' ? value.map((item) => withDefaultSnmpVersion(item)) : value
+      ),
+    [credentialShape, value]
+  );
   const [activeKeys, setActiveKeys] = useState<string[]>(
     normalizedValue.length ? [getItemKey(normalizedValue[0], 0)] : []
   );
@@ -1402,6 +1421,17 @@ export default function CredentialPoolEditor({
     () => normalizedValue.map((item, index) => getItemKey(item, index)),
     [normalizedValue]
   );
+
+  useEffect(() => {
+    if (credentialShape !== 'snmp') {
+      return;
+    }
+    const missingVersion = value.some((item) => !String(item?.version || '').trim());
+    if (!missingVersion) {
+      return;
+    }
+    onChange?.(ensureClientIds(value.map((item) => withDefaultSnmpVersion(item))));
+  }, [credentialShape, onChange, value]);
 
   useEffect(() => {
     setActiveKeys((prev) => {

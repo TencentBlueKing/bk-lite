@@ -6,7 +6,7 @@ import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
-import { formatRelativeTime, pickEntityTimestamp } from '@/app/opspilot/utils/relativeTime';
+import { formatRelativeTime, pickEntityTimestamp } from '@/utils/relativeTime';
 import { pickStableIcon } from '@/app/opspilot/utils/pickStableIcon';
 
 interface EntityCardProps {

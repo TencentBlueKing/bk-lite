@@ -55,6 +55,9 @@ const useEventApi = () => {
   const savePolicyTemplate = async (data: Record<string, unknown>) =>
     post('/monitor/api/monitor_policy/template/save/', data);
 
+  const updatePolicyTemplate = async (data: Record<string, unknown>) =>
+    post('/monitor/api/monitor_policy/template/update/', data);
+
   const importPolicyTemplates = async (file: File, overwrite = false) => {
     const data = new FormData();
     data.append('file', file);
@@ -84,8 +87,15 @@ const useEventApi = () => {
     return await post('/monitor/api/monitor_policy/dry_run/', data, config);
   };
 
-  const getSystemChannelList = async () => {
-    return await get('/monitor/api/system_mgmt/search_channel_list/');
+  const getSystemChannelList = async (
+    params: {
+      channel_type?: string;
+      channel_method?: string;
+    } = {}
+  ) => {
+    return await get('/monitor/api/system_mgmt/search_channel_list/', {
+      params,
+    });
   };
 
   const patchMonitorPolicy = async (
@@ -130,6 +140,7 @@ const useEventApi = () => {
     getPolicyTemplate,
     bulkCreatePoliciesFromTemplates,
     savePolicyTemplate,
+    updatePolicyTemplate,
     importPolicyTemplates,
     exportPolicyTemplates,
     bulkDeletePolicyTemplates,

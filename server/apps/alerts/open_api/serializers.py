@@ -104,6 +104,16 @@ def _get_event_source_name(event) -> str:
     return getattr(source, "name", "") or ""
 
 
+def serialize_shield(shield) -> dict:
+    return {
+        "name": shield.name,
+        "match_type": shield.match_type,
+        "match_rules": shield.match_rules or [],
+        "suppression_time": shield.suppression_time or {},
+        "is_active": shield.is_active,
+    }
+
+
 def serialize_event(event) -> dict:
     return {
         "event_id": event.event_id,

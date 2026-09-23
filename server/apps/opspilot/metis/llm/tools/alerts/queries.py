@@ -6,7 +6,13 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.alerts.utils import call_alerts_rpc, wrap_error
 
 
-@tool(description="查询告警中心告警列表。可按 status/level/keyword/时间无关过滤，只读。")
+@tool(
+    description=(
+        "查询统一告警中心工单列表。口语「还有没有没关的告警」「某台还在告警」「未分派」必须用本工具；"
+        "主机名/IP/标题放 keyword。不要用 monitor_list_active_alerts，也不要先问监控对象类型。"
+        "可按 status/level/keyword 过滤，只读。"
+    )
+)
 def alerts_list_alerts(
     status: Optional[Any] = None,
     level: Optional[Any] = None,

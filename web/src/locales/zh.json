@@ -45,6 +45,8 @@
     "settings": "设置",
     "addNew": "新增",
     "new": "新建",
+    "owner": "所有者",
+    "team": "团队",
     "justNow": "刚刚",
     "secondsAgo": "{count}秒前",
     "minutesAgo": "{count}分钟前",

@@ -5,17 +5,27 @@ This capability uses Telegraf `inputs.postgresql` to connect to a specified Post
 ## Prerequisites
 
 - The collector node can reach the target PostgreSQL host and actual port.
-- Prepare an account that can log in to the configured database and read the required statistics views. On PostgreSQL 10 and later, `pg_monitor` can be granted according to least privilege.
+- Prepare an account that can log in to the configured database and read `pg_stat_database` and `pg_stat_bgwriter`. On PostgreSQL 10 and later, grant `pg_read_all_stats`.
 - The target `pg_hba.conf` allows this account to connect from the collector node.
 - The page supports SSL modes `disable`, `prefer`, and `require`. Certificate paths are not supported; `verify-ca` and `verify-full` are unavailable in this template.
 - The template always ignores `template0` and `template1`.
 
 ## Setup Steps
 
-1. From the actual collector node, validate the target address, account, database name, SSL mode, and statistics-view permissions.
-2. Enter the username, password, host, actual port, database name, SSL mode, and interval (default `60` seconds).
-3. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
-4. Save the configuration and wait for at least one collection interval.
+1. Have the DBA create a dedicated account. This collector is Telegraf `inputs.postgresql` and reads `pg_stat_database` and `pg_stat_bgwriter`. On PostgreSQL 10 and later, grant `pg_read_all_stats`. Replace `<monitor_user>`, `<password>`, and `<dbname>` with site values, and do not put the password in command history:
+
+```sql
+CREATE ROLE <monitor_user> WITH LOGIN PASSWORD '<password>';
+GRANT CONNECT ON DATABASE <dbname> TO <monitor_user>;
+GRANT pg_read_all_stats TO <monitor_user>;
+```
+
+`<dbname>` must match the page database name; `postgres` is the usual default. Do not grant superuser, and do not use the `postgres_exporter` `SECURITY DEFINER` wrapper views. This template does not query them. Source addresses are still controlled by `pg_hba.conf`.
+
+2. From the actual collector node, validate the target address, account, database name, SSL mode, and statistics-view permissions.
+3. Enter the username, password, host, actual port, database name, SSL mode, and interval (default `60` seconds).
+4. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
+5. Save the configuration and wait for at least one collection interval.
 
 ## Pre-checks
 
@@ -60,7 +70,7 @@ After saving and waiting for one interval, confirm that these metrics are querya
 
 ### Login succeeds but data is incomplete
 
-- Confirm that the account can read the required `pg_stat_*` views. Use `pg_monitor` or equivalent least-privilege grants for the target version.
+- Confirm that the account can read `pg_stat_database` and `pg_stat_bgwriter`. On PostgreSQL 10 and later, use `pg_read_all_stats`.
 - `template0` and `template1` are explicitly ignored by the template and produce no data.
 
 ### The target enforces SSL

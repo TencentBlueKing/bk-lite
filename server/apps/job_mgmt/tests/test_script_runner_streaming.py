@@ -103,6 +103,7 @@ def test_crlf_normalized_for_ansible_shell_path():
     module_args = fake_exec.adhoc.call_args.kwargs["module_args"]
     assert "\r" not in module_args
     assert "for i in 1 2; do echo $i; done" in module_args
+    assert fake_exec.adhoc.call_args.kwargs["module"] == "raw"
     assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is True
 
 
@@ -151,6 +152,7 @@ def test_ansible_remote_stream_flag_matches_platform(script_type, script_content
 
     assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is expected
     if script_type == ScriptType.PYTHON:
+        assert fake_exec.adhoc.call_args.kwargs["module"] == "raw"
         assert fake_exec.adhoc.call_args.kwargs["module_args"].startswith("python -u <<'__SCRIPT__'")
         assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] is None
     else:

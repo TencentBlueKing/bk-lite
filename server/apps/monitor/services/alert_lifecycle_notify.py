@@ -69,7 +69,7 @@ class AlertLifecycleNotifier:
         self.policy = policy
         self.policies_by_id = policies_by_id or {}
 
-    def notify_assigned(self, alerts):
+    def notify_assigned(self, alerts, *, action="assigned"):
         if not alerts:
             return None
 
@@ -97,7 +97,7 @@ class AlertLifecycleNotifier:
                     channel_name,
                     list(handlers_tuple),
                     group_alerts,
-                    "assigned",
+                    action,
                     "",
                     "",
                 )
@@ -105,7 +105,8 @@ class AlertLifecycleNotifier:
                     alert_log_entries[alert.id].append(log_entry)
             except Exception as exc:
                 logger.error(
-                    "event=assign_notify_failed action=assigned channel_id=%s failed_stage=send error_type=%s",
+                    "event=assign_notify_failed action=%s channel_id=%s failed_stage=send error_type=%s",
+                    action,
                     channel_id,
                     type(exc).__name__,
                 )
@@ -114,7 +115,7 @@ class AlertLifecycleNotifier:
                     alert_log_entries[alert.id].append(
                         {
                             "time": now,
-                            "action": "assigned",
+                            "action": action,
                             "channel_id": channel_id,
                             "success": False,
                             "error": type(exc).__name__,
@@ -123,6 +124,15 @@ class AlertLifecycleNotifier:
 
         self._persist_notice_logs(alerts, alert_log_entries)
         return None
+
+    @staticmethod
+    def _channel_from_bulk(channels, channel_id):
+        if channel_id in channels:
+            return channels[channel_id]
+        try:
+            return channels.get(int(channel_id))
+        except (TypeError, ValueError):
+            return None
 
     def _is_person_assign_channel(self, channel):
         if channel is None:
@@ -146,14 +156,30 @@ class AlertLifecycleNotifier:
         alert_log_entries = defaultdict(list)
 
         groups = defaultdict(list)
+        parsed_alerts = []
+        channel_ids_needed = set()
         for alert in alerts:
             channel_ids = self._resolve_notice_type_ids(alert)
             notice_users = self._resolve_notice_users(alert)
             if not channel_ids:
                 logger.warning(f"Alert {alert.id} has no notice_type_ids configured, skip notification")
                 continue
+            parsed_alerts.append((alert, channel_ids, notice_users))
+            channel_ids_needed.update(channel_ids)
+
+        channels = {}
+        if channel_ids_needed:
+            lookup_ids = set(channel_ids_needed)
+            for channel_id in list(channel_ids_needed):
+                try:
+                    lookup_ids.add(int(channel_id))
+                except (TypeError, ValueError):
+                    pass
+            channels = Channel.objects.in_bulk(list(lookup_ids))
+
+        for alert, channel_ids, notice_users in parsed_alerts:
             for channel_id in channel_ids:
-                channel = Channel.objects.filter(id=channel_id).first()
+                channel = self._channel_from_bulk(channels, channel_id)
                 if not self._should_notify_channel(alert, channel, channel_id, action, notify_scope):
                     continue
                 groups[(channel_id, tuple(notice_users) if notice_users else ())].append(alert)
@@ -165,7 +191,16 @@ class AlertLifecycleNotifier:
             try:
                 # 灰度期间保留 legacy 即时投递；outbox 使用稳定 payload 身份，
                 # receiver 会把响应丢失后的双投收敛为 duplicate。关闭开关即可回滚。
-                results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason, notify_scope)
+                results = self._send_to_channel(
+                    channel_id,
+                    notice_users,
+                    group_alerts,
+                    action,
+                    operator,
+                    reason,
+                    notify_scope,
+                    channel=self._channel_from_bulk(channels, channel_id),
+                )
                 for alert, log_entry in results:
                     alert_log_entries[alert.id].append(log_entry)
                     if log_entry.get("is_alert_center"):
@@ -188,7 +223,7 @@ class AlertLifecycleNotifier:
                     )
                 # 异常时无法确认是否为 NATS 渠道，保守地标记为已命中，避免误清 notified 标志
                 try:
-                    exc_channel = Channel.objects.filter(id=channel_id).first()
+                    exc_channel = self._channel_from_bulk(channels, channel_id)
                     if exc_channel and exc_channel.channel_type == "nats" and exc_channel.config.get("method_name") == "receive_alert_events":
                         for alert in group_alerts:
                             alert_center_results[alert.id].append(False)
@@ -345,8 +380,9 @@ class AlertLifecycleNotifier:
                 return True
         return False
 
-    def _send_to_channel(self, channel_id, notice_users, alerts, action, operator, reason, notify_scope):
-        channel = Channel.objects.filter(id=channel_id).first()
+    def _send_to_channel(self, channel_id, notice_users, alerts, action, operator, reason, notify_scope, channel=None):
+        if channel is None:
+            channel = Channel.objects.filter(id=channel_id).first()
         if not channel:
             logger.warning(f"Channel {channel_id} not found, skip notification for {len(alerts)} alerts")
             now = datetime.now(timezone.utc).isoformat()
@@ -659,6 +695,7 @@ class AlertLifecycleNotifier:
             "closed": "告警关闭",
             "recovered": "告警恢复",
             "assigned": "告警分派",
+            "reassigned": "告警转派",
         }
         label = action_labels.get(action, "告警通知")
         policy = self.policies_by_id.get(alert.policy_id, self.policy)
@@ -720,6 +757,8 @@ class AlertLifecycleNotifier:
             parts.append("状态：已自动恢复")
         elif action == "assigned":
             parts.append("状态：已分派")
+        elif action == "reassigned":
+            parts.append("状态：已转派")
 
         if alert.start_event_time:
             parts.append(f"开始时间：{self._format_notice_time(alert.start_event_time, target_timezone)}")

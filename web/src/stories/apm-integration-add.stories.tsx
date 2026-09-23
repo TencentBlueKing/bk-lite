@@ -30,27 +30,27 @@ export const IntegrationCatalogStory: Story = {
 
 export const IntegrationDetailJava: Story = {
   name: 'Java 接入',
-  render: () => <IntegrationDetail title="Java 接入" configPanel={(ep) => <JavaConfigPanel endpoint={ep} />} />,
+  render: () => <IntegrationDetail title="Java 接入" language="java" configPanel={(ep) => <JavaConfigPanel endpoint={ep} />} />,
 };
 
 export const IntegrationDetailNode: Story = {
   name: 'Node.js 接入',
-  render: () => <IntegrationDetail title="Node.js 接入" configPanel={(ep) => <NodeConfigPanel endpoint={ep} />} />,
+  render: () => <IntegrationDetail title="Node.js 接入" language="nodejs" configPanel={(ep) => <NodeConfigPanel endpoint={ep} />} />,
 };
 
 export const IntegrationDetailPython: Story = {
   name: 'Python 接入',
-  render: () => <IntegrationDetail title="Python 接入" configPanel={(ep) => <PythonConfigPanel endpoint={ep} />} />,
+  render: () => <IntegrationDetail title="Python 接入" language="python" configPanel={(ep) => <PythonConfigPanel endpoint={ep} />} />,
 };
 
 export const IntegrationDetailDotnet: Story = {
   name: '.NET 接入',
-  render: () => <IntegrationDetail title=".NET 接入" configPanel={(ep) => <DotnetConfigPanel endpoint={ep} />} />,
+  render: () => <IntegrationDetail title=".NET 接入" language="dotnet" configPanel={(ep) => <DotnetConfigPanel endpoint={ep} />} />,
 };
 
 export const IntegrationDetailGo: Story = {
   name: 'Go 接入',
-  render: () => <IntegrationDetail title="Go 接入" configPanel={(ep) => <GoConfigPanel endpoint={ep} />} />,
+  render: () => <IntegrationDetail title="Go 接入" language="go" configPanel={(ep) => <GoConfigPanel endpoint={ep} />} />,
 };
 
 export const IntegrationDetailOtc: Story = {

@@ -205,6 +205,73 @@ def test_host_process_scope_authorizes_parent_host_and_builds_process_matchers(m
     assert 'process_name=~"nginx|postgres"' in query
 
 
+def test_composite_instances_do_not_cross_product_unauthorized_pairs(mocker):
+    process_object = MonitorObject.objects.create(
+        name="Process",
+        level="base",
+        instance_id_keys=["instance_id", "process_name"],
+    )
+    plugin = MonitorPlugin.objects.create(name="ProcessPluginComposite")
+    group = MetricGroup.objects.create(
+        monitor_object=process_object,
+        monitor_plugin=plugin,
+        name="ProcessGroupComposite",
+    )
+    metric = Metric.objects.create(
+        monitor_object=process_object,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="process_cpu",
+        query="process_cpu{__$labels__}",
+        instance_id_keys=["instance_id", "process_name"],
+    )
+    nginx = MonitorInstance.objects.create(
+        id="('host-a', 'nginx')",
+        name="host-a nginx",
+        monitor_object=process_object,
+    )
+    postgres = MonitorInstance.objects.create(
+        id="('host-b', 'postgres')",
+        name="host-b postgres",
+        monitor_object=process_object,
+    )
+    mocker.patch(
+        "apps.monitor.services.authorized_metric_query.get_permission_rules",
+        return_value={"data": "permission"},
+    )
+    mocker.patch(
+        "apps.monitor.services.authorized_metric_query.permission_filter",
+        side_effect=lambda model, permission, **kwargs: model.objects.filter(id__in=[nginx.id, postgres.id]),
+    )
+    service = AuthorizedMetricQueryService(
+        user=SimpleNamespace(username="viewer", domain="domain.com", is_superuser=False),
+        current_team="1",
+        include_children=False,
+    )
+    vm_query = mocker.patch(
+        "apps.monitor.services.authorized_metric_query.Metrics.get_metrics_range",
+        return_value={"status": "success", "data": {"result": []}},
+    )
+
+    service.query_range(
+        {
+            "monitor_object_id": process_object.id,
+            "metric_id": metric.id,
+            "instance_ids": [nginx.id, postgres.id],
+            "start": 1000,
+            "end": 61000,
+            "step": "60s",
+        }
+    )
+
+    query = vm_query.call_args.args[0]
+    assert 'instance_id="host-a", process_name="nginx"' in query
+    assert 'instance_id="host-b", process_name="postgres"' in query
+    assert " or " in query
+    assert 'instance_id=~"' not in query
+    assert 'process_name=~"' not in query
+
+
 def test_mixed_authorized_and_denied_instances_fail_before_vm_query(mocker):
     monitor_object, metric, allowed, denied = _build_metric_contract()
     service = _service(mocker, allowed)

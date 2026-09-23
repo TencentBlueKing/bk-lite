@@ -1,0 +1,54 @@
+Router Advantech SNMP:
+  name: Advantech ICR (Telegraf)
+  desc: SNMP monitoring template for Advantech ICR and Conel cellular industrial
+    routers. It reports CPU utilization, memory used/free/total, internal temperature
+    and input voltage (IANA PEN 30140).
+monitor_object:
+  Router: Router
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the CPU utilization of the Advantech ICR/Conel cellular
+        router (statusCPUUsage) as a 0-100 percentage. Sustained high CPU usage can
+        indicate control-plane overload, cellular session churn, or abnormal traffic.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports RAM utilization of the Advantech ICR/Conel cellular
+        router (statusRAMUsage) as a 0-100 percentage. High memory usage may indicate
+        leaks, oversized connection tables, or insufficient capacity.
+    device_memory_used:
+      name: Memory Used
+      desc: This metric reports used RAM of the Advantech ICR/Conel cellular router
+        in bytes (statusRAMUsed).
+    device_memory_free:
+      name: Memory Free
+      desc: This metric reports free RAM of the Advantech ICR/Conel cellular router
+        in bytes (statusRAMFree).
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports total RAM of the Advantech ICR/Conel cellular router
+        in bytes (statusRAMTotal).
+    device_temperature_celsius:
+      name: Temperature
+      desc: Internal temperature of the Advantech ICR/Conel cellular router in degrees
+        Celsius (statusTemperature). ICR-2[0|4|5|6]xx platforms do not expose this
+        leaf, so the series is absent on those models.
+    device_voltage_volts:
+      name: Input Voltage
+      desc: Input supply voltage of the Advantech ICR/Conel cellular router as reported
+        by statusVoltage. ICR-2[0|4|5|6]xx platforms do not expose this leaf.
+monitor_object_metric_group:
+  Router:
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Base: Base

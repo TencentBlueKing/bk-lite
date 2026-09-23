@@ -49,6 +49,13 @@ const LayoutContent = ({ children }: { children: React.ReactNode }) => {
         icon: 'channel1',
         operation: [],
       },
+      {
+        name: 'skill_history',
+        title: t('skill.history.menu', '历史'),
+        url: '/opspilot/skill/detail/history',
+        icon: 'talk-line',
+        operation: [],
+      },
     ];
 
     if (pathname?.includes('/rules')) {

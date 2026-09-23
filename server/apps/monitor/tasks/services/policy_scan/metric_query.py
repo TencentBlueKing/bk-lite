@@ -3,8 +3,10 @@
 import copy
 import json
 import math
+import re
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.expression.conditions import compile_filter_to_query
 from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
@@ -121,8 +123,12 @@ class MetricQueryService:
             raise BaseAppException("policy period is empty")
         return format_policy_period(period, points)
 
-    def format_pmq(self):
+    def format_pmq(self, base_filters=None):
         """格式化PromQL/MetricQL查询语句
+
+        Args:
+            base_filters: 注入到 ``__$labels__`` 的范围过滤条件（实例 selector）。
+                为空时保持原查询语义。
 
         Returns:
             str: 格式化后的查询语句
@@ -135,69 +141,165 @@ class MetricQueryService:
             return query_condition.get("query")
 
         if query_type == "formula":
-            return self._ensure_formula_compiled().query
+            if not base_filters:
+                return self._ensure_formula_compiled().query
+            return self._compile_scoped_formula(base_filters).query
 
-        return compile_filter_to_query(self.metric.query, query_condition.get("filter", []))
+        return compile_filter_to_query(
+            self.metric.query,
+            query_condition.get("filter", []),
+            base_filters=base_filters or None,
+        )
 
-    def _query_range(self, query, period, points=1):
-        end_timestamp = int(self.policy.last_run_time.timestamp())
+    def _scope_instance_id_keys(self):
+        """范围下推使用的对象身份键；无法可靠映射到 label 时返回空列表。"""
+        if self.policy.query_condition.get("type") not in ("metric", "formula"):
+            return []
+        if getattr(self.policy, "collect_type", "") == "trap":
+            return []
+        return list(self._scoped_instance_matcher.object_instance_id_keys)
+
+    def _scope_batches(self, instance_ids=None):
+        """把实例范围切成有界批次，每批是可注入 ``__$labels__`` 的 base_filters。
+
+        返回 ``[None]`` 表示不下推（无范围、pmq 查询或身份无法映射），
+        此时沿用 ``format_aggregation_metrics`` 的 Python 侧过滤。
+        """
+        keys = self._scope_instance_id_keys()
+        if not keys:
+            return [None]
+        ordered = list(instance_ids) if instance_ids is not None else list(self.instances_map)
+        if not ordered:
+            return [None]
+
+        values_by_id = {}
+        for instance_id in ordered:
+            values = parse_instance_id(instance_id)
+            if len(values) < len(keys) or any(
+                value in (None, "") for value in values[: len(keys)]
+            ):
+                return [None]
+            values_by_id[instance_id] = values
+
+        batch_size = AlertConstants.SCAN_SCOPE_BATCH_SIZE
+        batches = []
+        for start in range(0, len(ordered), batch_size):
+            chunk = ordered[start : start + batch_size]
+            filters = []
+            for index, key in enumerate(keys):
+                label_values = sorted({str(values_by_id[item][index]) for item in chunk})
+                filters.append(
+                    {
+                        "name": key,
+                        "method": "=~",
+                        "value": "|".join(re.escape(value) for value in label_values),
+                    }
+                )
+            batches.append(filters)
+        return batches
+
+    def _compile_scoped_formula(self, base_filters):
+        refs = [
+            item.get("ref")
+            for item in self.policy.query_condition.get("queries") or []
+            if item.get("ref")
+        ]
+        compiled = build_formula_query(
+            self.policy.query_condition,
+            base_filters_by_ref={ref: base_filters for ref in refs},
+        )
+        if self.compiled_formula is None:
+            self.compiled_formula = compiled
+            self.instance_id_keys = list(compiled.group_by)
+        return compiled
+
+    @staticmethod
+    def _merge_range_payloads(payloads):
+        merged = None
+        results = []
+        for payload in payloads:
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("status") not in (None, "success"):
+                # 保留错误响应原样交给调用方判定，不把部分成功伪装成完整结果。
+                return payload
+            data = payload.get("data") or {}
+            if merged is None:
+                merged = {key: value for key, value in payload.items() if key != "data"}
+                merged["data"] = {key: value for key, value in data.items() if key != "result"}
+            results.extend(data.get("result") or [])
+        if merged is None:
+            return {"data": {"result": []}}
+        merged["data"]["result"] = results
+        return merged
+
+    def _run_scoped_range(
+        self, build_query, period, points=1, instance_ids=None, end_timestamp=None
+    ):
+        """按实例范围分批执行 query_range 并合并结果。
+
+        Args:
+            build_query: ``(base_query, step) -> promql``
+            instance_ids: 显式范围；None 表示使用策略 ``instances_map``。
+            end_timestamp: 窗口右端；None 表示 ``policy.last_run_time``。
+        """
+        if end_timestamp is None:
+            end_timestamp = int(self.policy.last_run_time.timestamp())
         period_seconds = period_to_seconds(period)
         points = max(1, int(points or 1))
         start_timestamp = end_timestamp - period_seconds * points
         step = self.format_period(period, points)
-        return VictoriaMetricsAPI().query_range(
-            query, start_timestamp, end_timestamp, step
-        )
+
+        batches = self._scope_batches(instance_ids)
+        payloads = []
+        for base_filters in batches:
+            query = build_query(self.format_pmq(base_filters), step)
+            payload = VictoriaMetricsAPI().query_range(
+                query, start_timestamp, end_timestamp, step
+            )
+            if len(batches) == 1:
+                return payload
+            payloads.append(payload)
+        return self._merge_range_payloads(payloads)
 
     def _compiled_group_by(self):
         return ",".join(self.get_result_group_by())
 
+    def _build_policy_query(self, base_query, step):
+        return compile_policy_query(
+            self.policy, base_query, step, self._compiled_group_by()
+        )
+
     def query_comparison_metrics(self, period, points=1):
         """带 algorithm / compare_mode 变换的比较查询。"""
-        step = self.format_period(period, points)
-        query = compile_policy_query(
-            self.policy,
-            self.format_pmq(),
-            step,
-            self._compiled_group_by(),
-        )
-        return self._query_range(query, period, points)
+        return self._run_scoped_range(self._build_policy_query, period, points)
 
     def query_existence_metrics(self, period, points=1):
         """不带比较基准的存在性查询，供无数据检测/恢复与基线同步。"""
-        step = self.format_period(period, points)
-        query = compile_existence_query(
-            self.policy,
-            self.format_pmq(),
-            step,
-            self._compiled_group_by(),
-        )
-        return self._query_range(query, period, points)
 
-    def query_raw_metrics(self, period, points=1):
-        """查询原始指标数据(不进行聚合)
+        def build_query(base_query, step):
+            return compile_existence_query(
+                self.policy, base_query, step, self._compiled_group_by()
+            )
 
-        Args:
-            period: 周期配置
-            points: 数据点数
+        return self._run_scoped_range(build_query, period, points)
 
-        Returns:
-            dict: VictoriaMetrics返回的原始指标数据
+    def query_policy_window_metrics(self, period, instance_ids=None, end_timestamp=None):
+        """只查给定监控实例的策略窗口结果，供快照兜底与告警前点使用。
+
+        与 ``query_comparison_metrics`` 使用同一 PromQL 编译，回包受
+        ``by (group_by)`` 与实例 selector 双重收敛；不再拉取无聚合的原始序列。
+        ``instance_ids`` 为空列表时不发起查询。
         """
-        # 计算查询时间范围
-        end_timestamp = int(self.policy.last_run_time.timestamp())
-        period_seconds = period_to_seconds(period)
-        start_timestamp = end_timestamp - period_seconds
-
-        # 准备查询参数
-        query = self.format_pmq()
-        step = self.format_period(period, points)
-
-        # 直接查询原始数据
-        raw_metrics = VictoriaMetricsAPI().query_range(
-            query, start_timestamp, end_timestamp, step
+        if instance_ids is not None and not instance_ids:
+            return {"data": {"result": []}}
+        return self._run_scoped_range(
+            self._build_policy_query,
+            period,
+            1,
+            instance_ids=instance_ids,
+            end_timestamp=end_timestamp,
         )
-        return raw_metrics
 
     def convert_metric_values(self, vm_data):
         """转换指标数值到计算单位
@@ -318,19 +420,22 @@ class MetricQueryService:
         compare_mode = getattr(self.policy, "compare_mode", None) or COMPARE_MODE_ABSOLUTE
         if compare_mode in ("", COMPARE_MODE_ABSOLUTE):
             return {}, {}
-        step = self.format_period(self.policy.period, 1)
-        base_query = self.format_pmq()
         group_by = self._compiled_group_by()
-        current_query = compile_window_query(self.policy, base_query, step, group_by)
+
+        def build_current(base_query, step):
+            return compile_window_query(self.policy, base_query, step, group_by)
+
+        def build_baseline(base_query, step):
+            return compile_baseline_query(self.policy, base_query, step, group_by)
+
         current_data = self.convert_metric_values(
-            self._query_range(current_query, self.policy.period, 1)
+            self._run_scoped_range(build_current, self.policy.period, 1)
         )
         current_map = self._last_numeric_map(current_data)
         if compare_mode == COMPARE_MODE_TIMELEFT:
             return current_map, {}
-        baseline_query = compile_baseline_query(self.policy, base_query, step, group_by)
         baseline_data = self.convert_metric_values(
-            self._query_range(baseline_query, self.policy.period, 1)
+            self._run_scoped_range(build_baseline, self.policy.period, 1)
         )
         return current_map, self._last_numeric_map(baseline_data)
 

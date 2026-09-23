@@ -87,6 +87,8 @@ class TestSyncMonitorInstances:
         assert inst.created_by == "system"
         assert inst.updated_by == "system"
         assert MonitorInstanceOrganization.objects.filter(monitor_instance_id="('h1',)", organization=3).exists()
+        vm.return_value.query.assert_called()
+        assert vm.return_value.query.call_args.kwargs.get("step") == "10m"
 
     def test_recovers_soft_deleted_instance(self, mocker):
         obj = _make_obj()

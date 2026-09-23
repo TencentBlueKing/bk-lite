@@ -39,6 +39,7 @@ import {
   applyIpAsDefaultNodeName,
   applyWinrmCertificateValidation,
   DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+  mergeCurrentOrganization,
   pickLatestPackage
 } from './utils';
 import { buildOrganizationOptions } from './excelImportUtils';
@@ -54,6 +55,7 @@ import {
   isWinrmSchemePortMismatch,
   type WinrmScheme
 } from '@/app/node-manager/utils/winrm';
+import { countAccessAssets } from './installNodeCount';
 
 interface InstallConfigProps {
   onNext: (data: any) => void;
@@ -117,7 +119,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   );
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const { confirm } = Modal;
-  const { renderTableColumn, renderActionColumn } = useTableRenderer();
+  const currentOrganizationId = commonContext.selectedGroup?.id;
+  const lockedOrganizationIds = useMemo(
+    () => mergeCurrentOrganization(undefined, currentOrganizationId),
+    [currentOrganizationId]
+  );
+  const { renderTableColumn, renderActionColumn } = useTableRenderer(
+    lockedOrganizationIds
+  );
 
   useEffect(() => {
     form.setFieldsValue({ push_targets: soldPushTargets });
@@ -130,7 +139,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     ) => ({
       key: uuidv4(),
       ip: null,
-      organizations: [commonContext.selectedGroup?.id],
+      organizations: mergeCurrentOrganization(undefined, currentOrganizationId),
       port: targetOS === 'windows' ? defaultWinrmPort(scheme) : 22,
       username: targetOS === 'windows' ? 'Administrator' : 'root',
       auth_type: 'password',
@@ -143,7 +152,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           : targetOS !== 'windows',
       node_name: null
     }),
-    [commonContext.selectedGroup?.id]
+    [currentOrganizationId]
   );
   const INFO_ITEM = useMemo(
     () => createInfoItem(os, winrmCertValidation, winrmScheme),
@@ -158,6 +167,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   // 获取表格配置
   const tableConfig = useTableConfig(installMethod, os);
+  const installNodeCount = useMemo(
+    () => countAccessAssets(tableData, tableConfig, INFO_ITEM),
+    [tableData, tableConfig, INFO_ITEM]
+  );
 
   // 添加行
   const addInfoItem = useCallback(
@@ -396,7 +409,15 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           rowWithIpDefault.node_name !== item.node_name;
         const updatedRow = {
           ...rowWithIpDefault,
-          ...editedFields
+          ...editedFields,
+          ...(Object.prototype.hasOwnProperty.call(editedFields, 'organizations')
+            ? {
+              organizations: mergeCurrentOrganization(
+                editedFields.organizations,
+                currentOrganizationId
+              )
+            }
+            : {})
         };
         if (
           nodeNameWasSynced ||
@@ -459,6 +480,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       const newRows = importedData.map((row) => ({
         ...createInfoItem(os, winrmCertValidation, winrmScheme),
         ...row,
+        organizations: mergeCurrentOrganization(
+          row.organizations,
+          currentOrganizationId
+        ),
         winrm_scheme: winrmScheme,
         key: uuidv4()
       }));
@@ -658,7 +683,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           ip: item.ip,
           os: os,
           cpu_architecture: cpuArchitecture,
-          organizations: item.organizations,
+          organizations: mergeCurrentOrganization(
+            item.organizations,
+            currentOrganizationId
+          ),
           port: item.port,
           username: item.username,
           password: item.private_key ? '' : item.password,
@@ -671,7 +699,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       } else {
         params.nodes = tableData.map((item) => ({
           ip: item.ip,
-          organizations: item.organizations,
+          organizations: mergeCurrentOrganization(
+            item.organizations,
+            currentOrganizationId
+          ),
           node_name: item.node_name,
           node_id: item.key
         }));
@@ -691,7 +722,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           nodes: tableData.map((item) => ({
             ip: item.ip,
             node_name: item.node_name,
-            organizations: item.organizations,
+            organizations: mergeCurrentOrganization(
+              item.organizations,
+              currentOrganizationId
+            ),
             node_id: item.key as string,
             cpu_architecture: cpuArchitecture
           }))
@@ -869,15 +903,28 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           </Form.Item>
         )}
         <div className="flex items-center justify-between mb-[10px]">
-          <span className="text-[14px]">
-            {t('node-manager.cloudregion.node.installInfo')}
-            <span
-              className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
-              style={{ fontFamily: 'SimSun, sans-serif' }}
-            >
-              *
+          <div className="flex items-center gap-[8px]">
+            <span className="text-[14px]">
+              {t('node-manager.cloudregion.node.installInfo')}
+              <span
+                className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+                style={{ fontFamily: 'SimSun, sans-serif' }}
+              >
+                *
+              </span>
             </span>
-          </span>
+            <span
+              aria-live="polite"
+              className="text-[13px] tabular-nums text-[var(--color-text-2)]"
+            >
+              {t('node-manager.cloudregion.node.installNodeCount', '', {
+                count: installNodeCount
+              })}
+            </span>
+            <span className="text-[12px] text-[var(--color-text-3)]">
+              {t('node-manager.cloudregion.node.installNodeCountHint')}
+            </span>
+          </div>
           <div className="flex gap-[8px]">
             <Button
               icon={<UploadOutlined />}

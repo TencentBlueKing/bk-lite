@@ -69,7 +69,7 @@ export const useFirewallConfig = () => {
     },
     collectTypes: {
       'Firewall SNMP General': 'snmp',
-      'Firewall Cisco SNMP': 'snmp_cisco_asa',
+      'Firewall Cisco SNMP': 'snmp_cisco_firewall',
       'Firewall Fortinet SNMP': 'snmp_fortinet',
       'Firewall Hillstone SNMP': 'snmp_hillstone',
       'Firewall Sophos XG SNMP': 'snmp_sophos',
@@ -88,6 +88,8 @@ export const useFirewallConfig = () => {
       'Firewall SonicWall SNMP': 'snmp_sonicwall',
       'Firewall Sangfor SNMP': 'snmp_sangfor',
       'Firewall Huawei SNMP': 'snmp_huawei_usg',
+      'Firewall H3C SNMP': 'snmp_h3c_firewall',
+      'Firewall Juniper SNMP': 'snmp_juniper_firewall',
       'Firewall Kerio Control SNMP': 'snmp_kerio',
       'Firewall Clavister SNMP': 'snmp_clavister',
       'Firewall Blockbit SNMP': 'snmp_blockbit',

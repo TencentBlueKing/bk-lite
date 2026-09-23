@@ -22,7 +22,7 @@ class SystemAPITokenViewSet(viewsets.ModelViewSet):
             request,
             action_type,
             "system-manager",
-            f"{_SECRET_LOG_VERBS[action_type]}系统密钥: {name} ({instance.system_id})",
+            f"{_SECRET_LOG_VERBS[action_type]}系统令牌: {name} ({instance.system_id})",
             target_type="system_api_token",
             target_id=instance.pk,
             detail={"kind": "system", "name": instance.name or "", "system_id": instance.system_id},
@@ -59,7 +59,7 @@ class SystemAPITokenViewSet(viewsets.ModelViewSet):
     @HasPermission("system_api_secret-Edit", "system-manager")
     def update(self, request, *args, **kwargs):
         if not kwargs.get("partial"):
-            return JsonResponse({"result": False, "message": "系统密钥不支持全量修改"})
+            return JsonResponse({"result": False, "message": "系统令牌不支持全量修改"})
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

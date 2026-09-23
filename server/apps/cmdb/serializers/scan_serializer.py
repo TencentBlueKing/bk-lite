@@ -7,14 +7,20 @@ from rest_framework.response import Response
 
 from apps.cmdb.constants.constants import PERMISSION_TASK
 from apps.cmdb.models.scan_model import (
+    SCAN_AGENT_CREDENTIAL_ID,
     SCAN_ALLOWED_FAMILIES,
     SCAN_DATABASE_FAMILY,
     SCAN_DATABASE_TYPES,
     SCAN_IP_RANGE_MAX_SIZE,
+    SCAN_JOB_OPTIONAL_FAMILIES,
+    SCAN_MIDDLEWARE_FAMILY,
+    SCAN_MIDDLEWARE_TYPES,
     ScanExecution,
     ScanFamilyRun,
     ScanHit,
     ScanTask,
+    default_scan_snmp_pool,
+    is_agent_credential,
     merge_database_credentials,
     normalize_scan_families,
     scan_driver_type_for_model,
@@ -213,12 +219,6 @@ class ScanTaskSerializer(AuthSerializer):
         families = normalize_scan_families(families or [])
         attrs["families"] = families
 
-        cloud_region = attrs.get("cloud_region")
-        if cloud_region is None and self.instance is not None:
-            cloud_region = self.instance.cloud_region
-        if "host" in families and not cloud_region:
-            raise serializers.ValidationError({"cloud_region": "主机扫描必须填写云区域"})
-
         credentials = attrs.get("credentials")
         if credentials is None and self.instance is not None:
             credentials = self.instance.decrypt_credentials
@@ -237,13 +237,35 @@ class ScanTaskSerializer(AuthSerializer):
                         if item.get(field) == API_SECRET_MASK:
                             raise serializers.ValidationError({"credentials": "新建任务时请重新填写凭据"})
 
+        if "host" in families and SCAN_MIDDLEWARE_FAMILY in families:
+            middleware_pool = CollectCredentialPoolService.normalize_pool(credentials.get(SCAN_MIDDLEWARE_FAMILY) or [])
+            if not middleware_pool:
+                credentials[SCAN_MIDDLEWARE_FAMILY] = CollectCredentialPoolService.normalize_pool(credentials.get("host") or [])
+
         normalized = {}
         for model_id in families:
             pool = CollectCredentialPoolService.normalize_pool(credentials.get(model_id) or [])
             if not pool:
+                if model_id in SCAN_JOB_OPTIONAL_FAMILIES:
+                    normalized[model_id] = []
+                    continue
                 raise serializers.ValidationError({"credentials": f"{model_id} 至少需要一把凭据"})
+            if model_id == "network":
+                pool = default_scan_snmp_pool(pool)
             normalized[model_id] = pool
         attrs["credentials"] = normalized
+
+        cloud_region = attrs.get("cloud_region")
+        if cloud_region is None and self.instance is not None:
+            cloud_region = self.instance.cloud_region
+        requires_cloud_region = "host" in families
+        if SCAN_MIDDLEWARE_FAMILY in families:
+            middleware_pool = normalized.get(SCAN_MIDDLEWARE_FAMILY) or []
+            if not middleware_pool or all(is_agent_credential(item) for item in middleware_pool):
+                requires_cloud_region = True
+        if requires_cloud_region and not cloud_region:
+            raise serializers.ValidationError({"cloud_region": "主机或 Agent 中间件扫描必须填写云区域"})
+
         attrs.setdefault("auto_push_monitor", False)
         attrs.setdefault("auto_generate_collect", False)
         return attrs
@@ -252,6 +274,9 @@ class ScanTaskSerializer(AuthSerializer):
         representation = super().to_representation(instance)
         families = normalize_scan_families(instance.families)
         credentials = merge_database_credentials(instance.decrypt_credentials)
+        if isinstance(credentials, dict) and credentials.get("network"):
+            credentials = dict(credentials)
+            credentials["network"] = default_scan_snmp_pool(credentials.get("network") or [])
         representation["families"] = families
         representation["credentials"] = self._mask_credentials(credentials)
         return representation
@@ -332,14 +357,22 @@ def _credential_label_for_hit(hit: ScanHit) -> str:
     credential_id = str(hit.credential_id or "").strip()
     if not credential_id:
         return ""
+    if credential_id == SCAN_AGENT_CREDENTIAL_ID:
+        return "Agent"
     task = getattr(getattr(hit, "execution", None), "task", None)
     if task is None:
         return credential_id
-    pool = (task.credentials or {}).get(hit.family_run.model_id) or []
+    credentials = task.credentials or {}
+    pool = credentials.get(hit.family_run.model_id) or []
     if not isinstance(pool, list):
         pool = [pool] if isinstance(pool, dict) else []
+    extra_pools = []
     if hit.family_run.model_id in SCAN_DATABASE_TYPES:
-        extra = (task.credentials or {}).get(SCAN_DATABASE_FAMILY) or []
+        extra_pools.append(credentials.get(SCAN_DATABASE_FAMILY) or [])
+    if hit.family_run.model_id in SCAN_MIDDLEWARE_TYPES:
+        extra_pools.append(credentials.get(SCAN_MIDDLEWARE_FAMILY) or [])
+        extra_pools.append(credentials.get("host") or [])
+    for extra in extra_pools:
         if isinstance(extra, dict):
             extra = [extra]
         pool = list(pool) + list(extra)

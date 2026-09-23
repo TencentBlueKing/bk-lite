@@ -47,6 +47,7 @@ import {
   portLibraryUrl,
   snapshotText,
   sortedMatchedFamilies,
+  isScanMiddlewareType,
   type ScanExecutionSummary,
   type ScanHitItem,
 } from './scanHits';
@@ -129,6 +130,14 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
       if (modelId === 'mysql') return t('Scan.familyMysql');
       if (modelId === 'postgresql') return t('Scan.familyPostgresql');
       if (modelId === 'mssql') return t('Scan.familyMssql');
+      if (modelId === 'middleware') return t('Scan.familyMiddleware');
+      if (modelId === 'nginx') return t('Scan.familyNginx');
+      if (modelId === 'tomcat') return t('Scan.familyTomcat');
+      if (modelId === 'kafka') return t('Scan.familyKafka');
+      if (modelId === 'zookeeper') return t('Scan.familyZookeeper');
+      if (modelId === 'rabbitmq') return t('Scan.familyRabbitmq');
+      if (modelId === 'consul') return t('Scan.familyConsul');
+      if (modelId === 'etcd') return t('Scan.familyEtcd');
       const family = SCAN_FAMILIES.find((item) => item.modelId === modelId);
       return family ? t(family.labelKey) : modelId;
     },
@@ -314,6 +323,10 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
     }
 
     const selectedHits = hits.filter((item) => selectedHitIds.includes(item.id));
+    if (kind === 'monitor' && selectedHits.some((item) => isScanMiddlewareType(item.family_model_id))) {
+      message.warning(t('Scan.middlewarePushMonitorHint'));
+      return;
+    }
     const dbUnmatchedSelected = selectedHits.filter((item) => item.unmatch_reason === 'credential_failed');
     const networkUnmatchedSelected = selectedHits.filter(
       (item) => item.unmatch_reason && item.unmatch_reason !== 'credential_failed'
@@ -576,6 +589,34 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
         credentialCol,
       ];
     }
+    if (familyTab === 'middleware' || isScanMiddlewareType(familyTab)) {
+      return [
+        hostCol,
+        {
+          title: t('Scan.port'),
+          key: 'port',
+          render: (_: unknown, record: ScanHitItem) => displayValue(record.port || record.snapshot?.port),
+        },
+        {
+          title: t('Scan.version'),
+          key: 'version',
+          render: (_: unknown, record: ScanHitItem) => snapshotText(record, ['version']),
+        },
+        {
+          title: t('Scan.model'),
+          dataIndex: 'cmdb_model_id',
+          key: 'cmdb_model_id',
+          render: (value: string) => value || '--',
+        },
+        {
+          title: t('Scan.middlewarePath'),
+          key: 'middlewarePath',
+          render: (_: unknown, record: ScanHitItem) =>
+            snapshotText(record, ['conf_path', 'config_path', 'install_path', 'bin_path', 'nginx_path']),
+        },
+        credentialCol,
+      ];
+    }
     return [
       hostCol,
       {
@@ -677,6 +718,8 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
 
   const actionsDisabled = hitsLoading || !canSplitUnmatched;
   const exportDisabled = hitsLoading || isOnlyDbUnmatchedSelected || !selectedHitIds.length || !canSplitUnmatched;
+  const monitorDisabled =
+    exportDisabled || familyTab === 'middleware' || isScanMiddlewareType(familyTab);
   const targetCount = activeExecution?.target_count ?? 0;
   const receivedCount = activeExecution?.received_count ?? 0;
   const progressPercent = targetCount ? Math.min(100, Math.round((receivedCount / targetCount) * 100)) : 0;
@@ -723,7 +766,7 @@ const ScanHitsDrawer: React.FC<ScanHitsDrawerProps> = ({ open, execution, onClos
               <Button
                 type="primary"
                 loading={batchLoading}
-                disabled={exportDisabled}
+                disabled={monitorDisabled}
                 onClick={() => handleBatch('monitor')}
               >
                 {t('Scan.pushMonitor')}

@@ -10,7 +10,7 @@ from apps.system_mgmt.models import Channel, ChannelChoices, Group, Role, User
 from apps.system_mgmt.nats.auth import build_user_authorization_context
 from apps.system_mgmt.nats.channels import search_channel_list, search_opspilot_nats_channels
 from apps.system_mgmt.nats.common import _collect_ancestor_group_ids, get_user_all_roles
-from apps.system_mgmt.nats.users import get_archived_groups, get_assignable_groups, get_group_id, search_groups
+from apps.system_mgmt.nats.users import get_archived_groups, get_assignable_groups, get_group_id
 from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.viewset.user_viewset import _merge_retained_archived_groups, _validate_selected_groups
@@ -69,16 +69,6 @@ def test_assignable_groups_excludes_archived(active_and_archived, as_superuser):
     if not as_superuser:
         assert groups["active_child"].id in result["data"]
         assert groups["archived_child"].id not in result["data"]
-
-
-def test_search_groups_excludes_archived(active_and_archived):
-    groups = active_and_archived
-    result = search_groups({"search": "proj-"})
-    names = {g["name"] for g in result["data"]}
-    ids = {g["id"] for g in result["data"]}
-    assert {"proj-active", "proj-active-child"} <= names
-    assert "proj-archived" not in names and "proj-arch-child" not in names
-    assert groups["archived"].id not in ids
 
 
 @pytest.mark.parametrize("as_superuser", [False, True])

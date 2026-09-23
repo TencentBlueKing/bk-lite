@@ -168,3 +168,34 @@ def test_does_not_create_orphan_children_without_active_parent(mocker, is_delete
     SyncInstance().run()
 
     assert not MonitorInstance.objects.filter(monitor_object__in=[node, pod]).exists()
+
+
+def test_scoped_discovery_still_requires_active_parent(mocker):
+    cluster, node, pod = _create_objects()
+    MonitorInstance.objects.create(
+        id="('c1',)",
+        name="c1",
+        monitor_object=cluster,
+        auto=False,
+        is_active=False,
+        interval=300,
+    )
+    query = mocker.patch(
+        "apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI.query"
+    )
+    query.side_effect = lambda promql, **_kwargs: (
+        _vm_result(
+            {"instance_type": "k3s", "instance_id": "c1", "node": "n1"}
+        )
+        if "kube_node_info" in promql
+        else _vm_result(
+            {"instance_type": "k3s", "instance_id": "c1", "pod": "p1"}
+        )
+        if "kube_pod_info" in promql
+        else _vm_result()
+    )
+
+    SyncInstance(parent_instance_id="('c1',)").run()
+
+    query.assert_not_called()
+    assert not MonitorInstance.objects.filter(monitor_object__in=[node, pod]).exists()

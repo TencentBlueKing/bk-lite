@@ -1,4 +1,4 @@
-"""业务分组内置模型与服务树关联种子。"""
+"""服务树内置模型：系统包含应用，不预置业务分组。"""
 
 from pathlib import Path
 
@@ -14,24 +14,14 @@ def _rows(sheet_name):
     return pd.read_excel(XLSX, sheet_name=sheet_name, header=1).fillna("")
 
 
-def test_biz_group_model_is_seeded_under_application_topology():
-    models = _rows("models").set_index("model_id")
-    assert models.loc["biz_group", "model_name"] == "业务分组"
-    assert models.loc["biz_group", "classification_id"] == "business_manage"
-    assert models.loc["biz_group", "app_topo_layer"] == "none"
-    assert models.loc["biz_group", "icn"] == "cc-set_集群"
+def test_biz_group_model_is_not_seeded():
+    models = _rows("models")
+    assert "biz_group" not in set(models["model_id"].astype(str))
+    assert "attr-biz_group" not in pd.ExcelFile(XLSX).sheet_names
+    assert "asso-biz_group" not in pd.ExcelFile(XLSX).sheet_names
 
 
-def test_biz_group_has_name_and_organization_only():
-    attrs = set(_rows("attr-biz_group")["attr_id"])
-    assert attrs == {"inst_name", "organization"}
-    required = _rows("attr-biz_group").set_index("attr_id")
-    assert bool(required.loc["inst_name", "is_only"]) is True
-    assert bool(required.loc["inst_name", "is_required"]) is True
-    assert bool(required.loc["organization", "is_required"]) is True
-
-
-def test_service_tree_associations_are_one_to_n_contains():
+def test_service_tree_associations_are_system_contains_application():
     system_assos = _rows("asso-system")[["src_model_id", "dst_model_id", "asst_id", "mapping"]].to_dict("records")
     assert {
         "src_model_id": "system",
@@ -39,26 +29,7 @@ def test_service_tree_associations_are_one_to_n_contains():
         "asst_id": "contains",
         "mapping": "1:n",
     } in system_assos
-    assert {
-        "src_model_id": "system",
-        "dst_model_id": "biz_group",
-        "asst_id": "contains",
-        "mapping": "1:n",
-    } in system_assos
-
-    group_assos = _rows("asso-biz_group")[["src_model_id", "dst_model_id", "asst_id", "mapping"]].to_dict("records")
-    assert {
-        "src_model_id": "biz_group",
-        "dst_model_id": "biz_group",
-        "asst_id": "contains",
-        "mapping": "1:n",
-    } in group_assos
-    assert {
-        "src_model_id": "biz_group",
-        "dst_model_id": "application",
-        "asst_id": "contains",
-        "mapping": "1:n",
-    } in group_assos
+    assert not any(row.get("dst_model_id") == "biz_group" for row in system_assos)
 
     application_assos = _rows("asso-application")[["src_model_id", "dst_model_id", "asst_id", "mapping"]].to_dict("records")
     assert {

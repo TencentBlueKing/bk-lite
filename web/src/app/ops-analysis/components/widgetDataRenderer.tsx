@@ -48,6 +48,7 @@ import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/o
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
 import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
+import { buildTopNItems } from "@/app/ops-analysis/utils/topNData";
 import { buildWidgetRequestCacheKey } from "@/app/ops-analysis/utils/widgetRequestCache";
 import { useDashboardRuntimeScheduler } from "@/app/ops-analysis/context/dashboardRuntimeScheduler";
 import {
@@ -95,33 +96,11 @@ const validateTopNData = (
     return { isValid: false, message: errorMessage || "数据格式不匹配" };
   }
 
-  const labelField = config?.topNLabelField;
-  const valueField = config?.topNValueField;
+  const hasNamedRows =
+    buildTopNItems(data, config?.topNLabelField, config?.topNValueField)
+      .length > 0;
 
-  const hasValidData = data.some((item) => {
-    if (Array.isArray(item) && item.length >= 2) {
-      const rawName = getValueByPath(item, labelField);
-      const rawValue = getValueByPath(item, valueField);
-      const name =
-        rawName === undefined || rawName === null ? "" : String(rawName).trim();
-      const value = Number(rawValue);
-      return !!name && !Number.isNaN(value);
-    }
-
-    if (!item || typeof item !== "object") {
-      return false;
-    }
-
-    const rawName = getValueByPath(item, labelField);
-    const rawValue = getValueByPath(item, valueField);
-
-    const name =
-      rawName === undefined || rawName === null ? "" : String(rawName).trim();
-    const value = Number(rawValue);
-    return !!name && !Number.isNaN(value);
-  });
-
-  return hasValidData
+  return hasNamedRows
     ? { isValid: true }
     : { isValid: false, message: errorMessage || "数据格式不匹配" };
 };
@@ -345,8 +324,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
   useEffect(() => {
     if (isSceneWidget) return;
+    if (loading || tableLoading) return;
     onRawData?.(rawData);
-  }, [isSceneWidget, onRawData, rawData]);
+  }, [isSceneWidget, onRawData, rawData, loading, tableLoading]);
   const effectiveComponentParams = useMemo(() => {
     const overrides = config?.dataSourceParams || [];
     if (!dataSource?.params?.length) return overrides;
@@ -507,9 +487,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         headerRuntimeSlot,
       )
       : null;
-  const inlineComponentSwitchControl = chartType === "room3D"
-    ? componentSwitchControl
-    : headerRuntimeSlot ? null : componentSwitchControl;
+  const inlineComponentSwitchControl = headerRuntimeSlot
+    ? null
+    : componentSwitchControl;
 
   const fetchIdRef = useRef(0);
   const inflightCountRef = useRef(0);

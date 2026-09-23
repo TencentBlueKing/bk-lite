@@ -32,27 +32,9 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- Arista EOS CPU (HOST-RESOURCES hrProcessorLoad, 每核 0-100%, 共享盘 avg by instance 取整机均值) ----
-    # 待现网核验：1.3.6.1.2.1.25.3.3.1.2
+# @bk_include_ifmib_table
+    # ---- CPU：HOST-RESOURCES hrProcessorLoad，每核 0-100%，表列禁止 .0 ----
+    # 列 OID 1.3.6.1.2.1.25.3.3.1.2。共享盘 avg by instance 取整机均值。
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
@@ -60,11 +42,13 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.3.3.1.2"
         name = "usage"
-    # ---- 内存 (HOST-RESOURCES hrStorageUsed/Size，按 hrStorageDescr 只保留 RAM 行，allocation units → 字节) ----
-    # 待现网核验：hrStorageDescr 1.3.6.1.2.1.25.2.3.1.3；allocation units ...1.4；Size ...1.5；Used ...1.6。
+    # ---- 内存：HOST-RESOURCES hrStorageUsed/Size，表列禁止 .0 ----
+    # descr 1.3.6.1.2.1.25.2.3.1.3；allocation units ...1.4；Size ...1.5；Used ...1.6。
+    # starlark 按 hrStorageDescr 只保留 RAM 行，再把 allocation units 换成字节。
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.2.3.1.3"
         name = "descr"
@@ -78,10 +62,14 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.2.3.1.6"
         name = "used"
-    # ---- 温度 (ENTITY-SENSOR entPhySensorValue，按 type=celsius(8) 过滤，再按 scale/precision 换算为 ℃) ----
-    # 待现网核验：type ...99.1.1.1.1；scale ...1.2；precision ...1.3；value ...1.4。
+    # ---- 传感器：ENTITY-SENSOR-MIB entPhySensorTable 1.3.6.1.2.1.99.1.1.1，表列禁止 .0 ----
+    # type ...99.1.1.1.1；scale ...1.2；precision ...1.3；value ...1.4。
+    # descr 取 ENTITY-MIB entPhysicalDescr ...47.1.1.1.1.2，缺省回退 entPhysicalName ...1.7。
+    # 同一张表一次 walk：机箱温度 + 光模块 DDM，避免对同一 sensor 表重复 walk。
+    # starlark 按 scale/precision 换算后分流：DOM RX/TX Power → 光功率 dBm；
+    # descr 含 DOM 且 type=celsius(8) → 模块温度；其余 celsius(8) → 机箱温度。
     [[inputs.snmp.table]]
-        name = "device_temperature"
+        name = "device_sensor"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
@@ -96,9 +84,52 @@
         name = "precision"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.99.1.1.1.4"
-        name = "celsius"
-# ---- 风扇/电源：ENTITY-STATE 需与 entPhysicalClass 行级关联，无干净专用状态表 → N/A。----
+        name = "value"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "name"
+        is_tag = true
+    # ---- 风扇：ENTITY-MIB entPhysicalClass fan(7) + ENTITY-STATE entStateOper ----
+    # class 1.3.6.1.2.1.47.1.1.1.1.5；name ...1.7；oper 1.3.6.1.2.1.131.1.1.1.3。
+    # starlark 只保留 class=7 且 oper 有值；enum 将 enabled(3)→1(正常)，其余→2(异常)。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.5"
+        name = "entPhysicalClass"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.131.1.1.1.3"
+        name = "state"
+    # ---- 电源：ENTITY-MIB entPhysicalClass powerSupply(6) + 同一 entStateOper ----
+    # starlark 只保留 class=6 且 oper 有值；枚举归一同风扇。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.5"
+        name = "entPhysicalClass"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.131.1.1.1.3"
+        name = "state"
 
+# ---- 内存：只保留 RAM 行（hrStorageDescr），allocation units × used/size → 字节。----
 [[processors.starlark]]
     namepass = ["device_memory"]
     source = '''
@@ -125,8 +156,9 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["arista"]
 
+# ---- 传感器分流：value * 10^((scale-9)*3 - precision)；DOM RX/TX Power → 光功率，其余 celsius → 温度。----
 [[processors.starlark]]
-    namepass = ["device_temperature"]
+    namepass = ["device_sensor"]
     source = '''
 def pow10(exp):
     result = 1.0
@@ -143,27 +175,100 @@ def pow10(exp):
         return 1.0 / result
     return result
 
-def apply(metric):
-    if metric.tags.get("sensor_type") != "8":
-        return None
-    value = metric.fields.get("celsius")
-    if value == None:
-        return None
-    scale = metric.fields.get("scale")
-    precision = metric.fields.get("precision")
-    if scale == None:
-        scale = 9
-    if precision == None:
-        precision = 0
-    exp = (int(scale) - 9) * 3 - int(precision)
-    metric.fields["celsius"] = float(value) * pow10(exp)
+def cleanup(metric):
+    if "value" in metric.fields:
+        metric.fields.pop("value")
     if "scale" in metric.fields:
         metric.fields.pop("scale")
     if "precision" in metric.fields:
         metric.fields.pop("precision")
     if "sensor_type" in metric.tags:
         metric.tags.pop("sensor_type")
+    if "name" in metric.tags:
+        metric.tags.pop("name")
+    return metric
+
+def apply(metric):
+    value = metric.fields.get("value")
+    if value == None:
+        return None
+    if int(value) == -1000000000:
+        return None
+    descr = metric.tags.get("descr") or ""
+    name = metric.tags.get("name") or ""
+    haystack = (descr + " " + name).lower()
+    if descr == "" and name != "":
+        metric.tags["descr"] = name
+    scale = metric.fields.get("scale")
+    precision = metric.fields.get("precision")
+    if scale == None:
+        scale = 9
+    if precision == None:
+        precision = 0
+    converted = float(value) * pow10((int(scale) - 9) * 3 - int(precision))
+    if "dom rx power" in haystack:
+        metric.name = "device_optical"
+        metric.fields["rx_power"] = converted
+        return cleanup(metric)
+    if "dom tx power" in haystack:
+        metric.name = "device_optical"
+        metric.fields["tx_power"] = converted
+        return cleanup(metric)
+    if metric.tags.get("sensor_type") != "8":
+        return None
+    if "dom" in haystack:
+        metric.name = "device_optical"
+        metric.fields["temperature"] = converted
+        return cleanup(metric)
+    metric.name = "device_temperature"
+    metric.fields["celsius"] = converted
+    return cleanup(metric)
+'''
+    [processors.starlark.tagpass]
+        brand = ["arista"]
+
+# ---- 风扇：只保留 ENTITY-MIB entPhysicalClass fan(7)，且必须有 oper 状态。----
+[[processors.starlark]]
+    namepass = ["device_fan"]
+    source = '''
+def apply(metric):
+    if metric.tags.get("entPhysicalClass") != "7":
+        return None
+    if metric.fields.get("state") == None:
+        return None
     return metric
 '''
     [processors.starlark.tagpass]
         brand = ["arista"]
+
+# ---- 电源：只保留 ENTITY-MIB entPhysicalClass powerSupply(6)，且必须有 oper 状态。----
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    if metric.tags.get("entPhysicalClass") != "6":
+        return None
+    if metric.fields.get("state") == None:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["arista"]
+
+# ---- 风扇状态归一：enabled(3)→1(正常)，unknown/disabled/testing 及其余→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "3" = 1
+
+# ---- 电源状态归一：同 entStateOper；enabled(3)→1(正常)，其余→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "3" = 1

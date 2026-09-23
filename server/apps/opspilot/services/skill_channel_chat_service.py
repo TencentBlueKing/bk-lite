@@ -8,12 +8,16 @@ import uuid
 from typing import Any
 
 from asgiref.sync import sync_to_async
+from django.core.paginator import Paginator
+from django.db.models import Count, Q
 from django.http import StreamingHttpResponse
+from django.utils import timezone as django_timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import SKILL_CHANNEL_SKIP_ORG_CHECK, SkillChannelChoices
-from apps.opspilot.memory.identity import resolve_owner_identity
+from apps.opspilot.memory.identity import is_system_user_uuid, resolve_owner_identity, split_external_user_id
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
@@ -34,6 +38,7 @@ from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import create_error_stream_response
+from apps.system_mgmt.models import User as SystemUser
 
 PAGE_CONTEXT_TEXT_BUDGET = 8000
 PAGE_CONTEXT_MAX_IMAGES = 6
@@ -64,6 +69,9 @@ PAGE_CONTEXT_SINGLE_TURN_MAX_TOKENS = 20000
 PAGE_CONTEXT_SESSION_MAX_TOKENS = 80000
 PAGE_CONTEXT_TOO_LARGE_MESSAGE = "当前页面内容过多，无法进行问答"
 PAGE_CONTEXT_SESSION_OVERFLOW_MESSAGE = "上下文过长，请新开会话"
+ADMIN_CONVERSATION_PAGE_SIZE_MAX = 100
+ADMIN_PERSON_LOOKUP_LIMIT = 200
+ADMIN_MESSAGE_FETCH_MAX = 2000
 
 
 class SkillChannelChatError(Exception):
@@ -73,11 +81,32 @@ class SkillChannelChatError(Exception):
         self.status = status
 
 
-def get_enabled_channel(channel_id: int, expected_types: set[str] | None = None) -> SkillChannel:
+def lookup_skill_channel(channel_ref: int | str | uuid.UUID | None) -> SkillChannel:
+    """按对外 public_id 或内部主键查找渠道；找不到则 404。"""
+    if channel_ref is None or channel_ref == "":
+        raise SkillChannelChatError("渠道不存在", status=404)
+    if isinstance(channel_ref, uuid.UUID):
+        try:
+            return SkillChannel.objects.select_related("skill").get(public_id=channel_ref)
+        except SkillChannel.DoesNotExist as exc:
+            raise SkillChannelChatError("渠道不存在", status=404) from exc
+    if isinstance(channel_ref, int) or (isinstance(channel_ref, str) and channel_ref.isdigit()):
+        try:
+            return SkillChannel.objects.select_related("skill").get(id=int(channel_ref))
+        except SkillChannel.DoesNotExist as exc:
+            raise SkillChannelChatError("渠道不存在", status=404) from exc
     try:
-        channel = SkillChannel.objects.select_related("skill").get(id=channel_id)
+        public_id = uuid.UUID(str(channel_ref))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise SkillChannelChatError("渠道不存在", status=404) from exc
+    try:
+        return SkillChannel.objects.select_related("skill").get(public_id=public_id)
     except SkillChannel.DoesNotExist as exc:
         raise SkillChannelChatError("渠道不存在", status=404) from exc
+
+
+def get_enabled_channel(channel_ref: int | str | uuid.UUID, expected_types: set[str] | None = None) -> SkillChannel:
+    channel = lookup_skill_channel(channel_ref)
     if not channel.enabled:
         raise SkillChannelChatError("渠道已下线", status=403)
     if expected_types and channel.channel_type not in expected_types:
@@ -651,11 +680,13 @@ def inject_page_context(user_message, page_context, mode: str = "inline"):
 
 def append_message(conversation: SkillConversation, role: str, content: str) -> SkillConversationMessage:
     msg = SkillConversationMessage.objects.create(conversation=conversation, role=role, content=content or "")
+    update_fields = ["updated_at"]
     if role == SkillConversationMessage.ROLE_USER and not (conversation.title or "").strip():
         text = (content or "").strip().replace("\n", " ")
         if text:
             conversation.title = f"{text[:50]}..." if len(text) > 50 else text
-            conversation.save(update_fields=["title", "updated_at"])
+            update_fields.append("title")
+    conversation.save(update_fields=update_fields)
     return msg
 
 
@@ -667,6 +698,136 @@ def conversation_display_title(conversation: SkillConversation) -> str:
         return "新会话"
     text = first.content.strip().replace("\n", " ")
     return f"{text[:50]}..." if len(text) > 50 else text
+
+
+def _parse_admin_datetime(value: str):
+    text = (value or "").strip()
+    if not text:
+        return None
+    parsed = parse_datetime(text)
+    if parsed is None:
+        raise SkillChannelChatError("时间格式无效", status=400)
+    if django_timezone.is_naive(parsed):
+        return django_timezone.make_aware(parsed, django_timezone.get_current_timezone())
+    return parsed
+
+
+def _person_display_map(external_ids: list[str]) -> dict[str, str]:
+    unique_ids = [item for item in dict.fromkeys(external_ids) if item]
+    displays = {item: item for item in unique_ids}
+    uuids = [item for item in unique_ids if is_system_user_uuid(item)]
+    named = [item for item in unique_ids if item not in uuids]
+    if uuids:
+        for user in SystemUser.objects.filter(user_id__in=uuids).only("user_id", "display_name", "username"):
+            displays[user.user_id] = (user.display_name or user.username or user.user_id).strip()
+    named_q = Q()
+    for item in named:
+        username, domain = split_external_user_id(item)
+        if not username:
+            continue
+        named_q |= Q(username=username, domain=domain)
+    if named_q:
+        for user in SystemUser.objects.filter(named_q).only("username", "domain", "display_name"):
+            key = f"{user.username}@{user.domain}" if user.domain else user.username
+            displays[key] = (user.display_name or user.username or key).strip()
+    return displays
+
+
+def _append_person_ids(extras: list[str], user: SystemUser) -> None:
+    if user.user_id:
+        extras.append(user.user_id)
+    if user.username:
+        extras.append(user.username)
+        if user.domain:
+            extras.append(f"{user.username}@{user.domain}")
+
+
+def _filter_conversations_by_person(qs, person: str):
+    keyword = (person or "").strip()
+    if not keyword:
+        return qs
+    person_q = Q(external_user_id__icontains=keyword)
+    extras: list[str] = []
+    username, domain = split_external_user_id(keyword)
+    if "@" in keyword and username:
+        named_user = SystemUser.objects.filter(username=username, domain=domain).only("user_id", "username", "domain").first()
+        if named_user:
+            _append_person_ids(extras, named_user)
+    users = list(
+        SystemUser.objects.filter(Q(display_name__icontains=keyword) | Q(username__icontains=keyword)).only("user_id", "username", "domain")[
+            :ADMIN_PERSON_LOOKUP_LIMIT
+        ]
+    )
+    for user in users:
+        _append_person_ids(extras, user)
+    if extras:
+        person_q |= Q(external_user_id__in=extras)
+    return qs.filter(person_q)
+
+
+def list_skill_conversations_for_admin(
+    *,
+    skill_id: int,
+    channel_id: int | None = None,
+    person: str = "",
+    title: str = "",
+    start_time: str = "",
+    end_time: str = "",
+    page: int = 1,
+    page_size: int = 10,
+) -> dict:
+    qs = SkillConversation.objects.filter(skill_id=skill_id).select_related("channel").annotate(message_count=Count("messages"))
+    if channel_id is not None:
+        qs = qs.filter(channel_id=channel_id)
+    title_keyword = (title or "").strip()
+    if title_keyword:
+        qs = qs.filter(title__icontains=title_keyword)
+    start_at = _parse_admin_datetime(start_time)
+    end_at = _parse_admin_datetime(end_time)
+    if start_at is not None:
+        qs = qs.filter(updated_at__gte=start_at)
+    if end_at is not None:
+        qs = qs.filter(updated_at__lte=end_at)
+    qs = _filter_conversations_by_person(qs, person)
+    qs = qs.order_by("-updated_at", "-id")
+    page = max(int(page or 1), 1)
+    page_size = min(max(int(page_size or 10), 1), ADMIN_CONVERSATION_PAGE_SIZE_MAX)
+    paginator = Paginator(qs, page_size)
+    page_obj = paginator.get_page(page)
+    rows = list(page_obj.object_list)
+    displays = _person_display_map([row.external_user_id for row in rows])
+    items = []
+    for conv in rows:
+        channel = conv.channel
+        external_user_id = conv.external_user_id or ""
+        items.append(
+            {
+                "session_id": conv.session_id,
+                "title": (conv.title or "").strip() or "新会话",
+                "skill_id": conv.skill_id,
+                "channel_id": conv.channel_id,
+                "channel_type": channel.channel_type if channel else "",
+                "channel_name": (channel.name if channel else "") or "",
+                "external_user_id": external_user_id,
+                "person_display": displays.get(external_user_id) or external_user_id,
+                "count": int(getattr(conv, "message_count", 0) or 0),
+                "created_at": conv.created_at.isoformat() if conv.created_at else None,
+                "updated_at": conv.updated_at.isoformat() if getattr(conv, "updated_at", None) else None,
+            }
+        )
+    return {"items": items, "count": paginator.count}
+
+
+def get_skill_conversation_for_admin(*, session_id: str) -> SkillConversation:
+    conv = SkillConversation.objects.filter(session_id=session_id).select_related("channel", "skill").first()
+    if not conv:
+        raise SkillChannelChatError("会话不存在", status=404)
+    return conv
+
+
+def get_skill_session_messages_for_admin(*, session_id: str) -> tuple[list[dict], SkillConversation]:
+    conv = get_skill_conversation_for_admin(session_id=session_id)
+    return serialize_skill_session_messages(conv), conv
 
 
 def list_skill_conversations_for_user(*, skill_id: int, external_user_id: str, channel_id: int | None = None) -> list[dict]:
@@ -702,9 +863,9 @@ def _owned_skill_conversation(*, session_id: str, external_user_id: str) -> Skil
     return conv
 
 
-def _serialize_session_messages(conv: SkillConversation) -> list[dict]:
+def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
     messages = []
-    for msg in conv.messages.order_by("created_at", "id"):
+    for msg in conv.messages.order_by("created_at", "id")[:ADMIN_MESSAGE_FETCH_MAX]:
         messages.append(
             {
                 "id": msg.id,
@@ -716,6 +877,10 @@ def _serialize_session_messages(conv: SkillConversation) -> list[dict]:
             }
         )
     return messages
+
+
+def _serialize_session_messages(conv: SkillConversation) -> list[dict]:
+    return serialize_skill_session_messages(conv)
 
 
 def get_skill_session_messages(*, session_id: str, external_user_id: str) -> list[dict]:

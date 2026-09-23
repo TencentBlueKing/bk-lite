@@ -30,7 +30,38 @@ export const PORT_LIBRARY_PATH = '/cmdb/assetManage/autoDiscovery/featureLibrary
 export const SCAN_PERMISSION_PATH = '/cmdb/assetManage/autoDiscovery/collection';
 export const EMPTY_SOID_KEY = '__empty_soid__';
 
-const FAMILY_ORDER = ['network', 'host', 'physcial_server', 'database', 'mysql', 'postgresql', 'mssql', 'influxdb'];
+export const SCAN_MIDDLEWARE_TYPES = [
+  'nginx',
+  'tomcat',
+  'kafka',
+  'zookeeper',
+  'rabbitmq',
+  'consul',
+  'etcd',
+] as const;
+
+const SCAN_MIDDLEWARE_TYPE_SET = new Set<string>(SCAN_MIDDLEWARE_TYPES);
+
+export const isScanMiddlewareType = (modelId?: string) => Boolean(modelId && SCAN_MIDDLEWARE_TYPE_SET.has(modelId));
+
+const FAMILY_ORDER = [
+  'network',
+  'host',
+  'middleware',
+  'nginx',
+  'tomcat',
+  'kafka',
+  'zookeeper',
+  'rabbitmq',
+  'consul',
+  'etcd',
+  'physcial_server',
+  'database',
+  'mysql',
+  'postgresql',
+  'mssql',
+  'influxdb',
+];
 
 export const displayValue = (value: unknown) => {
   if (value === null || value === undefined || value === '') {
