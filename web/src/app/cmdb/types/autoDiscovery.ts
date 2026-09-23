@@ -318,6 +318,17 @@ export interface NodeMgmtSyncDetailData {
   raw_data?: TaskData;
   todo?: Array<Record<string, any>>;
   executed?: Array<Record<string, any>>;
+  collect_diagnoses?: Array<{
+    cloud_region_id?: number;
+    task_id?: number;
+    decision?: string;
+    child_status?: string;
+    reason_code?: string;
+    raw_host?: number;
+    raw_process?: number;
+    collect_success?: number;
+    collect_failed?: number;
+  }>;
 }
 
 export interface NodeMgmtSyncRun {

@@ -976,6 +976,19 @@
                 "pushLinkageReplacesPull": "Pull sync was skipped because node push linkage has replaced it.",
                 "unknown": "Node Management sync is temporarily unavailable. Use the error code or retry later."
             },
+            "decision": {
+                "emptyRaw": "Cloud region {region} (collection task {task}) found no host or process metrics (hosts {rawHost}, processes {rawProcess}). Hosts are already in CMDB, but technical attributes are still empty. Check that nodes in this region report host_info_gauge or host_proc_usage_info_gauge.",
+                "pcEmpty": "Cloud region {region} (collection task {task}) has no latest PC report.",
+                "allRawFailed": "Cloud region {region} (collection task {task}) failed every raw row this round (failed rows {collectFailed}).",
+                "syncBlocked": "Cloud region {region} (collection task {task}) stopped syncing and wrote no technical attributes.",
+                "assetSyncFailed": "Cloud region {region} (collection task {task}) failed while writing assets. Search event=collect_task_execution_finished task_id={task}.",
+                "partial": "Cloud region {region} (collection task {task}) only partially succeeded (failed rows {collectFailed}).",
+                "collectionException": "Cloud region {region} (collection task {task}) raised during collection. Search event=collect_task_stage_failed task_id={task}.",
+                "resultPersistence": "Cloud region {region} (collection task {task}) failed while saving the result. Search event=collect_task_stage_failed failed_stage=result_persistence task_id={task}.",
+                "timeout": "Cloud region {region} (collection task {task}) timed out.",
+                "forceStop": "Cloud region {region} (collection task {task}) was force-stopped.",
+                "unclassified": "Cloud region {region} (collection task {task}) failed without a classified reason. Search event=collect_task_execution_finished task_id={task}."
+            },
             "table": {
                 "objectType": "Object Type",
                 "instanceName": "Instance Name",
