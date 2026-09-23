@@ -1,10 +1,12 @@
 import os
 import re
 import tempfile
+import uuid
 from typing import AsyncGenerator
 
 from asgiref.sync import async_to_sync
 from django.core.files.base import ContentFile
+from django.db import IntegrityError, transaction
 from nats.js.errors import ObjectNotFoundError
 
 from apps.core.logger import node_logger as logger
@@ -119,6 +121,16 @@ class PackageService:
         return queryset.filter(cpu_architecture="").first() or queryset.filter(cpu_architecture=NodeConstants.X86_64_ARCH).first()
 
     @staticmethod
+    def ready_queryset():
+        return PackageVersion.objects.filter(status=PackageVersion.STATUS_READY)
+
+    @staticmethod
+    def _require_ready(package_obj):
+        status = getattr(package_obj, "status", PackageVersion.STATUS_READY)
+        if status != PackageVersion.STATUS_READY:
+            raise ObjectNotFoundError
+
+    @staticmethod
     def build_file_path(package_obj) -> str:
         arch = getattr(package_obj, "cpu_architecture", "") or "generic"
         return f"{package_obj.os}/{arch}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
@@ -128,11 +140,24 @@ class PackageService:
         return f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
 
     @staticmethod
+    def build_final_file_path(data) -> str:
+        arch = data.get("cpu_architecture") or "generic"
+        return f"{data['os']}/{arch}/{data['object']}/{data['version']}/{data['name']}"
+
+    @staticmethod
+    def build_staging_file_path(data, staging_id: str) -> str:
+        arch = data.get("cpu_architecture") or "generic"
+        return f"{data['os']}/{arch}/{data['object']}/{data['version']}/.staging-{staging_id}/{data['name']}"
+
+    @staticmethod
     def build_candidate_file_paths(package_obj) -> list[str]:
         paths = [
             PackageService.build_file_path(package_obj),
             PackageService.build_legacy_file_path(package_obj),
         ]
+        staging_key = getattr(package_obj, "staging_object_key", None)
+        if staging_key:
+            paths.append(staging_key)
         seen = set()
         candidates = []
         for path in paths:
@@ -178,21 +203,17 @@ class PackageService:
 
     @staticmethod
     async def _delete_file_async(package_obj):
-        deleted = False
         last_error = None
         for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
             try:
                 await delete_s3_file(s3_file_path)
-                deleted = True
-            except ObjectNotFoundError as error:
-                last_error = error
+            except ObjectNotFoundError:
                 continue
-
-        if deleted:
-            return True
+            except Exception as error:
+                last_error = error
         if last_error:
             raise last_error
-        raise ObjectNotFoundError
+        return True
 
     @staticmethod
     def parse_package_info(filename: str):
@@ -272,17 +293,130 @@ class PackageService:
         return True, "", parsed_info
 
     @staticmethod
-    def upload_file(file: ContentFile, data):
-        arch = data.get("cpu_architecture") or "generic"
-        s3_file_path = f"{data['os']}/{arch}/{data['object']}/{data['version']}/{data['name']}"
-        async_to_sync(upload_file_to_s3)(file, s3_file_path)
+    def _best_effort_delete(path: str) -> None:
+        try:
+            async_to_sync(delete_s3_file)(path)
+        except ObjectNotFoundError:
+            return
+        except Exception:
+            logger.exception(
+                "event=package_object_cleanup_failed failed_stage=delete_object object_key=%s",
+                path,
+            )
+
+    @staticmethod
+    def _rollback_pending(package, created: bool, previous: dict | None) -> None:
+        if package is None or not getattr(package, "pk", None):
+            return
+        if created:
+            PackageVersion.objects.filter(pk=package.pk).delete()
+            return
+        if previous is None:
+            return
+        PackageVersion.objects.filter(pk=package.pk).update(
+            status=previous["status"],
+            description=previous["description"],
+            updated_by=previous["updated_by"],
+        )
+
+    @staticmethod
+    def _reserve_pending(data, existing_package=None):
+        with transaction.atomic():
+            if existing_package is not None:
+                locked = PackageVersion.objects.select_for_update().get(pk=existing_package.pk)
+                previous = {
+                    "status": locked.status,
+                    "description": locked.description,
+                    "updated_by": locked.updated_by,
+                }
+                locked.status = PackageVersion.STATUS_PENDING
+                locked.description = data.get("description", locked.description)
+                locked.updated_by = data.get("updated_by", locked.updated_by)
+                locked.save(update_fields=["status", "description", "updated_by", "updated_at"])
+                return locked, False, previous
+
+            existing = (
+                PackageVersion.objects.select_for_update()
+                .filter(
+                    os=data["os"],
+                    cpu_architecture=data["cpu_architecture"],
+                    object=data["object"],
+                    version=data["version"],
+                )
+                .first()
+            )
+            if existing:
+                raise IntegrityError("package version already exists")
+
+            package = PackageVersion.objects.create(
+                os=data["os"],
+                cpu_architecture=data["cpu_architecture"],
+                type=data["type"],
+                object=data["object"],
+                version=data["version"],
+                name=data["name"],
+                description=data.get("description", ""),
+                sha256=data.get("sha256", ""),
+                created_by=data.get("created_by", ""),
+                updated_by=data.get("updated_by", ""),
+                status=PackageVersion.STATUS_PENDING,
+            )
+            return package, True, None
+
+    @staticmethod
+    def upload_file(file: ContentFile, data, existing_package=None):
+        staging_id = str(uuid.uuid4())
+        staging_key = PackageService.build_staging_file_path(data, staging_id)
+        final_key = PackageService.build_final_file_path(data)
+
+        async_to_sync(upload_file_to_s3)(file, staging_key)
+
+        package = None
+        created = False
+        previous = None
+        try:
+            package, created, previous = PackageService._reserve_pending(data, existing_package)
+        except Exception:
+            PackageService._best_effort_delete(staging_key)
+            raise
+
+        try:
+            if hasattr(file, "seek"):
+                file.seek(0)
+            async_to_sync(upload_file_to_s3)(file, final_key)
+        except Exception:
+            PackageService._best_effort_delete(staging_key)
+            PackageService._rollback_pending(package, created, previous)
+            raise
+
+        try:
+            package.status = PackageVersion.STATUS_READY
+            package.save(update_fields=["status", "updated_at"])
+        except Exception:
+            if created:
+                PackageService._best_effort_delete(final_key)
+            PackageService._best_effort_delete(staging_key)
+            PackageService._rollback_pending(package, created, previous)
+            raise
+
+        PackageService._best_effort_delete(staging_key)
+        return package
 
     @staticmethod
     def download_file(package_obj):
+        PackageService._require_ready(package_obj)
         return async_to_sync(PackageService._download_file_async)(package_obj)
 
     @staticmethod
     def delete_file(package_obj):
+        pk = getattr(package_obj, "pk", None)
+        if isinstance(package_obj, PackageVersion) and pk:
+            with transaction.atomic():
+                locked = PackageVersion.objects.select_for_update().filter(pk=pk).first()
+                if locked is not None:
+                    locked.status = PackageVersion.STATUS_DELETING
+                    locked.save(update_fields=["status", "updated_at"])
+                    package_obj = locked
         return async_to_sync(PackageService._delete_file_async)(package_obj)
 
     @staticmethod
@@ -303,6 +437,7 @@ class PackageService:
     async def stream_download_file(
         package_obj,
     ) -> AsyncGenerator[tuple[bytes, str, int], None]:
+        PackageService._require_ready(package_obj)
         last_error = None
         for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
             try:
@@ -323,6 +458,8 @@ class PackageService:
         使用临时文件缓冲，避免大文件内存堆积。
         """
         from apps.rpc.jetstream import JetStreamService
+
+        PackageService._require_ready(package_obj)
 
         async def _download_to_tempfile():
             tmp = None
