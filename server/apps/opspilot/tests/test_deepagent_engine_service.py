@@ -14,7 +14,7 @@ import subprocess
 import sys
 import traceback
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -624,12 +624,17 @@ class TestBuildDeepagentNodes:
             }
 
         fake_agent.ainvoke = _ainvoke
+        emitted = []
+
+        async def _capture_event(name, payload, config=None):
+            emitted.append((name, payload))
 
         with (
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
             patch.object(ToolsNodes, "get_llm_client", return_value=_OverflowLLM()),
             patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
             patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
+            patch("apps.opspilot.metis.llm.chain.node.adispatch_custom_event", new=AsyncMock(side_effect=_capture_event)),
         ):
             result = asyncio.run(
                 wrapper(
@@ -643,6 +648,13 @@ class TestBuildDeepagentNodes:
         assert captured["agent_calls"] == 3
         assert "上下文压缩" in captured["ainvoke_joined"][1]
         assert result["messages"][-1].content == "执行结果 3"
+        overflow_ends = [
+            payload
+            for name, payload in emitted
+            if name == "planned_execution_step" and payload.get("phase") == "end" and payload.get("status") == "skipped_context_overflow"
+        ]
+        assert overflow_ends, "溢出步必须发出 skipped_context_overflow"
+        assert "outcome" not in overflow_ends[0]
 
     def test_llm_upstream_500_skips_sandbox_whitelist_fallback(self, caplog):
         node = ToolsNodes()

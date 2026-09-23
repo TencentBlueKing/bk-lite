@@ -10,7 +10,7 @@ from langgraph.types import Overwrite
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, ChatHistory
 from apps.opspilot.metis.llm.chain.graph import BasicGraph
-from apps.opspilot.metis.llm.chain.nested_stream import activate_planned_tool_steps, remember_planned_tool_steps, reset_planned_tool_steps
+from apps.opspilot.metis.llm.chain.nested_stream import make_owned_stream_context, remember_planned_tool_steps
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 
 
@@ -82,47 +82,71 @@ def _parse_sse_payloads(lines):
 
 def test_late_tool_events_keep_the_step_that_ran_them():
     graph = _FakeBasicGraph([])
-    bindings: dict[str, int] = {}
-    previous = activate_planned_tool_steps(bindings)
-    try:
-        remember_planned_tool_steps(
-            {"configurable": {"planned_tool_steps": bindings}},
-            3,
-            [ToolMessage(content="alerts", tool_call_id="call-monitor", name="monitor_list_active_alerts")],
-        )
-        current: dict = {}
-        runtime_events = graph._handle_tool_start_event(
-            {
-                "name": "cmdb_search_instances",
-                "run_id": "run-cmdb",
-                "metadata": {"opspilot_step_index": 1},
-            },
-            {"input": {"ip": "10.10.41.149"}},
-            EventEncoder(),
-            None,
-            current,
-        )
-        runtime_start = _parse_sse_payloads(runtime_events)[0]
-        assert runtime_start["type"] == "TOOL_CALL_START"
-        assert runtime_start["rawEvent"]["step_index"] == 1
+    stream_ctx = make_owned_stream_context()
+    graph._owned_stream_context = stream_ctx
+    remember_planned_tool_steps(
+        {"configurable": {"planned_tool_steps": stream_ctx.planned_tool_steps}},
+        3,
+        [ToolMessage(content="alerts", tool_call_id="call-monitor", name="monitor_list_active_alerts")],
+    )
+    current: dict = {}
+    runtime_events = graph._handle_tool_start_event(
+        {
+            "name": "cmdb_search_instances",
+            "run_id": "run-cmdb",
+            "metadata": {"opspilot_step_index": 1},
+        },
+        {"input": {"ip": "10.10.41.149"}},
+        EventEncoder(),
+        None,
+        current,
+    )
+    runtime_start = _parse_sse_payloads(runtime_events)[0]
+    assert runtime_start["type"] == "TOOL_CALL_START"
+    assert runtime_start["rawEvent"]["step_index"] == 1
 
-        backfill, _, _ = graph._emit_tool_result_events_from_messages(
-            [
-                ToolMessage(content="instances", tool_call_id="call-cmdb", name="cmdb_search_instances"),
-                ToolMessage(content="alerts", tool_call_id="call-monitor", name="monitor_list_active_alerts"),
-            ],
-            EventEncoder(),
-            current,
-        )
-        payloads = _parse_sse_payloads(backfill)
-        starts = [item for item in payloads if item["type"] == "TOOL_CALL_START"]
-        assert [item["toolCallName"] for item in starts] == ["monitor_list_active_alerts"]
-        assert starts[0]["rawEvent"]["step_index"] == 3
-        results = [item for item in payloads if item["type"] == "TOOL_CALL_RESULT"]
-        assert results[0]["toolCallId"] == runtime_start["toolCallId"]
-        assert results[1]["toolCallId"] == "call-monitor"
-    finally:
-        reset_planned_tool_steps(previous)
+    backfill, _, _ = graph._emit_tool_result_events_from_messages(
+        [
+            ToolMessage(content="instances", tool_call_id="call-cmdb", name="cmdb_search_instances"),
+            ToolMessage(content="alerts", tool_call_id="call-monitor", name="monitor_list_active_alerts"),
+        ],
+        EventEncoder(),
+        current,
+    )
+    payloads = _parse_sse_payloads(backfill)
+    starts = [item for item in payloads if item["type"] == "TOOL_CALL_START"]
+    assert [item["toolCallName"] for item in starts] == ["monitor_list_active_alerts"]
+    assert starts[0]["rawEvent"]["step_index"] == 3
+    results = [item for item in payloads if item["type"] == "TOOL_CALL_RESULT"]
+    assert results[0]["toolCallId"] == runtime_start["toolCallId"]
+    assert results[1]["toolCallId"] == "call-monitor"
+
+
+def test_two_graphs_do_not_share_planned_step_lookup():
+    graph_a = _FakeBasicGraph([])
+    graph_b = _FakeBasicGraph([])
+    ctx_a = make_owned_stream_context()
+    ctx_b = make_owned_stream_context()
+    graph_a._owned_stream_context = ctx_a
+    graph_b._owned_stream_context = ctx_b
+    remember_planned_tool_steps(
+        {"configurable": {"planned_tool_steps": ctx_a.planned_tool_steps}},
+        1,
+        [ToolMessage(content="a", tool_call_id="call-a", name="alerts_list_alerts")],
+    )
+    remember_planned_tool_steps(
+        {"configurable": {"planned_tool_steps": ctx_b.planned_tool_steps}},
+        8,
+        [ToolMessage(content="b", tool_call_id="call-b", name="cmdb_search_instances")],
+    )
+    ctx_a.step_holder["step_index"] = 1
+    ctx_b.step_holder["step_index"] = 8
+    assert graph_a._planned_step_index_from_event(None, "call-a", allow_holder=False) == 1
+    assert graph_b._planned_step_index_from_event(None, "call-b", allow_holder=False) == 8
+    assert graph_a._planned_step_index_from_event(None, "call-b", allow_holder=False) is None
+    assert graph_b._planned_step_index_from_event(None, "call-a", allow_holder=False) is None
+    assert graph_a._planned_step_index_from_event(None, "", allow_holder=True) == 1
+    assert graph_b._planned_step_index_from_event(None, "", allow_holder=True) == 8
 
 
 def test_tool_start_does_not_bind_pending_card_from_another_step():
