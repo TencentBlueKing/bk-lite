@@ -1,3 +1,4 @@
+from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.errors import ErrorsService, MemoryIssueStore, MemorySourcemapStore, match_issue_status
@@ -37,7 +38,11 @@ def test_match_issue_status_filters():
 def test_list_errors_degrades_without_analytics():
     control = MemoryControl()
     _seed_app(control)
-    page = ErrorsService(control=control, issues=MemoryIssueStore()).list_errors("tester", {"range": "24h"})
+    page = ErrorsService(
+        control=control,
+        analytics=UnavailableAnalytics(),
+        issues=MemoryIssueStore(),
+    ).list_errors("tester", {"range": "24h"})
     assert page["analyticsUnavailable"] is True
     assert page["issues"] == []
 

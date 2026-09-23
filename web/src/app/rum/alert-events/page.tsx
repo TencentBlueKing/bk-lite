@@ -268,16 +268,18 @@ export default function RumAlertEventsPage() {
         {pending && items.length === 0 ? (
           <RumTableSkeleton size="middle" columns={rumSkeletonColumns(columns)} />
         ) : !pending && filtered.length === 0 ? (
-          <Empty
-            description={
-              <div className="flex flex-col gap-1">
-                <span>{t('rum.alertEvents.empty', '暂无告警')}</span>
-                <span className="text-xs text-[var(--color-text-3)]">
-                  {t('rum.alertEvents.emptyHint', '策略触发后会出现在这里。')}
-                </span>
-              </div>
-            }
-          />
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <Empty
+              description={
+                <div className="flex flex-col gap-1">
+                  <span>{t('rum.alertEvents.empty', '暂无告警')}</span>
+                  <span className="text-xs text-[var(--color-text-3)]">
+                    {t('rum.alertEvents.emptyHint', '策略触发后会出现在这里。')}
+                  </span>
+                </div>
+              }
+            />
+          </div>
         ) : filtered.length > 0 ? (
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable<RumAlertEventItem>

@@ -1,3 +1,4 @@
+from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.funnels import FunnelsService, MemoryFunnelStore, normalize_funnel
@@ -42,7 +43,7 @@ def test_funnel_crud_and_reach_degrade():
     control = MemoryControl()
     _seed_app(control)
     store = MemoryFunnelStore()
-    service = FunnelsService(control=control, store=store)
+    service = FunnelsService(control=control, analytics=UnavailableAnalytics(), store=store)
 
     created = service.create_funnel(
         "tester",

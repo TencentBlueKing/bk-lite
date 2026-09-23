@@ -133,7 +133,7 @@ export default function RumApplicationsPage() {
   const renderNow = Date.now();
   const degrade = degradationReason(page);
   const chrome = resolveRumPageState({
-    pending: pending && page === null,
+    pending,
     error: !pending && page === null ? t('rum.applications.loadFailed', '应用列表加载失败') : null,
     itemCount: applications.length,
     page,
@@ -343,7 +343,7 @@ export default function RumApplicationsPage() {
             spacing="flush"
             trailing={
               <>
-                <RumRangeSegmented value={range} onChange={setRange} />
+                <RumRangeSegmented value={range} loading={pending} onChange={setRange} />
                 <Select
                   value={sort}
                   onChange={(value) => setSort(value as SortKey)}
