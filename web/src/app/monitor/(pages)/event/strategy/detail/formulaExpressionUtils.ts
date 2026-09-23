@@ -610,6 +610,7 @@ export const buildMetricExpressionPreviewPayload = ({
   compareValueKind,
   countPredicate,
   forecastTarget,
+  forecastTargetUnit,
   forecastLookback
 }: {
   monitorObjId: string | number | null;
@@ -635,6 +636,7 @@ export const buildMetricExpressionPreviewPayload = ({
   compareValueKind?: string | null;
   countPredicate?: { method?: string; value?: number | null } | null;
   forecastTarget?: number | null;
+  forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number } | null;
 }) => {
   if (!monitorObjId || !selectedInstance || !algorithm) {
@@ -716,6 +718,8 @@ export const buildMetricExpressionPreviewPayload = ({
         : {},
     forecast_target:
       resolvedCompareMode === 'timeleft' ? forecastTarget ?? null : null,
+    forecast_target_unit:
+      resolvedCompareMode === 'timeleft' ? forecastTargetUnit || '' : '',
     forecast_lookback:
       resolvedCompareMode === 'timeleft'
         ? forecastLookback || { type: 'hour', value: 1 }

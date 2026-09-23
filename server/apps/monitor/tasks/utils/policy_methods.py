@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -351,10 +352,23 @@ def _format_forecast_lookback(policy_like):
     return f"{lookback_value}h"
 
 
+def _forecast_target_in_metric_unit(policy_like, target):
+    """容量线按用户所选单位保存，查询里要和指标原始序列同一量纲。"""
+    source_unit = str(_policy_get(policy_like, "forecast_target_unit") or "").strip()
+    metric_unit = str(_policy_get(policy_like, "metric_unit") or "").strip()
+    if not source_unit or source_unit == metric_unit:
+        return target
+    if not metric_unit or not UnitConverter.is_convertible(source_unit, metric_unit):
+        raise BaseAppException("forecast_target_unit is not convertible to metric_unit")
+    converted = UnitConverter.convert_values([float(target)], source_unit, metric_unit)
+    return converted[0]
+
+
 def compile_timeleft_query(policy_like, base_query, step, group_by=None):
     target = _policy_get(policy_like, "forecast_target")
     if target is None or target == "":
         raise BaseAppException("forecast_target is required")
+    target = _forecast_target_in_metric_unit(policy_like, target)
     target_s = _format_promql_number(target)
     lookback = _format_forecast_lookback(policy_like)
     lookback_step = period_step(lookback)

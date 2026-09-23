@@ -41,6 +41,7 @@ POLICY_RECIPE_SYNC_FIELDS = (
     "compare_value_kind",
     "count_predicate",
     "forecast_target",
+    "forecast_target_unit",
     "forecast_lookback",
     "recovery_threshold",
 )
@@ -504,6 +505,7 @@ class PolicyService:
         portable.setdefault("forecast_lookback", {})
         portable.setdefault("recovery_threshold", {})
         portable.setdefault("forecast_target", None)
+        portable.setdefault("forecast_target_unit", "")
         portable["schedule"] = PolicyService._default_duration(portable.get("schedule"))
         portable["period"] = PolicyService._default_duration(portable.get("period"))
         PolicyService._ensure_query_condition(portable, plugin=plugin)
@@ -665,6 +667,7 @@ class PolicyService:
             "compare_value_kind": config.get("compare_value_kind") or "",
             "count_predicate": copy.deepcopy(config.get("count_predicate") or {}),
             "forecast_target": forecast_target,
+            "forecast_target_unit": config.get("forecast_target_unit") or "",
             "forecast_lookback": copy.deepcopy(config.get("forecast_lookback") or {}),
             "recovery_threshold": copy.deepcopy(config.get("recovery_threshold") or {}),
         }

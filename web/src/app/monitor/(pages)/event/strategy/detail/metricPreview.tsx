@@ -45,6 +45,7 @@ interface MetricPreviewProps {
   compareValueKind?: string | null;
   countPredicate?: { method?: string; value?: number | null } | null;
   forecastTarget?: number | null;
+  forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number } | null;
   metricRows: MetricExpressionRow[];
   metricExpressionMode: MetricExpressionMode;
@@ -94,6 +95,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   compareValueKind,
   countPredicate,
   forecastTarget,
+  forecastTargetUnit,
   forecastLookback,
   metricRows,
   metricExpressionMode,
@@ -256,6 +258,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       compareValueKind,
       countPredicate,
       forecastTarget,
+      forecastTargetUnit,
       forecastLookback
     });
   };
@@ -455,6 +458,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     compareMode,
     compareValueKind,
     forecastTarget,
+    forecastTargetUnit,
     forecastLookback,
     metricRows,
     metricExpressionMode,

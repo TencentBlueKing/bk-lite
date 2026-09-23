@@ -731,6 +731,7 @@ const timeleftPreviewPayload = buildMetricExpressionPreviewPayload({
 assert.equal(timeleftPreviewPayload?.compare_mode, 'timeleft');
 assert.equal(timeleftPreviewPayload?.compare_value_kind, 'hours');
 assert.equal(timeleftPreviewPayload?.forecast_target, 90);
+assert.equal(timeleftPreviewPayload?.forecast_target_unit, '');
 assert.deepEqual(timeleftPreviewPayload?.forecast_lookback, {
   type: 'hour',
   value: 4

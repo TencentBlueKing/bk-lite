@@ -127,6 +127,12 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     )
     count_predicate = models.JSONField(default=dict, verbose_name="条件计数内阈")
     forecast_target = models.FloatField(blank=True, null=True, verbose_name="容量线目标")
+    forecast_target_unit = models.CharField(
+        max_length=50,
+        default="",
+        blank=True,
+        verbose_name="容量线单位",
+    )
     forecast_lookback = models.JSONField(default=dict, verbose_name="斜率回看窗")
     recovery_threshold = models.JSONField(default=dict, verbose_name="恢复阈值")
 

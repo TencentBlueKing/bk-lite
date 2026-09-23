@@ -163,6 +163,7 @@ def build_bulk_policy_payloads(
             "compare_value_kind": template.get("compare_value_kind") or "",
             "count_predicate": template.get("count_predicate") or {},
             "forecast_target": template.get("forecast_target"),
+            "forecast_target_unit": template.get("forecast_target_unit") or "",
             "forecast_lookback": template.get("forecast_lookback") or {},
             "recovery_threshold": template.get("recovery_threshold") or {},
         }

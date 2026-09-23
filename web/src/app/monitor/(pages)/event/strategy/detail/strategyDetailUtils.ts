@@ -261,6 +261,31 @@ export const getThresholdUnitOptions = ({
   return validUnits.filter((item) => item.system === baseUnit.system);
 };
 
+/** 容量线单位：沿用已选的同量纲单位，否则回到指标原始单位。公式结果没有单一原始单位，不开放选择。 */
+export const resolveForecastTargetUnit = ({
+  isFormulaMode,
+  metricUnit,
+  forecastTargetUnit,
+  unitOptions,
+}: {
+  isFormulaMode: boolean;
+  metricUnit?: string | null;
+  forecastTargetUnit?: string | null;
+  unitOptions: UnitListItem[];
+}): string => {
+  if (isFormulaMode || !unitOptions.length) return '';
+  if (
+    forecastTargetUnit &&
+    unitOptions.some((item) => item.unit_id === forecastTargetUnit)
+  ) {
+    return forecastTargetUnit;
+  }
+  if (metricUnit && unitOptions.some((item) => item.unit_id === metricUnit)) {
+    return metricUnit;
+  }
+  return unitOptions[0]?.unit_id || '';
+};
+
 export const resolveThresholdUnit = ({
   thresholdUnit,
   calculationUnit,
@@ -926,6 +951,7 @@ export const resolveCompareFieldsForSave = ({
   algorithm,
   countPredicate,
   forecastTarget,
+  forecastTargetUnit,
   forecastLookback
 }: {
   isTrap: boolean;
@@ -934,12 +960,14 @@ export const resolveCompareFieldsForSave = ({
   algorithm?: string | null;
   countPredicate?: { method?: string; value?: number | null } | null;
   forecastTarget?: number | null;
+  forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number } | null;
 }): {
   compare_mode: string;
   compare_value_kind: string;
   count_predicate: Record<string, unknown>;
   forecast_target: number | null;
+  forecast_target_unit: string;
   forecast_lookback: Record<string, unknown>;
 } => {
   if (isTrap) {
@@ -948,6 +976,7 @@ export const resolveCompareFieldsForSave = ({
       compare_value_kind: '',
       count_predicate: {},
       forecast_target: null,
+      forecast_target_unit: '',
       forecast_lookback: {}
     };
   }
@@ -964,6 +993,7 @@ export const resolveCompareFieldsForSave = ({
           }
           : {},
       forecast_target: null,
+      forecast_target_unit: '',
       forecast_lookback: {}
     };
   }
@@ -978,6 +1008,8 @@ export const resolveCompareFieldsForSave = ({
     count_predicate: {},
     forecast_target:
       mode === COMPARE_MODE_TIMELEFT ? forecastTarget ?? null : null,
+    forecast_target_unit:
+      mode === COMPARE_MODE_TIMELEFT ? forecastTargetUnit || '' : '',
     forecast_lookback:
       mode === COMPARE_MODE_TIMELEFT
         ? forecastLookback || DEFAULT_FORECAST_LOOKBACK

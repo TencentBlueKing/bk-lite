@@ -81,7 +81,9 @@ import {
   coerceThresholdsForCompareMode,
   defaultCompareValueKind,
   getCompareModeSelectOptions,
-  getCompareValueKinds
+  getCompareValueKinds,
+  getThresholdUnitOptions,
+  resolveForecastTargetUnit
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import { resolveTemplateDuration } from '../../template/templateBulkUtils';
@@ -234,6 +236,7 @@ const StrategyOperation = () => {
     value: number | null;
   }>({ method: '>', value: null });
   const [forecastTarget, setForecastTarget] = useState<number | null>(null);
+  const [forecastTargetUnit, setForecastTargetUnit] = useState<string>('');
   const [forecastLookback, setForecastLookback] = useState<{
     type: string;
     value: number;
@@ -278,6 +281,16 @@ const StrategyOperation = () => {
   });
   const selectedMetricUnit =
     metrics.find((item) => item.name === metric)?.unit || null;
+  const forecastTargetUnitForQuery = resolveForecastTargetUnit({
+    isFormulaMode: metricExpressionMode === 'formula',
+    metricUnit: selectedMetricUnit,
+    forecastTargetUnit,
+    unitOptions: getThresholdUnitOptions({
+      unitList,
+      metricUnit: selectedMetricUnit,
+      isEnumMetric: false
+    })
+  });
   const thresholdBaseUnit = resolveThresholdUnitBase({
     compareValueKind,
     calculationUnit: effectiveCalculationUnit,
@@ -733,6 +746,11 @@ const StrategyOperation = () => {
     });
     setForecastTarget(
       typeof data.forecast_target === 'number' ? data.forecast_target : null
+    );
+    setForecastTargetUnit(
+      typeof data.forecast_target_unit === 'string'
+        ? data.forecast_target_unit
+        : ''
     );
     const savedLookback = data.forecast_lookback as
       | { type?: string; value?: number }
@@ -1229,12 +1247,14 @@ const StrategyOperation = () => {
         algorithm: params.algorithm,
         countPredicate,
         forecastTarget,
+        forecastTargetUnit: forecastTargetUnitForQuery,
         forecastLookback
       });
       params.compare_mode = compareFields.compare_mode;
       params.compare_value_kind = compareFields.compare_value_kind;
       params.count_predicate = compareFields.count_predicate;
       params.forecast_target = compareFields.forecast_target;
+      params.forecast_target_unit = compareFields.forecast_target_unit;
       params.forecast_lookback = compareFields.forecast_lookback;
       params.recovery_threshold = resolveRecoveryThresholdForSave({
         isTrap: isTrapPlugin,
@@ -1663,6 +1683,7 @@ const StrategyOperation = () => {
                           compareValueKind={compareValueKind}
                           algorithm={algorithm}
                           forecastTarget={forecastTarget}
+                          forecastTargetUnit={forecastTargetUnit}
                           forecastLookback={forecastLookback}
                           metricLabel={
                             metrics.find((item) => item.name === metric)
@@ -1689,6 +1710,7 @@ const StrategyOperation = () => {
                           onCompareModeChange={handleCompareModeChange}
                           onCompareValueKindChange={setCompareValueKind}
                           onForecastTargetChange={setForecastTarget}
+                          onForecastTargetUnitChange={setForecastTargetUnit}
                           onForecastLookbackChange={setForecastLookback}
                           recoveryThreshold={recoveryThreshold}
                           onRecoveryThresholdChange={setRecoveryThreshold}
@@ -1738,6 +1760,7 @@ const StrategyOperation = () => {
                 compareValueKind={compareValueKind}
                 countPredicate={countPredicate}
                 forecastTarget={forecastTarget}
+                forecastTargetUnit={forecastTargetUnitForQuery}
                 forecastLookback={forecastLookback}
                 metricRows={metricRows}
                 metricExpressionMode={metricExpressionMode}

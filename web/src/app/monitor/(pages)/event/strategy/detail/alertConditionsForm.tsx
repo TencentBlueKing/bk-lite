@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Form, Select, InputNumber, Tooltip, Space } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
 import { useMethodList } from '@/app/monitor/hooks/event';
 import {
@@ -23,6 +24,7 @@ import {
   getMetricThresholdEnumState,
   getThresholdUnitOptions,
   isVacantThresholdUnit,
+  resolveForecastTargetUnit,
   resolveMetricDisplayUnit,
   shouldShowThresholdUnitSelector,
   timeleftRequiresLowSideThresholds
@@ -30,7 +32,8 @@ import {
 import ThresholdList from './thresholdList';
 import AlertDurationFields, {
   STRATEGY_CONDITION_LABEL_CLASS,
-  STRATEGY_CONDITION_LABEL_WIDTH
+  STRATEGY_CONDITION_LABEL_WIDTH,
+  strategyConditionLabelWithTip
 } from './alertDurationFields';
 
 const { Option } = Select;
@@ -56,6 +59,7 @@ interface AlertConditionsFormProps {
   compareValueKind: string;
   algorithm?: string | null;
   forecastTarget?: number | null;
+  forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number };
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
@@ -69,6 +73,7 @@ interface AlertConditionsFormProps {
   onCompareModeChange: (val: string) => void;
   onCompareValueKindChange: (val: string) => void;
   onForecastTargetChange?: (val: number | null) => void;
+  onForecastTargetUnitChange?: (val: string) => void;
   onForecastLookbackChange?: (val: { type: string; value: number }) => void;
   recoveryThreshold?: { method?: string; value?: number | null };
   onRecoveryThresholdChange?: (val: {
@@ -101,6 +106,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   compareValueKind,
   algorithm,
   forecastTarget,
+  forecastTargetUnit,
   forecastLookback,
   recoveryThreshold,
   metricLabel,
@@ -115,6 +121,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onCompareModeChange,
   onCompareValueKindChange,
   onForecastTargetChange,
+  onForecastTargetUnitChange,
   onForecastLookbackChange,
   onRecoveryThresholdChange,
   onCountPredicateChange,
@@ -238,18 +245,50 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     ratio: t('monitor.events.compareValueKindRatioTip'),
     hours: t('monitor.events.compareValueKindHoursTip')
   };
+  const forecastUnitOptions = useMemo(() => {
+    if (isFormulaMode || isEnumMetric) return [];
+    return getThresholdUnitOptions({
+      unitList,
+      metricUnit,
+      isEnumMetric: false
+    });
+  }, [isFormulaMode, isEnumMetric, unitList, metricUnit]);
+  const resolvedForecastTargetUnit = useMemo(
+    () =>
+      resolveForecastTargetUnit({
+        isFormulaMode,
+        metricUnit,
+        forecastTargetUnit,
+        unitOptions: forecastUnitOptions
+      }),
+    [isFormulaMode, metricUnit, forecastTargetUnit, forecastUnitOptions]
+  );
   const forecastTargetUnitLabel = useMemo(() => {
     // 容量线是源指标量纲（例如磁盘 B），不是剩余时间 hours。
-    if (!metricUnit || isVacantThresholdUnit(metricUnit)) {
+    const unitId = resolvedForecastTargetUnit || metricUnit;
+    if (!unitId || isVacantThresholdUnit(unitId)) {
       return '';
     }
-    const matched = unitList.find((item) => item.unit_id === metricUnit);
+    const matched = unitList.find((item) => item.unit_id === unitId);
+    if (matched && (unitId === 'percent' || unitId === 'percentunit')) {
+      return getMonitorUnitSelectLabel(matched);
+    }
     return (
-      resolveMetricDisplayUnit(metricUnit, unitList) ||
+      resolveMetricDisplayUnit(unitId, unitList) ||
       matched?.unit_name ||
       ''
     );
-  }, [metricUnit, unitList]);
+  }, [resolvedForecastTargetUnit, metricUnit, unitList]);
+
+  useEffect(() => {
+    if (!forecastTargetUnit || !onForecastTargetUnitChange) return;
+    if (forecastTargetUnit === resolvedForecastTargetUnit) return;
+    onForecastTargetUnitChange(resolvedForecastTargetUnit);
+  }, [
+    forecastTargetUnit,
+    resolvedForecastTargetUnit,
+    onForecastTargetUnitChange
+  ]);
   const recoveryThresholdUnitLabel = useMemo(() => {
     if (!thresholdUnit || isVacantThresholdUnit(thresholdUnit)) {
       return formatUnitLabelWithRateSuffix('', thresholdUnit, algorithm);
@@ -432,7 +471,27 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                       placeholder={t('common.inputTip')}
                       addonAfter={
                         <span className="inline-flex items-center gap-1">
-                          {forecastTargetUnitLabel ? (
+                          {forecastUnitOptions.length > 1 ? (
+                            <Select
+                              size="small"
+                              popupMatchSelectWidth={false}
+                              className="min-w-[5.5rem]"
+                              aria-label={t('common.unit')}
+                              value={resolvedForecastTargetUnit || undefined}
+                              options={forecastUnitOptions.map((option) => ({
+                                value: option.unit_id,
+                                label:
+                                  option.unit_id === 'percent' ||
+                                  option.unit_id === 'percentunit'
+                                    ? getMonitorUnitSelectLabel(option)
+                                    : option.display_unit ||
+                                      getMonitorUnitSelectLabel(option)
+                              }))}
+                              onChange={(value) =>
+                                onForecastTargetUnitChange?.(value)
+                              }
+                            />
+                          ) : forecastTargetUnitLabel ? (
                             <span>{forecastTargetUnitLabel}</span>
                           ) : null}
                           <Tooltip
@@ -450,11 +509,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     />
                   </Form.Item>
                   <Form.Item
-                    label={
-                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
-                        {t('monitor.events.forecastLookback')}
-                      </span>
-                    }
+                    label={strategyConditionLabelWithTip(
+                      t('monitor.events.forecastLookback'),
+                      t('monitor.events.forecastLookbackTitle')
+                    )}
                   >
                     <Select
                       className="w-full"

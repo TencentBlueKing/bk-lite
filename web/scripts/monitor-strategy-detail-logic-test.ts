@@ -41,6 +41,7 @@ import {
   shouldAnnotatePerSecond,
   formatUnitLabelWithRateSuffix,
   resolveCompareFieldsForSave,
+  resolveForecastTargetUnit,
   resolveRecoveryThresholdForSave,
   resolveNoDataPeriodsForSave,
   resolvePolicyResultUnit,
@@ -941,6 +942,7 @@ assert.deepEqual(
     compare_value_kind: '',
     count_predicate: {},
     forecast_target: null,
+    forecast_target_unit: '',
     forecast_lookback: {},
   }
 );
@@ -955,6 +957,7 @@ assert.deepEqual(
     compare_value_kind: 'percent',
     count_predicate: {},
     forecast_target: null,
+    forecast_target_unit: '',
     forecast_lookback: {},
   }
 );
@@ -964,6 +967,7 @@ assert.deepEqual(
     compareMode: 'timeleft',
     compareValueKind: 'hours',
     forecastTarget: 90,
+    forecastTargetUnit: 'gibibytes',
     forecastLookback: { type: 'hour', value: 4 },
   }),
   {
@@ -971,8 +975,36 @@ assert.deepEqual(
     compare_value_kind: 'hours',
     count_predicate: {},
     forecast_target: 90,
+    forecast_target_unit: 'gibibytes',
     forecast_lookback: { type: 'hour', value: 4 },
   }
+);
+assert.equal(
+  resolveForecastTargetUnit({
+    isFormulaMode: false,
+    metricUnit: 'bytes',
+    forecastTargetUnit: 'kibibytes',
+    unitOptions: crossSystemUnitList.filter((item) => item.system === 'bytes'),
+  }),
+  'kibibytes'
+);
+assert.equal(
+  resolveForecastTargetUnit({
+    isFormulaMode: false,
+    metricUnit: 'bytes',
+    forecastTargetUnit: 'percent',
+    unitOptions: crossSystemUnitList.filter((item) => item.system === 'bytes'),
+  }),
+  'bytes'
+);
+assert.equal(
+  resolveForecastTargetUnit({
+    isFormulaMode: true,
+    metricUnit: 'bytes',
+    forecastTargetUnit: 'gibibytes',
+    unitOptions: crossSystemUnitList.filter((item) => item.system === 'bytes'),
+  }),
+  ''
 );
 
 assert.deepEqual(

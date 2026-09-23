@@ -306,6 +306,39 @@ def test_timeleft_uses_water_level_and_lookback_deriv():
     assert compiled == f"clamp_min(90 - {water}, 0) / clamp_min({slope}, 1e-9) / 3600"
 
 
+def test_timeleft_converts_same_system_target_to_metric_unit():
+    policy = _policy(
+        algorithm="last_over_time",
+        group_algorithm="avg",
+        compare_mode="timeleft",
+        compare_value_kind="hours",
+        metric_unit="bytes",
+        forecast_target=1,
+        forecast_target_unit="gibibytes",
+        forecast_lookback={"type": "hour", "value": 1},
+    )
+    compiled = pm.compile_policy_query(policy, "disk", "5m", "instance_id")
+    water = "last_over_time((avg(disk) by (instance_id))[5m:10s])"
+    slope = "deriv((avg(disk) by (instance_id))[1h:2m])"
+    assert compiled == (
+        f"clamp_min(1073741824 - {water}, 0) / clamp_min({slope}, 1e-9) / 3600"
+    )
+
+
+def test_timeleft_rejects_cross_system_target_unit():
+    policy = _policy(
+        algorithm="last_over_time",
+        compare_mode="timeleft",
+        compare_value_kind="hours",
+        metric_unit="bytes",
+        forecast_target=90,
+        forecast_target_unit="percent",
+        forecast_lookback={"type": "hour", "value": 1},
+    )
+    with pytest.raises(BaseAppException, match="not convertible"):
+        pm.compile_policy_query(policy, "disk", "5m", "instance_id")
+
+
 def test_timeleft_rejects_non_dict_lookback():
     policy = _policy(
         algorithm="last_over_time",

@@ -419,6 +419,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         attrs["compare_value_kind"] = ""
         attrs["count_predicate"] = {}
         attrs["forecast_target"] = None
+        attrs["forecast_target_unit"] = ""
         attrs["forecast_lookback"] = {}
         attrs["recovery_threshold"] = {}
         return attrs
@@ -466,6 +467,15 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             }
             if trigger_methods - LOW_SIDE_METHODS:
                 errors["threshold"] = "距容量线剩余时间只允许 < / <= 阈值"
+            unit = str(self._get_value(attrs, "forecast_target_unit", "") or "").strip()
+            metric_unit = str(self._get_value(attrs, "metric_unit", "") or "").strip()
+            if unit and (
+                not metric_unit or not UnitConverter.is_convertible(unit, metric_unit)
+            ):
+                errors["forecast_target_unit"] = "容量线单位必须与指标单位属于同一量纲"
+            attrs["forecast_target_unit"] = unit
+        else:
+            attrs["forecast_target_unit"] = ""
 
         if algorithm == COUNT_IF_ALGORITHM and compare_mode != "absolute":
             errors["compare_mode"] = "条件计数只允许比较基准为当前值"

@@ -315,6 +315,7 @@ def test_old_template_gets_new_field_defaults():
     assert portable["forecast_lookback"] == {}
     assert portable["recovery_threshold"] == {}
     assert portable["forecast_target"] is None
+    assert portable["forecast_target_unit"] == ""
 
 
 def test_portable_config_keeps_new_fields():
@@ -324,6 +325,7 @@ def test_portable_config_keeps_new_fields():
         "recovery_threshold": {"method": "<", "value": 70},
         "count_predicate": {"method": ">", "value": 3},
         "forecast_target": 90,
+        "forecast_target_unit": "gibibytes",
         "forecast_lookback": {"type": "hour", "value": 4},
     })
     assert portable["compare_mode"] == "previous_window"
@@ -331,4 +333,5 @@ def test_portable_config_keeps_new_fields():
     assert portable["recovery_threshold"] == {"method": "<", "value": 70}
     assert portable["count_predicate"] == {"method": ">", "value": 3}
     assert portable["forecast_target"] == 90
+    assert portable["forecast_target_unit"] == "gibibytes"
     assert portable["forecast_lookback"] == {"type": "hour", "value": 4}
