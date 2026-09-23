@@ -16,6 +16,7 @@ from apps.monitor.tasks.services.policy_scan.scanner import MonitorPolicyScan
 from apps.monitor.tasks.utils.policy_calculate import _parse_finite_float
 from apps.monitor.tasks.utils.policy_methods import COMPARE_MODE_ABSOLUTE
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.unit_converter import UnitConverter
 
 DRY_RUN_INSTANCE_LIMIT = 200
 DRY_RUN_FAIL_TEMPLATE = (
@@ -281,6 +282,9 @@ class PolicyDryRunService:
                 "baseline_value": baseline_value,
                 "compared_value": compared_value,
                 "result_unit": result_unit,
+                "result_unit_display": (
+                    UnitConverter.get_display_unit(result_unit) if result_unit else ""
+                ),
                 "matched_threshold": None,
                 "hit_count": hit_count,
                 "trigger_count": trigger_count,
@@ -348,6 +352,11 @@ class PolicyDryRunService:
                     "baseline_value": None,
                     "compared_value": None,
                     "result_unit": result_unit,
+                    "result_unit_display": (
+                        UnitConverter.get_display_unit(result_unit)
+                        if result_unit
+                        else ""
+                    ),
                     "matched_threshold": None,
                     "reason": NO_DATA_REASON,
                     "hit_count": 0,

@@ -7,7 +7,16 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.tasks.utils.policy_methods import (
     ALLOWED_FORECAST_LOOKBACK,
+    COMPARE_MODE_BASELINE_DAYS,
+    COMPARE_SPAN_CONFLICT_MESSAGE,
+    span_value_message,
+    COMPARE_MODE_BASELINE_WEEKS,
+    COMPARE_MODE_OFFSET_DAYS,
+    COMPARE_MODE_OFFSET_HOURS,
     COMPARE_MODES,
+    MAX_COMPARE_BASELINE_WEEKS,
+    MAX_COMPARE_OFFSET_DAYS,
+    MAX_COMPARE_OFFSET_HOURS,
     COMPARE_OFFSET_SECONDS,
     COMPARE_VALUE_KINDS,
     COMPARE_VALUE_KINDS_BY_MODE,
@@ -419,6 +428,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         attrs["compare_value_kind"] = ""
         attrs["count_predicate"] = {}
         attrs["forecast_target"] = None
+        attrs["forecast_target_unit"] = ""
         attrs["forecast_lookback"] = {}
         attrs["recovery_threshold"] = {}
         return attrs
@@ -466,6 +476,15 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             }
             if trigger_methods - LOW_SIDE_METHODS:
                 errors["threshold"] = "距容量线剩余时间只允许 < / <= 阈值"
+            unit = str(self._get_value(attrs, "forecast_target_unit", "") or "").strip()
+            metric_unit = str(self._get_value(attrs, "metric_unit", "") or "").strip()
+            if unit and (
+                not metric_unit or not UnitConverter.is_convertible(unit, metric_unit)
+            ):
+                errors["forecast_target_unit"] = "容量线单位必须与指标单位属于同一量纲"
+            attrs["forecast_target_unit"] = unit
+        else:
+            attrs["forecast_target_unit"] = ""
 
         if algorithm == COUNT_IF_ALGORITHM and compare_mode != "absolute":
             errors["compare_mode"] = "条件计数只允许比较基准为当前值"
@@ -484,10 +503,74 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
 
         period = self._get_value(attrs, "period", {}) or {}
         offset_seconds = COMPARE_OFFSET_SECONDS.get(compare_mode)
+        span_fields = {
+            COMPARE_MODE_OFFSET_HOURS: (
+                "compare_offset_hours",
+                MAX_COMPARE_OFFSET_HOURS,
+                3600,
+                "对照小时数",
+            ),
+            COMPARE_MODE_OFFSET_DAYS: (
+                "compare_offset_days",
+                MAX_COMPARE_OFFSET_DAYS,
+                86400,
+                "对照天数",
+            ),
+            COMPARE_MODE_BASELINE_DAYS: (
+                "compare_offset_days",
+                MAX_COMPARE_OFFSET_DAYS,
+                None,
+                "对照天数",
+            ),
+            COMPARE_MODE_BASELINE_WEEKS: (
+                "compare_baseline_weeks",
+                MAX_COMPARE_BASELINE_WEEKS,
+                None,
+                "对照周数",
+            ),
+        }
+        span = span_fields.get(compare_mode)
+        if span:
+            field, limit, unit_seconds, label = span
+            raw_span = self._get_value(attrs, field, None)
+            minimum = (
+                2
+                if compare_mode in (COMPARE_MODE_BASELINE_WEEKS, COMPARE_MODE_BASELINE_DAYS)
+                else 1
+            )
+            span_message = span_value_message(label, raw_span, minimum, limit)
+            if span_message:
+                errors[field] = span_message
+            else:
+                attrs[field] = raw_span
+                if unit_seconds:
+                    offset_seconds = raw_span * unit_seconds
+                elif "compare_mode" not in errors:
+                    try:
+                        period_seconds = period_to_seconds(period)
+                    except BaseAppException:
+                        period_seconds = None
+                    if compare_mode == COMPARE_MODE_BASELINE_WEEKS:
+                        stride_seconds = 7 * 86400
+                    else:
+                        stride_seconds = 86400
+                    if (
+                        period_seconds
+                        and period_seconds % stride_seconds == 0
+                        and 1 <= period_seconds // stride_seconds <= raw_span
+                    ):
+                        errors["compare_mode"] = COMPARE_SPAN_CONFLICT_MESSAGE
+            if "compare_mode" in attrs:
+                for other, *_rest in span_fields.values():
+                    if other != field:
+                        attrs[other] = None
+        elif "compare_mode" in attrs:
+            for other, *_rest in span_fields.values():
+                attrs[other] = None
         if offset_seconds:
             try:
                 if period_to_seconds(period) == offset_seconds:
-                    errors["compare_mode"] = "汇聚周期不能等于对照 offset"
+                    errors["compare_mode"] = COMPARE_SPAN_CONFLICT_MESSAGE
             except BaseAppException:
                 logger.debug("skip compare offset equality check")
 

@@ -127,6 +127,11 @@ def normalize_policy_handlers(identifiers, organization_ids) -> list:
     return _normalize_handlers(identifiers, organization_ids, allow_empty=True, scope_label="策略")
 
 
+def ensure_manual_close_allowed(handlers, actor) -> None:
+    if list(handlers or []) and not _actor_in_handlers(handlers, actor):
+        raise AlertHandlerConflict("只有当前处理人可以关闭该告警")
+
+
 def _actor_in_handlers(handlers, actor) -> bool:
     allowed = set()
     for item in handlers or []:

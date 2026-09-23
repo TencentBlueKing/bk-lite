@@ -166,7 +166,7 @@ def test_assign_org_user_succeeds_and_rejects_outsiders(
     assert empty.handlers == []
 
 
-def test_handlers_present_blocks_claim_assign_but_close_still_works(apm_api_client):
+def test_handlers_present_blocks_claim_assign_and_non_handler_close(apm_api_client):
     owner = _org_user()
     _, alert, _ = _trigger(suffix="-owned")
     alert.handlers = [owner.id]
@@ -183,12 +183,28 @@ def test_handlers_present_blocks_claim_assign_but_close_still_works(apm_api_clie
     alert.refresh_from_db()
     assert claimed.status_code == 409
     assert assigned.status_code == 409
-    assert closed.status_code == 200
-    assert alert.status == ApmAlert.Status.CLOSED
+    assert closed.status_code == 409
+    assert alert.status == ApmAlert.Status.ACTIVE
     assert alert.handlers == [owner.id]
     assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLAIMED).count() == 0
     assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.ASSIGNED).count() == 0
-    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLOSED).count() == 1
+    assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLOSED).count() == 0
+
+    actor = _actor_user()
+    _, mine, _ = _trigger(suffix="-mine")
+    mine.handlers = [actor.id]
+    mine.save(update_fields=("handlers", "updated_at"))
+    closed_by_handler = apm_api_client.post(f"/api/v1/apm/alerts/{mine.id}/close/")
+    mine.refresh_from_db()
+    assert closed_by_handler.status_code == 200
+    assert mine.status == ApmAlert.Status.CLOSED
+    assert ApmEvent.objects.filter(alert=mine, action=ApmEvent.Action.CLOSED).count() == 1
+
+    _, empty, _ = _trigger(suffix="-empty-close")
+    closed_empty = apm_api_client.post(f"/api/v1/apm/alerts/{empty.id}/close/")
+    empty.refresh_from_db()
+    assert closed_empty.status_code == 200
+    assert empty.status == ApmAlert.Status.CLOSED
 
 
 def test_inactive_alert_cannot_claim_or_assign(apm_api_client):

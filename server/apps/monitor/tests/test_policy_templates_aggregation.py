@@ -85,5 +85,6 @@ def test_bulk_payload_keeps_new_fields_from_template():
     assert payload["compare_value_kind"] == "percent"
     assert payload["count_predicate"] == {"method": ">", "value": 80}
     assert payload["forecast_target"] == 90
+    assert payload["forecast_target_unit"] == ""
     assert payload["forecast_lookback"] == {"type": "hour", "value": 4}
     assert payload["recovery_threshold"] == {"method": "<", "value": 70}

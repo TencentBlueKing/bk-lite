@@ -658,7 +658,9 @@ export const buildMetricExpressionPreviewPayload = ({
   compareValueKind,
   countPredicate,
   forecastTarget,
-  forecastLookback
+  forecastTargetUnit,
+  forecastLookback,
+  compareOffsetHours
 }: {
   monitorObjId: string | number | null;
   source: SourceFeild;
@@ -683,7 +685,9 @@ export const buildMetricExpressionPreviewPayload = ({
   compareValueKind?: string | null;
   countPredicate?: { method?: string; value?: number | null } | null;
   forecastTarget?: number | null;
+  forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number } | null;
+  compareOffsetHours?: number | null;
 }) => {
   if (!monitorObjId || !selectedInstance || !algorithm) {
     return null;
@@ -755,6 +759,28 @@ export const buildMetricExpressionPreviewPayload = ({
     threshold_unit: previewThresholdUnit,
     compare_mode: resolvedCompareMode,
     compare_value_kind: resolvedCompareKind,
+    compare_offset_hours:
+      resolvedCompareMode === 'offset_hours' &&
+      compareOffsetHours != null &&
+      Number.isFinite(compareOffsetHours) &&
+      compareOffsetHours >= 1
+        ? Math.floor(compareOffsetHours)
+        : null,
+    compare_offset_days:
+      (resolvedCompareMode === 'offset_days' ||
+        resolvedCompareMode === 'baseline_days') &&
+      compareOffsetHours != null &&
+      Number.isFinite(compareOffsetHours) &&
+      compareOffsetHours >= 1
+        ? Math.floor(compareOffsetHours)
+        : null,
+    compare_baseline_weeks:
+      resolvedCompareMode === 'baseline_weeks' &&
+      compareOffsetHours != null &&
+      Number.isFinite(compareOffsetHours) &&
+      compareOffsetHours >= 1
+        ? Math.floor(compareOffsetHours)
+        : null,
     count_predicate:
       algorithm === 'count_if_over_time' && countPredicate?.method
         ? {
@@ -764,6 +790,8 @@ export const buildMetricExpressionPreviewPayload = ({
         : {},
     forecast_target:
       resolvedCompareMode === 'timeleft' ? forecastTarget ?? null : null,
+    forecast_target_unit:
+      resolvedCompareMode === 'timeleft' ? forecastTargetUnit || '' : '',
     forecast_lookback:
       resolvedCompareMode === 'timeleft'
         ? forecastLookback || { type: 'hour', value: 1 }

@@ -30,6 +30,11 @@ export const canReassignAlert = (
 ): boolean =>
   status === activeStatus && isCurrentAlertHandler(handlers, actor);
 
+export const canCloseAlert = (
+  handlers: unknown,
+  actor: { id?: unknown; username?: unknown }
+): boolean => !hasAlertHandlers(handlers) || isCurrentAlertHandler(handlers, actor);
+
 export const isHandlerLifecycleEvent = (action?: string | null): boolean =>
   action === 'claimed' || action === 'assigned' || action === 'reassigned';
 

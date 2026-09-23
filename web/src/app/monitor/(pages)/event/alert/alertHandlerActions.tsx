@@ -8,7 +8,7 @@ import { useTranslation } from '@/utils/i18n';
 import { formatUserName } from '@/utils/userDisplay';
 import useMonitorApi from '@/app/monitor/api';
 import { TableDataItem, UserItem } from '@/app/monitor/types';
-import { canClaimOrAssignAlert, canReassignAlert } from './alertHandlerUtils';
+import { canClaimOrAssignAlert, canCloseAlert, canReassignAlert } from './alertHandlerUtils';
 
 interface AlertHandlerActionsProps {
   record: TableDataItem;
@@ -37,6 +37,7 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
   const actor = { id: userId, username };
   const canClaimOrAssign = canClaimOrAssignAlert(record.status, record.handlers);
   const canReassign = canReassignAlert(record.status, record.handlers, actor);
+  const canClose = canCloseAlert(record.handlers, actor);
 
   const handleClaim = async () => {
     setActionLoading(true);
@@ -119,18 +120,20 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
               {t('monitor.events.reassign')}
             </Button>
           ) : null}
-          <Popconfirm
-            title={t('monitor.events.closeTitle')}
-            description={t('monitor.events.closeContent')}
-            okText={t('common.confirm')}
-            cancelText={t('common.cancel')}
-            okButtonProps={{ loading: actionLoading }}
-            onConfirm={handleClose}
-          >
-            <Button type="link" size={size} className="p-0" disabled={record.status !== 'new'}>
-              {closeText}
-            </Button>
-          </Popconfirm>
+          {canClose ? (
+            <Popconfirm
+              title={t('monitor.events.closeTitle')}
+              description={t('monitor.events.closeContent')}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
+              okButtonProps={{ loading: actionLoading }}
+              onConfirm={handleClose}
+            >
+              <Button type="link" size={size} className="p-0" disabled={record.status !== 'new'}>
+                {closeText}
+              </Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       </Permission>
       <Modal

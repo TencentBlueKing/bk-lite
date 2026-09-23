@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import OperateModal from '@/components/operate-modal';
 import {
   DRY_RUN_VERDICT_I18N,
+  formatDryRunDimensionLabel,
   formatDryRunNumber,
   formatDryRunThreshold,
   resolveDryRunReason,
@@ -18,6 +19,7 @@ export interface DryRunItem {
   baseline_value?: number | null;
   compared_value?: number | null;
   result_unit?: string;
+  result_unit_display?: string;
   matched_threshold?: {
     method?: string;
     value?: number | string | null;
@@ -38,6 +40,7 @@ interface DryRunResultModalProps {
   open: boolean;
   loading?: boolean;
   data: DryRunResult | null;
+  dimensions?: Array<{ name?: string; description?: string }>;
   onClose: () => void;
   t: (key: string, fallback?: string) => string;
 }
@@ -46,6 +49,7 @@ const DryRunResultModal = ({
   open,
   loading = false,
   data,
+  dimensions,
   onClose,
   t,
 }: DryRunResultModalProps) => {
@@ -61,6 +65,13 @@ const DryRunResultModal = ({
       key: 'instance_name',
       ellipsis: true,
       render: (value, record) => value || record.instance_id || '—',
+    },
+    {
+      title: t('monitor.events.dimension', '维度'),
+      key: 'dimension',
+      ellipsis: true,
+      render: (_value, record) =>
+        formatDryRunDimensionLabel(record.metric_instance_id, dimensions) || '—',
     },
     {
       title: t('monitor.events.level', '级别'),
@@ -94,9 +105,8 @@ const DryRunResultModal = ({
       render: (value, record) => {
         const formatted = formatDryRunNumber(value);
         if (formatted === '—') return formatted;
-        return record.result_unit
-          ? `${formatted} ${record.result_unit}`
-          : formatted;
+        const unit = record.result_unit_display || '';
+        return unit ? `${formatted} ${unit}` : formatted;
       },
     },
     {

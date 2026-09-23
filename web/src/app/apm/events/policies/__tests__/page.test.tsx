@@ -136,9 +136,9 @@ describe('APM 策略列表', () => {
     await screen.findByText('结账接口 P95 过慢');
 
     expect(container.querySelector('.ant-table-body')).toBeNull();
-    const search = container.querySelector('.ant-input-search');
+    const search = screen.getByPlaceholderText('搜索策略、服务、环境或端点').parentElement;
     expect(search?.className).toContain('w-full');
-    expect(search?.className).toContain('sm:!w-80');
+    expect(search?.className).toContain('sm:w-80');
   });
 
   it('列表启停调用专用操作接口', async () => {

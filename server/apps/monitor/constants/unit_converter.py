@@ -128,6 +128,7 @@ class UnitConverterConstants:
         's': 's',
         'm': 'm',
         'h': 'h',
+        'hour': 'hour',
         'd': 'd',
 
         # Rate
@@ -151,6 +152,7 @@ class UnitConverterConstants:
     DISPLAY_UNIT_MAPPING = {
         'percentunit': '%',
         'percent': '%',
+        'hour': '小时',
         'counts': '',
         'thousand': 'K',
         'million': 'Mil',

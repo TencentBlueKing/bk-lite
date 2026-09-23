@@ -26,6 +26,7 @@ from apps.monitor.services.alert_handlers import (
     AlertHandlerInvalid,
     assign_alert,
     claim_alert,
+    ensure_manual_close_allowed,
     filter_my_handler_alerts,
     is_my_alert_query,
     reassign_alert,
@@ -290,6 +291,11 @@ class MonitorAlertViewSet(
             serializer.is_valid(raise_exception=True)
             updated_data = serializer.validated_data
             if updated_data.get("status") == "closed":
+                if old_status == "new":
+                    try:
+                        ensure_manual_close_allowed(instance.handlers, request.user)
+                    except AlertHandlerConflict as exc:
+                        return WebUtils.response_error(str(exc), status_code=409)
                 now = datetime.now(timezone.utc)
                 updated_data["end_event_time"] = now
                 updated_data["operator"] = request.user.username

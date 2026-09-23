@@ -101,6 +101,19 @@ def test_compare_mode_wraps_window_query(algorithm, compare_mode, kind, expected
         assert compiled == f"{window}{expected_suffix.format(q=window)}"
 
 
+def test_offset_hours_compiles_custom_hour():
+    policy = _policy(
+        compare_mode="offset_hours",
+        compare_value_kind="percent",
+        compare_offset_hours=3,
+    )
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == (
+        f"({window} - {window} offset 3h) / ({window} offset 3h) * 100"
+    )
+
+
 def test_formula_path_then_compare_percent():
     policy = _policy(
         query_condition={"type": "formula", "expression": "a / b"},
@@ -166,6 +179,43 @@ def test_old_policy_existence_matches_pre_upgrade_aggregation():
     assert expected == "avg_over_time((avg(up) by (instance_id))[5m:10s])"
     assert pm.compile_existence_query(policy, "up", "5m", "instance_id") == expected
     assert pm.compile_policy_query(policy, "up", "5m", "instance_id") == expected
+
+
+def test_offset_days_compiles_custom_day():
+    policy = _policy(
+        compare_mode="offset_days",
+        compare_value_kind="percent",
+        compare_offset_days=30,
+    )
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    assert compiled == (
+        f"({window} - {window} offset 30d) / ({window} offset 30d) * 100"
+    )
+
+
+def test_baseline_days_compiles_custom_count():
+    policy = _policy(
+        compare_mode="baseline_days",
+        compare_value_kind="percent",
+        compare_offset_days=2,
+    )
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    baseline = f"({window} offset 1d + {window} offset 2d) / 2"
+    assert compiled == f"({window} - ({baseline})) / ({baseline}) * 100"
+
+
+def test_baseline_weeks_compiles_custom_count():
+    policy = _policy(
+        compare_mode="baseline_weeks",
+        compare_value_kind="percent",
+        compare_baseline_weeks=2,
+    )
+    q = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    baseline = f"({q} offset 7d + {q} offset 14d) / 2"
+    assert compiled == f"({q} - ({baseline})) / ({baseline}) * 100"
 
 
 def test_offset_7d_compiles_percent():
@@ -304,6 +354,39 @@ def test_timeleft_uses_water_level_and_lookback_deriv():
     water = "last_over_time((avg(disk) by (instance_id))[5m:10s])"
     slope = "deriv((avg(disk) by (instance_id))[1h:2m])"
     assert compiled == f"clamp_min(90 - {water}, 0) / clamp_min({slope}, 1e-9) / 3600"
+
+
+def test_timeleft_converts_same_system_target_to_metric_unit():
+    policy = _policy(
+        algorithm="last_over_time",
+        group_algorithm="avg",
+        compare_mode="timeleft",
+        compare_value_kind="hours",
+        metric_unit="bytes",
+        forecast_target=1,
+        forecast_target_unit="gibibytes",
+        forecast_lookback={"type": "hour", "value": 1},
+    )
+    compiled = pm.compile_policy_query(policy, "disk", "5m", "instance_id")
+    water = "last_over_time((avg(disk) by (instance_id))[5m:10s])"
+    slope = "deriv((avg(disk) by (instance_id))[1h:2m])"
+    assert compiled == (
+        f"clamp_min(1073741824 - {water}, 0) / clamp_min({slope}, 1e-9) / 3600"
+    )
+
+
+def test_timeleft_rejects_cross_system_target_unit():
+    policy = _policy(
+        algorithm="last_over_time",
+        compare_mode="timeleft",
+        compare_value_kind="hours",
+        metric_unit="bytes",
+        forecast_target=90,
+        forecast_target_unit="percent",
+        forecast_lookback={"type": "hour", "value": 1},
+    )
+    with pytest.raises(BaseAppException, match="not convertible"):
+        pm.compile_policy_query(policy, "disk", "5m", "instance_id")
 
 
 def test_timeleft_rejects_non_dict_lookback():

@@ -289,7 +289,7 @@ def test_assign_org_user_succeeds_and_rejects_outsiders(
     assert empty.handlers == []
 
 
-def test_handlers_present_blocks_claim_assign_but_close_still_works(api_client, grant_all, mocker):
+def test_handlers_present_blocks_claim_assign_and_non_handler_close(api_client, grant_all, mocker):
     Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
     mocker.patch("apps.monitor.views.monitor_alert.AlertLifecycleNotifier")
     owner = _org_user()
@@ -312,12 +312,34 @@ def test_handlers_present_blocks_claim_assign_but_close_still_works(api_client, 
     alert.refresh_from_db()
     assert claimed.status_code == 409
     assert assigned.status_code == 409
-    assert closed.status_code == 200
-    assert alert.status == "closed"
+    assert closed.status_code == 409
+    assert alert.status == "new"
     assert alert.handlers == [owner.id]
     assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLAIMED).count() == 0
     assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.ASSIGNED).count() == 0
-    assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 1
+    assert MonitorEvent.objects.filter(alert_id=alert.id, action=MonitorEvent.Action.CLOSED).count() == 0
+
+    actor = _actor_user()
+    mine = _new_alert(policy, handlers=[actor.id], monitor_instance_id="owned-by-actor")
+    closed_by_handler = api_client.patch(
+        f"{BASE}/api/monitor_alert/{mine.id}/",
+        {"status": "closed"},
+        format="json",
+    )
+    mine.refresh_from_db()
+    assert closed_by_handler.status_code == 200
+    assert mine.status == "closed"
+    assert MonitorEvent.objects.filter(alert_id=mine.id, action=MonitorEvent.Action.CLOSED).count() == 1
+
+    empty = _new_alert(policy, monitor_instance_id="unowned")
+    closed_empty = api_client.patch(
+        f"{BASE}/api/monitor_alert/{empty.id}/",
+        {"status": "closed"},
+        format="json",
+    )
+    empty.refresh_from_db()
+    assert closed_empty.status_code == 200
+    assert empty.status == "closed"
 
 
 def test_inactive_alert_cannot_claim_or_assign(api_client, grant_all):
