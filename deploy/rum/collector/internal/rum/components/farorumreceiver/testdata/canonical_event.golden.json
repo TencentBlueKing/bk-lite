@@ -1,0 +1,27 @@
+{
+  "body": {
+    "attributes": {},
+    "domain": "browser",
+    "name": "unknown.widget"
+  },
+  "record": {
+    "rum.accepted_at_unix_nano": 1784109600000000000,
+    "rum.application": "storefront",
+    "rum.environment": "production",
+    "rum.erasure.key_version": "v1",
+    "rum.erasure.session_key": "97060f42ec713d31159721df0b7a3d01297eb91b69dfe89ce53764f60fba4445",
+    "rum.erasure.user_key": "a1d9afadac79412aba5fda15c64a1ff6d3ccf412b5fe0152d7b05823e99c8f4d",
+    "rum.event.id": "1d0eedb0196dac26f799220d07e2641702bbdda9b2f49a25f6d47647fbb50674",
+    "rum.event.type": "custom",
+    "rum.page.url": "https://shop.example/customers/:id",
+    "rum.release": "2026.07.15",
+    "rum.session.id": "session-1",
+    "rum.timestamp.clamped": false,
+    "rum.user.id": "a1d9afadac79412aba5fda15c64a1ff6d3ccf412b5fe0152d7b05823e99c8f4d",
+    "rum.view.name": "checkout"
+  },
+  "resource": {
+    "tenant.id": "tenant-a"
+  },
+  "scope": "weops.rum.faro"
+}
