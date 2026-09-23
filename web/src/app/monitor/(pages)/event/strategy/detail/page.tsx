@@ -75,11 +75,14 @@ import {
   scaleThresholdValuesForUnitChange,
   scheduleValueToMinutes,
   COMPARE_MODE_ABSOLUTE,
+  COMPARE_MODE_TIMELEFT,
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
   coerceRecoveryForThresholds,
   coerceThresholdsForCompareMode,
+  completedThresholds,
   defaultCompareValueKind,
+  getAllowedThresholdMethods,
   getCompareModeSelectOptions,
   getCompareValueKinds,
   getThresholdUnitOptions,
@@ -919,13 +922,16 @@ const StrategyOperation = () => {
     const newIsEnumMetric = isStringArray(target?.unit || '');
     const newComparisonMethods = newIsEnumMetric
       ? ENUM_COMPARISON_METHOD
-      : COMPARISON_METHOD;
+      : getAllowedThresholdMethods(compareMode, COMPARISON_METHOD);
+    const defaultMethod =
+      newComparisonMethods[0]?.value ||
+      (compareMode === COMPARE_MODE_TIMELEFT ? '<' : '>');
 
-    // 重置阈值：切换指标时，操作符选中下拉列表的第一个值，并清空值
+    // 重置阈值：切换指标时，操作符选中当前比较基准允许的第一个值，并清空值
     const newThreshold = threshold.map((item) => {
       return {
         ...item,
-        method: newComparisonMethods[0].value,
+        method: defaultMethod,
         value: null // 切换指标时清空值
       };
     });
@@ -1223,9 +1229,7 @@ const StrategyOperation = () => {
         groupAlgorithm ||
         'avg';
       params.algorithm = params.algorithm || algorithm || 'avg_over_time';
-      params.threshold = threshold.filter(
-        (item) => !!item.value || item.value === 0
-      );
+      params.threshold = completedThresholds(threshold);
       const policyUnits = isTrapPlugin
         ? { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
         : resolveMetricExpressionUnits({

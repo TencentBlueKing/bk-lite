@@ -399,6 +399,20 @@ export const COMPARE_MODE_BASELINE_4W = 'baseline_4w';
 export const COMPARE_MODE_TIMELEFT = 'timeleft';
 export const LOW_SIDE_THRESHOLD_METHODS = new Set(['<', '<=']);
 
+export const isFilledThresholdValue = (value: unknown): boolean => {
+  if (typeof value === 'boolean' || value == null || value === '') {
+    return false;
+  }
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(number);
+};
+
+export const completedThresholds = <
+  T extends { method?: string | null; value?: unknown }
+>(
+  thresholds: T[] | null | undefined
+): T[] => (thresholds || []).filter((item) => isFilledThresholdValue(item.value));
+
 export const timeleftRequiresLowSideThresholds = (
   compareMode: string | null | undefined,
   thresholds: Array<{ method?: string | null }> | null | undefined

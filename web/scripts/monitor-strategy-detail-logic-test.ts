@@ -52,6 +52,8 @@ import {
   formatDryRunNumber,
   formatDryRunThreshold,
   DRY_RUN_VERDICT_I18N,
+  completedThresholds,
+  isFilledThresholdValue,
   timeleftRequiresLowSideThresholds,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
@@ -929,6 +931,26 @@ assert.ok(
 );
 assert.ok(
   !timeleftRequiresLowSideThresholds('timeleft', [{ method: '>' }])
+);
+assert.equal(isFilledThresholdValue(null), false);
+assert.equal(isFilledThresholdValue(''), false);
+assert.equal(isFilledThresholdValue(0), true);
+assert.deepEqual(
+  completedThresholds([
+    { level: 'critical', method: '<', value: 2 },
+    { level: 'error', method: '>', value: null },
+    { level: 'warning', method: '>', value: undefined }
+  ]).map((item) => item.level),
+  ['critical']
+);
+assert.ok(
+  timeleftRequiresLowSideThresholds(
+    'timeleft',
+    completedThresholds([
+      { method: '<', value: 1 },
+      { method: '>', value: null }
+    ])
+  )
 );
 
 assert.deepEqual(

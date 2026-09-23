@@ -4,6 +4,7 @@
       "duration": "Duration",
       "conditionValidate": "The Condition cannot be empty",
       "thresholdValidate": "Unit or condition cannot be empty",
+      "thresholdRequired": "Fill in at least one alert level",
       "timeleftThresholdValidate": "Time left to capacity only allows < or <= thresholds",
       "conditionFieldValidate": "Label, condition or value cannot be empty",
       "strategy": "Strategy",

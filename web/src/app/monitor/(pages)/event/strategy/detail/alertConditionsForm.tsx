@@ -18,6 +18,7 @@ import {
   defaultCompareValueKind,
   formatUnitLabelWithRateSuffix,
   getAllowedRecoveryMethods,
+  completedThresholds,
   getAllowedThresholdMethods,
   getCompareModeSelectOptions,
   getCompareValueKinds,
@@ -164,20 +165,21 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     unitList
   });
 
-  // 验证阈值：仅在展示单位选择器时要求 thresholdUnit
+  // 三个级别都展示，但只校验填了数值的行。空行忽略，至少一行即可提交。
   const validateThreshold = async () => {
+    const filled = completedThresholds(threshold);
+    if (!filled.length) {
+      return Promise.reject(new Error(t('monitor.events.thresholdRequired')));
+    }
     if (
-      threshold.length &&
-      (threshold.some((item) => {
-        return !item.method;
-      }) ||
-        (showUnitSelector && !thresholdUnit))
+      filled.some((item) => !item.method) ||
+      (showUnitSelector && !thresholdUnit)
     ) {
       return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
     if (
       compareMode === COMPARE_MODE_TIMELEFT &&
-      !timeleftRequiresLowSideThresholds(compareMode, threshold)
+      !timeleftRequiresLowSideThresholds(compareMode, filled)
     ) {
       return Promise.reject(
         new Error(t('monitor.events.timeleftThresholdValidate'))

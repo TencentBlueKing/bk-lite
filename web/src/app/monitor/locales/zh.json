@@ -4,6 +4,7 @@
       "duration": "持续时间",
       "conditionValidate": "条件不能为空",
       "thresholdValidate": "单位或条件不能为空",
+      "thresholdRequired": "请至少填写一个告警级别的阈值",
       "timeleftThresholdValidate": "距容量线剩余时间只允许小于或小于等于",
       "conditionFieldValidate": "标签、条件或值不能为空",
       "strategy": "策略",
