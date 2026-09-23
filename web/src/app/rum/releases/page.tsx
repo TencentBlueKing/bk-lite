@@ -406,7 +406,7 @@ export default function RumReleasesPage() {
             trailing={
               <>
                 {tab === 'releases' ? (
-                  <RumRangeSegmented value={range} onChange={setRange} />
+                  <RumRangeSegmented value={range} loading={pending} onChange={setRange} />
                 ) : null}
                 <Select
                   value={application || undefined}
@@ -455,22 +455,24 @@ export default function RumReleasesPage() {
         }
       >
         {tab === 'releases' ? (
-          pending && !page ? (
+          pending ? (
             <>
               <RumKpiSkeleton count={4} />
               <RumTableSkeleton size="middle" columns={rumSkeletonColumns(columns)} />
             </>
-          ) : !pending && rows.length === 0 ? (
-            <Empty
-              description={
-                <div className="flex flex-col gap-1">
-                  <span>{t('rum.releases.empty', '没有版本样本')}</span>
-                  <span className="text-xs text-[var(--color-text-3)]">
-                    {t('rum.releases.emptyHint', '选择应用与时间范围后再试。')}
-                  </span>
-                </div>
-              }
-            />
+          ) : rows.length === 0 ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <Empty
+                description={
+                  <div className="flex flex-col gap-1">
+                    <span>{t('rum.releases.empty', '没有版本样本')}</span>
+                    <span className="text-xs text-[var(--color-text-3)]">
+                      {t('rum.releases.emptyHint', '选择应用与时间范围后再试。')}
+                    </span>
+                  </div>
+                }
+              />
+            </div>
           ) : rows.length > 0 ? (
             <>
               <RumMetricGrid

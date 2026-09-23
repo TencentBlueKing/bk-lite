@@ -40,6 +40,8 @@ const ApplicationPage = () => {
   return (
     <div className="w-full">
       <SystemManagerEntityGrid
+        title={t('system.application.pageTitle')}
+        description={t('system.application.pageDesc')}
         items={dataList}
         loading={loading || refreshing}
         onSearch={handleSearch}

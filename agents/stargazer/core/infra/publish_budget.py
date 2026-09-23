@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from contextlib import contextmanager
 
@@ -17,6 +18,13 @@ class PublishBudget:
         self._active = 0
         self._started = 0.0
         self.credit_wait_seconds = 0.0
+        # 单结果的有界诊断计数，不保留消息、凭据或逐分片明细。
+        self.total_lines: int | None = None
+        self.total_bytes: int | None = None
+        self.attempted_lines = 0
+        self.confirmed_lines = 0
+        self.retry_count = 0
+        self.slowest_attempt_seconds = 0.0
 
     @property
     def elapsed(self) -> float:
@@ -33,7 +41,8 @@ class PublishBudget:
         self._active += 1
         try:
             # 活跃区间中的全部消息获得同一个截止点；重试、后续 chunk 只获剩余量。
-            yield time.monotonic() + self.remaining
+            # asyncio 的绝对截止点必须使用 loop.time()，不能假定它与 monotonic 同源。
+            yield asyncio.get_running_loop().time() + self.remaining
         finally:
             self._active -= 1
             if not self._active:

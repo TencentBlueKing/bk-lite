@@ -56,6 +56,22 @@ HTML 支持明暗主题、缩放、搜索、关系追踪、聚焦视图、演示
 
 `GraphClient` 会根据 `FALKORDB_HOST` 选择 FalkorDB，否则选择 Neo4j，见 [graph_client.py:32](../../server/apps/cmdb/graph/drivers/graph_client.py#L32)。因此 Graph 是资产事实源，Django DB 是操作与可靠性交付事实源；目标不是强行把两者放进一个事务，而是建立可恢复的提交协议。
 
+2026-09-21 导出读取路径更新：`InstanceManage.inst_export` 按授权范围和 UUID 游标分批取得实例，
+经 Graph Adapter 的端点查询批量准备所选关联；`Export.append_inst_list` 仅格式化和顺序写入，
+不再反向调用 InstanceManage 查询逐行关联。页面导出结果保存到临时文件并分块传输。
+具体契约与验证见 [实例导出性能修复](../../specs/changes/cmdb-export-performance/spec.md)。
+
+2026-09-21 异步导入导出补充：资产页面通过 `TransferTaskViewSet` 接纳任务，
+`TransferService` 在 Django DB 保存用户配额、任务及执行占用；导入导出由现有 Celery 默认队列和 Worker 执行。
+接纳提交后仅启动有界后台发布，HTTP 不等待 Broker；投递意图由任务表持有，
+每分钟补发覆盖发布失败、线程饱和和 API 退出，无需单独启动 CMDB Worker。
+导出读取图数据并将产物与授权清单写入既有 `cmdb-config-file` 桶的
+`transfer/` 前缀；导入按批查询标识，通过现有 InstanceManage 与 Operation/Outbox
+写入实例、记录成功审计。实例数据不进入任务状态表，源文件不进入数据库 JSON。
+每分钟维护派发/租约、每天 03:00 清理过期终态及文件；不确定导入不自动重放或释放占用。
+见 [实施设计](../../specs/changes/cmdb-async-transfer/spec.md) 和
+[实施测试记录](../../specs/changes/cmdb-async-transfer/test-report.md)。旧同步接口继续保留。
+
 ### 3.2 建议明确六个能力域
 
 | 能力域 | 核心职责 | 当前主要落点 | 应拥有的规则/事实 |
@@ -186,6 +202,14 @@ mode(create|update|upsert|reconcile)
 ```
 
 各插件只负责把外部数据映射到 Envelope；`Ingestion Module` 负责批次上限、字段校验、身份归一和去重；最终仍调用统一 `AssetCommand`。这样插件扩展不会形成另一套资产写入内核。
+
+### JOB 主机发现补充（2026-09-21）
+
+JOB 数据库、中间件及物理服务器 SSH 入口现在通过有效采集目录的 `supports_host_discovery` 开放主机选择。任务的 `model_id` 仍决定插件；`params.target_source=host` 下，`instances` 保存服务端按 UUID、可见性、任务组织和接入点云区域校验后的 host 快照，作为脚本执行来源。重新保存刷新 IP；运行期使用保存快照。
+
+可信接入点区域写入 `params.target_cloud_region_id`，节点配置将它作为 `cmdbcloud_region_id` 传给已有 JOB 节点定位。首次采集复用已下发的 Telegraf 子配置 one-shot，周期采集、Stargazer local/SSH、VM 轮次对账沿用原链路。发现结果使用任务组织和插件身份，不以来源主机名称、UUID 作为 Nginx 等资源身份。切换为 IP 时显式清空旧 `instances` 和新模式区域字段。
+
+本次未实现“选择已有资产仅更新该资产”的严格结果过滤。实现和验证边界见 [JOB 主机发现实施记录](../../specs/changes/cmdb-job-host-discovery/validation.md)。
 
 ### 5.3 NodeMgmt 同步、快照与对账
 

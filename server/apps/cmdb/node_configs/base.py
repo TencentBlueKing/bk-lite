@@ -223,6 +223,8 @@ class BaseNodeParams(metaclass=ABCMeta):
             if self.has_multiple_credentials:
                 params = self.strip_flattened_credential_fields(params, credentials_pool)
             params.update(self.flatten_credentials_pool(credentials_pool))
+        if self.executor_type == "job" and task_params.get("target_source") == "host":
+            params["cloud_region_id"] = task_params["target_cloud_region_id"]
         _params = {f"cmdb{k}": str(v) for k, v in params.items()}
         # 加入tags 冗余一份
         _params.update(self.tags)

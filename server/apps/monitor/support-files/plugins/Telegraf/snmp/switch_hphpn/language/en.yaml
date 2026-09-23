@@ -1,7 +1,7 @@
 Switch HP ProCurve SNMP:
   name: HP ProCurve (Telegraf)
-  desc: SNMP monitoring template for HP switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: SNMP monitoring template for HP ProCurve / ArubaOS-Switch. It reports CPU
+    utilization (hpSwitchCpuStat) and system memory (hpLocalMem used/total).
 monitor_object:
   Switch: Switch
 monitor_object_type:

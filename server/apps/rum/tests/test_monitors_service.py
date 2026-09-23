@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from apps.rum.services.alerteval import EVAL_FIRE, EVAL_NONE, EVAL_RESOLVE, EvalState, advance, breached, should_renotify
+from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl
 from apps.rum.services.evaluator import AlertEvaluator
@@ -181,6 +182,7 @@ def test_evaluator_skips_without_analytics():
     result = AlertEvaluator(
         policies=MemoryPolicyStore(),
         events=MemoryEventStore(),
+        analytics=UnavailableAnalytics(),
         notifier=MemoryNotifier(),
     ).evaluate_all()
     assert result["skipped"] is True

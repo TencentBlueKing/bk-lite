@@ -42,6 +42,7 @@ def test_rule_payload_does_not_project_historical_source_fields_or_query_events(
     alert.events = MagicMock()
     p = build_rule_payload(alert, include_source_names=False)
     assert "source_id" not in p and "source_pk" not in p
+    assert not any(key.startswith("event.") for key in p)
     assert alert.events.mock_calls == []
 
 
@@ -57,6 +58,40 @@ def test_action_parameters_keep_first_event_source_id(script_params):
     params = resolve_params(build_match_payload(alert), [{"name": "origin", "from": "field", "value": "source_id"}], script_params)
 
     assert params == [{"name": "origin", "value": 7}]
+
+
+def test_match_payload_flattens_representative_event_without_raw_data():
+    from types import SimpleNamespace
+
+    alert = FakeAlert()
+    alert.events = SimpleNamespace(
+        first=lambda: SimpleNamespace(
+            source_id=7,
+            source=SimpleNamespace(name="Prometheus"),
+            event_id="EVENT-1",
+            title="cpu",
+            level="1",
+            tags={"alert": "CpuHigh"},
+            labels={},
+            enrichment={"cmdb": {"owner": "张三"}},
+            raw_data={"token": "secret-token-value"},
+            assignee=["alice"],
+            team=[1],
+            ingest_key="abc",
+        )
+    )
+
+    payload = build_match_payload(alert)
+
+    assert payload["source_id"] == 7
+    assert payload["event.event_id"] == "EVENT-1"
+    assert payload["event.source_name"] == "Prometheus"
+    assert payload["event.tags.alert"] == "CpuHigh"
+    assert payload["event.enrichment.cmdb.owner"] == "张三"
+    assert "event.raw_data" not in payload
+    assert not any("secret-token-value" in str(value) for value in payload.values())
+    assert "event.assignee" not in payload
+    assert "event.ingest_key" not in payload
 
 
 def test_payload_omits_source_id_when_no_events():

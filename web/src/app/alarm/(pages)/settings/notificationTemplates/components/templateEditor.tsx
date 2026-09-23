@@ -31,6 +31,7 @@ import {
   DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS as DEFAULT_CONTENTS,
   formatLegacyAlertOperationContent,
 } from '@/app/alarm/utils/defaultNotificationTemplateContents';
+import EventBlockInsert, { EventBlockCatalog } from './eventBlockInsert';
 
 const AceEditor = dynamic(
   async () => {
@@ -98,6 +99,12 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
     label: string;
     scopes?: NotificationTemplateItem['scope'][];
   }>>([]);
+  const [eventBlock, setEventBlock] = useState<EventBlockCatalog | null>(null);
+  const bodyEditorRef = useRef<{
+      session: { insert: (position: { row: number; column: number }, text: string) => void };
+      getCursorPosition: () => { row: number; column: number };
+      focus: () => void;
+        } | null>(null);
   const [channels, setChannels] = useState<Array<{
     id: number;
     name: string;
@@ -123,6 +130,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
       if (!active) return;
       if (catalogResult.status === 'fulfilled') {
         setVariables(catalogResult.value.variables || []);
+        setEventBlock(catalogResult.value.event_block || null);
       }
       if (channelsResult.status === 'fulfilled') {
         setChannels(channelsResult.value || []);
@@ -178,6 +186,14 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
     () => variables.filter((variable) => !variable.scopes || variable.scopes.includes(templateScope)),
     [templateScope, variables],
   );
+  const usedVariablePaths = useMemo(() => {
+    const source = `${activeContent.subject_template}\n${activeContent.body_template}`;
+    const paths = new Set<string>();
+    for (const match of source.matchAll(/\{\{\s*([^{}@]+?)\s*\}\}/g)) {
+      paths.add(match[1].trim());
+    }
+    return paths;
+  }, [activeContent.body_template, activeContent.subject_template]);
   const operationChannels = useMemo(
     () => channels.filter((channel) => channel.channel_type !== 'im_notification'
       && (!channel.team
@@ -221,6 +237,29 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
 
   const updateContent = (patch: Partial<NotificationTemplateContent>) => {
     setContents((current) => current.map((item) => item.channel_type === activeChannel ? { ...item, ...patch } : item));
+  };
+
+  const insertIntoBody = (text: string) => {
+    const editor = bodyEditorRef.current;
+    if (!editor) {
+      updateContent({ body_template: `${activeContent.body_template}${text}` });
+      return;
+    }
+    editor.session.insert(editor.getCursorPosition(), text);
+    editor.focus();
+  };
+
+  const applyEventBlock = (text: string) => {
+    const body = activeContent.body_template;
+    const matches = [...body.matchAll(/\{\{@\s*events\b[\s\S]*?@\}\}/g)];
+    const last = matches.at(-1);
+    if (last?.index === undefined) {
+      insertIntoBody(text);
+      return;
+    }
+    updateContent({
+      body_template: `${body.slice(0, last.index)}${text}${body.slice(last.index + last[0].length)}`,
+    });
   };
 
   const updateChannels = (selected: string[]) => {
@@ -592,15 +631,27 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
               )}
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Typography.Text type="secondary">{t('settings.notificationTemplate.variables')}：</Typography.Text>
-                {visibleVariables.map((variable) => (
-                  <Tag
-                    key={variable.path}
-                    className="cursor-pointer"
-                    onClick={() => updateContent({ body_template: `${activeContent.body_template}{{ ${variable.path} }}` })}
-                  >
-                    {variable.label}
-                  </Tag>
-                ))}
+                {visibleVariables.map((variable) => {
+                  const used = usedVariablePaths.has(variable.path);
+                  return (
+                    <Button
+                      key={variable.path}
+                      size="small"
+                      type={used ? 'primary' : 'default'}
+                      ghost={used}
+                      onClick={() => updateContent({ body_template: `${activeContent.body_template}{{ ${variable.path} }}` })}
+                    >
+                      {variable.label}
+                    </Button>
+                  );
+                })}
+                {eventBlock && (
+                  <EventBlockInsert
+                    catalog={eventBlock}
+                    source={activeContent.body_template}
+                    onApply={applyEventBlock}
+                  />
+                )}
               </div>
               {activeChannelConfig.hasSubject && (
                 <div className="mb-3">
@@ -615,6 +666,9 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
               )}
               <Typography.Text>{t('settings.notificationTemplate.body')}</Typography.Text>
               <AceEditor
+                onLoad={(editor) => {
+                  bodyEditorRef.current = editor;
+                }}
                 className="mt-1 overflow-hidden rounded border border-[var(--color-border-2)]"
                 mode={activeChannelConfig.editorMode}
                 theme="github"

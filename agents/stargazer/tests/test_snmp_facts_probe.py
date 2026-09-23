@@ -299,7 +299,7 @@ async def test_snmp_internal_exception_logs_target_and_sanitized_call_chain(monk
     assert "target=127.0.0.1" in debug_logs[0]
     assert len(error_logs) == 1
     assert "event=plugin_exception" in error_logs[0]
-    assert "task_id=snmp-task-7" in error_logs[0]
+    assert "task_id=" not in error_logs[0]
     assert "plugin_ref=network.config" in error_logs[0]
     assert "target=127.0.0.1" in error_logs[0]
     assert "error_type=RuntimeError" in error_logs[0]

@@ -60,7 +60,7 @@ class BaseCollect(object):
                 organization = [organization]
 
         instances = self.task.instances
-        if not instances or not isinstance(instances, list):
+        if (self.task.params or {}).get("target_source") == "host" or not instances or not isinstance(instances, list):
             return (
                 self.task.model_id,
                 None,

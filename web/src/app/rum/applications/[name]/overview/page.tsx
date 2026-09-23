@@ -165,7 +165,7 @@ export default function ApplicationOverviewPage() {
         }
         trailing={
           <>
-            <RumRangeSegmented value={range} onChange={setRange} />
+            <RumRangeSegmented value={range} loading={pending} onChange={setRange} />
             <Button
               icon={<SettingOutlined />}
               onClick={() => router.push(rumSetupPath(name))}
@@ -173,6 +173,7 @@ export default function ApplicationOverviewPage() {
               {t('rum.overview.setup', '接入配置')}
             </Button>
             <RumRefreshButton
+              loading={pending}
               onClick={() => {
                 void load();
                 void loadRecent();
@@ -184,13 +185,13 @@ export default function ApplicationOverviewPage() {
 
       {degrade ? <PipelineDegradedBanner reason={degrade} /> : null}
 
-      {pending && !overview ? <RumOverviewSkeleton /> : null}
+      {pending ? <RumOverviewSkeleton /> : null}
 
       {!pending && !overview ? (
         <Empty description={t('rum.detail.missing', '无法加载该应用')} />
       ) : null}
 
-      {overview && kpi ? (
+      {!pending && overview && kpi ? (
         <div className="flex min-w-0 flex-col gap-4">
           {/* 6 列核心指标卡 */}
           <OverviewKpi

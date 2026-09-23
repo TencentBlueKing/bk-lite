@@ -139,17 +139,17 @@ async def test_run_lifecycle_logs_merge_searchable_context(monkeypatch):
     assert "event=collection_run_started" in logged[0]
     assert "task_id=" not in logged[0]
     assert "plugin_ref=network.config" in logged[0]
-    assert "plugin_name=snmp_facts" in logged[0]
+    assert "plugin_name=" not in logged[0]
     assert "instance_id=cmdb_network_7" in logged[0]
     assert "任务开始" in logged[0]
-    assert "目标数=2 凭据数=1" in logged[0]
+    assert "目标数=2" in logged[0]
     assert "event=collection_run_terminal" in logged[1]
     assert "task_id=" not in logged[1]
     assert "instance_id=cmdb_network_7" in logged[1]
     assert "status=completed_with_errors" in logged[1]
-    assert "任务结束" in logged[1]
-    assert "最终状态=部分失败" in logged[1]
-    assert "执行批次=1" in logged[1]
+    assert "model_id=" not in logged[1]
+    assert "最终状态=" not in logged[1]
+    assert "执行批次=" not in logged[1]
     assert "duration_ms=" in logged[1]
 
 
@@ -201,12 +201,12 @@ async def test_same_task_id_and_request_only_schedule_one_collection_run(monkeyp
     assert len(scheduled_tasks) == 1
     assert warning_calls == [
         (
-            "event=collection_run_duplicate_skipped task_id=%s status=duplicate_active fence=%s",
-            ("collect-001\\r\\nforged=true", first.fence),
+            "event=collection_run_duplicate_skipped %s fence=%s",
+            ("collect_task_id=-", first.fence),
         )
     ]
     rendered = warning_calls[0][0] % warning_calls[0][1]
-    assert rendered == ("event=collection_run_duplicate_skipped " "task_id=collect-001\\r\\nforged=true status=duplicate_active fence=1")
+    assert rendered == ("event=collection_run_duplicate_skipped " "collect_task_id=- fence=1")
     assert duplicate.task_id == task_id
     assert "duplicate-secret-sentinel" not in rendered
 
@@ -397,3 +397,40 @@ async def test_single_oversized_run_is_admitted_when_target_budget_is_empty():
 
     release.set()
     await tasks[0]
+
+
+@pytest.mark.asyncio
+async def test_run_failure_keeps_one_safe_traceback_and_short_identity(monkeypatch, caplog):
+    import logging
+
+    sensitive = "runtime-password-secret-sentinel"
+    original_error = RuntimeError(sensitive)
+    tasks = []
+    store = RecordingRunStateStore()
+
+    async def execute(_request, _lease):
+        raise original_error
+
+    test_logger = logging.getLogger("test.stargazer.compact_runtime")
+    monkeypatch.setattr("core.collection.runtime.logger", test_logger)
+    runtime = CollectionRuntime(
+        state_store=store,
+        execute=execute,
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
+        owner_id="worker-1",
+    )
+    request = CollectionRequest(task_id="req-long-id", plugin_ref="network.config", targets=("192.168.198.1",), params={"instance_id": "cmdb_5"})
+    with caplog.at_level(logging.DEBUG, logger=test_logger.name):
+        await runtime.submit(request)
+        await tasks[0]
+    assert store.finishes[0][0] == RunStatus.FAILED
+    assert str(original_error) == sensitive
+    errors = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert len(errors) == 1
+    record = errors[0]
+    assert "%s" in record.msg and record.args
+    assert "instance_id=cmdb_5" in record.getMessage()
+    assert "failed_stage=run error_type=RuntimeError" in record.getMessage()
+    assert record.exc_info[2] is original_error.__traceback__
+    rendered = "\n".join(logging.Formatter().format(record) for record in caplog.records)
+    assert sensitive not in rendered and request.task_id not in rendered

@@ -107,6 +107,7 @@ export const useRouterConfig = () => {
       'Router Harbour SNMP': 'snmp_harbour',
       'Router Aethra SNMP': 'snmp_aethra',
       'Router VeloCloud SNMP': 'snmp_velocloud',
+      'Router Yamaha SNMP': 'snmp_yamaha_router',
       'Router Benu SNMP': 'snmp_benu',
       'Router Peplink SNMP': 'snmp_peplink',
       'Router Advantech SNMP': 'snmp_advantech_router',

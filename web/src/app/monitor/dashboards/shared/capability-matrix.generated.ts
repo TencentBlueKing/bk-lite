@@ -1198,7 +1198,7 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
-      "collectType": "snmp_yamaha",
+      "collectType": "snmp_yamaha_router",
       "capabilities": [
         "uptime",
         "cpu",
@@ -1573,6 +1573,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "memory",
         "traffic",
         "session"
+      ]
+    },
+    {
+      "collectType": "snmp_radware",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
       ]
     },
     {

@@ -21,7 +21,7 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.falkordb_format import FormatDBResult
-from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal
+from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal, coerce_cloud_id_properties
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.instance_identity import (
     EDGE_DST_UUID_FIELD,
@@ -731,6 +731,7 @@ class FalkorDBClient:
         organization_field: str = "organization",
         case_sensitive: bool = True,
         include_count: bool = True,
+        fields: list[str] | None = None,
     ):
         """
         查询实体（参数化版本）
@@ -819,7 +820,10 @@ class FalkorDBClient:
         final_params_str = " AND ".join(final_conditions) if final_conditions else ""
         params_str = f"WHERE {final_params_str}" if final_params_str else ""
 
-        sql_str = f"MATCH (n{label_str}) {params_str} RETURN n"
+        from apps.cmdb.graph.export_query import entity_projection
+
+        projection = "n" if fields is None else entity_projection(fields)
+        sql_str = f"MATCH (n{label_str}) {params_str} RETURN {projection}"
 
         # 调试日志：打印 query_entity 的查询
         logger.debug(f"[query_entity] SQL: {sql_str}")
@@ -844,6 +848,8 @@ class FalkorDBClient:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self._execute_query(sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
+        if fields is not None:
+            return [coerce_cloud_id_properties(row) for row in FormatDBResult(objs).to_list_of_lists()], count
         return self.entity_to_list(objs), count
 
     def query_cloud_cost(self, plan):
@@ -954,6 +960,15 @@ class FalkorDBClient:
                 raise BaseAppException("inst_uuid 查询结果不唯一")
             by_uuid[key] = item
         return [by_uuid[value] for value in normalized if value in by_uuid]
+
+    def query_export_associations(self, model_id, inst_uuids, association_ids):
+        from apps.cmdb.graph.export_query import EXPORT_ASSOCIATION_FIELDS, export_association_queries
+
+        rows = []
+        for statement, params in export_association_queries(model_id, inst_uuids, association_ids):
+            result = self._execute_query(statement, params=params)
+            rows.extend(dict(zip(EXPORT_ASSOCIATION_FIELDS, row, strict=True)) for row in result.result_set)
+        return rows
 
     def query_edge(
         self,

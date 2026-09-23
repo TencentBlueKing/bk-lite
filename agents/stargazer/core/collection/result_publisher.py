@@ -104,6 +104,7 @@ class _PublishAttemptState:
         max_attempts: int = 2,
     ) -> None:
         self._completion = completion
+        self._clock = completion.get_loop().time
         self._deadline = deadline
         self.send_budget = PublishBudget(send_timeout_seconds) if send_timeout_seconds is not None else None
         self.max_attempts = max_attempts
@@ -111,7 +112,7 @@ class _PublishAttemptState:
         self._delivery_started = False
         self._cancelled = False
         self._payload_released = False
-        self._enqueued_at = time.monotonic()
+        self._enqueued_at = self._clock()
         self._queue_wait_seconds = 0.0
         self._queue_depth_at_enqueue = 0
         self._queue_residence_seconds = 0.0
@@ -121,7 +122,7 @@ class _PublishAttemptState:
 
     def _mark_terminal(self, _completion) -> None:
         if self._terminal_at is None:
-            self._terminal_at = time.monotonic()
+            self._terminal_at = self._clock()
         # Run 可能已按总截止结束等待；仍消费后台终态异常，wait() 保留原异常。
         if not _completion.cancelled():
             _completion.exception()
@@ -136,7 +137,7 @@ class _PublishAttemptState:
             return self.send_budget.elapsed
         if self._first_delivery_at is None:
             return 0.0
-        return max(0.0, (self._terminal_at or time.monotonic()) - self._first_delivery_at)
+        return max(0.0, (self._terminal_at or self._clock()) - self._first_delivery_at)
 
     @property
     def cancelled(self) -> bool:
@@ -160,7 +161,7 @@ class _PublishAttemptState:
 
     @property
     def queue_age_seconds(self) -> float:
-        return max(0.0, (self._terminal_at or time.monotonic()) - self._enqueued_at)
+        return max(0.0, (self._terminal_at or self._clock()) - self._enqueued_at)
 
     @property
     def queue_residence_seconds(self) -> float:
@@ -169,7 +170,7 @@ class _PublishAttemptState:
         return self.queue_age_seconds
 
     def mark_enqueued(self, *, queue_wait_seconds: float, queue_depth: int) -> None:
-        self._enqueued_at = time.monotonic()
+        self._enqueued_at = self._clock()
         self._queue_wait_seconds = max(0.0, float(queue_wait_seconds))
         self._queue_depth_at_enqueue = max(0, int(queue_depth))
 
@@ -184,7 +185,7 @@ class _PublishAttemptState:
             return False
         self._processing = True
         if not self._delivery_started:
-            self._first_delivery_at = time.monotonic()
+            self._first_delivery_at = self._clock()
             self._queue_residence_seconds = self.queue_age_seconds
             self._delivery_started = True
         return True
@@ -237,6 +238,30 @@ class FuturePublishReceipt:
     def credit_wait_seconds(self) -> float:
         budget = self._state.send_budget
         return budget.credit_wait_seconds if budget is not None else 0.0
+
+    @property
+    def publish_diagnostics(self) -> dict:
+        budget = self._state.send_budget
+        if budget is None:
+            return {}
+        details = {
+            "elapsed_ms": round(self._state.queue_age_seconds * 1000, 2),
+            "total_lines": budget.total_lines,
+            "total_bytes": budget.total_bytes,
+            "attempted_lines": budget.attempted_lines,
+            "confirmed_lines": budget.confirmed_lines,
+            "retries": budget.retry_count,
+            "send_ms": round(budget.elapsed * 1000, 2),
+            "budget_limit_ms": budget.seconds * 1000,
+            "credit_wait_ms": round(budget.credit_wait_seconds * 1000, 2),
+            "slowest_ms": round(budget.slowest_attempt_seconds * 1000, 2),
+        }
+        if self._completion.done() and not self._completion.cancelled():
+            error = self._completion.exception()
+            if error is not None:
+                details["error_type"] = type(error).__name__
+            details.update(getattr(error, "publish_diagnostics", {}))
+        return details
 
     def add_done_callback(self, callback) -> None:
         self._completion.add_done_callback(callback)

@@ -57,6 +57,13 @@ Supervisor 启动；启动期不得投递任务并等待它消费。
 短期 PDF，并按 Execution 子目录隔离；未配置时 Render 明确失败，不回退到容器
 本地 `/tmp`。临时文件清理属于运行期能力，不得加入 `batch_init`。
 
+CMDB 导入导出任务直接由现有默认 Celery Worker 执行，不增加队列或 Supervisor 进程。
+任务数据库领取约束多副本全局导入导出并发为 2，维护补发和日清也走默认队列。
+15 分钟协作预算由数据库截止时间和执行令牌检查；默认 threads 池不能强制终止单个任务，
+阻塞中的任务仍保留占用，必须确认执行退出后再解除。任务声明的 Celery soft/hard time limit
+只有在支持相应能力的池中才生效，不能据此宣称 threads 池具备 16 分钟进程终止保证。
+复用 `cmdb-config-file` 桶；不在启动期调用任务或声明额外桶。API 只接纳和投递，文件处理在 Celery 中执行。
+
 ## Stargazer 独立服务启动边界
 
 Stargazer 已移除 ARQ Worker。其容器只启动 Sanic 进程；Sanic 在

@@ -120,6 +120,7 @@ export interface TreeNode {
   id: string;
   model_id?: string;
   target_model_id?: string;
+  supports_host_discovery?: boolean;
   classification_id?: string;
   default_timeout?: number;
   key: string;
@@ -145,6 +146,7 @@ export interface ModelItem {
   id: string;
   model_id: string;
   target_model_id?: string;
+  supports_host_discovery?: boolean;
   classification_id?: string;
   default_timeout?: number;
   key: string;

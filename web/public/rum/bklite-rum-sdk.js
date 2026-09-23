@@ -6138,24 +6138,29 @@
   }
   var utf8Encoder = new TextEncoder;
   function normalizeUnicodeScalars(value) {
-    let normalized = "";
+    const parts = [];
+    let start = 0;
     for (let index = 0;index < value.length; index += 1) {
       const unit = value.charCodeAt(index);
-      if (unit >= 55296 && unit <= 56319) {
+      if (unit < 55296 || unit > 57343)
+        continue;
+      if (unit <= 56319) {
         const next = value.charCodeAt(index + 1);
         if (next >= 56320 && next <= 57343) {
-          normalized += value[index] + value[index + 1];
           index += 1;
-        } else {
-          normalized += "�";
+          continue;
         }
-      } else if (unit >= 56320 && unit <= 57343) {
-        normalized += "�";
-      } else {
-        normalized += value[index];
       }
+      if (index > start)
+        parts.push(value.slice(start, index));
+      parts.push("�");
+      start = index + 1;
     }
-    return normalized;
+    if (parts.length === 0)
+      return value;
+    if (start < value.length)
+      parts.push(value.slice(start));
+    return parts.join("");
   }
   function compareUtf8(left, right) {
     const leftBytes = utf8Encoder.encode(left);
@@ -7443,4 +7448,4 @@
   root.initCoreRum = initCoreRum;
 })();
 
-//# debugId=986A062B278DC47164756E2164756E21
+//# debugId=AE4A9394EA9F258364756E2164756E21

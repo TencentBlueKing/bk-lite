@@ -92,6 +92,14 @@ def format_str_neq(param):
     return f"n.{field} <> '{value}'"
 
 
+def format_str_gt(param):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    value = str(param["value"]).replace("\\", "\\\\").replace("'", "\\'")
+    return f"n.{field} > '{value}'"
+
+
 # neo4j
 def format_str_contains(param):
     field = param["field"]
@@ -237,6 +245,7 @@ FORMAT_TYPE = {
     "time": format_time,
     "str=": format_str_eq,
     "str<>": format_str_neq,
+    "str>": format_str_gt,
     "str*": format_str_like,  # 修改为使用contains
     "str[]": format_str_in,
     "user[]": format_user_in,
@@ -313,6 +322,14 @@ def format_str_eq_params(param, collector):
     value = param["value"]
     param_name = collector.add_param(value, prefix="str")
     return f"n.{field} = {param_name}"
+
+
+def format_str_gt_params(param, collector):
+    from apps.cmdb.graph.validators import CQLValidator
+
+    field = CQLValidator.validate_field(param["field"])
+    param_name = collector.add_param(param["value"], prefix="str_cursor")
+    return f"n.{field} > {param_name}"
 
 
 def format_str_neq_params(param, collector):
@@ -501,6 +518,7 @@ FORMAT_TYPE_PARAMS = {
     "time": format_time_params,
     "str=": format_str_eq_params,
     "str<>": format_str_neq_params,
+    "str>": format_str_gt_params,
     "str*": format_str_like_params,
     "str[]": format_str_in_params,
     "user[]": format_user_in_params,

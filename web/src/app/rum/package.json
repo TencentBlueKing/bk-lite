@@ -1,0 +1,13 @@
+{
+  "name": "rum",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@grafana/rrweb": "2.0.0-grafana.2",
+    "@grafana/rrweb-replay": "2.0.0-grafana.2"
+  }
+}
