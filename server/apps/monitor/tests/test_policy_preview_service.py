@@ -8,7 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import (
+    BaseAppException,
+    ValidationAppException,
+)
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
@@ -237,6 +240,24 @@ class TestPreviewEndToEnd:
         with pytest.raises(BaseAppException):
             svc.preview()
 
+
+    def test_preview_rejects_baseline_weeks_below_minimum_without_query(self, mocker):
+        api = mocker.patch(
+            "apps.monitor.services.policy_preview.VictoriaMetricsAPI"
+        )
+        svc = PolicyPreviewService({
+            "query_condition": {"type": "pmq", "query": "up"},
+            "period": {"type": "min", "value": 5},
+            "algorithm": "avg_over_time",
+            "group_algorithm": "avg",
+            "group_by": ["instance_id"],
+            "compare_mode": "baseline_weeks",
+            "compare_value_kind": "delta",
+            "compare_baseline_weeks": 1,
+        })
+        with pytest.raises(ValidationAppException, match="对照周数至少为 2"):
+            svc.preview()
+        api.assert_not_called()
 
     def test_preview_compare_percent_charts_the_comparison_result(self, mocker):
         compared = {

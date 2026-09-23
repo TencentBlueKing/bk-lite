@@ -417,8 +417,8 @@ export const isFilledThresholdValue = (value: unknown): boolean => {
 export const completedThresholds = <
   T extends { method?: string | null; value?: unknown }
 >(
-  thresholds: T[] | null | undefined
-): T[] => (thresholds || []).filter((item) => isFilledThresholdValue(item.value));
+    thresholds: T[] | null | undefined
+  ): T[] => (thresholds || []).filter((item) => isFilledThresholdValue(item.value));
 
 export const timeleftRequiresLowSideThresholds = (
   compareMode: string | null | undefined,
@@ -576,10 +576,6 @@ export const FORECAST_LOOKBACK_OPTIONS = [
   { type: 'hour', value: 24 }
 ] as const;
 export const DEFAULT_FORECAST_LOOKBACK = { type: 'hour', value: 1 };
-export const OVERLAY_ROLE_CURRENT = 'current';
-export const OVERLAY_ROLE_BASELINE = 'baseline';
-export const OVERLAY_ROLE_LABEL = 'compare_role';
-
 const COMPARE_OFFSET_SECONDS: Record<string, number> = {
   [COMPARE_MODE_OFFSET_1H]: 3600,
   [COMPARE_MODE_OFFSET_24H]: 86400,
@@ -732,6 +728,174 @@ export const compareSpanConflict = (
     return weeks >= 1 && weeks <= amount;
   }
   return false;
+};
+
+export const compareSpanIssue = ({
+  mode,
+  amount,
+  periodType,
+  periodValue,
+  t
+}: {
+  mode?: string | null;
+  amount?: number | null;
+  periodType?: string | null;
+  periodValue?: number | null;
+  t: (
+    key: string,
+    defaultValue?: string,
+    values?: Record<string, string | number>
+  ) => string;
+}): string | null => {
+  const spec = compareSpanSpec(mode);
+  if (!spec) return null;
+  const label =
+    mode === COMPARE_MODE_OFFSET_HOURS
+      ? t('monitor.events.compareOffsetCountHour', '小时数')
+      : mode === COMPARE_MODE_BASELINE_WEEKS
+        ? t('monitor.events.compareOffsetCountWeek', '周数')
+        : t('monitor.events.compareOffsetCountDay', '天数');
+  if (amount == null || !Number.isFinite(amount)) {
+    if (mode === COMPARE_MODE_OFFSET_HOURS) {
+      return t('monitor.events.compareOffsetHoursRequired', '请填写对照小时数');
+    }
+    if (mode === COMPARE_MODE_BASELINE_WEEKS) {
+      return t('monitor.events.compareBaselineWeeksRequired', '请填写对照周数');
+    }
+    return t('monitor.events.compareOffsetDaysRequired', '请填写对照天数');
+  }
+  const whole = Math.trunc(amount);
+  if (whole !== amount || whole < 1) {
+    return t(
+      'monitor.events.compareSpanPositive',
+      '{label}必须是正整数',
+      { label }
+    );
+  }
+  if (whole < spec.min) {
+    return t('monitor.events.compareSpanAtLeast', '{label}至少为 {min}', {
+      label,
+      min: spec.min
+    });
+  }
+  if (whole > spec.max) {
+    return t('monitor.events.compareSpanAtMost', '{label}不能超过 {max}', {
+      label,
+      max: spec.max
+    });
+  }
+  if (compareSpanConflict(mode, whole, periodType, periodValue)) {
+    return t(
+      'monitor.events.compareModeDisabledPeriod',
+      '对照窗不能等于汇聚周期'
+    );
+  }
+  return null;
+};
+
+export const COMPARE_RESULT_FAMILY_METRIC = 'metric';
+export const COMPARE_RESULT_FAMILY_PERCENT = 'percent';
+export const COMPARE_RESULT_FAMILY_RATIO = 'ratio';
+export const COMPARE_RESULT_FAMILY_HOURS = 'hours';
+
+export const compareResultFamily = (
+  mode?: string | null,
+  kind?: string | null
+): string => {
+  if (mode === COMPARE_MODE_TIMELEFT || kind === COMPARE_VALUE_KIND_HOURS) {
+    return COMPARE_RESULT_FAMILY_HOURS;
+  }
+  if (kind === COMPARE_VALUE_KIND_PERCENT) {
+    return COMPARE_RESULT_FAMILY_PERCENT;
+  }
+  if (kind === COMPARE_VALUE_KIND_RATIO) {
+    return COMPARE_RESULT_FAMILY_RATIO;
+  }
+  return COMPARE_RESULT_FAMILY_METRIC;
+};
+
+export const clearThresholdNumbers = <T extends { value?: number | null }>(
+  thresholds: T[]
+): T[] => thresholds.map((item) => ({ ...item, value: null }));
+
+export const TIMELEFT_PREVIEW_SPAN_CAP_HOURS = 720;
+
+export const partitionTimeleftPreviewSeries = <
+  T extends { values?: Array<[number, string] | number[]> }
+>(
+    series: T[],
+    thresholdValues: Array<number | null | undefined>
+  ): { kept: T[]; omitted: number } => {
+  const finiteThresholds = thresholdValues.filter(
+    (value): value is number =>
+      typeof value === 'number' && Number.isFinite(value)
+  );
+  const maxThreshold = finiteThresholds.length
+    ? Math.max(...finiteThresholds)
+    : 0;
+  const cap = Math.max(maxThreshold * 20, TIMELEFT_PREVIEW_SPAN_CAP_HOURS);
+  const kept: T[] = [];
+  let omitted = 0;
+  series.forEach((item) => {
+    const numbers = (item.values || [])
+      .map((pair) => parseFloat(String(pair[1])))
+      .filter((value) => Number.isFinite(value));
+    const maxValue = numbers.length ? Math.max(...numbers) : 0;
+    if (maxValue > cap) {
+      omitted += 1;
+    } else {
+      kept.push(item);
+    }
+  });
+  return { kept, omitted };
+};
+
+export const parseMetricInstanceValues = (raw?: string | null): string[] => {
+  if (!raw) return [];
+  const text = raw.trim();
+  if (!text.startsWith('(') || !text.endsWith(')')) return [];
+  const body = text.slice(1, -1);
+  const values: string[] = [];
+  let index = 0;
+  while (index < body.length) {
+    while (body[index] === ' ' || body[index] === ',') index += 1;
+    if (index >= body.length) break;
+    const quote = body[index];
+    if (quote !== "'" && quote !== '"') return [];
+    index += 1;
+    let value = '';
+    while (index < body.length) {
+      if (body[index] === '\\' && index + 1 < body.length) {
+        value += body[index + 1];
+        index += 2;
+        continue;
+      }
+      if (body[index] === quote) {
+        index += 1;
+        break;
+      }
+      value += body[index];
+      index += 1;
+    }
+    values.push(value);
+  }
+  return values;
+};
+
+export const formatDryRunDimensionLabel = (
+  metricInstanceId: string | undefined,
+  dimensions: Array<{ name?: string; description?: string }> | undefined
+): string => {
+  const values = parseMetricInstanceValues(metricInstanceId);
+  if (values.length <= 1) return '';
+  return values
+    .slice(1)
+    .map((value, index) => {
+      const dimension = dimensions?.[index + 1];
+      const label = dimension?.description?.trim() || dimension?.name?.trim() || '';
+      return label ? `${label}: ${value}` : value;
+    })
+    .join('-');
 };
 
 export const resolveLoadedCompareOffset = ({
@@ -1089,9 +1253,23 @@ export const buildPolicyRestatement = ({
     : isLowSideThresholdMethod(thresholdMethod)
       ? t('monitor.events.policyRestatementLow', '低出')
       : t('monitor.events.policyRestatementDiff', '相差');
+  const percentPointLabel = unit.trim().toLowerCase();
+  const isPercentPoint =
+    percentPointLabel === '%' ||
+    percentPointLabel === '％' ||
+    percentPointLabel.startsWith('percent');
   let compared = valueWithUnit;
   if (compareValueKind === COMPARE_VALUE_KIND_PERCENT) {
     compared = `${valueText}%`;
+  } else if (
+    compareValueKind === COMPARE_VALUE_KIND_DELTA &&
+    isPercentPoint
+  ) {
+    compared = t(
+      'monitor.events.policyRestatementPercentPoints',
+      '{value} 个百分点',
+      { value: valueText }
+    );
   } else if (compareValueKind === COMPARE_VALUE_KIND_RATIO) {
     compared = t(
       'monitor.events.policyRestatementRatioValue',
@@ -1122,14 +1300,14 @@ export const buildPolicyRestatement = ({
             { n: spanText }
           )
           : compareMode === COMPARE_MODE_BASELINE_WEEKS
-          ? t(
-            'monitor.events.compareModeBaselineWeeksRestate',
-            '近 {n} 周同窗均值',
-            { n: spanText }
-          )
-          : baselineKey
-            ? t(baselineKey.key, baselineKey.fallback)
-            : compareModeLabel || '';
+            ? t(
+              'monitor.events.compareModeBaselineWeeksRestate',
+              '近 {n} 周同窗均值',
+              { n: spanText }
+            )
+            : baselineKey
+              ? t(baselineKey.key, baselineKey.fallback)
+              : compareModeLabel || '';
   return t(
     'monitor.events.policyRestatementCompare',
     '这条策略在判断：{metric}的{algorithm}，比 {baseline}{direction} {value}。',

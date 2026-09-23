@@ -8,6 +8,8 @@ from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.tasks.utils.policy_methods import (
     ALLOWED_FORECAST_LOOKBACK,
     COMPARE_MODE_BASELINE_DAYS,
+    COMPARE_SPAN_CONFLICT_MESSAGE,
+    span_value_message,
     COMPARE_MODE_BASELINE_WEEKS,
     COMPARE_MODE_OFFSET_DAYS,
     COMPARE_MODE_OFFSET_HOURS,
@@ -536,12 +538,9 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 if compare_mode in (COMPARE_MODE_BASELINE_WEEKS, COMPARE_MODE_BASELINE_DAYS)
                 else 1
             )
-            if isinstance(raw_span, bool) or not isinstance(raw_span, int) or raw_span < minimum:
-                errors[field] = (
-                    f"{label}至少为 {minimum}" if minimum > 1 else f"{label}必须是正整数"
-                )
-            elif raw_span > limit:
-                errors[field] = f"{label}不能超过 {limit}"
+            span_message = span_value_message(label, raw_span, minimum, limit)
+            if span_message:
+                errors[field] = span_message
             else:
                 attrs[field] = raw_span
                 if unit_seconds:
@@ -560,7 +559,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                         and period_seconds % stride_seconds == 0
                         and 1 <= period_seconds // stride_seconds <= raw_span
                     ):
-                        errors["compare_mode"] = "汇聚周期不能等于对照 offset"
+                        errors["compare_mode"] = COMPARE_SPAN_CONFLICT_MESSAGE
             if "compare_mode" in attrs:
                 for other, *_rest in span_fields.values():
                     if other != field:
@@ -571,7 +570,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         if offset_seconds:
             try:
                 if period_to_seconds(period) == offset_seconds:
-                    errors["compare_mode"] = "汇聚周期不能等于对照 offset"
+                    errors["compare_mode"] = COMPARE_SPAN_CONFLICT_MESSAGE
             except BaseAppException:
                 logger.debug("skip compare offset equality check")
 

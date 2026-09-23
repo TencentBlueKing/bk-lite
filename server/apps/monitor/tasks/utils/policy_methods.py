@@ -2,7 +2,10 @@ import math
 import re
 from dataclasses import dataclass
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import (
+    BaseAppException,
+    ValidationAppException,
+)
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -173,9 +176,12 @@ COMPARE_OFFSET_SECONDS = {
 }
 HIGH_SIDE_METHODS = {">", ">="}
 LOW_SIDE_METHODS = {"<", "<="}
-OVERLAY_ROLE_LABEL = "compare_role"
-OVERLAY_ROLE_CURRENT = "current"
-OVERLAY_ROLE_BASELINE = "baseline"
+COMPARE_SPAN_CONFLICT_MESSAGE = "对照窗不能等于汇聚周期"
+SPAN_FIELD_LABELS = {
+    "compare_offset_hours": "对照小时数",
+    "compare_offset_days": "对照天数",
+    "compare_baseline_weeks": "对照周数",
+}
 
 
 @dataclass(frozen=True)
@@ -424,16 +430,31 @@ def _baseline_4w_expr(query):
     return _baseline_weeks_expr(query, 4)
 
 
+def span_value_message(label, raw, minimum, limit):
+    """对照数量不合法时返回和保存校验相同的中文；合法则返回 None。"""
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < minimum:
+        if minimum > 1:
+            return f"{label}至少为 {minimum}"
+        return f"{label}必须是正整数"
+    if raw > limit:
+        return f"{label}不能超过 {limit}"
+    return None
+
+
 def _positive_span(policy_like, field, maximum, minimum=1):
     raw = _policy_get(policy_like, field)
+    label = SPAN_FIELD_LABELS.get(field, field)
     if isinstance(raw, bool):
-        raise BaseAppException(f"{field} must be a positive integer")
+        raise ValidationAppException(span_value_message(label, raw, minimum, maximum))
     try:
         value = int(raw)
     except (TypeError, ValueError) as err:
-        raise BaseAppException(f"{field} must be a positive integer") from err
-    if value < minimum or value > maximum:
-        raise BaseAppException(f"{field} must be a positive integer")
+        raise ValidationAppException(
+            span_value_message(label, None, minimum, maximum)
+        ) from err
+    message = span_value_message(label, value, minimum, maximum)
+    if message:
+        raise ValidationAppException(message)
     return value
 
 

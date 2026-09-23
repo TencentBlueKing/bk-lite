@@ -43,6 +43,11 @@ import {
   resolveCompareFieldsForSave,
   compareOffsetHoursConflict,
   compareSpanConflict,
+  compareSpanIssue,
+  compareResultFamily,
+  clearThresholdNumbers,
+  partitionTimeleftPreviewSeries,
+  formatDryRunDimensionLabel,
   compareBaselineFamily,
   resolveLoadedCompareOffset,
   resolveForecastTargetUnit,
@@ -1437,6 +1442,88 @@ assert.equal(
     thresholdValue: 5,
   }),
   '这条策略在判断：磁盘用量的平均，比 近 7 天同窗均值高出 5。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘使用率',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'baseline_days',
+    compareValueKind: 'delta',
+    compareOffsetHours: 3,
+    thresholdMethod: '>',
+    thresholdValue: 5,
+    thresholdUnitLabel: '%',
+  }),
+  '这条策略在判断：磁盘使用率的平均，比 近 3 天同窗均值高出 5 个百分点。'
+);
+assert.equal(
+  compareSpanIssue({
+    mode: 'baseline_weeks',
+    amount: 1,
+    t,
+  }),
+  '周数至少为 2'
+);
+assert.equal(
+  compareSpanIssue({
+    mode: 'baseline_days',
+    amount: 3,
+    periodType: 'day',
+    periodValue: 1,
+    t,
+  }),
+  '对照窗不能等于汇聚周期'
+);
+assert.equal(
+  compareSpanIssue({
+    mode: 'baseline_weeks',
+    amount: 4,
+    periodType: 'min',
+    periodValue: 5,
+    t,
+  }),
+  null
+);
+assert.equal(compareResultFamily('timeleft', 'hours'), 'hours');
+assert.equal(compareResultFamily('baseline_days', 'percent'), 'percent');
+assert.equal(compareResultFamily('baseline_days', 'delta'), 'metric');
+assert.deepEqual(
+  clearThresholdNumbers([
+    { level: 'critical', method: '>', value: 5 },
+    { level: 'error', method: '>', value: 3 },
+  ]),
+  [
+    { level: 'critical', method: '>', value: null },
+    { level: 'error', method: '>', value: null },
+  ]
+);
+assert.equal(
+  partitionTimeleftPreviewSeries(
+    [{ values: [[1, '40']] }, { values: [[1, '3700000']] }],
+    [5, 3]
+  ).omitted,
+  1
+);
+assert.equal(
+  partitionTimeleftPreviewSeries(
+    [{ values: [[1, '40']] }, { values: [[1, '3700000']] }],
+    [5, 3]
+  ).kept.length,
+  1
+);
+assert.equal(
+  formatDryRunDimensionLabel(
+    "('host', 'vda1', '/etc/hostname', 'ext4')",
+    [
+      { name: 'instance_id', description: 'Instance' },
+      { name: 'device', description: '磁盘设备' },
+      { name: 'path', description: '挂载路径' },
+      { name: 'fstype', description: '文件系统类型' },
+    ]
+  ),
+  '磁盘设备: vda1-挂载路径: /etc/hostname-文件系统类型: ext4'
 );
 assert.equal(
   buildPolicyRestatement({

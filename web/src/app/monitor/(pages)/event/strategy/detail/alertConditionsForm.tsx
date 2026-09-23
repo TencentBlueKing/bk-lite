@@ -18,7 +18,7 @@ import {
   COMPARE_MODE_PREVIOUS_WINDOW,
   COMPARE_MODE_TIMELEFT,
   compareBaselineFamily,
-  compareSpanConflict,
+  compareSpanIssue,
   compareSpanSpec,
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
@@ -364,14 +364,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
 
   const handleCompareModeChange = (val: string) => {
     onCompareModeChange(val);
-    if (val === COMPARE_MODE_ABSOLUTE) {
-      onCompareValueKindChange('');
-      return;
-    }
-    const kinds = getCompareValueKinds(val);
-    if (!kinds.includes(compareValueKind)) {
-      onCompareValueKindChange(defaultCompareValueKind(val));
-    }
   };
   const yoyMethod: YoyMethod =
     compareMode === COMPARE_MODE_OFFSET_DAYS
@@ -462,6 +454,13 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     [COMPARE_MODE_TIMELEFT]: t('monitor.events.compareModeTimeleftTip')
   };
   const spanSpec = compareSpanSpec(compareMode);
+  const spanIssue = compareSpanIssue({
+    mode: compareMode,
+    amount: compareOffsetHours,
+    periodType: periodUnit,
+    periodValue: period,
+    t
+  });
   const showCompareKind =
     compareMode !== COMPARE_MODE_ABSOLUTE &&
     compareMode !== COMPARE_MODE_TIMELEFT &&
@@ -479,7 +478,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       label={familyLabels[item.value] || item.value}
     >
       <Tooltip
-        overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+        styles={{ body: { whiteSpace: 'pre-line' } }}
         placement="right"
         title={
           item.disabled && item.reasonKey
@@ -507,7 +506,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           label={compareKindLabels[kind] || kind}
         >
           <Tooltip
-            overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+            styles={{ body: { whiteSpace: 'pre-line' } }}
             placement="right"
             title={compareKindTips[kind]}
           >
@@ -609,41 +608,24 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                       }
                     >
                       <InputNumber
-                        min={spanSpec.min}
+                        min={1}
                         max={spanSpec.max}
                         precision={0}
-                        value={compareOffsetHours}
+                        value={compareOffsetHours ?? undefined}
                         style={{ width: '100%' }}
-                        onChange={(val) =>
-                          onCompareOffsetHoursChange?.(
-                            val == null ? null : Number(val)
-                          )
-                        }
+                        onChange={(val) => {
+                          if (val == null || !Number.isFinite(val)) {
+                            onCompareOffsetHoursChange?.(null);
+                            return;
+                          }
+                          onCompareOffsetHoursChange?.(Math.trunc(val));
+                        }}
                       />
-                      {compareOffsetHours == null ||
-                      compareSpanConflict(
-                        compareMode,
-                        compareOffsetHours,
-                        periodUnit,
-                        period
-                      ) ? (
+                      {spanIssue ? (
                           <div className="mt-1 text-xs text-[var(--color-text-3)]">
-                            {compareOffsetHours == null
-                              ? t(
-                                yoyMethod === 'hour'
-                                  ? 'monitor.events.compareOffsetHoursRequired'
-                                  : yoyMethod === 'week_mean'
-                                    ? 'monitor.events.compareBaselineWeeksRequired'
-                                    : 'monitor.events.compareOffsetDaysRequired',
-                                yoyMethod === 'hour'
-                                  ? '请填写对照小时数'
-                                  : yoyMethod === 'week_mean'
-                                    ? '请填写对照周数'
-                                    : '请填写对照天数'
-                              )
-                              : t('monitor.events.compareModeDisabledPeriod')}
+                            {spanIssue}
                           </div>
-                        ) : null}
+                      ) : null}
                     </Form.Item>
                   </>
                 ) : null}
