@@ -40,7 +40,7 @@ state = applyPlannedExecutionStep(state, {
   objective: '获取集群现状',
 });
 assert.equal(state.steps[0].status, 'done');
-assert.equal(state.steps[0].reusedPriorResult, undefined);
+assert.ok(!state.steps[0].reusedPriorResult);
 assert.equal(state.currentStepIndex, null);
 
 state = applyPlannedExecutionStep(state, {

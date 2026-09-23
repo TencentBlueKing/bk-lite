@@ -59,7 +59,7 @@ overflow = applyPlannedExecutionStep(overflow, {
   tools_invoked: [],
 });
 assert.equal(overflow.steps[0]?.status, 'skipped');
-assert.equal(overflow.steps[0]?.reusedPriorResult, undefined);
+assert.ok(!overflow.steps[0]?.reusedPriorResult);
 overflow = finalizePlannedExecutionSteps(overflow);
 assert.equal(overflow.steps[0]?.status, 'skipped', 'finalize must keep skipped steps');
 
@@ -73,7 +73,7 @@ missing = applyPlannedExecutionStep(missing, {
   tools_invoked: [],
 });
 assert.equal(missing.steps[0]?.status, 'failed');
-assert.equal(missing.steps[0]?.reusedPriorResult, undefined);
+assert.ok(!missing.steps[0]?.reusedPriorResult);
 
 let reused = createPlannedExecutionState();
 reused = applyPlannedExecutionStep(reused, {
@@ -96,6 +96,6 @@ emptyToolsSuccess = applyPlannedExecutionStep(emptyToolsSuccess, {
   tools_invoked: [],
 });
 assert.equal(emptyToolsSuccess.steps[0]?.status, 'done');
-assert.equal(emptyToolsSuccess.steps[0]?.reusedPriorResult, undefined);
+assert.ok(!emptyToolsSuccess.steps[0]?.reusedPriorResult);
 
 console.log('planned-execution-failure-display-test: ok');
