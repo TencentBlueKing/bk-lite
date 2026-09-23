@@ -1,5 +1,5 @@
 import type { AiPageContext, PageContextMessage } from '@/components/ai-page-context/types';
-import { cleanLabel } from '@/components/ai-page-context/domSnapshot';
+import { cleanLabel, treeSection } from '@/components/ai-page-context/domSnapshot';
 import { buildTableListContext } from '@/app/monitor/page-context/tableListContext';
 
 export const isMonitorViewIndexPath = (pathname: string): boolean => {
@@ -82,6 +82,7 @@ export function getTextContext(): Partial<AiPageContext> {
           ].filter(Boolean).join('\n'),
           priority: 10,
         },
+        ...treeSection(),
         ...(cells.length
           ? [{
             id: 'view-hive-cells',

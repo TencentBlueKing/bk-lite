@@ -4,6 +4,7 @@ import type {
   PageContextMessage,
   PageContextToolkit,
 } from '@/components/ai-page-context/types';
+import { readTreeLines, treeSection } from '@/components/ai-page-context/domSnapshot';
 import { fingerprintAlertListRows } from './alertListStamp';
 
 const TITLE_PREFIX = 'monitor-alert:';
@@ -29,6 +30,7 @@ export interface AlertListStamp {
   tab: string;
   objId: string;
   objectLabel: string;
+  treeText: string;
   filterText: string;
   rangeText: string;
   rowFingerprint: string;
@@ -115,10 +117,12 @@ export const readAlertListStamp = (): AlertListStamp => {
   const tab = activeHostTab();
   const rows = readTableRows();
   const table = listRoot()?.querySelector('[class*="table"]');
+  const filterRoot = document.querySelector('[class*="filters"]');
   return {
     tab,
     objId: objIdFromSearch(),
-    objectLabel: cleanLabel(document.querySelector('[class*="filters"] .ant-tree-node-selected')?.textContent || ''),
+    objectLabel: cleanLabel(filterRoot?.querySelector('.ant-tree-node-selected')?.textContent || ''),
+    treeText: readTreeLines(filterRoot).join('\n'),
     filterText: readFilterFields().join('；'),
     rangeText: readRangeText(),
     rowFingerprint: fingerprintAlertListRows(rows),
@@ -132,7 +136,15 @@ export const readAlertListStamp = (): AlertListStamp => {
 };
 
 export const buildAlertListCurrentTime = (stamp: AlertListStamp): string =>
-  [stamp.tab, stamp.objId, stamp.filterText, stamp.rangeText, stamp.rowFingerprint, stamp.loading ? 'loading' : '']
+  [
+    stamp.tab,
+    stamp.objId,
+    stamp.filterText,
+    stamp.rangeText,
+    stamp.rowFingerprint,
+    stamp.treeText.slice(0, 120),
+    stamp.loading ? 'loading' : '',
+  ]
     .filter(Boolean)
     .join('::');
 
@@ -147,6 +159,7 @@ const listTextSections = (stamp: AlertListStamp): AiContextSection[] => {
     stamp.emptyText ? `空态: ${stamp.emptyText}` : '',
   ].filter(Boolean);
   const rows = stamp.loading ? [] : readTableRows();
+  const filterRoot = document.querySelector('[class*="filters"]');
   return [
     {
       id: 'alert-list-identity',
@@ -154,6 +167,7 @@ const listTextSections = (stamp: AlertListStamp): AiContextSection[] => {
       content: identity.join('\n'),
       priority: 10,
     },
+    ...treeSection(filterRoot),
     ...(stamp.rangeText
       ? [{
         id: 'alert-list-range',
