@@ -1,9 +1,9 @@
 [[inputs.prometheus]]
     startup_error_behavior = "retry"
     urls = ["${STARGAZER_URL}/api/monitor/{{ instance_type }}/metrics"]
-    interval = "{{ interval | default(60, true) }}s"
-    timeout = "{{ timeout | default(60, true) }}s"
-    response_timeout = "{{ response_timeout | default(60, true) }}s"
+    interval = "{{ interval | default(300, true) }}s"
+    timeout = "{{ interval | default(300, true) }}s"
+    response_timeout = "{{ interval | default(300, true) }}s"
 
     [inputs.prometheus.http_headers]
         username = "{{ username }}"
@@ -13,3 +13,4 @@
         instance_type = "{{ instance_type }}"
         collect_type = "http"
         config_type = "qcloud"
+        timeout = "{{ interval | default(300, true) }}"

@@ -19,10 +19,7 @@ def safe_exception_call_chain(error: BaseException, *, max_frames=SAFE_EXCEPTION
     frames = traceback.extract_tb(error.__traceback__)
     if not frames:
         return "-"
-    return ">".join(
-        f"{safe_log_value(Path(frame.filename).name)}:{frame.lineno}:{safe_log_value(frame.name)}"
-        for frame in frames[-max_frames:]
-    )
+    return ">".join(f"{safe_log_value(Path(frame.filename).name)}:{frame.lineno}:{safe_log_value(frame.name)}" for frame in frames[-max_frames:])
 
 
 def safe_exception_info(error: BaseException):
@@ -30,12 +27,14 @@ def safe_exception_info(error: BaseException):
     safe_error = SafeLogException(type(error).__name__)
     return SafeLogException, safe_error, error.__traceback__
 
+
 logger = logging.getLogger("app")
 cmdb_logger = logging.getLogger("cmdb")
 operation_analysis_logger = logging.getLogger("operation_analysis")
 alert_logger = logging.getLogger("alert")
 monitor_logger = logging.getLogger("monitor")
 node_logger = logging.getLogger("node")
+node_mgmt_logger = node_logger
 console_mgmt_logger = logging.getLogger("ops-console")
 opspilot_logger = logging.getLogger("opspilot")
 system_mgmt_logger = logging.getLogger("system-manager")
@@ -45,5 +44,6 @@ log_logger = logging.getLogger("log")
 job_logger = logging.getLogger("job")
 nats_logger = logging.getLogger("nats")
 apm_logger = logging.getLogger("apm")
+rum_logger = logging.getLogger("rum")
 patch_mgmt_logger = logging.getLogger("patch-mgmt")
 openapi_logger = logging.getLogger("openapi")

@@ -17,6 +17,7 @@ def test_default_app_topo_layer_matches_builtin_identity():
     assert default_app_topo_layer("h3c_cas_vm") == "host"
     assert default_app_topo_layer("mysql") == "appService"
     assert default_app_topo_layer("nginx") == "appService"
+    assert default_app_topo_layer("consul") == "appService"
     assert default_app_topo_layer("oceanbase") == "appService"
     assert default_app_topo_layer("nacos") == "appService"
     assert default_app_topo_layer("aliyun_mysql") == "appService"

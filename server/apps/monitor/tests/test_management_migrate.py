@@ -57,6 +57,28 @@ class TestMigrateDefaultOrder:
         assert t.order == 0
         assert obj.order == 0
 
+    def test_reraises_command_error_when_orm_fails(self, mocker):
+        from django.core.management import CommandError
+
+        mocker.patch(
+            "apps.monitor.models.MonitorObjectType.objects.filter",
+            side_effect=RuntimeError("db down"),
+        )
+        with pytest.raises(CommandError, match="初始化默认顺序失败"):
+            migrate_default_order()
+
+    def test_plugin_init_fails_when_default_order_fails(self, mocker):
+        from django.core.management import CommandError
+
+        mocker.patch("apps.monitor.management.commands.plugin_init.migrate_plugin")
+        mocker.patch("apps.monitor.management.commands.plugin_init.migrate_policy")
+        mocker.patch(
+            "apps.monitor.models.MonitorObjectType.objects.filter",
+            side_effect=RuntimeError("db down"),
+        )
+        with pytest.raises(CommandError, match="初始化默认顺序失败"):
+            call_command("plugin_init")
+
 
 class TestPluginMigrateHelpers:
     def test_clean_identity_value(self):

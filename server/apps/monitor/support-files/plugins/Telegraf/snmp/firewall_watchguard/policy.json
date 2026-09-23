@@ -28,6 +28,31 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "WatchGuard防火墙内存使用率过高",
+      "alert_name": "防火墙${resource_name} 内存使用率过高",
+      "description": "监控 WatchGuard 防火墙真实内存使用率（按 (总-空闲)/总 计算），当超过阈值时触发告警，便于及时发现内存压力导致连接处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
       "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",

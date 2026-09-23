@@ -1,10 +1,11 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
 from rest_framework.test import APIClient
-from apps.alerts.models.action import ActionRule, ActionExecution
+
+from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.models.operator_log import OperatorLog
-from apps.base.models import User
 
 
 @pytest.fixture
@@ -22,17 +23,23 @@ def superuser_client(authenticated_user):
 @pytest.mark.django_db
 @patch("apps.alerts.views.action.get_handler")
 def test_manual_trigger_is_idempotent_for_same_client_key(mock_get, superuser_client):
-    alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c",
-                                 level="0", labels={"ip": "10.0.0.5"}, team=[1])
-    rule = ActionRule.objects.create(name="r", team=[1], trigger_events=["created"],
-                                     match_rules=[[{"key": "level", "operator": "eq", "value": "9"}]],
-                                     action_config={"script_id": 1})
+    alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c", level="0", labels={"ip": "10.0.0.5"}, team=[1])
+    rule = ActionRule.objects.create(
+        name="r",
+        team=[1],
+        trigger_events=["created"],
+        match_rules=[[{"key": "level", "operator": "eq", "value": "9"}]],
+        action_config={"script_id": 1},
+    )
     superuser_client.cookies["current_team"] = "1"
     responses = []
     for _ in range(2):
-        resp = superuser_client.post("/api/v1/alerts/api/action_execution/manual_trigger/",
-                                     data={"alert_id": "A1", "rule_id": rule.id}, format="json",
-                                     HTTP_IDEMPOTENCY_KEY="manual-request-1")
+        resp = superuser_client.post(
+            "/api/v1/alerts/api/action_execution/manual_trigger/",
+            data={"alert_id": "A1", "rule_id": rule.id},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="manual-request-1",
+        )
         assert resp.status_code in (200, 201)
         responses.append(resp.json()["data"]["execution_id"])
     execs = ActionExecution.objects.filter(alert=alert, trigger_type="manual")
@@ -45,12 +52,11 @@ def test_manual_trigger_is_idempotent_for_same_client_key(mock_get, superuser_cl
 @pytest.mark.django_db
 @patch("apps.alerts.views.action.get_handler")
 def test_manual_trigger_reports_synchronous_handler_failure(mock_get, superuser_client):
-    alert = Alert.objects.create(alert_id="A2", fingerprint="f2", title="t", content="c",
-                                 level="0", team=[1])
+    alert = Alert.objects.create(alert_id="A2", fingerprint="f2", title="t", content="c", level="0", team=[1])
     rule = ActionRule.objects.create(name="r", team=[1], action_config={"script_id": 1})
     superuser_client.cookies["current_team"] = "1"
 
-    def mark_failed(_rule, _alert, execution):
+    def mark_failed(_rule, _alert, execution, param_overrides=None):
         execution.status = "failed"
         execution.result = {"message": "remote rejected"}
         execution.save(update_fields=["status", "result"])
@@ -71,8 +77,7 @@ def test_manual_trigger_reports_synchronous_handler_failure(mock_get, superuser_
 @pytest.mark.django_db
 @patch("apps.alerts.views.action.get_handler")
 def test_manual_trigger_cannot_cross_current_team(mock_get, superuser_client):
-    alert = Alert.objects.create(alert_id="A3", fingerprint="f3", title="secret", content="c",
-                                 level="0", team=[2])
+    alert = Alert.objects.create(alert_id="A3", fingerprint="f3", title="secret", content="c", level="0", team=[2])
     rule = ActionRule.objects.create(name="r", team=[2], action_config={"script_id": 1})
     superuser_client.cookies["current_team"] = "1"
 
@@ -94,11 +99,14 @@ def test_manual_trigger_writes_operator_log_for_change_record_tab(mock_get, supe
     """手动触发的执行除了写 ActionExecution，还应在 OperatorLog 落库，
     '变更记录' Tab（operator_log 接口）才能跟自动触发的执行记录对齐显示。"""
     mock_get.return_value.execute.return_value = None  # handler 不真跑
-    alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c",
-                                 level="0", labels={"ip": "10.0.0.5"}, team=[1])
-    rule = ActionRule.objects.create(name="重启Nginx", team=[1], trigger_events=["created"],
-                                     match_rules=[[{"key": "level", "operator": "eq", "value": "0"}]],
-                                     action_config={"script_id": 1})
+    Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c", level="0", labels={"ip": "10.0.0.5"}, team=[1])
+    rule = ActionRule.objects.create(
+        name="重启Nginx",
+        team=[1],
+        trigger_events=["created"],
+        match_rules=[[{"key": "level", "operator": "eq", "value": "0"}]],
+        action_config={"script_id": 1},
+    )
     superuser_client.cookies["current_team"] = "1"
 
     before = OperatorLog.objects.filter(target_id="A1").count()
@@ -116,8 +124,8 @@ def test_manual_trigger_writes_operator_log_for_change_record_tab(mock_get, supe
     assert len(new_logs) == before + 1
     assert mock_get.return_value.execute.call_count == 1
     log = new_logs[-1]
-    assert log.action == "execute"   # LogAction.EXECUTE
-    assert log.target_type == "alert" # LogTargetType.ALERT
+    assert log.action == "execute"  # LogAction.EXECUTE
+    assert log.target_type == "alert"  # LogTargetType.ALERT
     assert log.target_id == "A1"
     assert log.operator == superuser_client.authenticated_user.username
     # overview 至少包含规则名
@@ -127,12 +135,8 @@ def test_manual_trigger_writes_operator_log_for_change_record_tab(mock_get, supe
 @pytest.mark.django_db
 @patch("apps.alerts.views.action.get_handler")
 def test_manual_trigger_rejects_other_team_alert_and_rule(mock_get, superuser_client):
-    own_alert = Alert.objects.create(
-        alert_id="A-OWN", fingerprint="f-own", title="own", content="c", level="0", team=[1]
-    )
-    other_alert = Alert.objects.create(
-        alert_id="A-OTHER", fingerprint="f-other", title="other", content="c", level="0", team=[2]
-    )
+    own_alert = Alert.objects.create(alert_id="A-OWN", fingerprint="f-own", title="own", content="c", level="0", team=[1])
+    other_alert = Alert.objects.create(alert_id="A-OTHER", fingerprint="f-other", title="other", content="c", level="0", team=[2])
     global_rule = ActionRule.objects.create(name="global-rule", team=[])
     other_rule = ActionRule.objects.create(name="other-rule", team=[2])
 
@@ -159,9 +163,7 @@ def test_manual_trigger_rejects_other_team_alert_and_rule(mock_get, superuser_cl
 @pytest.mark.django_db
 @patch("apps.alerts.views.action.get_handler")
 def test_manual_trigger_rejects_incompatible_rule_within_authorized_children(mock_get, superuser_client):
-    alert = Alert.objects.create(
-        alert_id="A-PARENT", fingerprint="f-parent", title="parent", content="c", level="0", team=[1]
-    )
+    alert = Alert.objects.create(alert_id="A-PARENT", fingerprint="f-parent", title="parent", content="c", level="0", team=[1])
     child_rule = ActionRule.objects.create(name="child-rule", team=[2])
     user = superuser_client.authenticated_user
     user.group_tree = [{"id": 1, "subGroups": [{"id": 2}]}]
@@ -184,9 +186,7 @@ def test_manual_trigger_rejects_incompatible_rule_within_authorized_children(moc
 @patch("apps.alerts.views.action.get_handler")
 def test_manual_trigger_allows_child_team_when_include_children(mock_get, superuser_client):
     mock_get.return_value.execute.return_value = None
-    child_alert = Alert.objects.create(
-        alert_id="A-CHILD", fingerprint="f-child", title="child", content="c", level="0", team=[2]
-    )
+    child_alert = Alert.objects.create(alert_id="A-CHILD", fingerprint="f-child", title="child", content="c", level="0", team=[2])
     child_rule = ActionRule.objects.create(name="child-rule", team=[2])
     user = superuser_client.authenticated_user
     user.group_tree = [{"id": 1, "subGroups": [{"id": 2}]}]
@@ -208,9 +208,7 @@ def test_manual_trigger_allows_child_team_when_include_children(mock_get, superu
 @patch("apps.alerts.views.action.get_handler")
 def test_manual_trigger_allows_global_rule_for_authorized_alert(mock_get, superuser_client):
     mock_get.return_value.execute.return_value = None
-    alert = Alert.objects.create(
-        alert_id="A-OWN", fingerprint="f-own", title="own", content="c", level="0", team=[1]
-    )
+    alert = Alert.objects.create(alert_id="A-OWN", fingerprint="f-own", title="own", content="c", level="0", team=[1])
     global_rule = ActionRule.objects.create(name="global-rule", team=[])
 
     resp = superuser_client.post(
@@ -222,3 +220,124 @@ def test_manual_trigger_allows_global_rule_for_authorized_alert(mock_get, superu
 
     assert resp.status_code == 200
     assert ActionExecution.objects.filter(alert=alert, rule=global_rule).exists()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_rejects_inactive_rule(mock_get, superuser_client):
+    alert = Alert.objects.create(alert_id="A-OFF", fingerprint="f-off", title="t", content="c", level="0", team=[1])
+    rule = ActionRule.objects.create(name="off", team=[1], is_active=False, action_config={"script_id": 1})
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": rule.id},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY="manual-inactive",
+    )
+    assert resp.status_code == 400
+    assert ActionExecution.objects.count() == 0
+    mock_get.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_rejects_illegal_overrides_before_create(mock_get, superuser_client):
+    alert = Alert.objects.create(alert_id="A-OV", fingerprint="f-ov", title="t", content="c", level="0", team=[1])
+    rule = ActionRule.objects.create(
+        name="ov",
+        team=[1],
+        is_active=True,
+        auto_execute=False,
+        action_config={
+            "script_id": 1,
+            "param_bindings": [{"name": "svc", "from": "const", "value": "nginx"}],
+        },
+    )
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": rule.id, "param_overrides": {"svc": "redis"}},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY="manual-bad-override",
+    )
+    assert resp.status_code == 400
+    assert ActionExecution.objects.count() == 0
+    mock_get.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_passes_legal_overrides(mock_get, superuser_client):
+    mock_get.return_value.execute.return_value = None
+    alert = Alert.objects.create(alert_id="A-OK", fingerprint="f-ok", title="t", content="c", level="0", team=[1])
+    rule = ActionRule.objects.create(
+        name="ok",
+        team=[1],
+        is_active=True,
+        action_config={
+            "script_id": 1,
+            "param_bindings": [{"name": "svc", "from": "const", "value": "nginx", "allow_adjust": True}],
+        },
+    )
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": rule.id, "param_overrides": {"svc": "redis"}},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY="manual-ok-override",
+    )
+    assert resp.status_code == 200
+    kwargs = mock_get.return_value.execute.call_args.kwargs
+    assert kwargs["param_overrides"] == {"svc": "redis"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ended_status", ["closed", "auto_close", "auto_recovery", "resolved"])
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_rejects_ended_alert(mock_get, superuser_client, ended_status):
+    alert = Alert.objects.create(
+        alert_id=f"A-END-{ended_status}",
+        fingerprint=f"f-end-{ended_status}",
+        title="ended",
+        content="c",
+        level="0",
+        team=[1],
+        status=ended_status,
+    )
+    rule = ActionRule.objects.create(name="r", team=[1], action_config={"script_id": 1})
+
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": rule.id},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY=f"manual-ended-{ended_status}",
+    )
+
+    assert resp.status_code == 400
+    assert ActionExecution.objects.count() == 0
+    mock_get.assert_not_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("active_status", ["pending", "processing", "unassigned"])
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_allows_active_alert(mock_get, superuser_client, active_status):
+    mock_get.return_value.execute.return_value = None
+    alert = Alert.objects.create(
+        alert_id=f"A-ACT-{active_status}",
+        fingerprint=f"f-act-{active_status}",
+        title="active",
+        content="c",
+        level="0",
+        team=[1],
+        status=active_status,
+    )
+    rule = ActionRule.objects.create(name="r", team=[1], action_config={"script_id": 1})
+
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": rule.id},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY=f"manual-active-{active_status}",
+    )
+
+    assert resp.status_code == 200
+    assert ActionExecution.objects.filter(alert=alert, rule=rule).exists()
+    mock_get.return_value.execute.assert_called_once()

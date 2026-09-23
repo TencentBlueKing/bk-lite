@@ -40,3 +40,27 @@ html {
   height: 72px;
   background: transparent;
 }
+
+/* ==========================================================================
+   方案 A：AI 与抽屉双栏并排 (协同工作) & Modal 模态层级治理
+   ========================================================================== */
+
+/* 1. 非全屏 Dock 模式下，将 WebChat 容器层级设为 950，低于 Ant Design Modal/Drawer (1000)，
+   确保系统模态弹窗（Modal）能完整遮罩全屏（含 WebChat 区域），消除弹窗背景割裂 BUG */
+#webchat-root .fixed.bottom-0.right-0.top-0 {
+  z-index: 950 !important;
+}
+
+/* 2. 当 WebChat 处于展开状态（--bk-webchat-dock-width > 0）时，
+   Ant Design 右侧滑出抽屉（Drawer）自动以 WebChat 左边缘为锚点向左展开，
+   抽屉右边缘避让 WebChat 宽度，两者并排并存，且遮罩不遮挡 WebChat，实现边看抽屉边向 AI 提问 */
+.ant-drawer.ant-drawer-right {
+  right: var(--bk-webchat-dock-width, 0px) !important;
+  width: calc(100vw - var(--bk-webchat-dock-width, 0px)) !important;
+  transition: right 200ms ease-out, width 200ms ease-out;
+}
+
+.ant-drawer.ant-drawer-right .ant-drawer-content-wrapper {
+  max-width: calc(100vw - var(--bk-webchat-dock-width, 0px)) !important;
+}
+

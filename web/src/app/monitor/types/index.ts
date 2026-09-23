@@ -217,6 +217,8 @@ export interface InstanceParam {
   ordering?: string;
   /** asc | desc */
   order?: 'asc' | 'desc';
+  /** 超级用户未归属目录，替换当前组织列表 */
+  unassigned?: boolean;
 }
 
 export interface GroupInfo {
@@ -311,8 +313,9 @@ export interface MetricItem {
   query?: string;
   view_query?: string;
   view_config?: {
-    mode: 'top' | 'bottom' | 'limited';
+    mode?: 'top' | 'bottom' | 'limited';
     limit?: number;
+    os?: string[];
   };
   unit?: string;
   displayType?: string;

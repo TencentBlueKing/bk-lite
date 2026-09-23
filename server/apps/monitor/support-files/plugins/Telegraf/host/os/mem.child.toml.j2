@@ -6,3 +6,18 @@
         instance_type = "{{ instance_type }}"
         collect_type = "host"
         config_type = "mem"
+
+{% if operating_system == "windows" %}
+[[processors.starlark]]
+    namepass = ["mem"]
+    source = '''
+def apply(metric):
+    if metric.fields.get("cached") != None:
+        metric.fields.pop("cached")
+    if metric.fields.get("shared") != None:
+        metric.fields.pop("shared")
+    if metric.fields.get("buffered") != None:
+        metric.fields.pop("buffered")
+    return metric
+'''
+{% endif %}

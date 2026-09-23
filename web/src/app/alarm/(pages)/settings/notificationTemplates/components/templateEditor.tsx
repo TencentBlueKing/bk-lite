@@ -21,6 +21,7 @@ import {
 } from '@/app/alarm/types/settings';
 import { useTranslation } from '@/utils/i18n';
 import { HandledRequestError } from '@/utils/request';
+import { channelOptionValue } from '@/app/alarm/utils/channelIdentity';
 import {
   getNotificationTemplateChannel,
   NOTIFICATION_TEMPLATE_CHANNELS,
@@ -111,7 +112,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
     team?: Array<number | string>;
   }>>([]);
   const [testOpen, setTestOpen] = useState(false);
-  const [testChannelId, setTestChannelId] = useState<number>();
+  const [testChannelId, setTestChannelId] = useState<string>();
   const [testAlertId, setTestAlertId] = useState<number>();
   const [testReceivers, setTestReceivers] = useState<string[]>(username ? [username] : []);
   const [testAlerts, setTestAlerts] = useState<AlarmTableDataItem[]>([]);
@@ -148,10 +149,15 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
         setTeam(item.team);
         setTemplateScope(item.scope);
         setChannelId(item.channel_id || undefined);
-        if (item.scope === 'alert_operation') setTestChannelId(item.channel_id || undefined);
         const loadedContents = item.scope === 'alert_operation'
           ? item.contents.map(formatLegacyAlertOperationContent)
           : item.contents;
+        if (item.scope === 'alert_operation' && item.channel_id) {
+          setTestChannelId(channelOptionValue({
+            id: item.channel_id,
+            channel_type: loadedContents[0]?.channel_type || 'email',
+          }));
+        }
         setContents(loadedContents);
         setActiveChannel(loadedContents[0]?.channel_type || 'email');
         setDetailReady(true);
@@ -189,8 +195,9 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
     return paths;
   }, [activeContent.body_template, activeContent.subject_template]);
   const operationChannels = useMemo(
-    () => channels.filter((channel) => !channel.team
-      || channel.team.some((channelTeam) => team.includes(Number(channelTeam)))),
+    () => channels.filter((channel) => channel.channel_type !== 'im_notification'
+      && (!channel.team
+      || channel.team.some((channelTeam) => team.includes(Number(channelTeam))))),
     [channels, team],
   );
   const testChannelOptions = useMemo(
@@ -198,7 +205,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
       .filter((channel) => isOperationTemplate
         ? channel.id === channelId
         : contents.some((content) => content.channel_type === channel.channel_type))
-      .map((channel) => ({ label: channel.name, value: channel.id })),
+      .map((channel) => ({ label: channel.name, value: channelOptionValue(channel) })),
     [channelId, channels, contents, isOperationTemplate],
   );
   const testReceiverOptions = useMemo(
@@ -221,8 +228,9 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
     if (!testOpen || testChannelOptions.length === 0) return;
     setTestChannelId((current) => {
       if (testChannelOptions.some((option) => option.value === current)) return current;
-      const activeChannelId = channels.find((channel) => channel.channel_type === activeChannel)?.id;
-      return testChannelOptions.find((option) => option.value === activeChannelId)?.value
+      const activeChannelKey = channels.find((channel) => channel.channel_type === activeChannel);
+      const activeValue = activeChannelKey ? channelOptionValue(activeChannelKey) : undefined;
+      return testChannelOptions.find((option) => option.value === activeValue)?.value
         || testChannelOptions[0].value;
     });
   }, [activeChannel, channels, testChannelOptions, testOpen]);
@@ -274,7 +282,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
       || DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === channel.channel_type)
       || { channel_type: channel.channel_type, subject_template: '', body_template: '' };
     setChannelId(selectedChannelId);
-    setTestChannelId(selectedChannelId);
+    setTestChannelId(channelOptionValue(channel));
     setContents([nextContent]);
     setActiveChannel(channel.channel_type);
   };
@@ -355,10 +363,11 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
   const previewDocument = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"></head><body>${previewHtml}</body></html>`;
 
   const openTestModal = async () => {
-    const activeChannelId = channels.find((channel) => channel.channel_type === activeChannel)?.id;
+    const activeChannelItem = channels.find((channel) => channel.channel_type === activeChannel);
+    const activeChannelKey = activeChannelItem ? channelOptionValue(activeChannelItem) : undefined;
     if (!testChannelOptions.some((option) => option.value === testChannelId)) {
       setTestChannelId(
-        testChannelOptions.find((option) => option.value === activeChannelId)?.value
+        testChannelOptions.find((option) => option.value === activeChannelKey)?.value
         || testChannelOptions[0]?.value,
       );
     }
@@ -381,14 +390,14 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
 
   const testSend = async () => {
     if (!testChannelId || !testAlertId || testReceivers.length === 0) return;
-    const selectedChannel = channels.find((channel) => channel.id === testChannelId);
+    const selectedChannel = channels.find((channel) => channelOptionValue(channel) === testChannelId);
     const selectedContent = contents.find((content) => content.channel_type === selectedChannel?.channel_type);
     if (!selectedChannel || !selectedContent) return;
     setTesting(true);
     try {
       await api.testSendDraftNotificationTemplate({
         ...(templateId ? { template_id: Number(templateId) } : {}),
-        channel_id: testChannelId,
+        channel_id: selectedChannel.id,
         alert_id: testAlertId,
         receivers: testReceivers,
         scope: templateScope,

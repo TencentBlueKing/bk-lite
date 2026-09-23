@@ -71,3 +71,58 @@ def test_create_rule_rejects_team_outside_current_scope(superuser_client):
 
     assert response.status_code == 400
     assert not ActionRule.objects.filter(name="cross-team").exists()
+
+
+@pytest.mark.django_db
+def test_create_rule_rejects_field_binding_without_value(superuser_client):
+    from apps.alerts.models.models import Level
+
+    Level.objects.create(level_type="alert", level_id=1, level_name="one", level_display_name="一")
+    superuser_client.cookies["current_team"] = "1"
+    payload = {
+        "name": "缺字段",
+        "team": [1],
+        "trigger_events": ["created"],
+        "match_rules": [[{"key": "level", "operator": "any_of", "value": ["1"]}]],
+        "action_type": "job",
+        "auto_execute": False,
+        "action_config": {
+            "script_id": 1,
+            "target_binding": {"source": "node_mgmt", "host_field": "labels.ip"},
+            "param_bindings": [{"name": "svc", "from": "field", "value": ""}],
+        },
+    }
+    resp = superuser_client.post("/api/v1/alerts/api/action_rule/", data=payload, format="json")
+    assert resp.status_code == 400
+    assert not ActionRule.objects.filter(name="缺字段").exists()
+
+
+@pytest.mark.django_db
+def test_create_rule_strips_allow_adjust_on_field_binding(superuser_client):
+    from apps.alerts.models.models import Level
+
+    Level.objects.create(level_type="alert", level_id=1, level_name="one", level_display_name="一")
+    superuser_client.cookies["current_team"] = "1"
+    payload = {
+        "name": "可调手填",
+        "team": [1],
+        "trigger_events": ["created"],
+        "match_rules": [[{"key": "level", "operator": "any_of", "value": ["1"]}]],
+        "action_type": "job",
+        "auto_execute": True,
+        "action_config": {
+            "script_id": 1,
+            "target_binding": {"source": "node_mgmt", "host_field": "labels.ip"},
+            "param_bindings": [
+                {"name": "svc", "from": "const", "value": "nginx", "allow_adjust": True},
+                {"name": "title", "from": "field", "value": "title", "allow_adjust": True},
+            ],
+        },
+    }
+    resp = superuser_client.post("/api/v1/alerts/api/action_rule/", data=payload, format="json")
+    assert resp.status_code in (200, 201)
+    rule = ActionRule.objects.get(name="可调手填")
+    assert rule.auto_execute is True
+    bindings = {item["name"]: item for item in rule.action_config["param_bindings"]}
+    assert bindings["svc"]["allow_adjust"] is True
+    assert bindings["title"].get("allow_adjust") is not True

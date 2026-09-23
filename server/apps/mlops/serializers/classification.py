@@ -25,6 +25,7 @@ from apps.mlops.utils.group_scope import (
     validate_requested_teams,
 )
 from apps.mlops.utils.i18n import serializer_message
+from apps.mlops.utils.serving_port import ServingPortValidationMixin
 
 
 class ClassificationDatasetSerializer(AuthSerializer):
@@ -40,7 +41,7 @@ class ClassificationDatasetSerializer(AuthSerializer):
         return validate_requested_teams(self.context["request"], value)
 
 
-class ClassificationServingSerializer(AuthSerializer):
+class ClassificationServingSerializer(ServingPortValidationMixin, AuthSerializer):
     """分类任务服务序列化器"""
 
     permission_key = "serving.classification_serving"

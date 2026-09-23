@@ -110,9 +110,6 @@ def test_train_job_delete_rollback_removes_cleanup_intent(monkeypatch):
 
 
 def test_serving_direct_delete_skips_container_cleanup(monkeypatch, django_capture_on_commit_callbacks):
-    remove_mock = Mock()
-    monkeypatch.setattr(signals_base.WebhookClient, "remove", staticmethod(remove_mock))
-
     tj = AnomalyDetectionTrainJob.objects.create(
         name="job",
         description="",
@@ -134,13 +131,11 @@ def test_serving_direct_delete_skips_container_cleanup(monkeypatch, django_captu
     # direct .delete() -> origin is the instance -> cleanup skipped
     with django_capture_on_commit_callbacks(execute=True):
         serving.delete()
-    remove_mock.assert_not_called()
+    assert not ExternalResourceCleanupIntent.objects.filter(resource_type="webhook_container").exists()
 
 
 def test_serving_train_job_cascade_skips_container_cleanup(monkeypatch, django_capture_on_commit_callbacks):
     cleanup_tasks = _cleanup_tasks()
-    remove_mock = Mock()
-    monkeypatch.setattr(signals_base.WebhookClient, "remove", staticmethod(remove_mock))
     monkeypatch.setattr(
         cleanup_tasks,
         "enqueue_external_resource_cleanup_intent",
@@ -168,7 +163,7 @@ def test_serving_train_job_cascade_skips_container_cleanup(monkeypatch, django_c
     # deleting the train_job cascades to its servings -> cleanup skipped for cascade
     with django_capture_on_commit_callbacks(execute=True):
         tj.delete()
-    remove_mock.assert_not_called()
+    assert not ExternalResourceCleanupIntent.objects.filter(resource_type="webhook_container").exists()
 
 
 def test_train_data_delete_runs_without_file(monkeypatch, django_capture_on_commit_callbacks):
@@ -309,3 +304,106 @@ def test_dataset_release_delete_runs_without_file(monkeypatch, django_capture_on
     with django_capture_on_commit_callbacks(execute=True):
         rel.delete()
     assert not AnomalyDetectionDatasetRelease.objects.filter(id=rel.id).exists()
+    assert not ExternalResourceCleanupIntent.objects.filter(resource_type="minio_object").exists()
+
+
+def test_dataset_release_delete_persists_minio_cleanup_intent_when_storage_fails(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    cleanup_tasks = _cleanup_tasks()
+    enqueue = Mock(return_value=True)
+    monkeypatch.setattr(cleanup_tasks, "enqueue_external_resource_cleanup_intent", enqueue)
+    dataset = _dataset()
+    rel = AnomalyDetectionDatasetRelease.objects.create(
+        name="r",
+        description="",
+        dataset=dataset,
+        version="v1",
+        dataset_file="releases/v1.zip",
+        status="pending",
+        metadata={},
+        file_size=1,
+    )
+    storage = AnomalyDetectionDatasetRelease._meta.get_field("dataset_file").storage
+    monkeypatch.setattr(storage, "delete", Mock(side_effect=OSError("object storage unavailable")))
+
+    with django_capture_on_commit_callbacks(execute=True):
+        rel.delete()
+
+    intent = ExternalResourceCleanupIntent.objects.get(resource_type="minio_object")
+    assert intent.status == ExternalResourceCleanupIntent.Status.PENDING
+    assert intent.payload == {
+        "bucket": getattr(storage, "bucket_name", None) or storage.bucket,
+        "path": "releases/v1.zip",
+    }
+    enqueue.assert_called_once_with(intent.pk, using="default")
+
+
+def test_train_job_delete_persists_minio_cleanup_intent_for_config_url(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    cleanup_tasks = _cleanup_tasks()
+    enqueue = Mock(return_value=True)
+    monkeypatch.setattr(cleanup_tasks, "enqueue_external_resource_cleanup_intent", enqueue)
+    tj = AnomalyDetectionTrainJob.objects.create(
+        name="job",
+        description="",
+        team=[1],
+        status=TrainJobStatus.COMPLETED,
+        algorithm="algo",
+        dataset_version=None,
+        hyperopt_config={},
+    )
+    AnomalyDetectionTrainJob.objects.filter(pk=tj.pk).update(config_url="configs/job.json")
+    tj.refresh_from_db()
+    storage = AnomalyDetectionTrainJob._meta.get_field("config_url").storage
+    monkeypatch.setattr(storage, "delete", Mock(side_effect=OSError("object storage unavailable")))
+
+    with django_capture_on_commit_callbacks(execute=True):
+        tj.delete()
+
+    minio_intent = ExternalResourceCleanupIntent.objects.get(resource_type="minio_object")
+    assert minio_intent.payload == {
+        "bucket": getattr(storage, "bucket_name", None) or storage.bucket,
+        "path": "configs/job.json",
+    }
+    mlflow_intent = ExternalResourceCleanupIntent.objects.get(resource_type="mlflow_experiment_model")
+    enqueue.assert_any_call(minio_intent.pk, using="default")
+    enqueue.assert_any_call(mlflow_intent.pk, using="default")
+
+
+def test_serving_queryset_delete_persists_container_cleanup_intent(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    cleanup_tasks = _cleanup_tasks()
+    enqueue = Mock(return_value=True)
+    monkeypatch.setattr(cleanup_tasks, "enqueue_external_resource_cleanup_intent", enqueue)
+    tj = AnomalyDetectionTrainJob.objects.create(
+        name="job",
+        description="",
+        team=[1],
+        status=TrainJobStatus.COMPLETED,
+        algorithm="algo",
+        dataset_version=None,
+        hyperopt_config={},
+    )
+    serving = AnomalyDetectionServing.objects.create(
+        name="srv",
+        description="",
+        team=[1],
+        train_job=tj,
+        model_version="latest",
+        status="inactive",
+        container_info={},
+    )
+    serving_id = serving.id
+
+    with django_capture_on_commit_callbacks(execute=True):
+        AnomalyDetectionServing.objects.filter(pk=serving_id).delete()
+
+    intent = ExternalResourceCleanupIntent.objects.get(resource_type="webhook_container")
+    assert intent.payload == {"container_id": f"AnomalyDetection_Serving_{serving_id}"}
+    enqueue.assert_called_once_with(intent.pk, using="default")

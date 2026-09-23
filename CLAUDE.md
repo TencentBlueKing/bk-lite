@@ -39,6 +39,7 @@
 - **按需深读**（只读相关章节）：新建视觉组件、改 token/设计语义、组件治理大迁移、
   设计走查，或短规则不够用时 → `web/DESIGN.md` 的 Layout & Styling + Do/Don't；
   实体网格列表页（统一卡 / 页头 / 骨架 / 「新建」）→ `web/DESIGN.md` Components → Entity List Cards；
+  详情页 / 概览页（KPI 格 / 分区卡栏头 / 属性面板 / 计数胶囊）→ `web/DESIGN.md` Components → Detail / Overview Workbench；
   归属争议 → `COMPONENT_GOVERNANCE.md`；改色值 → `globals.css`。
 - 纯文案 / 接 API / 改 props 且不动布局与主题时，不必深读 DESIGN。
 

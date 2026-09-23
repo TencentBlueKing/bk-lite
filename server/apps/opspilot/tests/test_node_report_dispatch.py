@@ -214,7 +214,8 @@ def test_deepagent_does_not_expose_internal_repair_workflow_tools():
         tools = node._collect_deepagent_tools(object())
 
     names = {tool.name for tool in tools}
-    assert names.isdisjoint({"request_user_choice", "generate_repair_report", "report_config_diff"})
+    assert "request_user_choice" not in names
+    assert names.isdisjoint({"generate_repair_report", "report_config_diff"})
 
 
 @pytest.mark.parametrize("capability", ["config_analysis_report", "repair_diff_report"])
@@ -227,7 +228,8 @@ def test_deepagent_does_not_expose_repair_workflow_tools_for_single_capability(c
         tools = node._collect_deepagent_tools(object())
 
     names = {tool.name for tool in tools}
-    assert names.isdisjoint({"request_user_choice", "generate_repair_report", "report_config_diff"})
+    assert "request_user_choice" not in names
+    assert names.isdisjoint({"generate_repair_report", "report_config_diff"})
 
 
 @pytest.mark.asyncio
@@ -781,7 +783,7 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
         patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=False),
         patch(
-            "apps.opspilot.metis.llm.chain.node.wait_for_choice",
+            "apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice",
             new=AsyncMock(return_value={"selected": ["全部一次性展示"], "source": "user"}),
         ),
     ):
@@ -833,8 +835,10 @@ async def test_choice_custom_events_use_explicit_runnable_config():
     runnable_config = {"configurable": {"execution_id": "exec-1"}}
 
     with (
-        patch("apps.opspilot.metis.llm.chain.node.wait_for_choice", new=AsyncMock(return_value={"selected": ["按问题类别聚合"], "source": "user"})),
-        patch("apps.opspilot.metis.llm.chain.node.adispatch_custom_event", new=AsyncMock()) as adispatch,
+        patch(
+            "apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice", new=AsyncMock(return_value={"selected": ["按问题类别聚合"], "source": "user"})
+        ),
+        patch("apps.opspilot.metis.llm.chain.approval_tools.adispatch_custom_event", new=AsyncMock()) as adispatch,
     ):
         await choice_func(
             question="请选择修复展示方式",
@@ -869,7 +873,7 @@ async def test_choice_custom_events_are_visible_in_real_async_event_stream():
 
     event_names = []
     with patch(
-        "apps.opspilot.metis.llm.chain.node.wait_for_choice",
+        "apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice",
         new=AsyncMock(return_value={"selected": ["全部一次性展示"], "source": "user"}),
     ):
         async for event in RunnableLambda(_invoke_choice).astream_events(

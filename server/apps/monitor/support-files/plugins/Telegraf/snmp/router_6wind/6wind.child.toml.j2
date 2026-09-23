@@ -39,24 +39,24 @@
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.11.0"
+        oid = "1.3.6.1.4.1.2021.11.11"
         name = "idle"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.9.0"
+        oid = "1.3.6.1.4.1.2021.11.9"
         name = "user"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.10.0"
+        oid = "1.3.6.1.4.1.2021.11.10"
         name = "system"
     # ---- Memory (UCD-SNMP memTotalReal/memAvailReal, kB; memory_usage_percent=(total-avail)/total) ----
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.5.0"
+        oid = "1.3.6.1.4.1.2021.4.5"
         name = "total"
         conversion = "int"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.6.0"
+        oid = "1.3.6.1.4.1.2021.4.6"
         name = "free"
         conversion = "int"
     # ---- Optional HOST-RESOURCES CPU fallback (hrProcessorLoad, per-core %, 1.3.6.1.2.1.25) ----
@@ -97,8 +97,6 @@
 
 [[processors.starlark]]
     namepass = ["device_cpu"]
-    [processors.starlark.tagpass]
-        brand = ["6wind"]
     source = '''
 def apply(metric):
     idle = metric.fields.get("idle")
@@ -110,11 +108,11 @@ def apply(metric):
         metric.fields["usage"] = user + system
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["6wind"]
 
 [[processors.starlark]]
     namepass = ["device_memory_hr"]
-    [processors.starlark.tagpass]
-        brand = ["6wind"]
     source = '''
 def apply(metric):
     storage_type = metric.tags.get("storage_type", "")
@@ -134,3 +132,5 @@ def apply(metric):
         metric.fields["free"] = (size - used) * units
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["6wind"]

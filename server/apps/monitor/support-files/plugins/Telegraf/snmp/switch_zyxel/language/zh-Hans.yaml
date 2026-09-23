@@ -1,6 +1,6 @@
 Switch Zyxel SNMP:
   name: Zyxel（Telegraf）
-  desc: 面向 Zyxel 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  desc: 面向 Zyxel 交换机的 SNMP 监控模板，可采集 ES-COMMON CPU 使用率、内存使用率（NebulaFlex/XGS1930/XS1930），并保留较老 GS 的 CPU 与温度。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -68,12 +68,12 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
-        SNMP OID，并归一化为 0-100 的百分比。
+      desc: 该指标表示 Zyxel 设备控制平面的 CPU 使用率，单位为百分比。NebulaFlex/XGS1930/XS1930（sysObjectID
+        前缀 1.3.6.1.4.1.890.1.15）读取 ES-COMMON sysMgmtCPUUsage；较老 GS 回退到 890.1.5.8.20 CPU 标量。持续偏高可能意味着控制平面过载、路由震荡或异常流量。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
-        表项过大或容量不足导致，可能引发不稳定或分配失败。
+      desc: 该指标表示 Zyxel 设备整体内存使用率，在 NebulaFlex/XGS1930/XS1930 上由 ES-COMMON sysMgmtMemUsage
+        直接按 0-100 百分比上报。内存偏高可能由内存泄漏、MAC/ARP 表项过大或容量不足导致，可能引发不稳定或分配失败。
     device_memory_used:
       name: 内存已用量
       desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。

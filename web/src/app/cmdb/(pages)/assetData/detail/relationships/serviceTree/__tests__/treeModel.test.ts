@@ -16,7 +16,7 @@ describe('service tree rules', () => {
   it('only applications can assign hosts', () => {
     expect(canAssignHosts('application')).toBe(true);
     expect(canAssignHosts('system')).toBe(false);
-    expect(canAssignHosts('biz_group')).toBe(false);
+    expect(canAssignHosts('env')).toBe(false);
   });
 
   it('host actions keep the table selection instead of all hosts', () => {
@@ -67,20 +67,11 @@ describe('service tree rules', () => {
       host_count: 2,
       children: [
         {
-          inst_uuid: 'g1',
-          inst_name: '生产',
-          kind: 'biz_group',
+          inst_uuid: 'a1',
+          inst_name: '前端',
+          kind: 'application',
           depth: 1,
           host_count: 1,
-          children: [
-            {
-              inst_uuid: 'a1',
-              inst_name: '前端',
-              kind: 'application',
-              depth: 2,
-              host_count: 1,
-            },
-          ],
         },
       ],
     });

@@ -71,6 +71,7 @@ class CatalogListQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    unassigned = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
         started_at = attrs.get("started_at")
@@ -89,6 +90,7 @@ class InstanceCatalogListQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    unassigned = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
@@ -701,7 +703,7 @@ class ApmEventQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     action = serializers.ChoiceField(
-        choices=("triggered", "escalated", "claimed", "assigned", "recovered", "closed"),
+        choices=("triggered", "escalated", "claimed", "assigned", "reassigned", "recovered", "closed"),
         required=False,
     )
     severity = serializers.ChoiceField(choices=("critical", "error", "warning"), required=False)

@@ -21,6 +21,7 @@ import { cloneDeep } from 'lodash';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import { normalizePasswordWhitespace } from '@/components/password/normalizePasswordWhitespace';
+import { countAccessAssets } from './automaticAccessObjectCount';
 const { confirm } = Modal;
 
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = () => {
@@ -160,6 +161,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = () => {
     );
     return [...commonColumnConfigs, ...dynamicColumnConfigs];
   }, [t, configsInfo.columns]);
+
+  const accessObjectCount = useMemo(
+    () =>
+      countAccessAssets(
+        dataSource,
+        modalColumns.map((col) => ({
+          name: col.name,
+          required: col.required
+        })),
+        initTableItems
+      ),
+    [dataSource, modalColumns, initTableItems]
+  );
 
   // Format nodeList for modal options
   const formattedNodeList = useMemo(() => {
@@ -363,15 +377,28 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = () => {
         <div className="w-full min-w-0 max-w-full md:w-1/2">{formItems}</div>
         <div className="w-full min-w-0 max-w-full">
           <div className="flex items-center justify-between mb-[10px]">
-            <span className="text-[14px]">
-              {t('log.integration.MonitoredObject')}
-              <span
-                className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
-                style={{ fontFamily: 'SimSun, sans-serif' }}
-              >
-                *
+            <div className="flex items-center gap-[8px]">
+              <span className="text-[14px]">
+                {t('log.integration.MonitoredObject')}
+                <span
+                  className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+                  style={{ fontFamily: 'SimSun, sans-serif' }}
+                >
+                  *
+                </span>
               </span>
-            </span>
+              <span
+                aria-live="polite"
+                className="text-[13px] tabular-nums text-[var(--color-text-2)]"
+              >
+                {t('log.integration.accessObjectCount', '', {
+                  count: accessObjectCount
+                })}
+              </span>
+              <span className="text-[12px] text-[var(--color-text-3)]">
+                {t('log.integration.accessObjectCountHint')}
+              </span>
+            </div>
             <div className="flex gap-[8px]">
               <Button
                 icon={<UploadOutlined />}

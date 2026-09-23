@@ -9,6 +9,7 @@ from apps.core.logger import logger
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.i18n import system_mgmt_request_message
 
 
 class GroupQueryMixin:
@@ -59,7 +60,7 @@ class GroupQueryMixin:
         from apps.system_mgmt.models import Group
 
         if Group.objects.filter(id=current_team, is_delete=True).exists():
-            raise PermissionDenied("current_team 对应组织已归档或不存在")
+            raise PermissionDenied(system_mgmt_request_message(request, "error.current_team_archived_or_missing"))
 
         include_children = request.COOKIES.get("include_children", "0") == "1"
         # 3. 获取用户有权限的组织列表

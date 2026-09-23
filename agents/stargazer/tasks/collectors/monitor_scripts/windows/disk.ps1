@@ -14,7 +14,6 @@ foreach ($d in $disks) {
         free_bytes = $free
         used_bytes = $used
         used_percent = $pct
-        inodes_used_percent = 0
     }
 }
 $result['disk'] = $diskArr

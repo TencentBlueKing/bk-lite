@@ -7,8 +7,17 @@ ActionRuleViewSet: ActionRule 的 CRUD REST 视图集。
 
 import hashlib
 
+from django.db import transaction
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.handlers.registry import get_handler
-from apps.alerts.constants.constants import LogAction, LogTargetType
+from apps.alerts.action.overrides import validate_manual_param_overrides
+from apps.alerts.constants.constants import AlertStatus, LogAction, LogTargetType
 from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRuleSerializer
@@ -24,12 +33,6 @@ from apps.core.logger import alert_logger as logger
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
 from apps.rpc.job_mgmt import JobMgmt
 from config.drf.viewsets import ModelViewSet
-from django.db import transaction
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework.views import APIView
 
 
 def verify_job_signature(request) -> bool:
@@ -222,9 +225,7 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         authorized_group_ids = get_authorized_group_ids(request)
-        alert = apply_team_scope_with_group_ids(Alert.objects.all(), authorized_group_ids).filter(
-            alert_id=request.data.get("alert_id")
-        ).first()
+        alert = apply_team_scope_with_group_ids(Alert.objects.all(), authorized_group_ids).filter(alert_id=request.data.get("alert_id")).first()
         rule = ActionRule.objects.filter(id=request.data.get("rule_id")).first()
         if not alert or not rule:
             return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
@@ -236,6 +237,20 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         rule_incompatible_with_alert = alert_teams and rule_teams and not (alert_teams & rule_teams)
         if rule_out_of_scope or rule_incompatible_with_alert:
             return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not rule.is_active:
+            return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if alert.status not in AlertStatus.ACTIVATE_STATUS:
+            return Response({"detail": "告警已结束，不能再执行处理动作"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            param_overrides = validate_manual_param_overrides(
+                (rule.action_config or {}).get("param_bindings") or [],
+                request.data.get("param_overrides"),
+            )
+        except ConfigError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         operator = getattr(request.user, "username", None) or "anonymous"
         key_digest = hashlib.sha256(client_key.encode("utf-8")).hexdigest()
@@ -271,9 +286,10 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             # 但要把异常记录下来以便排障——而不是静默吞掉。
             logger.exception(
                 "[ActionView] manual_trigger 写 OperatorLog 失败 alert_id=%s rule_id=%s",
-                alert.alert_id, rule.id,
+                alert.alert_id,
+                rule.id,
             )
-        get_handler(rule.action_type).execute(rule, alert, execution)
+        get_handler(rule.action_type).execute(rule, alert, execution, param_overrides=param_overrides)
         execution.refresh_from_db(fields=["status", "result"])
         response_data = {"execution_id": execution.id, "status": execution.status, "deduplicated": False}
         if execution.status in {"failed", "config_error"}:

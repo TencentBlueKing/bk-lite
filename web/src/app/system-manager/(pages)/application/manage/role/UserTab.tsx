@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
-import { Button, Input, Spin, Popconfirm, Form, Select, Modal } from 'antd';
+import { Button, Popconfirm, Form, Select, Modal } from 'antd';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from "@/components/permission";
+import SearchActionBar from '@/components/search-action-bar';
 import type { User } from '@/app/system-manager/types/application';
 
-const { Search } = Input;
 const { Option } = Select;
 const { confirm } = Modal;
 
@@ -115,37 +116,37 @@ const UserTab: React.FC<UserTabProps> = ({
   };
 
   return (
-    <>
-      <div className="flex justify-end mb-4">
-        <Search
-          allowClear
-          enterButton
-          className='w-60 mr-[8px]'
-          onSearch={onSearch}
-          placeholder={`${t('common.search')}`}
-        />
-        <PermissionWrapper requiredPermissions={['Add user']}>
-          <Button
-            className="mr-[8px]"
-            type="primary"
-            onClick={openUserModal}
-          >
-            +{t('common.add')}
-          </Button>
-        </PermissionWrapper>
-        <PermissionWrapper requiredPermissions={['Remove user']}>
-          <Button
-            loading={deleteLoading}
-            onClick={handleBatchDeleteClick}
-            disabled={selectedUserKeys.length === 0 || deleteLoading}
-          >
-            {t('system.common.modifydelete')}
-          </Button>
-        </PermissionWrapper>
-      </div>
-      <Spin spinning={loading}>
+    <div className="flex h-full min-h-0 flex-col">
+      <SearchActionBar
+        searchProps={{
+          placeholder: `${t('common.search')}`,
+          onSearch,
+        }}
+        actions={(
+          <>
+            <PermissionWrapper requiredPermissions={['Remove user']}>
+              <Button
+                loading={deleteLoading}
+                disabled={selectedUserKeys.length === 0 || deleteLoading}
+                onClick={handleBatchDeleteClick}
+              >
+                {t('system.common.modifydelete')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add user']}>
+              <Button
+                type="primary"
+                onClick={openUserModal}
+              >
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        )}
+      />
+      <SystemManagerFillTable>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 435px)' }}
+          loading={loading}
           rowSelection={{
             selectedRowKeys: selectedUserKeys,
             onChange: (selectedRowKeys) => setSelectedUserKeys(selectedRowKeys as React.Key[]),
@@ -157,10 +158,11 @@ const UserTab: React.FC<UserTabProps> = ({
             current: currentPage,
             pageSize: pageSize,
             total: total,
+            showSizeChanger: true,
             onChange: onTableChange,
           }}
         />
-      </Spin>
+      </SystemManagerFillTable>
       <OperateModal
         title={t('system.role.addUser')}
         closable={false}
@@ -197,7 +199,7 @@ const UserTab: React.FC<UserTabProps> = ({
           </Form.Item>
         </Form>
       </OperateModal>
-    </>
+    </div>
   );
 };
 

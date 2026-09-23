@@ -106,6 +106,42 @@ class TestHandleSuccess:
         assert instances[0]["organizations"] == [1]
         assert len(instances[0]["configs"]) == 1
 
+    def test_output_redacts_secrets_and_uses_owner_only_mode(self, tmp_path, mocker):
+        svc = mocker.patch(
+            "apps.monitor.management.commands.create_monitor_instance."
+            "InstanceConfigService.create_monitor_instance_by_node_mgmt"
+        )
+        obj = MonitorObject.objects.create(name="CMISecretObj", level="base")
+        data = _valid_request()
+        data["monitor_object_id"] = obj.id
+        data["configs"] = [
+            {
+                "type": "jmx",
+                "password": "example-only",
+                "nested": {"token": "nested-secret", "port": 1099},
+                "community": "public-example",
+            }
+        ]
+        cfg = _write_yaml(tmp_path, data)
+        out_path = tmp_path / "out.yaml"
+        generated_id = Command()._generate_instance_id({"instance_name": "host-1"})
+        MonitorInstance.objects.create(id=generated_id, name="host-1", monitor_object=obj)
+
+        call_command("create_monitor_instance", "--config", cfg, "--output", str(out_path))
+
+        passed = svc.call_args.args[0]
+        assert passed["configs"][0]["password"] == "example-only"
+        assert passed["configs"][0]["nested"]["token"] == "nested-secret"
+        result = yaml.safe_load(out_path.read_text(encoding="utf-8"))
+        dumped = yaml.safe_dump(result)
+        assert "example-only" not in dumped
+        assert "nested-secret" not in dumped
+        assert result["request"]["configs"][0]["password"] == "***"
+        assert result["request"]["configs"][0]["nested"]["token"] == "***"
+        assert result["request"]["configs"][0]["community"] == "***"
+        assert result["request"]["configs"][0]["nested"]["port"] == 1099
+        assert oct(out_path.stat().st_mode & 0o777) == "0o600"
+
     def test_service_error_becomes_command_error(self, tmp_path, mocker):
         from apps.core.exceptions.base_app_exception import BaseAppException
         mocker.patch(

@@ -9,6 +9,9 @@ from langchain_core.messages import AIMessage, ToolMessage
 from apps.opspilot.metis.llm.agent.tool_execution_planner import is_pod_restart_reason_query
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 
+# HITL/选择卡会进工具目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice"})
+
 
 class DeepAgentAssemblyMixin:
     """Mixin for ToolsNodes; extracted without behavior change."""
@@ -47,9 +50,14 @@ class DeepAgentAssemblyMixin:
         return names
 
     @staticmethod
+    def _catalog_has_business_tools(tools) -> bool:
+        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡不算。"""
+        return any((name := getattr(tool, "name", None)) and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES for tool in (tools or []))
+
+    @staticmethod
     def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
         """无业务工具且无技能包时走轻量直答，避免规划器 + DeepAgent 内置工具烧 token。"""
-        if any(getattr(tool, "name", None) for tool in (tools or [])):
+        if DeepAgentAssemblyMixin._catalog_has_business_tools(tools):
             return False
         return not bool(skill_sources)
 
@@ -374,6 +382,7 @@ class DeepAgentAssemblyMixin:
             "禁止改成「日志获取完成」「关键证据确认」要点列表。"
             "若步骤里已经写过完整答案，不要重写，最多一两句。"
             "禁止再贴互相矛盾的名单；累计 restart_count 不要写成时间窗次数。"
+            "若步骤因缺少必要参数未完成，不要编造 uvx、CLI 或白名单替代方案，一两句请用户补充即可。"
         )
 
     @classmethod
@@ -399,13 +408,26 @@ class DeepAgentAssemblyMixin:
         return (
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
-            "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。"
+            "工具已返回结构化结果（含空列表）即不要把空当失败反复换参。"
+            "monitor_list_object_instances 的 monitor_obj_id 只能来自 monitor_list_objects；"
+            "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
+            "空列表且用户未确认对象类型时，必须 request_user_choice 让用户选择类型，不要当成查无此实例。"
+            "用户已声明主机/Pod/中间件时不要再问类型，直接用对应对象 id。"
+            "查未关闭/未分派/某台还在告时用 alerts_*，不要用 monitor_list_active_alerts，也不要为此问对象类型。"
+            "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
+            "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
+            "monitor_query_metric_data 的 instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用 name 或 IP 代替。"
+            "monitor_query_metric_data 返回空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
             "日志工具对同一 Pod 只调用一次；返回截断、压缩、空日志或没有 previous 都是有效证据，禁止降低 lines 重试。"
             "resolve_k8s_target_from_alert 对同一参数只调用一次；返回 resolved=false、"
             "lookup_exhausted 或 namespace 为空时不要重试，直接结束本步。"
             "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
             "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
             "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"
+            "工具返回 Missing parameters、缺少必要参数或 metric/search/monitor_obj_id is required 时，"
+            "必须立即调用 request_user_choice 向用户澄清缺失项；"
+            "禁止编造 uvx/CLI/白名单替代方案，禁止换其他工具盲猜。"
+            "本步已用 CMDB 或监控列出主机后，不要再调另一数据源做「查不到再查」的兜底。"
             f"{tail}"
         )
 
@@ -556,6 +578,7 @@ _select_visible_planned_messages = DeepAgentAssemblyMixin._select_visible_planne
 _set_hide_planned_step_text = DeepAgentAssemblyMixin._set_hide_planned_step_text
 _planned_tool_step_guidance = DeepAgentAssemblyMixin._planned_tool_step_guidance
 _should_use_lightweight_after_empty_plan = DeepAgentAssemblyMixin._should_use_lightweight_after_empty_plan
+_catalog_has_business_tools = DeepAgentAssemblyMixin._catalog_has_business_tools
 _should_use_lightweight_direct_reply = DeepAgentAssemblyMixin._should_use_lightweight_direct_reply
 _skill_only_step_guidance = DeepAgentAssemblyMixin._skill_only_step_guidance
 _skill_package_script_lines = DeepAgentAssemblyMixin._skill_package_script_lines

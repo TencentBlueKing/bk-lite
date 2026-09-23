@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Spin, Button, Form, Input, message, Steps } from 'antd';
+import { Spin, Button, Form, Input, message, Modal, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import OperateModal from '@/components/operate-modal';
 import useMonitorApi from '@/app/monitor/api';
@@ -46,6 +46,7 @@ import { isStringArray } from '@/app/monitor/utils/common';
 import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   getMetricDimensionNames,
+  resolveLoadedGroupBy,
   sanitizeGroupBy
 } from '@/app/monitor/utils/metricDimensions';
 import {
@@ -80,19 +81,26 @@ import {
   coerceThresholdsForCompareMode,
   defaultCompareValueKind,
   getCompareModeSelectOptions,
-  getCompareValueKinds,
-  type SceneChipApplyResult
+  getCompareValueKinds
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
+import { resolveTemplateDuration } from '../../template/templateBulkUtils';
+import {
+  collectTemplateSaveIssues,
+} from './templateSaveIssues';
 import {
   buildMetricExpressionQueryCondition,
   createMetricRow,
   DEFAULT_FORMULA_EXPRESSION,
   DEFAULT_FORMULA_RESULT_NAME,
+  findCatalogMetric,
   getMetricExpressionModeForRows,
   MetricExpressionMode,
+  resolveHydratedMetricFields,
   resolveMetricExpressionUnits,
-  toMetricExpressionStateFromQueryCondition
+  toMetricExpressionStateFromQueryCondition,
+  resolveQueryConditionMetricIds,
+  resolveTemplateQueryCondition
 } from './formulaExpressionUtils';
 const defaultGroup = ['instance_id'];
 
@@ -110,7 +118,7 @@ const StrategyOperation = () => {
     getMonitorObject,
     getAllUsers
   } = useMonitorApi();
-  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate, dryRunMonitorPolicy } = useEventApi();
+  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate, updatePolicyTemplate, getPolicyTemplate, dryRunMonitorPolicy } = useEventApi();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
   const groupedUnitOptions = useMemo(
@@ -142,7 +150,9 @@ const StrategyOperation = () => {
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id');
   const detailName = searchParams.get('name') || '--';
+  const templateKey = searchParams.get('template_key') || '';
   const isCreateFlow = ['builtIn', 'add'].includes(type);
+  const isEditTemplate = type === 'editTemplate';
   const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -263,6 +273,10 @@ const StrategyOperation = () => {
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [enableAlerts, setEnableAlerts] = useState<string[]>(['threshold']);
   const initialMetricPluginIdRef = useRef<string | number | undefined>(undefined);
+  const initMetricDataRef = useRef<MetricItem[]>([]);
+  const pendingMetricLookupRef = useRef(new Set<string>());
+  const storedMetricNameByIdRef = useRef(new Map<string, string>());
+  initMetricDataRef.current = initMetricData;
   const effectiveCalculationUnit = resolveEffectiveCalculationUnit({
     isFormulaMode: metricExpressionMode === 'formula',
     unit: calculationUnit,
@@ -328,7 +342,7 @@ const StrategyOperation = () => {
         getPlugins(),
         getChannelList(),
         getObjects(),
-        detailId && getStragyDetail()
+        isEditTemplate ? getTemplateDetail() : detailId && getStragyDetail()
       ]).finally(() => {
         setPageLoading(false);
       });
@@ -586,7 +600,7 @@ const StrategyOperation = () => {
     ) {
       processMetricData(formData);
     }
-  }, [initMetricData]);
+  }, [initMetricData, formData, type]);
 
   useEffect(() => {
     const nextLabelsByRef: Record<string, string[]> = {};
@@ -767,22 +781,91 @@ const StrategyOperation = () => {
     }
   };
 
+  const lookupStoredMetrics = (ids: Array<number | null | undefined>) => {
+    const missing = [
+      ...new Set(
+        ids.filter((id): id is number => id != null && id !== 0 && Number.isFinite(id))
+      )
+    ].filter((id) => !pendingMetricLookupRef.current.has(String(id)));
+    if (!missing.length || monitorObjId == null || monitorObjId === '') return;
+    missing.forEach((id) => pendingMetricLookupRef.current.add(String(id)));
+    void getMonitorMetrics({
+      monitor_object_id: monitorObjId,
+      id_in: missing.join(','),
+      page: 1,
+      page_size: missing.length
+    })
+      .then((page) => {
+        const byId = new Map(
+          (page.items || []).map((item) => [String(item.id), item])
+        );
+        byId.forEach((item, id) => {
+          const name = String(item.name || '').trim();
+          if (name) storedMetricNameByIdRef.current.set(id, name);
+        });
+        setMetricRows((current) =>
+          current.map((row) => {
+            if (row.metricName || row.metricId == null) return row;
+            const stored = byId.get(String(row.metricId));
+            const name = String(stored?.name || '').trim();
+            if (!name) return row;
+            const matched = findCatalogMetric(
+              initMetricDataRef.current,
+              null,
+              name
+            );
+            if (matched) {
+              return { ...row, metricId: matched.id, metricName: matched.name };
+            }
+            return { ...row, metricName: name };
+          })
+        );
+      })
+      .catch(() => {
+        missing.forEach((id) => pendingMetricLookupRef.current.delete(String(id)));
+      });
+  };
+
   const processMetricData = (data: StrategyFields) => {
-    const { query_condition } = data;
-    if (query_condition?.type === 'metric' && initMetricData.length > 0) {
-      const _metrics = initMetricData.find(
-        (item) => query_condition?.metric_id != null && String(item.id) === String(query_condition.metric_id)
+    const rawQuery = resolveTemplateQueryCondition(data);
+    const query_condition = resolveQueryConditionMetricIds(
+      rawQuery as Parameters<typeof resolveQueryConditionMetricIds>[0],
+      initMetricData
+    ) || rawQuery;
+    if (query_condition?.type === 'metric') {
+      const rememberedName =
+        query_condition?.metric_id != null
+          ? storedMetricNameByIdRef.current.get(String(query_condition.metric_id))
+          : undefined;
+      const metricName = String(
+        query_condition?.metric_name || data.metric_name || rememberedName || ''
+      ).trim();
+      const hydrated = resolveHydratedMetricFields(
+        initMetricData,
+        query_condition?.metric_id,
+        metricName
       );
-      if (_metrics) {
-        setMetric(_metrics?.name || '');
+      const _metrics = findCatalogMetric(
+        initMetricData,
+        hydrated.metricId,
+        hydrated.metricName
+      );
+      if (_metrics || hydrated.metricName) {
+        setMetric(hydrated.metricName || _metrics?.name || '');
         setConditions(query_condition?.filter || []);
+        const fixedList =
+          getGroupIds(monitorName as string)?.list || defaultGroup;
+        const loadedGroupBy = resolveLoadedGroupBy(data.group_by, [
+          ...fixedList,
+          ...getMetricDimensionNames(_metrics?.dimensions),
+        ]);
         setMetricRows([
           createMetricRow(0, {
-            metricId: _metrics.id,
-            metricName: _metrics.name,
+            metricId: hydrated.metricId,
+            metricName: hydrated.metricName,
             filters: query_condition?.filter || [],
             groupAlgorithm: data.group_algorithm || 'avg',
-            groupBy: sanitizeGroupBy(data.group_by || [])
+            groupBy: loadedGroupBy
           })
         ]);
         setMetricExpressionMode('metric');
@@ -803,18 +886,45 @@ const StrategyOperation = () => {
             return item;
           })
         );
+      } else if (hydrated.metricId) {
+        const fixedList =
+          getGroupIds(monitorName as string)?.list || defaultGroup;
+        setMetric(null);
+        setConditions(query_condition?.filter || []);
+        setMetricRows([
+          createMetricRow(0, {
+            metricId: hydrated.metricId,
+            filters: query_condition?.filter || [],
+            groupAlgorithm: data.group_algorithm || 'avg',
+            groupBy: resolveLoadedGroupBy(data.group_by, fixedList)
+          })
+        ]);
+        setMetricExpressionMode('metric');
+        lookupStoredMetrics([hydrated.metricId]);
       }
-    } else if (query_condition?.type === 'formula' && initMetricData.length > 0) {
+    } else if (query_condition?.type === 'formula') {
       const restoredState = toMetricExpressionStateFromQueryCondition(
         query_condition
       );
       const rows = restoredState.rows.map((row) => {
-        const target = initMetricData.find((item) => row.metricId != null && String(item.id) === String(row.metricId));
+        const rememberedName =
+          row.metricId != null
+            ? storedMetricNameByIdRef.current.get(String(row.metricId))
+            : undefined;
+        const hydrated = resolveHydratedMetricFields(
+          initMetricData,
+          row.metricId,
+          row.metricName || rememberedName
+        );
         return {
           ...row,
-          metricName: target?.name || row.metricName
+          metricId: hydrated.metricId,
+          metricName: hydrated.metricName
         };
       });
+      lookupStoredMetrics(
+        rows.filter((row) => !row.metricName).map((row) => row.metricId)
+      );
       setMetricRows(rows);
       setMetricExpressionMode('formula');
       setCalculationUnit(
@@ -940,6 +1050,37 @@ const StrategyOperation = () => {
     setFormData(data);
   };
 
+  const getTemplateDetail = async () => {
+    if (!monitorName || !templateKey) {
+      message.error(t('common.loadFailed'));
+      return;
+    }
+    const data = await getPolicyTemplate({
+      monitor_object_name: monitorName
+    });
+    const list = Array.isArray(data) ? data : [];
+    const template = list.find(
+      (item: { template_key?: string; template_type?: string }) =>
+        String(item.template_key || '') === templateKey
+    );
+    if (!template || template.template_type !== 'custom') {
+      message.error(
+        t('monitor.events.builtinTemplateNotEditable', '内置模版不可编辑')
+      );
+      return;
+    }
+    setFormData({
+      ...template,
+      collect_type: template.plugin_id,
+      schedule: resolveTemplateDuration(template.schedule),
+      period: resolveTemplateDuration(template.period),
+      query_condition: resolveTemplateQueryCondition(template),
+      organizations: groupId,
+      notice: false,
+      source: { type: '', values: [] }
+    });
+  };
+
   const handleMetricRowsChange = (rows: MetricExpressionRow[]) => {
     const previousPrimaryMetricName = metricRows[0]?.metricName;
     const nextPrimaryMetricName = rows[0]?.metricName;
@@ -1043,16 +1184,6 @@ const StrategyOperation = () => {
     }
   };
 
-  const handleSceneChipApply = (payload: SceneChipApplyResult) => {
-    setAlgorithm(payload.algorithm);
-    form.setFieldsValue({ algorithm: payload.algorithm });
-    setCompareMode(payload.compareMode);
-    setCompareValueKind(payload.compareValueKind);
-    setThreshold(payload.thresholds as ThresholdField[]);
-    setRecoveryThreshold(payload.recoveryThreshold);
-    setCountPredicate(payload.countPredicate);
-  };
-
   const handleNodataUnitChange = (val: string) => {
     setNodataUnit(val);
     setNoDataAlert(null);
@@ -1102,7 +1233,7 @@ const StrategyOperation = () => {
 
   const goBack = () => {
     const targetUrl = `/monitor/event/${
-      type === 'builtIn' ? 'template' : 'strategy'
+      type === 'builtIn' || isEditTemplate ? 'template' : 'strategy'
     }?objId=${monitorObjId}`;
     router.push(targetUrl);
   };
@@ -1262,6 +1393,39 @@ const StrategyOperation = () => {
       return params;
   };
 
+  const scrollToFirstInvalidField = (
+    error: unknown
+  ) => {
+    const issues = collectTemplateSaveIssues(
+      (error as { errorFields?: { name: (string | number)[]; errors: string[] }[] })
+        ?.errorFields
+    );
+    const firstField = issues[0]?.field;
+    if (!firstField) return;
+    window.setTimeout(() => {
+      const container = formContainerRef.current;
+      const fieldNode = document.getElementById(`basic_${firstField}`);
+      const formItem = fieldNode?.closest('.ant-form-item') as HTMLElement | null;
+      const errorNode = formItem?.querySelector(
+        '.ant-form-item-explain-error'
+      ) as HTMLElement | null;
+      const target = errorNode || formItem || fieldNode;
+      if (container && target) {
+        const top =
+          target.getBoundingClientRect().top -
+          container.getBoundingClientRect().top +
+          container.scrollTop -
+          (errorNode ? 160 : 16);
+        container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        return;
+      }
+      form.scrollToField(firstField, {
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 0);
+  };
+
   const createStrategy = () => {
     form
       ?.validateFields()
@@ -1269,8 +1433,8 @@ const StrategyOperation = () => {
         const params = buildStrategyParams(values);
         if (params) void operateStrategy(params);
       })
-      .catch(() => {
-        // 校验失败（含通知开启且通知人为空）时阻止创建/保存
+      .catch((error) => {
+        scrollToFirstInvalidField(error);
       });
   };
 
@@ -1296,8 +1460,8 @@ const StrategyOperation = () => {
           setDryRunLoading(false);
         }
       })
-      .catch(() => {
-        // 与保存相同：表单未通过时不发试跑
+      .catch((error) => {
+        scrollToFirstInvalidField(error);
       });
   };
 
@@ -1323,7 +1487,8 @@ const StrategyOperation = () => {
     let validated: Record<string, unknown>;
     try {
       validated = await form.validateFields(templateFields);
-    } catch {
+    } catch (error) {
+      scrollToFirstInvalidField(error);
       return;
     }
     const params = buildStrategyParams({
@@ -1333,9 +1498,13 @@ const StrategyOperation = () => {
     if (!params) return;
     pendingTemplateConfigRef.current = params;
     const defaultName = String(params.name || validated.name || '').trim();
+    const currentDescription = String(formData.description || '').trim();
     setTemplateMetaDefaults({
       name: defaultName,
-      description: defaultName,
+      description:
+        isEditTemplate && currentDescription && currentDescription !== '--'
+          ? currentDescription
+          : defaultName,
     });
     setTemplateConfirmVisible(true);
   };
@@ -1375,29 +1544,63 @@ const StrategyOperation = () => {
       ]);
       return;
     }
-    templateSubmittingRef.current = true;
-    setTemplateSaving(true);
-    try {
-      await savePolicyTemplate({
-        monitor_object: monitorObjId,
-        plugin: config.collect_type,
-        name,
-        description: String(meta.description ?? ''),
-        config,
+    const relatedPolicyCount = Number(formData.related_policy_count || 0);
+    const persistTemplate = async () => {
+      templateSubmittingRef.current = true;
+      setTemplateSaving(true);
+      try {
+        if (isEditTemplate) {
+          if (!templateKey) {
+            message.error(t('common.operationFailed'));
+            return;
+          }
+          await updatePolicyTemplate({
+            template_key: templateKey,
+            name,
+            description: String(meta.description ?? ''),
+            config,
+          });
+          message.success(t('monitor.events.updateTemplateSuccess', '模版已更新'));
+          resetTemplateConfirm();
+          goBack();
+          return;
+        }
+        await savePolicyTemplate({
+          monitor_object: monitorObjId,
+          plugin: config.collect_type,
+          name,
+          description: String(meta.description ?? ''),
+          config,
+        });
+        message.success(t('monitor.events.saveTemplateSuccess', '模版保存成功'));
+        if (isCreateFlow) {
+          templateSavedOnceRef.current = true;
+          setTemplateSavedOnce(true);
+        }
+        resetTemplateConfirm();
+        if (options?.exitAfterSave) {
+          goBack();
+        }
+      } finally {
+        templateSubmittingRef.current = false;
+        setTemplateSaving(false);
+      }
+    };
+    if (isEditTemplate && relatedPolicyCount > 0) {
+      Modal.confirm({
+        title: t('monitor.events.syncIssuedPoliciesTitle', '同步已下发策略'),
+        content: t(
+          'monitor.events.syncIssuedPoliciesConfirm',
+          '将同步更新 {count} 条已从该模板下发的策略。阈值、指标、分组维度和算法等配方字段会按模板覆盖；通知渠道、实例范围、检测频率和汇聚周期保持各策略原值。指标或分组变化时，进行中的阈值告警会关闭，需按新配方重新触发。',
+          { count: relatedPolicyCount }
+        ),
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        onOk: persistTemplate,
       });
-      message.success(t('monitor.events.saveTemplateSuccess', '模版保存成功'));
-      if (isCreateFlow) {
-        templateSavedOnceRef.current = true;
-        setTemplateSavedOnce(true);
-      }
-      resetTemplateConfirm();
-      if (options?.exitAfterSave) {
-        goBack();
-      }
-    } finally {
-      templateSubmittingRef.current = false;
-      setTemplateSaving(false);
+      return;
     }
+    await persistTemplate();
   };
 
   const operateStrategy = async (params: StrategyFields) => {
@@ -1435,7 +1638,14 @@ const StrategyOperation = () => {
             className="text-[var(--color-primary)] text-[20px] cursor-pointer mr-[10px]"
             onClick={goBack}
           />
-          {['builtIn', 'add'].includes(type) ? (
+          {isEditTemplate ? (
+            <span>
+              {t('monitor.events.editTemplateTitle', '编辑模版')} -{' '}
+              <span className="text-[var(--color-text-3)] text-[12px]">
+                {detailName}
+              </span>
+            </span>
+          ) : ['builtIn', 'add'].includes(type) ? (
             t('monitor.events.createPolicy')
           ) : (
             <span>
@@ -1548,10 +1758,9 @@ const StrategyOperation = () => {
                             metric ||
                             null
                           }
-                          disableRateAlgorithm={disableRateAlgorithm}
+                          monitorName={monitorName || undefined}
                           countPredicate={countPredicate}
                           onCountPredicateChange={setCountPredicate}
-                          onSceneChipApply={handleSceneChipApply}
                           onEnableAlertsChange={setEnableAlerts}
                           onThresholdChange={handleThresholdChange}
                           onThresholdUnitChange={handleThresholdUnitChange}
@@ -1633,6 +1842,19 @@ const StrategyOperation = () => {
           </div>
         </div>
         <div className={`${strategyStyle.footer} flex gap-2`}>
+          {isEditTemplate ? (
+            <>
+              <Button
+                type="primary"
+                loading={templateSaving}
+                onClick={() => void saveTemplate()}
+              >
+                {t('monitor.events.saveTemplate', '保存模版')}
+              </Button>
+              <Button onClick={goBack}>{t('common.cancel')}</Button>
+            </>
+          ) : (
+            <>
           <Button
             type="primary"
             loading={confirmLoading}
@@ -1653,6 +1875,8 @@ const StrategyOperation = () => {
               <Button onClick={goBack}>{t('common.cancel')}</Button>
             </>
             )}
+            </>
+          )}
         </div>
       </div>
       <SelectAssets
@@ -1662,7 +1886,11 @@ const StrategyOperation = () => {
         onSuccess={onChooseAssets}
       />
       <OperateModal
-        title={t('monitor.events.saveTemplate', '保存模版')}
+        title={
+          isEditTemplate
+            ? t('monitor.events.editTemplateTitle', '编辑模版')
+            : t('monitor.events.saveTemplate', '保存模版')
+        }
         open={templateConfirmVisible}
         onCancel={closeTemplateConfirm}
         maskClosable={!templateSaving}

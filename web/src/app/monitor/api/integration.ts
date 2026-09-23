@@ -192,6 +192,7 @@ const useIntegrationApi = () => {
           page_size?: number;
           name?: string;
           vm_params?: Record<string, string | string[]>;
+          unassigned?: boolean;
           need_update?: boolean;
           monitor_plugin_id?: React.Key;
         } = {},
@@ -210,6 +211,7 @@ const useIntegrationApi = () => {
           id?: string;
           name?: string;
           monitor_object_id?: React.Key;
+          interval?: number;
         } = {}
       ) => {
         return await post(

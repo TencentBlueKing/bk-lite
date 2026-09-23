@@ -57,6 +57,7 @@ MODEL:
   kafka: Kafka
   ibmmq: IBM MQ
   zookeeper: ZooKeeper
+  consul: Consul
   nacos: Nacos
   minio: Minio
   docker: Docker
@@ -100,7 +101,6 @@ MODEL:
   aliyun_pgsql: Alibaba Cloud PgSQL
   aliyun_redis: Alibaba Cloud Redis
   application: Application
-  biz_group: Business Group
   aws_cf: AWS CloudFront
   aws_docdb: AWS DocumentDB Cluster
   aws_ec2: AWS EC2
@@ -396,9 +396,6 @@ ATTR:
     operator: Main Operator
     bak_operator: Backup Operator
     app_type: Application Type
-  biz_group:
-    inst_name: Group Name
-    organization: Organization
   biz:
     inst_name: Name
     organization: Organization
@@ -940,6 +937,22 @@ ATTR:
     collect_time: Last Updated Time
     collect_task: Collect Task
     tag: Tag
+  consul:
+    inst_name: Name
+    organization: Organization
+    ip_addr: IP
+    port: Port
+    tag: Tag
+    version: Version
+    install_path: Install Path
+    conf_path: Configuration File Path
+    data_dir: Data Directory
+    role: Role
+    operator: Main Operator
+    bak_operator: Backup Operator
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
   etcd:
     inst_name: Name
     organization: Organization

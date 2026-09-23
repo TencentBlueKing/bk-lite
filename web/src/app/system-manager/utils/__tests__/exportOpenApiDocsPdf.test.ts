@@ -7,7 +7,7 @@ import {
 } from '@/app/system-manager/utils/exportOpenApiDocsPdf';
 
 const labels = {
-  title: '接口文档',
+  title: 'API 文档',
   catalog: '接口目录',
   generatedAt: '2026-09-10 15:30',
   totalCount: '共 2 个接口',
@@ -37,6 +37,9 @@ const labels = {
   unrestricted: '无特殊限制',
   orgScope: '组织范围',
   tabExample: '调用示例',
+  examplePersonal: '个人令牌',
+  exampleSystem: '系统令牌',
+  origin: 'https://bklite.example.com',
   inject: (value: string) => `inject:${value}`,
 };
 
@@ -88,7 +91,7 @@ describe('buildOpenApiDocsExportHtml', () => {
     const html = buildOpenApiDocsExportHtml([internalRow], labels);
 
     expect(html).toContain('接口目录');
-    expect(html).toContain('/openapi/v1/cmdb/model');
+    expect(html).toContain('https://bklite.example.com/openapi/v1/cmdb/model');
     expect(html).toContain('cmdb-View');
     expect(html).toContain('inject:team_list');
     expect(html).toContain('查询模型详情 &lt;script&gt;');
@@ -98,6 +101,11 @@ describe('buildOpenApiDocsExportHtml', () => {
     expect(html).not.toContain('取值');
     expect(html).not.toContain('<th>范围</th>');
     expect(html).toContain('curl -X GET');
+    expect(html).toContain('个人令牌');
+    expect(html).toContain('系统令牌');
+    expect(html).toContain('X-Bklite-Acting-User: &lt;username&gt;');
+    expect(html).not.toContain('@&lt;domain&gt;');
+    expect(html).toContain('X-Bklite-Acting-Team: &lt;team_id&gt;');
   });
 
   it('renders choices column when a field has choices, without fabricating defaults', () => {

@@ -14,8 +14,8 @@
       "type": "input",
       "required": true,
       "description": "用于访问接口的用户名",
-      "guide_short": "建议使用只读监控账号，至少具备 v$session、v$sysstat、v$database 等动态性能视图的 SELECT 权限。",
-      "guide_short_en": "Use a read-only monitoring account with the SELECT privileges needed for dynamic performance views such as v$session, v$sysstat, and v$database.",
+      "guide_short": "使用专用监控账号，并按接入指南授予默认指标及 RAC、ASM、归档、Data Guard 查询所需的 V_$ 与 DBA 视图。",
+      "guide_short_en": "Use a dedicated monitoring account and grant the V_$ and DBA views required by the default metrics and the RAC, ASM, archive, and Data Guard queries.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"

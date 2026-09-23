@@ -1,0 +1,38 @@
+Switch DASAN SNMP:
+  name: DASAN（Telegraf）
+  desc: 面向 DASAN 以太网交换机的 SNMP 监控模板，可采集 CPU 使用率（1 分钟主指标，可选 5 秒/10 分钟）、内存总量/已用/空闲及推导出的利用率。
+monitor_object:
+  Switch: 交换机
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 DASAN 以太网交换机的一分钟 CPU 使用率（dsCpuLoad1m），按 0-100 百分比记录。持续偏高可能意味着控制平面过载、转发表震荡或异常流量。
+    device_cpu_usage_5s:
+      name: CPU 使用率（5 秒）
+      desc: 该指标表示 DASAN 以太网交换机的五秒 CPU 使用率（dsCpuLoad5s），按 0-100 百分比记录。
+    device_cpu_usage_10m:
+      name: CPU 使用率（10 分钟）
+      desc: 该指标表示 DASAN 以太网交换机的十分钟 CPU 使用率（dsCpuLoad10m），按 0-100 百分比记录。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标表示 DASAN 以太网交换机的内存总量（dsTotalMem），为厂商 INTEGER 原值。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标表示 DASAN 以太网交换机当前已使用的内存（dsUsedMem），为厂商 INTEGER 原值。
+    device_memory_free:
+      name: 内存空闲量
+      desc: 该指标表示 DASAN 以太网交换机当前空闲内存（dsFreeMem），为厂商 INTEGER 原值。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 DASAN 以太网交换机整体内存使用率，按 已用/总量*100 计算。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Memory: 内存
+    Base: 基础

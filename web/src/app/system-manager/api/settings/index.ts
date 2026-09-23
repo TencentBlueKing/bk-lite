@@ -1,15 +1,29 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
+export interface OpenApiTokenScope {
+  mode: 'all' | 'allowlist';
+  endpoints?: string[];
+}
+
 export interface UserApiSecretListItem {
   id: number;
   username: string;
   domain: string;
   team: number;
   team_name?: string;
+  name?: string;
+  expires_at?: string | null;
+  scope?: OpenApiTokenScope | null;
   created_at: string;
   updated_at: string;
   api_secret_preview: string;
+}
+
+export interface UserApiSecretWritePayload {
+  name?: string;
+  expires_at?: string | null;
+  scope?: OpenApiTokenScope | null;
 }
 
 export interface UserApiSecretCreateResponse {
@@ -18,8 +32,39 @@ export interface UserApiSecretCreateResponse {
   domain: string;
   team: number;
   team_name?: string;
+  name?: string;
+  expires_at?: string | null;
+  scope?: OpenApiTokenScope | null;
   created_at: string;
   updated_at: string;
+  api_secret: string;
+}
+
+export interface SystemApiTokenListItem {
+  id: number;
+  system_id: string;
+  name?: string;
+  expires_at?: string | null;
+  scope?: OpenApiTokenScope | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  api_secret_preview: string;
+}
+
+export interface SystemApiTokenWritePayload {
+  name?: string;
+  expires_at?: string | null;
+  scope?: OpenApiTokenScope | null;
+  enabled?: boolean;
+}
+
+export interface SystemApiTokenCreatePayload extends SystemApiTokenWritePayload {
+  system_id: string;
+}
+
+export interface SystemApiTokenCreateResponse extends SystemApiTokenListItem {
   api_secret: string;
 }
 
@@ -116,9 +161,19 @@ export const useSettingsApi = () => {
   /**
    * Creates a new user API secret.
    */
-  const createUserApiSecret = useCallback(async (): Promise<UserApiSecretCreateResponse> => {
-    return post('/base/user_api_secret/');
-  }, [post]);
+  const createUserApiSecret = useCallback(
+    async (data?: UserApiSecretWritePayload): Promise<UserApiSecretCreateResponse> => {
+      return post('/base/user_api_secret/', data ?? {}, { suppressErrorNotification: true });
+    },
+    [post]
+  );
+
+  const updateUserApiSecret = useCallback(
+    async (id: number, data: UserApiSecretWritePayload): Promise<UserApiSecretListItem> => {
+      return patch(`/base/user_api_secret/${id}/`, data, { suppressErrorNotification: true });
+    },
+    [patch]
+  );
 
   const fetchNetworkWhiteList = useCallback(async (page: number, pageSize: number): Promise<NetworkWhiteListPage> => {
     return get('/system_mgmt/network_white_list/', { params: { page, page_size: pageSize } });
@@ -146,6 +201,28 @@ export const useSettingsApi = () => {
     return get('/system_mgmt/openapi_docs/');
   }, [get]);
 
+  const fetchSystemApiTokens = useCallback(async (silent = false): Promise<SystemApiTokenListItem[]> => {
+    return get('/system_mgmt/system_api_token/', silent ? { suppressErrorNotification: true } : undefined);
+  }, [get]);
+
+  const createSystemApiToken = useCallback(
+    async (data: SystemApiTokenCreatePayload): Promise<SystemApiTokenCreateResponse> => {
+      return post('/system_mgmt/system_api_token/', data, { suppressErrorNotification: true });
+    },
+    [post]
+  );
+
+  const updateSystemApiToken = useCallback(
+    async (id: number, data: SystemApiTokenWritePayload): Promise<SystemApiTokenListItem> => {
+      return patch(`/system_mgmt/system_api_token/${id}/`, data, { suppressErrorNotification: true });
+    },
+    [patch]
+  );
+
+  const deleteSystemApiToken = useCallback(async (id: number): Promise<void> => {
+    await del(`/system_mgmt/system_api_token/${id}/`);
+  }, [del]);
+
   return {
     getPortalSettings,
     updatePortalSettings,
@@ -153,10 +230,15 @@ export const useSettingsApi = () => {
     fetchTeams,
     deleteUserApiSecret,
     createUserApiSecret,
+    updateUserApiSecret,
     fetchNetworkWhiteList,
     createNetworkWhiteList,
     updateNetworkWhiteList,
     deleteNetworkWhiteList,
     fetchOpenApiDocs,
+    fetchSystemApiTokens,
+    createSystemApiToken,
+    updateSystemApiToken,
+    deleteSystemApiToken,
   };
 };

@@ -12,6 +12,7 @@ ALLOWED_GETLOGGER = {
 }
 EXPECTED_APP_LOGGERS = {
     "apm": {"apm_logger", "celery_logger"},
+    "rum": {"rum_logger", "celery_logger"},
     "alerts": {"alert_logger"},
     "cmdb": {"cmdb_logger"},
     "console_mgmt": {"console_mgmt_logger", "opspilot_logger"},
@@ -20,7 +21,7 @@ EXPECTED_APP_LOGGERS = {
     "log": {"log_logger", "celery_logger", "logger"},
     "mlops": {"mlops_logger"},
     "monitor": {"monitor_logger", "celery_logger", "nats_logger"},
-    "node_mgmt": {"node_logger", "celery_logger", "logger"},
+    "node_mgmt": {"node_logger", "node_mgmt_logger", "celery_logger", "logger"},
     "operation_analysis": {"operation_analysis_logger"},
     "opspilot": {"opspilot_logger", "cmdb_logger", "logger"},
     "patch_mgmt": {"patch_mgmt_logger", "logger"},

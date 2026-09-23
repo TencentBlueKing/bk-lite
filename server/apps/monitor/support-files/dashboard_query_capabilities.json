@@ -25,7 +25,7 @@
     {
       "id": "dashboard:v1:006e18b1",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_active_reads{__$labels__}"
     },
@@ -58,6 +58,13 @@
       "template": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:01539a11",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (bmc_firmware, bios_version) (redfish_firmware_info_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:01fe2d05",
       "object_names": [
         "Active Directory"
@@ -88,7 +95,7 @@
     {
       "id": "dashboard:v1:0262696a",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_connections_available{__$labels__}"
     },
@@ -335,7 +342,7 @@
     {
       "id": "dashboard:v1:0cae881a",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_commands{__$labels__}[__$window__])"
     },
@@ -545,7 +552,7 @@
     {
       "id": "dashboard:v1:14683557",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_page_faults{__$labels__}[__$window__])"
     },
@@ -562,6 +569,13 @@
         "K3SCluster"
       ],
       "template": "count(count(prometheus_remote_write_kube_pod_info{instance_type=\"k3s\",__$labels__}) by (namespace))"
+    },
+    {
+      "id": "dashboard:v1:15bbe68c",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (id, storage_id) (redfish_storage_controller_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:15fa733f",
@@ -659,7 +673,7 @@
     {
       "id": "dashboard:v1:184929b2",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "clamp_max(100 * max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_max_bytes_configured{__$labels__}), 1), 100)"
     },
@@ -829,7 +843,7 @@
     {
       "id": "dashboard:v1:1d7d03af",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_open_connections{__$labels__}"
     },
@@ -864,7 +878,7 @@
     {
       "id": "dashboard:v1:1e65c4ce",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_wtcache_current_bytes{__$labels__}"
     },
@@ -897,9 +911,16 @@
       "template": "sum by (instance_id) (rate(etcd_server_proposals_failed_total_counter{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:1f63511d",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_available{instance_type=\"os\", __$labels__} or host_mem_available_bytes_gauge{instance_type=\"os\", __$labels__} or mem_available_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or mem_available_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|solaris)_remote\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:1f79c86d",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_net_in_bytes_count{__$labels__}[__$window__])"
     },
@@ -997,6 +1018,13 @@
       "template": "max by (instance_id, pod) ((prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Pending\",__$labels__} == 1) * 0 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Running\",__$labels__} == 1) * 1 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Succeeded\",__$labels__} == 1) * 2 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Failed\",__$labels__} == 1) * 3 or (prometheus_remote_write_kube_pod_status_phase{instance_type=\"k3s\",phase=\"Unknown\",__$labels__} == 1) * 4)"
     },
     {
+      "id": "dashboard:v1:23d8f239",
+      "object_names": [
+        "Host"
+      ],
+      "template": "topk(8, max by (path, device) (disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_used_percent_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}))"
+    },
+    {
       "id": "dashboard:v1:24588819",
       "object_names": [
         "Website"
@@ -1039,16 +1067,9 @@
       "template": "rate(redis_rejected_connections{__$labels__}[__$window__])"
     },
     {
-      "id": "dashboard:v1:26929806",
-      "object_names": [
-        "Cluster"
-      ],
-      "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:26bc2dc3",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_latency_commands{__$labels__}[__$window__])/clamp_min(rate(mongodb_latency_commands_count{__$labels__}[__$window__]), 1e-6) / 1e6"
     },
@@ -1207,13 +1228,6 @@
       "template": "jvm_os_memory_physical_free_value{__$labels__}"
     },
     {
-      "id": "dashboard:v1:2e04f0e5",
-      "object_names": [
-        "Host"
-      ],
-      "template": "clamp_min(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_user{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_system{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_iowait{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} - cpu_usage_user_total_gauge{instance_type=\"os\", __$labels__} - cpu_usage_system_total_gauge{instance_type=\"os\", __$labels__} - cpu_usage_iowait_total_gauge{instance_type=\"os\", __$labels__}, 0)"
-    },
-    {
       "id": "dashboard:v1:2e4f8a61",
       "object_names": [
         "Mysql"
@@ -1279,7 +1293,7 @@
     {
       "id": "dashboard:v1:310452d5",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "count({instance_type='mongodb', collect_type='database', __$labels__}) by (instance_id)"
     },
@@ -1335,7 +1349,7 @@
     {
       "id": "dashboard:v1:32fb7fd4",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_wtcache_max_bytes_configured{__$labels__}"
     },
@@ -1421,9 +1435,16 @@
     {
       "id": "dashboard:v1:36bd5c14",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_queries{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3722963e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "processes_zombies{instance_type=\"os\", __$labels__} or processes_zombies_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:374e2122",
@@ -1617,13 +1638,6 @@
       "template": "zookeeper_ephemerals_count{__$labels__}"
     },
     {
-      "id": "dashboard:v1:3e25d5af",
-      "object_names": [
-        "Host"
-      ],
-      "template": "system_load1{instance_type=\"os\", __$labels__} or system_load1_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_1m_gauge{instance_type=\"os\", __$labels__} or system_load1_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
-    },
-    {
       "id": "dashboard:v1:3ed547e5",
       "object_names": [
         "MSSQL"
@@ -1812,7 +1826,7 @@
     {
       "id": "dashboard:v1:469730f4",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_connections_current{__$labels__}"
     },
@@ -1964,6 +1978,13 @@
       "template": "mysql_aborted_connects{__$labels__}"
     },
     {
+      "id": "dashboard:v1:4b784443",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_power_consumed_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"watts\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:4ba559b5",
       "object_names": [
         "Haproxy"
@@ -2032,6 +2053,13 @@
         "Minio"
       ],
       "template": "max by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or max by (instance_id) (minio_cluster_health_status_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:4f53c202",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_system_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:4f5a2773",
@@ -2154,6 +2182,13 @@
       "template": "sum by (instance_id) (rate(net_err_out{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:540f3f0e",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (id) (redfish_storage_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:544d4c36",
       "object_names": [
         "K3SNode"
@@ -2163,7 +2198,7 @@
     {
       "id": "dashboard:v1:54beea06",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_wtcache_tracked_dirty_bytes{__$labels__}"
     },
@@ -2191,7 +2226,7 @@
     {
       "id": "dashboard:v1:55a2c1c3",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_queued_writes{__$labels__}"
     },
@@ -2259,6 +2294,13 @@
       "template": "clamp_min((etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__} - etcd_mvcc_db_total_size_in_use_in_bytes_gauge{__$labels__}) / clamp_min(etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__}, 1) * 100, 0)"
     },
     {
+      "id": "dashboard:v1:57f3a4e6",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (adapter_id, id) (redfish_nic_port_link_up_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:585d46ef",
       "object_names": [
         "Node"
@@ -2299,13 +2341,6 @@
         "RabbitMQ"
       ],
       "template": "100 * (rabbitmq_overview_messages_unacked{__$labels__} / clamp_min(rabbitmq_overview_messages{__$labels__}, 1))"
-    },
-    {
-      "id": "dashboard:v1:5a7f4ae8",
-      "object_names": [
-        "Cluster"
-      ],
-      "template": "topk(5, prometheus_remote_write_mem_used_percent{instance_type=\"k8s\",__$labels__})"
     },
     {
       "id": "dashboard:v1:5aa4e079",
@@ -2448,6 +2483,13 @@
       "template": "tomcat_connector_bytes_sent{__$labels__}"
     },
     {
+      "id": "dashboard:v1:5f9975dc",
+      "object_names": [
+        "Host"
+      ],
+      "template": "system_load5{instance_type=\"os\", __$labels__} or system_load5_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_5m_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:5fce1502",
       "object_names": [
         "Switch"
@@ -2460,6 +2502,13 @@
         "MSSQL"
       ],
       "template": "rate(sqlserver_performance_value{counter=\"Number of Deadlocks/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:60d70282",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(10, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}))"
     },
     {
       "id": "dashboard:v1:619c6393",
@@ -2481,6 +2530,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (haproxy_rate{svname=\"FRONTEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:6284b606",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(10, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])))"
     },
     {
       "id": "dashboard:v1:62ad801a",
@@ -2562,6 +2618,13 @@
       "template": "topk(10, max by (consumergroup, topic, partition) (kafka_consumergroup_lag_gauge{__$labels__} >= 0))"
     },
     {
+      "id": "dashboard:v1:64d07958",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_fan_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:659002f9",
       "object_names": [
         "MSSQL"
@@ -2625,6 +2688,13 @@
       "template": "redis_used_memory{__$labels__}"
     },
     {
+      "id": "dashboard:v1:695edc12",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_psu_input_voltage_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:6970bbf2",
       "object_names": [
         "Switch"
@@ -2669,7 +2739,7 @@
     {
       "id": "dashboard:v1:6baa43bf",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_uptime_ns{__$labels__}"
     },
@@ -2718,7 +2788,7 @@
     {
       "id": "dashboard:v1:6ddc8a0f",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_resident_megabytes{__$labels__}"
     },
@@ -2906,6 +2976,13 @@
       "template": "avg without (database) (avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:784c50b0",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (adapter_id, id) (redfish_nic_port_speed_mbps_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:7852cb47",
       "object_names": [
         "Mysql"
@@ -2983,18 +3060,18 @@
       "template": "sum(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id) / sum(netflow_in_packets{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:7bd962e8",
+      "object_names": [
+        "Host"
+      ],
+      "template": "clamp_min(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_user{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_system{cpu=\"cpu-total\", instance_type=\"os\", __$labels__} - cpu_usage_iowait{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} - cpu_usage_user_total_gauge{instance_type=\"os\", __$labels__} - cpu_usage_system_total_gauge{instance_type=\"os\", __$labels__} - cpu_usage_iowait_total_gauge{instance_type=\"os\", __$labels__}, 0) or clamp_min(cpu_usage_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__} - cpu_usage_user_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__} - cpu_usage_system_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__} - cpu_usage_iowait_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}, 0)"
+    },
+    {
       "id": "dashboard:v1:7bdc6dac",
       "object_names": [
         "RabbitMQ"
       ],
       "template": "100 * (rabbitmq_node_mem_used{__$labels__} / clamp_min(rabbitmq_node_mem_limit{__$labels__}, 1))"
-    },
-    {
-      "id": "dashboard:v1:7be7f413",
-      "object_names": [
-        "Host"
-      ],
-      "template": "processes_zombies{instance_type=\"os\", __$labels__} or processes_zombies_gauge{instance_type=\"os\", __$labels__} or processes_zombies_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
     },
     {
       "id": "dashboard:v1:7c7235e5",
@@ -3097,7 +3174,6 @@
     {
       "id": "dashboard:v1:80bd1482",
       "object_names": [
-        "Cluster",
         "Node"
       ],
       "template": "topk(5, sum by (pod) (prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}))"
@@ -3166,13 +3242,6 @@
         "Exchange"
       ],
       "template": "win_exchange_mapihttp_Active_User_Count{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:81eab703",
-      "object_names": [
-        "Host"
-      ],
-      "template": "system_load15{instance_type=\"os\", __$labels__} or system_load15_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_15m_gauge{instance_type=\"os\", __$labels__} or system_load15_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
     },
     {
       "id": "dashboard:v1:81fabd58",
@@ -3501,6 +3570,13 @@
       "template": "win_exchange_workload_QueuedTasks{instance_type=\"exchange\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:91c01239",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_system_power_state_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:91c1ff43",
       "object_names": [
         "Oracle"
@@ -3555,6 +3631,13 @@
         "Redis"
       ],
       "template": "clamp_max(100 * max by (instance_id) (redis_used_memory{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (redis_maxmemory{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:9378fc3c",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_temperature_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"degrees_c\", __$labels__})"
     },
     {
       "id": "dashboard:v1:93d0324a",
@@ -3900,13 +3983,6 @@
       "template": "docker_n_containers{__$labels__}"
     },
     {
-      "id": "dashboard:v1:a12d44b0",
-      "object_names": [
-        "Host"
-      ],
-      "template": "mem_available{instance_type=\"os\", __$labels__} or host_mem_available_bytes_gauge{instance_type=\"os\", __$labels__} or mem_available_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
-    },
-    {
       "id": "dashboard:v1:a154369f",
       "object_names": [
         "Exchange"
@@ -3951,7 +4027,7 @@
     {
       "id": "dashboard:v1:a4719240",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_queued_reads{__$labels__}"
     },
@@ -4003,6 +4079,13 @@
         "LlamaServer"
       ],
       "template": "avg(llamacpp:prompt_tokens_seconds_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:a6adce50",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_processor_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:a6eee9fe",
@@ -4080,6 +4163,13 @@
         "SGLang"
       ],
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:time_to_first_token_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:a9d1300e",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_fan_speed_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"rpm\", __$labels__})"
     },
     {
       "id": "dashboard:v1:aa39e9d2",
@@ -4170,13 +4260,6 @@
       "template": "topk(8, sum by (database_name) (sqlserver_database_io_read_latency_ms{__$labels__}))"
     },
     {
-      "id": "dashboard:v1:b077058c",
-      "object_names": [
-        "Host"
-      ],
-      "template": "processes_blocked{instance_type=\"os\", __$labels__} or processes_blocked_gauge{instance_type=\"os\", __$labels__} or processes_blocked_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
-    },
-    {
       "id": "dashboard:v1:b0f68307",
       "object_names": [
         "Pod"
@@ -4193,7 +4276,7 @@
     {
       "id": "dashboard:v1:b13b4b2d",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_latency_reads{__$labels__}[__$window__])/clamp_min(rate(mongodb_latency_reads_count{__$labels__}[__$window__]), 1e-6) / 1e6"
     },
@@ -4263,7 +4346,7 @@
     {
       "id": "dashboard:v1:b48936f6",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "clamp_max(100 * max by (instance_id) (mongodb_wtcache_tracked_dirty_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}), 1), 100)"
     },
@@ -4287,13 +4370,6 @@
         "Mysql"
       ],
       "template": "max by (instance_id) (mysql_variables_log_slave_updates{__$labels__})"
-    },
-    {
-      "id": "dashboard:v1:b5875894",
-      "object_names": [
-        "Cluster"
-      ],
-      "template": "topk(5, sum by (pod) (increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k8s\",__$labels__}[1h])))"
     },
     {
       "id": "dashboard:v1:b63b1822",
@@ -4331,6 +4407,13 @@
         "Switch"
       ],
       "template": "max(device_psu_state{__$labels__, entPhysicalClass='6'}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:b69ed225",
+      "object_names": [
+        "Host"
+      ],
+      "template": "system_load15{instance_type=\"os\", __$labels__} or system_load15_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_15m_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:b6c1e647",
@@ -4396,11 +4479,25 @@
       "template": "rate(zookeeper_packets_received{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:b85564e8",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(10, prometheus_remote_write_mem_used_percent{instance_type=\"k8s\",__$labels__})"
+    },
+    {
       "id": "dashboard:v1:b8d124d3",
       "object_names": [
         "Process"
       ],
       "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:b9250070",
+      "object_names": [
+        "Host"
+      ],
+      "template": "system_load1{instance_type=\"os\", __$labels__} or system_load1_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_1m_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:b998e908",
@@ -4431,11 +4528,25 @@
       "template": "sum by (instance_id) (rate(oracledb_activity_user_rollbacks_gauge{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:ba7292ee",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "count({instance_type='hardware_server', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:ba92b79a",
       "object_names": [
         "Website"
       ],
       "template": "avg by (instance_id) (http_response_response_time{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:baaa8d6e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "processes_blocked{instance_type=\"os\", __$labels__} or processes_blocked_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:baac1e13",
@@ -4464,6 +4575,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (haproxy_scur{svname=\"FRONTEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:bc1b0acf",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_psu_input_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:bc9ca465",
@@ -4552,7 +4670,7 @@
     {
       "id": "dashboard:v1:c1a856cc",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_net_out_bytes_count{__$labels__}[__$window__])"
     },
@@ -4750,7 +4868,7 @@
     {
       "id": "dashboard:v1:c8cbcbb2",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_tcmalloc_current_allocated_bytes{__$labels__}"
     },
@@ -4788,6 +4906,13 @@
         "ConsoleServer"
       ],
       "template": "count({instance_type='console_server', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:c9f0ea5c",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
     },
     {
       "id": "dashboard:v1:ca17f83c",
@@ -5076,14 +5201,14 @@
     {
       "id": "dashboard:v1:d4412920",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "rate(mongodb_inserts{__$labels__}[__$window__]) + rate(mongodb_updates{__$labels__}[__$window__]) + rate(mongodb_deletes{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:d498582e",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_cursor_timed_out_count{__$labels__}"
     },
@@ -5219,6 +5344,15 @@
         "K3SCluster"
       ],
       "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:da884725",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max((device_temperature_celsius{collect_type!~\"snmp_h3c|snmp_h3c_firewall\", __$labels__} or (device_temperature_celsius{collect_type=~\"snmp_h3c|snmp_h3c_firewall\", __$labels__} != 65535))) by (instance_id) or max(device_temperature_celsius{collect_type=~\"snmp_h3c|snmp_h3c_firewall\", __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:db942c72",
@@ -5440,7 +5574,7 @@
     {
       "id": "dashboard:v1:e3c85242",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_vsize_megabytes{__$labels__}"
     },
@@ -5552,11 +5686,25 @@
       "template": "rate(mysql_created_tmp_tables{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:ea21a694",
+      "object_names": [
+        "Cluster"
+      ],
+      "template": "topk(10, sum by (pod) (increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k8s\",__$labels__}[1h])))"
+    },
+    {
       "id": "dashboard:v1:eaf95d21",
       "object_names": [
         "Oracle"
       ],
       "template": "max by (instance_id) (oracledb_wait_time_network_gauge{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:eb007f65",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (name) (redfish_psu_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:eb236167",
@@ -5594,13 +5742,6 @@
       "template": "sum(rate(sglang:e2e_request_latency_seconds_sum{__$labels__}[5m])) / sum(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]))"
     },
     {
-      "id": "dashboard:v1:ec9c95b9",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
-    },
-    {
       "id": "dashboard:v1:ecd2bdad",
       "object_names": [
         "Mysql"
@@ -5636,13 +5777,6 @@
       "template": "count({instance_type='mssql', collect_type='database', __$labels__}) by (instance_id)"
     },
     {
-      "id": "dashboard:v1:f09555af",
-      "object_names": [
-        "Host"
-      ],
-      "template": "system_load5{instance_type=\"os\", __$labels__} or system_load5_gauge{instance_type=\"os\", __$labels__} or host_cpu_load_5m_gauge{instance_type=\"os\", __$labels__} or system_load5_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
-    },
-    {
       "id": "dashboard:v1:f09fb174",
       "object_names": [
         "nginx"
@@ -5659,7 +5793,7 @@
     {
       "id": "dashboard:v1:f0eb2c1d",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_assert_user{__$labels__}"
     },
@@ -5683,13 +5817,6 @@
         "Apache"
       ],
       "template": "rate(apache_scboard_open{__$labels__}[__$window__])"
-    },
-    {
-      "id": "dashboard:v1:f1efd5cd",
-      "object_names": [
-        "Host"
-      ],
-      "template": "topk(8, max by (path, device) (disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}))"
     },
     {
       "id": "dashboard:v1:f20b0627",
@@ -5797,6 +5924,13 @@
       "template": "rate(diskio_write_time{instance_type=\"k3s\", __$labels__}[__$window__]) / clamp_min(rate(diskio_writes{instance_type=\"k3s\", __$labels__}[__$window__]), 1e-9)"
     },
     {
+      "id": "dashboard:v1:f5a7e508",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (adapter_id, id) (redfish_nic_port_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:f5c4dae3",
       "object_names": [
         "nginx"
@@ -5829,7 +5963,7 @@
     {
       "id": "dashboard:v1:f68a5120",
       "object_names": [
-        "Mongodb"
+        "MongoDB"
       ],
       "template": "mongodb_active_writes{__$labels__}"
     },
@@ -5974,6 +6108,13 @@
       "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
     },
     {
+      "id": "dashboard:v1:fea6f24d",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_memory_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
       "id": "dashboard:v1:fed85ec2",
       "object_names": [
         "Redis"
@@ -6014,6 +6155,13 @@
         "MSSQL"
       ],
       "template": "sqlserver_performance_value{counter=\"Version Store Size (KB)\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fff1945c",
+      "object_names": [
+        "Hardware Server"
+      ],
+      "template": "max by (instance_id) (redfish_manager_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
       "id": "dashboard:v1:fff61030",

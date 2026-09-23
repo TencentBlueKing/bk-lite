@@ -95,6 +95,21 @@ describe('system-manager application manage screen mode', () => {
     expect(screen.getByText('管理正文')).not.toBeNull();
   });
 
+  it('fills the console workspace so nested menus stay in view', async () => {
+    const { container } = render(
+      <AppManageLayout>
+        管理正文
+      </AppManageLayout>,
+    );
+
+    expect(await screen.findByText('演示应用')).not.toBeNull();
+    expect(container.firstElementChild?.className).toContain(
+      'h-[var(--custom-height,calc(100vh-90px))]',
+    );
+    expect(container.firstElementChild?.className).toContain('overflow-hidden');
+    expect(container.firstElementChild?.className).toContain('min-h-0');
+  });
+
   it('hides the self-mounted side menu in screen mode and keeps the page header', async () => {
     search = 'clientId=demo&screen=true';
 

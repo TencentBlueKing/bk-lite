@@ -33,6 +33,7 @@ PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES = 20 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_MEMBERS = 2000
 PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES = 5 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES = 50 * 1024 * 1024
+WINDOWS_SCRIPT_MAX_BYTES = 512 * 1024
 
 _SENSITIVE_INVENTORY_PATTERNS = (
     "ansible_password",
@@ -436,6 +437,12 @@ def _materialize_extra_vars(workspace: Path, extra_vars: dict[str, Any]) -> str 
 def _write_restricted_text(path: Path, content: str) -> None:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
     with os.fdopen(descriptor, "w", encoding="utf-8") as file_obj:
+        file_obj.write(content)
+
+
+def _write_restricted_bytes(path: Path, content: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(descriptor, "wb") as file_obj:
         file_obj.write(content)
 
 
@@ -847,6 +854,134 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
         )
     )
     return cmd, workspace
+
+
+def prepare_windows_script_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
+    """Prepare a Windows script for file-based execution through Ansible."""
+    script_type = str(payload.stream_remote_type or "").strip().lower()
+    if payload.module != "win_shell" or script_type not in {"bat", "powershell"}:
+        raise ValueError("file-based Windows execution requires a PowerShell or BAT win_shell request")
+    script_bytes = payload.module_args.encode("utf-8")
+    if len(script_bytes) > WINDOWS_SCRIPT_MAX_BYTES:
+        raise ValueError(f"Windows script exceeds 512 KiB limit: {len(script_bytes)} bytes")
+
+    workspace = create_task_workspace(payload.task_id)
+    try:
+        is_powershell = script_type == "powershell"
+        script_label = "PowerShell" if is_powershell else "BAT"
+        script_suffix = ".ps1" if is_powershell else ".cmd"
+        script_path = workspace / f"job-script{script_suffix}"
+        _write_restricted_bytes(script_path, (b"\xef\xbb\xbf" if is_powershell else b"") + script_bytes)
+
+        remote_path = "{{ bklite_script_temp.path }}"
+        execution_tasks: list[dict[str, Any]] = [
+            {
+                "name": f"Copy {script_label} script",
+                "ansible.windows.win_copy": {
+                    "src": str(script_path),
+                    "dest": remote_path,
+                    "force": True,
+                },
+            }
+        ]
+        if is_powershell:
+            command_argv = [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                remote_path,
+            ]
+        else:
+            execution_tasks.append(
+                {
+                    "name": "Convert BAT script to target encoding",
+                    "ansible.windows.win_powershell": {
+                        "script": "\n".join(
+                            [
+                                "$utf8 = New-Object System.Text.UTF8Encoding($false, $true)",
+                                "$bytes = [IO.File]::ReadAllBytes($path)",
+                                "$text = $utf8.GetString($bytes)",
+                                "[IO.File]::WriteAllText($path, $text, [Text.Encoding]::Default)",
+                            ]
+                        ),
+                        "parameters": {"path": remote_path},
+                    },
+                }
+            )
+            command_argv = ["cmd.exe", "/d", "/q", "/c", remote_path]
+        execution_tasks.append(
+            {
+                "name": f"Execute {script_label} script",
+                "ansible.windows.win_command": {"argv": command_argv},
+            }
+        )
+        playbook = [
+            {
+                "hosts": payload.hosts,
+                "gather_facts": False,
+                "tasks": [
+                    {
+                        "name": f"Create temporary {script_label} script",
+                        "ansible.windows.win_tempfile": {
+                            "state": "file",
+                            "prefix": "bklite-job-",
+                            "suffix": script_suffix,
+                        },
+                        "register": "bklite_script_temp",
+                    },
+                    {
+                        "name": f"Run temporary {script_label} script",
+                        "block": execution_tasks,
+                        "always": [
+                            {
+                                "name": f"Remove temporary {script_label} script",
+                                "ansible.windows.win_file": {"path": remote_path, "state": "absent"},
+                                "when": "bklite_script_temp.path is defined",
+                            }
+                        ],
+                    },
+                ],
+            }
+        ]
+        playbook_file = workspace / "playbook.yml"
+        playbook_file.write_text(yaml.safe_dump(playbook, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+        inventory_value = payload.inventory
+        if payload.inventory_content or payload.host_credentials:
+            inventory_file = workspace / "inventory.ini"
+            parts: list[str] = []
+            if payload.inventory_content:
+                parts.append(payload.inventory_content.rstrip("\n"))
+            if payload.host_credentials:
+                parts.append(_build_host_credentials_inventory(workspace, payload.host_credentials).rstrip("\n"))
+            _write_restricted_text(inventory_file, "\n".join(part for part in parts if part) + "\n")
+            inventory_value = str(inventory_file)
+
+        extra_vars = dict(payload.extra_vars or {})
+        if payload.private_key_content and not payload.host_credentials:
+            private_key_path = _materialize_private_key(workspace, payload.private_key_content)
+            extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
+            if payload.private_key_passphrase:
+                extra_vars.setdefault("ansible_ssh_passphrase", payload.private_key_passphrase)
+
+        command = build_playbook_command(
+            PlaybookRequest(
+                playbook_path=str(playbook_file),
+                inventory=inventory_value,
+                extra_vars=extra_vars,
+                extra_vars_file=_materialize_extra_vars(workspace, extra_vars),
+                execute_timeout=payload.execute_timeout,
+                task_id=payload.task_id,
+                callback=payload.callback,
+            )
+        )
+        return command, workspace
+    except Exception:
+        cleanup_workspace(workspace)
+        raise
 
 
 async def prepare_playbook_execution(
@@ -1304,6 +1439,146 @@ class BufferedStreamPublisher:
         }
 
 
+def _empty_output_meta(max_output_bytes: int, stream_line_chunks: int = 0) -> dict[str, Any]:
+    return {
+        "truncated": False,
+        "output_bytes_total": 0,
+        "output_bytes_retained": 0,
+        "output_max_bytes": max_output_bytes,
+        "stream_line_chunks": stream_line_chunks,
+    }
+
+
+def _exit_code_after_process_hang(output: str, returncode: int | None) -> int:
+    """stdout 已关闭但进程未退（如 SSH ControlPersist）时，按 Ansible 主机结果推断退出码。"""
+    exit_code = returncode if returncode is not None else 0
+    parsed_hosts = parse_ansible_output_per_host(output)
+    if parsed_hosts and all(item.get("status") == "success" for item in parsed_hosts):
+        return 0
+    if parsed_hosts:
+        failed = next(item for item in parsed_hosts if item.get("status") != "success")
+        return int(failed.get("exit_code") or 1)
+    if exit_code is None or exit_code < 0:
+        return 124
+    return exit_code
+
+
+async def _terminate_subprocess(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is not None:
+        return
+    if os.name == "posix":
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    else:
+        proc.kill()
+    with contextlib.suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(proc.wait(), timeout=5)
+    if proc.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=5)
+
+
+async def _collect_subprocess_output(
+    proc: asyncio.subprocess.Process,
+    *,
+    max_output_bytes: int,
+    streamer: LineEventStreamer | None,
+    stream_publisher: BufferedStreamPublisher | None,
+) -> tuple[bytes, dict[str, Any]]:
+    assert proc.stdout is not None
+    chunks: list[bytes] = []
+    retained_bytes = 0
+    total_bytes = 0
+    truncated = False
+
+    while True:
+        chunk = await proc.stdout.read(8192)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        remaining = max_output_bytes - retained_bytes
+        if remaining > 0:
+            kept = chunk[:remaining]
+            if kept:
+                chunks.append(kept)
+                retained_bytes += len(kept)
+        if len(chunk) > max(remaining, 0):
+            truncated = True
+        if streamer is not None and stream_publisher is not None:
+            for line in streamer.feed(chunk):
+                stream_publisher.offer(line)
+
+    if streamer is not None and stream_publisher is not None:
+        trailing = streamer.flush()
+        if trailing is not None:
+            stream_publisher.offer(trailing)
+
+    return b"".join(chunks), {
+        "truncated": truncated,
+        "output_bytes_total": total_bytes,
+        "output_bytes_retained": retained_bytes,
+        "output_max_bytes": max_output_bytes,
+        "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
+    }
+
+
+async def _execute_command_with_timeouts(
+    proc: asyncio.subprocess.Process,
+    cmd: list[str],
+    *,
+    timeout: int | float,
+    max_output_bytes: int,
+    streamer: LineEventStreamer | None,
+    stream_publisher: BufferedStreamPublisher | None,
+    stream_flush_timeout: float,
+) -> tuple[bytes, dict[str, Any], bool, bool]:
+    """采集 stdout 并等待进程退出；区分采集超时与输出关闭后的进程挂起。"""
+    collect_timed_out = False
+    process_wait_timed_out = False
+    stdout = b""
+    output_meta = _empty_output_meta(max_output_bytes)
+    try:
+        try:
+            stdout, output_meta = await asyncio.wait_for(
+                _collect_subprocess_output(
+                    proc,
+                    max_output_bytes=max_output_bytes,
+                    streamer=streamer,
+                    stream_publisher=stream_publisher,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            collect_timed_out = True
+            await _terminate_subprocess(proc)
+            logger.error("command timed out: %s", " ".join(shlex.quote(part) for part in cmd))
+            output_meta = _empty_output_meta(
+                max_output_bytes,
+                streamer.chunked_lines if streamer is not None else 0,
+            )
+        else:
+            # 输出已读完但进程未退出：常见于 Ansible SSH ControlPersist 收尾挂起。
+            # 保留已采集输出，避免流式日志已成功、终态回调却丢失/被清空。
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                process_wait_timed_out = True
+                await _terminate_subprocess(proc)
+                logger.warning(
+                    "command hung after output closed: %s",
+                    " ".join(shlex.quote(part) for part in cmd),
+                )
+    except asyncio.CancelledError:
+        await asyncio.shield(_terminate_subprocess(proc))
+        raise
+    finally:
+        if stream_publisher is not None:
+            output_meta.update(await stream_publisher.close(stream_flush_timeout))
+    return stdout, output_meta, collect_timed_out, process_wait_timed_out
+
+
 async def run_command(
     cmd: list[str],
     timeout: int | float,
@@ -1343,95 +1618,23 @@ async def run_command(
     if stream_publisher is not None:
         stream_publisher.start()
 
-    async def _terminate_process() -> None:
-        if proc.returncode is not None:
-            return
-        if os.name == "posix":
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-        else:
-            proc.kill()
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        if proc.returncode is None:
-            proc.kill()
-            await proc.wait()
+    stdout, output_meta, collect_timed_out, process_wait_timed_out = await _execute_command_with_timeouts(
+        proc,
+        cmd,
+        timeout=timeout,
+        max_output_bytes=max_output_bytes,
+        streamer=streamer,
+        stream_publisher=stream_publisher,
+        stream_flush_timeout=stream_flush_timeout,
+    )
 
-    async def _collect_output() -> tuple[bytes, dict[str, Any]]:
-        assert proc.stdout is not None
-        chunks: list[bytes] = []
-        retained_bytes = 0
-        total_bytes = 0
-        truncated = False
+    if collect_timed_out:
+        return 124, "command timed out", output_meta
 
-        while True:
-            chunk = await proc.stdout.read(8192)
-            if not chunk:
-                break
-            total_bytes += len(chunk)
-            remaining = max_output_bytes - retained_bytes
-            if remaining > 0:
-                kept = chunk[:remaining]
-                if kept:
-                    chunks.append(kept)
-                    retained_bytes += len(kept)
-            if len(chunk) > max(remaining, 0):
-                truncated = True
-            if streamer is not None:
-                for line in streamer.feed(chunk):
-                    stream_publisher.offer(line)
-
-        if streamer is not None:
-            trailing = streamer.flush()
-            if trailing is not None:
-                stream_publisher.offer(trailing)
-
-        return b"".join(chunks), {
-            "truncated": truncated,
-            "output_bytes_total": total_bytes,
-            "output_bytes_retained": retained_bytes,
-            "output_max_bytes": max_output_bytes,
-            "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
-        }
-
-    timed_out = False
-    output_meta = {
-        "truncated": False,
-        "output_bytes_total": 0,
-        "output_bytes_retained": 0,
-        "output_max_bytes": max_output_bytes,
-        "stream_line_chunks": 0,
-    }
-    try:
-        stdout, output_meta = await asyncio.wait_for(_collect_output(), timeout=timeout)
-        await asyncio.wait_for(proc.wait(), timeout=5)
-    except asyncio.CancelledError:
-        await asyncio.shield(_terminate_process())
-        raise
-    except asyncio.TimeoutError:
-        await _terminate_process()
-        logger.error("command timed out: %s", " ".join(shlex.quote(part) for part in cmd))
-        timed_out = True
-        stdout = b""
-        output_meta = {
-            "truncated": False,
-            "output_bytes_total": 0,
-            "output_bytes_retained": 0,
-            "output_max_bytes": max_output_bytes,
-            "stream_line_chunks": streamer.chunked_lines if streamer is not None else 0,
-        }
-    finally:
-        if stream_publisher is not None:
-            output_meta.update(await stream_publisher.close(stream_flush_timeout))
-
-    if timed_out:
-        return (
-            124,
-            "command timed out",
-            output_meta,
-        )
     output, decode_strategy = decode_command_output(stdout)
-    exit_code = proc.returncode or 0
+    exit_code = proc.returncode if proc.returncode is not None else 0
+    if process_wait_timed_out:
+        exit_code = _exit_code_after_process_hang(output, proc.returncode)
     logger.info(
         "command output log: exit_code=%s strategy=%s bytes=%s retained=%s truncated=%s raw_prefix=%s decoded_prefix=%r",
         exit_code,

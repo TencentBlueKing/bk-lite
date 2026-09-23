@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 from apps.apm.models import ApmApplication, ApmService
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
+from apps.apm.services.probe_artifacts import ProbeArtifactNotFound
 from apps.apm.tests.helpers import create_application
 
 pytestmark = pytest.mark.django_db
@@ -482,6 +483,113 @@ def test_integration_config_java_snippet_reports_missing_probe_download_address(
 
     assert response.status_code == 404
     assert response.data["code"] == "probe_download_unavailable"
+
+
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+def test_integration_config_reports_missing_probe_artifact_instead_of_500(apm_api_client, monkeypatch, language):
+    create_application("shop", (10,))
+    _integration_region(monkeypatch)
+
+    def missing(artifact_name):
+        raise ProbeArtifactNotFound(artifact_name)
+
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        missing,
+        raising=False,
+    )
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": language,
+            "runtime": "host",
+            "service_name": "checkout",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 404
+    assert response.data["code"] == "probe_artifact_not_found"
+    assert "探针文件不存在" in response.data["detail"]
+    assert "系统错误" not in str(response.data)
+
+
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+def test_integration_config_reports_probe_storage_unavailability_instead_of_500(
+    apm_api_client,
+    monkeypatch,
+    caplog,
+    language,
+):
+    create_application("shop", (10,))
+    _integration_region(monkeypatch)
+    caplog.set_level("WARNING", logger="apm")
+
+    def unavailable(artifact_name):
+        raise TimeoutError("nats connect timeout")
+
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        unavailable,
+        raising=False,
+    )
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": language,
+            "runtime": "docker",
+            "service_name": "checkout",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 503
+    assert response.data["code"] == "probe_artifact_unavailable"
+    assert response.data["detail"] == "探针文件暂时不可用，请稍后重试。"
+    assert "nats" not in str(response.data).lower()
+    assert "timeout" not in str(response.data).lower()
+    records = [record for record in caplog.records if record.msg == "APM ingest snippet rendering failed: %s"]
+    assert len(records) == 1
+    assert records[0].args == ("TimeoutError",)
+    assert records[0].getMessage() == "APM ingest snippet rendering failed: TimeoutError"
+    assert records[0].exc_info is None
+    assert "nats connect timeout" not in records[0].getMessage()
+
+
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go", "dotnet"])
+def test_integration_config_kubernetes_does_not_hash_probe_artifacts(apm_api_client, monkeypatch, language):
+    create_application("shop", (10,))
+    _integration_region(monkeypatch)
+
+    def missing(artifact_name):
+        raise ProbeArtifactNotFound(artifact_name)
+
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        missing,
+        raising=False,
+    )
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": language,
+            "runtime": "kubernetes",
+            "service_name": "checkout",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT" in response.data["code"]
 
 
 def test_integration_config_rejects_unknown_or_out_of_scope_application(apm_api_client):

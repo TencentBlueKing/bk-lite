@@ -21,7 +21,7 @@ RUNNER_TRIGGER = "material_queue"
 QUEUED_STATUS = "queued"
 QUEUE_RESUME_INPUT_KEY = "resume_interrupted"
 _ACTIVE_BUILD_STATUSES = frozenset({"parsing", "building"})
-USER_BUILD_TRIGGERS = frozenset({"material", "material_update", "rebuild"})
+USER_BUILD_TRIGGERS = frozenset({"material", "material_update", "rebuild", "markdown_import"})
 CROSS_PIPELINE_TRIGGERS = frozenset({"rebuild", "material_update"})
 _MAX_BATCH_SIZE = 200
 _RUNNER_STALE_SECONDS = int(os.environ.get("WIKI_MATERIAL_BUILD_RUNNER_STALE_SECONDS", str(2 * 3600)))
@@ -95,7 +95,7 @@ def has_active_runner(kb_id: int) -> bool:
 
 
 def kb_has_user_build_in_progress(kb_id, *, exclude_build_id=None) -> bool:
-    """是否有用户可见的资料/重建任务在跑。队列租约和排队项不算。"""
+    """是否有用户可见的资料/重建/导入任务在跑。队列租约和排队项不算。"""
     qs = BuildRecord.objects.filter(
         knowledge_base_id=kb_id,
         status="running",

@@ -2,12 +2,13 @@ import json
 import os
 from copy import deepcopy
 
+from django.core.management import BaseCommand
+from django.db import transaction
+
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
 from apps.system_mgmt.models import App, Group, Menu, Role
-from django.core.management import BaseCommand
-from django.db import transaction
 
 
 class Command(BaseCommand):
@@ -84,8 +85,8 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     if not organization_menu or not setting_menu:
         return result
 
-    setting_children.append({"id": "license_mgmt", "name": "License", "operation": ["View", "Add", "Edit", "Delete"]})
     setting_children.append({"id": "portal_settings", "name": "Portal Settings", "operation": ["View", "Edit"]})
+    setting_children.append({"id": "license_mgmt", "name": "License Management", "operation": ["View", "Add", "Edit", "Delete"]})
 
     organization_children = organization_menu.setdefault("children", [])
     organization_children.append({"id": "sensitive_info", "name": "Sensitive Info", "operation": ["View", "Edit", "Add", "Delete"]})

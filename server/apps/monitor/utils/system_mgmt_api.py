@@ -55,21 +55,19 @@ class SystemMgmtUtils:
         for group_id in allowed:
             user_filter |= Q(group_list__contains=int(group_id))
 
-        return list(
-            User.objects.filter(user_filter, disabled=False).values(
-                "id", "user_id", "username", "display_name"
-            )
-        )
+        return list(User.objects.filter(user_filter, disabled=False).values("id", "user_id", "username", "display_name"))
 
     @staticmethod
-    def search_channel_list(actor_context, channel_type="", teams=None, include_children=False):
+    def search_channel_list(actor_context, channel_type="", teams=None, include_children=False, channel_method=""):
         """email、enterprise_wechat"""
-        result = SystemMgmt().search_channel_list_scoped(
-            actor_context,
-            channel_type=channel_type,
-            teams=teams,
-            include_children=include_children,
-        )
+        kwargs = {
+            "channel_type": channel_type,
+            "teams": teams,
+            "include_children": include_children,
+        }
+        if channel_method:
+            kwargs["channel_method"] = channel_method
+        result = SystemMgmt().search_channel_list_scoped(actor_context, **kwargs)
         return result["data"]
 
     @staticmethod
@@ -84,9 +82,7 @@ class SystemMgmtUtils:
 
     @staticmethod
     def probe_notification_channel(channel_id, capability_only=False):
-        return SystemMgmt().probe_notification_channel(
-            channel_id, capability_only=capability_only
-        )
+        return SystemMgmt().probe_notification_channel(channel_id, capability_only=capability_only)
 
     @staticmethod
     def format_rules(module, child_module, rules):

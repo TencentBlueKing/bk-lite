@@ -1060,9 +1060,16 @@ def _process_user_batch(
         if item["username"] not in synced_usernames:
             synced_usernames.append(item["username"])
         changed = False
-        for field in ("display_name", "email", "phone", "group_list"):
+        for field in ("display_name", "group_list"):
             if getattr(user, field) != item[field]:
                 setattr(user, field, item[field])
+                changed = True
+        for field in ("email", "phone"):
+            incoming = item[field]
+            if not incoming:
+                continue
+            if getattr(user, field) != incoming:
+                setattr(user, field, incoming)
                 changed = True
         if user.disabled:
             user.disabled = False
@@ -1141,11 +1148,11 @@ def _normalize_user_batch(
                 ),
                 "email": _truncate_to_field(
                     User, "email",
-                    str(_mapped_value(raw_user, field_mapping, "email") or ""),
+                    str(_mapped_value(raw_user, field_mapping, "email") or "").strip(),
                 ),
                 "phone": _truncate_to_field(
                     User, "phone",
-                    str(_mapped_value(raw_user, field_mapping, "phone") or ""),
+                    str(_mapped_value(raw_user, field_mapping, "phone") or "").strip(),
                 ),
                 "group_list": sorted(set(local_group_ids)),
             }

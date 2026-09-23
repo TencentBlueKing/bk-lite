@@ -18,6 +18,7 @@ import {
   Alert
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
@@ -55,7 +56,14 @@ import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
-import { listNodeHostedCollectors, parseCollectorQueryNames, isSameCollectorName, collectorDisplayName } from '@/app/node-manager/utils/collectorConfig';
+import {
+  listNodeHostedCollectors,
+  listNodeUpgradeableCollectors,
+  listCollectorUpdateHints,
+  parseCollectorQueryNames,
+  isSameCollectorName,
+  collectorDisplayName
+} from '@/app/node-manager/utils/collectorConfig';
 import { MODULE_OBJECT_QUERY_PARAM } from '@/app/monitor/utils/monitorObjectQuery';
 import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 const { confirm } = Modal;
@@ -113,6 +121,7 @@ const Node = () => {
   >();
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -234,7 +243,7 @@ const Node = () => {
 
   useEffect(() => {
     if (!isLoading) getNodes(searchFilters);
-  }, [pagination.current, pagination.pageSize]);
+  }, [pagination.current, pagination.pageSize, unassignedOnly]);
 
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'uninstallController') {
@@ -288,7 +297,13 @@ const Node = () => {
       type: e.key,
       ids: selectedRowKeys as string[],
       selectedsystem: selection.operatingSystem,
-      selectedArchitecture: selection.cpuArchitecture
+      selectedArchitecture: selection.cpuArchitecture,
+      updateHints: listCollectorUpdateHints(
+        selectedNodes,
+        packCollectorNamesRef.current
+      ),
+      focusCollectorNames: packCollectorNamesRef.current,
+      selectedNodes
     });
   };
 
@@ -329,7 +344,8 @@ const Node = () => {
       const params: any = {
         cloud_region_id: cloudId,
         page: pagination.current,
-        page_size: pagination.pageSize
+        page_size: pagination.pageSize,
+        ...(unassignedOnly ? { unassigned: true } : {})
       };
 
       if (filters && Object.keys(filters).length > 0) {
@@ -568,17 +584,34 @@ const Node = () => {
               );
             }
           );
+          const upgradeableCollectors = listNodeUpgradeableCollectors(record);
+          const upgradeableIds = new Set(
+            upgradeableCollectors.map((item) => item.componentId)
+          );
+          const upgradeableTags = upgradeableCollectors.map((item) => (
+            <Tag
+              key={`up-${item.componentId}`}
+              color="processing"
+              className="cursor-pointer py-1 px-2"
+              onClick={() =>
+                handleCollectorTagClick(record, allCollectors, item.name)
+              }
+            >
+              {item.name}
+              {` · ${t('node-manager.cloudregion.node.collectorUpgradeable', '', {
+                version: item.latestVersion
+              })}`}
+            </Tag>
+          ));
           const focusTags = packCollectorNamesRef.current
             .map((collectorName) => {
               const matched = allCollectors.find((collector: any) =>
                 isSameCollectorName(collector, collectorName)
               );
               if (!matched) return null;
-              const versionInfo = (record.versions || []).find(
-                (item: TableDataItem) =>
-                  item.component_type === 'collector' &&
-                  String(item.component_id) === String(matched.collector_id)
-              );
+              if (upgradeableIds.has(String(matched.collector_id))) {
+                return null;
+              }
               return (
                 <Tag
                   key={`pack-${collectorName}`}
@@ -589,22 +622,24 @@ const Node = () => {
                   }
                 >
                   {collectorDisplayName(matched) || collectorName}
-                  {versionInfo?.upgradeable
-                    ? ` · ${t('node-manager.cloudregion.node.collectorUpgradeable', '', {
-                      version: versionInfo?.latest_version || '--'
-                    })}`
-                    : ''}
+                  {` · ${t('node-manager.cloudregion.node.justImportedCollector')}`}
                 </Tag>
               );
             })
             .filter(Boolean);
-          return statusTags.length > 0 || focusTags.length > 0 ? (
+          if (
+            statusTags.length === 0 &&
+            upgradeableTags.length === 0 &&
+            focusTags.length === 0
+          ) {
+            return <span>--</span>;
+          }
+          return (
             <div className="flex flex-nowrap gap-1">
+              {upgradeableTags}
               {focusTags}
               {statusTags}
             </div>
-          ) : (
-            <span>--</span>
           );
         }
       }
@@ -693,13 +728,23 @@ const Node = () => {
                     }
                   />
                 ) : null}
-                <div className="flex items-center justify-between mb-4">
-                  <SearchCombination
-                    fieldConfigs={fieldConfigs}
-                    onChange={handleSearchChange}
-                    className="mr-[8px]"
-                  />
-                  <div className="flex">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="mr-2 flex min-w-0 items-center gap-2">
+                    <SearchCombination
+                      fieldConfigs={fieldConfigs}
+                      onChange={handleSearchChange}
+                    />
+                  </div>
+                  <div className="flex items-center">
+                    <CatalogScopeSegmented
+                      unassignedOnly={unassignedOnly}
+                      onChange={(checked) => {
+                        setUnassignedOnly(checked);
+                        setSelectedRowKeys([]);
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                      }}
+                      className="mr-[8px]"
+                    />
                     <PermissionWrapper
                       requiredPermissions={['InstallController']}
                     >

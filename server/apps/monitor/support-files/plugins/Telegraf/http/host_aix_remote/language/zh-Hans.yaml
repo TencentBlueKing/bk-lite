@@ -1,6 +1,7 @@
 Host AIX Remote:
   name: AIX主机远程采集
-  desc: 由 Linux 采集节点按采集间隔 SSH 到 AIX，执行系统命令。采集 CPU（含 LPAR）、内存分页与 svmon、负载、进程状态、磁盘容量与 inode、读写与忙碌、网卡和运行时长。目标主机无需安装采集器。表单填写 IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
+  desc: 由 Linux 采集节点按采集间隔 SSH 到 AIX，执行系统命令。采集 CPU（含 LPAR）、内存分页与 svmon、负载、进程状态、磁盘容量与 inode、读写与忙碌、网卡和运行时长。目标主机无需安装采集器。表单填写
+    IP、SSH 用户名（如 root）、密码或私钥、端口（默认 22）、采集间隔和 Linux 采集节点。不采集硬件清单、lastlog、lsof 和连接表。无需选择版本，版本自动识别。
 monitor_object:
   Host: 主机
 monitor_object_type:
@@ -9,7 +10,7 @@ monitor_object_metric:
   Host:
     cpu_usage_total:
       name: CPU使用率
-      desc: 由 mpstat 的 user、sys、iowait 三相加得到的 CPU 使用率。
+      desc: 由 mpstat 间隔采样的 user、sys、iowait 三相加得到的 CPU 使用率。
     cpu_usage_iowait_total:
       name: CPU等待IO占比
       desc: 表示 CPU 因等待 I/O 操作完成而处于空闲状态的时间占比，主要用于判断系统是否受限于磁盘或其他 I/O 性能。
@@ -70,6 +71,9 @@ monitor_object_metric:
     mem_used_percent:
       name: 内存使用率
       desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    mem_available:
+      name: 可用内存
+      desc: 表示当前可回收的可用物理内存（空闲页加 client 文件页）。
     mem_swap_free:
       name: 空闲交换内存
       desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。

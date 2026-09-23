@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
+    MISSING_PARAMS_CHOICE_HINT,
     POLICY_RESULT_MARKER,
     SKILL_RESULT_MARKER,
     SKILL_STOP_MARKER,
@@ -23,10 +24,15 @@ from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
     TOOL_FAILURE_OTHER,
     classify_tool_failure_kind,
     is_control_guidance,
+    is_missing_tool_params_failure,
     is_non_replanable_tool_failure,
     is_policy_guidance,
     is_skill_policy_guidance,
+    is_substitute_plan_message,
     is_tool_result_failure,
+    step_has_unasked_missing_params,
+    tool_graph_failure_plain_text,
+    tool_graph_failure_user_prompt,
 )
 
 
@@ -51,11 +57,23 @@ class ToolPlanningError(RuntimeError):
 
 
 # 弱模型常忽略模糊描述；目录含 monitor_* 时用系统侧导读强制对齐主机指标场景。
+_MONITOR_LIST_METRICS_TOOL = "monitor_list_object_metrics"
+_MONITOR_QUERY_TOOL = "monitor_query_metric_data"
 _MONITOR_CATALOG_HINT = (
-    "能力导读：目录含 monitor_* 时，可查 BK-Lite 已纳管主机/实例的 CPU使用率、内存、磁盘与告警。"
-    "用户问「主机名或IP xxx的CPU」必须规划 monitor_* 步骤，典型顺序："
+    "能力导读：目录含 monitor_* 时，可查 BK-Lite 已纳管主机/实例的 CPU使用率、内存、磁盘，以及监控策略扫描出的活跃告警。"
+    "用户问「主机名或IP xxx的CPU」必须规划对应 monitor_* 步骤，典型顺序："
     "monitor_list_objects→monitor_list_object_instances→monitor_list_object_metrics→monitor_query_metric_data；"
-    "instance_ids 优先用列表返回的 instance_id，实例名或 IP 也可传入后续工具；"
+    "list_object_metrics 与 query_metric_data 必须同一步，先按用户词 keyword 筛选 name/display_name 再查时序；"
+    "metric 只能用 list_object_metrics 返回的 name，禁止猜测 cpu.util/system.cpu.util，列表非空禁止让用户手填指标名；"
+    "用户只给名称、未说明是主机/Pod/中间件时：先 monitor_list_objects，再规划 request_user_choice；"
+    "用户已声明主机/Pod/中间件时不要规划 request_user_choice，直接用对应对象 id 列实例；"
+    "request_user_choice 必须用 single_select，options 放入 list_objects 返回的全部对象 name，禁止纯文本列出类型；"
+    "禁止根据名称形态（如 -default、collector）猜测 K8s Pod 或 Host；"
+    "monitor_obj_id 只能用用户已确认类型在 list_objects 中的 id，禁止猜测或递增数字；"
+    "list_object_instances 每个 monitor_obj_id 只调一次，keyword 用完整主机名/IP/用户原词，"
+    "禁止截断后按台循环；空列表禁止换 ID 重试；用户未声明类型时 request_user_choice 问对象类型，已声明则把空列表当该类型下无匹配；"
+    "instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用实例名或 IP 代替；"
+    "query_metric_data 空矩阵是有效结论，禁止换 ID/IP/维度/时间窗/指标名重试；"
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
 )
 
@@ -63,8 +81,47 @@ _MONITOR_CATALOG_HINT = (
 _CMDB_MONITOR_LINK_HINT = (
     "联动规则：CMDB 与监控的实例 ID 不是同一套。"
     "禁止把 cmdb_search_instances / cmdb_get_instance 返回的 inst_uuid、_id 或数字 inst_id 传入 monitor_* 的 instance_ids。"
-    "已联动时用 CMDB 实例的 monitor_id，或先调 cmdb_get_monitor_ids；"
-    "未联动则用 monitor_list_object_instances 按主机名或 IP 取监控 instance_id。"
+    "已联动时用 CMDB 实例的 monitor_id，或先调 cmdb_get_monitor_ids 后直接查监控，不要再截断主机名去猜 monitor_obj_id；"
+    "未联动则用 monitor_list_object_instances 按完整主机名或 IP 取监控 instance_id，每个 obj_id 只列一次。"
+    "问「纳管多少台/主机数量/主机清单」时只规划 CMDB 检索；"
+    "不要把 monitor_list_objects / monitor_list_object_instances 写成查不到再查的下一步。"
+)
+
+# 告警中心工单与监控策略告警不是同一套；口语「没关的告警」必须走 alerts_*。
+_ALERTS_LIST_TOOL = "alerts_list_alerts"
+_MONITOR_ACTIVE_ALERT_TOOLS = frozenset(
+    {
+        "monitor_list_active_alerts",
+        "monitor_query_alert_segments",
+    }
+)
+_ALERT_TYPE_ASK_TOOLS = frozenset(
+    {
+        "monitor_list_objects",
+        "request_user_choice",
+        "monitor_list_object_instances",
+    }
+)
+_ALERTS_CENTER_QUERY_RE = re.compile(
+    r"没关|未关闭|未分派|告警单|还在告|告警挂着|挂着的告警|"
+    r"人工没处理|未处理的|还有没有.{0,12}告警|有没有没关|"
+    r"最近那些告警|告警中心|有没有.{0,24}告警|哪些告警|"
+    r"告警标题|告警级别|告警列表|告警都分派|未关闭告警|"
+    r"(?:这台|那边).{0,12}告警|"
+    r"open alerts?|unassigned|not closed",
+    re.I,
+)
+_MONITOR_POLICY_ALERT_RE = re.compile(
+    r"监控告警|监控侧|策略告警|策略扫描|MonitorAlert|" r"new\s*状态|活跃的监控告警|monitor.?alert",
+    re.I,
+)
+_ALERTS_MONITOR_SPLIT_HINT = (
+    "告警分流：alerts_* 查统一告警中心工单（未关闭/未分派/告警单/某台还在告）；"
+    "monitor_list_active_alerts 只查监控策略扫描出的活跃告警，不是告警中心。"
+    "用户未点名「监控告警/策略告警」时，禁止规划 monitor_list_active_alerts，"
+    "禁止为查告警先 monitor_list_objects + request_user_choice；"
+    "直接 alerts_list_alerts，主机名/IP/标题放 keyword。"
+    "只有用户明确问监控侧/策略扫描/new 状态的监控告警时才用 monitor_list_active_alerts。"
 )
 
 # 告警 RCA：缺 namespace 时必须先反查；禁止用扫全集群当反查。取证链由智能体 prompt 决定。
@@ -768,6 +825,53 @@ def enforce_k8s_namespace_lookup_first(
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
 
 
+_REQUEST_USER_CHOICE = "request_user_choice"
+_MONITOR_INSTANCE_LOOKUP_TOOLS = frozenset(
+    {
+        "monitor_list_objects",
+        "monitor_list_object_instances",
+    }
+)
+_HOST_INVENTORY_QUESTION_RE = re.compile(r"纳管|多少台|主机数量|主机清单|资产清单")
+_DECLARED_MONITOR_OBJECT_TYPE_RE = re.compile(
+    r"主机|Host\b|SangforSCPHost|CNwareHost|\bPods?\b|\bNodes?\b|节点|集群|Cluster\b|中间件|Redis\b|MySQL\b|Mysql\b|\bK8s\b|Kubernetes\b",
+    re.I,
+)
+
+
+def user_declared_monitor_object_type(user_message: str) -> bool:
+    """用户是否已点名监控对象类型（主机/Pod/中间件等），资产清点问句不算。"""
+    text = str(user_message or "")
+    if not text.strip() or _HOST_INVENTORY_QUESTION_RE.search(text):
+        return False
+    return bool(_DECLARED_MONITOR_OBJECT_TYPE_RE.search(text))
+
+
+def drop_type_choice_when_declared(plan: ToolExecutionPlan, user_message: str) -> ToolExecutionPlan:
+    """已声明监控对象类型时，去掉计划里的类型询问步，避免再弹 request_user_choice。"""
+    if not user_declared_monitor_object_type(user_message):
+        return plan
+    planned = {tool for step in plan.steps for tool in (step.tools or [])}
+    if planned.isdisjoint(_MONITOR_INSTANCE_LOOKUP_TOOLS):
+        return plan
+    cleaned: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        tools = [name for name in (step.tools or []) if name != _REQUEST_USER_CHOICE]
+        if not tools:
+            changed = True
+            continue
+        if tools != list(step.tools or []):
+            changed = True
+            cleaned.append(step.model_copy(update={"tools": tools}))
+        else:
+            cleaned.append(step)
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：已声明对象类型，去掉类型询问")
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
 def drop_cluster_scan_tools_for_known_pod_diagnose(plan: ToolExecutionPlan) -> ToolExecutionPlan:
     """已知 Pod 走 diagnose 时去掉全集群扫描和整份 describe，避免撑爆上下文。"""
     planned = {tool for step in plan.steps for tool in (step.tools or [])}
@@ -891,6 +995,97 @@ def rewrite_high_restart_to_recent_for_time_sort(
     return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
 
+def is_alerts_center_query(user_message: str) -> bool:
+    text = user_message or ""
+    if _MONITOR_POLICY_ALERT_RE.search(text):
+        return False
+    return bool(_ALERTS_CENTER_QUERY_RE.search(text))
+
+
+def rewrite_generic_alert_query_to_alerts_center(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    user_message: str = "",
+) -> ToolExecutionPlan:
+    """口语未关闭/某台还在告时，把监控活跃告警和类型询问改成告警中心列表。"""
+    if _ALERTS_LIST_TOOL not in available_names:
+        return plan
+    if not is_alerts_center_query(user_message):
+        return plan
+
+    kept: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        new_tools: list[str] = []
+        for tool in step.tools or []:
+            if tool in _MONITOR_ACTIVE_ALERT_TOOLS:
+                changed = True
+                if _ALERTS_LIST_TOOL not in new_tools:
+                    new_tools.append(_ALERTS_LIST_TOOL)
+                continue
+            if tool in _ALERT_TYPE_ASK_TOOLS:
+                changed = True
+                continue
+            if tool not in new_tools:
+                new_tools.append(tool)
+        if new_tools:
+            if new_tools != list(step.tools or []):
+                kept.append(step.model_copy(update={"tools": new_tools}))
+            else:
+                kept.append(step)
+        else:
+            changed = True
+
+    if not any(tool.startswith("alerts_") for step in kept for tool in (step.tools or [])):
+        kept.insert(0, ToolExecutionStep(objective="查询告警中心", tools=[_ALERTS_LIST_TOOL]))
+        changed = True
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：口语告警改走告警中心 tool=%s", _ALERTS_LIST_TOOL)
+    return ToolExecutionPlan(goal=plan.goal, steps=kept)
+
+
+def enforce_list_metrics_with_query(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    max_tools_per_step: int = 4,
+) -> ToolExecutionPlan:
+    """查时序步必须同时可见列指标，避免模型猜 cpu.util。"""
+    if _MONITOR_LIST_METRICS_TOOL not in available_names:
+        return plan
+    cap = max(2, max_tools_per_step)
+    cleaned: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        tools = list(step.tools or [])
+        if _MONITOR_QUERY_TOOL not in tools or _MONITOR_LIST_METRICS_TOOL in tools:
+            cleaned.append(step)
+            continue
+        rest = [name for name in tools if name != _MONITOR_QUERY_TOOL]
+        ordered = [_MONITOR_LIST_METRICS_TOOL, *rest, _MONITOR_QUERY_TOOL]
+        uniq: list[str] = []
+        for name in ordered:
+            if name not in uniq:
+                uniq.append(name)
+        if len(uniq) > cap:
+            keep = [_MONITOR_LIST_METRICS_TOOL]
+            for name in uniq:
+                if name in keep or name == _MONITOR_QUERY_TOOL:
+                    continue
+                if len(keep) + 1 >= cap:
+                    break
+                keep.append(name)
+            keep.append(_MONITOR_QUERY_TOOL)
+            uniq = keep
+        changed = True
+        cleaned.append(step.model_copy(update={"tools": uniq}))
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：查时序步已并入列指标 tool=%s", _MONITOR_LIST_METRICS_TOOL)
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
 def drop_k8s_followup_steps_after_unresolved_target(steps: Sequence[ToolExecutionStep]) -> list[ToolExecutionStep]:
     """反查已收口后，去掉重复反查和仍依赖 namespace 的后续步骤。"""
     skip = _K8S_NAMESPACE_LOOKUP_TOOLS | _K8S_NAMESPACE_SCAN_TOOLS | _K8S_NAMESPACE_REQUIRED_TOOLS
@@ -900,6 +1095,102 @@ def drop_k8s_followup_steps_after_unresolved_target(steps: Sequence[ToolExecutio
             continue
         kept.append(step)
     return kept
+
+
+_CMDB_HOST_INVENTORY_TOOLS = frozenset(
+    {
+        "cmdb_search_instances",
+        "cmdb_fulltext_search",
+        "cmdb_fulltext_search_by_model",
+        "cmdb_fulltext_search_stats",
+    }
+)
+_MONITOR_HOST_INVENTORY_TOOLS = frozenset(
+    {
+        "monitor_list_objects",
+        "monitor_list_object_instances",
+    }
+)
+
+
+def _payload_has_inventory_records(content: Any) -> bool:
+    payload: Any = content
+    if isinstance(content, str):
+        text = content.strip()
+        if not text or text[0] not in "{[":
+            return False
+        try:
+            payload = json.loads(text)
+        except Exception:
+            return False
+    if isinstance(payload, list):
+        return bool(payload)
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("success") is False or payload.get("error") not in (None, "", [], {}):
+        return False
+    data = payload.get("data", payload)
+    if isinstance(data, list):
+        return bool(data)
+    if not isinstance(data, dict):
+        return False
+    for key in ("items", "results", "instances", "list"):
+        value = data.get(key)
+        if isinstance(value, list) and value:
+            return True
+    for key in ("count", "total", "hits", "total_count"):
+        raw = data.get(key)
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, (int, float)) and raw > 0:
+            return True
+        if isinstance(raw, str) and raw.isdigit() and int(raw) > 0:
+            return True
+    return False
+
+
+def step_has_host_inventory_data(messages: Sequence[Any], current_tools: Sequence[str]) -> bool:
+    """当前步骤是否已用资产清单工具拿到非空结果。"""
+    inventory_names = set(current_tools or []) & (_CMDB_HOST_INVENTORY_TOOLS | _MONITOR_HOST_INVENTORY_TOOLS)
+    if not inventory_names:
+        return False
+    for message in reversed(list(messages or ())):
+        if str(getattr(message, "type", "") or "") != "tool" and type(message).__name__ != "ToolMessage":
+            continue
+        name = str(getattr(message, "name", "") or "")
+        if name not in inventory_names:
+            continue
+        status = str(getattr(message, "status", "") or "")
+        content = getattr(message, "content", None)
+        if is_tool_result_failure(content, status):
+            continue
+        if _payload_has_inventory_records(content):
+            return True
+    return False
+
+
+def drop_alternative_inventory_followups(
+    *,
+    current_tools: Sequence[str],
+    pending_steps: Sequence[ToolExecutionStep],
+    messages: Sequence[Any],
+) -> list[ToolExecutionStep]:
+    """CMDB/监控任一侧已列出主机后，丢掉另一侧「查不到再查」的清单兜底步。
+
+    后续若还含指标/告警/ID 映射等取证工具，整段后续都保留。
+    """
+    pending = list(pending_steps or [])
+    if not pending or not step_has_host_inventory_data(messages, current_tools):
+        return pending
+    current = {str(name) for name in (current_tools or []) if name}
+    pending_tools = {str(name) for step in pending for name in (step.tools or []) if name}
+    if not pending_tools:
+        return pending
+    if current & _CMDB_HOST_INVENTORY_TOOLS and pending_tools <= _MONITOR_HOST_INVENTORY_TOOLS:
+        return []
+    if current & _MONITOR_HOST_INVENTORY_TOOLS and pending_tools <= _CMDB_HOST_INVENTORY_TOOLS:
+        return []
+    return pending
 
 
 def merge_replanned_pending_steps(
@@ -1222,6 +1513,7 @@ class ToolExecutionPlanner:
         has_restart_evidence = False
         has_restart_time_sort = False
         has_attachment = False
+        has_alerts = False
         used = 0
         skill_block = self._skill_catalog(skill_packages)
         if skill_block:
@@ -1236,6 +1528,8 @@ class ToolExecutionPlanner:
                 has_monitor = True
             if name.startswith("cmdb_"):
                 has_cmdb = True
+            if name.startswith("alerts_"):
+                has_alerts = True
             if name in _K8S_NAMESPACE_LOOKUP_TOOLS:
                 has_k8s_lookup = True
             if name == _K8S_KNOWN_POD_DIAGNOSE_TOOL:
@@ -1263,6 +1557,8 @@ class ToolExecutionPlanner:
             hints.append(_MONITOR_CATALOG_HINT)
         if has_monitor and has_cmdb:
             hints.append(_CMDB_MONITOR_LINK_HINT)
+        if has_monitor and has_alerts:
+            hints.append(_ALERTS_MONITOR_SPLIT_HINT)
         if has_k8s_lookup:
             hints.append(_K8S_NAMESPACE_LOOKUP_HINT)
         if has_restart_evidence and is_pod_restart_reason_query(user_message, agent_system_prompt):
@@ -1331,6 +1627,9 @@ class ToolExecutionPlanner:
             steps=steps,
         )
         plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
+        plan = enforce_list_metrics_with_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
+        plan = rewrite_generic_alert_query_to_alerts_center(plan, available_names, user_message=user_message)
+        plan = drop_type_choice_when_declared(plan, user_message)
         plan = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
         plan = collapse_known_pod_restart_to_evidence_tool(
             plan,
@@ -1362,8 +1661,13 @@ class ToolExecutionPlanner:
             "只列出必须调用工具的执行步骤，并从目录选择精确工具名；"
             "纯分析或最终总结不要列为步骤，系统会在工具执行后单独完成。"
             "规划须对齐「助手任务说明」中的目标；目录「能力导读」只约束工具前置条件，不改写任务目标。"
-            "若用户要查平台已纳管主机/实例的指标或告警，且目录含 monitor_* 或能力导读，"
+            "若用户要查某主机/实例的 CPU、内存或磁盘，且目录含 monitor_*，"
             "必须规划对应 monitor_* 步骤，禁止返回空 steps。"
+            "若用户问未关闭/未分派/告警单/某台还在告，且未点名监控告警，目录含 alerts_* 时只规划 alerts_*，"
+            "禁止用 monitor_list_active_alerts 或先问对象类型。"
+            "若用户只问纳管规模、主机数量或资产清单，且目录含 cmdb_*，只规划 CMDB 检索，"
+            "不要再规划 monitor_* 作为查不到再查的下一步。"
+            "禁止把尚未发生的兜底（查不到再换数据源）写成后续步骤；只规划现在必须执行的步骤。"
             "若目录含 generate_attachment_file，且任务是生成报告/月报/文档/Markdown/.md 文件，"
             "必须规划 generate_attachment_file 步骤，禁止空 steps 后在对话里直接输出全文。"
             "若能力导读列出了技能包声明的 source_tool，优先规划这些业务工具。"

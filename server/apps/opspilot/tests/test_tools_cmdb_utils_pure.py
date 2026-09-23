@@ -86,6 +86,12 @@ class TestWrappers:
     def test_wrap_error(self):
         assert cu.wrap_error("nope") == {"success": False, "error": "nope"}
 
+    def test_wrap_error_missing_params_asks_user_choice(self):
+        out = cu.wrap_error("search is required")
+        assert out["success"] is False
+        assert out["error"] == "search is required"
+        assert "request_user_choice" in out["_next_step_hint"]
+
     def test_to_json_safe_unicode(self):
         assert cu.to_json_safe({"名": "值"}) == '{"名": "值"}'
 

@@ -18,6 +18,7 @@ from service.ansible_runner import (
     parse_playbook_recap,
     prepare_adhoc_execution,
     prepare_playbook_execution,
+    prepare_windows_script_execution,
     run_command,
     to_adhoc_request,
     to_playbook_request,
@@ -27,7 +28,6 @@ from service.failure_summary import build_task_failure_summary, log_ansible_task
 from service.nats_topology_service import NATSTopologyMixin
 from service.remote_shell_stream import run_remote_shell_stream
 from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_callback_for_storage, _sanitize_payload_for_storage
-from service.winrm_stream import run_winrm_stream
 
 
 def _extract_payload(data: bytes) -> dict:
@@ -79,6 +79,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.workers: list[asyncio.Task] = []
+        self.rpc_subscriptions: list[Any] = []
         payload_encryption_secret = os.getenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "") or config.nats_password
         self.task_store = TaskStore(config.state_db_path, payload_encryption_secret)
 
@@ -258,9 +259,16 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
 
             if task.task_type == "adhoc":
                 request = to_adhoc_request(execution_payload)
-                cmd, workspace = prepare_adhoc_execution(request)
+                request_module = getattr(request, "module", "")
+                request_stream_type = getattr(request, "stream_remote_type", None)
+                windows_file_execution = request_module == "win_shell" and request_stream_type in {"bat", "powershell"}
                 remote_stream_enabled = getattr(request, "stream_remote_output", False) and stream_kwargs
-                if remote_stream_enabled and request.module == "shell":
+                if windows_file_execution:
+                    cmd, workspace = prepare_windows_script_execution(request)
+                    code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
+                else:
+                    cmd, workspace = prepare_adhoc_execution(request)
+                if not windows_file_execution and remote_stream_enabled and request_module in {"raw", "shell"}:
                     code, output, output_meta = await run_remote_shell_stream(
                         cmd,
                         script_content=request.module_args,
@@ -268,21 +276,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                         timeout=request.execute_timeout,
                         **stream_kwargs,
                     )
-                elif remote_stream_enabled and request.module == "win_shell":
-                    windows_stream_kwargs = {
-                        "script_content": request.module_args,
-                        "script_type": str(request.stream_remote_type or ""),
-                        "timeout": request.execute_timeout,
-                        **stream_kwargs,
-                    }
-                    if request.host_credentials:
-                        code, output, output_meta = await run_winrm_stream(
-                            request.host_credentials,
-                            **windows_stream_kwargs,
-                        )
-                    else:
-                        code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
-                else:
+                elif not windows_file_execution:
                     code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
             else:
                 request = to_playbook_request(execution_payload)
@@ -400,12 +394,8 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                 else:
                     await msg.nak()
 
-    TERMINAL_TASK_PURGED_LOG_TEMPLATE = (
-        "event=terminal_tasks_purged deleted=%s retention_seconds=%s"
-    )
-    TERMINAL_TASK_PURGE_FAILED_LOG_TEMPLATE = (
-        "event=terminal_task_purge_failed failed_stage=task_store_purge error_type=%s"
-    )
+    TERMINAL_TASK_PURGED_LOG_TEMPLATE = "event=terminal_tasks_purged deleted=%s retention_seconds=%s"
+    TERMINAL_TASK_PURGE_FAILED_LOG_TEMPLATE = "event=terminal_task_purge_failed failed_stage=task_store_purge error_type=%s"
 
     def _purge_expired_terminal_tasks(self) -> int:
         return self.task_store.purge_expired_terminal_tasks(
@@ -522,19 +512,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
         self.js = nc.jetstream(timeout=120)
         await self._ensure_stream_and_consumer()
 
-        instance_id = self.config.nats_instance_id
-        subjects = {
-            f"ansible.adhoc.{instance_id}": self._handle_adhoc,
-            f"ansible.playbook.{instance_id}": self._handle_playbook,
-            f"ansible.task.query.{instance_id}": self._handle_task_query,
-        }
-        for subject, handler in subjects.items():
-
-            async def callback(msg, h=handler, iid=instance_id):
-                await h(msg, iid)
-
-            await nc.subscribe(subject, cb=callback)
-            logger.info("subscribed subject: %s", subject)
+        await self._subscribe_rpc_handlers(nc)
 
         worker_count = max(1, self.config.max_workers)
         self.workers = [asyncio.create_task(self._worker_loop(i + 1)) for i in range(worker_count)]
@@ -543,6 +521,24 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
         logger.info("workers started: %s", worker_count)
 
         await asyncio.Event().wait()
+
+    async def _subscribe_rpc_handlers(self, nc) -> None:
+        instance_id = self.config.nats_instance_id
+        subjects = {
+            f"ansible.adhoc.{instance_id}": self._handle_adhoc,
+            f"ansible.playbook.{instance_id}": self._handle_playbook,
+            f"ansible.task.query.{instance_id}": self._handle_task_query,
+        }
+        self.rpc_subscriptions = []
+        for subject, handler in subjects.items():
+
+            async def callback(msg, h=handler, iid=instance_id):
+                await h(msg, iid)
+
+            subscription = await nc.subscribe(subject, cb=callback)
+            self.rpc_subscriptions.append(subscription)
+            logger.info("subscribed subject: %s", subject)
+        await nc.flush()
 
 
 @dataclass

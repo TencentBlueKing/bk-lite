@@ -27,7 +27,7 @@ from apps.alerts.serializers import (
 from apps.alerts.serializers.alert_source import build_public_alert_source_config
 from apps.alerts.service.alert_source_credential import AlertSourceCredentialService
 from apps.alerts.service.k8s_install import K8sInstallService
-from apps.alerts.utils.permission_scope import filter_event_queryset_for_request
+from apps.alerts.utils.permission_scope import filter_event_queryset_for_request, get_query_group_ids
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.team_utils import get_current_team
@@ -104,6 +104,15 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
     @HasPermission("Integration-Detail")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("Integration-Detail")
+    @action(detail=True, methods=["get"], url_path="push_source_stats")
+    def push_source_stats(self, request, pk=None):
+        source = self.get_object()
+        team_ids = get_query_group_ids(request)
+        from apps.alerts.service.push_source_counts import default_counts
+
+        return WebUtils.response_success(default_counts().list_for_source(team_ids, source.source_id))
 
     @HasPermission(ALERT_SOURCE_OPTION_PERMISSIONS)
     @action(detail=False, methods=["get"], url_path="options")

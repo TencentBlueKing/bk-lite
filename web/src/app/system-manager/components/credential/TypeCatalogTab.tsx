@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Form, Input, message, Popconfirm, Space, Tag, Tooltip } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import OperateModal from '@/components/operate-modal';
 import ContentDrawer from '@/components/content-drawer';
 import SearchActionBar from '@/components/search-action-bar';
@@ -242,7 +243,6 @@ const TypeCatalogTab: React.FC = () => {
       <SearchActionBar
         searchProps={{
           placeholder: t('system.credential.typeSearchPlaceholder'),
-          enterButton: false,
           onSearch: (value) => {
             setSearch(value);
             void load(1, pagination.pageSize, value);
@@ -251,12 +251,12 @@ const TypeCatalogTab: React.FC = () => {
         actions={(
           <PermissionWrapper requiredPermissions={['Add']}>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              {t('system.credential.addType')}
+              {t('common.new')}
             </Button>
           </PermissionWrapper>
         )}
       />
-      <div className="min-h-0 flex-1">
+      <SystemManagerFillTable>
         <CustomTable
           rowKey="key"
           loading={loading}
@@ -270,7 +270,7 @@ const TypeCatalogTab: React.FC = () => {
             onChange: (page, pageSize) => void load(page, pageSize),
           }}
         />
-      </div>
+      </SystemManagerFillTable>
       <OperateModal
         title={t('system.credential.addType')}
         open={metaOpen}

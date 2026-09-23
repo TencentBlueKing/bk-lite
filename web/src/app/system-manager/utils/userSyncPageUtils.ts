@@ -30,11 +30,23 @@ export interface RecordRow extends UserSyncRun {
 
 export const FIXED_PLATFORM_FIELD_ORDER = ['username', 'display_name', 'email', 'phone'] as const;
 
-export const PLATFORM_FIELD_META: Record<(typeof FIXED_PLATFORM_FIELD_ORDER)[number], { label: string; desc: string }> = {
-  username: { label: '用户名', desc: '系统登录唯一标识' },
-  display_name: { label: '显示名', desc: '用户展示名称' },
-  email: { label: '邮箱', desc: '用户邮箱地址' },
-  phone: { label: '手机号', desc: '用户联系电话' },
+export const PLATFORM_FIELD_META: Record<(typeof FIXED_PLATFORM_FIELD_ORDER)[number], { labelKey: string; descKey: string }> = {
+  username: {
+    labelKey: 'system.user.userSyncPage.platformField.username',
+    descKey: 'system.user.userSyncPage.platformField.usernameDesc',
+  },
+  display_name: {
+    labelKey: 'system.user.userSyncPage.platformField.displayName',
+    descKey: 'system.user.userSyncPage.platformField.displayNameDesc',
+  },
+  email: {
+    labelKey: 'system.user.userSyncPage.platformField.email',
+    descKey: 'system.user.userSyncPage.platformField.emailDesc',
+  },
+  phone: {
+    labelKey: 'system.user.userSyncPage.platformField.phone',
+    descKey: 'system.user.userSyncPage.platformField.phoneDesc',
+  },
 };
 
 export function toMappingRows(fieldMapping: Record<string, unknown> | undefined): MappingRow[] {
@@ -85,18 +97,18 @@ export function getScheduleSummary(
     return t('system.user.userSyncPage.manualSync');
   }
   if (scheduleConfig.mode === 'daily') {
-    return t('system.user.userSyncPage.scheduleSummaryDaily').replace('{{time}}', String(scheduleConfig.time || '--'));
+    return t('system.user.userSyncPage.scheduleSummaryDaily').replace('{time}', String(scheduleConfig.time || '--'));
   }
   if (scheduleConfig.mode === 'weekly') {
     const weekdayLabels = (scheduleConfig.weekdays || [])
       .map((day) => t(`system.user.userSyncPage.weekdays.${day}`))
       .join('、');
     return t('system.user.userSyncPage.scheduleSummaryWeekly')
-      .replace('{{weekdays}}', weekdayLabels)
-      .replace('{{time}}', String(scheduleConfig.time || '--'));
+      .replace('{weekdays}', weekdayLabels)
+      .replace('{time}', String(scheduleConfig.time || '--'));
   }
   return t('system.user.userSyncPage.scheduleSummaryInterval')
-    .replace('{{hours}}', String(scheduleConfig.interval_hours || '--'));
+    .replace('{hours}', String(scheduleConfig.interval_hours || '--'));
 }
 
 function formatTemplate(
@@ -104,7 +116,7 @@ function formatTemplate(
   replacements: Record<string, string | number>
 ): string {
   return Object.entries(replacements).reduce(
-    (text, [key, value]) => text.replaceAll(`{{${key}}}`, String(value)),
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
     template
   );
 }

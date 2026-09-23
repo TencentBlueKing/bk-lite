@@ -6,6 +6,7 @@ import type {
   Room3DRack,
 } from "./room3DData";
 import { getRoom3DSceneRacks } from "./room3DData";
+import type { Room3DRackTopLines } from "@/app/ops-analysis/types/sceneWidget";
 import {
   ROOM3D_COL_GAP,
   ROOM3D_FRONT_AISLE_EXTRA,
@@ -316,6 +317,7 @@ export const createRoom3DScene = (
   mountNode: HTMLDivElement,
   roomData: Room3DResponse,
   callbacks: Room3DSceneCallbacks,
+  rackTopLines?: Room3DRackTopLines | null,
 ): Room3DSceneController => {
   const sceneRacks = getRoom3DSceneRacks(roomData);
   const sceneLayout = buildRoom3DSceneLayout(sceneRacks);
@@ -368,7 +370,7 @@ export const createRoom3DScene = (
   const pickTargets: THREE.Object3D[] = [];
   sceneRacks.forEach((rack) => {
     const { x, z } = getRoom3DRackScenePosition(rack, { maxRow, maxCol });
-    const visual = createRackVisual(rack, x, z);
+    const visual = createRackVisual(rack, x, z, rackTopLines);
     scene.add(visual.root);
     visuals.set(rack.rack_id, visual);
     pickTargets.push(...visual.pickTargets);

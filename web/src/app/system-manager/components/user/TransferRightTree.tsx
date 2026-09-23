@@ -6,7 +6,8 @@ import {
   getSubtreeKeys,
   getDeletableSubtreeKeys,
   cleanSelectedKeys,
-  isNodeDisabled
+  isNodeDisabled,
+  TRANSFER_TREE_HEIGHT,
 } from '@/app/system-manager/utils/roleTreeUtils';
 
 interface NodeHandlers {
@@ -259,9 +260,11 @@ const TransferRightTree: React.FC<TransferRightTreeProps> = ({
           allowClear
         />
       </div>
-      <div className="max-h-62.5 w-full overflow-auto p-1">
+      <div className="w-full p-1">
         <Tree
           blockNode
+          virtual
+          height={TRANSFER_TREE_HEIGHT}
           selectable={false}
           expandedKeys={rightExpandedKeys}
           onExpand={(keys) => onExpandedKeysChange(keys)}

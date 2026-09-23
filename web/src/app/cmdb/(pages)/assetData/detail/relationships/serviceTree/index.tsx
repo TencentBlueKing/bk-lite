@@ -128,7 +128,6 @@ const ServiceTree: React.FC<ServiceTreeProps> = ({ instUuid }) => {
 
   const kindLabel = (kind: ServiceTreeKind, modelName?: string) => {
     if (kind === 'system') return t('Model.serviceTreeKindSystem');
-    if (kind === 'biz_group') return t('Model.bizGroup');
     if (kind === 'application') return t('Model.serviceTreeKindApp');
     return modelName || kind;
   };

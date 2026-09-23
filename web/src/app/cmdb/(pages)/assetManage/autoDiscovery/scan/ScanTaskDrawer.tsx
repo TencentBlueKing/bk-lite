@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Checkbox, Drawer, Form, Input, InputNumber, Select, Spin, message } from 'antd';
+import { Alert, Button, Checkbox, Drawer, Form, Input, InputNumber, Select, Spin, message } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import GroupTreeSelector from '@/components/group-tree-select';
 import IpRangeInput from '@/app/cmdb/components/ipInput';
@@ -18,6 +18,8 @@ import {
   buildScanTaskSubmitMeta,
   hasScanCloudRegion,
   mapScanDetailToFormValues,
+  poolHasSshSecret,
+  withDefaultSnmpPool,
 } from './scanTaskForm';
 
 const SCAN_CREDENTIAL_LIMIT = 32;
@@ -29,6 +31,7 @@ export const SCAN_FAMILIES: Array<{
 }> = [
   { modelId: 'network', labelKey: 'Scan.familyNetwork', shape: 'snmp' },
   { modelId: 'host', labelKey: 'Scan.familyHost', shape: 'ssh' },
+  { modelId: 'middleware', labelKey: 'Scan.familyMiddleware', shape: 'ssh' },
   { modelId: 'physcial_server', labelKey: 'Scan.familyPhysical', shape: 'ipmi' },
   { modelId: 'database', labelKey: 'Scan.familyDatabase', shape: 'sql' },
   { modelId: 'influxdb', labelKey: 'Scan.familyInfluxdb', shape: 'influxdb' },
@@ -99,6 +102,14 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
     { label: string; value: string; origin: Record<string, unknown> }[]
   >([]);
   const families: string[] = Form.useWatch('families', form) || [];
+  const credentialValues: Record<string, CredentialPoolItem[]> = Form.useWatch('credentials', form) || {};
+  const includeMiddlewareUi = families.includes('middleware');
+  const includeHostUi = families.includes('host');
+  const middlewareAgentUi =
+    includeMiddlewareUi &&
+    !poolHasSshSecret(
+      includeHostUi ? credentialValues.host || [] : credentialValues.middleware || credentialValues.host || []
+    );
 
   useEffect(() => {
     if (!open) {
@@ -185,25 +196,39 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
       message.error(t('Scan.families'));
       return;
     }
+    const includeMiddleware = selectedFamilies.includes('middleware');
     const includeHost = selectedFamilies.includes('host');
+    const middlewareAgent =
+      includeMiddleware &&
+      !poolHasSshSecret(
+        includeHost ? values.credentials?.host || [] : values.credentials?.middleware || values.credentials?.host || []
+      );
+    const includeCloudRegion = includeHost || middlewareAgent;
     const submitMeta = buildScanTaskSubmitMeta({
       accessPointId: values.accessPointId,
       accessPoints,
       fallbackAccessPoint: savedAccessPoint,
-      includeHost,
+      includeCloudRegion,
       existingCloudRegion: savedCloudRegion,
       timeout: values.timeout,
     });
     const credentials: Record<string, CredentialPoolItem[]> = {};
     selectedFamilies.forEach((modelId) => {
-      const pool = sanitizePool(values.credentials?.[modelId] || []);
+      const sourcePool =
+        modelId === 'middleware' && includeHost
+          ? values.credentials?.host || []
+          : values.credentials?.[modelId] || [];
+      const pool = sanitizePool(sourcePool);
       if (modelId === 'database') {
         pool.forEach((item) => {
           delete item.port;
         });
       }
-      credentials[modelId] = pool;
+      credentials[modelId] = modelId === 'network' ? withDefaultSnmpPool(pool) : pool;
     });
+    if (includeHost) {
+      credentials.middleware = sanitizePool(values.credentials?.host || []);
+    }
     const payload = {
       name: values.name,
       team: values.team,
@@ -216,8 +241,8 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
       auto_generate_collect: false,
       cloud_region: submitMeta.cloud_region,
     };
-    if (includeHost && !hasScanCloudRegion(payload.cloud_region)) {
-      message.error(t('Scan.cloudRegionRequired'));
+    if (includeCloudRegion && !hasScanCloudRegion(payload.cloud_region)) {
+      message.error(t('Scan.cloudRegionRequiredAgent'));
       return;
     }
     setSubmitting(true);
@@ -363,34 +388,52 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
               </Checkbox.Group>
             </Form.Item>
 
-            {SCAN_FAMILIES.filter((family) => families.includes(family.modelId)).map((family) => (
-              <div
-                key={family.modelId}
-                className="mt-3 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3.5"
-              >
-                <Form.Item
-                  label={
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-[var(--color-text-1)]">{t(family.labelKey)}</span>
-                      {family.modelId === 'database' ? (
-                        <span className="text-xs font-normal text-[var(--color-text-3)]">
-                          （{t('Scan.databasePortHint')}）
-                        </span>
-                      ) : null}
-                    </div>
-                  }
-                  name={['credentials', family.modelId]}
-                  className="!mb-0"
+            {SCAN_FAMILIES.filter((family) => families.includes(family.modelId))
+              .filter((family) => !(family.modelId === 'middleware' && includeHostUi))
+              .map((family) => (
+                <div
+                  key={family.modelId}
+                  className="mt-3 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3.5"
                 >
-                  <CredentialPoolEditor
-                    credentialShape={family.shape}
-                    showPort={family.modelId !== 'database'}
-                    maxCount={SCAN_CREDENTIAL_LIMIT}
-                    editMode={Boolean(editId)}
-                  />
-                </Form.Item>
-              </div>
-            ))}
+                  {family.modelId === 'host' || family.modelId === 'middleware' ? (
+                    <Alert
+                      type="info"
+                      showIcon
+                      className="mb-3"
+                      message={t('Scan.jobCredentialOptionalTip')}
+                    />
+                  ) : null}
+                  {middlewareAgentUi && (family.modelId === 'host' || family.modelId === 'middleware') ? (
+                    <Alert
+                      type="info"
+                      showIcon
+                      className="mb-3"
+                      message={t('Scan.agentCloudRegionHint')}
+                    />
+                  ) : null}
+                  <Form.Item
+                    label={
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-[var(--color-text-1)]">{t(family.labelKey)}</span>
+                        {family.modelId === 'database' ? (
+                          <span className="text-xs font-normal text-[var(--color-text-3)]">
+                            （{t('Scan.databasePortHint')}）
+                          </span>
+                        ) : null}
+                      </div>
+                    }
+                    name={['credentials', family.modelId]}
+                    className="!mb-0"
+                  >
+                    <CredentialPoolEditor
+                      credentialShape={family.shape}
+                      showPort={family.modelId !== 'database'}
+                      maxCount={SCAN_CREDENTIAL_LIMIT}
+                      editMode={Boolean(editId)}
+                    />
+                  </Form.Item>
+                </div>
+              ))}
           </div>
         </Form>
       </Spin>

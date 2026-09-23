@@ -89,7 +89,7 @@ def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_wi
     ]
 
 
-def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
+def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
     screen = _load_builtin_room3d_screen()
     assert screen["view_sets"]["viewport"] == {
@@ -99,6 +99,7 @@ def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
         "background": {"key": "tech-grid", "type": "builtIn"},
     }
     assert screen["view_sets"]["decorations"] == {"title": "机柜全景", "showClock": True, "showTitle": True}
+    assert screen["refs"] == {"datasource_keys": [], "namespace_keys": []}
     assert len(screen["view_sets"]["items"]) == 1
     widget = screen["view_sets"]["items"][0]
     assert widget["x"] == 0
@@ -106,23 +107,14 @@ def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
     assert widget["w"] == 1920
     assert widget["h"] == 1000
     assert widget["chartType"] == "room3D"
-    assert widget["valueConfig"]["appearance"] == {"frame": "bare"}
-    assert widget["valueConfig"]["dataSource"] == "CMDB 3D机房布局::cmdb/get_room3d_layout"
-
-    datasource = next(item for item in payload["datasources"] if item["key"] == widget["valueConfig"]["dataSource"])
-    room_param = datasource["params"][0]
-    assert room_param["name"] == "server_room_id"
-    assert room_param["value"] == ""
-    assert room_param["inputConfig"] == {
-        "control": "select",
-        "componentSwitch": True,
-        "optionsSource": {
-            "type": "dynamic",
-            "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
-            "valueField": "inst_uuid",
-            "labelField": "inst_name",
-        },
+    assert widget["valueConfig"] == {
+        "chartType": "room3D",
+        "sceneWidgetType": "room3D",
+        "appearance": {"frame": "bare"},
     }
+    assert "dataSource" not in widget["valueConfig"]
+    assert all(item["key"] != "CMDB 3D机房布局::cmdb/get_room3d_layout" for item in payload["datasources"])
+    assert all(item.get("rest_api") != "cmdb/get_room_list" for item in payload["datasources"])
 
 
 @pytest.mark.unit
@@ -226,13 +218,14 @@ def test_builtin_alert_cmdb_datasource_contracts_are_complete():
         "cmdb/get_region_resource_overview": "地区分类实例数",
         "cmdb/get_cmdb_collect_statistics": "CMDB 采集任务状态",
         "get_instance_group_by": "主机操作系统分布",
-        "cmdb/get_room_list": "CMDB 机房列表（选项）",
         "cmdb/get_model_classification_options": "CMDB 模型分类列表（选项）",
         "cmdb/get_region_options": "CMDB 地区列表（选项）",
         "cmdb/get_change_trend": "CMDB 变更趋势",
     }
     for rest_api, expected_name in expected_names.items():
         assert by_api[rest_api]["name"] == expected_name
+    assert "cmdb/get_room3d_layout" not in by_api
+    assert "cmdb/get_room_list" not in by_api
     source_api_by_rest = {item["rest_api"]: item for item in source_api}
     assert source_api_by_rest["alert/get_alert_trend_data"]["key"] == "告警趋势::alert/get_alert_trend_data"
     assert source_api_by_rest["alert/get_alert_source_distribution"]["key"] == "告警来源分布::alert/get_alert_source_distribution"
@@ -1039,13 +1032,26 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert room3d_screen.build_in_key == "screen::3D机房大屏_内置"
     assert room3d_screen.directory.build_in_key == "__builtin__"
     assert room3d_screen.view_sets["decorations"] == {"title": "机柜全景", "showClock": True, "showTitle": True}
-    room3d_widget = room3d_screen.view_sets["items"][0]
-    room3d_datasource = DataSourceAPIModel.objects.get(name="CMDB 3D机房布局")
-    assert room3d_widget["chartType"] == "room3D"
-    assert room3d_widget["valueConfig"]["dataSource"] == room3d_datasource.id
-    assert room3d_widget["valueConfig"]["appearance"] == {"frame": "bare"}
-    room_param = room3d_datasource.params[0]
-    assert room_param["inputConfig"]["componentSwitch"] is True
+    assert room3d_screen.view_sets["items"] == [
+        {
+            "h": 1000,
+            "w": 1920,
+            "x": 0,
+            "y": 80,
+            "id": "builtin-room3d-main",
+            "type": "widget",
+            "title": "3D机房",
+            "zIndex": 1,
+            "chartType": "room3D",
+            "valueConfig": {
+                "chartType": "room3D",
+                "sceneWidgetType": "room3D",
+                "appearance": {"frame": "bare"},
+            },
+        }
+    ]
+    assert not DataSourceAPIModel.objects.filter(rest_api="cmdb/get_room3d_layout").exists()
+    assert not DataSourceAPIModel.objects.filter(rest_api="cmdb/get_room_list").exists()
 
     application3d_screen = Screen.objects.get(name="3D应用大屏", is_build_in=True)
     assert application3d_screen.build_in_key == "screen::3D应用大屏_内置"
@@ -1085,14 +1091,16 @@ def test_init_builtin_canvases_marks_existing_directory_builtin():
     from apps.system_mgmt.models.user import Group
 
     Group.objects.get_or_create(name="Default")
+    extra = Group.objects.create(name="Custom Org")
     _ensure_default_namespace()
-    # 预先存在同名根目录（非内置）
-    existing = Directory.objects.create(name="内置目录", parent=None, groups=[], created_by="u")
+    # 预先存在同名根目录（非内置），已配置组织可见性
+    existing = Directory.objects.create(name="内置目录", parent=None, groups=[extra.pk], created_by="u")
     call_command("init_builtin_canvases")
 
     existing.refresh_from_db()
     assert existing.is_build_in is True
     assert existing.build_in_key == "__builtin__"
+    assert existing.groups == [extra.pk]
 
 
 @pytest.mark.django_db

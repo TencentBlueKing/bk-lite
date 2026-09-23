@@ -40,7 +40,7 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.3.0"
+        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.3"
         name = "celsius"
         conversion = "int"
     # ---- 可选 locTempAlarm 1.3.6.1.4.1.25651.1.2.4.2.3.1.2 → device_temp_alarm ----
@@ -49,7 +49,7 @@
         name = "device_temp"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.2.0"
+        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.2"
         name = "alarm"
         conversion = "int"
     # ---- locCurrentRSL 1.3.6.1.4.1.25651.1.2.4.3.1.3 → rsl_dbm ----
@@ -58,7 +58,7 @@
         name = "rsl"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25651.1.2.4.3.1.3.0"
+        oid = "1.3.6.1.4.1.25651.1.2.4.3.1.3"
         name = "dbm"
         conversion = "int"
     # ---- 可选 locLinkState 1.3.6.1.4.1.25651.1.2.4.2.3.1.1 → device_link_state ----
@@ -67,7 +67,7 @@
         name = "device_link"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.1.0"
+        oid = "1.3.6.1.4.1.25651.1.2.4.2.3.1.1"
         name = "state"
         conversion = "int"
 # ---- CPU/内存/风扇/电源：ExaltComProducts 已确认内部温度、接收电平与可选温度/链路告警。无私有 CPU%/内存% 对象，不臆造。风扇与电源不是稳定共享健康对象，不采。----

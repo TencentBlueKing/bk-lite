@@ -25,6 +25,7 @@ from apps.mlops.utils.group_scope import (
     validate_requested_teams,
 )
 from apps.mlops.utils.i18n import serializer_message
+from apps.mlops.utils.serving_port import ServingPortValidationMixin
 
 
 class AnomalyDetectionDatasetSerializer(AuthSerializer):
@@ -361,9 +362,9 @@ class AnomalyDetectionPredictRequestSerializer(serializers.Serializer):
     def validate_data(self, value):
         """验证时序数据"""
         if not value:
-            raise serializers.ValidationError("数据不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.predict_data_empty"))
         if len(value) < 2:
-            raise serializers.ValidationError("至少需要2个数据点")
+            raise serializers.ValidationError(serializer_message(self, "error.predict_data_min_points"))
         return value
 
 
@@ -389,7 +390,7 @@ class AnomalyDetectionPredictResponseSerializer(serializers.Serializer):
     predictions = PredictionResultSerializer(many=True, help_text="预测结果列表")
 
 
-class AnomalyDetectionServingSerializer(AuthSerializer):
+class AnomalyDetectionServingSerializer(ServingPortValidationMixin, AuthSerializer):
     permission_key = "serving.anomaly_detection_serving"
 
     train_job_algorithm = serializers.CharField(source="train_job.algorithm", read_only=True)

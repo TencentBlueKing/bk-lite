@@ -86,7 +86,7 @@ class TestAlertTypeHelpers:
         mgr = EventAlertManager(_policy(), {}, [])
         assert mgr._build_alert_key("('h1',)", "alert") == ("('h1',)", "alert")
         assert mgr._build_alert_key("metric-1", "no_data", "host-1") == (
-            "host-1",
+            "metric-1",
             "no_data",
         )
 
@@ -260,7 +260,7 @@ class TestCreateEventsAndAlerts:
         assert new_alerts[0].level == "error"
         assert new_alerts[0].value is None
 
-    def test_no_data_events_for_same_instance_share_one_alert(self, stub_s3, mocker):
+    def test_no_data_events_keep_metric_instance_granularity(self, stub_s3, mocker):
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
@@ -286,12 +286,16 @@ class TestCreateEventsAndAlerts:
 
         event_objs, new_alerts = mgr.create_events_and_alerts(events)
 
-        assert len(new_alerts) == 1
-        assert len(event_objs) == 1
-        assert event_objs[0].action == MonitorEvent.Action.TRIGGERED
-        assert {event.alert_id for event in event_objs} == {new_alerts[0].id}
+        assert len(new_alerts) == 2
+        assert len(event_objs) == 2
+        assert {event.action for event in event_objs} == {MonitorEvent.Action.TRIGGERED}
+        assert {alert.metric_instance_id for alert in new_alerts} == {
+            "('pod-1', 'api')",
+            "('pod-1', 'worker')",
+        }
+        assert {event.alert_id for event in event_objs} == {alert.id for alert in new_alerts}
 
-    def test_no_data_event_reuses_active_alert_for_same_instance(self, stub_s3, mocker):
+    def test_no_data_event_does_not_reuse_alert_for_different_metric_instance(self, stub_s3, mocker):
         mocker.patch(
             "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
         )
@@ -315,9 +319,11 @@ class TestCreateEventsAndAlerts:
 
         event_objs, new_alerts = mgr.create_events_and_alerts(events)
 
-        assert new_alerts == []
-        assert event_objs == []
-        assert MonitorEvent.objects.filter(alert_id=existing.id).count() == 0
+        assert len(new_alerts) == 1
+        assert new_alerts[0].metric_instance_id == "('pod-1', 'worker')"
+        assert len(event_objs) == 1
+        assert event_objs[0].alert_id == new_alerts[0].id
+        assert MonitorAlert.objects.filter(policy_id=1, alert_type="no_data", status="new").count() == 2
 
     def test_threshold_events_keep_metric_instance_granularity(self, stub_s3, mocker):
         mocker.patch(

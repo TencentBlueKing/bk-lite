@@ -1,0 +1,81 @@
+{
+  "object": "Router",
+  "plugin": "Router Advantech SNMP",
+  "templates": [
+    {
+      "name": "Advantech路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Advantech ICR/Conel 蜂窝工业路由器的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、蜂窝会话抖动或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Advantech路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Advantech ICR/Conel 蜂窝工业路由器的内存使用率，当超过阈值时触发告警，便于及时发现内存压力导致转发或会话处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Advantech路由器温度过高",
+      "alert_name": "路由器${resource_name} 温度过高",
+      "description": "监控 Advantech ICR/Conel 蜂窝工业路由器的内部温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高。ICR-2[0|4|5|6]xx 不暴露该叶，无数据时不会误告。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

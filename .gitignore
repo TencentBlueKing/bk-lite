@@ -77,6 +77,7 @@ docs/superpowers/
 .claude/launch.json
 .claude/settings.local.json
 .superpowers/
+.superdesign/
 
 # 本机开发底座与热同步脚本（不进入生产交付）
 /deploy/local/

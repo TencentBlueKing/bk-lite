@@ -8,6 +8,7 @@ from apps.cmdb.services.job_host_discovery_policy import supports_host_discovery
 from apps.system_mgmt.models import CredentialType
 
 HOST_COLLECT_OBJECTS_MERGED_TO_HOST = {"aix", "hpux", "domestic_linux"}
+HIDDEN_ENTERPRISE_COLLECT_OBJECTS = HOST_COLLECT_OBJECTS_MERGED_TO_HOST | {"server_bmc"}
 
 
 def _get_enterprise_collect_obj_tree():
@@ -35,7 +36,7 @@ def _normalize_enterprise_children(children):
 
 
 def _should_skip_enterprise_child(category_id, model_id):
-    return category_id == "host_manage" and model_id in HOST_COLLECT_OBJECTS_MERGED_TO_HOST
+    return model_id in HIDDEN_ENTERPRISE_COLLECT_OBJECTS
 
 
 def get_collect_obj_tree(*, with_credential_types=False):

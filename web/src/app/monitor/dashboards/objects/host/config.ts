@@ -52,14 +52,15 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'CPU 等待 I/O 的时间占比（主要适用于 Linux；Windows 通常无对等语义）。',
       unit: 'percent',
       query: 'cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}',
-      color: HOST_PALETTE.orange
+      color: HOST_PALETTE.orange,
+      linuxOnly: true
     },
     {
       name: 'cpu_usage_other_total',
       display_name: '其他 CPU 占比',
       description: '除用户态、内核态和 I/O Wait 以外的 CPU 占比。',
       unit: 'percent',
-      query: 'clamp_min(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type="os", __$labels__} - cpu_usage_user_total_gauge{instance_type="os", __$labels__} - cpu_usage_system_total_gauge{instance_type="os", __$labels__} - cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}, 0)',
+      query: 'clamp_min(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type="os", __$labels__} - cpu_usage_user_total_gauge{instance_type="os", __$labels__} - cpu_usage_system_total_gauge{instance_type="os", __$labels__} - cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}, 0) or clamp_min(cpu_usage_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__} - cpu_usage_user_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__} - cpu_usage_system_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__} - cpu_usage_iowait_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}, 0)',
       color: HOST_PALETTE.neutral
     },
     {
@@ -67,24 +68,27 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '1 分钟负载',
       description: '主机最近 1 分钟平均负载。',
       unit: 'none',
-      query: 'system_load1{instance_type="os", __$labels__} or system_load1_gauge{instance_type="os", __$labels__} or host_cpu_load_1m_gauge{instance_type="os", __$labels__} or system_load1_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: HOST_PALETTE.indigo
+      query: 'system_load1{instance_type="os", __$labels__} or system_load1_gauge{instance_type="os", __$labels__} or host_cpu_load_1m_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.indigo,
+      linuxOnly: true
     },
     {
       name: 'system_load5',
       display_name: '5 分钟负载',
       description: '主机最近 5 分钟平均负载。',
       unit: 'none',
-      query: 'system_load5{instance_type="os", __$labels__} or system_load5_gauge{instance_type="os", __$labels__} or host_cpu_load_5m_gauge{instance_type="os", __$labels__} or system_load5_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: HOST_PALETTE.cyan
+      query: 'system_load5{instance_type="os", __$labels__} or system_load5_gauge{instance_type="os", __$labels__} or host_cpu_load_5m_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.cyan,
+      linuxOnly: true
     },
     {
       name: 'system_load15',
       display_name: '15 分钟负载',
       description: '主机最近 15 分钟平均负载。',
       unit: 'none',
-      query: 'system_load15{instance_type="os", __$labels__} or system_load15_gauge{instance_type="os", __$labels__} or host_cpu_load_15m_gauge{instance_type="os", __$labels__} or system_load15_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: HOST_PALETTE.emerald
+      query: 'system_load15{instance_type="os", __$labels__} or system_load15_gauge{instance_type="os", __$labels__} or host_cpu_load_15m_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.emerald,
+      linuxOnly: true
     },
     {
       name: 'system_uptime',
@@ -117,7 +121,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '可用内存',
       description: '主机当前可用内存。',
       unit: 'bytes',
-      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or mem_available_gauge{instance_type="os", config_type=~"host_(aix|freebsd|solaris)_remote", __$labels__}',
       color: HOST_PALETTE.cyan
     },
     {
@@ -125,16 +129,18 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '阻塞进程数',
       description: '当前处于不可中断等待（常与慢 I/O 相关）的进程数量。',
       unit: 'counts',
-      query: 'processes_blocked{instance_type="os", __$labels__} or processes_blocked_gauge{instance_type="os", __$labels__} or processes_blocked_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: HOST_PALETTE.orange
+      query: 'processes_blocked{instance_type="os", __$labels__} or processes_blocked_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.orange,
+      linuxOnly: true
     },
     {
       name: 'processes_zombies',
       display_name: '僵尸进程数',
       description: '当前处于僵尸状态的进程数量。',
       unit: 'counts',
-      query: 'processes_zombies{instance_type="os", __$labels__} or processes_zombies_gauge{instance_type="os", __$labels__} or processes_zombies_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: HOST_PALETTE.rose
+      query: 'processes_zombies{instance_type="os", __$labels__} or processes_zombies_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.rose,
+      linuxOnly: true
     },
     {
       name: 'net_bytes_recv_rate',
@@ -231,6 +237,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'system_load1',
       color: HOST_PALETTE.cyan,
       icon: 'node',
+      linuxOnly: true,
       guide: [{
         label: '系统负载',
         detail: '主机最近 1 分钟平均负载（可运行 + 不可中断等待的进程数）。结合 CPU 使用率与 I/O Wait 区分算力打满还是卡在 I/O。'
@@ -250,13 +257,14 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { metric: 'cpu_usage_total', label: 'CPU 使用率', color: HOST_PALETTE.blue, unit: 'percent' },
         { metric: 'mem_used_percent', label: '内存使用率', color: HOST_PALETTE.emerald, unit: 'percent' },
         { metric: 'disk_used_percent', label: '磁盘使用率', color: HOST_PALETTE.amber, unit: 'percent' },
-        { metric: 'cpu_usage_iowait_total', label: 'I/O Wait 占比', color: HOST_PALETTE.orange, unit: 'percent' }
+        { metric: 'cpu_usage_iowait_total', label: 'I/O Wait 占比', color: HOST_PALETTE.orange, unit: 'percent', linuxOnly: true }
       ]
     },
     {
       title: '系统负载趋势',
       subtitle: '1 / 5 / 15 分钟',
       metric: 'system_load1',
+      linuxOnly: true,
       guide: [{ label: '系统负载', detail: '1 / 5 / 15 分钟平均负载（运行 + 等待的进程数）。持续偏高时结合 CPU 使用率与 I/O Wait 判断是算力不足还是等待 I/O。' }],
       series: [
         { metric: 'system_load1', label: '1 分钟', color: HOST_PALETTE.indigo, unit: 'none' },
@@ -307,6 +315,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '进程异常趋势',
       subtitle: '阻塞与僵尸进程',
       metric: 'processes_blocked',
+      linuxOnly: true,
       guide: [{
         label: '进程异常',
         detail: '阻塞进程持续非零多与慢 I/O / 不可中断等待相关；僵尸进程非零查父进程未回收。I/O Wait 见上方 KPI 与资源趋势（Linux）。'
@@ -330,7 +339,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       segments: [
         { label: '用户态', metric: 'cpu_usage_user_total', color: HOST_PALETTE.blue, unit: 'percent' },
         { label: '内核态', metric: 'cpu_usage_system_total', color: HOST_PALETTE.indigo, unit: 'percent' },
-        { label: 'I/O Wait 占比', metric: 'cpu_usage_iowait_total', color: HOST_PALETTE.orange, unit: 'percent' },
+        { label: 'I/O Wait 占比', metric: 'cpu_usage_iowait_total', color: HOST_PALETTE.orange, unit: 'percent', linuxOnly: true },
         { label: '其他', metric: 'cpu_usage_other_total', color: HOST_PALETTE.neutral, unit: 'percent' }
       ]
     }

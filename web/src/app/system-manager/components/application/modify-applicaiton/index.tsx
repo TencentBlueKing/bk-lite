@@ -218,7 +218,7 @@ const ApplicationFormModal: React.FC<ApplicationFormModalProps> = ({
           {iconSelectorVisible && (
             <div 
               ref={iconSelectorRef}
-              className="absolute z-50 left-0 right-0 mt-10 bg-white border border-gray-200 rounded-md shadow-lg p-4 max-h-[300px] overflow-y-auto"
+              className="absolute z-50 left-0 right-0 mt-10 max-h-[300px] overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-lg"
             >
               <Input
                 ref={searchInputRef}
@@ -249,7 +249,7 @@ const ApplicationFormModal: React.FC<ApplicationFormModalProps> = ({
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-4 text-gray-500">
+                <div className="py-4 text-center text-[var(--color-text-3)]">
                   {t('system.application.noIconsFound')}
                 </div>
               )}
@@ -338,7 +338,7 @@ const ApplicationFormModal: React.FC<ApplicationFormModalProps> = ({
               </Tooltip>
             )}
           </div>
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-[var(--color-text-3)]">
             {t('system.application.tagsHelp')}
           </div>
         </Form.Item>

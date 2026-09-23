@@ -155,7 +155,10 @@ def test_health_metrics_are_temperature_and_conservative_power_state(metrics):
     assert by_name["device_temperature_celsius"]["query"].replace(" ", "").startswith("max(")
     assert by_name["device_psu_state"]["metric_group"] == "Hardware Status"
     assert by_name["device_psu_state"]["data_type"] == "Enum"
-    assert by_name["device_psu_state"]["unit"] == "none"
+    psu_options = json.loads(by_name["device_psu_state"]["unit"])
+    psu_by_id = {item["id"]: item["name"] for item in psu_options}
+    assert psu_by_id[1] == "healthy"
+    assert psu_by_id[2] == "fault"
     assert by_name["device_psu_state"]["query"].replace(" ", "").startswith("max(")
 
 

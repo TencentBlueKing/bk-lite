@@ -40,7 +40,12 @@ class EnterpriseWechatAibotCrypto:
             raise EnterpriseWechatAibotCryptoError("invalid decrypted json") from exc
 
     def _signature_matches(self, msg_signature: str, timestamp: str, nonce: str, encrypted: str) -> bool:
-        raw = "".join(sorted([self.token, timestamp, nonce, encrypted]))
+        token = (self.token or "").strip()
+        timestamp = (timestamp or "").strip()
+        nonce = (nonce or "").strip()
+        encrypted = (encrypted or "").strip()
+        msg_signature = (msg_signature or "").strip().lower()
+        raw = "".join(sorted([token, timestamp, nonce, encrypted]))
         expected = hashlib.sha1(raw.encode("utf-8")).hexdigest()
         return hmac.compare_digest(expected, msg_signature)
 

@@ -7,7 +7,13 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet, ViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.current_team_scope import scope_permission_queryset, validate_assignable_organizations
+from apps.core.utils.current_team_scope import (
+    assert_unassigned_catalog_access,
+    is_persisted_superuser,
+    missing_organization_q,
+    scope_permission_queryset,
+    validate_assignable_organizations,
+)
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
     get_instance_permission_map,
@@ -442,7 +448,12 @@ class CollectInstanceViewSet(ViewSet):
 
         permission_data, current_teams = self._get_permission_context(request)
         for instance_id in normalized_ids:
-            if not self._instance_orgs(instance_map[instance_id]).intersection(current_teams):
+            orgs = self._instance_orgs(instance_map[instance_id])
+            if not orgs:
+                if is_persisted_superuser(getattr(request, "user", None)):
+                    continue
+                return None, WebUtils.response_403("User does not have permission to operate this instance")
+            if not orgs.intersection(current_teams):
                 return None, WebUtils.response_403("User does not have permission to operate this instance")
             if getattr(request.user, "is_superuser", False):
                 continue
@@ -560,6 +571,20 @@ class CollectInstanceViewSet(ViewSet):
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc))
         scope = LogAccessScopeService.get_data_scope(request)
+
+        if assert_unassigned_catalog_access(request):
+            qs = CollectInstance.objects.filter(missing_organization_q(CollectInstanceOrganization, fk_name="collect_instance_id"))
+            data = CollectTypeService.search_instance_with_permission(
+                collect_type_id=collect_type_id,
+                name=name,
+                page=page,
+                page_size=page_size,
+                queryset=qs,
+                visible_organization_ids=scope.data_team_ids,
+            )
+            for instance_info in data["items"]:
+                instance_info["permission"] = PermissionConstants.DEFAULT_PERMISSION
+            return WebUtils.response_success(data)
 
         if collect_type_id:
             # 单采集类型查询 - 使用与监控模块完全一致的权限检查方式

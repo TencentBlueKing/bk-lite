@@ -14,6 +14,21 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from apps.core.utils.time_util import parse_rfc3339_range_utc, rfc3339_to_timestamp
+from apps.monitor.services.host_metric_queries import (
+    cpu_usage_query,
+    disk_used_percent_query,
+    disk_read_latency_query,
+    disk_write_latency_query,
+    diskio_io_util_query,
+    diskio_read_bytes_query,
+    diskio_write_bytes_query,
+    load5_query,
+    mem_used_percent_query,
+    net_bytes_recv_query,
+    net_bytes_sent_query,
+    processes_blocked_query,
+    processes_zombies_query,
+)
 from apps.monitor.services.host_resource_top import (
     DEFAULT_INTERVAL_SECONDS,
     HostCandidate,
@@ -49,6 +64,7 @@ SUPPORTED_RANGE_METRIC_TYPES = (
     "net_out",
     "disk_io",
     "disk_write_latency",
+    "disk_read_latency",
     "disk_read_rate",
     "disk_write_rate",
     "processes_blocked",
@@ -56,58 +72,57 @@ SUPPORTED_RANGE_METRIC_TYPES = (
 )
 
 
-def _cpu_usage_from_idle(value: float) -> float:
-    return 100.0 - value
-
-
 RANGE_METRIC_SPECS: dict[str, dict[str, Any]] = {
     "cpu": {
-        "query": '{__name__="cpu_usage_idle",cpu="cpu-total"}',
+        "query": cpu_usage_query(),
         "fold": RANGE_METRIC_FOLD_IDENTITY,
-        "transform": _cpu_usage_from_idle,
     },
     "memory": {
-        "query": '{__name__="mem_used_percent"}',
+        "query": mem_used_percent_query(),
         "fold": RANGE_METRIC_FOLD_IDENTITY,
     },
     "disk": {
-        "query": '{__name__="disk_used_percent"}',
+        "query": disk_used_percent_query(),
         "fold": RANGE_METRIC_FOLD_MAX,
     },
     "load5": {
-        "query": '{__name__="system_load5"}',
+        "query": load5_query(),
         "fold": RANGE_METRIC_FOLD_IDENTITY,
     },
     "net_in": {
-        "query": 'rate(net_bytes_recv{instance_type="os"}[5m])',
+        "query": net_bytes_recv_query(),
         "fold": RANGE_METRIC_FOLD_SUM,
     },
     "net_out": {
-        "query": 'rate(net_bytes_sent{instance_type="os"}[5m])',
+        "query": net_bytes_sent_query(),
         "fold": RANGE_METRIC_FOLD_SUM,
     },
     "disk_io": {
-        "query": '{__name__="diskio_io_util"}',
+        "query": diskio_io_util_query(),
         "fold": RANGE_METRIC_FOLD_MAX,
     },
     "disk_write_latency": {
-        "query": 'rate(diskio_write_time{instance_type="os"}[5m]) / rate(diskio_writes{instance_type="os"}[5m])',
+        "query": disk_write_latency_query(),
+        "fold": RANGE_METRIC_FOLD_MAX,
+    },
+    "disk_read_latency": {
+        "query": disk_read_latency_query(),
         "fold": RANGE_METRIC_FOLD_MAX,
     },
     "disk_read_rate": {
-        "query": 'rate(diskio_read_bytes{instance_type="os"}[5m])',
+        "query": diskio_read_bytes_query(),
         "fold": RANGE_METRIC_FOLD_SUM,
     },
     "disk_write_rate": {
-        "query": 'rate(diskio_write_bytes{instance_type="os"}[5m])',
+        "query": diskio_write_bytes_query(),
         "fold": RANGE_METRIC_FOLD_SUM,
     },
     "processes_blocked": {
-        "query": '{__name__="processes_blocked"}',
+        "query": processes_blocked_query(),
         "fold": RANGE_METRIC_FOLD_IDENTITY,
     },
     "processes_zombies": {
-        "query": '{__name__="processes_zombies"}',
+        "query": processes_zombies_query(),
         "fold": RANGE_METRIC_FOLD_IDENTITY,
     },
 }

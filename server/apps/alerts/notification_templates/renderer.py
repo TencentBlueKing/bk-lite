@@ -33,7 +33,7 @@ MAX_SUBJECT_LENGTH = 200
 MAX_PLACEHOLDERS = 200
 MISSING_VALUE = "—"
 
-MARKDOWN_CHANNELS = {"enterprise_wechat_bot", "dingtalk_bot", "feishu_bot"}
+MARKDOWN_CHANNELS = {"enterprise_wechat_bot", "dingtalk_bot", "feishu_bot", "im_notification"}
 ALLOWED_ROOTS = {"alert", "labels", "dimensions", "enrichment", "notification", "summary", "events"}
 ALERT_FIELDS = {
     "alert_id",

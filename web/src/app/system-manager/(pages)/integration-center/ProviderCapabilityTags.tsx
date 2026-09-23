@@ -39,21 +39,22 @@ function CapabilityTagChip({
 
   const ready = appearance === 'ready';
   return (
-    <Tag
-      bordered
-      color={ready ? 'green' : 'default'}
-      className={`${className} rounded-md ${
-        ready
-          ? 'border-[#b7eb8f] bg-[#f6ffed] text-[#389e0d]'
-          : 'border-[#d9d9d9] bg-[#fafafa] text-[#8c8c8c]'
+    <span
+      className={`${className} h-5 rounded-md border-0 bg-[var(--color-fill-1)] px-1.5 font-normal ${
+        ready ? 'text-[var(--color-success)]' : 'text-[var(--color-text-3)]'
       }`}
       style={style}
     >
       <span className="flex min-w-0 items-center gap-1">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${ready ? 'bg-[#389e0d]' : 'bg-[#bfbfbf]'}`} />
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            ready ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-4)]'
+          }`}
+        />
         <span className="min-w-0 truncate">{tag.label}</span>
       </span>
-    </Tag>
+    </span>
   );
 }
 

@@ -1,7 +1,9 @@
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pandas as pd
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
 from django.core.management import call_command
@@ -15,6 +17,76 @@ from apps.mlops.utils.webhook_client import WebhookError
 
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
+
+
+def _create_running_classification_job(name: str) -> ClassificationTrainJob:
+    return ClassificationTrainJob.objects.create(
+        name=name,
+        description="",
+        team=[1],
+        status=TrainJobStatus.RUNNING,
+        algorithm="demo-algorithm",
+        dataset_version=None,
+        hyperopt_config={},
+    )
+
+
+def _capture_get_experiment_runs(monkeypatch):
+    captured = {}
+
+    def fake_get_experiment_runs(experiment_id, **kwargs):
+        captured["experiment_id"] = experiment_id
+        captured["kwargs"] = kwargs
+        return pd.DataFrame([{"run_id": "r1", "status": "RUNNING"}])
+
+    monkeypatch.setattr(
+        "apps.mlops.utils.mlflow_service.get_experiment_by_name",
+        lambda _experiment_name: SimpleNamespace(experiment_id="e1"),
+    )
+    monkeypatch.setattr(
+        "apps.mlops.utils.mlflow_service.get_experiment_runs",
+        fake_get_experiment_runs,
+    )
+    return captured
+
+
+def test_poll_train_job_status_limits_run_fetch_to_expected_count(monkeypatch):
+    train_job = _create_running_classification_job("poll-limit-expected-count")
+    captured = _capture_get_experiment_runs(monkeypatch)
+
+    def fake_retry(*args, **kwargs):
+        raise Retry()
+
+    monkeypatch.setattr(poll_train_job_status, "retry", fake_retry)
+
+    with pytest.raises(Retry):
+        poll_train_job_status.run(
+            train_job.id,
+            "Classification",
+            expected_run_count=3,
+        )
+
+    assert captured["experiment_id"] == "e1"
+    assert captured["kwargs"]["max_results"] == 3
+
+
+def test_poll_train_job_status_fetches_single_latest_run_when_count_unknown(monkeypatch):
+    train_job = _create_running_classification_job("poll-limit-unknown-count")
+    captured = _capture_get_experiment_runs(monkeypatch)
+
+    def fake_retry(*args, **kwargs):
+        raise Retry()
+
+    monkeypatch.setattr(poll_train_job_status, "retry", fake_retry)
+
+    with pytest.raises(Retry):
+        poll_train_job_status.run(
+            train_job.id,
+            "Classification",
+            expected_run_count=0,
+        )
+
+    assert captured["kwargs"]["max_results"] == 1
 
 
 def test_poll_train_job_status_observation_failure_does_not_force_stop_running_job(monkeypatch):

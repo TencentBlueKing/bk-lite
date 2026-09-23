@@ -143,7 +143,9 @@ async function resolveMonitorPublicContextOnce(
   return {
     monitorObject: object.id,
     monitorName: String(object.name || object.display_name || ''),
-    plugins: formatMonitorViewPluginTabs(plugins),
+    plugins: formatMonitorViewPluginTabs(plugins, {
+      objectDisplayName: object.display_name || object.name || '',
+    }),
     objects: objectsFromMonitorLookup(object),
     form: {
       instance_id: id,

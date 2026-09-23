@@ -96,6 +96,7 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
                 "col": 1,
                 "location": "A03",
                 "rack_type": "2",
+                "rack_state": None,
                 "u_count": 42,
                 "used_u": 21,
                 "free_u": 21,
@@ -413,6 +414,95 @@ def test_get_room3d_layout_returns_rack_type_name_from_cmdb_enum(monkeypatch):
     assert result["result"] is True
     assert result["data"]["racks"][0]["rack_type"] == "2"
     assert result["data"]["racks"][0]["rack_type_name"] == "网络"
+
+
+@pytest.mark.unit
+def test_get_room3d_layout_returns_rack_state_name_from_cmdb_enum(monkeypatch):
+    _install_permission(monkeypatch)
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
+    monkeypatch.setattr(
+        N.ExcludeFieldsCache,
+        "get_model_attrs",
+        lambda model_id: [
+            {
+                "attr_id": "datacenter_state",
+                "attr_type": N.FIELD_TYPE_ENUM,
+                "option": [
+                    {"id": "1", "name": "启用"},
+                    {"id": "2", "name": "停用"},
+                ],
+            }
+        ]
+        if model_id == "rack"
+        else [],
+    )
+    rack = _rack()
+    rack["datacenter_state"] = "2"
+    monkeypatch.setattr(
+        N,
+        "rack_room",
+        SimpleNamespace(
+            get_room_layout=lambda *a, **k: {
+                "racks": [rack],
+                "unplaced": [],
+                "conflicts": [],
+                "grid": {"max_row": 0, "max_col": 0},
+            },
+            get_rack_layout=lambda *a, **k: {"placed": [], "unplaced": []},
+        ),
+        raising=False,
+    )
+
+    result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
+
+    assert result["result"] is True
+    assert result["data"]["racks"][0]["rack_state"] == "2"
+    assert result["data"]["racks"][0]["rack_state_name"] == "停用"
+    assert "rack_type_name" not in result["data"]["racks"][0]
+
+
+@pytest.mark.unit
+def test_get_room3d_layout_resolves_list_datacenter_state(monkeypatch):
+    _install_permission(monkeypatch)
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
+    monkeypatch.setattr(
+        N.ExcludeFieldsCache,
+        "get_model_attrs",
+        lambda model_id: [
+            {
+                "attr_id": "datacenter_state",
+                "attr_type": N.FIELD_TYPE_ENUM,
+                "option": [
+                    {"id": "1", "name": "启用"},
+                    {"id": "2", "name": "停用"},
+                ],
+            }
+        ]
+        if model_id == "rack"
+        else [],
+    )
+    rack = _rack()
+    rack["datacenter_state"] = ["1"]
+    monkeypatch.setattr(
+        N,
+        "rack_room",
+        SimpleNamespace(
+            get_room_layout=lambda *a, **k: {
+                "racks": [rack],
+                "unplaced": [],
+                "conflicts": [],
+                "grid": {"max_row": 0, "max_col": 0},
+            },
+            get_rack_layout=lambda *a, **k: {"placed": [], "unplaced": []},
+        ),
+        raising=False,
+    )
+
+    result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
+
+    assert result["result"] is True
+    assert result["data"]["racks"][0]["rack_state"] == "1"
+    assert result["data"]["racks"][0]["rack_state_name"] == "启用"
 
 
 @pytest.mark.unit

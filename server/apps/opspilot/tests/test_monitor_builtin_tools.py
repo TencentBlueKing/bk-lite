@@ -20,6 +20,8 @@ def test_monitor_language_keys_exist_in_en_and_zh():
     assert "monitor_id" in zh_loader.get("tools.cmdb.description")
     assert "monitor_id" in en_loader.get("tools.cmdb.description")
     assert zh_loader.get("tools.alerts.tools.alerts_list_alerts.description")
+    assert "alerts_list_alerts" in zh_loader.get("tools.monitor.tools.monitor_list_active_alerts.description")
+    assert "monitor_list_active_alerts" in zh_loader.get("tools.alerts.tools.alerts_list_alerts.description")
     assert zh_loader.get("tools.log.tools.log_search_structured.description")
     assert en_loader.get("tools.monitor.description")
     assert zh_loader.get("tools.monitor.name")

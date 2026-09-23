@@ -1,0 +1,96 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cisco_firewall"
+        config_type = "cisco_firewall"
+        brand = "cisco"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- CPU：CISCO-PROCESS-MIB cpmCPUTotalTable，表列禁止 .0 ----
+    # cpmCPUTotal5minRev 1.3.6.1.4.1.9.9.109.1.1.1.1.8 → device_cpu_usage（0-100）
+    # cpmCPUTotal1minRev ...1.1.1.1.7 → device_cpu_usage_1min（可选短窗口）
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.8"
+        name = "usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.7"
+        name = "usage_1min"
+    # ---- 内存：CISCO-MEMORY-POOL-MIB ciscoMemoryPoolTable，表列禁止 .0 ----
+    # ciscoMemoryPoolName/Used/Free = ...9.9.48.1.1.1.2 / .5 / .6。不采 LargestFree。
+    # MEMPOOL_GLOBAL_SHARED 会主导整机内存统计，下方 starlark 按 name 丢弃。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.5"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.6"
+        name = "free"
+    # ---- 会话：CISCO-FIREWALL-MIB cfwConnectionStatTable，表列禁止 .0 ----
+    # 列 cfwConnectionStatValue 1.3.6.1.4.1.9.9.147.1.2.2.2.1.5
+    # 索引 service + type；current-in-use type=6 → firewall_active_sessions
+    # 不展开 buffer 统计表。
+    [[inputs.snmp.table]]
+        name = "firewall"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.147.1.2.2.2.1.5"
+        name = "active_sessions"
+
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    name = metric.tags.get("name") or ""
+    if "GLOBAL_SHARED" in name.upper():
+        return None
+    return metric
+'''
+
+[[processors.starlark]]
+    namepass = ["firewall"]
+    source = '''
+def apply(metric):
+    idx = metric.tags.get("index") or ""
+    parts = idx.split(".")
+    if len(parts) < 2 or parts[-1] != "6":
+        return None
+    return metric
+'''

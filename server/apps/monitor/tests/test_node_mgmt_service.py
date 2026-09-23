@@ -156,6 +156,26 @@ class TestSyncExistingInstanceAttrs:
         assert inst.is_active is True
         assert inst.is_deleted is False
         assert inst.updated_by == "system"
+        assert inst.interval == 60
+
+    def test_syncs_interval_from_payload(self):
+        obj = MonitorObject.objects.create(name="SyncIntervalObj", level="base")
+        MonitorInstance.objects.create(id="('h1',)", name="old", monitor_object=obj, interval=60)
+        SVC._sync_existing_instance_attrs(
+            [{"instance_id": "('h1',)", "instance_name": "new", "interval": 300}],
+        )
+        inst = MonitorInstance.objects.get(id="('h1',)")
+        assert inst.interval == 300
+
+    def test_keeps_existing_interval_when_payload_omits_it(self):
+        obj = MonitorObject.objects.create(name="KeepIntervalObj", level="base")
+        MonitorInstance.objects.create(id="('h1',)", name="old", monitor_object=obj, interval=300)
+        SVC._sync_existing_instance_attrs(
+            [{"instance_id": "('h1',)", "instance_name": "new"}],
+        )
+        inst = MonitorInstance.objects.get(id="('h1',)")
+        assert inst.interval == 300
+        assert inst.name == "new"
 
     def test_records_actor_as_updater(self):
         obj = MonitorObject.objects.create(name="SyncAttrActorObj", level="base")
@@ -239,6 +259,13 @@ class TestBuildInstanceObjects:
         assert objs[0].node_id == "n1"
         assert objs[0].cmdb_id == "ci-1"
 
+    def test_copies_interval_from_instance(self):
+        objs, _, _ = SVC._build_instance_objects(
+            [{"instance_id": "('h1',)", "instance_name": "h1", "group_ids": [1], "interval": 300}],
+            1,
+        )
+        assert objs[0].interval == 300
+
 
 class TestGetConfigContent:
     def _mk_config(self, is_child, file_type):
@@ -266,6 +293,40 @@ class TestGetConfigContent:
         out = SVC.get_config_content([cfg.id])
         assert "child" in out
         assert isinstance(out["child"]["content"], dict)
+
+    def test_child_toml_redacts_snmp_community(self, mocker):
+        cfg = self._mk_config(is_child=True, file_type="toml")
+        node = mocker.patch("apps.monitor.services.node_mgmt.NodeMgmt")
+        node.return_value.get_child_configs_by_ids.return_value = [
+            {"id": cfg.id, "content": '[[inputs.snmp]]\ncommunity = "lab-readonly-42"\n'}
+        ]
+        out = SVC.get_config_content([cfg.id])
+        content = out["child"]["content"]
+
+        def _communities(value):
+            found = []
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if str(key).lower() == "community":
+                        found.append(item)
+                    found.extend(_communities(item))
+            elif isinstance(value, list):
+                for item in value:
+                    found.extend(_communities(item))
+            return found
+
+        values = _communities(content)
+        assert values
+        assert all(item == "***" for item in values)
+        assert "lab-readonly-42" not in str(content)
+
+    def test_restore_redacted_community_from_existing_child(self):
+        from apps.monitor.services.node_mgmt import _restore_config_secrets
+
+        old = {"inputs": {"snmp": [{"community": "lab-readonly-42", "agent": "udp://1.1.1.1:161"}]}}
+        new = {"inputs": {"snmp": [{"community": "***", "agent": "udp://1.1.1.1:161"}]}}
+        restored = _restore_config_secrets(new, old)
+        assert restored["inputs"]["snmp"][0]["community"] == "lab-readonly-42"
 
     def test_base_yaml_config(self, mocker):
         cfg = self._mk_config(is_child=False, file_type="yaml")

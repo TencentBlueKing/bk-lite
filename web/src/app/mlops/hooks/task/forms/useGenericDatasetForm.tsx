@@ -32,12 +32,12 @@ import {
 
 interface ModalState {
   isOpen: boolean;
-  type: 'add' | 'edit';
+  type: 'add' | 'update';
   title: string;
 }
 
 interface ShowModalParams {
-  type: 'add' | 'edit';
+  type: 'add' | 'update';
   title: string;
   form: TrainJob | null;
 }

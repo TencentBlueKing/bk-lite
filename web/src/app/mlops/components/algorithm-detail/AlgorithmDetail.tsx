@@ -89,7 +89,7 @@ const AlgorithmDetail = ({ datasetType }: AlgorithmDetailProps) => {
       },
     },
     {
-      title: t('common.action'),
+      title: t('common.actions'),
       key: 'action',
       dataIndex: 'action',
       width: 200,

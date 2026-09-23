@@ -428,4 +428,8 @@ def _load_monitor_collector(monitor_type: str):
         from tasks.collectors.cisco_meraki_collector import CiscoMerakiCollector
 
         return CiscoMerakiCollector
+    if monitor_type == "redfish":
+        from tasks.collectors.redfish_collector import RedfishCollector
+
+        return RedfishCollector
     raise ValueError(f"unsupported monitor_type: {monitor_type}")

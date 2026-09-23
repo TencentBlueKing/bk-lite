@@ -11,9 +11,12 @@ from django.db.models.signals import post_delete
 from django_minio_backend import MinioBackend
 
 from apps.core.logger import mlops_logger as logger
-from apps.mlops.services.external_resource_cleanup import create_mlflow_cleanup_intent
+from apps.mlops.services.external_resource_cleanup import (
+    create_container_cleanup_intent,
+    create_mlflow_cleanup_intent,
+    create_minio_cleanup_intent,
+)
 from apps.mlops.utils import mlflow_service
-from apps.mlops.utils.webhook_client import WebhookClient, WebhookError
 
 
 class MetadataDeleteStrategy:
@@ -22,6 +25,31 @@ class MetadataDeleteStrategy:
     NONE = "none"  # 没有 metadata 字段
     HASATTR = "hasattr"  # 使用 hasattr(instance.metadata, "delete")
     MINIO_BACKEND = "minio_backend"  # 使用 MinioBackend.delete()
+
+
+def _file_storage_target(file_field) -> tuple[str, str] | None:
+    if not file_field or not getattr(file_field, "name", None):
+        return None
+    storage = file_field.storage
+    bucket = getattr(storage, "bucket_name", None) or getattr(storage, "bucket", None)
+    if not bucket:
+        return None
+    return str(bucket), str(file_field.name)
+
+
+def _enqueue_cleanup_intent_on_commit(intent, using: str, *, log_context: str) -> None:
+    def dispatch_cleanup():
+        from apps.mlops.tasks.external_resource_cleanup import enqueue_external_resource_cleanup_intent
+
+        scheduled = enqueue_external_resource_cleanup_intent(intent.pk, using=using)
+        if not scheduled:
+            logger.warning(
+                "外部资源清理任务未立即投递，将由周期扫描补偿: intent_id=%s, %s",
+                intent.pk,
+                log_context,
+            )
+
+    transaction.on_commit(dispatch_cleanup, using=using)
 
 
 def register_cleanup_signals(
@@ -95,23 +123,23 @@ def _register_dataset_release_cleanup(
     """注册数据集发布文件清理信号"""
 
     def cleanup_dataset_release_files(sender, instance, **kwargs):
+        using = kwargs.get("using", "default")
         logger.info(
             f"[Signal] post_delete 触发: {prefix}DatasetRelease, "
             f"dataset_release_id={instance.id}, version={instance.version}, "
             f"has_dataset_file={bool(instance.dataset_file)}"
         )
-
-        def delete_files():
-            try:
-                if instance.dataset_file:
-                    instance.dataset_file.delete(save=False)
-                    logger.info(f"成功删除数据集发布文件: {instance.dataset_file.name}, " f"dataset_release_id={instance.id}, version={instance.version}")
-                else:
-                    logger.debug(f"数据集发布版本没有文件, " f"dataset_release_id={instance.id}, version={instance.version}")
-            except Exception as e:
-                logger.error(f"删除数据集发布文件失败: {str(e)}, " f"dataset_release_id={instance.id}, version={instance.version}")
-
-        transaction.on_commit(delete_files)
+        target = _file_storage_target(instance.dataset_file)
+        if target is None:
+            logger.debug(f"数据集发布版本没有文件, " f"dataset_release_id={instance.id}, version={instance.version}")
+            return
+        bucket, path = target
+        intent = create_minio_cleanup_intent(bucket, path, using=using)
+        _enqueue_cleanup_intent_on_commit(
+            intent,
+            using,
+            log_context=f"dataset_release_id={instance.id}, path={path}",
+        )
 
     post_delete.connect(
         cleanup_dataset_release_files,
@@ -206,23 +234,23 @@ def _register_train_job_cleanup(
     """注册训练任务配置文件清理信号"""
 
     def cleanup_train_job_config_file(sender, instance, **kwargs):
+        using = kwargs.get("using", "default")
         logger.info(
             f"[Signal] post_delete 触发: {prefix}TrainJob, "
             f"train_job_id={instance.id}, name={instance.name}, "
             f"has_config_url={bool(instance.config_url)}"
         )
-
-        def delete_files():
-            try:
-                if instance.config_url:
-                    instance.config_url.delete(save=False)
-                    logger.info(f"成功删除训练任务配置文件: {instance.config_url.name}, " f"train_job_id={instance.id}, name={instance.name}")
-                else:
-                    logger.debug(f"训练任务没有配置文件, " f"train_job_id={instance.id}, name={instance.name}")
-            except Exception as e:
-                logger.error(f"删除训练任务配置文件失败: {str(e)}, " f"train_job_id={instance.id}, name={instance.name}")
-
-        transaction.on_commit(delete_files)
+        target = _file_storage_target(instance.config_url)
+        if target is None:
+            logger.debug(f"训练任务没有配置文件, " f"train_job_id={instance.id}, name={instance.name}")
+            return
+        bucket, path = target
+        intent = create_minio_cleanup_intent(bucket, path, using=using)
+        _enqueue_cleanup_intent_on_commit(
+            intent,
+            using,
+            log_context=f"train_job_id={instance.id}, path={path}",
+        )
 
     post_delete.connect(
         cleanup_train_job_config_file,
@@ -260,19 +288,11 @@ def _register_mlflow_cleanup(
             model_name,
             using=using,
         )
-
-        def dispatch_mlflow_cleanup():
-            from apps.mlops.tasks.external_resource_cleanup import enqueue_external_resource_cleanup_intent
-
-            scheduled = enqueue_external_resource_cleanup_intent(intent.pk, using=using)
-            if not scheduled:
-                logger.warning(
-                    "MLflow 清理任务未立即投递，将由周期扫描补偿: intent_id=%s, train_job_id=%s",
-                    intent.pk,
-                    train_job_id,
-                )
-
-        transaction.on_commit(dispatch_mlflow_cleanup, using=using)
+        _enqueue_cleanup_intent_on_commit(
+            intent,
+            using,
+            log_context=f"train_job_id={train_job_id}",
+        )
 
     post_delete.connect(
         cleanup_mlflow_experiment,
@@ -291,7 +311,8 @@ def _register_docker_cleanup(
     """注册 Docker 容器清理信号"""
 
     def cleanup_docker_container(sender, instance, origin=None, **kwargs):
-        if origin is instance or getattr(origin, "model", None) is sender:
+        using = kwargs.get("using", "default")
+        if origin is instance:
             logger.info(f"[Signal] 跳过 direct delete 的 {prefix}Serving 容器清理, " f"serving_id={instance.id}")
             return
 
@@ -307,29 +328,13 @@ def _register_docker_cleanup(
             return
 
         logger.info(f"[Signal] post_delete 触发: {prefix}Serving (容器清理), " f"serving_id={instance.id}, port={instance.port}")
-
-        def delete_container():
-            try:
-                container_id = f"{prefix}_Serving_{instance.id}"
-                result = WebhookClient.remove(container_id)
-
-                logger.info(f"成功删除 Docker 容器: container_id={container_id}, " f"serving_id={instance.id}, result={result}")
-
-            except WebhookError as e:
-                if "not found" in str(e).lower() or "does not exist" in str(e).lower():
-                    logger.warning(f"容器已不存在，跳过删除: container_id={prefix}_Serving_{instance.id}, " f"serving_id={instance.id}")
-                else:
-                    logger.error(
-                        f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, " f"serving_id={instance.id}",
-                        exc_info=True,
-                    )
-            except Exception as e:
-                logger.error(
-                    f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, " f"serving_id={instance.id}",
-                    exc_info=True,
-                )
-
-        transaction.on_commit(delete_container)
+        container_id = f"{prefix}_Serving_{instance.id}"
+        intent = create_container_cleanup_intent(container_id, using=using)
+        _enqueue_cleanup_intent_on_commit(
+            intent,
+            using,
+            log_context=f"serving_id={instance.id}, container_id={container_id}",
+        )
 
     post_delete.connect(
         cleanup_docker_container,

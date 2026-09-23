@@ -34,7 +34,7 @@ Status: implemented
 - 令牌：应用令牌使用 `client_credentials`，scope 为 Graph `.default`。委托令牌使用 `grant_type=password`（ROPC），同一 client 与 secret。应用令牌可按不可逆缓存键做进程内短缓存，临近过期或认证失败刷新。用户令牌缓存不得以明文密码入键。缓存与日志不得含 token、secret、密码。
 - `list_external_users`：应用令牌分页拉取 Graph 用户。第一页传 `$top=999`（Graph 上限）和 `$filter=userType eq 'Member'`，之后跟随 `@odata.nextLink`（后页不再重拼查询）。页数上限 100（约 10 万 Member），超限失败而不是截断当成功。客户端仍排除 Guest / `#EXT#`。对外字段至少包含 `id`、`name`（displayName）、`mail`、`userPrincipalName`、`mobile`。无邮箱的用户仍可出现在列表中，匹配是否成功交给渠道配置。
 - 通知业务模板：`identity_fields` 与 `receivable_fields` 仅为 `id`；`matchable_fields` 为 `id`、`mail`、`userPrincipalName`；默认外部匹配字段 `mail`，默认接收字段 `id`。映射、同步 run、定时任务、先同步再发送，全部走现有 IM 通知服务，不新建 Teams 专用表。
-- `send_message`：对每个 `receive_ids` 项（Graph 用户 id）独立处理。用委托用户令牌调 `/me` 取得发送方 Graph id（与 WeOps `USER_INFO_URL` 一致），再用应用令牌创建或取得该发送方与收件人的 `oneOnOne` chat，最后用委托用户令牌向该 chat 发一条文本消息。`chat_id` 按 Graph 返回值原样拼进消息 URL（含 `:`），不 percent-encode。标题与正文按现有通知服务合成纯文本（与企微/飞书相同拼接），不做 Adaptive Card、Tab 深链或 HTML 卡片。多人即多次 1:1。单人失败记入 `failures` 并继续；有成功有失败则 `partial_success`。未映射用户由通知服务拦截，adapter 不按邮箱/手机号改投。
+- `send_message`：对每个 `receive_ids` 项（Graph 用户 id）独立处理。用委托用户令牌调 `/me` 取得发送方 Graph id（与 WeOps `USER_INFO_URL` 一致），再用应用令牌创建或取得该发送方与收件人的 `oneOnOne` chat，最后用委托用户令牌向该 chat 发一条消息。`chat_id` 按 Graph 返回值原样拼进消息 URL（含 `:`），不 percent-encode。Graph `body.contentType` 为 `html`：标题包在 `<b>` 中，正文换行转为 `<br>`，标题与正文 HTML **原样透传**（与 WeOps 一致，不做 `html.escape`）。不做 Adaptive Card、Tab 深链或附件卡片。多人即多次 1:1。单人失败记入 `failures` 并继续；有成功有失败则 `partial_success`。未映射用户由通知服务拦截，adapter 不按邮箱/手机号改投。
 - 连接测试：基础连接必须成功取得应用令牌。能力测试必须再成功取得委托用户令牌；只测应用令牌算未就绪。ROPC 因 MFA、无密码、联邦或 `invalid_grant` 失败时使用稳定 `provider.auth_failed`（或已有认证失败码），摘要可行动且不含 Microsoft 原始 error_description 全文、不含密码。
 - 外呼 URL 只接受 HTTP/HTTPS。代理仅作用于 BK-Lite 发出的 token 与 Graph 请求。日志用稳定模板和惰性参数；一个失败只在 adapter/runtime 约定的一层打 traceback；不得记录 Authorization 头、密码、token、完整用户列表或响应正文。ROPC 失败时 `error_type` 只记录 `AADSTS` 数字码（无 `error_description`）；发送成功时记录有界 `chat_id`、`message_id` 和 `has_policy_violation`，仍不记正文。
 - 前端：集成中心创建/详情按 manifest 自动只出现基础连接与 IM 通知 Tab（现有「有 capability_status 才出 Tab」即可）。补 provider 显示名、描述、中英文 pack 文案；图标用 provider key。不改登录页，不增加 Teams Bot 渠道类型。社区 loader 注册表断言覆盖社区四包；企业 overlay 测试断言纳入 `teams`。
@@ -59,7 +59,7 @@ Status: implemented
 
 - 只测对外行为：manifest 能力集合、敏感字段、`list_external_users` payload、发送的 Graph 调用顺序与部分成功、连接测试在缺字段/应用令牌失败/ROPC MFA 类失败下的 code 与摘要、日志模板不含凭据哨兵。不测 Graph SDK 内部、不测真实 Azure。
 - 最高接缝：Teams 通知 adapter（对 `requests` 打桩）+ 现有 IM 通知服务在「假 adapter 结果」上的映射/未映射/发送（若已有飞书/企微服务测试可复用同一服务用例模式，不必为 Teams 复制渠道状态机）。Manifest/loader 先验见现有 `test_provider_loader`、`test_im_notification_manifest`、企微 adapter 服务测试。
-- 必须覆盖：分页 `nextLink` 收齐；超页上限失败；Guest 不进入 `external_users`；`send_message` 对两个 receive_id 创建两次 oneOnOne 并两次发消息；第二人失败时 `partial_success` 且第一人已发送；ROPC 失败时能力测试失败且不把密码写入 summary；应用令牌成功不能单独让能力测试通过；代理传入 token 与 Graph 请求；覆盖 URL 被使用而默认主机不被调用。
+- 必须覆盖：分页 `nextLink` 收齐；超页上限失败；Guest 不进入 `external_users`；`send_message` 对两个 receive_id 创建两次 oneOnOne 并两次发消息；Graph 消息 `contentType=html`、标题 `<b>`、换行 `<br>`、用户 HTML 原样透传、无 attachments；第二人失败时 `partial_success` 且第一人已发送；ROPC 失败时能力测试失败且不把密码写入 summary；应用令牌成功不能单独让能力测试通过；代理传入 token 与 Graph 请求；覆盖 URL 被使用而默认主机不被调用。
 - 改日志须同时锁模板、独立参数、格式化结果、单一 traceback 所有权、凭据哨兵不出现，并保持原返回值与错误码。
 - 前端若只加图标键和文案，用现有集成中心/文案契约测试或最小静态断言即可，不要求浏览器测真实 Microsoft。
 
@@ -67,7 +67,7 @@ Status: implemented
 
 - `login_auth`、`user_sync`、`im_group`。
 - Teams Tab SSO、在 Teams 里打开 BK-Lite、应用包上架、Azure Bot、Messaging endpoint。
-- Adaptive Card、深链、富文本/文件。
+- Adaptive Card、深链、文件附件。Graph 消息 HTML 与 WeOps 正文一致（标题 `<b>`、换行 `<br>`、标签原样透传），不含点击查看卡片。
 - 群聊或频道一次广播。
 - 个人免费 Teams、来宾、外部联邦用户作为收件人。
 - 中国区 21Vianet 作为一等环境（允许 URL 覆盖但不做专项验收）。

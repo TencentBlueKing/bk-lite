@@ -7,9 +7,20 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Button, Empty, Spin } from "antd";
+import { Alert, Button, Empty, Select, Spin } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
+import { useParams } from "next/navigation";
 import { useTranslation } from "@/utils/i18n";
+import { useShareMode } from "@/app/ops-analysis/context/shareMode";
+import { useRoom3DApi } from "@/app/ops-analysis/api/room3D";
+import { isSceneWidgetAllowedOnSurface } from "@/app/ops-analysis/types/sceneWidgetCapability";
+import type { OpsAnalysisWidgetSurface } from "@/app/ops-analysis/utils/chartTypeSurface";
+import type { Room3DRoomOption } from "@/app/ops-analysis/types/sceneWidget";
+import {
+  readPersistedServerRoomId,
+  readRoom3DRackTopLines,
+  resolveRoom3DSelection,
+} from "@/app/ops-analysis/utils/room3DConfig";
 import type {
   ScreenRenderContext,
   ValueConfig,
@@ -28,15 +39,21 @@ import {
   validateRoom3DData,
 } from "./room3DData";
 import { createRoom3DScene } from "./room3DScene";
+import { loadRoom3DScene } from "./room3DSceneSource";
 import styles from "./room3D.module.scss";
 
 interface Room3DProps {
-  rawData: unknown;
+  rawData?: unknown;
   loading?: boolean;
   config?: ValueConfig;
   screenRenderContext?: ScreenRenderContext;
+  surface?: OpsAnalysisWidgetSurface;
+  editMode?: boolean;
+  refreshKey?: string | number;
+  runtimeActive?: boolean;
   onReady?: (ready: boolean) => void;
-  componentSwitchControl?: React.ReactNode;
+  onError?: (message: string) => void;
+  onRawData?: (data: unknown) => void;
   errorMessage?: string;
 }
 
@@ -58,24 +75,54 @@ interface SceneReadiness {
 
 const Room3D: React.FC<Room3DProps> = ({
   rawData,
-  loading = false,
+  loading: injectedLoading = false,
   config,
   screenRenderContext,
+  surface,
+  editMode = false,
+  refreshKey,
+  runtimeActive = true,
   onReady,
-  componentSwitchControl,
-  errorMessage,
+  onError,
+  onRawData,
+  errorMessage: injectedErrorMessage,
 }) => {
   const { t } = useTranslation();
+  const shareMode = useShareMode();
+  const params = useParams<{ sessionId?: string }>();
+  const { getRooms, getLayout } = useRoom3DApi(
+    shareMode ? params.sessionId : undefined,
+  );
+  const api = useMemo(
+    () => ({ getRooms, getLayout }),
+    [getLayout, getRooms],
+  );
+  const injected = rawData != null;
+  const savedRoomId = readPersistedServerRoomId(config);
+  const rackTopLines = useMemo(
+    () => readRoom3DRackTopLines(config?.room3D),
+    [config?.room3D?.rackTopLine1, config?.room3D?.rackTopLine2],
+  );
   const roomRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const resetViewRef = useRef<() => void>(() => undefined);
   const resizeSceneRef = useRef<() => void>(() => undefined);
   const sceneReadinessRef = useRef<SceneReadiness | null>(null);
+  const [rooms, setRooms] = useState<Room3DRoomOption[]>([]);
+  const [runtimeRoomId, setRuntimeRoomId] = useState("");
+  const [fetchedLayout, setFetchedLayout] = useState<unknown>(null);
+  const [fetchLoading, setFetchLoading] = useState(!injected);
+  const [fetchError, setFetchError] = useState("");
+  const effectiveRawData = injected ? rawData : fetchedLayout;
+  const loading = injected ? injectedLoading : fetchLoading;
+  const errorMessage = injected ? injectedErrorMessage : fetchError;
   const validation = useMemo(
-    () => validateRoom3DData(rawData, t),
-    [rawData, t],
+    () => validateRoom3DData(effectiveRawData, t),
+    [effectiveRawData, t],
   );
+  const allowedOnSurface =
+    surface == null || isSceneWidgetAllowedOnSurface("room3D", surface);
   const displayOptions = useMemo(
     () => getRoom3DDisplayOptions(config),
     [config],
@@ -118,10 +165,74 @@ const Room3D: React.FC<Room3DProps> = ({
   }, [screenRenderContext]);
 
   useEffect(() => {
+    setRuntimeRoomId("");
+  }, [savedRoomId]);
+
+  useEffect(() => {
+    if (injected || !runtimeActive || !allowedOnSurface) {
+      return undefined;
+    }
+    const abort = new AbortController();
+    setFetchLoading(true);
+    setFetchError("");
+    loadRoom3DScene({
+      api,
+      savedRoomId,
+      runtimeRoomId,
+      signal: abort.signal,
+    })
+      .then((result) => {
+        if (abort.signal.aborted) return;
+        setRooms(result.rooms);
+        if (result.status === "empty") {
+          setFetchedLayout(null);
+          setFetchError(t("dashboard.room3DEmpty"));
+          onError?.(t("dashboard.room3DEmpty"));
+          onRawData?.(null);
+          return;
+        }
+        if (result.status === "unavailable") {
+          setFetchedLayout(null);
+          setFetchError(t("dashboard.room3DDefaultUnavailable"));
+          onError?.(t("dashboard.room3DDefaultUnavailable"));
+          onRawData?.(null);
+          return;
+        }
+        setFetchedLayout(result.layout);
+        setFetchError("");
+        onRawData?.(result.layout);
+      })
+      .catch(() => {
+        if (abort.signal.aborted) return;
+        const message = t("dashboard.room3DLoadFailed");
+        setFetchedLayout(null);
+        setRooms([]);
+        setFetchError(message);
+        onError?.(message);
+        onRawData?.(null);
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setFetchLoading(false);
+      });
+    return () => abort.abort();
+  }, [
+    allowedOnSurface,
+    api,
+    injected,
+    onError,
+    onRawData,
+    refreshKey,
+    runtimeActive,
+    runtimeRoomId,
+    savedRoomId,
+    t,
+  ]);
+
+  useEffect(() => {
     setHoverState(null);
     setSelectedRack(null);
     setSelectedDevice(null);
-  }, [rawData]);
+  }, [effectiveRawData]);
 
   useEffect(() => {
     const mountNode = mountRef.current;
@@ -157,6 +268,7 @@ const Room3D: React.FC<Room3DProps> = ({
         },
         onDeviceSelect: setSelectedDevice,
       },
+      rackTopLines,
     );
     resetViewRef.current = controller.resetView;
     resizeSceneRef.current = controller.resize;
@@ -169,7 +281,7 @@ const Room3D: React.FC<Room3DProps> = ({
       resetViewRef.current = () => undefined;
       resizeSceneRef.current = () => undefined;
     };
-  }, [errorMessage, loading, roomData]);
+  }, [errorMessage, loading, rackTopLines, roomData]);
 
   useEffect(() => {
     if (loading) {
@@ -416,11 +528,37 @@ const Room3D: React.FC<Room3DProps> = ({
     return fields;
   }, [selectedDevice, t]);
 
+  const showRoomSwitcher = !injected && !editMode && rooms.length > 0;
+  const switcherSelection = resolveRoom3DSelection({
+    rooms,
+    savedRoomId,
+    runtimeRoomId,
+  });
+  const switcherValue =
+    switcherSelection.status === "ready" ? switcherSelection.roomId : undefined;
+  const roomSwitcher = showRoomSwitcher ? (
+    <Select
+      value={switcherValue}
+      options={rooms.map((item) => ({ value: item.id, label: item.name }))}
+      onChange={(value) => setRuntimeRoomId(value)}
+      placeholder={t("dashboard.room3DSwitchPlaceholder")}
+      popupMatchSelectWidth={false}
+    />
+  ) : null;
+
+  if (!allowedOnSurface) {
+    return (
+      <div className={styles.stateBox}>
+        <Empty description={t("dashboard.room3DLoadFailed")} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {componentSwitchControl && (
-          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        {roomSwitcher && (
+          <div className={styles.roomSwitch}>{roomSwitcher}</div>
         )}
         <Spin />
       </div>
@@ -430,8 +568,8 @@ const Room3D: React.FC<Room3DProps> = ({
   if (errorMessage) {
     return (
       <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {componentSwitchControl && (
-          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        {roomSwitcher && (
+          <div className={styles.roomSwitch}>{roomSwitcher}</div>
         )}
         <Alert type="error" showIcon message={errorMessage} />
       </div>
@@ -441,8 +579,8 @@ const Room3D: React.FC<Room3DProps> = ({
   if (!validation.ok) {
     return (
       <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {componentSwitchControl && (
-          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        {roomSwitcher && (
+          <div className={styles.roomSwitch}>{roomSwitcher}</div>
         )}
         <Alert
           type="error"
@@ -457,8 +595,8 @@ const Room3D: React.FC<Room3DProps> = ({
   if (!roomData.racks.length) {
     return (
       <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {componentSwitchControl && (
-          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        {roomSwitcher && (
+          <div className={styles.roomSwitch}>{roomSwitcher}</div>
         )}
         <div className={styles.stateContent}>
           {visibleNotice && (
@@ -479,7 +617,7 @@ const Room3D: React.FC<Room3DProps> = ({
     );
   }
 
-  const showRoomSummary = !componentSwitchControl;
+  const showRoomSummary = !showRoomSwitcher;
   const roomRackCount = roomData.racks.length;
   const roomSummaryText = `${t("dashboard.room3DRoomNameLabel")}${roomData.room.name}${t("dashboard.room3DRackCountPrefix")}${roomRackCount}${t("dashboard.room3DRackCountSuffix")}`;
 
@@ -500,8 +638,8 @@ const Room3D: React.FC<Room3DProps> = ({
       } as React.CSSProperties}
     >
       <div ref={mountRef} className={styles.canvas} />
-      {componentSwitchControl && (
-        <div className={styles.roomSwitchOverlay}>{componentSwitchControl}</div>
+      {roomSwitcher && (
+        <div className={styles.roomSwitchOverlay}>{roomSwitcher}</div>
       )}
       <div className={styles.topBar}>
         {showRoomSummary && (

@@ -1326,3 +1326,10 @@ def finalize_scan_execution(self, execution_id, claim_token):
     from apps.cmdb.services.scan_trigger_service import poll_scan_finalize
 
     return poll_scan_finalize(execution_id, claim_token)
+
+
+@shared_task(bind=True, name="apps.cmdb.tasks.celery_tasks.enrich_scan_middleware_snapshots")
+def enrich_scan_middleware_snapshots(self, execution_id, attempt=0, deadline_ts=None):
+    from apps.cmdb.services.scan_finalize_service import enrich_middleware_snapshots
+
+    return enrich_middleware_snapshots(execution_id, attempt=attempt, deadline_ts=deadline_ts)

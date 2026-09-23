@@ -28,6 +28,7 @@ from apps.node_mgmt.utils.permission import (
     authorize_node_ids,
     authorize_target_organizations,
     get_authorized_node_queryset,
+    get_catalog_node_queryset,
     get_node_permission,
 )
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
@@ -247,7 +248,7 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
     @action(methods=["post"], detail=False, url_path=r"search")
     def search(self, request, *args, **kwargs):
         permission = get_node_permission(request)
-        queryset = get_authorized_node_queryset(request, permission)
+        queryset = get_catalog_node_queryset(request, permission)
 
         # 应用自定义查询参数格式化（统一处理所有过滤条件）
         custom_filters = request.data.get("filters")

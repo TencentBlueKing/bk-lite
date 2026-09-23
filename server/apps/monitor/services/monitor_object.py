@@ -4,8 +4,6 @@ import time
 import uuid
 
 from django.db import transaction
-from django.db.models import Q
-from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -182,6 +180,26 @@ class MonitorObjectService:
             else:
                 conf_info["status"] = "unavailable"
 
+        MonitorObjectService._attach_operating_system(items)
+
+    @staticmethod
+    def _attach_operating_system(items: list) -> None:
+        """Fill linux/windows from the bound Node so Host dashboards can hide Linux-only cards."""
+        node_ids = [item.get("node_id") for item in items if item.get("node_id")]
+        os_map = {}
+        if node_ids:
+            from apps.node_mgmt.models import Node
+
+            os_map = {
+                str(node_id): str(os_value or "").strip().lower()
+                for node_id, os_value in Node.objects.filter(id__in=node_ids).values_list("id", "operating_system")
+                if str(os_value or "").strip().lower() in {"linux", "windows"}
+            }
+        for item in items:
+            if item.get("operating_system") in {"linux", "windows"}:
+                continue
+            item["operating_system"] = os_map.get(str(item.get("node_id") or ""), "")
+
     @staticmethod
     def get_monitor_instance(
         monitor_object_id,
@@ -203,6 +221,10 @@ class MonitorObjectService:
 
         ordering_key, order_dir = parse_ordering_params(ordering, order)
 
+        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        if not monitor_obj:
+            raise BaseAppException("Monitor object does not exist")
+
         qs = qs.filter(
             monitor_object_id=monitor_object_id,
             is_deleted=False,
@@ -214,15 +236,9 @@ class MonitorObjectService:
             qs = qs.filter(id__in=list(instance_ids))
         elif instance_id:
             qs = qs.filter(id=instance_id)
-        if name:
-            # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
-            qs = qs.annotate(_asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")).filter(
-                Q(name__icontains=name) | Q(ip__icontains=name) | Q(_asset_ip_fact__icontains=name)
-            )
+        from apps.monitor.services.monitor_instance import InstanceSearch
 
-        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
-        if not monitor_obj:
-            raise BaseAppException("Monitor object does not exist")
+        qs = InstanceSearch.apply_keyword_search(qs, monitor_obj, name)
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
@@ -230,8 +246,6 @@ class MonitorObjectService:
             raise BaseAppException("Monitor object default metric does not exist")
 
         # Process 主机 / asset.ip / Enum 指标过滤在 list 与 search 共用同一套规则。
-        from apps.monitor.services.monitor_instance import InstanceSearch
-
         qs = InstanceSearch.apply_process_instance_filters(
             qs,
             monitor_obj.name,
@@ -830,6 +844,8 @@ class MonitorObjectService:
 
         # 更新组织信息
         if organizations is not None:
+            if not organizations:
+                raise BaseAppException("至少保留一个组织")
             instance.monitorinstanceorganization_set.all().delete()
             for org in organizations:
                 instance.monitorinstanceorganization_set.create(organization=org)
@@ -840,7 +856,21 @@ class MonitorObjectService:
         if not instance_ids or not organizations:
             return
 
-        MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids, organization__in=organizations).delete()
+        with transaction.atomic():
+            existing = list(
+                MonitorInstanceOrganization.objects.select_for_update()
+                .filter(monitor_instance_id__in=instance_ids)
+                .values_list("monitor_instance_id", "organization")
+            )
+            remaining = {}
+            remove_set = set(organizations)
+            for instance_id, organization in existing:
+                if organization not in remove_set:
+                    remaining[str(instance_id)] = remaining.get(str(instance_id), 0) + 1
+            for instance_id in instance_ids:
+                if remaining.get(str(instance_id), 0) < 1:
+                    raise BaseAppException("不能移除最后一个组织")
+            MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids, organization__in=organizations).delete()
 
     @staticmethod
     def add_instances_organizations(instance_ids, organizations):
@@ -859,7 +889,8 @@ class MonitorObjectService:
         """设置监控对象实例组织"""
         if not instance_ids:
             return
-        organizations = organizations or []
+        if not organizations:
+            raise BaseAppException("至少保留一个组织")
 
         with transaction.atomic():
             # 删除旧的组织关联

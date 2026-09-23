@@ -15,12 +15,15 @@ from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
     ApmApplication,
+    ApmApplicationOrganization,
     ApmEventSnapshot,
     ApmPolicy,
     ApmPolicyOrganization,
     ApmPolicyNotificationTarget,
     ApmService,
     ApmServiceInstance,
+    ApmServiceInstanceOrganization,
+    ApmServiceOrganization,
     ApmSlo,
 )
 from apps.apm.pagination import ApmCatalogPagination
@@ -62,10 +65,10 @@ from apps.apm.services import (
     NotificationChannelDirectory,
 )
 from apps.apm.services.alerts import AlertHandlerConflict, AlertHandlerForbidden, AlertHandlerInvalid
-from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations, visible_organization_ids
+from apps.apm.services.access import current_organization_id, filter_current_organization, scope_catalog_queryset, validate_assignable_organizations, visible_organization_ids
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceErrorBreakdownQuery, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
-from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
+from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArtifactNotFound
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import apm_logger as logger
@@ -175,11 +178,17 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
     service = DjangoApmApplicationService()
 
     def get_queryset(self) -> QuerySet[ApmApplication]:
-        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True))
-        organization_ids = visible_organization_ids(self.request)
-        if not organization_ids:
-            return queryset.none()
-        return queryset.filter(organization_links__organization__in=organization_ids, is_builtin=False).distinct()
+        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True)).filter(
+            is_builtin=False
+        )
+        return scope_catalog_queryset(
+            queryset,
+            self.request,
+            "organization_links",
+            ApmApplicationOrganization,
+            fk_name="application_id",
+            for_list=self.action == "list",
+        )
 
     @HasPermission("applications-View,integration_add-View,services-View,integration_instances-View")
     def list(self, request, *args, **kwargs):
@@ -293,19 +302,37 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 {"code": "cloud_region_unavailable", "detail": "云区域配置暂时不可用，请稍后重试。"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        snippet = self.service.render_snippet(
-            IngestSnippetRequest(
-                language=data["language"],
-                runtime=data["runtime"],
-                endpoint=endpoints.http_endpoint,
-                service_namespace=application.application_id,
-                service_name=data["service_name"],
-                service_version=data.get("service_version", ""),
-                environment=data["environment"],
-                probe_download_url=endpoints.probe_download_url,
-                sample_rate=data.get("sample_rate", 100),
+        try:
+            snippet = self.service.render_snippet(
+                IngestSnippetRequest(
+                    language=data["language"],
+                    runtime=data["runtime"],
+                    endpoint=endpoints.http_endpoint,
+                    service_namespace=application.application_id,
+                    service_name=data["service_name"],
+                    service_version=data.get("service_version", ""),
+                    environment=data["environment"],
+                    probe_download_url=endpoints.probe_download_url,
+                    sample_rate=data.get("sample_rate", 100),
+                )
             )
-        )
+        except ProbeArtifactNotFound:
+            return Response(
+                {
+                    "code": "probe_artifact_not_found",
+                    "detail": "探针文件不存在，请先在服务端初始化探针制品。",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as exc:
+            logger.warning("APM ingest snippet rendering failed: %s", type(exc).__name__)
+            return Response(
+                {
+                    "code": "probe_artifact_unavailable",
+                    "detail": "探针文件暂时不可用，请稍后重试。",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(
             {
                 "application_id": application.application_id,
@@ -352,7 +379,14 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 )
         elif self.action != "restore" and self.request.query_params.get("include_archived") != "true":
             queryset = queryset.filter(archived_at__isnull=True)
-        return filter_current_organization(queryset, self.request, "organization_links").distinct().order_by("-last_seen_at", "id")
+        return scope_catalog_queryset(
+            queryset,
+            self.request,
+            "organization_links",
+            ApmServiceOrganization,
+            fk_name="service_id",
+            for_list=self.action == "list",
+        ).order_by("-last_seen_at", "id")
 
     @HasPermission("services-View")
     def list(self, request, *args, **kwargs):
@@ -603,7 +637,14 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                         "version",
                     ),
                 )
-        return filter_current_organization(queryset, self.request, "organization_links").order_by("-last_seen_at", "id")
+        return scope_catalog_queryset(
+            queryset,
+            self.request,
+            "organization_links",
+            ApmServiceInstanceOrganization,
+            fk_name="instance_id",
+            for_list=self.action == "list",
+        ).order_by("-last_seen_at", "id")
 
     @HasPermission("integration_instances-View")
     def list(self, request, *args, **kwargs):
@@ -840,6 +881,22 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                 raise ValidationError({"notification_targets": f"渠道 {channel.name} 必须配置接收人。"})
             if channel.recipient_mode == "system_user" and not all(value.isdigit() for value in recipients):
                 raise ValidationError({"notification_targets": f"渠道 {channel.name} 只接受系统用户 ID。"})
+            if channel.recipient_mode == "system_user":
+                requested_recipient_ids = {int(value) for value in recipients}
+                try:
+                    valid_recipient_ids = self.notification_directory.validate_recipient_ids(
+                        actor_context=actor_context,
+                        organization_id=organization_id,
+                        include_children=actor_context["include_children"],
+                        recipient_ids=requested_recipient_ids,
+                    )
+                except RuntimeError as exc:
+                    return Response(
+                        {"detail": str(exc), "code": "notification_recipients_unavailable"},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
+                if valid_recipient_ids != requested_recipient_ids:
+                    raise ValidationError({"notification_targets": f"渠道 {channel.name} 包含当前组织不可用的系统用户。"})
             normalized_targets.append(
                 {
                     "channel_id": channel.id,
@@ -1151,6 +1208,36 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(self.alert_service.serialize(assigned))
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def reassign(self, request, *args, **kwargs):
+        alert = self.get_object()
+        serializer = ApmAlertAssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reassigned = self.alert_service.reassign(
+                alert,
+                handlers=serializer.validated_data["handlers"],
+                actor=request.user,
+                operable_qs=self.get_queryset(),
+            )
+        except AlertHandlerForbidden as exc:
+            return Response(
+                {"code": "handler_forbidden", "detail": str(exc)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except AlertHandlerInvalid as exc:
+            return Response(
+                {"code": "handler_invalid", "detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except AlertHandlerConflict as exc:
+            return Response(
+                {"code": "handler_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(self.alert_service.serialize(reassigned))
 
     @action(methods=("get",), detail=True)
     @HasPermission("events-View")

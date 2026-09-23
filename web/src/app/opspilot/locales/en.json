@@ -1219,6 +1219,7 @@
     "choiceSelected": "Selected",
     "choiceOrType": "Or type your answer",
     "choiceTextPlaceholder": "Type your answer...",
+    "replyToPendingChoice": "Reply to the question above...",
     "planningExecution": "Analyzing the task and planning execution steps…",
     "replanningExecution": "Replanning based on execution results…"
   },
@@ -1285,9 +1286,7 @@
       "manageGroup": "Management Organization",
       "usageGroup": "Usage Organization",
       "usageGroupTip": "Usage organizations can chat with / call this skill via API; management organizations are auto-included and cannot be removed.",
-      "forceWikiGrounded": "Force",
-      "forceWikiGroundedExtra": "When Force is on, answers come only from the knowledge base.",
-      "forceWikiGroundedNeedKb": "Select a knowledge base first"
+      "forceWikiGrounded": "Force"
     },
     "memory": {
       "title": "Memory",
@@ -1300,6 +1299,20 @@
       "spaceNotEnabledHint": "Long-term memory is not persisted when no space is selected"
     },
     "channelPublish": "Publish",
+    "history": {
+      "menu": "History",
+      "title": "Title",
+      "createdAt": "Created",
+      "updatedAt": "Updated",
+      "user": "User",
+      "channel": "Channel",
+      "count": "Count",
+      "filterChannel": "All channels",
+      "filterUser": "Please enter the user name to search...",
+      "detail": "Detail",
+      "empty": "No conversations",
+      "drawerTitle": "Conversation"
+    },
     "channel": {
       "type": "Channel Type",
       "name": "Name",
@@ -1316,7 +1329,20 @@
         "wechat_official": "WeChat Official Account"
       },
       "webChatEntry": "Web chat entry: ",
+      "embeddedEntry": "Embedded chat entry",
       "embeddedHint": "Embedded requests require Api-Authorization (UserAPISecret from System Mgmt). The path includes skill_id and channel_id.",
+      "copyLink": "Link",
+      "copyCallback": "Callback",
+      "viewDocs": "Docs",
+      "embeddedApiInfo": "This endpoint can be embedded on a web page via WebChat. After the channel is saved, copy the URL below.",
+      "embeddedSaveHint": "After saving this channel, you can copy the integration URL from the list.",
+      "callbackUrl": "Callback URL",
+      "callbackUrlHint": "Copy this URL and paste it into the WeCom / DingTalk / Official Account webhook URL field.",
+      "callbackUrlSaveHint": "Generated after you pick a channel type",
+      "callbackUrlGenerating": "Generating callback URL…",
+      "callbackUrlFailed": "Failed to generate callback URL",
+      "moreDetails": "For integration steps, see",
+      "viewApiDocs": "the docs →",
       "deleteConfirm": "Delete channel \"{name}\"?",
       "loadFailed": "Failed to load channels",
       "saveFailed": "Failed to save",
@@ -1344,7 +1370,6 @@
         "corp_id": "Corp ID",
         "agent_id": "Agent ID",
         "encodingAESKey": "EncodingAESKey",
-        "aibotid": "Bot ID",
         "client_id": "Client ID",
         "client_secret": "Client Secret",
         "app_id": "App ID"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, ScanExecution, ScanHit
+from apps.cmdb.models.scan_model import SCAN_DATABASE_TYPES, SCAN_MIDDLEWARE_TYPES, ScanExecution, ScanHit
 from apps.cmdb.services.scan_finalize_service import attach_snmp_hits_to_physical, backfill_hit_identities, write_refined_metrics
 from apps.cmdb.services.scan_host_cloud import host_cloud_from_scan
 from apps.cmdb.services.scan_identity import UNMATCH_CREDENTIAL_FAILED, ensure_scan_execution_terminal, suggested_network_type, unmatch_reason_for_hit
@@ -121,6 +121,40 @@ def _map_database_row(hit: ScanHit, snapshot: dict, host: str, family: str) -> t
     }
 
 
+def _map_middleware_row(hit: ScanHit, snapshot: dict, host: str, family: str) -> tuple[str, dict]:
+    port = hit.port or snapshot.get("port") or snapshot.get("listen_port") or ""
+    if isinstance(port, str) and "," in port:
+        port = port.split(",")[0].strip() or port
+    inst_name = str(snapshot.get("inst_name") or "").strip() or (
+        f"{host}-{family}-{port}" if port not in (None, "", "unknown") else f"{host}-{family}"
+    )
+    row = {
+        "ip_addr": host,
+        "host": host,
+        "inst_name": inst_name,
+        "port": port if port not in ("unknown",) else "",
+        "version": snapshot.get("version") or "",
+        "bin_path": snapshot.get("bin_path") or snapshot.get("nginx_path") or "",
+        "conf_path": snapshot.get("conf_path") or snapshot.get("config_path") or "",
+        "install_path": snapshot.get("install_path") or "",
+        "log_path": snapshot.get("log_path") or "",
+        "model_id": family,
+        "assos": [
+            {
+                "model_id": "host",
+                "inst_name": host,
+                "asst_id": "run",
+                "model_asst_id": f"{family}_run_host",
+            }
+        ],
+    }
+    for key, value in snapshot.items():
+        if key in row or value in (None, ""):
+            continue
+        row[key] = value
+    return family, row
+
+
 def mapping_row_from_hit(hit: ScanHit) -> tuple[str, dict] | None:
     """snapshot → 写入 CI 的一行。只信 snapshot，不回查采集结果。"""
     family = str(getattr(hit.family_run, "model_id", "") or "").strip()
@@ -136,7 +170,63 @@ def mapping_row_from_hit(hit: ScanHit) -> tuple[str, dict] | None:
         return _map_physical_row(snapshot, host)
     if family in SCAN_DATABASE_TYPES:
         return _map_database_row(hit, snapshot, host, family)
+    if family in SCAN_MIDDLEWARE_TYPES:
+        return _map_middleware_row(hit, snapshot, host, family)
     return None
+
+
+def _lookup_host_by_ip(host: str) -> dict | None:
+    """按 host.ip_addr 查已有主机；查不到则返回 None，禁止新建。"""
+    if not host:
+        return None
+    from apps.cmdb.constants.constants import INSTANCE
+    from apps.cmdb.graph.drivers.graph_client import GraphClient
+
+    filters = [
+        {"field": "model_id", "type": "str=", "value": "host"},
+        {"field": "ip_addr", "type": "str=", "value": host},
+    ]
+    try:
+        with GraphClient() as ag:
+            rows, _ = ag.query_entity(INSTANCE, filters)
+    except Exception:
+        logger.info("event=scan_middleware_host_lookup_skipped host=%s", host)
+        return None
+    for row in rows or []:
+        if isinstance(row, dict) and row.get("_id") is not None:
+            return row
+    return None
+
+
+def attach_middleware_hits_to_host(execution: ScanExecution):
+    from apps.cmdb.services.instance import InstanceManage
+
+    hits = (
+        execution.hits.filter(
+            family_run__model_id__in=SCAN_MIDDLEWARE_TYPES,
+            status=ScanHit.STATUS_SUCCESS,
+        )
+        .exclude(inst_uuid="")
+        .select_related("family_run")
+    )
+    for hit in hits:
+        host_row = _lookup_host_by_ip(hit.host)
+        if not host_row:
+            continue
+        host_uuid = str(host_row.get("inst_uuid") or "")
+        if host_uuid and hit.attached_inst_uuid != host_uuid:
+            hit.attached_inst_uuid = host_uuid
+            hit.save(update_fields=["attached_inst_uuid", "updated_at"])
+        if hit.inst_uuid and host_uuid:
+            try:
+                InstanceManage.instance_association_create_by_uuid(
+                    src_inst_uuid=hit.inst_uuid,
+                    dst_inst_uuid=host_uuid,
+                    model_asst_id=f"{hit.family_run.model_id}_run_host",
+                    operator="scan",
+                )
+            except Exception:
+                logger.info("event=scan_middleware_run_host_skipped hit=%s host=%s", hit.id, hit.host)
 
 
 def _skip_item(hit: ScanHit, reason: str) -> dict:
@@ -278,6 +368,7 @@ class ScanWriteCiService:
                 )
 
         attach_snmp_hits_to_physical(execution)
+        attach_middleware_hits_to_host(execution)
         written = sum(1 for row in results if row.get("status") == "written")
         skipped = sum(1 for row in results if row.get("status") in {"skipped", "already_written"})
         failed = sum(1 for row in results if row.get("status") == "failed")

@@ -261,7 +261,7 @@ class ServiceTreeViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if error:
             return error
         rows = ServiceTreeService.export_rows(instance, is_visible=self._is_visible(request))
-        frame = pd.DataFrame(rows, columns=["应用系统", "业务分组", "二级分组", "应用", "主机标识"])
+        frame = pd.DataFrame(rows, columns=["应用系统", "应用", "主机标识"])
         buffer = BytesIO()
         frame.to_excel(buffer, index=False)
         response = HttpResponse(

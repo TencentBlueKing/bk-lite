@@ -9,6 +9,7 @@ import { type RuleScope, type RuleCondition, ruleFields, ruleField, operatorTran
 import { MatchRuleValue } from './matchRuleValue';
 import MatchRuleHelp from './matchRuleHelp';
 import SourceNameSelect from './sourceNameSelect';
+import PushSourceSelect from './pushSourceSelect';
 
 interface PolicyItem { key: string | undefined; operator: string | undefined; value: MatchRuleValue }
 export interface MatchRuleProps {
@@ -79,6 +80,10 @@ const RulesMatch: React.FC<MatchRuleProps> = ({ value, onChange, scope: supplied
                   : field?.key === 'source_name' || field?.key === 'source_names' ? <SourceNameSelect
                     disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
                     status={invalid && !missing ? 'error' : undefined} onChange={updateValue} />
+                  : field?.key === 'push_source_id' || field?.key === 'push_source_ids' ? <PushSourceSelect
+                    disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
+                    status={invalid && !missing ? 'error' : undefined}
+                    onChange={values => updateValue(normalizeRuleTags(values))} />
                   : multi ? <Select className="w-full" mode="tags" open={false} suffixIcon={null} options={[]} aria-label={t('alarmCommon.multiValueInput')}
                     disabled={!enabled} value={Array.isArray(condition.value) ? condition.value.filter((v): v is string => typeof v === 'string') : []}
                     maxCount={50} maxLength={256} placeholder={t('alarmCommon.multiValuePlaceholder')}

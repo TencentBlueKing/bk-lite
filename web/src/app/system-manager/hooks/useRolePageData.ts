@@ -77,7 +77,7 @@ export function useRoleList({ clientId, t }: UseRoleListParams) {
       await fetchRoles();
     } catch (error) {
       console.error('Failed:', error);
-      message.error(t('common.delFail'));
+      message.error(t('common.delFailed'));
     }
   }, [deleteRole, fetchRoles, t]);
 
@@ -178,7 +178,7 @@ export function useUserTab({ selectedRole, t }: UseUserTabParams) {
       fetchUsersByRole(selectedRole, currentPage, pageSize);
     } catch (error) {
       console.error('Failed:', error);
-      message.error(t('common.delFail'));
+      message.error(t('common.delFailed'));
     }
   }, [selectedRole, currentPage, pageSize, deleteUser, fetchUsersByRole, t]);
 
@@ -355,7 +355,7 @@ export function useOrganizationTab({ selectedRole, t }: UseOrganizationTabParams
       fetchRoleGroups(selectedRole, groupCurrentPage, groupPageSize);
     } catch (error) {
       console.error('Failed:', error);
-      message.error(t('common.delFail'));
+      message.error(t('common.delFailed'));
     }
   }, [selectedRole, groupCurrentPage, groupPageSize, deleteRoleGroups, fetchRoleGroups, t]);
 

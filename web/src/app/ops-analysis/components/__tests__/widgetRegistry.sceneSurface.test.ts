@@ -57,10 +57,15 @@ describe('scene widget runtime surface enforcement', () => {
     expect(getWidgetComponent('relatedTopology', 'report')).toBeNull();
   });
 
+  it('mounts room3D only on screen', () => {
+    expect(getWidgetComponent('room3D', 'screen')).not.toBeNull();
+    expect(getWidgetComponent('room3D', 'dashboard')).toBeNull();
+    expect(getWidgetComponent('room3D', 'report')).toBeNull();
+  });
+
   it('does not gate ordinary chart types by surface', () => {
     expect(getWidgetComponent('line', 'dashboard')).not.toBeNull();
     expect(getWidgetComponent('line', 'screen')).not.toBeNull();
     expect(getWidgetComponent('line', 'report')).not.toBeNull();
-    expect(getWidgetComponent('room3D', 'screen')).not.toBeNull();
   });
 });

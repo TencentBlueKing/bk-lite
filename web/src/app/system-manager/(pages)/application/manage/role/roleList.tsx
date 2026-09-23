@@ -57,16 +57,21 @@ const RoleList: React.FC<RoleListProps> = ({
   );
 
   return (
-    <div className="w-[180px] pr-4 mr-4 border-r border-[var(--color-border-1)]">
-      <div className="flex justify-between items-center">
+    <div className="flex h-full min-h-0 w-[200px] shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-1)] p-4">
+      <div className="flex shrink-0 items-center justify-between">
         <h2 className="font-semibold">{t('system.role.title')}</h2>
         <PermissionWrapper requiredPermissions={['Add']}>
-          <div onClick={() => showRoleModal(null)}>
-            <Icon type="xinzeng" className="text-xl cursor-pointer" />
-          </div>
+          <button
+            type="button"
+            aria-label={t('common.new')}
+            className="grid h-7 w-7 place-items-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-fill-1)] hover:text-[var(--color-primary)]"
+            onClick={() => showRoleModal(null)}
+          >
+            <Icon type="xinzeng" className="text-xl" aria-hidden="true" />
+          </button>
         </PermissionWrapper>
       </div>
-      <div className="mt-4">
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
         {loadingRoles ? (
           <Skeleton active paragraph={{ rows: 5 }} />
         ) : (

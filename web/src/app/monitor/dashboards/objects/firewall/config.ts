@@ -34,7 +34,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_memory_usage',
       display_name: '内存使用率',
       description:
-        '防火墙内存使用率（百分比）。品牌自适应：①设备直报利用率（Fortinet/SonicWall）；②(总量-空闲)/总量（Check Point/Stormshield）。部分型号（Palo Alto/WatchGuard）无标准 SNMP 内存利用率，显示「--」。',
+        '防火墙内存使用率（百分比）。品牌自适应：①设备直报利用率（Fortinet/SonicWall）；②(总量-空闲)/总量（Check Point/Stormshield/WatchGuard）。部分型号（Palo Alto）无标准 SNMP 内存利用率，显示「--」。',
       unit: 'percent',
       query:
         'avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)',
@@ -54,10 +54,10 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'firewall_session_utilization',
       display_name: '会话利用率',
       description:
-        '防火墙会话表利用率（百分比）。品牌自适应：设备直报（Palo Alto panSessionUtilization）→ 活动/上限计算（active_sessions/max_sessions、current/max_connections）。逼近 100% 说明会话表将满、新连接会被丢弃。无会话上限 SNMP 指标的品牌显示「--」。',
+        '防火墙会话表利用率（百分比）。品牌自适应：设备直报（Palo Alto panSessionUtilization）→ 活动/上限计算（active_sessions/max_sessions、current_connections/max_sessions、current/max_connections）。逼近 100% 说明会话表将满、新连接会被丢弃。无会话上限 SNMP 指标的品牌显示「--」。',
       unit: 'percent',
       query:
-        'firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)',
+        'firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)',
       color: '#9254de'
     },
     {

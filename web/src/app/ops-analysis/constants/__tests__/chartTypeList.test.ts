@@ -14,6 +14,7 @@ test('getChartTypeList includes datasource-driven chart types', () => {
   assert.ok(values.includes('cardList'));
   assert.ok(values.includes('topologyMap'));
   assert.ok(values.includes('nodeGraph'));
+  assert.equal(values.includes('room3D'), false);
 });
 
 test('report surface does not expose nodeGraph even when the datasource declares it', () => {

@@ -1,0 +1,12 @@
+bklite-rum-sdk
+Copyright 2026 BK-Lite contributors
+Ported from alphamind-dev/core-admin packages/core-rum-sdk.
+
+This package contains code derived from @weops/faro-transport:
+Copyright 2026 WeOps contributors
+
+The package interoperates with Grafana Faro Web SDK 2.8.2, licensed under
+Apache-2.0. Its dependency inventory is recorded in sbom.cdx.json.
+
+This notice records attribution and does not constitute legal approval for a
+complete telemetry deployment.

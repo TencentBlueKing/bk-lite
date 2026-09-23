@@ -11,6 +11,7 @@ import type { CredentialItem, CredentialTypeItem } from './types';
 import { useCredentialPickerApi } from './api';
 import { CredentialQuickCreateForm, inferredCategory } from './quick-create';
 import { normalizeCredentialFieldValues } from './normalizeFields';
+import { buildCredentialVaultUrl } from './vaultLocate';
 
 export { CREDENTIAL_MENU_PATH, CREDENTIAL_CATEGORIES };
 export type { CredentialItem, CredentialTypeItem, CredentialFieldSchema } from './types';
@@ -203,7 +204,7 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, ssh
         onChange={onChange}
         onRefresh={() => void load()}
         onAdd={openCreate}
-        onOpenVault={() => window.open(CREDENTIAL_MENU_PATH, '_blank')}
+        onOpenVault={() => window.open(buildCredentialVaultUrl(category, type), '_blank')}
       />
       <OperateModal
         title={t('system.credential.quickCreateTitle')}

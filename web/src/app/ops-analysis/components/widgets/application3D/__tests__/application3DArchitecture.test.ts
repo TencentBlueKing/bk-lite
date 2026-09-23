@@ -18,6 +18,7 @@ import {
   ARCH_LABEL_CANVAS_HEIGHT,
   ARCH_LABEL_CANVAS_WIDTH,
   ARCH_LABEL_FILL,
+  ARCH_LABEL_FILL_DIM,
   ARCH_LABEL_HAS_BACKGROUND,
   ARCH_LABEL_WORLD_HEIGHT,
   ARCH_LABEL_WORLD_WIDTH,
@@ -221,6 +222,7 @@ import {
   createTrapezoidFrustumGeometry,
   hashAppChipIconIndex,
   hostHasAlarm,
+  hostMonitorGap,
   findArchitectureRackRoot,
   liftCabinetAlbedoPixels,
   liftCabinetAlbedoTexture,
@@ -363,30 +365,6 @@ describe('application3D architecture layout', () => {
     expect(ARCH_PLANE_SIDE_MATCHES_TOP_HUE).toBe(true);
     expect(layout.edges.every((edge) => !edge.intraPlane)).toBe(true);
     expect(layout.edges.some((edge) => edge.start.y !== edge.end.y)).toBe(true);
-  });
-
-  it('places business groups on the application plane without adding a third floor', () => {
-    const layout = layoutApplication3DArchitecture(tree({
-      nodes: [
-        { id: 'sys-1', kind: 'system', name: '门户系统', health },
-        { id: 'g1', kind: 'biz_group', name: '生产', health },
-        { id: 'app-1', kind: 'application', name: '门户', health },
-        { id: 'host-1', kind: 'host', name: 'web-1', health },
-      ],
-      edges: [
-        { id: 'e1', sourceId: 'sys-1', targetId: 'g1', relation: 'system_contains_biz_group' },
-        { id: 'e2', sourceId: 'g1', targetId: 'app-1', relation: 'biz_group_contains_application' },
-        { id: 'e3', sourceId: 'app-1', targetId: 'host-1', relation: 'application_run_host' },
-      ],
-    }));
-    const byId = Object.fromEntries(layout.nodes.map((node) => [node.id, node]));
-    expect(byId.g1).toBeDefined();
-    expect(byId.g1.y).toBeGreaterThan(ARCH_PLANE_Y.application);
-    expect(byId['app-1'].y).toBeGreaterThan(ARCH_PLANE_Y.application);
-    expect(byId.g1.y).toBeGreaterThan(byId['host-1'].y);
-    expect(byId.g1.z).not.toBeCloseTo(byId['app-1'].z);
-    expect(layout.planes).toHaveLength(2);
-    expect(ARCH_PLANE_Y.biz_group).toBe(ARCH_PLANE_Y.application);
   });
 
   it('uses a lampshade frustum, see-through glass, and small grid-spaced racks', () => {
@@ -771,6 +749,10 @@ describe('application3D architecture layout', () => {
     expect(architectureEdgeColor({ kind: 'application', health: { state: 'alarming' } })).toBe(ARCH_EDGE);
     expect(hostHasAlarm({ kind: 'host', health: { state: 'alarming' } })).toBe(true);
     expect(hostHasAlarm({ kind: 'application', health: { state: 'alarming' } })).toBe(false);
+    expect(hostMonitorGap({ kind: 'host', health: { reason: 'unmonitored' } })).toBe(true);
+    expect(hostMonitorGap({ kind: 'host', health: { reason: 'monitor_unreadable' } })).toBe(true);
+    expect(hostMonitorGap({ kind: 'host', health: { reason: 'unavailable' } })).toBe(false);
+    expect(hostMonitorGap({ kind: 'application', health: { reason: 'unmonitored' } })).toBe(false);
     expect(applicationHasAlarm({ kind: 'application', health: { state: 'alarming' } })).toBe(true);
     expect(applicationHasAlarm({ kind: 'application', health: { state: 'normal' } })).toBe(false);
     expect(applicationHasAlarm({ kind: 'host', health: { state: 'alarming' } })).toBe(false);
@@ -1785,6 +1767,40 @@ describe('application3D architecture view', () => {
     view.dispose();
   });
 
+  it('dims unmonitored host cabinets and turns the LEDs off', () => {
+    const gapHealth = {
+      ...health,
+      state: 'unknown' as const,
+      reason: 'unmonitored' as const,
+      activeAlarmCount: null,
+      severityCounts: null,
+      noDataAlarmCount: null,
+      highestSeverity: null,
+    };
+    const view = createArchitectureTreeGroup(tree({
+      nodes: [
+        { id: 'sys-1', kind: 'system', name: '门户系统', health },
+        { id: 'app-1', kind: 'application', name: '门户', health },
+        { id: 'host-gap', kind: 'host', name: 'bare', health: gapHealth },
+      ],
+      edges: [
+        { id: 'e1', sourceId: 'sys-1', targetId: 'app-1', relation: 'system_contains_application' },
+        { id: 'e2', sourceId: 'app-1', targetId: 'host-gap', relation: 'application_run_host' },
+      ],
+    }), (_id, fallback = '') => fallback);
+    const hostGroup = view.nodeGroups.get('host-gap');
+    expect(hostGroup?.userData.monitorGap).toBe(true);
+    const leds: THREE.Mesh[] = [];
+    hostGroup?.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.userData.archRole === 'rack-led') leds.push(mesh);
+    });
+    expect(leds.length).toBe(ARCH_RACK_LED_COUNT);
+    expect(leds.every((led) => led.visible === false)).toBe(true);
+    expect(view.nodeLabels.get('host-gap')?.userData.labelFill).toBe(ARCH_LABEL_FILL_DIM);
+    view.dispose();
+  });
+
   it('lifts near-black albedo pixels to readable slate at runtime', () => {
     const pixels = new Uint8ClampedArray([0, 0, 0, 255, 1, 2, 3, 255, 255, 200, 0, 128]);
     liftCabinetAlbedoPixels(pixels);
@@ -2731,7 +2747,7 @@ describe('application3D architecture view', () => {
     expect(viewSrc).toContain('ARCH_APP_CHIP_WALL_INSET_GLOW_WIDTH');
     expect(viewSrc).toContain('sdRoundedBox');
     expect(viewSrc).toContain('yawObjectAroundYToCamera');
-    expect(viewSrc).toContain('addRackMeshes(nodeGroup, node, rackGeos, rackMats, alarming)');
+    expect(viewSrc).toContain('addRackMeshes(nodeGroup, node, rackGeos, rackMats, alarming, monitorGap)');
 
     const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 200);
     camera.position.set(6, 4, 12);

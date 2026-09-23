@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 import zipfile
 
 import pytest
@@ -19,6 +20,7 @@ from service.ansible_runner import (
     parse_playbook_recap,
     prepare_adhoc_execution,
     prepare_playbook_execution,
+    prepare_windows_script_execution,
     run_command,
     to_adhoc_request,
 )
@@ -293,6 +295,63 @@ async def test_run_command_truncates_oversized_output():
     assert output_meta["output_max_bytes"] == 128
 
 
+@pytest.mark.asyncio
+async def test_run_command_keeps_ansible_output_when_process_hangs_after_stdout_closes():
+    """真实子进程：输出已关闭但进程不退出（模拟 SSH ControlPersist 收尾挂起）。
+
+    回归：流式日志已推送成功结果时，不得因 wait 超时清空输出并丢终态。
+    """
+    published: list[str] = []
+
+    async def publisher(_subject: str, payload: bytes) -> None:
+        published.append(json.loads(payload.decode("utf-8"))["line"])
+
+    script = "\n".join(
+        [
+            "import os, sys, time",
+            "print('10.11.27.53 | CHANGED | rc=0 >>')",
+            "print('/etc/profile.d/lang.sh:行19: 警告:setlocale: LC_CTYPE: 无法改变区域选项 (C.UTF-8)')",
+            "print('hello world')",
+            'print("Shared connection to 10.11.27.53 closed.")',
+            "sys.stdout.flush()",
+            "sys.stderr.flush()",
+            "os.close(1)",
+            "os.close(2)",
+            "time.sleep(100)",
+        ]
+    )
+    started = time.monotonic()
+    code, output, _meta = await run_command(
+        [sys.executable, "-c", script],
+        timeout=10,
+        stream_publish=publisher,
+        stream_log_topic="job.stream.55.ansible",
+        execution_id="55",
+    )
+    elapsed = time.monotonic() - started
+
+    assert code == 0
+    assert "hello world" in output
+    assert "10.11.27.53 | CHANGED | rc=0 >>" in output
+    assert "command timed out" not in output
+    assert any("hello world" in line for line in published)
+    assert elapsed < 8
+
+
+@pytest.mark.asyncio
+async def test_run_command_true_timeout_still_returns_124_when_stdout_never_closes():
+    started = time.monotonic()
+    code, output, _meta = await run_command(
+        [sys.executable, "-c", "import time; print('partial', flush=True); time.sleep(100)"],
+        timeout=1,
+    )
+    elapsed = time.monotonic() - started
+
+    assert code == 124
+    assert output == "command timed out"
+    assert elapsed < 3
+
+
 def test_parse_playbook_recap_keeps_opening_brace_from_ok_line():
     output = """
 PLAY [all] *********************************************************************
@@ -517,6 +576,118 @@ def test_prepare_adhoc_execution_restricts_credential_inventory_permissions(tmp_
     )
 
     assert (workspace / "inventory.ini").stat().st_mode & 0o777 == 0o600
+
+
+def test_prepare_windows_powershell_execution_uses_restricted_file_and_cleanup_playbook(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    script = "Write-Output '中文'\nWrite-Output '{{ remains script text }}'"
+
+    command, workspace = prepare_windows_script_execution(
+        AdhocRequest(
+            host_credentials=[
+                {
+                    "host": "10.0.0.8",
+                    "user": "Administrator",
+                    "password": "secret",
+                    "connection": "winrm",
+                }
+            ],
+            module="win_shell",
+            module_args=script,
+            stream_remote_type="powershell",
+            task_id="windows-script-file",
+        )
+    )
+
+    script_path = workspace / "job-script.ps1"
+    assert script_path.read_bytes() == b"\xef\xbb\xbf" + script.encode("utf-8")
+    assert script_path.stat().st_mode & 0o777 == 0o600
+    assert script not in " ".join(command)
+
+    playbook_path = workspace / "playbook.yml"
+    playbook_text = playbook_path.read_text(encoding="utf-8")
+    playbook = ansible_runner.yaml.safe_load(playbook_text)
+    assert script not in playbook_text
+    assert command[command.index("playbook") + 2] == str(playbook_path)
+
+    tasks = playbook[0]["tasks"]
+    assert tasks[0]["ansible.windows.win_tempfile"] == {"state": "file", "prefix": "bklite-job-", "suffix": ".ps1"}
+    assert tasks[0]["register"] == "bklite_script_temp"
+    execution_block = tasks[1]
+    assert execution_block["block"][0]["ansible.windows.win_copy"] == {
+        "src": str(script_path),
+        "dest": "{{ bklite_script_temp.path }}",
+        "force": True,
+    }
+    assert execution_block["block"][1]["ansible.windows.win_command"]["argv"] == [
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "{{ bklite_script_temp.path }}",
+    ]
+    assert execution_block["always"][0]["ansible.windows.win_file"] == {
+        "path": "{{ bklite_script_temp.path }}",
+        "state": "absent",
+    }
+    assert execution_block["always"][0]["when"] == "bklite_script_temp.path is defined"
+
+
+def test_prepare_windows_script_execution_rejects_more_than_512_kib_before_creating_workspace(tmp_path, monkeypatch):
+    work_dir = tmp_path / "work"
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", work_dir)
+
+    with pytest.raises(ValueError, match=r"Windows script exceeds 512 KiB limit: 524289 bytes"):
+        prepare_windows_script_execution(
+            AdhocRequest(
+                inventory="localhost,",
+                module="win_shell",
+                module_args="x" * (512 * 1024 + 1),
+                stream_remote_type="powershell",
+                task_id="oversized-windows-script",
+            )
+        )
+
+    assert not work_dir.exists()
+
+
+def test_prepare_windows_bat_execution_converts_target_encoding_before_file_execution(tmp_path, monkeypatch):
+    monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
+    script = "@echo off\r\necho 中文\r\nexit /b 0"
+
+    command, workspace = prepare_windows_script_execution(
+        AdhocRequest(
+            inventory="windows-host,",
+            module="win_shell",
+            module_args=script,
+            stream_remote_type="bat",
+            task_id="windows-bat-file",
+        )
+    )
+
+    script_path = workspace / "job-script.cmd"
+    assert script_path.read_bytes() == script.encode("utf-8")
+    assert script_path.stat().st_mode & 0o777 == 0o600
+    assert script not in " ".join(command)
+
+    playbook = ansible_runner.yaml.safe_load((workspace / "playbook.yml").read_text(encoding="utf-8"))
+    tasks = playbook[0]["tasks"]
+    assert tasks[0]["ansible.windows.win_tempfile"] == {"state": "file", "prefix": "bklite-job-", "suffix": ".cmd"}
+    execution_tasks = tasks[1]["block"]
+    assert execution_tasks[0]["ansible.windows.win_copy"]["src"] == str(script_path)
+    conversion = execution_tasks[1]["ansible.windows.win_powershell"]
+    assert conversion["parameters"] == {"path": "{{ bklite_script_temp.path }}"}
+    assert "[Text.Encoding]::Default" in conversion["script"]
+    assert execution_tasks[2]["ansible.windows.win_command"]["argv"] == [
+        "cmd.exe",
+        "/d",
+        "/q",
+        "/c",
+        "{{ bklite_script_temp.path }}",
+    ]
+    assert tasks[1]["always"][0]["ansible.windows.win_file"]["state"] == "absent"
 
 
 @pytest.mark.asyncio

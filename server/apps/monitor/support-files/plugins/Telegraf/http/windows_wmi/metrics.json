@@ -2,8 +2,24 @@
   "plugin": "Windows WMI",
   "plugin_desc": "Remote Windows host metrics collection through WMI/DCOM from Stargazer. Requires WMI service, account permission, and WMI/DCOM/RPC network reachability.",
   "status_query": "any({instance_type='os', collect_type='http', config_type='windows_wmi'}) by (instance_id)",
-  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host","required":true}}],
-  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "input",
+      "options": {
+        "field": "host",
+        "required": true
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
   "node_selector": {
     "is_container": true
   },
@@ -12,14 +28,185 @@
   "type": "OS",
   "description": "Remote Windows host monitoring through WMI",
   "default_metric": "any({instance_type='os'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "cpu_usage_total",
+    "mem_used_percent",
+    "disk_used_percent"
+  ],
   "display_fields": [
-    {"name":"CPU使用率","sort_order":0,"metrics":[{"plugin":"Host","metric":"cpu_usage_total"},{"plugin":"Windows WMI","metric":"cpu_usage_total"},{"plugin":"Host Remote","metric":"cpu_usage_total"},{"plugin":"Host AIX Remote","metric":"cpu_usage_total"},{"plugin":"Host FreeBSD Remote","metric":"cpu_usage_total"},{"plugin":"Host HP-UX Remote","metric":"cpu_usage_total"},{"plugin":"Host Solaris Remote","metric":"cpu_usage_total"}]},
-    {"name":"内存使用率","sort_order":1,"metrics":[{"plugin":"Host","metric":"mem_used_percent"},{"plugin":"Windows WMI","metric":"mem_used_percent"},{"plugin":"Host Remote","metric":"mem_used_percent"},{"plugin":"Host AIX Remote","metric":"mem_used_percent"},{"plugin":"Host FreeBSD Remote","metric":"mem_used_percent"},{"plugin":"Host HP-UX Remote","metric":"mem_used_percent"},{"plugin":"Host Solaris Remote","metric":"mem_used_percent"}]},
-    {"name":"磁盘使用率","sort_order":2,"metrics":[{"plugin":"Host","metric":"disk_used_percent"},{"plugin":"Windows WMI","metric":"disk_used_percent"},{"plugin":"Host Remote","metric":"disk_used_percent"},{"plugin":"Host AIX Remote","metric":"disk_used_percent"},{"plugin":"Host FreeBSD Remote","metric":"disk_used_percent"},{"plugin":"Host HP-UX Remote","metric":"disk_used_percent"},{"plugin":"Host Solaris Remote","metric":"disk_used_percent"}]},
-    {"name":"网络入向吞吐","sort_order":3,"metrics":[{"plugin":"Host","metric":"net_bytes_recv_rate"},{"plugin":"Windows WMI","metric":"net_bytes_recv_rate"},{"plugin":"Host Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host AIX Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host FreeBSD Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host HP-UX Remote","metric":"net_bytes_recv_rate"},{"plugin":"Host Solaris Remote","metric":"net_bytes_recv_rate"}]},
-    {"name":"磁盘IO使用率","sort_order":4,"metrics":[{"plugin":"Host","metric":"diskio_io_util"},{"plugin":"Windows WMI","metric":"diskio_io_util"},{"plugin":"Host AIX Remote","metric":"disk_tm_act"},{"plugin":"Host FreeBSD Remote","metric":"disk_tm_act"},{"plugin":"Host HP-UX Remote","metric":"disk_tm_act"},{"plugin":"Host Solaris Remote","metric":"disk_tm_act"}]}
+    {
+      "name": "CPU使用率",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "cpu_usage_total"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "cpu_usage_total"
+        }
+      ]
+    },
+    {
+      "name": "内存使用率",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "mem_used_percent"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "mem_used_percent"
+        }
+      ]
+    },
+    {
+      "name": "磁盘使用率",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "disk_used_percent"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "disk_used_percent"
+        }
+      ]
+    },
+    {
+      "name": "网络入向吞吐",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "net_bytes_recv_rate"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "net_bytes_recv_rate"
+        }
+      ]
+    },
+    {
+      "name": "磁盘IO使用率",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "Host",
+          "metric": "diskio_io_util"
+        },
+        {
+          "plugin": "Windows WMI",
+          "metric": "diskio_io_util"
+        },
+        {
+          "plugin": "Host Remote",
+          "metric": "diskio_io_util"
+        },
+        {
+          "plugin": "Host AIX Remote",
+          "metric": "disk_tm_act"
+        },
+        {
+          "plugin": "Host FreeBSD Remote",
+          "metric": "disk_tm_act"
+        },
+        {
+          "plugin": "Host HP-UX Remote",
+          "metric": "disk_tm_act"
+        },
+        {
+          "plugin": "Host Solaris Remote",
+          "metric": "disk_tm_act"
+        }
+      ]
+    }
   ],
   "metrics": [
     {
@@ -28,10 +215,12 @@
       "query": "cpu_usage_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
-      "unit": "%",
+      "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "CPU usage percentage"
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU usage percentage from Processor(_Total) PercentProcessorTime"
     },
     {
       "metric_group": "Memory",
@@ -39,9 +228,11 @@
       "query": "mem_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
-      "unit": "%",
+      "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Used memory percentage"
     },
     {
@@ -50,9 +241,21 @@
       "query": "disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
       "display_name": "Disk Usage",
       "data_type": "Number",
-      "unit": "%",
-      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
-      "instance_id_keys": ["instance_id"],
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "device"
+        },
+        {
+          "name": "path"
+        },
+        {
+          "name": "fstype"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Disk usage percentage per logical disk"
     },
     {
@@ -63,7 +266,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Total memory in bytes"
     },
     {
@@ -74,8 +279,10 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Available memory in bytes"
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available memory in bytes (standby + free), not free-only"
     },
     {
       "metric_group": "Disk",
@@ -84,8 +291,20 @@
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "device"
+        },
+        {
+          "name": "path"
+        },
+        {
+          "name": "fstype"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Total disk space in bytes per logical disk"
     },
     {
@@ -95,8 +314,20 @@
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "device"
+        },
+        {
+          "name": "path"
+        },
+        {
+          "name": "fstype"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Free disk space in bytes per logical disk"
     },
     {
@@ -106,8 +337,14 @@
       "display_name": "Network Receive Packet Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network received packet rate over the past 5 minutes"
     },
     {
@@ -117,8 +354,14 @@
       "display_name": "Network Transmit Packet Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network transmitted packet rate over the past 5 minutes"
     },
     {
@@ -128,8 +371,14 @@
       "display_name": "Network Receive Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network received byte rate over the past 5 minutes"
     },
     {
@@ -139,8 +388,14 @@
       "display_name": "Network Transmit Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network transmitted byte rate over the past 5 minutes"
     },
     {
@@ -150,8 +405,14 @@
       "display_name": "Network Receive Error Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network receive error rate over the past 5 minutes"
     },
     {
@@ -161,8 +422,14 @@
       "display_name": "Network Transmit Error Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network transmit error rate over the past 5 minutes"
     },
     {
@@ -172,8 +439,14 @@
       "display_name": "Network Receive Drop Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network receive drop rate over the past 5 minutes"
     },
     {
@@ -183,8 +456,14 @@
       "display_name": "Network Transmit Drop Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "interface"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Network transmit drop rate over the past 5 minutes"
     },
     {
@@ -193,10 +472,50 @@
       "query": "diskio_io_util_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
       "display_name": "Disk IO Utilization",
       "data_type": "Number",
-      "unit": "%",
-      "dimensions": [{"name": "name"}],
-      "instance_id_keys": ["instance_id"],
-      "description": "Disk IO utilization per physical disk"
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Disk busy-time percentage from formatted PercentDiskTime"
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "disk_read_latency",
+      "query": "disk_read_latency_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "Disk Read Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average disk read latency in milliseconds from formatted AvgDiskSecPerRead"
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "disk_write_latency",
+      "query": "disk_write_latency_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "Disk Write Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average disk write latency in milliseconds from formatted AvgDiskSecPerWrite"
     },
     {
       "metric_group": "Disk IO",
@@ -204,9 +523,15 @@
       "query": "rate(diskio_reads_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[5m])",
       "display_name": "Disk Read Rate",
       "data_type": "Number",
-      "unit": "counts",
-      "dimensions": [{"name": "name"}],
-      "instance_id_keys": ["instance_id"],
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Disk read operation rate over the past 5 minutes"
     },
     {
@@ -215,9 +540,15 @@
       "query": "rate(diskio_writes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[5m])",
       "display_name": "Disk Write Rate",
       "data_type": "Number",
-      "unit": "counts",
-      "dimensions": [{"name": "name"}],
-      "instance_id_keys": ["instance_id"],
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Disk write operation rate over the past 5 minutes"
     },
     {
@@ -227,8 +558,14 @@
       "display_name": "Disk Read Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "name"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Disk read byte rate over the past 5 minutes"
     },
     {
@@ -238,53 +575,28 @@
       "display_name": "Disk Write Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "name"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "Disk write byte rate over the past 5 minutes"
     },
     {
       "metric_group": "Processes",
       "name": "processes_running",
       "query": "processes_running_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
-      "display_name": "Running Processes",
+      "display_name": "Process Count",
       "data_type": "Number",
       "unit": "counts",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Running process count"
-    },
-    {
-      "metric_group": "Processes",
-      "name": "processes_blocked",
-      "query": "processes_blocked_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
-      "display_name": "Blocked Processes",
-      "data_type": "Number",
-      "unit": "counts",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Blocked process count"
-    },
-    {
-      "metric_group": "Processes",
-      "name": "processes_zombies",
-      "query": "processes_zombies_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
-      "display_name": "Zombie Processes",
-      "data_type": "Number",
-      "unit": "counts",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Zombie process count"
-    },
-    {
-      "metric_group": "Processes",
-      "name": "processes_sleeping",
-      "query": "processes_sleeping_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
-      "display_name": "Sleeping Processes",
-      "data_type": "Number",
-      "unit": "counts",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Sleeping process count"
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total Windows process table size (Win32_Process count), not Linux run-queue size"
     },
     {
       "metric_group": "System",
@@ -294,41 +606,10 @@
       "data_type": "Number",
       "unit": "s",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "System uptime in seconds"
-    },
-    {
-      "metric_group": "System",
-      "name": "system_load1",
-      "query": "system_load1_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
-      "display_name": "System Load 1m",
-      "data_type": "Number",
-      "unit": "none",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "System load in the past 1 minute"
-    },
-    {
-      "metric_group": "System",
-      "name": "system_load5",
-      "query": "system_load5_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
-      "display_name": "System Load 5m",
-      "data_type": "Number",
-      "unit": "none",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "System load in the past 5 minutes"
-    },
-    {
-      "metric_group": "System",
-      "name": "system_load15",
-      "query": "system_load15_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
-      "display_name": "System Load 15m",
-      "data_type": "Number",
-      "unit": "none",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "System load in the past 15 minutes"
     }
   ]
 }

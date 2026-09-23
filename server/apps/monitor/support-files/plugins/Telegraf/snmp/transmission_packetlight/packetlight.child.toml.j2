@@ -38,7 +38,7 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4515.1.3.1.43.0"
+        oid = "1.3.6.1.4.1.4515.1.3.1.43"
         name = "celsius"
         conversion = "int"
     # ---- 可选 slmSysOperStatus 1.3.6.1.4.1.4515.1.3.1.7.0 → device_oper_status ----
@@ -47,7 +47,7 @@
         name = "device_oper"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4515.1.3.1.7.0"
+        oid = "1.3.6.1.4.1.4515.1.3.1.7"
         name = "status"
         conversion = "int"
 # ---- CPU/内存/风扇/电源：SL-MAIN 已确认系统温度与可选运行状态。slmPsuNumber 是可写的电源数量配置（与实际不一致时告警），不是在线电源状态，不得映射为 device_psu_state。无私有 CPU%/内存% 对象，不臆造。光链路/SFP 行表不提升为共享设备健康。----

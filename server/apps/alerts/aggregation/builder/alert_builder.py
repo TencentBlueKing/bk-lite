@@ -10,7 +10,7 @@ from apps.alerts.enrichment.merge import merge_namespace_payload
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.service.monitor_object_snapshot import resolve_monitor_objects
-from apps.alerts.service.monitor_sources import collect_push_source_ids
+from apps.alerts.service.monitor_sources import collect_push_source_ids, remember_snapshot
 from apps.alerts.utils.enrichment import resolve_data_path
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
@@ -306,6 +306,8 @@ class AlertBuilder:
             # 初始化新创建Alert的缓存
             AlertBuilder._alert_event_cache[alert.pk] = set(event_ids)
 
+        remember_snapshot(alert)
+
         from django.db import transaction
 
         from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
@@ -381,4 +383,5 @@ class AlertBuilder:
                 "dimensions",
             ]
         )
+        remember_snapshot(alert)
         return alert

@@ -40,7 +40,7 @@
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.6080.3.1.3.2.0"
+        oid = "1.3.6.1.4.1.6080.3.1.3.2"
         name = "celsius"
         conversion = "int"
     # ---- brwaveRadioTxTemperature ----
@@ -50,7 +50,7 @@
         name = "tx_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.6080.3.1.3.3.0"
+        oid = "1.3.6.1.4.1.6080.3.1.3.3"
         name = "celsius"
         conversion = "int"
     # ---- brwaveRadioRSL ----
@@ -60,7 +60,7 @@
         name = "rsl"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.6080.3.1.3.4.0"
+        oid = "1.3.6.1.4.1.6080.3.1.3.4"
         name = "rsl"
         conversion = "int"
     # ---- 可选 brwaveRadioInVoltage ----
@@ -70,7 +70,7 @@
         name = "device"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.6080.3.1.3.1.0"
+        oid = "1.3.6.1.4.1.6080.3.1.3.1"
         name = "in_voltage"
         conversion = "int"
 # ---- CPU/内存/风扇/电源：BRWAVE-RADIO 已确认机组温度、发射机温度、RSL 与可选输入电压标量。无稳定、无需行级过滤的 CPU%/内存% 共享健康对象 → N/A，不臆造。----

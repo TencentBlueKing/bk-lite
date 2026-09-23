@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button, Empty, message, Popconfirm, Space, Switch, Tabs, Tag } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
 import {
@@ -14,13 +15,16 @@ import {
   ShareAltOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import PermissionWrapper from '@/components/permission';
 import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 import { CREDENTIAL_CATEGORIES } from '@/components/credential-picker/types';
 import type { CredentialGroupOption, CredentialItem, CredentialTypeItem } from '@/components/credential-picker/types';
+import { resolveCredentialLocate } from '@/components/credential-picker/vaultLocate';
 import { useCredentialApi } from '@/app/system-manager/api/credential';
 import CredentialFormDrawer, { type CredentialDrawerMode } from './CredentialFormDrawer';
+import { classifyCredentialRefs } from '@/app/system-manager/utils/credentialRefs';
 import type { ColumnItem } from '@/types';
 import { HandledRequestError } from '@/utils/request';
 
@@ -43,6 +47,14 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 
 const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active = true }) => {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const locateQueryRef = useRef({
+    category: searchParams?.get('category') || undefined,
+    type: searchParams?.get('type') || undefined,
+    applied: false,
+  });
+  const pendingLocateTypeRef = useRef<string | undefined>(undefined);
+  const filterTouchedRef = useRef(false);
   const {
     getCredentialTypes,
     getCredentials,
@@ -58,7 +70,9 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
   const [items, setItems] = useState<CredentialItem[]>([]);
   const [assignableGroups, setAssignableGroups] = useState<CredentialGroupOption[]>([]);
   const [usableGroups, setUsableGroups] = useState<CredentialGroupOption[]>([]);
-  const [category, setCategory] = useState<string>(CREDENTIAL_CATEGORIES[0]);
+  const [category, setCategory] = useState<string>(
+    () => resolveCredentialLocate(locateQueryRef.current, []).category,
+  );
   const [typeKey, setTypeKey] = useState<string>(ALL_TYPES);
   const [search, setSearch] = useState('');
   const [ownerId, setOwnerId] = useState<number | undefined>();
@@ -95,6 +109,24 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
     setTypes(nextTypes.items);
     setAssignableGroups(nextAssignable);
     setUsableGroups(nextUsable);
+
+    if (locateQueryRef.current.applied) {
+      return;
+    }
+    locateQueryRef.current.applied = true;
+    if (filterTouchedRef.current) {
+      return;
+    }
+    const next = resolveCredentialLocate(locateQueryRef.current, nextTypes.items);
+    if (next.category !== category) {
+      pendingLocateTypeRef.current = next.type ?? ALL_TYPES;
+      setCategory(next.category);
+      return;
+    }
+    if (next.type) {
+      setTypeKey(next.type);
+      void loadList({ page: 1, type: next.type });
+    }
   };
 
   const loadList = async (opts: {
@@ -153,8 +185,10 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
   }, [active]);
 
   useEffect(() => {
-    setTypeKey(ALL_TYPES);
-    void loadList({ page: 1, type: ALL_TYPES, owner: ownerId, keyword: search });
+    const nextType = pendingLocateTypeRef.current ?? ALL_TYPES;
+    pendingLocateTypeRef.current = undefined;
+    setTypeKey(nextType);
+    void loadList({ page: 1, type: nextType, owner: ownerId, keyword: search });
   }, [category]);
 
   const openCreate = () => {
@@ -243,10 +277,14 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
       key: 'refs',
       width: 110,
       render: (refs: unknown) => {
-        if (refs == null || (Array.isArray(refs) && refs.length === 0) || refs === '') {
+        const display = classifyCredentialRefs(refs);
+        if (display.kind === 'unknown') {
           return <span className="text-[var(--color-text-4)]">—</span>;
         }
-        if (Array.isArray(refs)) {
+        if (display.kind === 'zero') {
+          return <span className="text-sm text-[var(--color-text-2)]">0</span>;
+        }
+        if (display.kind === 'chips') {
           const labelOf = (moduleName: string, count: number) => {
             if (moduleName === 'cmdb') {
               return t('system.credential.refCmdb', 'CMDB {count}', { count });
@@ -258,25 +296,15 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
           };
           return (
             <div className="flex flex-wrap gap-1">
-              {refs.map((item) => {
-                const moduleName =
-                  item && typeof item === 'object'
-                    ? String((item as { module?: string }).module || '')
-                    : '';
-                const count = item && typeof item === 'object' ? Number((item as { count?: number }).count) : 0;
-                if (!moduleName || !count) {
-                  return null;
-                }
-                return (
-                  <Tag key={moduleName} bordered={false} color="blue" className="rounded">
-                    {labelOf(moduleName, count)}
-                  </Tag>
-                );
-              })}
+              {display.items.map((item) => (
+                <Tag key={item.module} bordered={false} color="blue" className="rounded">
+                  {labelOf(item.module, item.count)}
+                </Tag>
+              ))}
             </div>
           );
         }
-        return <span className="text-sm text-[var(--color-text-2)]">{String(refs)}</span>;
+        return <span className="text-sm text-[var(--color-text-2)]">{display.value}</span>;
       },
     },
     {
@@ -378,7 +406,10 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
                     ? 'bg-[var(--color-primary-bg-active)] font-medium text-[var(--color-primary)]'
                     : 'text-[var(--color-text-2)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-text-1)]'
                 }`}
-                onClick={() => setCategory(id)}
+                onClick={() => {
+                  filterTouchedRef.current = true;
+                  setCategory(id);
+                }}
               >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span
@@ -403,6 +434,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
           <Tabs
             activeKey={typeKey}
             onChange={(key) => {
+              filterTouchedRef.current = true;
               setTypeKey(key);
               void loadList({ page: 1, type: key });
             }}
@@ -430,42 +462,41 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
               spacing="flush"
               searchProps={{
                 placeholder: t('system.credential.searchPlaceholder'),
-                enterButton: false,
                 onSearch: (value) => {
                   setSearch(value);
                   void loadList({ page: 1, keyword: value });
                 },
               }}
+              filters={(
+                <div className="w-48">
+                  <GroupTreeSelect
+                    multiple={false}
+                    mode="ownership"
+                    allowClear
+                    showSearch
+                    placeholder={t('system.credential.organization')}
+                    value={ownerId}
+                    onChange={(value) => {
+                      const next = typeof value === 'number' ? value : undefined;
+                      setOwnerId(next);
+                      void loadList({ page: 1, owner: next ?? null });
+                    }}
+                  />
+                </div>
+              )}
               actions={(
-                <>
-                  <div className="w-48">
-                    <GroupTreeSelect
-                      multiple={false}
-                      mode="ownership"
-                      allowClear
-                      showSearch
-                      placeholder={t('system.credential.organization')}
-                      value={ownerId}
-                      onChange={(value) => {
-                        const next = typeof value === 'number' ? value : undefined;
-                        setOwnerId(next);
-                        void loadList({ page: 1, owner: next ?? null });
-                      }}
-                    />
-                  </div>
-                  <PermissionWrapper requiredPermissions={['Add']}>
-                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                      {t('system.credential.addCredential')}
-                    </Button>
-                  </PermissionWrapper>
-                </>
+                <PermissionWrapper requiredPermissions={['Add']}>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                    {t('common.new')}
+                  </Button>
+                </PermissionWrapper>
               )}
             />
           </div>
         </div>
 
         {/* Content Table / Empty */}
-        <div className="min-h-0 flex-1">
+        <SystemManagerFillTable>
           {!typesInCategory.length && !loading ? (
             <div className="flex h-full min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-2)] bg-[var(--color-fill-1)]/20 p-8 text-center">
               <Empty
@@ -497,7 +528,7 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
               }}
             />
           )}
-        </div>
+        </SystemManagerFillTable>
       </div>
       <CredentialFormDrawer
         open={drawerOpen}

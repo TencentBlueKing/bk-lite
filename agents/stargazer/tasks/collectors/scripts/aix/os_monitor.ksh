@@ -108,14 +108,14 @@ if [ -n "${UPTIME_RAW}" ]; then
   ')
 fi
 
-# --- CPU: mpstat -a (ALL row, else average per-cpu). Total = user + sys + iowait. ---
+# --- CPU: mpstat -a 1 1 (interval sample). Total = user + sys + iowait. ---
 CPU_USER=0
 CPU_SYS=0
 CPU_WAIT=0
 CPU_IDLE=0
 CPU_USAGE=0
 
-MPSTAT_OUT=$(_run mpstat -a)
+MPSTAT_OUT=$(_run mpstat -a 1 1)
 if [ -n "${MPSTAT_OUT}" ]; then
   set -- $(printf '%s\n' "${MPSTAT_OUT}" | awk '
     BEGIN { us_c=0; sy_c=0; wt_c=0; id_c=0; n=0 }
@@ -198,6 +198,7 @@ fi
 MEM_TOTAL=0
 MEM_FREE=0
 MEM_USED=0
+MEM_AVAILABLE=0
 MEM_USED_PCT=0
 SVMON_WORK=0
 SVMON_PERS=0
@@ -291,6 +292,17 @@ if [ -n "${VMSTAT_OUT}" ]; then
   fi
 fi
 
+MEM_AVAILABLE=$(awk -v t="${MEM_TOTAL}" -v f="${MEM_FREE}" -v c="${SVMON_CLNT}" 'BEGIN {
+  a = (f + 0) + (c + 0)
+  if (t + 0 > 0 && a > t) a = t
+  if (a < 0) a = 0
+  printf "%.0f", a
+}')
+MEM_USED=$(awk -v t="${MEM_TOTAL}" -v a="${MEM_AVAILABLE}" 'BEGIN {
+  u = t - a
+  if (u < 0) u = 0
+  printf "%.0f", u
+}')
 MEM_USED_PCT=$(awk -v t="${MEM_TOTAL}" -v u="${MEM_USED}" 'BEGIN {
   if (t > 0) printf "%.2f", u * 100 / t
   else printf "0"
@@ -739,8 +751,8 @@ printf '{'
 printf '"oslevel":"%s",' "${OSLEVEL}"
 printf '"cpu":{"usage_percent":%s,"usage_user_percent":%s,"usage_system_percent":%s,"usage_iowait_percent":%s},' \
   "$(_num "${CPU_USAGE}")" "$(_num "${CPU_USER}")" "$(_num "${CPU_SYS}")" "$(_num "${CPU_WAIT}")"
-printf '"mem":{"total_bytes":%s,"used_bytes":%s,"free_bytes":%s,"swap_total_bytes":%s,"swap_free_bytes":%s,"used_percent":%s},' \
-  "$(_num "${MEM_TOTAL}")" "$(_num "${MEM_USED}")" "$(_num "${MEM_FREE}")" "$(_num "${SWAP_TOTAL}")" "$(_num "${SWAP_FREE}")" "$(_num "${MEM_USED_PCT}")"
+printf '"mem":{"total_bytes":%s,"used_bytes":%s,"free_bytes":%s,"available_bytes":%s,"swap_total_bytes":%s,"swap_free_bytes":%s,"used_percent":%s},' \
+  "$(_num "${MEM_TOTAL}")" "$(_num "${MEM_USED}")" "$(_num "${MEM_FREE}")" "$(_num "${MEM_AVAILABLE}")" "$(_num "${SWAP_TOTAL}")" "$(_num "${SWAP_FREE}")" "$(_num "${MEM_USED_PCT}")"
 printf '"svmon":{"work":%s,"pers":%s,"clnt":%s,"pin":%s},' \
   "$(_num "${SVMON_WORK}")" "$(_num "${SVMON_PERS}")" "$(_num "${SVMON_CLNT}")" "$(_num "${SVMON_PIN}")"
 printf '"lpar":{"entitled_capacity":%s,"virtual_cpus":%s},' \

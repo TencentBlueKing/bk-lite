@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Input, Button, Select, message } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
@@ -9,6 +10,7 @@ import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useSearchParams } from 'next/navigation';
 import { useScreenAwareRouter } from '@/console-layout';
 import ViewModal from './viewModal';
+import EditInstance from '../integration/asset/editInstance';
 import {
   ColumnItem,
   ModalRef,
@@ -32,6 +34,7 @@ import {
   getDerivativeObjectNames
 } from '@/app/monitor/utils/monitorObject';
 import { findByMonitorId, sameMonitorId } from '@/app/monitor/utils/monitorIds';
+import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 import {
   DEFAULT_VIEW_FIXED_FIELD_KEYS,
   resolveViewColumns
@@ -43,6 +46,11 @@ import {
   displayFieldKey,
   displayFieldParamKey
 } from './instanceViewColumns';
+import {
+  readUrlColonyIds,
+  readUrlTableSort,
+  resolveColonyAfterEnumLoad
+} from './viewListUrlPrefill';
 const { Option } = Select;
 
 const ViewList: React.FC<ViewListProps> = ({
@@ -66,6 +74,7 @@ const ViewList: React.FC<ViewListProps> = ({
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getEnumValueUnit } = useUnitTransform();
   const viewRef = useRef<ModalRef>(null);
+  const instanceRef = useRef<ModalRef>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef<number>(0);
@@ -76,6 +85,7 @@ const ViewList: React.FC<ViewListProps> = ({
   const nodeRef = useRef<string | null>(null);
   const columnFiltersRef = useRef<Record<string, string[]>>({});
   const searchTextRef = useRef('');
+  const unassignedOnlyRef = useRef(false);
   const paginationRef = useRef<Pagination>({
     current: 1,
     total: 0,
@@ -86,6 +96,7 @@ const ViewList: React.FC<ViewListProps> = ({
     order: 'ascend' | 'descend';
   } | null>(null);
   const [searchText, setSearchText] = useState<string>('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -157,6 +168,9 @@ const ViewList: React.FC<ViewListProps> = ({
   useEffect(() => {
     searchTextRef.current = searchText;
   }, [searchText]);
+  useEffect(() => {
+    unassignedOnlyRef.current = unassignedOnly;
+  }, [unassignedOnly]);
   useEffect(() => {
     paginationRef.current = pagination;
   }, [pagination]);
@@ -354,6 +368,17 @@ const ViewList: React.FC<ViewListProps> = ({
           filteredValue: selected.length ? selected : null
         };
       }
+      if (String(col.key) === INSTANCE_VIEW_ACTION_KEY && unassignedOnly) {
+        next = {
+          ...next,
+          width: 120,
+          render: (_, record) => (
+            <Button type="link" onClick={() => openAssignOrganization(record)}>
+              {t('common.adjustOrganization')}
+            </Button>
+          )
+        };
+      }
       return next;
     });
   }, [
@@ -364,7 +389,9 @@ const ViewList: React.FC<ViewListProps> = ({
     ipFilterOptions,
     fieldFilterOptions,
     roleFieldColumns,
-    tableSort
+    tableSort,
+    unassignedOnly,
+    t
   ]);
 
   const fieldGroups = useMemo(() => {
@@ -404,29 +431,32 @@ const ViewList: React.FC<ViewListProps> = ({
         ...prev,
         current: 1
       }));
-      const hostFromUrl =
-        findByMonitorId(objects, objectId)?.name === 'Process'
-          ? searchParams.get('vm_params.instance_id')
+      const targetObject = findByMonitorId(objects, objectId);
+      const nextColony = readUrlColonyIds(searchParams, targetObject?.name);
+      const nextSort =
+        isPod || isNode
+          ? readUrlTableSort(searchParams, targetObject?.display_fields)
           : null;
-      const nextColony = hostFromUrl ? [hostFromUrl] : [];
       setNode(null);
       nodeRef.current = null;
       setColony(nextColony);
       colonyRef.current = nextColony;
       setColumnFilters({});
       columnFiltersRef.current = {};
-      setTableSort(null);
-      tableSortRef.current = null;
+      setTableSort(nextSort);
+      tableSortRef.current = nextSort;
       setIpFilterOptions([]);
       setFieldFilterOptions({});
       getColoumnAndData();
     }
-    // searchParams host 过滤变更时也要重载（同对象再次跳转）
+    // searchParams 过滤/排序变更时也要重载（同对象再次跳转）
   }, [
     objectId,
     objects,
     isLoading,
-    searchParams.get('vm_params.instance_id')
+    searchParams.get('vm_params.instance_id'),
+    searchParams.get('ordering'),
+    searchParams.get('order')
   ]);
 
   useEffect(() => {
@@ -451,7 +481,8 @@ const ViewList: React.FC<ViewListProps> = ({
     objectId,
     pagination.current,
     pagination.pageSize,
-    searchText
+    searchText,
+    unassignedOnly
   ]);
 
   // 条件过滤请求
@@ -459,7 +490,7 @@ const ViewList: React.FC<ViewListProps> = ({
     if (objectId && objects?.length && !isLoading) {
       onRefresh();
     }
-  }, [colony, node, columnFilters]);
+  }, [colony, node, columnFilters, unassignedOnly]);
 
   // 组件卸载时取消未完成的请求
   useEffect(() => {
@@ -495,7 +526,8 @@ const ViewList: React.FC<ViewListProps> = ({
       page_size: paginationRef.current.pageSize,
       add_metrics: true,
       name: searchTextRef.current,
-      vm_params
+      vm_params,
+      ...(unassignedOnlyRef.current ? { unassigned: true } : {})
     };
     if (tableSortRef.current) {
       return {
@@ -604,6 +636,11 @@ const ViewList: React.FC<ViewListProps> = ({
           setColony(resolved);
         }
       }
+      const nextColony = resolveColonyAfterEnumLoad(objName, colonyRef.current);
+      if (!sameStringArray(nextColony, colonyRef.current)) {
+        colonyRef.current = nextColony;
+        setColony(nextColony);
+      }
       setMetrics(res[0].items);
       if (objName) {
         const actionColumn = columns.find(
@@ -628,13 +665,7 @@ const ViewList: React.FC<ViewListProps> = ({
         if (currentRequestId !== columnRequestIdRef.current) {
           return;
         }
-        if (!colonyRef.current.length || objName === 'Process') {
-          onRefresh();
-        } else {
-          setColony([]);
-          colonyRef.current = [];
-          onRefresh();
-        }
+        onRefresh();
       }
     } finally {
       if (currentRequestId !== columnRequestIdRef.current) {
@@ -853,10 +884,24 @@ const ViewList: React.FC<ViewListProps> = ({
     const effectivePlugins = await getEffectivePlugins(objectId, {
       instance_id: row.instance_id
     });
-    setPlugins(formatMonitorViewPluginTabs(effectivePlugins || []));
+    const monitorItem = findByMonitorId(objects, objectId);
+    setPlugins(
+      formatMonitorViewPluginTabs(effectivePlugins || [], {
+        objectDisplayName:
+          monitorItem?.display_name || monitorItem?.name || ''
+      })
+    );
     viewRef.current?.showModal({
       title: t('monitor.views.indexView'),
       type: 'add',
+      form: row
+    });
+  };
+
+  const openAssignOrganization = (row: TableDataItem) => {
+    instanceRef.current?.showModal({
+      title: t('common.adjustOrganization'),
+      type: 'edit',
       form: row
     });
   };
@@ -886,11 +931,11 @@ const ViewList: React.FC<ViewListProps> = ({
 
   return (
     <div className="w-full">
-      <div className="flex justify-between mb-[10px]">
-        <div className="flex items-center">
+      <div className="mb-[10px] flex justify-between">
+        <div className="flex items-center gap-2">
           {showTopFilterBar && (
-            <div className="flex items-center flex-wrap gap-y-[8px]">
-              <span className="text-[14px] mr-[10px]">
+            <div className="flex flex-wrap items-center gap-y-2">
+              <span className="mr-2.5 text-sm">
                 {t('monitor.views.filterOptions')}
               </span>
               {showTab && isPod && (
@@ -929,19 +974,34 @@ const ViewList: React.FC<ViewListProps> = ({
           )}
           <Input
             allowClear
-            className={`w-[240px] ${showTopFilterBar ? 'ml-[8px]' : ''}`}
-            placeholder={t('common.searchPlaceHolder')}
+            className={`w-[360px] ${showTopFilterBar ? 'ml-2' : ''}`}
+            placeholder={t(
+              getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId))
+            )}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             onPressEnter={onRefresh}
             onClear={clearText}
-          ></Input>
+          />
         </div>
-        <TimeSelector
-          onlyRefresh
-          onFrequenceChange={onFrequenceChange}
-          onRefresh={updatePage}
-        />
+        <div className="flex items-center gap-2">
+          <CatalogScopeSegmented
+            unassignedOnly={unassignedOnly}
+            onChange={(checked) => {
+              setUnassignedOnly(checked);
+              setPagination((prev) => ({
+                ...prev,
+                current: 1
+              }));
+            }}
+          />
+          <TimeSelector
+            onlyRefresh
+            className="[&>div]:!ml-0"
+            onFrequenceChange={onFrequenceChange}
+            onRefresh={updatePage}
+          />
+        </div>
       </div>
       <CustomTable
         scroll={{
@@ -975,6 +1035,11 @@ const ViewList: React.FC<ViewListProps> = ({
         metrics={metrics}
         objects={objects}
         monitorName={findByMonitorId(objects, objectId)?.name || ''}
+      />
+      <EditInstance
+        ref={instanceRef}
+        organizationList={[]}
+        onSuccess={onRefresh}
       />
     </div>
   );

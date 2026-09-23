@@ -1,17 +1,18 @@
+from django.conf import settings
+
 from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.handlers.base import ActionHandler
-from apps.alerts.action.payload import build_match_payload, resolve_field
+from apps.alerts.action.payload import build_match_payload, resolve_field, resolve_trigger_event_param
 from apps.alerts.action.resolver import resolve_params
 from apps.alerts.action.target_resolver import resolve_effective_team, resolve_node_target
 from apps.core.logger import alert_logger as logger
 from apps.rpc.job_mgmt import JobMgmt
-from django.conf import settings
 
 
 class JobActionHandler(ActionHandler):
     action_type = "job"
 
-    def execute(self, rule, alert, execution):
+    def execute(self, rule, alert, execution, param_overrides=None):
         cfg = rule.action_config or {}
         try:
             effective_team = resolve_effective_team(alert.team, rule.team)
@@ -20,6 +21,7 @@ class JobActionHandler(ActionHandler):
                 return self._config_error(execution, "作业不存在")
 
             payload = build_match_payload(alert)
+            payload["trigger_event"] = resolve_trigger_event_param(execution, alert)
             binding = cfg.get("target_binding", {})
             # mode: from_alert(默认，保留旧行为) | fixed（用规则内写死的 ip，不读 alert）
             mode = (binding.get("mode") or "from_alert").strip().lower()
@@ -48,7 +50,16 @@ class JobActionHandler(ActionHandler):
                 "mode": mode,
             }
 
-            params = resolve_params(payload, cfg.get("param_bindings", []), script.get("params", []))
+            params = resolve_params(
+                payload,
+                cfg.get("param_bindings", []),
+                script.get("params", []),
+                overrides=param_overrides,
+            )
+            execution.result = {
+                **(execution.result or {}),
+                "params": params,
+            }
 
             data = {
                 "name": f"告警动作-{rule.name}-{alert.alert_id}",
@@ -81,7 +92,11 @@ class JobActionHandler(ActionHandler):
         except Exception as e:
             logger.exception("[ActionEngine] job handler 异常")
             execution.status = "failed"
-            execution.result = {"message": str(e)}
+            existing = execution.result if isinstance(execution.result, dict) else {}
+            execution.result = {
+                **existing,
+                "message": str(e),
+            }
             execution.save()
 
     def _config_error(self, execution, msg):

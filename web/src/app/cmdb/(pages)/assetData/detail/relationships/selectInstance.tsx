@@ -33,8 +33,8 @@ import { SelectInstanceProps } from '@/app/cmdb/types/assetData';
 import PermissionWrapper from '@/components/permission';
 import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
+import { sortAssociationPickerOptions } from '../../associationPicker';
 
-const { Option } = Select;
 const { confirm } = Modal;
 
 const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
@@ -144,25 +144,30 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
             ),
           ])
             .then((res) => {
-              const relationData = res[0].map((item: AssoFieldType) => {
-                return {
-                  ...item,
-                  name: `${showModelName(item.src_model_id)}-${showConnectType(
-                    item.asst_id,
-                    'asst_name'
-                  )}-${showModelName(item.dst_model_id)}`,
-                  id:
-                    item.src_model_id === model_id
-                      ? item.dst_model_id
-                      : item.src_model_id,
-                };
-              });
-              const currentAssoModelId = relationData[0]?._id || 0;
-              const _modelId = relationData[0]?.id || '';
-              setRelationList(relationData);
+              const relationData: ListItem[] = res[0].map((item: AssoFieldType) => ({
+                ...item,
+                name: `${showModelName(item.src_model_id)}-${showConnectType(
+                  item.asst_id,
+                  'asst_name'
+                )}-${showModelName(item.dst_model_id)}`,
+                id:
+                  item.src_model_id === model_id
+                    ? item.dst_model_id
+                    : item.src_model_id,
+              }));
+              const sortedRelations = sortAssociationPickerOptions(relationData);
+              const rawAssoId = sortedRelations[0]?._id;
+              const currentAssoModelId =
+                typeof rawAssoId === 'number'
+                  ? rawAssoId
+                  : typeof rawAssoId === 'string'
+                    ? Number(rawAssoId) || 0
+                    : 0;
+              const _modelId = sortedRelations[0]?.id || '';
+              setRelationList(sortedRelations);
               setAssoModelId(currentAssoModelId);
               if (_modelId) {
-                initPage(_modelId);
+                initPage(String(_modelId));
               } else {
                 setIntancePropertyList([]);
                 setTableData([]);
@@ -381,20 +386,18 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
         <div className="flex flex-col">
           <div className="flex items-center justify-between mb-[16px]">
             <Select
+              showSearch
+              optionFilterProp="label"
               className="w-[300px]"
               value={relationList.length ? assoModelId : undefined}
               placeholder={t('Model.noAssociations')}
               disabled={!relationList.length}
               onChange={handleModelChange}
-            >
-              {relationList.map((item, index) => {
-                return (
-                  <Option value={item._id} key={index}>
-                    {item.name}
-                  </Option>
-                );
-              })}
-            </Select>
+              options={relationList.map((item) => ({
+                value: item._id,
+                label: item.name,
+              }))}
+            />
             <SearchFilter
               userList={userList}
               attrList={intancePropertyList}

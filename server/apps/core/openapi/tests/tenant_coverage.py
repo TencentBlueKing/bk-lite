@@ -26,6 +26,9 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.cmdb.tests.test_openapi_instance_list::test_api_tenant_can_list_own_org_instances",
         "apps.cmdb.tests.test_openapi_instance_list::test_api_tenant_cannot_list_other_org_instances",
         "apps.cmdb.tests.test_openapi_instance_list::test_forged_team_is_rejected",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_can_list_own_org_instances",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_cannot_list_other_org_instances",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_forged_acting_team_is_rejected",
     ],
     "cmdb/classifications": [
         "apps.cmdb.tests.test_openapi_cmdb_catalog::test_api_tenant_can_list_own_classifications",
@@ -56,6 +59,8 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_api_tenant_can_create_instance_in_own_org",
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_api_tenant_create_does_not_belong_to_other_org",
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_instance_create_forged_team_is_rejected",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_can_create_instance_in_own_org",
+        "apps.core.openapi.tests.test_system_token_tenant::test_system_tenant_create_does_not_belong_to_other_org",
     ],
     "cmdb/instance": [
         "apps.cmdb.tests.test_openapi_cmdb_mutations::test_api_tenant_can_read_own_instance",
@@ -157,5 +162,23 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_batch_close_own_alerts",
         "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_batch_close_other_org_alerts",
         "apps.alerts.tests.test_openapi_gateway::test_batch_action_forged_team_is_rejected",
+    ],
+    "alerts/shield-create": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_create_shield",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_create_shield_does_not_belong_to_other_org",
+        "apps.alerts.tests.test_openapi_gateway::test_shield_create_forged_team_is_rejected",
+    ],
+    "alerts/shield-operate": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_operate_own_shield",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_operate_other_org_shield",
+        "apps.alerts.tests.test_openapi_gateway::test_shield_operate_forged_team_is_rejected",
+    ],
+    "alerts/shield": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_update_own_shield",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_update_other_org_shield",
+        "apps.alerts.tests.test_openapi_gateway::test_shield_update_forged_team_is_rejected",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_delete_own_shield",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_delete_other_org_shield",
+        "apps.alerts.tests.test_openapi_gateway::test_shield_delete_forged_team_is_rejected",
     ],
 }

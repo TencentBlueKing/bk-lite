@@ -2,9 +2,11 @@ from types import SimpleNamespace
 
 from apps.operation_analysis.services.application3d.health import (
     aggregate_application_health,
+    monitor_unreadable_health,
     no_application_health,
     no_host_health,
     unavailable_health,
+    unmonitored_health,
 )
 from apps.operation_analysis.services.application3d.notifications import summarize_notification
 from apps.operation_analysis.services.application3d.presenters import present_alarm_list_item
@@ -193,6 +195,21 @@ def test_no_host_health_uses_null_counts_and_is_not_unavailable_or_no_applicatio
     assert health != unavailable_health()
 
 
+def test_unmonitored_and_monitor_unreadable_health_are_host_node_reasons():
+    unmonitored = unmonitored_health()
+    unreadable = monitor_unreadable_health()
+    assert unmonitored["state"] == "unknown"
+    assert unmonitored["reason"] == "unmonitored"
+    assert unmonitored["activeAlarmCount"] is None
+    assert unreadable["state"] == "unknown"
+    assert unreadable["reason"] == "monitor_unreadable"
+    assert unreadable["activeAlarmCount"] is None
+    assert unmonitored != unavailable_health()
+    assert unreadable != unavailable_health()
+    assert unmonitored != no_host_health()
+    assert unreadable != no_application_health()
+
+
 def test_no_data_critical_aligns_with_monitor_max_level():
     from apps.monitor.nats.monitor import _max_monitor_alert_level
 
@@ -248,6 +265,24 @@ def test_empty_level_alarm_list_item_severity_is_warning():
     assert item["isNoData"] is True
     assert item["severity"]["id"] == "warning"
     assert item["severity"]["color"] == "warning"
+
+
+def test_alarm_list_item_degrades_empty_policy_fields():
+    alert = SimpleNamespace(
+        id=8,
+        content="磁盘告警",
+        alert_type="alert",
+        level="warning",
+        start_event_time=None,
+        end_event_time=None,
+    )
+    item = present_alarm_list_item(
+        alert,
+        host={"inst_uuid": "host-1", "inst_name": "host-1"},
+        policy=None,
+    )
+    assert item["policyName"] == ""
+    assert item["metricName"] is None
 
 
 def test_notification_summary_not_configured():

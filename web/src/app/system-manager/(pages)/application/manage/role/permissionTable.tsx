@@ -125,7 +125,7 @@ const PermissionTable: React.FC<PermissionTableProps> = ({
     {
       title: t('system.role.permission.menu'),
       dataIndex: 'display_name',
-      width: '380px',
+      width: 280,
       key: 'display_name',
       render: (text: string, record: Menu) => (
         <Checkbox
@@ -142,11 +142,13 @@ const PermissionTable: React.FC<PermissionTableProps> = ({
       title: t('system.role.permission.operation'),
       dataIndex: 'operation',
       key: 'operation',
+      width: 720,
       render: (operations: string[], record: Menu) => (
-        <div className="flex space-x-2" key={record.name}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1" key={record.name}>
           {(operations || []).map((operation: string) => (
             <Checkbox
               key={operation}
+              className="whitespace-nowrap"
               onChange={(e: CheckboxChangeEvent) => handleOperationCheckboxChange(record.name, operation, e.target.checked)}
               checked={permissionsCheckedKeys[record.name]?.includes(operation) || false}
             >
@@ -159,7 +161,7 @@ const PermissionTable: React.FC<PermissionTableProps> = ({
   ];
 
   return (
-    <div className='flex w-full overflow-y-auto' style={{ height: 'calc(100vh - 335px)' }}>
+    <div className="flex min-h-0 w-full flex-1 overflow-y-auto">
       <CustomTable
         loading={loading}
         columns={columns}

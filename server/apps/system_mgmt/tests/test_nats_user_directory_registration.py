@@ -7,7 +7,6 @@ LEGACY_REMOTE_USER_DIRECTORY_ENTRYPOINTS = {
     "get_group_users",
     "get_group_users_scoped",
     "get_all_users",
-    "search_users",
 }
 
 

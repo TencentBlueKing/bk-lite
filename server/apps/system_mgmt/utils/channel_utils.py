@@ -56,12 +56,14 @@ def _webhook_hostname(url: str) -> str:
 
 
 def send_wechat(channel_obj: Channel, content, user_list):
-    """发送企业微信消息"""
+    """发送企业微信应用消息，接收人为平台用户名对应的企微 userid。"""
+    if user_list is None or not user_list.exists():
+        return {"result": False, "message": "No valid recipients found"}
     channel_config = channel_obj.config
     channel_obj.decrypt_field("secret", channel_config)
     channel_obj.decrypt_field("token", channel_config)
     channel_obj.decrypt_field("aes_key", channel_config)
-    receivers = user_list.values_list("")
+    receivers = list(user_list.values_list("username", flat=True))
     try:
         # 创建企业微信客户端
         client = WeChatClient(corp_id=channel_config["corp_id"], secret=channel_config["secret"])

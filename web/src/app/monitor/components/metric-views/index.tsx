@@ -126,6 +126,7 @@ const findPluginTabByCollectType = (
 const MetricViews: React.FC<ViewDetailProps> = ({
   monitorObjectId,
   monitorObjectName,
+  monitorObjectDisplayName,
   instanceId,
   instanceName,
   idValues,
@@ -146,7 +147,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     getMonitorPlugin,
     getMonitorMetrics,
     getMetricsGroup,
-    getInstanceList
+    getInstanceList,
+    lookupInstance
   } = useMonitorApi();
   const { post } = useApiClient();
   const { t } = useTranslation();
@@ -224,6 +226,15 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   };
 
   const hostLogicalId = String(idValues?.[0] || '').trim();
+  const instanceOperatingSystemRef = useRef('');
+
+  const isMetricVisibleForInstanceOs = (metric: MetricItem) => {
+    const allowed = metric.view_config?.os;
+    if (!Array.isArray(allowed) || allowed.length === 0) return true;
+    const current = instanceOperatingSystemRef.current;
+    if (!current) return true;
+    return allowed.includes(current);
+  };
 
   const getDisplayName = (item: { name?: string; display_name?: string }) => {
     const displayName = item.display_name || item.name || '--';
@@ -364,7 +375,10 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       }
 
       let _plugins: { label: string; value: string }[] =
-        formatMonitorViewPluginTabs(responseData);
+        formatMonitorViewPluginTabs(responseData, {
+          objectDisplayName:
+            monitorObjectDisplayName || monitorObjectName || '',
+        });
 
       let nextProcessObjectId = '';
       let nextProcessPluginId = '';
@@ -385,6 +399,22 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       }
       setProcessObjectId(nextProcessObjectId);
       setProcessPluginId(nextProcessPluginId);
+
+      let instanceOs = '';
+      if (isHostView) {
+        try {
+          const lookup = await lookupInstance({ instance_id: String(instanceId) });
+          const os = String(
+            (lookup?.instance as { operating_system?: string } | undefined)?.operating_system || ''
+          )
+            .trim()
+            .toLowerCase();
+          if (os === 'linux' || os === 'windows') instanceOs = os;
+        } catch {
+          instanceOs = '';
+        }
+      }
+      instanceOperatingSystemRef.current = instanceOs;
 
       setPlugins(_plugins);
       const preferredTab = findPluginTabByCollectType(responseData, preferredCollectType);
@@ -473,6 +503,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       const metricsList = res[1].items;
       setMetricCount(res[1].count);
       metricsList.forEach((metric: MetricItem) => {
+        if (!isMetricVisibleForInstanceOs(metric)) return;
         const target = groupData.find(
           (item) => item.id === metric.metric_group
         );

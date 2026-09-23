@@ -32,27 +32,7 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+# @bk_include_ifmib_table
     # ---- Cisco CPU utilization (CISCO-PROCESS-MIB cpmCPUTotal5minRev) ----
     [[inputs.snmp.table]]
         name = "device_cpu"
@@ -108,3 +88,45 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.9.9.13.1.5.1.3"
         name = "state"
+    # ---- 光模块 DDM：CISCO-ENTITY-SENSOR-MIB entSensorValueTable，INDEX=entPhysicalIndex，表列禁止 .0 ----
+    # 表 1.3.6.1.4.1.9.9.91.1.1.1。type/scale/precision/value 同表；descr=ENTITY-MIB entPhysicalName。
+    # inputs.snmp 不能按 type 过滤，必须把 type 采下来；查询侧只保留 dBm(14)，再按 descr 拆 RX/TX。
+    # 换算：value * 10^((scale-9)*3 - precision) → dBm（units=9）。IOS-XE/Catalyst；不扩 IF。
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.1"
+        name = "sensor_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.2"
+        name = "scale"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.3"
+        name = "precision"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.4"
+        name = "value"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+
+# ---- 光模块：只保留 CISCO-ENTITY-SENSOR dBm(14)，避免把温/压/电流传感器写入 optical 表。----
+[[processors.starlark]]
+    namepass = ["device_optical"]
+    source = '''
+def apply(metric):
+    if metric.tags.get("sensor_type") != "14":
+        return None
+    value = metric.fields.get("value")
+    if value == None:
+        return None
+    if value == -1000000000:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cisco"]

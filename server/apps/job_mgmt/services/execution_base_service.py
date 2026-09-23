@@ -337,19 +337,19 @@ class ExecutionTaskBaseService(object):
 
         # 根据脚本类型选择模块
         shell_mapping = {
-            ScriptType.SHELL: "shell",
-            ScriptType.PYTHON: "shell",
+            ScriptType.SHELL: "raw",
+            ScriptType.PYTHON: "raw",
             ScriptType.POWERSHELL: "win_shell",
             ScriptType.BAT: "win_shell",
         }
-        module = shell_mapping.get(script_type, "shell")
+        module = shell_mapping.get(script_type, "raw")
 
         shell_interpreter = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
         module_args = script_content
 
-        # Linux shell 模块：sh/bash 走 ansible_shell_executable，其他解释器走 heredoc 包装
+        # Linux raw 模块：sh/bash 由流式执行器选择解释器，其他解释器走 heredoc 包装
         extra_vars = {}
-        if module == "shell":
+        if module == "raw":
             if shell_interpreter in ANSIBLE_SHELL_EXECUTABLES:
                 extra_vars["ansible_shell_executable"] = f"/bin/{shell_interpreter}"
             else:
@@ -368,7 +368,7 @@ class ExecutionTaskBaseService(object):
             extra_vars=extra_vars if extra_vars else None,
             stream_log_topic=build_stream_topic(execution.id, "ansible"),
             execution_id=str(execution.id),
-            stream_remote_output=module in {"shell", "win_shell"},
+            stream_remote_output=module in {"raw", "win_shell"},
             stream_remote_type=script_type if module == "win_shell" else None,
         )
 
@@ -463,9 +463,10 @@ class ExecutionTaskBaseService(object):
         if not target.ssh_key_file:
             return None
         try:
-            with target.ssh_key_file.open("r") as fh:
+            # MinIO backend only accepts binary read mode ("rb"); text "r" raises ValueError.
+            with target.ssh_key_file.open("rb") as fh:
                 content = fh.read()
-        except (FileNotFoundError, OSError) as e:
+        except (FileNotFoundError, OSError, ValueError) as e:
             logger.warning(f"[_read_ssh_key_file] 读取 SSH 密钥文件失败: target_id={getattr(target, 'id', None)}, error={e}")
             return None
         return content.decode("utf-8") if isinstance(content, bytes) else content

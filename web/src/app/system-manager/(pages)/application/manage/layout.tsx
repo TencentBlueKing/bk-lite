@@ -41,13 +41,15 @@ const AppManageLayout = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <div className="h-full w-full">
-      <TopSection title={clientName} content={clientDescription} />
-      <div className="flex mt-4 w-full" style={{ height: 'calc(100vh - 185px)' }}>
+    <div className="flex h-[var(--custom-height,calc(100vh-90px))] min-h-0 w-full flex-col overflow-hidden">
+      <div className="shrink-0">
+        <TopSection title={clientName} content={clientDescription} />
+      </div>
+      <div className="mt-4 flex min-h-0 flex-1 overflow-hidden">
         {!screenMode && (
           <SideMenu showBackButton={false} menuItems={menuItems} />
         )}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {children}
         </div>
       </div>

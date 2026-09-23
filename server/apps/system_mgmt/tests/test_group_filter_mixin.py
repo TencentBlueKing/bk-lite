@@ -141,8 +141,22 @@ def test_validate_current_team_permission_zero_raises():
     m = GroupFilterMixin()
     req = _request(current_team="0")
     m.request = req
-    with pytest.raises(PermissionDenied):
+    with pytest.raises(PermissionDenied, match="无权访问该团队数据"):
         m._validate_current_team_permission(req)
+
+
+def test_validate_current_team_permission_follows_user_locale():
+    m = GroupFilterMixin()
+    req = _request(current_team="0")
+    req.user.locale = "en"
+    with pytest.raises(PermissionDenied, match="You do not have permission to access this organization's data"):
+        m._validate_current_team_permission(req)
+
+    team = Group.objects.create(name="mixin-archived-locale", parent_id=0, is_delete=True)
+    archived = _request(current_team=str(team.id), is_superuser=True)
+    archived.user.locale = "en"
+    with pytest.raises(PermissionDenied, match="The current organization is archived or does not exist"):
+        m._validate_current_team_permission(archived)
 
 
 def test_validate_current_team_permission_no_access_raises():

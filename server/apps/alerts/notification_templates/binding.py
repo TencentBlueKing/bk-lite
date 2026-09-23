@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from rest_framework import serializers
@@ -12,8 +13,31 @@ from apps.alerts.notification_templates.events import MAX_EVENT_ROWS, event_row,
 from apps.alerts.notification_templates.renderer import build_alert_context, render_source
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids, get_authorized_group_ids
 from apps.system_mgmt.models.channel import Channel
+from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
 
 SCENES = {"assignment", "reminder", "escalation", "recovery"}
+IM_CHANNEL_TYPE = IMNotificationChannel.CHANNEL_TYPE
+
+
+def _as_trusted_channel(channel, channel_type):
+    return SimpleNamespace(pk=channel.pk, channel_type=channel_type, team=channel.team, config=getattr(channel, "config", {}))
+
+
+def _load_trusted_channels(channel_specs, authorized):
+    trusted = {}
+    channel_ids = [channel_id for channel_id, channel_type in channel_specs if channel_type != IM_CHANNEL_TYPE]
+    im_ids = [channel_id for channel_id, channel_type in channel_specs if channel_type == IM_CHANNEL_TYPE]
+    channel_queryset = Channel.objects.filter(pk__in=channel_ids)
+    if authorized is not None:
+        channel_queryset = apply_team_scope_with_group_ids(channel_queryset, authorized)
+    for channel in channel_queryset:
+        trusted[("channel", str(channel.pk))] = _as_trusted_channel(channel, channel.channel_type)
+    im_queryset = IMNotificationChannel.objects.filter(pk__in=im_ids, enabled=True)
+    if authorized is not None:
+        im_queryset = apply_team_scope_with_group_ids(im_queryset, authorized)
+    for channel in im_queryset:
+        trusted[("im", str(channel.pk))] = _as_trusted_channel(channel, IM_CHANNEL_TYPE)
+    return trusted
 
 
 class TemplateBindingError(ValueError):
@@ -186,15 +210,12 @@ def validate_assignment_template_bindings(notify_channels, config, request=None)
     if not any(isinstance(channel, dict) and channel.get("notification_templates") is not None for channel, _locator, _scene in bound_channels):
         return
     authorized = set(get_authorized_group_ids(request)) if request and not getattr(request.user, "is_superuser", False) else None
-    channel_ids = {
-        channel.get("id")
+    channel_specs = [
+        (channel.get("id"), channel.get("channel_type"))
         for channel, _locator, _scene in bound_channels
         if isinstance(channel, dict) and isinstance(channel.get("notification_templates"), dict) and channel.get("id") is not None
-    }
-    channel_queryset = Channel.objects.filter(pk__in=channel_ids)
-    if authorized is not None:
-        channel_queryset = apply_team_scope_with_group_ids(channel_queryset, authorized)
-    trusted_channels = {str(channel.pk): channel for channel in channel_queryset}
+    ]
+    trusted_channels = _load_trusted_channels(channel_specs, authorized)
     errors = []
     for channel, locator, _default_scene in bound_channels:
         if not isinstance(channel, dict):
@@ -206,7 +227,10 @@ def validate_assignment_template_bindings(notify_channels, config, request=None)
         if not isinstance(bindings, dict):
             errors.append({"locator": locator, "detail": "notification_templates 必须是对象"})
             continue
-        trusted_channel = trusted_channels.get(str(channel.get("id")))
+        if channel.get("channel_type") == IM_CHANNEL_TYPE:
+            trusted_channel = trusted_channels.get(("im", str(channel.get("id"))))
+        else:
+            trusted_channel = trusted_channels.get(("channel", str(channel.get("id"))))
         if trusted_channel is None:
             errors.append({"locator": locator, "detail": "通知渠道不存在或无权使用"})
             continue

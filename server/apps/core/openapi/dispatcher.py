@@ -17,8 +17,14 @@ from django.conf import settings
 
 from apps.core.logger import openapi_logger as logger
 from apps.core.openapi.envelope import ErrorCode, fail, ok
-from apps.core.openapi.identity import CREDENTIAL_API_TOKEN, CallerIdentity
+from apps.core.openapi.identity import (
+    CREDENTIAL_API_TOKEN,
+    CREDENTIAL_JWT,
+    CREDENTIAL_SYSTEM_TOKEN,
+    CallerIdentity,
+)
 from apps.core.openapi.registry import INJECT_TEAM_LIST, INJECT_TEAM_LIST_WITH_USER, INJECT_USER_INFO, Endpoint
+from apps.core.openapi.token_scope import allows_internal
 
 _executor = None
 
@@ -42,10 +48,13 @@ def _check_permission(identity: CallerIdentity, endpoint: Endpoint) -> bool:
     """复用 HasPermission 同款权限数据模型（app → 权限名集合）自行实现等价判断。
 
     fail-closed：声明了 permission 而用户权限数据为空时拒绝。
+    未声明 permission 时不做菜单校验（网关默认）。钥匙名单在 dispatch 入口另判。
     """
     if not endpoint.permission:
         return True
     if identity.is_superuser:
+        return True
+    if endpoint.permission_app and f"{endpoint.permission_app}--admin" in (identity.roles or []):
         return True
     required = {p.strip() for p in endpoint.permission.split(",") if p.strip()}
     granted = identity.permission.get(endpoint.permission_app, set())
@@ -76,8 +85,8 @@ def _build_kwargs(identity: CallerIdentity, endpoint: Endpoint, validated: dict)
         user_info = {"user": identity.user, "domain": identity.domain}
         anchor = kwargs.pop("team", None)
         include_children = kwargs.pop("include_children", None)
-        if identity.credential_type == CREDENTIAL_API_TOKEN:
-            # API 令牌为单组织收窄凭据：锚点强制取绑定组织，客户端传值被覆盖
+        if identity.credential_type in (CREDENTIAL_API_TOKEN, CREDENTIAL_SYSTEM_TOKEN):
+            # 单组织收窄凭据：锚点强制取绑定/传入组织，客户端传值被覆盖
             anchor = identity.team_ids[0] if identity.team_ids else None
         if anchor is None:
             return kwargs, fail(
@@ -105,6 +114,10 @@ def _call(endpoint: Endpoint, kwargs: dict):
 
 
 def dispatch(identity: CallerIdentity, endpoint: Endpoint, payload: dict):
+    if identity.credential_type != CREDENTIAL_JWT and not allows_internal(
+        identity.token_scope, endpoint.method, endpoint.path
+    ):
+        return fail(ErrorCode.SCOPE_DENIED, "endpoint not in token scope")
     if not _check_permission(identity, endpoint):
         return fail(ErrorCode.PERM_MISSING, "permission denied")
 

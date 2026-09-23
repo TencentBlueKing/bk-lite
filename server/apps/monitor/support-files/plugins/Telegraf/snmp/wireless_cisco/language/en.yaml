@@ -1,0 +1,49 @@
+Wireless Cisco SNMP:
+  name: Cisco (Telegraf)
+  desc: SNMP monitoring template for Cisco AireOS WLC and Catalyst 9800 wireless
+    controllers. It reports system uptime, CPU utilization, memory utilization, and
+    connected AP count.
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the wireless controller since the last
+        restart, derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the Cisco wireless LAN controller. AireOS reports a
+        0-100 percentage; Catalyst 9800 falls back to the 5-minute average. Sustained
+        high CPU usage can indicate heavy AP or client-management load affecting roaming
+        and controller responsiveness.
+    device_memory_total:
+      name: Memory Total
+      desc: Total controller memory in bytes. AireOS uses agentTotalMemory (KBytes ×
+        1024); Catalyst 9800 derives total from used plus free memory.
+    device_memory_free:
+      name: Memory Free
+      desc: Free controller memory in bytes (KBytes × 1024). AireOS uses
+        agentFreeMemory; Catalyst 9800 uses CPU-wide free memory.
+    device_memory_used:
+      name: Memory Used
+      desc: Used controller memory in bytes. AireOS derives used as total − free;
+        Catalyst 9800 reports used memory directly.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the Cisco wireless LAN controller. AireOS is 100 ×
+        (total − free) / total; Catalyst 9800 is 100 × used / (used + free). High
+        memory pressure can affect AP join handling and client roaming.
+    wireless_ap_count:
+      name: Connected AP Count
+      desc: Number of access points currently connected to the wireless LAN
+        controller. A sudden drop can indicate AP connectivity loss or a controller
+        failover.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    Wireless: Wireless

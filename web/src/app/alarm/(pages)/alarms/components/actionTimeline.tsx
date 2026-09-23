@@ -7,10 +7,12 @@ import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { ACTION_EXEC_STATUS, ACTION_TRIGGER_EVENTS } from '@/app/alarm/constants/settings';
-import { ActionExecutionItem } from '@/app/alarm/types/settings';
+import { ActionExecutionItem, ActionRuleListItem } from '@/app/alarm/types/settings';
+import { runManualActionTrigger } from './manualActionExecuteModal';
 
 interface ActionTimelineProps {
   alertId: string;
+  allowRerun?: boolean;
 }
 
 const STATUS_COLOR_MAP: Record<string, string> = {
@@ -22,10 +24,10 @@ const STATUS_COLOR_MAP: Record<string, string> = {
   config_error: 'gray',
 };
 
-const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
+const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId, allowRerun = true }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { getActionExecutions, manualTriggerAction } = useSettingApi();
+  const { getActionExecutions, getActionRule, manualTriggerAction } = useSettingApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [rerunLoadingId, setRerunLoadingId] = useState<number | null>(null);
   const [items, setItems] = useState<ActionExecutionItem[]>([]);
@@ -53,9 +55,17 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
     if (!item.rule) return;
     setRerunLoadingId(item.id);
     try {
-      await manualTriggerAction({ alert_id: alertId, rule_id: item.rule });
-      message.success(t('common.operationSuccess') || '操作成功');
-      await fetchData();
+      const rule = await getActionRule(item.rule) as ActionRuleListItem;
+      const result = await runManualActionTrigger({
+        alertId,
+        rule,
+        trigger: manualTriggerAction,
+        t,
+      });
+      if (result === 'triggered') {
+        message.success(t('common.operationSuccess') || '操作成功');
+        await fetchData();
+      }
     } catch {
       message.error(t('common.operationFailed') || '操作失败');
     } finally {
@@ -127,15 +137,17 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
               {errorMsg && (
                 <span className="text-red-500 flex-1">{errorMsg}</span>
               )}
-              <Button
-                size="small"
-                danger
-                loading={rerunLoadingId === item.id}
-                disabled={!item.rule}
-                onClick={() => handleRerun(item)}
-              >
-                {t('settings.actionRerun')}
-              </Button>
+              {allowRerun && (
+                <Button
+                  size="small"
+                  danger
+                  loading={rerunLoadingId === item.id}
+                  disabled={!item.rule}
+                  onClick={() => handleRerun(item)}
+                >
+                  {t('settings.actionRerun')}
+                </Button>
+              )}
             </div>
           )}
         </div>

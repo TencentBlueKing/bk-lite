@@ -32,9 +32,6 @@ import {
   shouldShowThresholdUnitSelector,
   getEnabledCompareModes,
   getCompareModeSelectOptions,
-  getSceneChipStates,
-  matchSceneChipId,
-  applySceneChip,
   buildPolicyRestatement,
   coerceThresholdsForCompareMode,
   coerceRecoveryForThresholds,
@@ -1168,82 +1165,25 @@ assert.deepEqual(
   { method: '<', value: 70 }
 );
 
-assert.equal(
-  matchSceneChipId({
-    algorithm: 'p95_over_time',
-    compareMode: 'absolute',
-    compareValueKind: '',
-  }),
-  'p95_absolute'
-);
-assert.equal(
-  matchSceneChipId({
-    algorithm: 'avg_over_time',
-    compareMode: 'offset_7d',
-    compareValueKind: 'percent',
-  }),
-  'yoy_week'
-);
-assert.equal(
-  matchSceneChipId({
-    algorithm: 'avg_over_time',
-    compareMode: 'offset_7d',
-    compareValueKind: 'ratio',
-  }),
-  null
-);
-
-const yoyApplied = applySceneChip({
-  chipId: 'yoy_week',
+const timeleftOnP95 = getCompareModeSelectOptions({
   algorithm: 'p95_over_time',
-  compareMode: 'absolute',
-  compareValueKind: '',
-  thresholds: [{ level: 'critical', method: '>', value: 50 }],
-  recoveryThreshold: { method: '>', value: 40 },
-  countPredicate: { method: '>', value: 0 },
-});
-assert.equal(yoyApplied?.algorithm, 'avg_over_time');
-assert.equal(yoyApplied?.compareMode, 'offset_7d');
-assert.equal(yoyApplied?.compareValueKind, 'percent');
-assert.equal(yoyApplied?.thresholds[0]?.value, 50);
-assert.deepEqual(yoyApplied?.recoveryThreshold, { method: '', value: null });
-
-const diskApplied = applySceneChip({
-  chipId: 'disk_timeleft',
-  thresholds: [{ level: 'critical', method: '>', value: 24 }],
-  recoveryThreshold: { method: '<', value: 8 },
-});
-assert.equal(diskApplied?.algorithm, 'last_over_time');
-assert.equal(diskApplied?.compareMode, 'timeleft');
-assert.equal(diskApplied?.thresholds[0]?.method, '<');
-assert.deepEqual(diskApplied?.recoveryThreshold, { method: '', value: null });
-
-const countIfApplied = applySceneChip({
-  chipId: 'count_if_n',
-  thresholds: [{ level: 'warning', method: '>=', value: 3 }],
-  countPredicate: { method: '', value: null },
-});
-assert.equal(countIfApplied?.algorithm, 'count_if_over_time');
-assert.deepEqual(countIfApplied?.countPredicate, { method: '>', value: 0 });
-assert.equal(countIfApplied?.thresholds[0]?.value, 3);
-
-const hourPeriodChips = getSceneChipStates({
-  periodType: 'hour',
-  periodValue: 1,
-});
+}).find((item) => item.value === 'timeleft');
+assert.equal(timeleftOnP95?.disabled, true);
 assert.equal(
-  hourPeriodChips.find((item) => item.id === 'offset_1h_up')?.disabled,
-  true
+  timeleftOnP95?.reasonKey,
+  'monitor.events.compareModeDisabledTimeleft'
 );
 assert.equal(
-  hourPeriodChips.find((item) => item.id === 'p95_absolute')?.disabled,
+  getCompareModeSelectOptions({
+    algorithm: 'last_over_time',
+  }).find((item) => item.value === 'timeleft')?.disabled,
   false
 );
-assert.equal(
-  getSceneChipStates({ isEnumMetric: true }).find(
-    (item) => item.id === 'p95_absolute'
-  )?.disabled,
-  true
+assert.ok(
+  !getEnabledCompareModes({ algorithm: 'p95_over_time' }).includes('timeleft')
+);
+assert.ok(
+  getEnabledCompareModes({ algorithm: 'last_over_time' }).includes('timeleft')
 );
 
 const t = (

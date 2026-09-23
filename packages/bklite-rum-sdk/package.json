@@ -1,0 +1,62 @@
+{
+  "name": "bklite-rum-sdk",
+  "version": "0.1.0",
+  "description": "BK-Lite Grafana Faro transport with bounded queues and segmented Session Replay",
+  "keywords": [
+    "faro",
+    "observability",
+    "real-user-monitoring",
+    "rum",
+    "session-replay"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/*.d.ts",
+    "!dist/cdn.d.ts",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "sbom.cdx.json"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "peerDependencies": {
+    "@grafana/faro-web-sdk": "2.8.2"
+  },
+  "overrides": {
+    "@grafana/faro-core": "2.8.2",
+    "@grafana/faro-web-sdk": "2.8.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QiuJia-layla/bk-lite.git",
+    "directory": "packages/bklite-rum-sdk"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "test": "bun run build && vitest run",
+    "prepack": "bun run build",
+    "pack:check": "bun run build && bun run scripts/check-pack.ts",
+    "check": "bun run build && bun run test && bun run pack:check"
+  },
+  "devDependencies": {
+    "@grafana/faro-instrumentation-replay": "2.8.2",
+    "@grafana/faro-web-sdk": "2.8.2",
+    "@grafana/rrweb": "2.0.0-grafana.2",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

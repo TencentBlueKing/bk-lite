@@ -141,12 +141,13 @@ class SystemMgmt(object):
         return_data = self.client.run("get_group_users", group=group, include_children=include_children)
         return return_data
 
-    def get_group_users_scoped(self, actor_context, group=None, include_children=False):
+    def get_group_users_scoped(self, actor_context, group=None, include_children=False, search=""):
         return_data = self.client.run(
             "get_group_users_scoped",
             actor_context=actor_context,
             group=group,
             include_children=include_children,
+            search=search,
         )
         return return_data
 
@@ -307,15 +308,18 @@ class SystemMgmt(object):
         include_children=False,
         search="",
         limit=100,
+        recipient_ids=None,
     ):
-        return self.client.run(
-            "search_notification_recipients_scoped",
-            actor_context=actor_context,
-            teams=teams,
-            include_children=include_children,
-            search=search,
-            limit=limit,
-        )
+        kwargs = {
+            "actor_context": actor_context,
+            "teams": teams,
+            "include_children": include_children,
+            "search": search,
+            "limit": limit,
+        }
+        if recipient_ids is not None:
+            kwargs["recipient_ids"] = recipient_ids
+        return self.client.run("search_notification_recipients_scoped", **kwargs)
 
     def dispatch_notification(
         self,
@@ -356,13 +360,6 @@ class SystemMgmt(object):
             capability_only=capability_only,
         )
 
-    def search_groups(self, query_params):
-        """
-        :param query_params: {"search": ""}
-        """
-        return_data = self.client.run("search_groups", query_params=query_params)
-        return return_data
-
     def search_opspilot_nats_channels(self, teams=None, bot_id=None, include_children=False):
         """查询 OpsPilot 托管的 NATS 触发通道（config.source == "opspilot"）。
         :param teams: 可选，组织 ID 列表；为空则跨团队全局列举
@@ -375,13 +372,6 @@ class SystemMgmt(object):
             bot_id=bot_id,
             include_children=include_children,
         )
-
-    def search_users(self, query_params):
-        """
-        :param query_params: {"page_size": 10, "page": 1, "search": ""}
-        """
-        return_data = self.client.run("search_users", query_params=query_params)
-        return return_data
 
     def send_email_to_receiver(self, title, content, receiver):
         """
@@ -402,6 +392,7 @@ class SystemMgmt(object):
         *,
         internal_caller="",
         append_receivers=True,
+        channel_type=None,
     ):
         """
         通过指定通道发送消息
@@ -412,6 +403,7 @@ class SystemMgmt(object):
         :param attachments: 附件列表（仅email通道支持），格式为:
             [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
             注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
+        :param channel_type: 可选，用于区分 Channel 与 IM 应用通知的同号主键
         """
         request_payload = build_internal_event_payload("system_mgmt.send_msg_with_channel", locals())
         internal_auth = None
@@ -426,6 +418,8 @@ class SystemMgmt(object):
         request_payload["internal_auth"] = internal_auth
         if not append_receivers:
             request_payload["append_receivers"] = False
+        if channel_type:
+            request_payload["channel_type"] = channel_type
         return self.client.run("send_msg_with_channel", **request_payload)
 
     def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):

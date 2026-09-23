@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
@@ -11,6 +11,7 @@ import {
   Switch,
   Tag
 } from 'antd';
+import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -37,8 +38,9 @@ import {
 } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { DownOutlined, PlusOutlined } from '@ant-design/icons';
+import { DownOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
 import {
   showGroupName,
@@ -62,6 +64,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { buildAssetViewUrl } from './viewRoute';
 import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
+import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -118,10 +121,13 @@ const Asset = () => {
     pageSize: 20
   });
   const [tableLoading, setTableLoading] = useState<boolean>(false);
+  const { isSuperUser } = useUserInfoContext();
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [searchText, setSearchText] = useState<string>('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [unassignedCount, setUnassignedCount] = useState<number | undefined>(undefined);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
     urlObjId ? toMonitorIdString(urlObjId) : ''
@@ -321,8 +327,6 @@ const Asset = () => {
                     packVersionText={packVersionText}
                     collectMode={plugin.collect_mode}
                     collectorNodes={plugin.collector_nodes}
-                    needUpdate={Boolean(plugin.need_update)}
-                    needUpdateText={needUpdateHint}
                   />
                 );
 
@@ -377,7 +381,11 @@ const Asset = () => {
         render: (_, { organization }) => (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-            text={showGroupName(organization, organizationList)}
+            text={
+              organization?.length
+                ? showGroupName(organization, organizationList)
+                : t('common.unassigned')
+            }
           />
         )
       },
@@ -433,7 +441,7 @@ const Asset = () => {
         title: t('common.action'),
         key: 'action',
         dataIndex: 'action',
-        width: 240,
+        width: 280,
         fixed: 'right',
         render: (_, record) => {
           const canOperate = Array.isArray(record.permission)
@@ -449,13 +457,6 @@ const Asset = () => {
             });
           }
           if (canOperate) {
-            moreItems.push({
-              key: 'configure',
-              label: t('monitor.integrations.configure'),
-              permission: 'Edit',
-              onClick: () =>
-                openTemplateDrawer(record, { showTemplateList: true })
-            });
             moreItems.push({
               key: 'remove',
               label: t('common.remove'),
@@ -486,6 +487,20 @@ const Asset = () => {
                   onClick={() => openInstanceModal(record, 'edit')}
                 >
                   {t('common.edit')}
+                </Button>
+              </Permission>
+              <Permission
+                requiredPermissions={['Edit']}
+                instPermissions={record.permission}
+              >
+                <Button
+                  type="link"
+                  className="ml-[10px]"
+                  onClick={() =>
+                    openTemplateDrawer(record, { showTemplateList: true })
+                  }
+                >
+                  {t('monitor.integrations.configure')}
                 </Button>
               </Permission>
               {record.can_update ? (
@@ -621,17 +636,38 @@ const Asset = () => {
     };
   }, []);
 
+  const fetchUnassignedCount = useCallback(async (currentObjId: React.Key) => {
+    if (!isSuperUser || !currentObjId) {
+      setUnassignedCount(0);
+      return;
+    }
+    try {
+      const data = await getInstanceListByPrimaryObject({
+        id: String(currentObjId),
+        page: 1,
+        page_size: 1,
+        unassigned: true,
+      });
+      setUnassignedCount(data?.count || 0);
+    } catch {
+      setUnassignedCount(0);
+    }
+  }, [isSuperUser, getInstanceListByPrimaryObject]);
+
   useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
+      void fetchUnassignedCount(objectId);
+    } else {
+      setUnassignedCount(0);
     }
-  }, [objectId]);
+  }, [objectId, fetchUnassignedCount, isSuperUser]);
 
   useEffect(() => {
     if (objectId) {
       getAssetInsts(objectId);
     }
-  }, [pagination.current, pagination.pageSize]);
+  }, [pagination.current, pagination.pageSize, unassignedOnly]);
 
   useEffect(() => {
     if (objectId) {
@@ -691,6 +727,7 @@ const Asset = () => {
     pagination.current,
     pagination.pageSize,
     searchText,
+    unassignedOnly,
     needUpdateOnly,
     stalePluginId
   ]);
@@ -785,6 +822,7 @@ const Asset = () => {
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
         id: String(objectId),
+        ...(unassignedOnly ? { unassigned: true } : {}),
         ...(selectedIps.length
           ? { vm_params: { [ASSET_IP_FACT]: selectedIps.join(',') } }
           : {}),
@@ -802,10 +840,14 @@ const Asset = () => {
       });
       if (currentRequestId !== assetRequestIdRef.current) return;
       setTableData(data?.results || []);
+      const totalCount = data?.count || 0;
       setPagination((prev: Pagination) => ({
         ...prev,
-        total: data?.count || 0
+        total: totalCount
       }));
+      if (unassignedOnly) {
+        setUnassignedCount(totalCount);
+      }
     } finally {
       if (currentRequestId === assetRequestIdRef.current) {
         setTableLoading(false);
@@ -1063,60 +1105,42 @@ const Asset = () => {
       title: t('monitor.integrations.updateCollectConfigConfirmTitle'),
       width: 480,
       content: (
-        <div className="space-y-3">
-          <div className="text-[var(--color-text-2)] leading-6">
-            {t('monitor.integrations.updateCollectConfigConfirmTip')}
-          </div>
-          <div className="max-h-[280px] space-y-3 overflow-y-auto">
-            {upgradeItems.map((item, index) => {
-              const detailRows = [
-                {
-                  label: t('monitor.integrations.instanceName'),
-                  value: item.instanceName
-                },
-                {
-                  label: t(
-                    'monitor.integrations.updateCollectConfigConfirmProbeName'
-                  ),
-                  value: item.probeName
-                },
-                {
-                  label: t(
-                    'monitor.integrations.updateCollectConfigConfirmCurrentVersion'
-                  ),
-                  value: item.currentVersion
-                },
-                {
-                  label: hasMixedDirection
-                    ? getTargetVersionLabel(item.direction)
-                    : getTargetVersionLabel(
-                      upgradeItems[0]?.direction || 'upgrade'
-                    ),
-                  value: item.targetVersion
-                }
-              ];
-              return (
-                <div
-                  key={`${item.instanceName}-${item.probeName}-${index}`}
-                  className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2"
-                >
-                  {detailRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex gap-3 py-1 text-sm leading-5"
-                    >
-                      <span className="w-[108px] shrink-0 text-[var(--color-text-3)]">
-                        {row.label}
-                      </span>
-                      <span className="min-w-0 break-all text-[var(--color-text-1)]">
-                        {row.value}
-                      </span>
-                    </div>
-                  ))}
+        <div className="max-h-[280px] space-y-3 overflow-y-auto">
+          {upgradeItems.map((item, index) => {
+            const targetLabel = hasMixedDirection
+              ? getTargetVersionLabel(item.direction)
+              : getTargetVersionLabel(upgradeItems[0]?.direction || 'upgrade');
+            return (
+              <div
+                key={`${item.instanceName}-${item.probeName}-${index}`}
+                className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-sm leading-6"
+              >
+                {upgradeItems.length > 1 ? (
+                  <div className="mb-1 text-[var(--color-text-2)]">
+                    {item.instanceName}
+                    {item.probeName ? ` · ${item.probeName}` : ''}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[var(--color-text-3)]">
+                    {t(
+                      'monitor.integrations.updateCollectConfigConfirmCurrentVersion'
+                    )}
+                  </span>
+                  <span className="text-[var(--color-text-1)]">
+                    {item.currentVersion}
+                  </span>
+                  <span className="text-[var(--color-text-3)]">→</span>
+                  <span className="text-[var(--color-text-3)]">
+                    {targetLabel}
+                  </span>
+                  <Tag className="m-0" color="warning">
+                    {item.targetVersion}
+                  </Tag>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       ),
       centered: true,
@@ -1268,6 +1292,12 @@ const Asset = () => {
     }
   };
 
+  const handleCatalogScopeChange = (checked: boolean) => {
+    setUnassignedOnly(checked);
+    setSelectedRowKeys([]);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
   return (
     <>
       {modalContextHolder}
@@ -1286,15 +1316,15 @@ const Asset = () => {
           <div className={assetStyle.search}>
             <Input
               allowClear
-              className="w-full max-w-[320px] min-w-0"
-              placeholder={t('common.searchPlaceHolder')}
+              placeholder={t(getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId)))}
+              className="w-full max-w-[420px] min-w-0"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               onPressEnter={() => getAssetInsts(objectId)}
               onClear={clearText}
-            ></Input>
-            <div className="flex shrink-0 items-center">
-              <label className="mr-[8px] inline-flex items-center gap-[6px] text-[var(--color-text-2)]">
+            />
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex h-8 items-center gap-1.5 text-[var(--color-text-2)]">
                 <Switch
                   size="small"
                   checked={needUpdateOnly}
@@ -1302,32 +1332,39 @@ const Asset = () => {
                 />
                 {t('monitor.integrations.needUpdateFilter')}
               </label>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                className="mr-[8px]"
-                onClick={goToIntegration}
-              >
-                {t('monitor.integrations.access')}
-              </Button>
-              <Dropdown
-                className="mr-[8px]"
-                overlayClassName="customMenu"
-                menu={assetMenuProps}
-                disabled={enableOperateAsset}
-              >
-                <Button>
-                  <Space>
-                    {t('common.action')}
-                    <DownOutlined />
-                  </Space>
+              <div className="flex items-center gap-2">
+                <CatalogScopeSegmented
+                  unassignedOnly={unassignedOnly}
+                  onChange={handleCatalogScopeChange}
+                  count={unassignedCount}
+                  resourceName={t('common.instance', '监控实例')}
+                />
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={goToIntegration}
+                >
+                  {t('monitor.integrations.access')}
                 </Button>
-              </Dropdown>
-              <TimeSelector
-                onlyRefresh
-                onFrequenceChange={onFrequenceChange}
-                onRefresh={onRefresh}
-              />
+                <Dropdown
+                  overlayClassName="customMenu"
+                  menu={assetMenuProps}
+                  disabled={enableOperateAsset}
+                >
+                  <Button>
+                    <Space>
+                      {t('common.action')}
+                      <DownOutlined />
+                    </Space>
+                  </Button>
+                </Dropdown>
+                <TimeSelector
+                  onlyRefresh
+                  className="[&>div]:!ml-0"
+                  onFrequenceChange={onFrequenceChange}
+                  onRefresh={onRefresh}
+                />
+              </div>
             </div>
           </div>
           <div className="min-h-0 min-w-0 flex-1">
@@ -1355,15 +1392,24 @@ const Asset = () => {
                   </CompactEmptyState>
                 ) : undefined
               }}
-            ></CustomTable>
+            />
           </div>
         </div>
       </div>
-      <EditConfig ref={configRef} onSuccess={() => getAssetInsts(objectId)} />
+      <EditConfig
+        ref={configRef}
+        onSuccess={() => {
+          getAssetInsts(objectId);
+          if (objectId) void fetchUnassignedCount(objectId);
+        }}
+      />
       <EditInstance
         ref={instanceRef}
         organizationList={organizationList}
-        onSuccess={() => getAssetInsts(objectId)}
+        onSuccess={() => {
+          getAssetInsts(objectId);
+          if (objectId) void fetchUnassignedCount(objectId);
+        }}
       />
       <TemplateConfigDrawer
         ref={templateDrawerRef}

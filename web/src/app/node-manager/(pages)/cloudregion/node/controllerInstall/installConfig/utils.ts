@@ -82,3 +82,35 @@ export function applyWinrmCertificateValidation<T extends object>(
     winrm_cert_validation: enabled
   }));
 }
+
+const toOrganizationId = (value: unknown): number | null => {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+  return id;
+};
+
+export function mergeCurrentOrganization(
+  organizations: unknown,
+  currentOrganizationId?: unknown
+): number[] {
+  const current = toOrganizationId(currentOrganizationId);
+  const merged: number[] = current == null ? [] : [current];
+  const seen = new Set(merged);
+  const values = Array.isArray(organizations)
+    ? organizations
+    : organizations == null || organizations === ''
+      ? []
+      : [organizations];
+
+  values.forEach((value) => {
+    const id = toOrganizationId(value);
+    if (id == null || seen.has(id)) {
+      return;
+    }
+    seen.add(id);
+    merged.push(id);
+  });
+  return merged;
+}

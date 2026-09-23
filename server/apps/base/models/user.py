@@ -5,6 +5,8 @@ import os
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.db import models
+from django.db.models import Q
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.core.models.time_info import TimeInfo
@@ -17,6 +19,17 @@ class UserAPISecret(TimeInfo):
     domain = models.CharField(max_length=255, default="domain.com")
     api_secret = models.CharField(max_length=80, db_index=True)
     team = models.IntegerField(default=0)
+    name = models.CharField(max_length=128, default="")
+    expires_at = models.DateTimeField(null=True, blank=True)
+    scope = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("username", "domain", "team", "name"),
+                name="uniq_userapisecret_username_domain_team_name",
+            ),
+        ]
 
     @staticmethod
     def generate_api_secret():
@@ -41,19 +54,30 @@ class UserAPISecret(TimeInfo):
         if cls.is_hashed_api_secret(api_secret):
             return None
 
+        live = Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
         hashed_secret = cls.hash_api_secret(api_secret)
-        user_secret = cls._default_manager.filter(api_secret=hashed_secret).first()
+        user_secret = cls._default_manager.filter(live, api_secret=hashed_secret).first()
         if user_secret:
             return user_secret
 
         # 滚动发布兼容：迁移尚未执行到的旧明文记录仍可认证。
+        return cls._default_manager.filter(live, api_secret=api_secret).first()
+
+    @classmethod
+    def find_by_api_secret_including_expired(cls, api_secret: str):
+        """按哈希查钥匙行，含已过期。仅供网关审计身份，不放宽认证。"""
+        if not api_secret:
+            return None
+        if cls.is_hashed_api_secret(api_secret):
+            return None
+        hashed_secret = cls.hash_api_secret(api_secret)
+        row = cls._default_manager.filter(api_secret=hashed_secret).first()
+        if row:
+            return row
         return cls._default_manager.filter(api_secret=api_secret).first()
 
     def get_api_secret_preview(self) -> str:
         return "********" if self.api_secret else ""
-
-    class Meta:
-        unique_together = ("username", "domain", "team")
 
 
 class User(AbstractUser):

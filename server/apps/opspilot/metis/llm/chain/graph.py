@@ -1396,6 +1396,7 @@ class BasicGraph(ABC):
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
         browser_custom_event_callback = create_browser_custom_event_callback(browser_event_queue, encoder)
         stop_event = asyncio.Event()
+        compile_task: Optional[asyncio.Task] = None
 
         try:
             # 发送 RUN_STARTED 事件
@@ -1811,6 +1812,11 @@ class BasicGraph(ABC):
             )
         finally:
             stop_event.set()
+            if compile_task is not None:
+                if not compile_task.done():
+                    compile_task.cancel()
+                # 编译属于当前流；关闭/取消观察者不会自动取消 asyncio.wait 中的任务。
+                await asyncio.gather(compile_task, return_exceptions=True)
 
     async def _handle_tool_calls(
         self,

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import RuntimeApplicationService
@@ -50,6 +51,25 @@ class IMNotificationChannelSerializer(UsernameSerializer):
     class Meta:
         model = IMNotificationChannel
         fields = "__all__"
+
+    def validate_team(self, value):
+        if isinstance(value, (int, str)):
+            value = [value]
+        if not isinstance(value, (list, tuple, set)):
+            raise serializers.ValidationError(self._team_required_message())
+
+        team_ids = []
+        for team_id in value:
+            try:
+                parsed = int(team_id)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError(self._team_required_message()) from exc
+            if parsed <= 0:
+                raise serializers.ValidationError(self._team_required_message())
+            team_ids.append(parsed)
+        if not team_ids:
+            raise serializers.ValidationError(self._team_required_message())
+        return team_ids
 
     def get_integration_instance_name(self, obj):
         return obj.integration_instance.name if obj.integration_instance_id else ""
@@ -175,3 +195,11 @@ class IMNotificationChannelSerializer(UsernameSerializer):
             instance.create_sync_periodic_task()
         else:
             instance.delete_sync_periodic_task()
+
+    def _team_required_message(self):
+        return self._loader().get("error.channel_team_required", "请选择渠道所属组织")
+
+    def _loader(self):
+        request = self.context.get("request")
+        locale = getattr(getattr(request, "user", None), "locale", "en") or "en"
+        return LanguageLoader(app="system_mgmt", default_lang=locale)

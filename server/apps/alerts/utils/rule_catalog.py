@@ -46,7 +46,7 @@ def validate_condition(rule, scope):
             ):
                 raise ValueError("匹配值须为有效数字")
             if spec["role"] == "reference" and not 0 < item <= 9007199254740991:
-                raise ValueError("告警源须选择有效 ID")
+                raise ValueError("集成源须选择有效 ID")
     if operator == "re":
         try:
             re.compile(value)

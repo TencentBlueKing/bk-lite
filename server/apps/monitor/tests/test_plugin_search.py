@@ -378,3 +378,31 @@ class TestKeywordSearch:
             f"查询数 {len(ctx.captured_queries)} 偏多,疑似 Prefetch 失效 / N+1 回归。\n"
             f"SQL:\n{chr(10).join(q['sql'] for q in ctx.captured_queries)}"
         )
+
+    def test_keyword_pagination_serializes_current_page_only(self, api_client, switch_object, mocker):
+        """keyword + page_size 只完整序列化当前页,count 仍是全部可见字段命中数。"""
+        for i in range(5):
+            plugin = MonitorPlugin.objects.create(
+                name=f"kwpage_plugin_{i}",
+                template_type="builtin",
+                display_name=f"KeywordPage {i}",
+                description=f"shared keyword payload {i}",
+            )
+            plugin.monitor_object.add(switch_object)
+
+        captured = {}
+        real_serialize = MonitorPluginViewSet._serialize_and_enrich
+
+        def _spy(self, queryset, lan):
+            captured["qs_len"] = queryset.count() if hasattr(queryset, "count") else len(queryset)
+            return real_serialize(self, queryset, lan)
+
+        mocker.patch.object(MonitorPluginViewSet, "_serialize_and_enrich", _spy)
+
+        resp = api_client.get(f"{BASE}/api/monitor_plugin/?keyword=KeywordPage&page=1&page_size=2")
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["count"] == 5
+        assert len(body["items"]) == 2
+        assert [item["name"] for item in body["items"]] == ["kwpage_plugin_0", "kwpage_plugin_1"]
+        assert captured["qs_len"] == 2

@@ -52,13 +52,14 @@ interface InstanceQuery {
   keyword?: string;
   page?: number;
   page_size?: number;
+  unassigned?: boolean;
 }
 
 const useApmApi = () => {
   const { del, get, patch, post, put, isLoading } = useApiClient();
 
   const getServices = useCallback(
-    (params: { environment?: string; include_archived?: boolean } = {}) =>
+    (params: { environment?: string; include_archived?: boolean; unassigned?: boolean } = {}) =>
       get<ApmService[]>('/apm/services/', { params }),
     [get]
   );
@@ -347,6 +348,12 @@ const useApmApi = () => {
     [post]
   );
 
+  const reassignAlert = useCallback(
+    (alertId: string, handlers: Array<string | number>) =>
+      post<ApmAlert>(`/apm/alerts/${alertId}/reassign/`, { handlers }),
+    [post]
+  );
+
   const getNotificationChannels = useCallback(
     () => get<ApmNotificationChannel[]>('/apm/notification-channels/'),
     [get]
@@ -418,6 +425,7 @@ const useApmApi = () => {
     closeAlert,
     claimAlert,
     assignAlert,
+    reassignAlert,
     getNotificationChannels,
     getNotificationDeliveries,
     getNotificationRecipients,

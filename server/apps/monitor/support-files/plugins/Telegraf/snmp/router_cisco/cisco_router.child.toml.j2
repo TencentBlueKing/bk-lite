@@ -91,8 +91,6 @@
 
 [[processors.starlark]]
     namepass = ["device_memory"]
-    [processors.starlark.tagpass]
-        collect_type = ["snmp_cisco_router"]
     source = '''
 def apply(metric):
     name = (metric.tags.get("name") or "").lower()
@@ -108,3 +106,5 @@ def apply(metric):
     metric.fields["usage"] = float(used) / float(total) * 100.0
     return metric
 '''
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_cisco_router"]

@@ -20,7 +20,13 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from apps.core.logger import SafeLogException, opspilot_logger
-from apps.opspilot.metis.llm.chain.node import ToolsNodes
+from apps.opspilot.metis.llm.chain.node import (
+    MISSING_PARAMS_ABORT_LOG,
+    MISSING_PARAMS_NUDGE_LOG,
+    ToolsNodes,
+    _bounded_log_field,
+    _missing_params_log_args,
+)
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
     SkillExecutionGuardMiddleware,
@@ -37,6 +43,27 @@ def _tool(name):
     return t
 
 
+_HITL_ALWAYS_ON = frozenset({"request_user_choice"})
+
+
+def _assert_visible_tool_steps(actual_calls, expected_steps):
+    """规划工具按集合包含关系断言，执行步只允许额外出现 HITL 选择卡。"""
+    assert len(actual_calls) == len(expected_steps), (actual_calls, expected_steps)
+    for actual, expected in zip(actual_calls, expected_steps):
+        actual_set, expected_set = set(actual), set(expected)
+        extra = actual_set - expected_set
+        assert expected_set <= actual_set, (actual, expected)
+        assert extra <= _HITL_ALWAYS_ON, (actual, expected)
+
+
+def _assert_registered_tool_names(tools, expected_names):
+    names = {getattr(tool, "name", "") for tool in tools}
+    expected = set(expected_names)
+    extra = names - expected
+    assert expected <= names, names
+    assert extra <= _HITL_ALWAYS_ON, names
+
+
 def _request(**overrides):
     base = dict(
         system_message_prompt="你是运维助手",
@@ -44,6 +71,7 @@ def _request(**overrides):
         extra_config={},
         approval_config=None,
         user_id="u1",
+        thread_id="thread-ut-1",
     )
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -98,14 +126,38 @@ class TestCollectTools:
         kb = _tool("knowledge_retrieve")
         with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=kb):
             tools = n._collect_deepagent_tools(_request())
-        assert [t.name for t in tools] == ["shell", "k8s", "knowledge_retrieve"]
+        names = [t.name for t in tools]
+        assert names[:3] == ["shell", "k8s", "knowledge_retrieve"]
+        assert "request_user_choice" in names
 
     def test_no_kb_tool_when_none(self):
         n = ToolsNodes()
         n.all_tools = [_tool("shell")]
         with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
             tools = n._collect_deepagent_tools(_request())
-        assert [t.name for t in tools] == ["shell"]
+        names = [t.name for t in tools]
+        assert names[0] == "shell"
+        assert "request_user_choice" in names
+
+    def test_empty_catalog_does_not_inject_choice_tool(self):
+        n = ToolsNodes()
+        n.all_tools = []
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            tools = n._collect_deepagent_tools(_request())
+        assert tools == []
+        assert ToolsNodes._should_use_lightweight_direct_reply(tools, []) is True
+
+    def test_choice_tool_is_always_visible_for_planned_steps(self):
+        n = ToolsNodes()
+        n.all_tools = [_tool("monitor_list_object_instances")]
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            tools = n._collect_deepagent_tools(_request())
+        always_visible, _hidden = n._build_planned_execution_tool_visibility(
+            skill_sources=[],
+            skills_only_plan=False,
+            registered_tools=tools,
+        )
+        assert "request_user_choice" in always_visible
 
 
 class TestSkillBackendSources:
@@ -120,11 +172,12 @@ class TestSkillBackendSources:
 
         n = ToolsNodes()
         pkgs = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
-        with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
-        ) as backend_cls, patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat, patch.object(
-            ToolsNodes, "_ensure_skill_deps"
-        ) as ensure_deps:
+        with (
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()) as backend_cls,
+            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat,
+            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
+        ):
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         assert backend is not None
         assert sources == ["/skills/"]
@@ -146,11 +199,12 @@ class TestSkillBackendSources:
             {"name": "kubernetes-specialist", "package_id": "kubernetes-specialist"},
             {"name": "pdf", "package_id": "pdf"},
         ]
-        with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
-        ), patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package"), patch.object(
-            ToolsNodes, "_ensure_skill_deps"
-        ) as ensure_deps:
+        with (
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
+            patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package"),
+            patch.object(ToolsNodes, "_ensure_skill_deps") as ensure_deps,
+        ):
             backend, _, sandbox_dir = n._build_skill_backend_and_sources(_request())
             ensure_deps.assert_not_called()
             backend.read("/skills/kubernetes-specialist/SKILL.md")
@@ -170,11 +224,13 @@ class TestSkillBackendSources:
     def test_single_package_materialize_failure_is_isolated(self):
         n = ToolsNodes()
         pkgs = [{"name": "a"}, {"name": "b"}]
-        with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
-        ), patch(
-            "apps.opspilot.services.skill_package.materializer.materialize_skill_package",
-            side_effect=[RuntimeError("boom"), None],
+        with (
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch("deepagents.backends.LocalShellBackend", return_value=MagicMock()),
+            patch(
+                "apps.opspilot.services.skill_package.materializer.materialize_skill_package",
+                side_effect=[RuntimeError("boom"), None],
+            ),
         ):
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         # 单包失败不影响整体返回
@@ -256,7 +312,9 @@ def test_should_use_lightweight_direct_reply():
 
     assert ToolsNodes._should_use_lightweight_direct_reply([], []) is True
     assert ToolsNodes._should_use_lightweight_direct_reply([], None) is True
+    assert ToolsNodes._should_use_lightweight_direct_reply([_tool("request_user_choice")], []) is True
     assert ToolsNodes._should_use_lightweight_direct_reply([_tool("shell")], []) is False
+    assert ToolsNodes._should_use_lightweight_direct_reply([_tool("shell"), _tool("request_user_choice")], []) is False
     assert ToolsNodes._should_use_lightweight_direct_reply([], ["/skills/"]) is False
 
 
@@ -297,6 +355,7 @@ class TestBuildDeepagentNodes:
         plan_payload=None,
         plan_payloads=None,
         failing_agent_calls=(),
+        raising_agent_calls=None,
         direct_reply_content=None,
         agent_reply=None,
         agent_replies=None,
@@ -342,6 +401,8 @@ class TestBuildDeepagentNodes:
             extra = getattr(req, "extra_config", None) or {}
             captured.setdefault("hide_during_ainvoke", []).append(bool(extra.get("opspilot_hide_planned_step_text")))
             call_index = len(captured["visible_tool_calls"])
+            if raising_agent_calls and call_index in raising_agent_calls:
+                raise raising_agent_calls[call_index]
             if agent_replies and call_index in agent_replies:
                 reply_text = agent_replies[call_index]
             else:
@@ -410,8 +471,9 @@ class TestBuildDeepagentNodes:
                     },
                 )
 
-        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", side_effect=_create), patch.object(
-            ToolsNodes, "get_llm_client", return_value=_FakeLLM()
+        with (
+            patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", side_effect=_create),
+            patch.object(ToolsNodes, "get_llm_client", return_value=_FakeLLM()),
         ):
             config = {"configurable": {"graph_request": req}}
             # 主线程无 event loop 时 `asyncio.get_event_loop()` 抛 RuntimeError;
@@ -425,8 +487,9 @@ class TestBuildDeepagentNodes:
         req = _request(user_message="你好", system_message_prompt="你是助手")
         captured = {}
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
         ):
             result = self._run_wrapper(
                 node,
@@ -451,9 +514,11 @@ class TestBuildDeepagentNodes:
         captured = {}
         pkgs = [{"name": "kubernetes-specialist", "description": "K8s 排障"}]
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(MagicMock(), ["/skills/"], None)) as build_skills:
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(MagicMock(), ["/skills/"], None)) as build_skills,
+        ):
             result = self._run_wrapper(
                 node,
                 req,
@@ -480,9 +545,11 @@ class TestBuildDeepagentNodes:
         pkgs = [{"name": "kubernetes-specialist", "description": "K8s 排障"}]
         fake_backend = MagicMock()
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)) as build_skills:
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)) as build_skills,
+        ):
             self._run_wrapper(
                 node,
                 req,
@@ -558,10 +625,11 @@ class TestBuildDeepagentNodes:
 
         fake_agent.ainvoke = _ainvoke
 
-        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
-            ToolsNodes, "get_llm_client", return_value=_OverflowLLM()
-        ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        with (
+            patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
+            patch.object(ToolsNodes, "get_llm_client", return_value=_OverflowLLM()),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
         ):
             result = asyncio.run(
                 wrapper(
@@ -633,10 +701,11 @@ class TestBuildDeepagentNodes:
         handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
         opspilot_logger.addHandler(handler)
         try:
-            with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
-                ToolsNodes, "get_llm_client", return_value=_PlannerLLM()
-            ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-                ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+            with (
+                patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
+                patch.object(ToolsNodes, "get_llm_client", return_value=_PlannerLLM()),
+                patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+                patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
             ):
                 result = asyncio.run(
                     wrapper(
@@ -735,10 +804,11 @@ class TestBuildDeepagentNodes:
 
         fake_agent.ainvoke = _ainvoke
 
-        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
-            ToolsNodes, "get_llm_client", return_value=_PlanLLM()
-        ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        with (
+            patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
+            patch.object(ToolsNodes, "get_llm_client", return_value=_PlanLLM()),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
         ):
             asyncio.run(
                 wrapper(
@@ -813,8 +883,9 @@ class TestBuildDeepagentNodes:
         node.all_tools = [_tool("list_kubernetes_events")]
         req = _request(user_message="查事件")
         captured = {}
-        with patch.object(ToolsNodes, "_prepare_messages_for_llm", _spy), patch.object(
-            ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None
+        with (
+            patch.object(ToolsNodes, "_prepare_messages_for_llm", _spy),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
         ):
             self._run_wrapper(
                 node,
@@ -844,7 +915,7 @@ class TestBuildDeepagentNodes:
             )
         kwargs = captured["create_kwargs"]
         assert kwargs["model"].__class__.__name__ == "_FakeLLM"
-        assert [t.name for t in kwargs["tools"]] == ["shell"]
+        _assert_registered_tool_names(kwargs["tools"], ["shell"])
         assert "system_prompt" in kwargs
         # 无技能/审批时不传 backend/skills/interrupt_on
         assert "backend" not in kwargs
@@ -884,16 +955,18 @@ class TestBuildDeepagentNodes:
             )
 
         kwargs = captured["create_kwargs"]
-        assert [tool.name for tool in kwargs["tools"]] == [
-            "current_time",
-            "diagnose_kubernetes_pod_issues",
-            "restart_pod",
-        ]
-        assert captured["visible_tool_calls"] == [
-            ["current_time"],
-            ["diagnose_kubernetes_pod_issues"],
-            [],
-        ]
+        _assert_registered_tool_names(
+            kwargs["tools"],
+            ["current_time", "diagnose_kubernetes_pod_issues", "restart_pod"],
+        )
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["current_time"],
+                ["diagnose_kubernetes_pod_issues"],
+                [],
+            ],
+        )
         assert len(captured["ainvoke_messages"]) == 3
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == "执行结果 3"
@@ -935,10 +1008,13 @@ class TestBuildDeepagentNodes:
         assert "task" in visibility._hidden_tools
         # 无技能包时不常驻 FS 工具，避免 8K 模型被 read_file/ls schema 撑爆。
         assert "read_file" not in visibility._always_visible_tools
-        assert captured["visible_tool_calls"] == [
-            ["list_kubernetes_events"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["list_kubernetes_events"],
+                [],
+            ],
+        )
         call_limit = next(middleware for middleware in kwargs["middleware"] if isinstance(middleware, PlannedExecutionLimitMiddleware))
         assert call_limit.run_limit == 10
         assert call_limit.token_budget == 0
@@ -984,12 +1060,15 @@ class TestBuildDeepagentNodes:
                 failing_agent_calls={2},
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["current_time"],
-            ["diagnose_kubernetes_pod_issues"],
-            ["validate_probe_configuration"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["current_time"],
+                ["diagnose_kubernetes_pod_issues"],
+                ["validate_probe_configuration"],
+                [],
+            ],
+        )
         assert len(captured["planner_calls"]) == 2
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "确认时间: 执行结果 1" in replan_prompt
@@ -1036,13 +1115,16 @@ class TestBuildDeepagentNodes:
                 },
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["normalize_alert_event"],
-            ["diagnose_node_issues"],
-            ["list_kubernetes_nodes"],
-            ["check_pvc_capacity"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["normalize_alert_event"],
+                ["diagnose_node_issues"],
+                ["list_kubernetes_nodes"],
+                ["check_pvc_capacity"],
+                [],
+            ],
+        )
         assert len(captured["planner_calls"]) == 2
 
     def test_json_tool_error_payload_triggers_replan(self):
@@ -1089,14 +1171,208 @@ class TestBuildDeepagentNodes:
                 },
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["diagnose_kubernetes_pod_issues"],
-            ["validate_probe_configuration"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["diagnose_kubernetes_pod_issues"],
+                ["validate_probe_configuration"],
+                [],
+            ],
+        )
         assert len(captured["planner_calls"]) == 2
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "不存在" in replan_prompt
+
+    def test_missing_params_nudges_user_choice_without_replan(self, caplog):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("monitor_query_metric_data"),
+            _tool("request_user_choice"),
+        ]
+        req = _request(user_message="fusion-collector近30天的情况")
+        captured = {}
+        sentinel = "SENTINEL_MISSING_PARAMS_BODY"
+
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        log_output = io.StringIO()
+        handler = logging.StreamHandler(log_output)
+        handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+        opspilot_logger.addHandler(handler)
+        try:
+            with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+                result = self._run_wrapper(
+                    node,
+                    req,
+                    captured,
+                    plan_payload={
+                        "goal": "查看主机近30天情况",
+                        "steps": [
+                            {
+                                "objective": "查询指标",
+                                "tools": ["monitor_query_metric_data"],
+                            }
+                        ],
+                    },
+                    failing_agent_calls={
+                        1: {
+                            "content": f'{{"success": false, "error": "metric is required {sentinel}"}}',
+                            "status": "success",
+                            "name": "monitor_query_metric_data",
+                        }
+                    },
+                    agent_replies={
+                        1: "上一轮失败，可用 uvx fusion-monitor 替代排查。",
+                        2: "请选择要查看的指标",
+                    },
+                )
+        finally:
+            opspilot_logger.removeHandler(handler)
+
+        assert len(captured["planner_calls"]) == 1
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"][:2],
+            [
+                ["monitor_query_metric_data", "request_user_choice"],
+                ["monitor_query_metric_data", "request_user_choice"],
+            ],
+        )
+        nudge_text = "\n".join(str(getattr(message, "content", "") or "") for message in captured["ainvoke_messages"][1])
+        assert "request_user_choice" in nudge_text
+        assert "禁止编造 uvx" in nudge_text
+        joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+        assert "uvx fusion-monitor" not in joined
+        assert "请选择要查看的指标" in joined
+
+        nudges = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_NUDGE_LOG]
+        assert len(nudges) == 1
+        rec = nudges[0]
+        assert rec.args == ("查询指标", "MissingToolParams", "missing_params", "thread-ut-1")
+        message = rec.getMessage()
+        assert message.startswith("event=deepagent_missing_params_nudge ")
+        assert "objective=查询指标" in message
+        assert "error_type=MissingToolParams" in message
+        assert "failed_stage=missing_params" in message
+        assert "thread_id=thread-ut-1" in message
+        assert sentinel not in message
+        assert sentinel not in rec.args
+        assert sentinel not in log_output.getvalue()
+
+    def test_missing_params_abort_logs_without_failure_body(self, caplog):
+        node = ToolsNodes()
+        node.all_tools = [_tool("monitor_query_metric_data")]
+        req = _request(user_message="fusion-collector近30天的情况")
+        captured = {}
+        sentinel = "SENTINEL_MISSING_PARAMS_ABORT_BODY"
+
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        log_output = io.StringIO()
+        handler = logging.StreamHandler(log_output)
+        handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+        opspilot_logger.addHandler(handler)
+        try:
+            with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+                result = self._run_wrapper(
+                    node,
+                    req,
+                    captured,
+                    plan_payload={
+                        "goal": "查看主机近30天情况",
+                        "steps": [
+                            {
+                                "objective": "查询指标",
+                                "tools": ["monitor_query_metric_data"],
+                            }
+                        ],
+                    },
+                    failing_agent_calls={
+                        1: {
+                            "content": f'{{"success": false, "error": "metric is required {sentinel}"}}',
+                            "status": "success",
+                            "name": "monitor_query_metric_data",
+                        },
+                        2: {
+                            "content": f'{{"success": false, "error": "metric is required {sentinel}"}}',
+                            "status": "success",
+                            "name": "monitor_query_metric_data",
+                        },
+                    },
+                    agent_replies={
+                        1: f"上一轮失败，可用 uvx fusion-monitor {sentinel} 替代排查。",
+                        2: f"仍缺参数 {sentinel}",
+                    },
+                )
+        finally:
+            opspilot_logger.removeHandler(handler)
+
+        assert result["messages"]
+        assert len(captured["planner_calls"]) == 1
+
+        aborts = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_ABORT_LOG]
+        assert len(aborts) == 1
+        rec = aborts[0]
+        assert rec.args == ("查询指标", "MissingToolParams", "missing_params", "thread-ut-1")
+        message = rec.getMessage()
+        assert message.startswith("event=deepagent_missing_params_abort ")
+        assert "objective=查询指标" in message
+        assert "error_type=MissingToolParams" in message
+        assert "failed_stage=missing_params" in message
+        assert "thread_id=thread-ut-1" in message
+        assert sentinel not in message
+        assert sentinel not in rec.args
+        assert sentinel not in log_output.getvalue()
+
+    def test_missing_params_exception_path_logs_stable_template(self, caplog):
+        node = ToolsNodes()
+        node.all_tools = [_tool("monitor_query_metric_data")]
+        req = _request(user_message="fusion-collector近30天的情况")
+        captured = {}
+        sentinel = "SENTINEL_MISSING_PARAMS_EXC_BODY"
+
+        caplog.set_level(logging.DEBUG, logger="opspilot")
+        log_output = io.StringIO()
+        handler = logging.StreamHandler(log_output)
+        handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+        opspilot_logger.addHandler(handler)
+        try:
+            with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+                result = self._run_wrapper(
+                    node,
+                    req,
+                    captured,
+                    plan_payload={
+                        "goal": "查看主机近30天情况",
+                        "steps": [
+                            {
+                                "objective": "查询\n指标",
+                                "tools": ["monitor_query_metric_data"],
+                            }
+                        ],
+                    },
+                    raising_agent_calls={
+                        1: ValueError(f"metric is required {sentinel}"),
+                        2: ValueError(f"metric is required {sentinel}"),
+                    },
+                )
+        finally:
+            opspilot_logger.removeHandler(handler)
+
+        assert result["messages"]
+        assert len(captured["planner_calls"]) == 1
+        ainvoke_blob = "\n".join(str(getattr(message, "content", "") or "") for messages in captured["ainvoke_messages"] for message in messages)
+        assert "缺少必要查询参数" in ainvoke_blob
+
+        nudges = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_NUDGE_LOG]
+        aborts = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == MISSING_PARAMS_ABORT_LOG]
+        assert len(nudges) == 1
+        assert len(aborts) == 1
+        assert nudges[0].args == ("查询 指标", "MissingToolParams", "missing_params", "thread-ut-1")
+        assert aborts[0].args == ("查询 指标", "MissingToolParams", "missing_params", "thread-ut-1")
+        assert "event=deepagent_missing_params_nudge " in nudges[0].getMessage()
+        assert "event=deepagent_missing_params_abort " in aborts[0].getMessage()
+        assert "\n" not in nudges[0].getMessage()
+        assert sentinel not in nudges[0].getMessage()
+        assert sentinel not in aborts[0].getMessage()
+        assert sentinel not in log_output.getvalue()
 
     def test_auth_tool_error_aborts_remaining_steps_without_replan(self):
         node = ToolsNodes()
@@ -1135,12 +1411,98 @@ class TestBuildDeepagentNodes:
                 agent_reply="kubeconfig 鉴权失败，请检查 Token 或证书后重试。",
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["diagnose_kubernetes_pod_issues"],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["diagnose_kubernetes_pod_issues"],
+            ],
+        )
         assert len(captured["planner_calls"]) == 1
         joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
         assert "401" in joined or "鉴权" in joined or "Unauthorized" in joined
+
+    def test_cmdb_inventory_hit_skips_monitor_fallback_step(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("cmdb_search_instances"),
+            _tool("monitor_list_objects"),
+            _tool("monitor_list_object_instances"),
+        ]
+        req = _request(user_message="目前纳管多少台主机了")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "统计纳管主机",
+                    "steps": [
+                        {"objective": "先查CMDB", "tools": ["cmdb_search_instances"]},
+                        {
+                            "objective": "若CMDB无数据再查监控中心",
+                            "tools": ["monitor_list_objects", "monitor_list_object_instances"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"success": true, "data": [{"name": "fusion-collector"}]}',
+                        "status": "success",
+                        "name": "cmdb_search_instances",
+                    }
+                },
+                agent_reply="当前纳管 1 台主机。",
+            )
+
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["cmdb_search_instances"],
+                [],
+            ],
+        )
+        assert len(captured["planner_calls"]) == 1
+
+    def test_cmdb_then_metric_query_still_runs_monitor_step(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("cmdb_search_instances"),
+            _tool("monitor_query_metric_data"),
+        ]
+        req = _request(user_message="这些主机的CPU使用率情况如何")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查CPU",
+                    "steps": [
+                        {"objective": "查CMDB主机", "tools": ["cmdb_search_instances"]},
+                        {"objective": "查监控CPU", "tools": ["monitor_query_metric_data"]},
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"success": true, "data": [{"name": "web-1", "monitor_id": "m1"}]}',
+                        "status": "success",
+                        "name": "cmdb_search_instances",
+                    }
+                },
+            )
+
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["cmdb_search_instances"],
+                ["monitor_query_metric_data"],
+                [],
+            ],
+        )
 
     def test_unresolved_k8s_target_skips_namespace_required_followup_without_replan(self):
         node = ToolsNodes()
@@ -1198,11 +1560,14 @@ class TestBuildDeepagentNodes:
                 agent_reply="当前集群无法定位该对象。",
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["resolve_k8s_target_from_alert"],
-            ["generate_attachment_file"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["resolve_k8s_target_from_alert"],
+                ["generate_attachment_file"],
+                [],
+            ],
+        )
         assert len(captured["planner_calls"]) == 1
 
     def test_unresolved_k8s_target_still_runs_alert_rca_summary(self):
@@ -1264,10 +1629,13 @@ class TestBuildDeepagentNodes:
                 agent_reply=("本步结果：resolve_k8s_target_from_alert 已收口。" "resolved=false，lookup_exhausted=true，无法确定 namespace。" "后续步骤应按对象不可见结束。"),
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["resolve_k8s_target_from_alert"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["resolve_k8s_target_from_alert"],
+                [],
+            ],
+        )
         assert len(captured["planner_calls"]) == 1
         summary_prompt = "\n".join(str(getattr(message, "content", "") or "") for message in captured["ainvoke_messages"][-1])
         assert "必须以「# RCA 报告」" in summary_prompt
@@ -1309,10 +1677,13 @@ class TestBuildDeepagentNodes:
                 },
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["list_kubernetes_deployments"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["list_kubernetes_deployments"],
+                [],
+            ],
+        )
         assert len(captured["planner_calls"]) == 1
 
     def test_internal_tool_exception_aborts_without_replan(self):
@@ -1348,10 +1719,13 @@ class TestBuildDeepagentNodes:
                 },
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["list_kubernetes_nodes"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["list_kubernetes_nodes"],
+                [],
+            ],
+        )
         assert len(captured["planner_calls"]) == 1
 
     def test_skill_auth_error_aborts_remaining_steps_without_replan(self):
@@ -1362,9 +1736,11 @@ class TestBuildDeepagentNodes:
         pkgs = [{"name": "ad-domain-ops", "package_id": "ad-domain-ops", "description": "AD"}]
         fake_backend = MagicMock()
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)):
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)),
+        ):
             result = self._run_wrapper(
                 node,
                 req,
@@ -1386,7 +1762,7 @@ class TestBuildDeepagentNodes:
                 agent_reply="LDAP 凭据无效，请检查技能包连接配置后重试。",
             )
 
-        assert captured["visible_tool_calls"] == [["execute"]]
+        _assert_visible_tool_steps(captured["visible_tool_calls"], [["execute"]])
         assert len(captured["planner_calls"]) == 1
         joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
         assert "invalid credentials" in joined or "凭据" in joined
@@ -1398,9 +1774,11 @@ class TestBuildDeepagentNodes:
         captured = {}
         fake_backend = MagicMock()
         pkgs = [{"name": "kubernetes-specialist", "description": "K8s"}]
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)):
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)),
+        ):
             self._run_wrapper(
                 node,
                 req,
@@ -1441,9 +1819,11 @@ class TestBuildDeepagentNodes:
             call_counter["n"] += 1
             return (fake_backend, ["/skills/"], None)
 
-        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
-        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", side_effect=_counting_side_effect):
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", side_effect=_counting_side_effect),
+        ):
             self._run_wrapper(
                 node,
                 req,
@@ -1488,10 +1868,13 @@ class TestBuildDeepagentNodes:
                 },
             )
 
-        assert captured["visible_tool_calls"] == [
-            ["list_kubernetes_events", "request_user_choice"],
-            [],
-        ]
+        _assert_visible_tool_steps(
+            captured["visible_tool_calls"],
+            [
+                ["list_kubernetes_events", "request_user_choice"],
+                [],
+            ],
+        )
 
     def test_planned_execution_skips_summary_when_step_already_showed_table(self):
         node = ToolsNodes()
@@ -1591,7 +1974,7 @@ class TestBuildDeepagentNodes:
             self._run_wrapper(node, req, captured, plan_payload={"goal": "x", "steps": []})
 
         assert "planner_calls" not in captured
-        assert [tool.name for tool in captured["create_kwargs"]["tools"]] == ["shell", "k8s"]
+        _assert_registered_tool_names(captured["create_kwargs"]["tools"], ["shell", "k8s"])
         middleware = captured["create_kwargs"].get("middleware") or []
         assert not any(isinstance(item, ToolVisibilityMiddleware) for item in middleware)
         assert len(captured["ainvoke_messages"]) == 1
@@ -1798,7 +2181,22 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "【工具执行】" in guidance
     assert "未计划工具" in guidance
     assert "空列表" in guidance
+    assert "monitor_list_object_instances" in guidance
+    assert "禁止猜测" in guidance
     assert "重规划" in guidance
+    assert "request_user_choice" in guidance
+    assert "对象类型" in guidance
+    assert "查无此实例" in guidance
+    assert "已声明" in guidance
+    assert "alerts_*" in guidance
+    assert "monitor_list_active_alerts" in guidance
+    assert "Missing parameters" in guidance
+    assert "查不到再查" in guidance
+    assert "monitor_list_object_metrics" in guidance
+    assert "cpu.util" in guidance
+    assert "空矩阵" in guidance
+    assert "instance_ids" in guidance
+    assert "禁止用 name" in guidance or "禁止用实例名" in guidance
     assert "不要输出 Markdown 表" in guidance
     assert "禁止降低 lines" in guidance
     assert "execute" not in guidance
@@ -1820,6 +2218,18 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     mid = ToolsNodes._planned_tool_step_guidance()
     assert "调查结论" in mid
     assert "一两句话" in mid
+
+
+def test_bounded_log_field_collapses_newlines_and_truncates():
+    assert _bounded_log_field("查询\n指标\r\n") == "查询 指标"
+    assert _bounded_log_field("") == "-"
+    assert len(_bounded_log_field("x" * 200)) == 120
+    assert _missing_params_log_args("查询\n指标", "thread-1") == (
+        "查询 指标",
+        "MissingToolParams",
+        "missing_params",
+        "thread-1",
+    )
 
 
 def test_planned_tool_step_guidance_alert_rca_keeps_report_template():

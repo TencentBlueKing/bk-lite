@@ -9,14 +9,21 @@ from apps.core.models.time_info import TimeInfo
 
 SCAN_DATABASE_FAMILY = "database"
 SCAN_DATABASE_TYPES = frozenset({"mysql", "postgresql", "mssql"})
+SCAN_MIDDLEWARE_FAMILY = "middleware"
+SCAN_MIDDLEWARE_TYPES = frozenset({"nginx", "tomcat", "kafka", "zookeeper", "rabbitmq", "consul", "etcd"})
+SCAN_JOB_OPTIONAL_FAMILIES = frozenset({"host", SCAN_MIDDLEWARE_FAMILY})
+SCAN_AGENT_CREDENTIAL_ID = "agent"
+SCAN_SNMP_VERSIONS = frozenset({"v2", "v2c", "v3"})
 SCAN_ALLOWED_FAMILIES = frozenset(
     {
         "network",
         "host",
         "physcial_server",
         SCAN_DATABASE_FAMILY,
+        SCAN_MIDDLEWARE_FAMILY,
         "influxdb",
         *SCAN_DATABASE_TYPES,
+        *SCAN_MIDDLEWARE_TYPES,
     }
 )
 SCAN_IP_RANGE_MIN_PREFIX = 21
@@ -26,12 +33,15 @@ SCAN_IP_RANGE_MAX_SIZE = 2 ** (32 - SCAN_IP_RANGE_MIN_PREFIX)
 def scan_encrypt_model_id(model_id: str) -> str:
     if model_id == SCAN_DATABASE_FAMILY:
         return "mysql"
+    if model_id == SCAN_MIDDLEWARE_FAMILY or model_id in SCAN_MIDDLEWARE_TYPES:
+        return "host"
     return model_id
 
 
 def normalize_scan_families(families) -> list:
     result = []
     saw_database = False
+    saw_middleware = False
     for item in families or []:
         model_id = str(item or "").strip()
         if not model_id:
@@ -40,6 +50,11 @@ def normalize_scan_families(families) -> list:
             if not saw_database:
                 result.append(SCAN_DATABASE_FAMILY)
                 saw_database = True
+            continue
+        if model_id in SCAN_MIDDLEWARE_TYPES or model_id == SCAN_MIDDLEWARE_FAMILY:
+            if not saw_middleware:
+                result.append(SCAN_MIDDLEWARE_FAMILY)
+                saw_middleware = True
             continue
         if model_id not in result:
             result.append(model_id)
@@ -74,6 +89,39 @@ def merge_database_credentials(credentials) -> dict:
     return merged
 
 
+def is_agent_credential(item) -> bool:
+    if not item:
+        return True
+    if not isinstance(item, dict):
+        return False
+    if str(item.get("credential_id") or "") == SCAN_AGENT_CREDENTIAL_ID:
+        return True
+    return not any(item.get(key) for key in ("username", "password", "key", "private_key"))
+
+
+def agent_placeholder_pool() -> list[dict]:
+    return [{"credential_id": SCAN_AGENT_CREDENTIAL_ID}]
+
+
+def default_scan_snmp_version(item) -> dict:
+    """界面缺省显示 V2，但未点选下拉框时 version 不会写回。空版本按团体字/用户名补全。"""
+    if not isinstance(item, dict):
+        return item
+    next_item = dict(item)
+    version = str(next_item.get("version") or "").strip()
+    if version in SCAN_SNMP_VERSIONS:
+        next_item["version"] = version
+        return next_item
+    has_community = bool(str(next_item.get("community") or "").strip())
+    has_username = bool(str(next_item.get("username") or "").strip())
+    next_item["version"] = "v3" if has_username and not has_community else "v2"
+    return next_item
+
+
+def default_scan_snmp_pool(pool) -> list:
+    return [default_scan_snmp_version(item) if isinstance(item, dict) else item for item in (pool or [])]
+
+
 def resolve_scan_task_credential(task, family_model_id: str, credential_id: str):
     credential_id = str(credential_id or "").strip()
     if not credential_id:
@@ -84,16 +132,20 @@ def resolve_scan_task_credential(task, family_model_id: str, credential_id: str)
     pools = [raw.get(family_model_id)]
     if family_model_id in SCAN_DATABASE_TYPES:
         pools.append(raw.get(SCAN_DATABASE_FAMILY))
+    if family_model_id in SCAN_MIDDLEWARE_TYPES:
+        pools.extend([raw.get(SCAN_MIDDLEWARE_FAMILY), raw.get("host")])
     for pool in pools:
         items = pool if isinstance(pool, list) else ([pool] if isinstance(pool, dict) else [])
         for item in items:
             if isinstance(item, dict) and str(item.get("credential_id") or "") == credential_id:
                 return dict(item)
+    if credential_id == SCAN_AGENT_CREDENTIAL_ID:
+        return {"credential_id": SCAN_AGENT_CREDENTIAL_ID}
     return None
 
 
 def scan_driver_type_for_model(model_id: str) -> str:
-    if model_id == "host":
+    if model_id == "host" or model_id in SCAN_MIDDLEWARE_TYPES:
         return CollectDriverTypes.JOB
     return CollectDriverTypes.PROTOCOL
 
@@ -103,6 +155,8 @@ def scan_task_type_for_model(model_id: str) -> str:
         return CollectPluginTypes.SNMP
     if model_id == "host":
         return CollectPluginTypes.HOST
+    if model_id in SCAN_MIDDLEWARE_TYPES:
+        return CollectPluginTypes.MIDDLEWARE
     return CollectPluginTypes.PROTOCOL
 
 
@@ -206,6 +260,7 @@ class ScanExecution(TimeInfo):
     finished_at = models.DateTimeField(blank=True, null=True)
     target_count = models.PositiveIntegerField(default=0)
     received_count = models.PositiveIntegerField(default=0)
+    schedule = JSONField(default=dict, help_text="JOB 工作队列：切批、游标与当前批次截止")
 
     class Meta:
         verbose_name = "扫描执行"
@@ -237,11 +292,12 @@ class ScanFamilyRun(TimeInfo):
         help_text="已计入进度的主机（含失败/不可达）；清单仅保留 success",
     )
     admit_status = models.CharField(max_length=32, choices=ADMIT_CHOICES, default=ADMIT_PENDING)
+    batch_index = models.PositiveSmallIntegerField(default=0, help_text="同模型 JOB 切批序号")
 
     class Meta:
         verbose_name = "扫描族执行"
         verbose_name_plural = verbose_name
-        unique_together = (("execution", "model_id", "driver_type"),)
+        unique_together = (("execution", "model_id", "driver_type", "batch_index"),)
 
 
 class ScanHit(TimeInfo):

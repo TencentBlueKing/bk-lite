@@ -61,6 +61,8 @@ class AlertsOpenAPIContext:
     def require_feature(self, permission: str):
         if getattr(self.user, "is_superuser", False):
             return
+        if "alarm--admin" in (getattr(self.user, "roles", None) or []):
+            return
         user_permissions = getattr(self.user, "permission", {}) or {}
         alarm_perms = set(user_permissions.get("alarm", set()) or [])
         if permission not in alarm_perms:

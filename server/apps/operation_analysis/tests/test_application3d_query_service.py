@@ -46,14 +46,22 @@ def _application(app_id, name, **fields):
     return payload
 
 
-def _scope(applications, *, complete_apps=None, policies=None, hosts_by_app=None, empty_systems=None, no_host_systems=None):
+def _mapped_monitor_ids(hosts_by_app):
+    return {str(host["monitor_id"]) for hosts in hosts_by_app.values() for host in hosts if host.get("monitor_id") not in (None, "")}
+
+
+def _scope(
+    applications, *, complete_apps=None, policies=None, hosts_by_app=None, empty_systems=None, no_host_systems=None, authorized_monitor_ids=None
+):
+    hosts = hosts_by_app if hosts_by_app is not None else {item["inst_uuid"]: [] for item in applications}
     return _ApplicationScope(
         applications=applications,
-        hosts_by_app=hosts_by_app if hosts_by_app is not None else {item["inst_uuid"]: [] for item in applications},
+        hosts_by_app=hosts,
         policies=policies or {},
         complete_apps=set(complete_apps if complete_apps is not None else [item["inst_uuid"] for item in applications]),
         empty_systems=set(empty_systems or []),
         no_host_systems=set(no_host_systems or []),
+        authorized_monitor_ids=_mapped_monitor_ids(hosts) if authorized_monitor_ids is None else set(authorized_monitor_ids),
     )
 
 
@@ -261,6 +269,7 @@ def test_empty_system_wall_and_detail_are_unknown_no_application(monkeypatch):
         assert health["severityCounts"] is None
         assert health["noDataAlarmCount"] is None
         assert health["highestSeverity"] is None
+    assert "hostCoverage" not in wall_item
     assert detail["alarms"] == {"state": "unavailable"}
 
 
@@ -286,6 +295,7 @@ def test_zero_hosts_is_unknown_no_host(monkeypatch):
         assert health["reason"] != "unavailable"
         assert health["reason"] != "no_application"
         assert health["activeAlarmCount"] is None
+    assert "hostCoverage" not in wall_item
     assert detail["alarms"] == {"state": "unavailable"}
 
 
@@ -1240,6 +1250,17 @@ def test_accessible_policies_queries_only_referenced_ids(monkeypatch):
     assert set(result) == {7}
 
 
+def _stub_alert_manager(monkeypatch, manager):
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.MonitorAlert.objects",
+        manager,
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service._AlertPolicyScope.get_visible_alert_queryset",
+        lambda self, request, require_operate=False: manager,
+    )
+
+
 def _stub_empty_alert_qs(monkeypatch):
     class _EmptyQS:
         def filter(self, **kwargs):
@@ -1251,14 +1272,20 @@ def _stub_empty_alert_qs(monkeypatch):
         def values_list(self, *args, **kwargs):
             return self
 
+        def values(self, *args):
+            return self
+
+        def annotate(self, **kwargs):
+            return []
+
+        def order_by(self, *args, **kwargs):
+            return self
+
         def distinct(self):
             return []
 
     empty = _EmptyQS()
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.MonitorAlert.objects",
-        SimpleNamespace(filter=lambda **kwargs: empty, none=lambda: empty),
-    )
+    _stub_alert_manager(monkeypatch, SimpleNamespace(filter=lambda **kwargs: empty, none=lambda: empty))
 
 
 def test_build_scope_empty_system_is_no_application_not_normal(monkeypatch):
@@ -1280,8 +1307,9 @@ def test_build_scope_empty_system_is_no_application_not_normal(monkeypatch):
     assert scope.hosts_by_app[SYSTEM_A] == []
 
 
-def test_build_scope_hidden_child_applications_are_unavailable(monkeypatch):
+def test_build_scope_hidden_child_applications_are_omitted_not_unavailable(monkeypatch):
     systems = [_system(SYSTEM_A, "partial")]
+    seen_app_ids: list[str] = []
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.project_system_applications",
         lambda system_ids: {SYSTEM_A: [APP_A, APP_B]},
@@ -1291,20 +1319,89 @@ def test_build_scope_hidden_child_applications_are_unavailable(monkeypatch):
         "_visible_model_instances",
         classmethod(lambda cls, request, model_id, inst_uuids: [_application(APP_A, "visible")]),
     )
+
+    def _hosts(app_ids):
+        seen_app_ids.extend(app_ids)
+        return {APP_A: ["host-1"]}
+
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
-        lambda app_ids: (_ for _ in ()).throw(AssertionError("hidden child applications must not project hosts")),
+        _hosts,
     )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_hosts",
+        classmethod(lambda cls, request, host_ids: [{"inst_uuid": "host-1", "monitor_id": "m1"}]),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_authorized_monitor_ids",
+        classmethod(lambda cls, request, candidate_ids: set(candidate_ids)),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_accessible_policies",
+        staticmethod(lambda request, policy_ids: {pid: SimpleNamespace(id=pid) for pid in policy_ids}),
+    )
+    _stub_monitor_alerts(
+        monkeypatch,
+        [
+            {
+                "monitor_instance_id": "m1",
+                "policy_id": 1,
+                "alert_type": "alert",
+                "level": "warning",
+                "status": "new",
+            }
+        ],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
 
     scope = Application3DQueryService._build_scope(_request(), systems)
+    item = Application3DQueryService.wall(_request())["items"][0]
 
+    assert APP_B not in seen_app_ids
+    assert set(seen_app_ids) == {APP_A}
+    assert SYSTEM_A in scope.complete_apps
     assert SYSTEM_A not in scope.empty_systems
+    assert SYSTEM_A not in scope.no_host_systems
+    assert [host["inst_uuid"] for host in scope.hosts_by_app[SYSTEM_A]] == ["host-1"]
+    assert item["health"]["state"] == "alarming"
+    assert item["health"]["activeAlarmCount"] == 1
+    assert item["health"]["reason"] != "unavailable"
+    assert "hostCoverage" in item
+    assert item["hostCoverage"] == {"monitored": 1, "total": 1}
+    assert "hidden" not in str(item).lower()
+    assert "incomplete" not in str(item).lower()
+
+
+def test_build_scope_all_child_applications_invisible_is_no_application(monkeypatch):
+    systems = [_system(SYSTEM_A, "hidden-children")]
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: [APP_A, APP_B]},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(lambda cls, request, model_id, inst_uuids: []),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: (_ for _ in ()).throw(AssertionError("actor-empty systems must not project hosts")),
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    item = Application3DQueryService.wall(_request())["items"][0]
+
+    assert scope.empty_systems == {SYSTEM_A}
     assert SYSTEM_A not in scope.complete_apps
     assert SYSTEM_A not in scope.no_host_systems
-    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
-    assert health["reason"] == "unavailable"
-    assert health["reason"] != "no_host"
-    assert health["state"] == "unknown"
+    assert item["health"]["reason"] == "no_application"
+    assert "hostCoverage" not in item
 
 
 def test_build_scope_unions_child_hosts_and_dedupes_shared_monitor(monkeypatch):
@@ -1438,11 +1535,16 @@ class _AlertGrouped:
         return [{**dict(zip(self._fields, key)), "count": count} for key, count in grouped.items()]
 
 
-def _stub_monitor_alerts(monkeypatch, rows):
+def _stub_monitor_alerts(monkeypatch, rows, *, mixin_rows=None):
     table = _AlertQuery(rows)
+    mixin_table = _AlertQuery(rows if mixin_rows is None else mixin_rows)
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.MonitorAlert.objects",
         SimpleNamespace(filter=table.filter, none=lambda: _AlertQuery([])),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service._AlertPolicyScope.get_visible_alert_queryset",
+        lambda self, request, require_operate=False: mixin_table,
     )
 
 
@@ -1459,15 +1561,6 @@ def _patch_system_host_graph(
     monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.project_system_applications",
         lambda system_ids: {SYSTEM_A: app_ids},
-    )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {
-            "group_ids": [],
-            "group_parents": {},
-            "application_ids": app_ids,
-            "application_parents": {app_id: SYSTEM_A for app_id in app_ids},
-        },
     )
     monkeypatch.setattr(
         Application3DQueryService,
@@ -1544,6 +1637,7 @@ def test_build_scope_mixed_mapped_and_unmapped_hosts_aggregates_mapped_alerts(mo
     assert health["activeAlarmCount"] == 2
     assert health["severityCounts"]["critical"] == 1
     assert health["severityCounts"]["error"] == 1
+    assert result["items"][0]["hostCoverage"] == {"monitored": 1, "total": 2}
 
 
 def test_build_scope_all_unmapped_hosts_stay_unavailable_not_normal(monkeypatch):
@@ -1561,7 +1655,8 @@ def test_build_scope_all_unmapped_hosts_stay_unavailable_not_normal(monkeypatch)
     monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
 
     scope = Application3DQueryService._build_scope(_request(), systems)
-    health = Application3DQueryService.wall(_request())["items"][0]["health"]
+    item = Application3DQueryService.wall(_request())["items"][0]
+    health = item["health"]
 
     assert SYSTEM_A not in scope.complete_apps
     assert SYSTEM_A not in scope.empty_systems
@@ -1572,9 +1667,119 @@ def test_build_scope_all_unmapped_hosts_stay_unavailable_not_normal(monkeypatch)
     assert health["reason"] != "no_host"
     assert SYSTEM_A not in scope.no_host_systems
     assert not (health["state"] == "normal" and health["activeAlarmCount"] == 0)
+    assert item["hostCoverage"] == {"monitored": 0, "total": 2}
 
 
-def test_build_scope_hidden_policy_on_mapped_host_still_unavailable(monkeypatch):
+def test_zero_readable_hosts_detail_alarms_are_empty_available(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children(),
+        hosts_by_app=_finance_settlement_hosts_by_app(),
+        visible_hosts=[
+            {"inst_uuid": "host-07", "monitor_id": None},
+            {"inst_uuid": "host-08", "monitor_id": ""},
+        ],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+    monkeypatch.setattr(Application3DQueryService, "_visible_application", classmethod(lambda cls, request, application_id: systems[0]))
+    monkeypatch.setattr("apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr", lambda model_id: [])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
+        lambda model_id, user: None,
+    )
+
+    detail = Application3DQueryService.application_detail(_request(), SYSTEM_A)
+    alarms = detail["alarms"]
+    health = detail["application"]["health"]
+
+    assert health["state"] == "unknown"
+    assert health["reason"] == "unavailable"
+    assert health["activeAlarmCount"] is None
+    assert alarms["state"] == "available"
+    assert alarms["items"] == []
+    assert alarms["activeAlarmCount"] == 0
+    assert alarms["page"] == {"nextCursor": None, "hasMore": False}
+
+
+def test_all_unreadable_monitors_are_unknown_with_zero_coverage(monkeypatch):
+    systems = [_system(SYSTEM_A, "财务结算平台")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=_finance_settlement_children(),
+        hosts_by_app=_finance_settlement_hosts_by_app(),
+        visible_hosts=[
+            {"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"},
+            {"inst_uuid": "host-08", "monitor_id": "app3d-demo-host-08"},
+        ],
+        authorized_monitor_ids=set(),
+    )
+    _stub_monitor_alerts(
+        monkeypatch,
+        [{"monitor_instance_id": "app3d-demo-host-07", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"}],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+
+    scope = Application3DQueryService._build_scope(_request(), systems)
+    item = Application3DQueryService.wall(_request())["items"][0]
+    health = item["health"]
+
+    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A not in scope.empty_systems
+    assert SYSTEM_A not in scope.no_host_systems
+    assert health["state"] == "unknown"
+    assert health["reason"] == "unavailable"
+    assert health["activeAlarmCount"] is None
+    assert item["hostCoverage"] == {"monitored": 0, "total": 2}
+
+
+def test_visible_alert_queryset_without_request_is_empty(monkeypatch):
+    leaked = {"objects": 0}
+
+    class _Manager:
+        def none(self):
+            return "EMPTY"
+
+        def filter(self, **kwargs):
+            leaked["objects"] += 1
+            return "LEAK"
+
+        def all(self):
+            leaked["objects"] += 1
+            return "LEAK"
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.MonitorAlert.objects",
+        _Manager(),
+    )
+    scope = _ApplicationScope(
+        applications=[_system(SYSTEM_A, "财务结算平台")],
+        hosts_by_app={SYSTEM_A: [{"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"}]},
+        policies={},
+        complete_apps=set(),
+        request=None,
+    )
+    result = Application3DQueryService._visible_alert_queryset(scope)
+    assert result == "EMPTY"
+    assert leaked["objects"] == 0
+
+
+def test_missing_authorized_monitor_ids_does_not_treat_mapped_hosts_as_readable():
+    scope = _ApplicationScope(
+        applications=[_system(SYSTEM_A, "财务结算平台")],
+        hosts_by_app={SYSTEM_A: [{"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"}]},
+        policies={},
+        complete_apps=set(),
+        authorized_monitor_ids=None,
+    )
+    assert Application3DQueryService._monitor_ids_for_app(scope, SYSTEM_A) == set()
+    assert Application3DQueryService._host_coverage(scope, SYSTEM_A) == {"monitored": 0, "total": 1}
+    assert Application3DQueryService._host_node_health(scope, scope.hosts_by_app[SYSTEM_A][0])["reason"] == "monitor_unreadable"
+
+
+def test_build_scope_hidden_policy_still_counts_visible_alerts(monkeypatch):
     systems = [_system(SYSTEM_A, "财务结算平台")]
     _patch_system_host_graph(
         monkeypatch,
@@ -1592,26 +1797,35 @@ def test_build_scope_hidden_policy_on_mapped_host_still_unavailable(monkeypatch)
         ],
         accessible_policy_ids={2},
     )
+    visible_rows = [
+        {"monitor_instance_id": "app3d-demo-host-07", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"},
+        {"monitor_instance_id": "app3d-demo-host-09", "policy_id": 2, "alert_type": "alert", "level": "warning", "status": "new"},
+    ]
     _stub_monitor_alerts(
         monkeypatch,
-        [
-            {"monitor_instance_id": "app3d-demo-host-07", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"},
-            {"monitor_instance_id": "app3d-demo-host-09", "policy_id": 2, "alert_type": "alert", "level": "warning", "status": "new"},
-        ],
+        visible_rows + [{"monitor_instance_id": "app3d-demo-host-07", "policy_id": 3, "alert_type": "alert", "level": "error", "status": "new"}],
+        mixin_rows=visible_rows,
     )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
 
     scope = Application3DQueryService._build_scope(_request(), systems)
-    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+    item = Application3DQueryService.wall(_request())["items"][0]
+    health = item["health"]
 
-    assert SYSTEM_A not in scope.complete_apps
-    assert SYSTEM_A not in scope.no_host_systems
-    assert health["reason"] == "unavailable"
-    assert health["reason"] != "no_host"
-    assert health["state"] == "unknown"
-    assert health["activeAlarmCount"] is None
+    assert SYSTEM_A in scope.complete_apps
+    assert 1 not in scope.policies
+    assert 2 in scope.policies
+    assert health["state"] == "alarming"
+    assert health["reason"] == "active_alarm"
+    assert health["activeAlarmCount"] == 2
+    assert health["severityCounts"]["critical"] == 1
+    assert health["severityCounts"]["warning"] == 1
+    assert health["severityCounts"]["error"] == 0
+    assert item["hostCoverage"] == {"monitored": 2, "total": 3}
 
 
-def test_build_scope_unauthorized_mapped_monitor_still_unavailable(monkeypatch):
+def test_build_scope_unauthorized_mapped_monitor_does_not_fail_system(monkeypatch):
     systems = [_system(SYSTEM_A, "财务结算平台")]
     _patch_system_host_graph(
         monkeypatch,
@@ -1629,19 +1843,31 @@ def test_build_scope_unauthorized_mapped_monitor_still_unavailable(monkeypatch):
         ],
         authorized_monitor_ids={"app3d-demo-host-09"},
     )
-    _stub_empty_alert_qs(monkeypatch)
+    _stub_monitor_alerts(
+        monkeypatch,
+        [
+            {"monitor_instance_id": "app3d-demo-host-07", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"},
+            {"monitor_instance_id": "app3d-demo-host-09", "policy_id": 2, "alert_type": "alert", "level": "warning", "status": "new"},
+        ],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
 
     scope = Application3DQueryService._build_scope(_request(), systems)
-    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+    item = Application3DQueryService.wall(_request())["items"][0]
+    health = item["health"]
 
-    assert SYSTEM_A not in scope.complete_apps
-    assert SYSTEM_A not in scope.no_host_systems
-    assert health["reason"] == "unavailable"
-    assert health["reason"] != "no_host"
-    assert health["activeAlarmCount"] is None
+    assert SYSTEM_A in scope.complete_apps
+    assert Application3DQueryService._monitor_ids_for_app(scope, SYSTEM_A) == {"app3d-demo-host-09"}
+    assert health["state"] == "alarming"
+    assert health["reason"] != "unavailable"
+    assert health["activeAlarmCount"] == 1
+    assert health["severityCounts"]["warning"] == 1
+    assert health["severityCounts"]["critical"] == 0
+    assert item["hostCoverage"] == {"monitored": 1, "total": 3}
 
 
-def test_build_scope_invisible_host_still_unavailable(monkeypatch):
+def test_build_scope_invisible_host_is_omitted_not_unavailable(monkeypatch):
     systems = [_system(SYSTEM_A, "财务结算平台")]
     _patch_system_host_graph(
         monkeypatch,
@@ -1650,15 +1876,20 @@ def test_build_scope_invisible_host_still_unavailable(monkeypatch):
         visible_hosts=[{"inst_uuid": "host-07", "monitor_id": "app3d-demo-host-07"}],
     )
     _stub_empty_alert_qs(monkeypatch)
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
 
     scope = Application3DQueryService._build_scope(_request(), systems)
-    health = Application3DQueryService._health_for_application(scope, SYSTEM_A)
+    item = Application3DQueryService.wall(_request())["items"][0]
+    health = item["health"]
 
-    assert SYSTEM_A not in scope.complete_apps
+    assert SYSTEM_A in scope.complete_apps
     assert SYSTEM_A not in scope.no_host_systems
-    assert health["reason"] == "unavailable"
-    assert health["reason"] != "no_host"
-    assert health["activeAlarmCount"] is None
+    assert [host["inst_uuid"] for host in scope.hosts_by_app[SYSTEM_A]] == ["host-07"]
+    assert health["state"] == "normal"
+    assert health["reason"] != "unavailable"
+    assert health["activeAlarmCount"] == 0
+    assert item["hostCoverage"] == {"monitored": 1, "total": 1}
 
 
 def test_build_scope_mixed_children_union_hosts_that_exist(monkeypatch):
@@ -1798,10 +2029,6 @@ def test_architecture_empty_system_is_root_without_fake_children(monkeypatch):
         lambda system_ids: {SYSTEM_A: []},
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {"group_ids": [], "group_parents": {}, "application_ids": [], "application_parents": {}},
-    )
-    monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
         lambda app_ids: (_ for _ in ()).throw(AssertionError("empty systems must not project application_run_host")),
     )
@@ -1855,15 +2082,6 @@ def test_architecture_omits_invisible_apps_and_hosts(monkeypatch):
         lambda system_ids: {SYSTEM_A: [APP_A, APP_B]},
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {
-            "group_ids": [],
-            "group_parents": {},
-            "application_ids": [APP_A, APP_B],
-            "application_parents": {APP_A: SYSTEM_A, APP_B: SYSTEM_A},
-        },
-    )
-    monkeypatch.setattr(
         Application3DQueryService,
         "_visible_model_instances",
         classmethod(lambda cls, request, model_id, inst_uuids: [_application(APP_A, "visible")] if model_id == "application" else []),
@@ -1878,17 +2096,25 @@ def test_architecture_omits_invisible_apps_and_hosts(monkeypatch):
         classmethod(lambda cls, request, host_ids: [{"inst_uuid": "host-visible", "inst_name": "可见主机", "monitor_id": "m1"}]),
     )
 
+    _stub_empty_alert_qs(monkeypatch)
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_authorized_monitor_ids",
+        classmethod(lambda cls, request, candidate_ids: set(candidate_ids)),
+    )
+
     result = Application3DQueryService.architecture(_request(), SYSTEM_A)
 
     ids = {node["id"] for node in result["nodes"]}
     assert ids == {SYSTEM_A, APP_A, "host-visible"}
     assert APP_B not in ids
     assert "host-hidden" not in ids
-    assert result["nodes"][0]["health"]["reason"] == "unavailable"
+    assert result["nodes"][0]["health"]["reason"] != "unavailable"
+    assert result["nodes"][0]["health"]["state"] == "normal"
 
 
-def test_architecture_draws_visible_biz_groups(monkeypatch):
-    systems = [_system(SYSTEM_A, "union")]
+def test_architecture_marks_unmonitored_and_unreadable_hosts_without_failing_system(monkeypatch):
+    systems = [_system(SYSTEM_A, "mixed")]
     monkeypatch.setattr(
         Application3DQueryService,
         "_visible_application",
@@ -1896,39 +2122,36 @@ def test_architecture_draws_visible_biz_groups(monkeypatch):
     )
     _patch_system_host_graph(
         monkeypatch,
-        child_apps=[_application(APP_A, "门户")],
-        hosts_by_app={APP_A: ["host-1"]},
-        visible_hosts=[{"inst_uuid": "host-1", "inst_name": "web-1", "monitor_id": "m1"}],
+        child_apps=[_application(APP_A, "门户"), _application(APP_B, "未接入应用")],
+        hosts_by_app={APP_A: ["host-ok", "host-unreadable"], APP_B: ["host-unmonitored"]},
+        visible_hosts=[
+            {"inst_uuid": "host-ok", "inst_name": "ok", "monitor_id": "m-ok"},
+            {"inst_uuid": "host-unreadable", "inst_name": "no-perm", "monitor_id": "m-hidden"},
+            {"inst_uuid": "host-unmonitored", "inst_name": "bare", "monitor_id": ""},
+        ],
+        authorized_monitor_ids={"m-ok"},
     )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {
-            "group_ids": ["g1"],
-            "group_parents": {"g1": SYSTEM_A},
-            "application_ids": [APP_A],
-            "application_parents": {APP_A: "g1"},
-        },
+    _stub_monitor_alerts(
+        monkeypatch,
+        [
+            {"monitor_instance_id": "m-ok", "policy_id": 1, "alert_type": "alert", "level": "warning", "status": "new"},
+            {"monitor_instance_id": "m-hidden", "policy_id": 1, "alert_type": "alert", "level": "critical", "status": "new"},
+        ],
     )
-    monkeypatch.setattr(
-        Application3DQueryService,
-        "_visible_model_instances",
-        classmethod(
-            lambda cls, request, model_id, inst_uuids: (
-                [_application(APP_A, "门户")]
-                if model_id == "application"
-                else [{"inst_uuid": "g1", "inst_name": "生产", "model_id": "biz_group"}]
-                if model_id == "biz_group"
-                else []
-            )
-        ),
-    )
-    _stub_empty_alert_qs(monkeypatch)
 
     result = Application3DQueryService.architecture(_request(), SYSTEM_A)
+    by_id = {node["id"]: node for node in result["nodes"]}
 
-    assert [node["kind"] for node in result["nodes"]] == ["system", "biz_group", "application", "host"]
-    assert {(edge["sourceId"], edge["targetId"], edge["relation"]) for edge in result["edges"]} == {
-        (SYSTEM_A, "g1", "system_contains_biz_group"),
-        ("g1", APP_A, "biz_group_contains_application"),
-        (APP_A, "host-1", "application_run_host"),
-    }
+    assert by_id["host-ok"]["health"]["state"] == "alarming"
+    assert by_id["host-ok"]["health"]["activeAlarmCount"] == 1
+    assert by_id["host-unreadable"]["health"]["reason"] == "monitor_unreadable"
+    assert by_id["host-unreadable"]["health"]["state"] == "unknown"
+    assert by_id["host-unmonitored"]["health"]["reason"] == "unmonitored"
+    assert by_id[APP_A]["health"]["state"] == "alarming"
+    assert by_id[APP_A]["health"]["reason"] != "unmonitored"
+    assert by_id[APP_A]["health"]["reason"] != "monitor_unreadable"
+    assert by_id[APP_B]["health"]["state"] == "unknown"
+    assert by_id[APP_B]["health"]["reason"] == "unavailable"
+    assert by_id[SYSTEM_A]["health"]["state"] == "alarming"
+    assert by_id[SYSTEM_A]["health"]["activeAlarmCount"] == 1
+    assert by_id[SYSTEM_A]["health"]["severityCounts"]["critical"] == 0

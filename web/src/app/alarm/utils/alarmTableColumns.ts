@@ -3,6 +3,47 @@ import type { Key } from 'react';
 export const ALARM_SETTINGS_STORAGE_KEY = 'alarmSettings';
 export const ALARM_DISPLAY_FIELD_KEYS = 'displayFieldKeys';
 export const ALARM_TABLE_ACTION_COLUMN_KEY = 'action';
+export const DEFAULT_ALARM_TABLE_FIELD_KEYS = [
+  'level',
+  'first_event_time',
+  'duration',
+  'title',
+  'content',
+  'event_count',
+  'status',
+  'operator_user',
+  'notify_status',
+] as const;
+export const ALARM_DETAIL_TRIGGER_COLUMN_KEYS = [
+  'level',
+  'title',
+  'content',
+  'event_count',
+  'status',
+] as const;
+export const ALARM_DETAIL_EVENT_TAB_COLUMN_KEY = 'event_count';
+
+export const isAlarmDetailTriggerColumn = (key?: string | null) =>
+  Boolean(key) &&
+  (ALARM_DETAIL_TRIGGER_COLUMN_KEYS as readonly string[]).includes(key);
+
+export const alarmDetailTabForColumn = (key?: string | null) =>
+  key === ALARM_DETAIL_EVENT_TAB_COLUMN_KEY ? 'event' : 'baseInfo';
+
+export const getAlarmDetailTriggerCellProps = <T,>(
+  record: T,
+  columnKey: string | undefined,
+  onOpenDetail: (record: T, tab?: string) => void
+) => {
+  if (!isAlarmDetailTriggerColumn(columnKey)) return {};
+  return {
+    className: 'cursor-pointer',
+    onClick: (event: { stopPropagation?: () => void }) => {
+      event.stopPropagation?.();
+      onOpenDetail(record, alarmDetailTabForColumn(columnKey));
+    },
+  };
+};
 
 interface ColumnLike {
   key?: Key;
@@ -71,7 +112,7 @@ export const resolveAlarmTableColumns = <T extends ColumnLike>(
   const choosable = getAlarmTableChoosableColumns(columns);
   const selectedKeys =
     displayFieldKeys == null
-      ? choosable.map((column) => String(column.key ?? ''))
+      ? [...DEFAULT_ALARM_TABLE_FIELD_KEYS]
       : displayFieldKeys;
   const byKey = new Map(
     choosable

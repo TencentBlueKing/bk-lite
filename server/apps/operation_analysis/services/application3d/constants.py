@@ -10,9 +10,6 @@ APPLICATION3D_ALARM_PAGE_SIZE = 20
 
 APPLICATION_RUN_HOST_ASST = "application_run_host"
 SYSTEM_CONTAINS_APPLICATION_ASST = "system_contains_application"
-SYSTEM_CONTAINS_BIZ_GROUP_ASST = "system_contains_biz_group"
-BIZ_GROUP_CONTAINS_BIZ_GROUP_ASST = "biz_group_contains_biz_group"
-BIZ_GROUP_CONTAINS_APPLICATION_ASST = "biz_group_contains_application"
 
 FILTER_SYSTEM_STATUS = "system_status"
 

@@ -60,6 +60,7 @@ def test_hashed_lookup_query_count_does_not_grow_with_secret_count(row_count):
             username=f"lookup-extra-{index}",
             domain="index.test",
             team=0,
+            name=f"lookup-extra-{index}",
             api_secret=UserAPISecret.hash_api_secret(UserAPISecret.generate_api_secret()),
         )
         for index in range(row_count - 1)
@@ -85,6 +86,7 @@ def test_unknown_token_uses_hashed_then_plaintext_lookup(row_count):
                 username=f"unknown-extra-{index}",
                 domain="index.test",
                 team=1,
+                name=f"unknown-extra-{index}",
                 api_secret=UserAPISecret.hash_api_secret(UserAPISecret.generate_api_secret()),
             )
             for index in range(row_count)

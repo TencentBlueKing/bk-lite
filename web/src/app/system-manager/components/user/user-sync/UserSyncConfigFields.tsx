@@ -48,6 +48,7 @@ interface MappingInputRowProps {
   placeholder: string;
   required?: boolean;
   invalid?: boolean;
+  t: (key: string, fallback?: string) => string;
   onChange: (index: number, value: string) => void;
 }
 
@@ -73,6 +74,7 @@ const MappingInputRow = memo(({
   placeholder,
   required = false,
   invalid = false,
+  t,
   onChange,
 }: MappingInputRowProps) => {
   const meta = PLATFORM_FIELD_META[row.platformField as keyof typeof PLATFORM_FIELD_META];
@@ -80,11 +82,11 @@ const MappingInputRow = memo(({
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] items-center gap-x-3">
       <div className="flex h-8 items-center rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 text-[13px] text-[var(--color-text-1)]">
-        <span className="font-medium">{meta?.label || row.platformField}</span>
+        <span className="font-medium">{meta ? t(meta.labelKey) : row.platformField}</span>
         {required ? <span className="ml-1 text-[var(--color-error)]">*</span> : null}
-        {meta?.desc ? (
+        {meta ? (
           <span className="ml-2 hidden text-[12px] text-[var(--color-text-3)] sm:inline">
-            ({meta.desc})
+            ({t(meta.descKey)})
           </span>
         ) : null}
       </div>
@@ -145,7 +147,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
           .filter((c: any) => c?.channel_type === 'email')
           .map((c: any) => ({
             id: typeof c.id === 'number' ? c.id : Number(c.id),
-            name: c.name ?? '(未命名)',
+            name: c.name ?? t('system.user.userSyncPage.unnamedEmailChannel'),
           }))
           .filter((o) => !Number.isNaN(o.id));
         // 注释：React 18 dev strict mode 会 mount → cleanup → mount,cleanup 中设 cancelled=true 会让 async 跳过 setState.
@@ -509,6 +511,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
               placeholder={externalFieldPlaceholder}
               required={row.platformField === 'username'}
               invalid={row.platformField === 'username' && Boolean(mappingError)}
+              t={t}
               onChange={handleMappingRowChange}
             />
           ))}

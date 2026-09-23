@@ -33,7 +33,7 @@ Status: accepted
 - `MonitorEvent` 增加可空 `action` 字段。新写入必须带动作；存量扫描流水 Event 保持 `action` 为空，页面按历史记录展示，不做回填、不删除。
 - 事件查询接口在现有字段上增加 `action`。权限、分页和按告警查询的路径不变。
 - 策略扫描只在这些情况落 Event：新建活动 Alert（`triggered`）；已有活动 Alert 且本轮命中级别高于 Alert 当前级别（`escalated`）；活动 Alert 自动恢复（`recovered`）；活动 Alert 被关闭（`closed`）。其余命中、info、持续无数据只更新快照和 Alert 计数/状态机，不建 Event。
-- 无数据 Alert 仍按「同一策略 + 同一监控实例」聚合成一条。打开时只写一条 `triggered` Event，不再为每个缺失维度各写一条 Event。维度级证据留在该次扫描的快照点中。部分维度恢复仍不恢复 Alert，也不写 Event；全部基准恢复才写一条 `recovered`。这取代「不同缺失维度分别保留 MonitorEvent」的旧契约。
+- 无数据 Alert 按指标实例（策略 `group_by` 元组 / `metric_instance_id`）聚合，与阈值 Alert 同一开单粒度。打开时每张 Alert 只写一条 `triggered` Event；持续无数据只追加快照。该序列恢复数据后写一条 `recovered`；同实例其他缺失序列各自保持活动。
 - 告警指标快照的一对一模型和追加式生命周期不变。有状态 Event 的扫描点类型为 `event` 并关联该 Event；无状态变化的成功扫描点类型为 `info` 或 `no_data`。为此，持续超阈的原始数据必须在不建 Event 时仍进入快照记录，不能再依赖「先建 Event 再从 EventRawData 取数」。人工关闭、策略删除、实例移除不是策略扫描，不追加快照点。
 - `recovered` Event 与 Alert 状态、结束时间、操作记录、告警中心投递在同一次状态转换里写下。`closed` Event 覆盖所有把活动告警置为关闭的入口：页面关闭、策略删除、实例移除。关闭原因和操作者写入 Event 内容，与现有 `operation_logs` 一致。已恢复或已关闭的 Alert 不再写第二条终态 Event。
 - 通知和告警中心副本仍按 Alert 生命周期动作投递（created / upgraded / recovered / closed），不因 Event 变少而少发，也不因补了恢复/关闭 Event 而多发。Event 不是通知通道。
@@ -45,7 +45,7 @@ Status: accepted
 
 - 只断言外部行为：给定扫描结果或关闭动作后，Alert 状态、Event 条数与动作、快照点类型/数量、通知动作是否变化。不断言内部函数是否被调用。
 - 最高接缝是一次完整策略扫描（含补偿窗口）和各关闭入口。已有扫描、快照、关闭与事件查询测试作为先验，改为锁定新语义，而不是另起一套平行夹具。
-- 必须覆盖：首次命中只建 `triggered`；后续同级命中不建 Event 但仍追加 `info` 快照；级别升高建 `escalated` 且通知仍是 upgraded；连续 info 达到恢复条件建一条 `recovered` 且快照含恢复当次扫描点；页面关闭、策略删除、实例移除各建一条 `closed` 且不加快照点；级别回落不建 Event、Alert 级别保持峰值；无数据多维度打开只有一条 `triggered`，部分恢复不写 Event，全部恢复写 `recovered`；同一窗口重试不重复 Event；关闭与恢复并发时终态与 Event 一致且只有一个终态动作；事件查询返回 `action` 且组织 fail-closed；存量无 `action` 的 Event 仍可列出。
+- 必须覆盖：首次命中只建 `triggered`；后续同级命中不建 Event 但仍追加 `info` 快照；级别升高建 `escalated` 且通知仍是 upgraded；连续 info 达到恢复条件建一条 `recovered` 且快照含恢复当次扫描点；页面关闭、策略删除、实例移除各建一条 `closed` 且不加快照点；级别回落不建 Event、Alert 级别保持峰值；无数据多维度打开按指标实例各建 Alert 和一条 `triggered`，部分序列恢复只恢复对应 Alert；同一窗口重试不重复 Event；关闭与恢复并发时终态与 Event 一致且只有一个终态动作；事件查询返回 `action` 且组织 fail-closed；存量无 `action` 的 Event 仍可列出。
 - 通知断言保持「每个生命周期动作一次」，证明 Event 变薄没有改变投递。
 - 页面侧锁定事件时间线展示动作文案，且热力图不再依赖 Event 计数作为扫描密度。
 
@@ -60,4 +60,4 @@ Status: accepted
 
 ## Further Notes
 
-已确认：快照继续记全生命周期；Event 只记状态变更；不记降级。事件 Tab 热力图若仍按 Event 计数，收薄后会失真，因此密度归快照图。无数据聚合 Alert 打开时从「每维度一条 Event」改为「每 Alert 一条 triggered」，避免把维度证据重新塞回 Event。
+已确认：快照继续记全生命周期；Event 只记状态变更；不记降级。事件 Tab 热力图若仍按 Event 计数，收薄后会失真，因此密度归快照图。无数据 Alert 打开时每张 Alert 一条 `triggered`，不按扫描轮次为持续缺失再建 Event。

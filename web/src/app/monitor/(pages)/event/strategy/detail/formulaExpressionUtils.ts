@@ -332,6 +332,46 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
   return errors;
 };
 
+const storedMetricName = (metricName?: string | null) =>
+  String(metricName || '').trim();
+
+/** 目录里按 id 命中；id 不在当前插件目录时，再按指标名命中同名行。 */
+export const findCatalogMetric = (
+  metrics: MetricItem[],
+  metricId?: number | null,
+  metricName?: string | null
+): MetricItem | undefined => {
+  if (metricId != null && metricId !== 0) {
+    const byId = metrics.find((item) => String(item.id) === String(metricId));
+    if (byId) return byId;
+  }
+  const name = storedMetricName(metricName);
+  if (!name) return undefined;
+  return metrics.find((item) => item.name === name);
+};
+
+/**
+ * 编辑回填用的指标身份。
+ * 当前目录有同名指标时改用目录里的 id，这样下拉 value（指标名）能对上选项。
+ * 只有名称时仍返回名称，避免下拉停在空白。
+ */
+export const resolveHydratedMetricFields = (
+  metrics: MetricItem[],
+  metricId?: number | null,
+  metricName?: string | null
+): { metricId: number | null; metricName?: string } => {
+  const name = storedMetricName(metricName);
+  const catalog = findCatalogMetric(metrics, metricId, name);
+  if (catalog) {
+    return { metricId: catalog.id, metricName: catalog.name };
+  }
+  const storedId = metricId != null && metricId !== 0 ? Number(metricId) : null;
+  return {
+    metricId: storedId != null && Number.isFinite(storedId) ? storedId : null,
+    ...(name ? { metricName: name } : {})
+  };
+};
+
 export const toMetricRowsFromMetricCondition = (
   condition?: MetricQueryCondition,
   options: {
@@ -341,6 +381,9 @@ export const toMetricRowsFromMetricCondition = (
 ): MetricExpressionRow[] => [
   createMetricRow(0, {
     metricId: condition?.metric_id || null,
+    ...(storedMetricName(condition?.metric_name)
+      ? { metricName: storedMetricName(condition?.metric_name) }
+      : {}),
     filters: condition?.filter || [],
     groupAlgorithm: options.groupAlgorithm || 'avg',
     groupBy: options.groupBy?.length ? options.groupBy : ['instance_id']
@@ -364,6 +407,9 @@ export const toMetricExpressionStateFromQueryCondition = (
         createMetricRow(index, {
           ref: query.ref || getMetricRowRef(index),
           metricId: query.metric_id || null,
+          ...(storedMetricName(query.metric_name)
+            ? { metricName: storedMetricName(query.metric_name) }
+            : {}),
           filters: query.filter || [],
           groupAlgorithm: query.group_algorithm || 'avg',
           groupBy: query.group_by?.length ? query.group_by : ['instance_id']
@@ -382,6 +428,75 @@ export const toMetricExpressionStateFromQueryCondition = (
     resultName: '',
     expression: DEFAULT_FORMULA_EXPRESSION
   };
+};
+
+interface TemplateQuerySource {
+  query_condition?: MetricExpressionQueryCondition | Record<string, unknown>;
+  metric_name?: string;
+  metric_id?: number | null;
+  filter?: MetricQueryCondition['filter'];
+}
+
+export const resolveTemplateQueryCondition = (
+  data: TemplateQuerySource | null | undefined
+): MetricExpressionQueryCondition | undefined => {
+  if (!data) return undefined;
+  const query = data.query_condition;
+  if (query && typeof query === 'object' && query.type === 'formula') {
+    return query as FormulaQueryCondition;
+  }
+  if (query && typeof query === 'object' && query.type === 'metric') {
+    const metricName = String(
+      query.metric_name || data.metric_name || ''
+    ).trim();
+    return {
+      ...(query as MetricQueryCondition),
+      ...(metricName ? { metric_name: metricName } : {}),
+    };
+  }
+  if (query && typeof query === 'object' && 'type' in query && query.type) {
+    return query as MetricExpressionQueryCondition;
+  }
+  const metricName = String(data.metric_name || '').trim();
+  const metricId = data.metric_id ?? null;
+  if (!metricName && metricId == null) {
+    return undefined;
+  }
+  return {
+    type: 'metric',
+    ...(metricName ? { metric_name: metricName } : {}),
+    ...(metricId != null ? { metric_id: metricId } : {}),
+    filter: data.filter || [],
+  };
+};
+
+export const resolveQueryConditionMetricIds = (
+  condition: MetricExpressionQueryCondition | undefined,
+  metrics: MetricItem[]
+): MetricExpressionQueryCondition | undefined => {
+  if (!condition || !metrics.length) return condition;
+  const resolveId = (metricId?: number | null, metricName?: string) => {
+    const catalog = findCatalogMetric(metrics, metricId, metricName);
+    if (catalog) return catalog.id;
+    if (metricId != null && metricId !== 0) return metricId;
+    return metricId;
+  };
+  if (condition.type === 'formula') {
+    return {
+      ...condition,
+      queries: condition.queries.map((query) => ({
+        ...query,
+        metric_id: resolveId(query.metric_id, query.metric_name)
+      }))
+    };
+  }
+  if (condition.type === 'metric') {
+    return {
+      ...condition,
+      metric_id: resolveId(condition.metric_id, condition.metric_name)
+    };
+  }
+  return condition;
 };
 
 export const validateMetricExpressionPayload = ({
@@ -465,6 +580,7 @@ export const buildFormulaQueryCondition = ({
     queries: rows.map((row) => ({
       ref: row.ref,
       metric_id: row.metricId,
+      ...(row.metricName ? { metric_name: row.metricName } : {}),
       filter: row.filters,
       group_algorithm: row.groupAlgorithm,
       group_by: row.groupBy
@@ -506,6 +622,7 @@ export const buildMetricExpressionQueryCondition = ({
   return {
     type: 'metric',
     metric_id: row.metricId,
+    ...(row.metricName ? { metric_name: row.metricName } : {}),
     filter: row.filters
   };
 };

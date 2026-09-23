@@ -1,0 +1,71 @@
+{
+  "client_id": "rum",
+  "name": "RUM",
+  "url": "/rum/applications",
+  "icon": "monitor",
+  "tags": [
+    "tag.rum_experience",
+    "tag.rum_quality",
+    "tag.rum_alerting",
+    "tag.rum_integration",
+    "tag.rum_governance"
+  ],
+  "description": "app.rum",
+  "menus": [
+    {
+      "name": "Experience",
+      "children": [
+        { "id": "sessions", "name": "Sessions", "operation": ["View"] },
+        { "id": "views", "name": "Views", "operation": ["View", "Operate"] },
+        { "id": "funnels", "name": "Funnels", "operation": ["View", "Operate"] }
+      ]
+    },
+    {
+      "name": "Quality",
+      "children": [
+        { "id": "errors", "name": "Errors", "operation": ["View", "Operate"] },
+        { "id": "releases", "name": "Releases", "operation": ["View", "Operate"] }
+      ]
+    },
+    {
+      "name": "Events",
+      "children": [
+        { "id": "alert_events", "name": "Alert events", "operation": ["View"] },
+        { "id": "monitors", "name": "Monitors", "operation": ["View", "Operate"] }
+      ]
+    },
+    {
+      "name": "Integration",
+      "children": [
+        { "id": "applications", "name": "Applications", "operation": ["View", "Operate"] }
+      ]
+    },
+    {
+      "name": "Governance",
+      "children": [
+        { "id": "compliance", "name": "Compliance", "operation": ["View", "Operate"] }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "rum_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "rum_normal",
+      "menus": [
+        "applications-View",
+        "sessions-View",
+        "views-View",
+        "funnels-View",
+        "errors-View",
+        "releases-View",
+        "monitors-View",
+        "alert_events-View"
+      ]
+    }
+  ]
+}

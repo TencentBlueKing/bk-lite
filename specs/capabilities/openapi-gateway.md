@@ -12,6 +12,8 @@
 网关负责**认证、审计、路由**；**不负责**接口级授权、调用超时、内部接口限流。
 数据可见范围由被暴露函数自身的组织过滤逻辑负责——网关保证身份不可伪造，**保证不了函数用了这个身份**。
 
+控制台审计与进程 INFO 分开：内部 invoke 与外部 ForwardAuth 的一切终态（含认证失败）写入独立调用日志表，控制台「API调用日志」只读查询/导出；冻结的 `openapi_access` INFO 模板保持不变。`_me` / `_docs` / `_provider` 不写该表。表内不存令牌明文、请求正文、响应正文或 `request_sha256`。写库失败不得改变网关 HTTP 响应。该表不经网关对外暴露。
+
 ## 1. 对外契约（发布后不可变，改动前先回文档评审）
 
 - ✅ **新增对外能力一律走网关**：内部函数用 `@openapi_expose`，外部服务写 NATS KV 注册表。
@@ -40,8 +42,9 @@
   `client_id`（`server/support-files/system_mgmt/menus/<app>.json`），**多数与目录名不同**
   （`patch_mgmt`→`patch`、`alerts`→`alarm`、`system_mgmt`→`system-manager`、`node_mgmt`→`node`、
   `job_mgmt`→`job`、`console_mgmt`→`ops-console`、`operation_analysis`→`ops-analysis`）。
-  - ❌ 用应用目录名当 `permission_app`——取值错误**不会报错**，且超管直通导致管理员账号测不出，
-    只在非超管调用时表现为全量 403。声明 permission 后**必须用非超管账号实测一次**。
+  - ❌ 用应用目录名当 `permission_app`——取值错误**不会报错**。JWT 与 `mode=all` 的超管
+    仍在权限位层直通，测不出填错；钥匙名单外即使超管也 403。声明 permission 后**必须用非超管
+    实测一次**，并用名单外端点确认 Scope。
 - ✅ **`team_free` 仅限无组织维度的公共元信息接口**，须附「响应不含组织字段」断言测试并经安全评审。
 
 ### 启动期 fail-closed（契约错误阻断启动，属预期行为）
@@ -70,8 +73,9 @@
   - ❌ 只测「能调通」——签名合规却 `objects.all()` 的函数会安静跨租户泄漏，请求返回 200 无报错，
     静态检查与类型系统都发现不了。
 - ✅ 端点下线时同步清理登记项（`test_governance.py` 会因陈旧登记失败）。
-- ⚠️ 现有 `testing.py` 只提供 API 令牌身份 helper；锚点式端点的 JWT 路径需自行构造
-  （参考 `test_gateway.py::make_jwt_tenant`），否则测不到「客户端指定锚点」这条关键路径。
+- ⚠️ `testing.py` 提供 `create_api_tenant`（个人令牌）与 `create_system_tenant`（系统 Token
+  + acting 用户/组织）。系统 Token 场景须以两个组织的目标用户分别调用并登记。锚点式端点的
+  JWT 路径仍需自行构造（参考 `test_gateway.py::make_jwt_tenant`），否则测不到「客户端指定锚点」。
 
 ## 5. 外部服务注册与部署侧红线
 
@@ -104,11 +108,13 @@
 | 边界 | 现状 |
 | --- | --- |
 | 调用超时 | `OPENAPI_INVOKE_TIMEOUT` 未接入配置，网关不会中断慢接口 |
-| 接口级授权 | 无。仅服务级 `required_roles` 与内部端点权限位，且**超管身份均直接绕过** |
-| API 令牌 | 永不过期、无 scope、无轮转；权限等于生成账号的全部权限 |
+| 接口级授权 | 内部端点先查钥匙名单（JWT 跳过；`mode=all` 跳过），再按人的权限位校验。未声明 `permission` 不做菜单校验。超管在权限位层直通，但仍受名单约束；名单外 `403 SCOPE_DENIED`，人的权限位不足 `403 PERM_MISSING`。系统 Token 调外部服务在 `required_roles` 评估前 403 `ROLE_REQUIRED` |
+| API 令牌 | 两类均可设过期与 Scope（`{mode: all}` 或 `{mode: allowlist, endpoints}`），明文仅生成时展示一次。个人令牌绑定用户×组织；系统令牌（`bksys_`）不绑定用户/组织，调用须带 `X-Bklite-Acting-*`。存量空 / 旧权限位 JSON 迁成 `mode=all` |
+| 限流键 | 限流机制本身未实现（仅外部服务 `rate_limit` 生效）。一旦启用，系统 Token 凭据主体为 `system_id`（按系统分桶，非 acting user）；个人令牌 / JWT 按令牌绑定用户 |
 | HA | 注册表（NATS KV）不随主备切换复制，须主备两端各注册 |
 | 多 worker | `_me` / `_docs` / `_auth` 的外部服务数据以进程内快照为基础，读侧距上次 KV 对账超过 TTL（`OPENAPI_REGISTRY_CACHE_TTL`，默认 10 秒，0 为每次同步回源）时触发对账，滞后 ≤ TTL + 一次对账耗时。温快照按 stale-while-revalidate 执行：过期读立即返回现有快照、后台线程回源，请求线程不等待 NATS（仅进程冷启动首次对账与 TTL=0 同步，且受 KV 读取整体硬预算约束）；KV 不可达时降级最近快照，故障不被读流量放大。仍不能作为可用性判据：实际可调还取决于 Traefik 已拉取路由 |
 | 存量 open_api | 与网关并存，逐步收编；新增能力不得再走存量路径 |
+| 控制台调用审计 | 独立 `OpenAPICallLog` 与 `openapi_access` INFO 并存。有 `audit_log-View` 即看全部记录，不按组织裁剪。不存 payload / sha256 |
 
 ## 7. 改动网关自身代码时
 

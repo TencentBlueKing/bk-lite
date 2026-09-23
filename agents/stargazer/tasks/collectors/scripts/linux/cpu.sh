@@ -4,10 +4,10 @@ read _ cpu_user_1 cpu_nice_1 cpu_system_1 cpu_idle_1 cpu_iowait_1 cpu_irq_1 cpu_
 sleep 1
 read _ cpu_user_2 cpu_nice_2 cpu_system_2 cpu_idle_2 cpu_iowait_2 cpu_irq_2 cpu_softirq_2 cpu_steal_2 _ < /proc/stat
 
-prev_idle=$((cpu_idle_1+cpu_iowait_1))
-curr_idle=$((cpu_idle_2+cpu_iowait_2))
-prev_non_idle=$((cpu_user_1+cpu_nice_1+cpu_system_1+cpu_irq_1+cpu_softirq_1+cpu_steal_1))
-curr_non_idle=$((cpu_user_2+cpu_nice_2+cpu_system_2+cpu_irq_2+cpu_softirq_2+cpu_steal_2))
+prev_idle=$((cpu_idle_1))
+curr_idle=$((cpu_idle_2))
+prev_non_idle=$((cpu_user_1+cpu_nice_1+cpu_system_1+cpu_iowait_1+cpu_irq_1+cpu_softirq_1+cpu_steal_1))
+curr_non_idle=$((cpu_user_2+cpu_nice_2+cpu_system_2+cpu_iowait_2+cpu_irq_2+cpu_softirq_2+cpu_steal_2))
 prev_total=$((prev_idle+prev_non_idle))
 curr_total=$((curr_idle+curr_non_idle))
 

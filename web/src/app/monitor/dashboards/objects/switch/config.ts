@@ -58,7 +58,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'device_temperature_celsius',
       display_name: '最高温度',
-      description: '设备各温度传感器读数中的最高值（摄氏度）。品牌哨兵语义由 collect_type 契约注入，未命中契约时按普通最高温聚合。',
+      description: '设备各温度传感器读数中的最高值（摄氏度）。65535 仅在序列标签 collect_type 为华三交换机或防火墙时视为无传感器，不看实例名。其它品牌哨兵仍由 collect_type 契约注入。',
       unit: 'celsius',
       query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
       color: '#f5222d'

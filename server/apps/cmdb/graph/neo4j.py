@@ -7,6 +7,7 @@ from neo4j import GraphDatabase, Query
 from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
+from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector, attr_values_equal, coerce_cloud_id_properties
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
@@ -17,6 +18,9 @@ load_dotenv()
 
 
 class Neo4jClient:
+    # 与 FalkorDBClient 对齐：全文检索权限条件走参数化 Cypher。
+    ENABLE_PARAMETERIZATION = True
+
     def __init__(self):
         self.driver = GraphDatabase.driver(
             os.getenv("NEO4J_URI"),
@@ -299,7 +303,13 @@ class Neo4jClient:
             results.append(result)
         return results
 
-    def format_search_params(self, params: list, param_type: str = "AND", collector: ParameterCollector = None):
+    def format_search_params(
+        self,
+        params: list,
+        param_type: str = "AND",
+        collector: ParameterCollector = None,
+        param_collector: ParameterCollector = None,
+    ):
         """
         参数化查询格式化（使用 FORMAT_TYPE_PARAMS 消除 Cypher 注入风险）。
 
@@ -311,6 +321,8 @@ class Neo4jClient:
         str=: {"field": "name", "type": "str=", "value": "host"} -> "n.name = $str1"
         id=:  {"field": "id",   "type": "id=",  "value": 115}   -> "ID(n) = $id1"
         """
+        if collector is None:
+            collector = param_collector
         if collector is None:
             collector = ParameterCollector()
 
@@ -1024,39 +1036,153 @@ class Neo4jClient:
 
         return {i[group_by_attr]: i["count"] for i in data}
 
-    def full_text(self, search: str, permission_params: str = "", instance_permission_params: dict = None, created: str = ""):
-        """全文检索"""
-        if instance_permission_params is None:
-            instance_permission_params = {}
+    @staticmethod
+    def _build_exclude_fields_list(exclude_fields: list) -> str:
+        if not exclude_fields:
+            return "[]"
+        validated_fields = []
+        for field in exclude_fields:
+            try:
+                validated_fields.append(f"'{CQLValidator.validate_field(field)}'")
+            except Exception as exc:
+                logger.warning("event=cmdb_neo4j_exclude_field_skipped error_type=%s", type(exc).__name__)
+                continue
+        return "[" + ", ".join(validated_fields) + "]"
 
-        # 构建基础权限条件（组织权限）
-        base_condition = permission_params or ""
+    def _full_text_where(
+        self,
+        *,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
+        extra_conditions: list | None = None,
+        extra_params: dict | None = None,
+        permission_params_dict: dict | None = None,
+    ) -> tuple[str, dict]:
+        query_params = dict(permission_params_dict or {})
+        if extra_params:
+            query_params.update(extra_params)
+        conditions = []
+        or_filters = [item for item in (permission_params, inst_name_params) if item]
+        if or_filters:
+            conditions.append(f"({' OR '.join(or_filters)})")
+        if created:
+            query_params["created_by"] = created
+            conditions.append("n._creator = $created_by")
+        exclude_list_str = self._build_exclude_fields_list(ExcludeFieldsCache.get_exclude_fields())
+        query_params["search_term"] = search
+        if case_sensitive:
+            search_condition = (
+                f"ANY(key IN keys(n) WHERE "
+                f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
+                f"n[key] IS NOT NULL AND "
+                f"toString(n[key]) = $search_term)"
+            )
+        else:
+            search_condition = (
+                f"ANY(key IN keys(n) WHERE "
+                f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
+                f"n[key] IS NOT NULL AND "
+                f"toLower(toString(n[key])) CONTAINS toLower($search_term))"
+            )
+        conditions.append(search_condition)
+        if extra_conditions:
+            conditions.extend(extra_conditions)
+        return " AND ".join(conditions) if conditions else "true", query_params
 
-        # 在组织权限基础上，添加实例权限过滤
-        instance_permission_str = self.format_instance_permission_params(instance_permission_params, created)
+    def full_text_stats(
+        self,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
+    ) -> dict:
+        where_clause, query_params = self._full_text_where(
+            search=search,
+            permission_params=permission_params,
+            inst_name_params=inst_name_params,
+            created=created,
+            case_sensitive=case_sensitive,
+            permission_params_dict=permission_params_dict,
+        )
+        query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n.model_id AS model_id, COUNT(n) AS count ORDER BY count DESC"
+        rows = self.session.run(query, **query_params)
+        model_stats = []
+        total = 0
+        for row in rows:
+            count = int(row["count"] or 0)
+            model_stats.append({"model_id": row["model_id"], "count": count})
+            total += count
+        return {"total": total, "model_stats": model_stats}
 
-        # 组合最终权限条件
-        permission_conditions = []
+    def full_text_by_model(
+        self,
+        search: str,
+        model_id: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        page: int = 1,
+        page_size: int = 10,
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
+    ) -> dict:
+        if not model_id:
+            raise BaseAppException("model_id is required")
+        page = int(page)
+        page_size = int(page_size)
+        if page < 1:
+            raise BaseAppException("page must be >= 1")
+        if page_size < 1 or page_size > 100:
+            raise BaseAppException("page_size must be between 1 and 100")
+        where_clause, query_params = self._full_text_where(
+            search=search,
+            permission_params=permission_params,
+            inst_name_params=inst_name_params,
+            created=created,
+            case_sensitive=case_sensitive,
+            extra_conditions=["n.model_id = $model_id"],
+            extra_params={"model_id": model_id},
+            permission_params_dict=permission_params_dict,
+        )
+        count_query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN COUNT(n) AS total"
+        count_row = self.session.run(count_query, **query_params).single()
+        total = int(count_row["total"] or 0) if count_row else 0
+        skip = (page - 1) * page_size
+        data_query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n ORDER BY ID(n) SKIP {skip} LIMIT {page_size}"
+        data = self.entity_to_list(self.session.run(data_query, **query_params))
+        return {
+            "model_id": model_id,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "data": data,
+        }
 
-        # 如果有组织权限，所有条件都必须在组织权限范围内
-        if base_condition:
-            if instance_permission_str:
-                # 组织权限 AND (实例权限 OR 创建人权限)
-                permission_conditions.append(f"{base_condition} AND ({instance_permission_str})")
-            else:
-                # 仅组织权限
-                permission_conditions.append(base_condition)
-        elif instance_permission_str:
-            # 仅实例权限（包含创建人权限）
-            permission_conditions.append(f"({instance_permission_str})")
-
-        final_permission_condition = " OR ".join(permission_conditions) if permission_conditions else ""
-
-        # 组合权限条件和全文检索条件
-        where_condition = f"({final_permission_condition}) AND" if final_permission_condition else ""
-
-        query = f"""MATCH (n:{INSTANCE}) WHERE {where_condition} ANY(key IN keys(n) WHERE (NOT n[key] IS NULL AND ANY(value IN n[key] WHERE toString(value) CONTAINS $search))) RETURN n"""  # noqa
-        objs = self.session.run(query, search=search)
+    def full_text(
+        self,
+        search: str,
+        permission_params: str = "",
+        inst_name_params: str = "",
+        created: str = "",
+        case_sensitive: bool = False,
+        permission_params_dict: dict = None,
+    ):
+        """全文检索。签名与 FalkorDB 及 InstanceManage.fulltext_search 对齐。"""
+        where_clause, query_params = self._full_text_where(
+            search=search,
+            permission_params=permission_params,
+            inst_name_params=inst_name_params,
+            created=created,
+            case_sensitive=case_sensitive,
+            permission_params_dict=permission_params_dict,
+        )
+        query = f"MATCH (n:{INSTANCE}) WHERE {where_clause} RETURN n"
+        objs = self.session.run(query, **query_params)
         return self.entity_to_list(objs)
 
     def batch_save_entity(

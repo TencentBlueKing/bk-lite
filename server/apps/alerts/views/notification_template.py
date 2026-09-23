@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -33,6 +34,7 @@ from apps.alerts.utils.permission_scope import (
 )
 from apps.core.decorators.api_permission import HasPermission
 from apps.system_mgmt.models.channel import Channel
+from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
@@ -206,9 +208,23 @@ class NotificationTemplateViewSet(ModelViewSet):
         return get_object_or_404(self._locked_queryset())
 
     @staticmethod
-    def _get_test_channel(request, channel_id):
+    def _get_test_channel(request, channel_id, channel_type=None):
+        if channel_type == IMNotificationChannel.CHANNEL_TYPE:
+            channel = (
+                apply_team_scope_with_group_ids(
+                    IMNotificationChannel.objects.filter(enabled=True),
+                    get_query_group_ids(request),
+                )
+                .filter(pk=channel_id)
+                .first()
+            )
+            if not channel:
+                raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
+            return SimpleNamespace(id=channel.id, channel_type=IMNotificationChannel.CHANNEL_TYPE, team=channel.team, name=channel.name)
         channel = apply_team_scope_with_group_ids(Channel.objects.all(), get_query_group_ids(request)).filter(pk=channel_id).first()
         if not channel:
+            raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
+        if channel_type and channel.channel_type != channel_type:
             raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
         if channel.channel_type == "nats" and (channel.config or {}).get("source") != "opspilot":
             raise ValidationError({"channel_id": "仅 OpsPilot 托管的 NATS 渠道支持模板试发"})
@@ -281,7 +297,7 @@ class NotificationTemplateViewSet(ModelViewSet):
                 "user_ids": receivers,
             }
             subject = ""
-        notifier = Notify(receivers, channel.id, subject, send_content, append_receivers=False)
+        notifier = Notify(receivers, channel.id, subject, send_content, append_receivers=False, channel_type=channel.channel_type)
         resolved_usernames = {item.get("username") for item in notifier.user_list}
         missing_receivers = [username for username in receivers if username not in resolved_usernames]
         if missing_receivers:
@@ -525,7 +541,7 @@ class NotificationTemplateViewSet(ModelViewSet):
         request_serializer = NotificationTemplateDraftTestSendSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
         data = request_serializer.validated_data
-        channel = self._get_test_channel(request, data["channel_id"])
+        channel = self._get_test_channel(request, data["channel_id"], data.get("channel_type"))
         if data["channel_type"] != channel.channel_type:
             raise ValidationError({"channel_type": "模板格式与所选通知渠道不一致"})
         scope = data["scope"]

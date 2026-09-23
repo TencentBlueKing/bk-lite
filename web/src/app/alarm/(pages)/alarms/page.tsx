@@ -135,6 +135,7 @@ const Alert: React.FC = () => {
         ? initialStatus.split(',').filter(Boolean)
         : stateFilters || ['pending', 'processing'],
       alarm_source: [],
+      push_source_ids: [],
     };
   });
 
@@ -177,6 +178,7 @@ const Alert: React.FC = () => {
     filters.level,
     filters.state,
     filters.alarm_source,
+    filters.push_source_ids,
     pagination.current,
     pagination.pageSize,
     myAlarms,
@@ -193,6 +195,7 @@ const Alert: React.FC = () => {
     filters.level,
     filters.state,
     filters.alarm_source,
+    filters.push_source_ids,
     pagination.current,
     pagination.pageSize,
     myAlarms,
@@ -208,6 +211,7 @@ const Alert: React.FC = () => {
     filters.state,
     filters.level,
     filters.alarm_source,
+    filters.push_source_ids,
     myAlarms,
     searchCondition,
   ]);
@@ -232,6 +236,7 @@ const Alert: React.FC = () => {
       status: filters.state.join(','),
       level: filters.level.join(','),
       source_names: filters.alarm_source.length ? JSON.stringify(filters.alarm_source) : undefined,
+      push_source_ids: filters.push_source_ids.length ? JSON.stringify(filters.push_source_ids) : undefined,
       page: pagination.current,
       page_size: pagination.pageSize,
       created_at_after: queryTimeRange[0]

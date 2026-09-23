@@ -33,45 +33,47 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- Sangfor chassis CPU (PEN 35047, scalar %). AF8 sfSysCpuCostRate 35047.1.3.0 优先；旧 35047.2.1.1 仅在 AF8 GET 失败时由 starlark 回填到同一 usage 字段，不双写。不采集每核/全 CPU 使用率表。----
+    # ---- Sangfor chassis CPU (PEN 35047, scalar %). AF8.0.107 MIB: sfSysCpuCostRate 35047.1.3。----
+    # table.field 按列 OID walk：标量去掉末尾 .0，避免 walk ...0.* 采空（与 Endace 同约定）。
+    # 旧 35047.2.1.1 不在 AF8.0.107 OID 表内，仅作旧机回填；由 starlark 写入同一 usage，不双写。
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35047.1.3.0"
+        oid = "1.3.6.1.4.1.35047.1.3"
         name = "usage"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.35047.2.1.1"
         name = "usage_legacy"
-    # ---- Sangfor chassis memory (scalar %). AF8 sfSysMemoryUsage 35047.1.13.5.0 优先；旧 35047.2.1.2 仅作回填。----
+    # ---- Sangfor chassis memory (scalar %). AF8.0.107: sfSysMemoryUsage 35047.1.13.5。----
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35047.1.13.5.0"
+        oid = "1.3.6.1.4.1.35047.1.13.5"
         name = "usage"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.35047.2.1.2"
         name = "usage_legacy"
-    # ---- Sangfor sessions (scalars). sfNewSessions 35047.1.27.1.0 为当前并发（名称易误解）；旧 35047.2.1.3 仅回填 current_connections。----
+    # ---- Sangfor sessions (scalars). AF8.0.107: sfNewSessions=当前并发、sfTotalSessions=上限、sfNewSessionPerSec=新建速率。----
     [[inputs.snmp.table]]
         name = "firewall"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35047.1.27.1.0"
+        oid = "1.3.6.1.4.1.35047.1.27.1"
         name = "current_connections"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.35047.2.1.3"
         name = "current_connections_legacy"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35047.1.27.4.0"
+        oid = "1.3.6.1.4.1.35047.1.27.4"
         name = "new_sessions_per_sec"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35047.1.27.2.0"
+        oid = "1.3.6.1.4.1.35047.1.27.2"
         name = "max_sessions"
     # ---- Disk usage table INDEX diskIndex；tag sfFilesystemName。磁盘温度对象不采集。----
+    # 不设私有表根：采集节点通常无 Sangfor MIB，表级 oid 会触发 snmptable「Was that a table?」并阻断整路 SNMP 初始化。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.35047.1.5.1"
         name = "device_disk"
         inherit_tags = ["source"]
         index_as_tag = true
@@ -89,8 +91,8 @@
         oid = "1.3.6.1.4.1.35047.1.5.1.8"
         name = "used"
     # ---- SFP optics table：温度 / 发送光功率 / 接收光功率，tag sfSFPIfName。CPU 温度对象不采集。----
+    # 同 disk：只 walk 列 OID，避免表根 snmptable 依赖私有 MIB。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.35047.1.60.1"
         name = "device"
         inherit_tags = ["source"]
         index_as_tag = true
@@ -108,8 +110,8 @@
         oid = "1.3.6.1.4.1.35047.1.60.1.14"
         name = "optical_rx_power"
     # ---- NAT4 source-port usage；tag sfNat4Name。----
+    # 同 disk：只 walk 列 OID，避免表根 snmptable 依赖私有 MIB。
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.35047.1.63.1.1"
         name = "firewall_nat"
         inherit_tags = ["source"]
         index_as_tag = true
@@ -127,8 +129,6 @@
 
 [[processors.starlark]]
     namepass = ["device_cpu", "device_memory", "firewall"]
-    [processors.starlark.tagpass]
-        brand = ["sangfor"]
     source = '''
 def apply(metric):
     pairs = [("usage", "usage_legacy"), ("current_connections", "current_connections_legacy")]
@@ -141,3 +141,5 @@ def apply(metric):
             metric.fields.pop(legacy)
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["sangfor"]
