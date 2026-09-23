@@ -912,6 +912,7 @@ assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5 }), 
   'previous_window',
   'offset_hours',
   'offset_days',
+  'baseline_days',
   'baseline_weeks',
   'timeleft',
 ]);
@@ -923,6 +924,10 @@ assert.ok(compareSpanConflict('offset_days', 1, 'day', 1));
 assert.ok(!compareSpanConflict('offset_days', 7, 'day', 1));
 assert.ok(compareSpanConflict('baseline_weeks', 4, 'day', 7));
 assert.ok(!compareSpanConflict('baseline_weeks', 4, 'day', 1));
+assert.ok(compareSpanConflict('baseline_days', 7, 'day', 1));
+assert.ok(compareSpanConflict('baseline_days', 7, 'day', 7));
+assert.ok(!compareSpanConflict('baseline_days', 7, 'hour', 1));
+assert.equal(compareBaselineFamily('baseline_days'), 'yoy');
 assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_1h' }), {
   mode: 'offset_hours',
   amount: 1,
@@ -943,6 +948,10 @@ assert.deepEqual(resolveLoadedCompareOffset({ mode: 'baseline_4w' }), {
   mode: 'baseline_weeks',
   amount: 4,
 });
+assert.deepEqual(
+  resolveLoadedCompareOffset({ mode: 'baseline_days', days: 7 }),
+  { mode: 'baseline_days', amount: 7 }
+);
 assert.equal(compareBaselineFamily('previous_window'), 'previous_window');
 assert.equal(compareBaselineFamily('offset_hours'), 'yoy');
 assert.equal(compareBaselineFamily('offset_days'), 'yoy');
@@ -1077,6 +1086,25 @@ assert.deepEqual(
     compare_offset_hours: null,
     compare_offset_days: null,
     compare_baseline_weeks: 4,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'baseline_days',
+    compareValueKind: 'delta',
+    compareOffsetHours: 7,
+  }),
+  {
+    compare_mode: 'baseline_days',
+    compare_value_kind: 'delta',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: 7,
+    compare_baseline_weeks: null,
   }
 );
 assert.deepEqual(
@@ -1395,6 +1423,20 @@ assert.equal(
     thresholdValue: 10,
   }),
   '这条策略在判断：磁盘用量的平均，比 近 4 周同窗均值高出 10%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘用量',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'baseline_days',
+    compareValueKind: 'delta',
+    compareOffsetHours: 7,
+    thresholdMethod: '>',
+    thresholdValue: 5,
+  }),
+  '这条策略在判断：磁盘用量的平均，比 近 7 天同窗均值高出 5。'
 );
 assert.equal(
   buildPolicyRestatement({

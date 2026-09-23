@@ -7,6 +7,7 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.tasks.utils.policy_methods import (
     ALLOWED_FORECAST_LOOKBACK,
+    COMPARE_MODE_BASELINE_DAYS,
     COMPARE_MODE_BASELINE_WEEKS,
     COMPARE_MODE_OFFSET_DAYS,
     COMPARE_MODE_OFFSET_HOURS,
@@ -513,6 +514,12 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 86400,
                 "对照天数",
             ),
+            COMPARE_MODE_BASELINE_DAYS: (
+                "compare_offset_days",
+                MAX_COMPARE_OFFSET_DAYS,
+                None,
+                "对照天数",
+            ),
             COMPARE_MODE_BASELINE_WEEKS: (
                 "compare_baseline_weeks",
                 MAX_COMPARE_BASELINE_WEEKS,
@@ -524,7 +531,11 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         if span:
             field, limit, unit_seconds, label = span
             raw_span = self._get_value(attrs, field, None)
-            minimum = 2 if compare_mode == COMPARE_MODE_BASELINE_WEEKS else 1
+            minimum = (
+                2
+                if compare_mode in (COMPARE_MODE_BASELINE_WEEKS, COMPARE_MODE_BASELINE_DAYS)
+                else 1
+            )
             if isinstance(raw_span, bool) or not isinstance(raw_span, int) or raw_span < minimum:
                 errors[field] = (
                     f"{label}至少为 {minimum}" if minimum > 1 else f"{label}必须是正整数"
@@ -540,11 +551,14 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                         period_seconds = period_to_seconds(period)
                     except BaseAppException:
                         period_seconds = None
-                    week_seconds = 7 * 86400
+                    if compare_mode == COMPARE_MODE_BASELINE_WEEKS:
+                        stride_seconds = 7 * 86400
+                    else:
+                        stride_seconds = 86400
                     if (
                         period_seconds
-                        and period_seconds % week_seconds == 0
-                        and 1 <= period_seconds // week_seconds <= raw_span
+                        and period_seconds % stride_seconds == 0
+                        and 1 <= period_seconds // stride_seconds <= raw_span
                     ):
                         errors["compare_mode"] = "汇聚周期不能等于对照 offset"
             if "compare_mode" in attrs:

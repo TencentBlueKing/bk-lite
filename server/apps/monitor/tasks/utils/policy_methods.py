@@ -120,6 +120,7 @@ COMPARE_MODE_OFFSET_1H = "offset_1h"
 COMPARE_MODE_OFFSET_24H = "offset_24h"
 COMPARE_MODE_OFFSET_HOURS = "offset_hours"
 COMPARE_MODE_OFFSET_DAYS = "offset_days"
+COMPARE_MODE_BASELINE_DAYS = "baseline_days"
 COMPARE_MODE_OFFSET_7D = "offset_7d"
 COMPARE_MODE_OFFSET_30D = "offset_30d"
 COMPARE_MODE_BASELINE_WEEKS = "baseline_weeks"
@@ -136,6 +137,7 @@ COMPARE_MODES = {
     COMPARE_MODE_OFFSET_24H,
     COMPARE_MODE_OFFSET_HOURS,
     COMPARE_MODE_OFFSET_DAYS,
+    COMPARE_MODE_BASELINE_DAYS,
     COMPARE_MODE_OFFSET_7D,
     COMPARE_MODE_OFFSET_30D,
     COMPARE_MODE_BASELINE_WEEKS,
@@ -150,6 +152,7 @@ COMPARE_VALUE_KINDS_BY_MODE = {
     COMPARE_MODE_OFFSET_24H: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_HOURS: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_DAYS: {"percent", "ratio"},
+    COMPARE_MODE_BASELINE_DAYS: {"delta", "percent"},
     COMPARE_MODE_OFFSET_7D: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_30D: {"percent", "ratio"},
     COMPARE_MODE_BASELINE_WEEKS: {"delta", "percent"},
@@ -402,9 +405,19 @@ def compile_timeleft_query(policy_like, base_query, step, group_by=None):
     )
 
 
+def _baseline_span_expr(query, count, stride_days):
+    terms = " + ".join(
+        f"{query} offset {index * stride_days}d" for index in range(1, count + 1)
+    )
+    return f"({terms}) / {count}"
+
+
+def _baseline_days_expr(query, days):
+    return _baseline_span_expr(query, days, 1)
+
+
 def _baseline_weeks_expr(query, weeks):
-    terms = " + ".join(f"{query} offset {week * 7}d" for week in range(1, weeks + 1))
-    return f"({terms}) / {weeks}"
+    return _baseline_span_expr(query, weeks, 7)
 
 
 def _baseline_4w_expr(query):
@@ -530,6 +543,19 @@ def apply_compare_mode(query, policy_like, step):
         return query
     if _policy_get(policy_like, "algorithm") == COUNT_IF_ALGORITHM:
         raise BaseAppException("count_if_over_time only allows absolute compare_mode")
+    if mode == COMPARE_MODE_BASELINE_DAYS:
+        days = _positive_span(
+            policy_like,
+            "compare_offset_days",
+            MAX_COMPARE_OFFSET_DAYS,
+            minimum=2,
+        )
+        baseline = _baseline_days_expr(query, days)
+        if kind == "delta":
+            return f"{query} - ({baseline})"
+        if kind == "percent":
+            return f"({query} - ({baseline})) / ({baseline}) * 100"
+        raise BaseAppException(f"unsupported compare_value_kind: {kind}")
     if mode in (COMPARE_MODE_BASELINE_4W, COMPARE_MODE_BASELINE_WEEKS):
         weeks = (
             4
@@ -575,6 +601,14 @@ def compile_baseline_query(policy_like, base_query, step, group_by=None):
         return query
     if mode == COMPARE_MODE_BASELINE_4W:
         return _baseline_4w_expr(query)
+    if mode == COMPARE_MODE_BASELINE_DAYS:
+        days = _positive_span(
+            policy_like,
+            "compare_offset_days",
+            MAX_COMPARE_OFFSET_DAYS,
+            minimum=2,
+        )
+        return _baseline_days_expr(query, days)
     if mode == COMPARE_MODE_BASELINE_WEEKS:
         weeks = _positive_span(
             policy_like,

@@ -194,6 +194,18 @@ def test_offset_days_compiles_custom_day():
     )
 
 
+def test_baseline_days_compiles_custom_count():
+    policy = _policy(
+        compare_mode="baseline_days",
+        compare_value_kind="percent",
+        compare_offset_days=2,
+    )
+    window = pm.compile_window_query(policy, "cpu", "5m", "instance_id")
+    compiled = pm.compile_policy_query(policy, "cpu", "5m", "instance_id")
+    baseline = f"({window} offset 1d + {window} offset 2d) / 2"
+    assert compiled == f"({window} - ({baseline})) / ({baseline}) * 100"
+
+
 def test_baseline_weeks_compiles_custom_count():
     policy = _policy(
         compare_mode="baseline_weeks",

@@ -395,6 +395,7 @@ export const COMPARE_MODE_OFFSET_1H = 'offset_1h';
 export const COMPARE_MODE_OFFSET_24H = 'offset_24h';
 export const COMPARE_MODE_OFFSET_HOURS = 'offset_hours';
 export const COMPARE_MODE_OFFSET_DAYS = 'offset_days';
+export const COMPARE_MODE_BASELINE_DAYS = 'baseline_days';
 export const MAX_COMPARE_OFFSET_HOURS = 8760;
 export const MAX_COMPARE_OFFSET_DAYS = 365;
 export const MAX_COMPARE_BASELINE_WEEKS = 52;
@@ -436,6 +437,7 @@ export const ENABLED_COMPARE_MODES = [
   COMPARE_MODE_PREVIOUS_WINDOW,
   COMPARE_MODE_OFFSET_HOURS,
   COMPARE_MODE_OFFSET_DAYS,
+  COMPARE_MODE_BASELINE_DAYS,
   COMPARE_MODE_BASELINE_WEEKS,
   COMPARE_MODE_TIMELEFT
 ] as const;
@@ -607,6 +609,10 @@ export const COMPARE_VALUE_KINDS_BY_MODE: Record<string, string[]> = {
     COMPARE_VALUE_KIND_PERCENT,
     COMPARE_VALUE_KIND_RATIO
   ],
+  [COMPARE_MODE_BASELINE_DAYS]: [
+    COMPARE_VALUE_KIND_DELTA,
+    COMPARE_VALUE_KIND_PERCENT
+  ],
   [COMPARE_MODE_OFFSET_7D]: [
     COMPARE_VALUE_KIND_PERCENT,
     COMPARE_VALUE_KIND_RATIO
@@ -648,6 +654,9 @@ export const compareSpanSpec = (
   if (mode === COMPARE_MODE_OFFSET_DAYS) {
     return { min: 1, max: MAX_COMPARE_OFFSET_DAYS, fallback: 7 };
   }
+  if (mode === COMPARE_MODE_BASELINE_DAYS) {
+    return { min: 2, max: MAX_COMPARE_OFFSET_DAYS, fallback: 7 };
+  }
   if (mode === COMPARE_MODE_BASELINE_WEEKS) {
     return { min: 2, max: MAX_COMPARE_BASELINE_WEEKS, fallback: 4 };
   }
@@ -660,6 +669,7 @@ export const compareBaselineFamily = (mode?: string | null): string => {
   if (
     mode === COMPARE_MODE_OFFSET_HOURS ||
     mode === COMPARE_MODE_OFFSET_DAYS ||
+    mode === COMPARE_MODE_BASELINE_DAYS ||
     mode === COMPARE_MODE_BASELINE_WEEKS ||
     mode === COMPARE_MODE_OFFSET_1H ||
     mode === COMPARE_MODE_OFFSET_24H ||
@@ -710,6 +720,11 @@ export const compareSpanConflict = (
   if (mode === COMPARE_MODE_OFFSET_DAYS) {
     return periodSeconds === amount * 86400;
   }
+  if (mode === COMPARE_MODE_BASELINE_DAYS) {
+    if (periodSeconds % 86400 !== 0) return false;
+    const days = periodSeconds / 86400;
+    return days >= 1 && days <= amount;
+  }
   if (mode === COMPARE_MODE_BASELINE_WEEKS) {
     const weekSeconds = 7 * 86400;
     if (periodSeconds % weekSeconds !== 0) return false;
@@ -754,6 +769,12 @@ export const resolveLoadedCompareOffset = ({
   if (mode === COMPARE_MODE_OFFSET_DAYS) {
     return {
       mode: COMPARE_MODE_OFFSET_DAYS,
+      amount: normalizeCompareSpan(days, 7)
+    };
+  }
+  if (mode === COMPARE_MODE_BASELINE_DAYS) {
+    return {
+      mode: COMPARE_MODE_BASELINE_DAYS,
       amount: normalizeCompareSpan(days, 7)
     };
   }
@@ -1094,7 +1115,13 @@ export const buildPolicyRestatement = ({
         ? t('monitor.events.compareModeOffsetDaysRestate', '{n} 天前', {
           n: spanText
         })
-        : compareMode === COMPARE_MODE_BASELINE_WEEKS
+        : compareMode === COMPARE_MODE_BASELINE_DAYS
+          ? t(
+            'monitor.events.compareModeBaselineDaysRestate',
+            '近 {n} 天同窗均值',
+            { n: spanText }
+          )
+          : compareMode === COMPARE_MODE_BASELINE_WEEKS
           ? t(
             'monitor.events.compareModeBaselineWeeksRestate',
             '近 {n} 周同窗均值',
@@ -1215,7 +1242,10 @@ export const resolveCompareFieldsForSave = ({
         ? forecastLookback || DEFAULT_FORECAST_LOOKBACK
         : {},
     compare_offset_hours: mode === COMPARE_MODE_OFFSET_HOURS ? span : null,
-    compare_offset_days: mode === COMPARE_MODE_OFFSET_DAYS ? span : null,
+    compare_offset_days:
+      mode === COMPARE_MODE_OFFSET_DAYS || mode === COMPARE_MODE_BASELINE_DAYS
+        ? span
+        : null,
     compare_baseline_weeks: mode === COMPARE_MODE_BASELINE_WEEKS ? span : null
   };
 };

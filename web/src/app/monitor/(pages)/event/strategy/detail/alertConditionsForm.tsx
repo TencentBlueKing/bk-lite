@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Form, Select, InputNumber, Tooltip, Space } from 'antd';
+import { Form, Select, InputNumber, Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
@@ -11,6 +11,7 @@ import { useMethodList } from '@/app/monitor/hooks/event';
 import {
   COMPARE_BASELINE_YOY,
   COMPARE_MODE_ABSOLUTE,
+  COMPARE_MODE_BASELINE_DAYS,
   COMPARE_MODE_BASELINE_WEEKS,
   COMPARE_MODE_OFFSET_DAYS,
   COMPARE_MODE_OFFSET_HOURS,
@@ -46,7 +47,7 @@ import AlertDurationFields, {
 } from './alertDurationFields';
 
 const { Option } = Select;
-type YoyUnit = 'hour' | 'day' | 'week_mean';
+type YoyMethod = 'hour' | 'day' | 'day_mean' | 'week_mean';
 
 interface AlertConditionsFormProps {
   enableAlerts: string[];
@@ -234,6 +235,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     offset_24h: t('monitor.events.compareModeOffset24h'),
     offset_hours: t('monitor.events.compareModeOffsetHours', '小时前同窗'),
     offset_days: t('monitor.events.compareModeOffsetDays', '天前同窗'),
+    baseline_days: t('monitor.events.compareYoyDayMean', '近 N 天均值'),
     baseline_weeks: t('monitor.events.compareModeBaselineWeeks', '周同窗均值'),
     offset_7d: t('monitor.events.compareModeOffset7d'),
     offset_30d: t('monitor.events.compareModeOffset30d'),
@@ -371,18 +373,22 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       onCompareValueKindChange(defaultCompareValueKind(val));
     }
   };
-  const yoyUnit: YoyUnit =
+  const yoyMethod: YoyMethod =
     compareMode === COMPARE_MODE_OFFSET_DAYS
       ? 'day'
-      : compareMode === COMPARE_MODE_BASELINE_WEEKS
-        ? 'week_mean'
-        : 'hour';
-  const yoyModeForUnit = (unit: YoyUnit) =>
-    unit === 'day'
+      : compareMode === COMPARE_MODE_BASELINE_DAYS
+        ? 'day_mean'
+        : compareMode === COMPARE_MODE_BASELINE_WEEKS
+          ? 'week_mean'
+          : 'hour';
+  const yoyModeForMethod = (method: YoyMethod) =>
+    method === 'day'
       ? COMPARE_MODE_OFFSET_DAYS
-      : unit === 'week_mean'
-        ? COMPARE_MODE_BASELINE_WEEKS
-        : COMPARE_MODE_OFFSET_HOURS;
+      : method === 'day_mean'
+        ? COMPARE_MODE_BASELINE_DAYS
+        : method === 'week_mean'
+          ? COMPARE_MODE_BASELINE_WEEKS
+          : COMPARE_MODE_OFFSET_HOURS;
   const handleFamilyChange = (family: string) => {
     if (family === COMPARE_BASELINE_YOY) {
       if (compareBaselineFamily(compareMode) !== COMPARE_BASELINE_YOY) {
@@ -392,8 +398,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     }
     handleCompareModeChange(family);
   };
-  const handleYoyUnitChange = (unit: YoyUnit) => {
-    const mode = yoyModeForUnit(unit);
+  const handleYoyMethodChange = (method: YoyMethod) => {
+    const mode = yoyModeForMethod(method);
     const spec = compareSpanSpec(mode);
     handleCompareModeChange(mode);
     if (
@@ -412,6 +418,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const yoyDisabled = [
     COMPARE_MODE_OFFSET_HOURS,
     COMPARE_MODE_OFFSET_DAYS,
+    COMPARE_MODE_BASELINE_DAYS,
     COMPARE_MODE_BASELINE_WEEKS
   ].every((mode) => optionByMode[mode]?.disabled);
   const familyOptions: Array<{
@@ -450,7 +457,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     ),
     [COMPARE_BASELINE_YOY]: t(
       'monitor.events.compareModeYoyTip',
-      '和更早的同一段窗口比较。可以指定小时、天，或近若干周的平均值。'
+      '和更早的同一段窗口比较。可以指定 N 小时前、N 天前，或近若干天、若干周的平均值。'
     ),
     [COMPARE_MODE_TIMELEFT]: t('monitor.events.compareModeTimeleftTip')
   };
@@ -554,71 +561,91 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   </Select>
                 </Form.Item>
                 {compareFamily === COMPARE_BASELINE_YOY && spanSpec ? (
-                  <Form.Item
-                    required
-                    label={
-                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
-                        {t('monitor.events.compareOffsetPeriod', '对照周期')}
-                      </span>
-                    }
-                  >
-                    <Space.Compact block>
+                  <>
+                    <Form.Item
+                      required
+                      label={
+                        <span className={STRATEGY_CONDITION_LABEL_CLASS}>
+                          {t('monitor.events.compareYoyMethod', '对照方式')}
+                        </span>
+                      }
+                    >
+                      <Select
+                        value={yoyMethod}
+                        onChange={handleYoyMethodChange}
+                        style={{ width: '100%' }}
+                      >
+                        <Option value="hour">
+                          {t('monitor.events.compareYoyHour', 'N 小时前')}
+                        </Option>
+                        <Option value="day">
+                          {t('monitor.events.compareYoyDay', 'N 天前')}
+                        </Option>
+                        <Option value="day_mean">
+                          {t('monitor.events.compareYoyDayMean', '近 N 天均值')}
+                        </Option>
+                        <Option value="week_mean">
+                          {t('monitor.events.compareYoyWeekMean', '近 N 周均值')}
+                        </Option>
+                      </Select>
+                    </Form.Item>
+                    <Form.Item
+                      required
+                      label={
+                        <span className={STRATEGY_CONDITION_LABEL_CLASS}>
+                          {t(
+                            yoyMethod === 'hour'
+                              ? 'monitor.events.compareOffsetCountHour'
+                              : yoyMethod === 'week_mean'
+                                ? 'monitor.events.compareOffsetCountWeek'
+                                : 'monitor.events.compareOffsetCountDay',
+                            yoyMethod === 'hour'
+                              ? '小时数'
+                              : yoyMethod === 'week_mean'
+                                ? '周数'
+                                : '天数'
+                          )}
+                        </span>
+                      }
+                    >
                       <InputNumber
-                        className="w-[88px]"
                         min={spanSpec.min}
                         max={spanSpec.max}
                         precision={0}
                         value={compareOffsetHours}
+                        style={{ width: '100%' }}
                         onChange={(val) =>
                           onCompareOffsetHoursChange?.(
                             val == null ? null : Number(val)
                           )
                         }
                       />
-                      <Select
-                        value={yoyUnit}
-                        onChange={handleYoyUnitChange}
-                        style={{ width: 'calc(100% - 88px)' }}
-                      >
-                        <Option value="hour">
-                          {t('monitor.events.compareOffsetUnitHour', '小时')}
-                        </Option>
-                        <Option value="day">
-                          {t('monitor.events.compareOffsetUnitDay', '天')}
-                        </Option>
-                        <Option value="week_mean">
-                          {t(
-                            'monitor.events.compareOffsetUnitWeekMean',
-                            '周均值'
-                          )}
-                        </Option>
-                      </Select>
-                    </Space.Compact>
-                    {compareOffsetHours == null ||
-                    compareSpanConflict(
-                      compareMode,
-                      compareOffsetHours,
-                      periodUnit,
-                      period
-                    ) ? (
-                        <div className="mt-1 text-xs text-[var(--color-text-3)]">
-                          {compareOffsetHours == null
-                            ? t(
-                              yoyUnit === 'day'
-                                ? 'monitor.events.compareOffsetDaysRequired'
-                                : yoyUnit === 'week_mean'
-                                  ? 'monitor.events.compareBaselineWeeksRequired'
-                                  : 'monitor.events.compareOffsetHoursRequired',
-                              yoyUnit === 'day'
-                                ? '请填写对照天数'
-                                : yoyUnit === 'week_mean'
-                                  ? '请填写对照周数'
-                                  : '请填写对照小时数'
-                            )
-                            : t('monitor.events.compareModeDisabledPeriod')}
-                        </div>
-                      ) : null}
-                  </Form.Item>
+                      {compareOffsetHours == null ||
+                      compareSpanConflict(
+                        compareMode,
+                        compareOffsetHours,
+                        periodUnit,
+                        period
+                      ) ? (
+                          <div className="mt-1 text-xs text-[var(--color-text-3)]">
+                            {compareOffsetHours == null
+                              ? t(
+                                yoyMethod === 'hour'
+                                  ? 'monitor.events.compareOffsetHoursRequired'
+                                  : yoyMethod === 'week_mean'
+                                    ? 'monitor.events.compareBaselineWeeksRequired'
+                                    : 'monitor.events.compareOffsetDaysRequired',
+                                yoyMethod === 'hour'
+                                  ? '请填写对照小时数'
+                                  : yoyMethod === 'week_mean'
+                                    ? '请填写对照周数'
+                                    : '请填写对照天数'
+                              )
+                              : t('monitor.events.compareModeDisabledPeriod')}
+                          </div>
+                        ) : null}
+                    </Form.Item>
+                  </>
                 ) : null}
                 {showCompareKind ? (
                   <Form.Item

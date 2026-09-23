@@ -719,7 +719,8 @@ export const buildMetricExpressionPreviewPayload = ({
         ? Math.floor(compareOffsetHours)
         : null,
     compare_offset_days:
-      resolvedCompareMode === 'offset_days' &&
+      (resolvedCompareMode === 'offset_days' ||
+        resolvedCompareMode === 'baseline_days') &&
       compareOffsetHours != null &&
       Number.isFinite(compareOffsetHours) &&
       compareOffsetHours >= 1
