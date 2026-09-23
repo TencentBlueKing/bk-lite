@@ -36,6 +36,12 @@ def _set_field(target: Dict[str, Any], key: str, value: Any) -> None:
     target[key] = value
 
 
+def _set_self_device(item: Dict[str, Any], ip_addr: Any) -> None:
+    device = _non_empty(ip_addr)
+    if device:
+        item["self_device"] = device
+
+
 def _processor_type(record: Dict[str, Any]) -> str:
     return str(record.get("ProcessorType") or "CPU")
 
@@ -53,12 +59,12 @@ def _map_cpu_fields(processors: List[Dict[str, Any]], target: Dict[str, Any]) ->
     _set_field(target, "cpu_vendor", _non_empty(vendor_model_source.get("Manufacturer")))
     _set_field(target, "cpu_model", _non_empty(vendor_model_source.get("Model")))
 
-    cores = sum(processor["TotalCores"] for processor in active_cpus if isinstance(processor.get("TotalCores"), int))
-    threads = sum(processor["TotalThreads"] for processor in active_cpus if isinstance(processor.get("TotalThreads"), int))
-    if cores:
-        target["cpu_cores"] = cores
-    if threads:
-        target["cpu_threads"] = threads
+    core_values = [processor["TotalCores"] for processor in active_cpus if isinstance(processor.get("TotalCores"), int)]
+    thread_values = [processor["TotalThreads"] for processor in active_cpus if isinstance(processor.get("TotalThreads"), int)]
+    if core_values:
+        target["cpu_cores"] = sum(core_values)
+    if thread_values:
+        target["cpu_threads"] = sum(thread_values)
 
     instruction_set = _non_empty(vendor_model_source.get("InstructionSet"))
     if instruction_set and instruction_set in _INSTRUCTION_SET_MAP:
@@ -76,8 +82,8 @@ def _map_gpu_items(processors: List[Dict[str, Any]], ip_addr: str) -> List[Dict[
         item: Dict[str, Any] = {
             "gpu_name": gpu_name,
             "gpu_type": _processor_type(processor),
-            "self_device": ip_addr,
         }
+        _set_self_device(item, ip_addr)
         _set_field(item, "gpu_desc", _non_empty(processor.get("Model")))
         items.append(item)
     return items
@@ -98,7 +104,7 @@ def _map_board_fields(assemblies: List[Dict[str, Any]], target: Dict[str, Any]) 
     if board is None:
         return
     _set_field(target, "board_vendor", _non_empty(board.get("Vendor")))
-    _set_field(target, "board_model", _non_empty(board.get("Model")))
+    _set_field(target, "board_model", _non_empty(board.get("Model")) or _non_empty(board.get("Name")))
     _set_field(target, "board_serial", _non_empty(board.get("SerialNumber")))
 
 
@@ -110,7 +116,8 @@ def _map_memory_items(memory: List[Dict[str, Any]], ip_addr: str) -> List[Dict[s
         locator = _non_empty(record.get("DeviceLocator")) or _non_empty(record.get("Id"))
         if not locator:
             continue
-        item: Dict[str, Any] = {"mem_locator": locator, "self_device": ip_addr}
+        item: Dict[str, Any] = {"mem_locator": locator}
+        _set_self_device(item, ip_addr)
         _set_field(item, "mem_part_number", _non_empty(record.get("PartNumber")))
         _set_field(item, "mem_type", _non_empty(record.get("MemoryDeviceType")))
         _set_field(item, "mem_sn", _non_empty(record.get("SerialNumber")))
@@ -131,7 +138,8 @@ def _map_disk_items(drives: List[Dict[str, Any]], ip_addr: str) -> List[Dict[str
         disk_name = _non_empty(record.get("Id")) or _non_empty(record.get("Name"))
         if not disk_name:
             continue
-        item: Dict[str, Any] = {"disk_name": disk_name, "self_device": ip_addr}
+        item: Dict[str, Any] = {"disk_name": disk_name}
+        _set_self_device(item, ip_addr)
         _set_field(item, "disk_vendor", _non_empty(record.get("Manufacturer")))
         _set_field(item, "disk_type", _non_empty(record.get("MediaType")))
         _set_field(item, "disk_sn", _non_empty(record.get("SerialNumber")))
@@ -147,10 +155,10 @@ def _map_disk_items(drives: List[Dict[str, Any]], ip_addr: str) -> List[Dict[str
 def _extract_nic_mac(record: Dict[str, Any]) -> str:
     function = record.get("function") or {}
     ethernet = function.get("Ethernet") or {}
-    raw_mac = ethernet.get("MACAddress")
-    if raw_mac is None:
-        raw_mac = function.get("MACAddress")
-    return normalize_nic_mac(raw_mac)
+    ethernet_mac = normalize_nic_mac(ethernet.get("MACAddress"))
+    if ethernet_mac:
+        return ethernet_mac
+    return normalize_nic_mac(function.get("MACAddress"))
 
 
 def _map_nic_items(nic_records: List[Dict[str, Any]], ip_addr: str) -> List[Dict[str, Any]]:
@@ -163,7 +171,8 @@ def _map_nic_items(nic_records: List[Dict[str, Any]], ip_addr: str) -> List[Dict
         seen_macs.add(mac)
         adapter = record.get("adapter") or {}
         function = record.get("function") or {}
-        item: Dict[str, Any] = {"nic_mac": mac, "self_device": ip_addr}
+        item: Dict[str, Any] = {"nic_mac": mac}
+        _set_self_device(item, ip_addr)
         _set_field(item, "nic_vendor", _non_empty(adapter.get("Manufacturer")))
         _set_field(item, "nic_model", _non_empty(adapter.get("Model")))
         _set_field(item, "nic_type", _non_empty(function.get("NetDevFuncType")))
@@ -180,7 +189,7 @@ def build_redfish_result(
     nic_records: Optional[List[Dict[str, Any]]],
     assemblies: Optional[List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
-    ip_addr = server.get("ip_addr", "")
+    ip_addr = _non_empty(server.get("ip_addr"))
     mapped_server: Dict[str, Any] = {}
     for key, value in server.items():
         if isinstance(value, str):

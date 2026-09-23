@@ -158,3 +158,96 @@ def test_sub_gigabyte_capacity_is_omitted():
 
     assert "mem_size" not in result["memory"][0]
     assert "disk" not in result["disk"][0]
+
+
+def test_board_model_falls_back_to_name():
+    result = build_redfish_result(
+        {"ip_addr": "10.0.0.8"},
+        processors=None,
+        memory=None,
+        drives=None,
+        nic_records=None,
+        assemblies=[
+            {
+                "PhysicalContext": "SystemBoard",
+                "Vendor": "Huawei",
+                "Name": "BC11-Name",
+                "Model": "",
+                "SerialNumber": "BOARD-SN",
+            }
+        ],
+    )
+
+    assert result["physcial_server"][0]["board_model"] == "BC11-Name"
+
+
+def test_blank_ip_addr_omits_self_device():
+    result = build_redfish_result(
+        {"ip_addr": "   "},
+        processors=None,
+        memory=[{"DeviceLocator": "DIMM_A1"}],
+        drives=[{"Id": "Disk.Bay.0"}],
+        nic_records=[
+            {
+                "function": {
+                    "Ethernet": {"MACAddress": "AA-BB-CC-DD-EE-FF"},
+                }
+            }
+        ],
+        assemblies=None,
+    )
+
+    assert "self_device" not in result["memory"][0]
+    assert "self_device" not in result["disk"][0]
+    assert "self_device" not in result["nic"][0]
+
+
+def test_nic_mac_falls_back_when_ethernet_mac_invalid():
+    result = build_redfish_result(
+        {"ip_addr": "10.0.0.8"},
+        processors=None,
+        memory=None,
+        drives=None,
+        nic_records=[
+            {
+                "function": {
+                    "Ethernet": {"MACAddress": "00:00:00:00:00:00"},
+                    "MACAddress": "AA-BB-CC-DD-EE-FF",
+                }
+            }
+        ],
+        assemblies=None,
+    )
+
+    assert result["nic"][0]["nic_mac"] == "aa:bb:cc:dd:ee:ff"
+
+
+def test_cpu_zero_counts_are_written_when_present():
+    result = build_redfish_result(
+        {"ip_addr": "10.0.0.8"},
+        processors=[
+            {"Manufacturer": "Intel", "TotalCores": 0, "TotalThreads": 0},
+            {"ProcessorType": "CPU"},
+        ],
+        memory=None,
+        drives=None,
+        nic_records=None,
+        assemblies=None,
+    )
+
+    assert result["physcial_server"][0]["cpu_cores"] == 0
+    assert result["physcial_server"][0]["cpu_threads"] == 0
+
+
+def test_cpu_counts_omitted_when_no_processor_has_integer():
+    result = build_redfish_result(
+        {"ip_addr": "10.0.0.8"},
+        processors=[{"Manufacturer": "Intel", "TotalCores": "16", "TotalThreads": None}],
+        memory=None,
+        drives=None,
+        nic_records=None,
+        assemblies=None,
+    )
+
+    assert "cpu_cores" not in result["physcial_server"][0]
+    assert "cpu_threads" not in result["physcial_server"][0]
