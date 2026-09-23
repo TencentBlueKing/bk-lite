@@ -107,7 +107,8 @@ func (store *VictoriaWarehouse) runDelete(ctx context.Context, base *url.URL, qu
 	endpoint := *base
 	endpoint.Path = strings.TrimSuffix(endpoint.Path, "/") + "/delete/run_task"
 	form := url.Values{}
-	form.Set("query", query)
+	// VictoriaLogs/Traces delete API (v1.38+) expects `filter`, not `query`.
+	form.Set("filter", query)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		return err

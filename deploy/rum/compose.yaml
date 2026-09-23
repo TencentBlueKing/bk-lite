@@ -44,11 +44,13 @@ services:
       - no-new-privileges:true
 
   rum-victoria-logs:
-    image: ${RUM_VICTORIA_LOGS_IMAGE:-victoriametrics/victoria-logs:v1.25.0}
+    image: ${RUM_VICTORIA_LOGS_IMAGE:-victoriametrics/victoria-logs:v1.38.0}
     restart: unless-stopped
     command:
       - -storageDataPath=/victoria-logs-data
       - -httpListenAddr=:9428
+      # Required by bklite-rum-maintainer compliance erase (VictoriaWarehouse.Start).
+      - -delete.enable
     volumes:
       - rum_victoria_logs_data:/victoria-logs-data
     ports:
@@ -63,11 +65,13 @@ services:
       - no-new-privileges:true
 
   rum-victoria-traces:
-    image: ${RUM_VICTORIA_TRACES_IMAGE:-victoriametrics/victoria-traces:v0.4.0}
+    image: ${RUM_VICTORIA_TRACES_IMAGE:-victoriametrics/victoria-traces:v0.9.4}
     restart: unless-stopped
     command:
       - -storageDataPath=/victoria-traces-data
       - -httpListenAddr=:10428
+      # Required by bklite-rum-maintainer compliance erase (VictoriaWarehouse.Start).
+      - -delete.enable
     volumes:
       - rum_victoria_traces_data:/victoria-traces-data
     ports:

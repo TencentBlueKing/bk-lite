@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from apps.core.logger import rum_logger as logger
-from apps.rum.constants import OPERATION_TERMINAL_STATUSES, SUBJECT_APPLICATION_LIST, SUBJECT_ERASURE_SUBMIT, SUBJECT_OPERATION_GET
+from apps.rum.constants import OPERATION_TERMINAL_STATUSES, SUBJECT_APPLICATION_GET, SUBJECT_ERASURE_SUBMIT, SUBJECT_OPERATION_GET
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
 from apps.rum.services.validation import ValidationError, valid_application
 
@@ -144,16 +144,6 @@ class ComplianceService:
         self.control = control or get_control_plane()
         self.store = store or DjangoEraseJobStore()
 
-    def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return [], "control"
-            raise
-        registry = data if isinstance(data, list) else []
-        return [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)], None
-
     def list_jobs(self, params: dict[str, Any] | None = None, actor: str = "") -> list[dict]:
         params = params or {}
         try:
@@ -220,10 +210,16 @@ class ComplianceService:
         if len(end_user_id) > 256:
             raise ValidationError("endUserId is too long")
 
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
-            raise ControlError("unavailable", "RUM controller is unavailable")
-        if application not in enabled:
+        # Controller SubmitOperation requires expectedRevision matching the
+        # application registry revision (optimistic concurrency). Fetch it
+        # first so the console erase path does not omit the envelope field.
+        try:
+            _, app = self.control.request(SUBJECT_APPLICATION_GET, actor, {"application": application})
+        except ControlError as exc:
+            if control_unavailable(exc):
+                raise ControlError("unavailable", "RUM controller is unavailable") from exc
+            raise
+        if not isinstance(app, dict) or not app.get("enabled", True):
             raise ControlError("not_found", "application not found")
 
         revision, data = self.control.request(
@@ -233,6 +229,7 @@ class ComplianceService:
                 "application": application,
                 "identities": [{"kind": "user", "value": end_user_id}],
             },
+            expected_revision=int(app.get("revision") or 0),
         )
         result = data if isinstance(data, dict) else {"data": data}
         job = self.store.create(

@@ -204,8 +204,8 @@ function SessionMetaRow({
       </span>
       <div className="flex min-w-0 items-center justify-end gap-1.5">
         <span
-          className={`max-w-[170px] truncate text-right text-[var(--color-text-1)] ${
-            mono ? 'font-mono text-xs font-semibold' : 'font-medium'
+          className={`max-w-[170px] truncate text-right text-xs font-medium text-[var(--color-text-1)] ${
+            mono ? 'font-mono' : ''
           }`}
           title={title}
         >
@@ -898,11 +898,8 @@ export default function SessionDetailPage() {
                   />
                   <SessionMetaRow
                     label={t('rum.sessions.environment', '环境')}
-                    value={
-                      <Tag className="m-0 border-0 font-mono text-[11px]">
-                        {session.environment || 'production'}
-                      </Tag>
-                    }
+                    mono
+                    value={session.environment || 'production'}
                   />
                   <SessionMetaRow
                     label={t('rum.sessions.release', '版本')}

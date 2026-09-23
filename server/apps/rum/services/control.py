@@ -122,6 +122,11 @@ class MemoryControl:
             application = body.get("application") or ""
             if application not in self._apps:
                 raise ControlError("not_found", f"application {application!r} not found")
+            if expected_revision is None:
+                raise ControlError("invalid_argument", "expectedRevision is required")
+            current_rev = int(self._apps[application].get("revision", 0))
+            if current_rev != expected_revision:
+                raise ControlError("revision_conflict", "expected revision mismatch")
             identities = body.get("identities") or []
             if not identities:
                 raise ControlError("invalid_argument", "identities are required")

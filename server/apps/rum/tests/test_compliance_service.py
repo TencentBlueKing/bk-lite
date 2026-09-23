@@ -34,6 +34,16 @@ def test_erase_submits_user_identity_and_writes_ledger():
     _seed_app(control)
     store = MemoryEraseJobStore()
     service = ComplianceService(control=control, store=store)
+    app_revision = int(control._apps["checkout"]["revision"])
+
+    calls: list[tuple[str, int | None]] = []
+    original = control.request
+
+    def spy(subject, actor, payload=None, expected_revision=None):
+        calls.append((subject, expected_revision))
+        return original(subject, actor, payload, expected_revision)
+
+    control.request = spy  # type: ignore[method-assign]
 
     revision, data = service.erase(
         "tester",
@@ -47,6 +57,7 @@ def test_erase_submits_user_identity_and_writes_ledger():
     assert data["ledger"]["endUserId"] == "user-123"
     assert data["ledger"]["status"] == "accepted"
     assert data["ledger"]["scope"] == "all"
+    assert (SUBJECT_ERASURE_SUBMIT, app_revision) in calls
 
     jobs = service.list_jobs({"application": "checkout"})
     assert len(jobs) == 1
