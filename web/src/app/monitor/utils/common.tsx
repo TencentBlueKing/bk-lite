@@ -809,7 +809,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },
   { match: /\bzte\b|zxr10/i, label: 'ZTE', icon: 'mm-zte_zte' },
   { match: /omniswitch|alcatel.?os|\baos\b/i, label: 'Alcatel OmniSwitch', icon: 'mm-omniswitch_omniswitch' },
-  { match: /yamaha|\bswx\b/i, label: 'Yamaha', icon: 'mm-yamaha_yamaha' },
+  { match: /yamaha|\brtx\d|\bnvr\d|\bfwx\d|\bvrx\b|\bswx\b/i, label: 'Yamaha', icon: 'mm-yamaha_yamaha' },
   { match: /arista|\beos\b|dcs-/i, label: 'Arista', icon: 'mm-arista_arista' },
   { match: /mellanox|nvidia|spectrum|onyx|mlnx|\bsn[0-9]{4}\b/i, label: 'Mellanox', icon: 'mm-mellanox_mellanox' },
   { match: /allied|awplus|aw\+|at-/i, label: 'Allied Telesis', icon: 'mm-alliedtelesis_alliedtelesis' },
