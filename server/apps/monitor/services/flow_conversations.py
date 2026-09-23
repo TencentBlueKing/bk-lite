@@ -1,8 +1,9 @@
 """Full Flow conversation list: keyword on src/dst, then paginate.
 
 The professional dashboard used to query a TopN capability. This service unwraps
-topk/bottomk/limitk, keeps the full 5-tuple aggregation, filters by source or
-destination address, and returns one page. Top protocol ranking stays unchanged.
+topk/bottomk/limitk, re-wraps the 5-tuple aggregation with topk(1000), filters by
+source or destination address, and returns one page. Top protocol ranking stays
+unchanged.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from apps.monitor.utils.pagination import parse_page_params
 DEFAULT_PAGE_SIZE = 10
 MAX_PAGE_SIZE = 100
 MAX_KEYWORD_LENGTH = 256
+MAX_CONVERSATION_SERIES = 1000
 CONVERSATION_DIMENSIONS = ["src", "src_port", "dst", "dst_port", "protocol"]
 
 
@@ -55,7 +57,7 @@ def parse_conversation_rows(vm_result: dict[str, Any] | None) -> list[dict[str, 
     series = ((vm_result or {}).get("data") or {}).get("result") or []
     if not isinstance(series, list):
         return []
-    rows = fold_instant_rows(series, CONVERSATION_DIMENSIONS, limit=max(len(series), 1))
+    rows = fold_instant_rows(series, CONVERSATION_DIMENSIONS, limit=MAX_CONVERSATION_SERIES)
     return [row for row in rows if row.get("src") or row.get("dst")]
 
 
@@ -103,7 +105,8 @@ def query_flow_conversation_page(
     if not is_conversation_query(query):
         raise AuthorizedMetricQueryError("查询能力不支持会话列表", code="capability_not_conversation")
 
-    vm_result = Metrics.get_metrics(query, time=prepared.end / 1000.0)
+    bounded_query = f"topk({MAX_CONVERSATION_SERIES}, {query})"
+    vm_result = Metrics.get_metrics(bounded_query, time=prepared.end / 1000.0)
     if not isinstance(vm_result, dict) or vm_result.get("status") != "success":
         raise AuthorizedMetricQueryError("指标查询失败", code="metric_query_failed")
     return serialize_conversation_page(
