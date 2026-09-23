@@ -251,3 +251,94 @@ def test_cpu_counts_omitted_when_no_processor_has_integer():
 
     assert "cpu_cores" not in result["physcial_server"][0]
     assert "cpu_threads" not in result["physcial_server"][0]
+
+
+def test_server_identity_strings_are_stored_stripped():
+    result = build_redfish_result(
+        {"ip_addr": " 10.0.0.8 ", "serial_number": " SN-8 "},
+        processors=None,
+        memory=[{"DeviceLocator": "DIMM_A1"}],
+        drives=None,
+        nic_records=None,
+        assemblies=None,
+    )
+
+    assert result["physcial_server"][0]["ip_addr"] == "10.0.0.8"
+    assert result["physcial_server"][0]["serial_number"] == "SN-8"
+    assert result["memory"][0]["self_device"] == "10.0.0.8"
+
+
+def test_accelerator_total_cores_excluded_from_cpu_and_emitted_as_gpu():
+    result = build_redfish_result(
+        {"ip_addr": "10.0.0.8"},
+        processors=[
+            {"Manufacturer": "Intel", "TotalCores": 16, "TotalThreads": 32},
+            {
+                "ProcessorType": "Accelerator",
+                "Name": "H100",
+                "Model": "NVIDIA H100",
+                "TotalCores": 64,
+                "TotalThreads": 128,
+            },
+        ],
+        memory=None,
+        drives=None,
+        nic_records=None,
+        assemblies=None,
+    )
+
+    assert result["physcial_server"][0]["cpu_cores"] == 16
+    assert result["physcial_server"][0]["cpu_threads"] == 32
+    assert result["gpu"] == [
+        {
+            "gpu_name": "H100",
+            "gpu_type": "Accelerator",
+            "gpu_desc": "NVIDIA H100",
+            "self_device": "10.0.0.8",
+        }
+    ]
+
+
+def test_non_dict_members_are_skipped_without_error():
+    result = build_redfish_result(
+        {"ip_addr": " 10.0.0.8 "},
+        processors=[
+            None,
+            {"Manufacturer": "Intel", "TotalCores": 8, "TotalThreads": 16},
+            "x",
+            {"ProcessorType": "Accelerator", "Name": "Acc1", "TotalCores": 64},
+        ],
+        memory=[None, {"DeviceLocator": "DIMM_A1"}, "bad"],
+        drives=[None, {"Id": "Disk.0"}, 123],
+        nic_records=[
+            None,
+            {
+                "adapter": "not-a-dict",
+                "function": {
+                    "NetDevFuncType": "Ethernet",
+                    "Ethernet": "not-a-dict",
+                    "MACAddress": "AA-BB-CC-DD-EE-01",
+                },
+            },
+            "x",
+        ],
+        assemblies=[
+            None,
+            "x",
+            {
+                "PhysicalContext": "SystemBoard",
+                "Vendor": "Huawei",
+                "Model": "M1",
+                "SerialNumber": "B1",
+            },
+        ],
+    )
+
+    assert result["physcial_server"][0]["ip_addr"] == "10.0.0.8"
+    assert result["physcial_server"][0]["cpu_cores"] == 8
+    assert result["physcial_server"][0]["cpu_threads"] == 16
+    assert result["physcial_server"][0]["board_model"] == "M1"
+    assert result["memory"] == [{"mem_locator": "DIMM_A1", "self_device": "10.0.0.8"}]
+    assert result["disk"] == [{"disk_name": "Disk.0", "self_device": "10.0.0.8"}]
+    assert result["nic"] == [{"nic_mac": "aa:bb:cc:dd:ee:01", "nic_type": "Ethernet", "self_device": "10.0.0.8"}]
+    assert result["gpu"] == [{"gpu_name": "Acc1", "gpu_type": "Accelerator", "self_device": "10.0.0.8"}]

@@ -14,6 +14,10 @@ _INSTRUCTION_SET_MAP = {
 _GPU_PROCESSOR_TYPES = frozenset({"GPU", "Accelerator"})
 
 
+def _as_dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _is_absent(record: Dict[str, Any]) -> bool:
     status = record.get("Status")
     if not isinstance(status, dict):
@@ -51,7 +55,9 @@ def _is_gpu_processor(record: Dict[str, Any]) -> bool:
 
 
 def _map_cpu_fields(processors: List[Dict[str, Any]], target: Dict[str, Any]) -> None:
-    active_cpus = [processor for processor in processors if not _is_absent(processor) and not _is_gpu_processor(processor)]
+    active_cpus = [
+        processor for processor in processors if isinstance(processor, dict) and not _is_absent(processor) and not _is_gpu_processor(processor)
+    ]
     if not active_cpus:
         return
 
@@ -74,7 +80,7 @@ def _map_cpu_fields(processors: List[Dict[str, Any]], target: Dict[str, Any]) ->
 def _map_gpu_items(processors: List[Dict[str, Any]], ip_addr: str) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     for processor in processors:
-        if _is_absent(processor) or not _is_gpu_processor(processor):
+        if not isinstance(processor, dict) or _is_absent(processor) or not _is_gpu_processor(processor):
             continue
         gpu_name = _non_empty(processor.get("Name")) or _non_empty(processor.get("Id"))
         if not gpu_name:
@@ -90,7 +96,7 @@ def _map_gpu_items(processors: List[Dict[str, Any]], ip_addr: str) -> List[Dict[
 
 
 def _pick_system_board(assemblies: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    boards = [assembly for assembly in assemblies if assembly.get("PhysicalContext") == "SystemBoard"]
+    boards = [assembly for assembly in assemblies if isinstance(assembly, dict) and assembly.get("PhysicalContext") == "SystemBoard"]
     if not boards:
         return None
     for board in boards:
@@ -111,7 +117,7 @@ def _map_board_fields(assemblies: List[Dict[str, Any]], target: Dict[str, Any]) 
 def _map_memory_items(memory: List[Dict[str, Any]], ip_addr: str) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     for record in memory:
-        if _is_absent(record):
+        if not isinstance(record, dict) or _is_absent(record):
             continue
         locator = _non_empty(record.get("DeviceLocator")) or _non_empty(record.get("Id"))
         if not locator:
@@ -133,7 +139,7 @@ def _map_memory_items(memory: List[Dict[str, Any]], ip_addr: str) -> List[Dict[s
 def _map_disk_items(drives: List[Dict[str, Any]], ip_addr: str) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     for record in drives:
-        if _is_absent(record):
+        if not isinstance(record, dict) or _is_absent(record):
             continue
         disk_name = _non_empty(record.get("Id")) or _non_empty(record.get("Name"))
         if not disk_name:
@@ -153,8 +159,8 @@ def _map_disk_items(drives: List[Dict[str, Any]], ip_addr: str) -> List[Dict[str
 
 
 def _extract_nic_mac(record: Dict[str, Any]) -> str:
-    function = record.get("function") or {}
-    ethernet = function.get("Ethernet") or {}
+    function = _as_dict(record.get("function"))
+    ethernet = _as_dict(function.get("Ethernet"))
     ethernet_mac = normalize_nic_mac(ethernet.get("MACAddress"))
     if ethernet_mac:
         return ethernet_mac
@@ -165,12 +171,14 @@ def _map_nic_items(nic_records: List[Dict[str, Any]], ip_addr: str) -> List[Dict
     items: List[Dict[str, Any]] = []
     seen_macs: set[str] = set()
     for record in nic_records:
+        if not isinstance(record, dict):
+            continue
         mac = _extract_nic_mac(record)
         if not mac or mac in seen_macs:
             continue
         seen_macs.add(mac)
-        adapter = record.get("adapter") or {}
-        function = record.get("function") or {}
+        adapter = _as_dict(record.get("adapter"))
+        function = _as_dict(record.get("function"))
         item: Dict[str, Any] = {"nic_mac": mac}
         _set_self_device(item, ip_addr)
         _set_field(item, "nic_vendor", _non_empty(adapter.get("Manufacturer")))
@@ -193,8 +201,9 @@ def build_redfish_result(
     mapped_server: Dict[str, Any] = {}
     for key, value in server.items():
         if isinstance(value, str):
-            if value.strip():
-                mapped_server[key] = value
+            stripped = value.strip()
+            if stripped:
+                mapped_server[key] = stripped
         elif value is not None:
             mapped_server[key] = value
 
