@@ -91,7 +91,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__} != 65535",
+      "query": "device_temperature_celsius{instance_type='switch', collect_type='snmp_h3c', __$labels__} != 65535",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",

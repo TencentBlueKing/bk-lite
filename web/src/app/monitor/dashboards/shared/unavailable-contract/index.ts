@@ -10,5 +10,6 @@ export {
   findUnavailableContract,
   overlayGuideWithContract,
   overlayMetricWithContract,
-  overlayMetricsWithContracts
+  overlayMetricsWithContracts,
+  temperatureUint16ByCollectTypeQuery
 } from './apply';

@@ -5346,6 +5346,15 @@
       "template": "topk(5, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[__$window__])))"
     },
     {
+      "id": "dashboard:v1:da884725",
+      "object_names": [
+        "Loadbalance",
+        "Router",
+        "Switch"
+      ],
+      "template": "max((device_temperature_celsius{collect_type!~\"snmp_h3c|snmp_h3c_firewall\", __$labels__} or (device_temperature_celsius{collect_type=~\"snmp_h3c|snmp_h3c_firewall\", __$labels__} != 65535))) by (instance_id) or max(device_temperature_celsius{collect_type=~\"snmp_h3c|snmp_h3c_firewall\", __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:db942c72",
       "object_names": [
         "Host"
