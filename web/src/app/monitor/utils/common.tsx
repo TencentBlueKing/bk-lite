@@ -771,7 +771,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /waystream|asr[0-9]+|ftth/i, label: 'Waystream', icon: 'mm-waystream_waystream' },
   { match: /tsntec|8148sc/i, label: 'TsnTec', icon: 'mm-tsntec_tsntec' },
   { match: /6wind|\bvsr\b/i, label: '6WIND VSR', icon: 'mm-6wind_6wind' },
-  { match: /robustel|\br3000\b/i, label: 'Robustel', icon: 'mm-robustel_robustel' },
+  { match: /robustel|\br3000\b|\bmg460\b/i, label: 'Robustel', icon: 'mm-robustel_robustel' },
   { match: /milesight|\bur3[257]\b/i, label: 'Milesight', icon: 'mm-milesight_milesight' },
   { match: /sierra\s*wireless|airlink|\baleos\b/i, label: 'Sierra Wireless', icon: 'mm-sierrawireless_sierrawireless' },
   { match: /netmodule/i, label: 'NetModule', icon: 'mm-netmodule_netmodule' },
