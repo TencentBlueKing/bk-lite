@@ -243,8 +243,23 @@ class GroupDataRuleViewSet(LanguageViewSet):
         if fun is None:
             message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
             raise AttributeError(message)
-        params["page"] = int(params.get("page", "1"))
-        params["page_size"] = int(params.get("page_size", "10"))
+        raw_page = params.get("page", "1")
+        raw_page_size = params.get("page_size", "10")
+        if raw_page in (None, ""):
+            raw_page = "1"
+        if raw_page_size in (None, ""):
+            raw_page_size = "10"
+        try:
+            page = int(raw_page)
+            page_size = int(raw_page_size)
+        except (TypeError, ValueError):
+            message = self._loader(request).get("error.invalid_page", "page and page_size must be positive integers")
+            return JsonResponse({"result": False, "message": message}, status=400)
+        if page < 1 or page_size < 1:
+            message = self._loader(request).get("error.invalid_page", "page and page_size must be positive integers")
+            return JsonResponse({"result": False, "message": message}, status=400)
+        params["page"] = page
+        params["page_size"] = page_size
         # 对 CMDB 权限实例查询注入调用方用户上下文，供 NATS handler 构建真实权限 map
         if app == "cmdb":
             user = request.user
