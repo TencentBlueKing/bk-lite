@@ -31,8 +31,7 @@ const TrainTaskModal = forwardRef<ModalRef, TrainTaskModalProps>(({ datasetOptio
 
   useImperativeHandle(ref, () => ({
     showModal: ({ type, title, form }) => {
-      // 类型断言：确保 type 是 'add' 或 'edit'
-      showModal({ type: type as 'add' | 'edit', title: title as string, form });
+      showModal({ type: type as 'add' | 'update', title: title as string, form });
     }
   }));
 

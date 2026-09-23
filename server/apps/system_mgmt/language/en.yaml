@@ -124,6 +124,30 @@ error:
   group_restore_not_allowed: This archived group cannot be restored
   group_permanent_delete_not_allowed: This archived group cannot be permanently deleted
   group_permanent_delete_users_need_active_org: Permanent deletion would leave some users without an active organization. Please assign them another active organization first
+  otp_recommended_apps_required: At least one recommended authenticator app is required
+  otp_whitelist_must_be_user_ids: OTP allowlist must be a list of user IDs
+  otp_whitelist_duplicate_user_ids: OTP allowlist contains duplicate user IDs
+  otp_whitelist_unknown_user: OTP allowlist contains a user that does not exist
+  initial_password_mode_invalid: 'Invalid initial password mode: {mode}'
+  password_policy_invalid: Password policy configuration is invalid
+  initial_password_reset_required: Set the initial password again
+  initial_password_required: Set an initial password
+  initial_password_email_channel_required_when_enabled: An email channel is required when initial passwords are enabled for new users
+  email_channel_missing: 'Email channel {channel_id} does not exist or is not an email channel'
+  channel_not_email: 'Channel {channel_id} is not an email channel'
+  initial_password_email_channel_absent: Email channel does not exist or is not an email channel
+  no_permission_access_team: You do not have permission to access this organization's data
+  builtin_entry_immutable: 'Built-in entries cannot be modified or deleted: {label}'
+  opspilot_channel_readonly: Channels created by an OpsPilot workflow cannot be edited or deleted
+  email_channel_id_required: email_channel_id is required
+  user_email_empty: The user has no email address, so the message cannot be sent
+  email_sent: Sent
+  email_send_failed: Failed to send
+  email_recipient_missing_or_unknown: The user has no email address or does not exist
+  initial_password_email_title: Your BK-Lite account is ready
+  initial_password_email_body: '<p>Hello,</p><p>An administrator has created your BK-Lite account. The account details are below:</p><p><strong>Username: </strong>{username}</p><p><strong>Initial password: </strong>{password}</p><p>Sign in with this initial password and change it immediately after your first sign-in.</p><p><strong>Security notice: </strong>Do not forward, screenshot, or keep this email. If you did not expect it, contact an administrator.</p><p>Regards<br>BK-Lite</p>'
+  current_team_archived_or_missing: The current organization is archived or does not exist
+  channel_id_not_found: No channel matches the given channel_id
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful
@@ -211,6 +235,26 @@ action_type:
 status:
   success: Success
   failed: Failed
+export:
+  login_log_sheet: User login logs
+  login_log_filename: user_login_logs
+  operation_log_sheet: User operation logs
+  operation_log_filename: user_operation_logs
+  column_username: Username
+  column_domain: Domain
+  column_login_time: Login time
+  column_operation_time: Operation time
+  column_source_ip: Source IP
+  column_location: Location
+  column_browser: Browser
+  column_os: Operating system
+  column_login_status: Login status
+  column_failure_reason: Failure reason
+  column_app: App
+  column_action_type: Action type
+  column_summary: Summary
+channel:
+  opspilot_nats_trigger_description: NATS trigger channel created by an OpsPilot workflow
 tag:
   # job
   job_execution: Job Execution

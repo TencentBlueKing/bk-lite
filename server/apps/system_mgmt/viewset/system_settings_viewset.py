@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny
 from apps.core.decorators.api_permission import HasPermission
 from apps.system_mgmt.models import Channel, ChannelChoices, SystemSettings, User
 from apps.system_mgmt.serializers.system_settings_serializer import SystemSettingsSerializer
+from apps.system_mgmt.utils.i18n import system_mgmt_request_message
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.otp_settings import (
     DEFAULT_OTP_RECOMMENDED_APPS,
@@ -54,17 +55,17 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         "pwd_set_required_char_types",
     }
 
-    def _get_initial_password_email_channel(self, channel_id_raw):
+    def _get_initial_password_email_channel(self, request, channel_id_raw):
         """返回有效的邮件通道；初始密码启用时这是必填配置。"""
         channel_id_str = str(channel_id_raw or "").strip()
         if not channel_id_str:
-            return None, "启用新建用户初始密码时需配置邮件通道"
+            return None, system_mgmt_request_message(request, "error.initial_password_email_channel_required_when_enabled")
         try:
             channel = Channel.objects.get(id=int(channel_id_str))
         except (Channel.DoesNotExist, ValueError, TypeError):
-            return None, f"邮件通道 {channel_id_str} 不存在或类型不是 email"
+            return None, system_mgmt_request_message(request, "error.email_channel_missing", channel_id=channel_id_str)
         if channel.channel_type != ChannelChoices.EMAIL:
-            return None, f"通道 {channel_id_str} 不是 email 类型"
+            return None, system_mgmt_request_message(request, "error.channel_not_email", channel_id=channel_id_str)
         return channel, None
 
     def _ensure_portal_settings(self):
@@ -115,7 +116,10 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         if enable_otp == "1":
             apps_value = kwargs["otp_recommended_apps"] if "otp_recommended_apps" in kwargs else current_settings.get("otp_recommended_apps", "")
             if not parse_otp_recommended_apps(apps_value):
-                return JsonResponse({"result": False, "message": "推荐认证器应用不能为空"}, status=400)
+                return JsonResponse(
+                    {"result": False, "message": system_mgmt_request_message(request, "error.otp_recommended_apps_required")},
+                    status=400,
+                )
         if "otp_whitelist" in kwargs:
             raw_whitelist = kwargs["otp_whitelist"]
             if isinstance(raw_whitelist, str):
@@ -124,22 +128,41 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
                 except json.JSONDecodeError:
                     raw_whitelist = None
             if not isinstance(raw_whitelist, list) or any(isinstance(item, bool) for item in raw_whitelist):
-                return JsonResponse({"result": False, "message": "OTP 白名单必须是用户 ID 列表"}, status=400)
+                return JsonResponse(
+                    {"result": False, "message": system_mgmt_request_message(request, "error.otp_whitelist_must_be_user_ids")},
+                    status=400,
+                )
             try:
                 whitelist = [int(item) for item in raw_whitelist]
             except (TypeError, ValueError):
-                return JsonResponse({"result": False, "message": "OTP 白名单必须是用户 ID 列表"}, status=400)
+                return JsonResponse(
+                    {"result": False, "message": system_mgmt_request_message(request, "error.otp_whitelist_must_be_user_ids")},
+                    status=400,
+                )
             if len(set(whitelist)) != len(whitelist):
-                return JsonResponse({"result": False, "message": "OTP 白名单包含重复的用户 ID"}, status=400)
+                return JsonResponse(
+                    {"result": False, "message": system_mgmt_request_message(request, "error.otp_whitelist_duplicate_user_ids")},
+                    status=400,
+                )
             if User.objects.filter(id__in=whitelist).count() != len(whitelist):
-                return JsonResponse({"result": False, "message": "OTP 白名单包含不存在的用户"}, status=400)
+                return JsonResponse(
+                    {"result": False, "message": system_mgmt_request_message(request, "error.otp_whitelist_unknown_user")},
+                    status=400,
+                )
             kwargs["otp_whitelist"] = json.dumps(whitelist)
         current_mode = current_settings.get(self.INITIAL_PASSWORD_MODE_KEY, "none")
         if self.INITIAL_PASSWORD_MODE_KEY in kwargs:
             requested_mode = str(kwargs[self.INITIAL_PASSWORD_MODE_KEY])
             if requested_mode not in self.INITIAL_PASSWORD_MODES:
                 return JsonResponse(
-                    {"result": False, "message": f"初始密码模式不合法: {requested_mode}"},
+                    {
+                        "result": False,
+                        "message": system_mgmt_request_message(
+                            request,
+                            "error.initial_password_mode_invalid",
+                            mode=requested_mode,
+                        ),
+                    },
                     status=400,
                 )
             current_mode = requested_mode
@@ -167,17 +190,26 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
                     item.strip() for item in str(kwargs["pwd_set_required_char_types"]).split(",") if item.strip()
                 ]
         except (TypeError, ValueError):
-            return JsonResponse({"result": False, "message": "密码策略配置无效"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": system_mgmt_request_message(request, "error.password_policy_invalid")},
+                status=400,
+            )
 
         if current_mode == "fixed":
             if policy_changed and not initial_password:
-                return JsonResponse({"result": False, "message": "请重新设置初始密码"}, status=400)
+                return JsonResponse(
+                    {"result": False, "message": system_mgmt_request_message(request, "error.initial_password_reset_required")},
+                    status=400,
+                )
             if initial_password:
                 is_valid, error_message = PasswordValidator.validate_password_with_config(initial_password, effective_policy)
                 if not is_valid:
                     return JsonResponse({"result": False, "message": error_message}, status=400)
             if not initial_password and not current_settings.get(self.INITIAL_PASSWORD_HASH_KEY):
-                return JsonResponse({"result": False, "message": "请设置初始密码"}, status=400)
+                return JsonResponse(
+                    {"result": False, "message": system_mgmt_request_message(request, "error.initial_password_required")},
+                    status=400,
+                )
             if initial_password:
                 kwargs[self.INITIAL_PASSWORD_HASH_KEY] = make_password(initial_password)
                 kwargs[self.INITIAL_PASSWORD_ENCRYPTED_KEY] = encrypt_for_vault(initial_password)
@@ -188,7 +220,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
                 self.INITIAL_PASSWORD_RANDOM_EMAIL_CHANNEL_ID_KEY,
                 current_settings.get(self.INITIAL_PASSWORD_RANDOM_EMAIL_CHANNEL_ID_KEY, ""),
             )
-            channel, channel_error = self._get_initial_password_email_channel(channel_id_raw)
+            channel, channel_error = self._get_initial_password_email_channel(request, channel_id_raw)
             if channel_error:
                 return JsonResponse({"result": False, "message": channel_error}, status=400)
             kwargs[self.INITIAL_PASSWORD_RANDOM_EMAIL_CHANNEL_ID_KEY] = str(channel.id)

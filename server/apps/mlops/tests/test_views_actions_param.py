@@ -60,7 +60,8 @@ PREDICT_PARAM = {
 HAS_ARCHIVE = set(ALGO_IDS)
 
 # Algorithms whose archive/unarchive also mutate ``description`` (prepend /
-# strip the "[已归档] " marker). image/object only flip ``status``.
+# strip the "[archived] " marker, and still strip the legacy "[已归档] " marker).
+# image/object only flip ``status``.
 ARCHIVE_TOUCHES_DESCRIPTION = {"anomaly_detection", "log_clustering", "timeseries_predict"}
 
 # Algorithms whose predict does NOT interpret the business ``success`` flag and
@@ -689,7 +690,7 @@ def test_release_archive_success(monkeypatch, superuser, suffix, prefix, model_m
     rel.refresh_from_db()
     assert rel.status == DatasetReleaseStatus.ARCHIVED
     if suffix in ARCHIVE_TOUCHES_DESCRIPTION:
-        assert rel.description.startswith("[已归档]")
+        assert rel.description.startswith("[archived] ")
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)

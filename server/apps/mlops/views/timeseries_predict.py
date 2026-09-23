@@ -46,6 +46,7 @@ from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlf
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
+from apps.mlops.utils.release_archive import with_archive_description, without_archive_description
 from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
 from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
@@ -1024,7 +1025,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             # 获取 MLflow tracking URI
             mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
-                logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
+                logger.error("MLFLOW_TRACKER_URL is not configured")
                 self._assign_runtime_container_info(
                     serving,
                     {
@@ -1931,7 +1932,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
                 )
 
             release.status = DatasetReleaseStatus.ARCHIVED
-            release.description = f"[已归档] {release.description or ''}"
+            release.description = with_archive_description(release.description)
             release.save(update_fields=["status", "description"])
 
             return Response({"message": mlops_message(request, "message.archive_success"), "release_id": release.id})
@@ -1959,9 +1960,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
                 )
 
             # 移除归档标记
-            original_description = release.description or ""
-            if original_description.startswith("[已归档] "):
-                release.description = original_description.replace("[已归档] ", "", 1)
+            release.description = without_archive_description(release.description)
 
             release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])

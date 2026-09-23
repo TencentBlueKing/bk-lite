@@ -83,7 +83,8 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
 
         user_group_ids = self._get_user_group_ids(request.user)
         if not user_group_ids:
-            return False, JsonResponse({"result": False, "message": "无权访问该团队数据"}, status=403)
+            message = self.loader.get("error.no_permission_access_team", "无权访问该团队数据") if self.loader else "无权访问该团队数据"
+            return False, JsonResponse({"result": False, "message": message}, status=403)
 
         invalid = set(normalized) - user_group_ids
         if invalid:

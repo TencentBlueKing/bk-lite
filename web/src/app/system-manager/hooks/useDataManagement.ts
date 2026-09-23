@@ -76,7 +76,7 @@ export function useDataList({ clientId }: UseDataListParams) {
       fetchDataList();
     } catch (error) {
       console.error('Failed:', error);
-      message.error(t('common.delFail'));
+      message.error(t('common.delFailed'));
     }
   }, [deleteGroupDataRule, fetchDataList, t]);
 

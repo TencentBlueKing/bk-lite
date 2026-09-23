@@ -107,6 +107,7 @@
     "trainFailed": "Failed to train",
     "noResult": "No Results",
     "noData": "No Data",
+    "loading": "Loading...",
     "unassigned": "Unassigned",
     "currentOrganization": "Current org",
     "catalogScope": "Catalog scope",

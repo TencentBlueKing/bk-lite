@@ -138,7 +138,7 @@ const UserSyncRunProgressDrawer: React.FC<UserSyncRunProgressDrawerProps> = ({
                 isError
                   ? 'system.user.userSyncPage.progressDrawer.phaseFailedAt'
                   : 'system.user.userSyncPage.progressDrawer.phaseCompletedAt',
-              ).replace('{{time}}', convertToLocalizedTime(timestamp, 'YYYY-MM-DD HH:mm:ss'))
+              ).replace('{time}', convertToLocalizedTime(timestamp, 'YYYY-MM-DD HH:mm:ss'))
               : '';
 
             return {

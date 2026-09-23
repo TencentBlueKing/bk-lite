@@ -14,6 +14,7 @@ from apps.rpc.base import RpcClient
 from apps.system_mgmt.models import Channel, ErrorLog, Group, LoginModule, SystemSettings, User
 from apps.system_mgmt.models.channel import ChannelChoices
 from apps.system_mgmt.utils.channel_utils import send_email_to_user
+from apps.system_mgmt.utils.i18n import system_mgmt_message
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
@@ -457,7 +458,16 @@ def send_initial_password_email_batch(run_id: int):
         username = item["username"]
         user = users.get(item["user_id"])
         if not user or not user.email:
-            outcomes.append({"username": username, "ok": False, "reason": "用户邮箱为空或用户不存在"})
+            outcomes.append(
+                {
+                    "username": username,
+                    "ok": False,
+                    "reason": system_mgmt_message(
+                        getattr(user, "locale", None) if user else None,
+                        "error.email_recipient_missing_or_unknown",
+                    ),
+                }
+            )
             continue
         try:
             raw_password = decrypt_from_vault(vault[username])
