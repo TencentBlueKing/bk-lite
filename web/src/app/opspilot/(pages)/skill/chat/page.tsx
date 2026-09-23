@@ -138,13 +138,15 @@ const SkillWebChatPage: React.FC = () => {
       try {
         const sessions = await fetchSkillConversations(currentAgent.id);
         setFunctionList(
-          (sessions || []).map((item: any) => ({
-            id: item.session_id,
-            title: item.title || '新会话',
-            icon: 'jiqiren3',
-            channel_type: item.channel_type || 'web_chat',
-            persisted: true,
-          }))
+          (sessions || [])
+            .filter((item: any) => (item.channel_type || 'web_chat') === 'web_chat')
+            .map((item: any) => ({
+              id: item.session_id,
+              title: item.title || '新会话',
+              icon: 'jiqiren3',
+              channel_type: 'web_chat',
+              persisted: true,
+            }))
         );
       } catch {
         setFunctionList([]);

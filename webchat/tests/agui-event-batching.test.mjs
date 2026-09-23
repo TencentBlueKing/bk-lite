@@ -307,6 +307,18 @@ test('answer tokens keep thinking text but stop the typing placeholder', () => {
   assert.equal(shouldShowTypingPlaceholder(harness.isLoading, harness.isThinking, harness.messages), false);
 });
 
+test('retractLiveText drops narration that streamed before a tool call', () => {
+  const harness = createHarness({ batching: false });
+  harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+  harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: '先分析一下再查告警' });
+  harness.dispatch.retractLiveText();
+
+  assert.equal(harness.messages[0].content, '');
+  assert.deepEqual(harness.messages[0].metadata.contentChunks, []);
+  assert.equal(harness.session.messages[0].content, '');
+  assert.deepEqual(harness.session.messages[0].metadata.contentChunks, []);
+});
+
 test('typing placeholder only shows while waiting for the first bot message', () => {
   assert.equal(shouldShowTypingPlaceholder(true, false, [{ sender: 'user' }]), true);
   assert.equal(shouldShowTypingPlaceholder(true, true, [{ sender: 'user' }]), true);

@@ -38,6 +38,24 @@ def test_log_search_structured_builds_contains_query(mocker):
     assert captured["log_group_ids"] == ["g1"]
 
 
+def test_log_search_structured_ors_keywords(mocker):
+    captured = {}
+
+    def fake_execute(query, time_range, limit, user_info, log_group_ids=None):
+        captured["query"] = query
+        return {"result": True, "data": [], "message": ""}
+
+    mocker.patch.object(log_nats, "_llm_execute_log_search", fake_execute)
+    log_nats.log_search_structured(
+        {"keywords": ["商城", "connection refused"]},
+        user_info={"user": "alice", "domain": "d.com", "team": 1, "include_children": False},
+    )
+    assert " OR " in captured["query"]
+    assert "商城" in captured["query"]
+    assert "connection" in captured["query"]
+    assert "refused" in captured["query"]
+
+
 def test_log_search_structured_defaults_time_range(mocker):
     captured = {}
 

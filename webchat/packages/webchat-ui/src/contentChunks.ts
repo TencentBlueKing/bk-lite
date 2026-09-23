@@ -16,6 +16,21 @@ export function getContentChunks(message: Message): ContentChunk[] {
   return (message.metadata?.contentChunks as ContentChunk[]) || [];
 }
 
+export function dropTrailingTextChunks(chunks: ContentChunk[]): ContentChunk[] {
+  const next = [...chunks];
+  while (next.length > 0 && next[next.length - 1].type === 'text') {
+    next.pop();
+  }
+  return next;
+}
+
+export function textFromChunks(chunks: ContentChunk[]): string {
+  return chunks
+    .filter((chunk): chunk is TextChunk => chunk.type === 'text')
+    .map((chunk) => chunk.content)
+    .join('');
+}
+
 /** Update or append the trailing text chunk. */
 export function upsertTextChunk(chunks: ContentChunk[], text: string): ContentChunk[] {
   const lastChunk = chunks[chunks.length - 1];

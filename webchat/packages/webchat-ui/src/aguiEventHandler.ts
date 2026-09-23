@@ -10,9 +10,12 @@ import type { ToolCall } from './contentChunks';
 import {
   appendToolCallArgs,
   appendToolCallChunk,
+  dropTrailingTextChunks,
+  getContentChunks,
   mapMessageChunks,
   patchToolCall,
   syncSessionChunks,
+  textFromChunks,
   upsertTextChunk,
 } from './contentChunks';
 import {
@@ -38,6 +41,7 @@ export interface AGUIEventDispatcher {
   (event: AGUIEvent): void;
   flushPendingText(): void;
   cancelPendingText(): void;
+  retractLiveText(): void;
 }
 
 /** Show the extra typing bubble only while waiting for the first bot message. */
@@ -169,6 +173,19 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     syncSessionChunks(sessionManagerRef.current?.getSession(), messageId, (chunks) =>
       patchToolCall(chunks, toolCallId, patch)
     );
+  };
+
+  const retractLiveText = () => {
+    textBatcher.cancel();
+    streamingSegmentContent = '';
+    const messageId = currentMessageIdRef.current;
+    const session = sessionManagerRef.current?.getSession();
+    const current = session?.messages.find((message) => message.id === messageId);
+    const nextChunks = dropTrailingTextChunks(current ? getContentChunks(current) : []);
+    const rebuilt = textFromChunks(nextChunks);
+    streamingContentRef.current = rebuilt;
+    setMessages((prev) => mapMessageChunks(prev, messageId, () => nextChunks, rebuilt));
+    syncSessionChunks(session, messageId, () => nextChunks, rebuilt);
   };
 
   const dispatch = (event: AGUIEvent) => {
@@ -328,5 +345,6 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
 
   dispatch.flushPendingText = flushAndPersistPendingText;
   dispatch.cancelPendingText = () => textBatcher.cancel();
+  dispatch.retractLiveText = retractLiveText;
   return dispatch;
 }

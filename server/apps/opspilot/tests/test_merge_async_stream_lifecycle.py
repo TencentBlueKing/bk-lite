@@ -168,3 +168,34 @@ async def test_源生成器忙于吞掉事件时仍发送sse保活(monkeypatch):
     assert any(frame.startswith(": keepalive") for frame in frames)
     assert any("stream_keepalive" in frame for frame in frames)
     assert any("RUN_FINISHED" in frame for frame in frames)
+
+
+@pytest.mark.asyncio
+async def test_hung_langgraph_stream_still_delivers_node_finished():
+    from apps.opspilot.metis.llm.chain.nested_stream import NODE_FINISHED_EVENT
+
+    started = asyncio.Event()
+
+    async def langgraph_stream():
+        started.set()
+        await asyncio.Event().wait()
+        yield "late"
+
+    owned = asyncio.Queue()
+    await owned.put({"event": "on_tool_end", "data": {"output": "ok"}})
+    await owned.put({"event": NODE_FINISHED_EVENT})
+    merged = _merge_async_streams(langgraph_stream(), asyncio.Queue(), asyncio.Event(), owned)
+
+    kinds = []
+
+    async def collect():
+        async for kind, _data in merged:
+            kinds.append(kind)
+            if kind == "node_finished":
+                return
+
+    await asyncio.wait_for(collect(), timeout=2)
+    await merged.aclose()
+    assert started.is_set()
+    assert "owned" in kinds
+    assert kinds[-1] == "node_finished"

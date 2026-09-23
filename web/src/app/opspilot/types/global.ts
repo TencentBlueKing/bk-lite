@@ -93,6 +93,7 @@ export interface PlannedExecutionStepView {
   objective: string;
   status: 'running' | 'done' | 'failed';
   toolCallIds: string[];
+  reusedPriorResult?: boolean;
   error?: string;
 }
 

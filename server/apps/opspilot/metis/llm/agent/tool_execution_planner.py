@@ -84,6 +84,9 @@ _CMDB_MONITOR_LINK_HINT = (
     "禁止把 cmdb_search_instances / cmdb_get_instance 返回的 inst_uuid、_id 或数字 inst_id 传入 monitor_* 的 instance_ids。"
     "已联动时用 CMDB 实例的 monitor_id，或先调 cmdb_get_monitor_ids 后直接查监控，不要再截断主机名去猜 monitor_obj_id；"
     "未联动则用 monitor_list_object_instances 按完整主机名或 IP 取监控 instance_id，每个 obj_id 只列一次。"
+    "用户点名 nginx/mysql/redis 等中间件时，cmdb_search_instances 的 model_id 必须用该模型名，禁止默认 host；"
+    "monitor_list_active_alerts 的 monitor_obj_id 只能是 monitor_list_objects 返回的数字对象类型 id，"
+    "CMDB monitor_id / 1_IP_端口 等实例标识只能放 instance_ids。"
     "问「纳管多少台/主机数量/主机清单」时只规划 CMDB 检索；"
     "不要把 monitor_list_objects / monitor_list_object_instances 写成查不到再查的下一步。"
 )
@@ -835,9 +838,30 @@ _MONITOR_INSTANCE_LOOKUP_TOOLS = frozenset(
 )
 _HOST_INVENTORY_QUESTION_RE = re.compile(r"纳管|多少台|主机数量|主机清单|资产清单")
 _DECLARED_MONITOR_OBJECT_TYPE_RE = re.compile(
-    r"主机|Host\b|SangforSCPHost|CNwareHost|\bPods?\b|\bNodes?\b|节点|集群|Cluster\b|中间件|Redis\b|MySQL\b|Mysql\b|\bK8s\b|Kubernetes\b",
+    r"主机|Host\b|SangforSCPHost|CNwareHost|\bPods?\b|\bNodes?\b|节点|集群|Cluster\b|"
+    r"中间件|Redis\b|MySQL\b|Mysql\b|Nginx\b|Elasticsearch\b|\bK8s\b|Kubernetes\b",
     re.I,
 )
+
+# 用户点名的 CMDB 模型（中间件等）；规划/工具须锁定，禁止默认 host。
+_CMDB_DECLARED_MODEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bnginx\b", re.I), "nginx"),
+    (re.compile(r"\bmysql\b", re.I), "mysql"),
+    (re.compile(r"\bredis\b", re.I), "redis"),
+    (re.compile(r"\belasticsearch\b|\bes\b", re.I), "elasticsearch"),
+    (re.compile(r"\bmongodb\b", re.I), "mongodb"),
+    (re.compile(r"\bkafka\b", re.I), "kafka"),
+    (re.compile(r"\brabbitmq\b", re.I), "rabbitmq"),
+)
+_CMDB_SEARCH_TOOLS = frozenset(
+    {
+        "cmdb_search_instances",
+        "cmdb_fulltext_search",
+        "cmdb_fulltext_search_by_model",
+    }
+)
+_HOST_DEFAULT_OBJECTIVE_RE = re.compile(r"Host\s*/\s*Server|主机对象|默认\s*host|\bhost\b\s*模型", re.I)
+DECLARED_CMDB_MODEL_KEY = "declared_cmdb_model"
 
 
 def user_declared_monitor_object_type(user_message: str) -> bool:
@@ -845,7 +869,58 @@ def user_declared_monitor_object_type(user_message: str) -> bool:
     text = str(user_message or "")
     if not text.strip() or _HOST_INVENTORY_QUESTION_RE.search(text):
         return False
-    return bool(_DECLARED_MONITOR_OBJECT_TYPE_RE.search(text))
+    return bool(_DECLARED_MONITOR_OBJECT_TYPE_RE.search(text)) or extract_declared_cmdb_model(text) is not None
+
+
+def extract_declared_cmdb_model(user_message: str) -> str | None:
+    """用户是否点名了具体 CMDB/监控中间件模型（如 nginx），资产清点问句不算。"""
+    text = str(user_message or "")
+    if not text.strip() or _HOST_INVENTORY_QUESTION_RE.search(text):
+        return None
+    for pattern, model_id in _CMDB_DECLARED_MODEL_PATTERNS:
+        if pattern.search(text):
+            return model_id
+    return None
+
+
+def rewrite_cmdb_search_for_declared_model(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    user_message: str = "",
+) -> ToolExecutionPlan:
+    """点名中间件时锁定 CMDB model_id，并改写重规划里写死的 Host/Server 目标。"""
+    model = extract_declared_cmdb_model(user_message)
+    if not model:
+        return plan
+    if not available_names.intersection(_CMDB_SEARCH_TOOLS) and not any(
+        str(tool or "").startswith("monitor_") for step in plan.steps for tool in (step.tools or [])
+    ):
+        return plan
+
+    lock_tag = f"model_id={model}"
+    cleaned: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        tools = list(step.tools or [])
+        objective = str(step.objective or "")
+        if tools and set(tools) & _CMDB_SEARCH_TOOLS:
+            if lock_tag in objective:
+                cleaned.append(step)
+                continue
+            new_objective = f"用 CMDB 模型 {lock_tag} 检索（用户已点名 {model}，禁止默认 host）：{objective}"
+            cleaned.append(step.model_copy(update={"objective": new_objective}))
+            changed = True
+            continue
+        if tools and any(str(tool).startswith("monitor_") for tool in tools) and _HOST_DEFAULT_OBJECTIVE_RE.search(objective):
+            new_objective = f"按用户点名的 {model} 对象继续查询（禁止默认 Host/host）：{objective}"
+            cleaned.append(step.model_copy(update={"objective": new_objective}))
+            changed = True
+            continue
+        cleaned.append(step)
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：CMDB 模型锁定 model=%s", model)
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
 
 def drop_type_choice_when_declared(plan: ToolExecutionPlan, user_message: str) -> ToolExecutionPlan:
@@ -1630,6 +1705,7 @@ class ToolExecutionPlanner:
         plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
         plan = enforce_list_metrics_with_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
         plan = rewrite_generic_alert_query_to_alerts_center(plan, available_names, user_message=user_message)
+        plan = rewrite_cmdb_search_for_declared_model(plan, available_names, user_message=user_message)
         plan = drop_type_choice_when_declared(plan, user_message)
         plan = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
         plan = collapse_known_pod_restart_to_evidence_tool(
@@ -1668,6 +1744,8 @@ class ToolExecutionPlanner:
             "禁止用 monitor_list_active_alerts 或先问对象类型。"
             "若用户只问纳管规模、主机数量或资产清单，且目录含 cmdb_*，只规划 CMDB 检索，"
             "不要再规划 monitor_* 作为查不到再查的下一步。"
+            "若用户点名 nginx/mysql/redis 等中间件且规划 cmdb_search_instances，"
+            "步骤目标须写明 model_id 用该模型，禁止默认 host。"
             "禁止把尚未发生的兜底（查不到再换数据源）写成后续步骤；只规划现在必须执行的步骤。"
             "若目录含 generate_attachment_file，且任务是生成报告/月报/文档/Markdown/.md 文件，"
             "必须规划 generate_attachment_file 步骤，禁止空 steps 后在对话里直接输出全文。"
