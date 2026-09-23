@@ -6,6 +6,15 @@ from apps.node_mgmt.constants.node import NodeConstants
 
 
 class PackageVersion(TimeInfo, MaintainerInfo):
+    STATUS_PENDING = "pending"
+    STATUS_READY = "ready"
+    STATUS_DELETING = "deleting"
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "pending"),
+        (STATUS_READY, "ready"),
+        (STATUS_DELETING, "deleting"),
+    )
+
     type = models.CharField(db_index=True, max_length=100, verbose_name="包类型(控制器/采集器)")
     os = models.CharField(db_index=True, max_length=20, verbose_name="操作系统")
     cpu_architecture = models.CharField(db_index=True, max_length=20, blank=True, default=NodeConstants.X86_64_ARCH, verbose_name="CPU架构")
@@ -14,6 +23,13 @@ class PackageVersion(TimeInfo, MaintainerInfo):
     name = models.CharField(max_length=100, verbose_name="包名称")
     description = models.TextField(blank=True, verbose_name="包版本描述")
     sha256 = models.CharField(max_length=64, blank=True, default="", verbose_name="文件SHA256")
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_READY,
+        db_index=True,
+        verbose_name="发布状态",
+    )
 
     class Meta:
         verbose_name = "包版本信息"
