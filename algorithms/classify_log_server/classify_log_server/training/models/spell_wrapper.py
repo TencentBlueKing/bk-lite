@@ -164,7 +164,7 @@ def log_spell_model_to_mlflow(
         registered_model_name: 模型注册中心的名称
         **kwargs: mlflow.pyfunc.log_model 的额外参数
     """
-    wrapper = SpellWrapper(model)
+    wrapper = SpellWrapper(model.for_inference())
 
     # 定义 conda 环境
     conda_env = {
