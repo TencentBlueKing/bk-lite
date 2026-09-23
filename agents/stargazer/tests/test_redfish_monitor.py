@@ -195,5 +195,153 @@ async def test_list_drives_follows_storage_drive_links_and_skips_missing():
     assert [drive["Name"] for drive in drives] == ["Disk 1"]
 
 
+@pytest.mark.asyncio
+async def test_resolve_drives_keeps_storage_path_and_skips_chassis_fallback():
+    """When Storage.Drives already returned disks, do not GET Chassis/Drives."""
+    collector = _collector()
+    requested = []
+
+    async def fake_get(_client, link, optional=False, **_kwargs):
+        requested.append(link)
+        return {"Id": "d1", "Name": "RAID Disk", "Status": {"Health": "OK", "State": "Enabled"}}
+
+    collector._get_json = fake_get
+    drives = await collector._resolve_drives(
+        object(),
+        [{"Drives": [{"@odata.id": "/redfish/v1/Systems/1/Storage/RAID/Drives/0"}]}],
+        [{"@odata.id": "/redfish/v1/Chassis/1", "Drives": {"@odata.id": "/redfish/v1/Chassis/1/Drives"}}],
+    )
+
+    assert [drive["Name"] for drive in drives] == ["RAID Disk"]
+    assert requested == ["/redfish/v1/Systems/1/Storage/RAID/Drives/0"]
+    assert not any("/Chassis/1/Drives" in link for link in requested)
+
+
+@pytest.mark.asyncio
+async def test_resolve_drives_falls_back_to_chassis_drives_when_storage_empty():
+    """Inspur-style Chassis/Drives is used only after Storage.Drives is empty."""
+    collector = _collector()
+
+    async def fake_get(_client, link, optional=False, **_kwargs):
+        if str(link).rstrip("/").endswith("/Chassis/1/Drives"):
+            return {
+                "Members": [
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/HDDPlaneDisk0"},
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/HDDPlaneDisk1"},
+                ]
+            }
+        if str(link).endswith("HDDPlaneDisk0"):
+            return {
+                "Id": "HDDPlaneDisk0",
+                "Name": "Disk0",
+                "MediaType": "SSD",
+                "Status": {"Health": "OK", "State": "Enabled"},
+            }
+        if str(link).endswith("HDDPlaneDisk1"):
+            return {
+                "Id": "HDDPlaneDisk1",
+                "Name": "Disk1",
+                "MediaType": "SSD",
+                "Status": {"Health": "OK", "State": "Enabled"},
+            }
+        return None
+
+    collector._get_json = fake_get
+    drives = await collector._resolve_drives(
+        object(),
+        [],
+        [{"@odata.id": "/redfish/v1/Chassis/1"}],
+    )
+
+    assert [drive["Name"] for drive in drives] == ["Disk0", "Disk1"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_nics_keeps_network_adapters_and_skips_ethernet_fallback():
+    collector = _collector()
+    requested = []
+
+    async def fake_get(_client, link, optional=False, **_kwargs):
+        requested.append(str(link))
+        text = str(link)
+        if text.endswith("/NetworkAdapters"):
+            return {"Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/ob-1"}]}
+        if text.endswith("/ob-1"):
+            return {
+                "Id": "ob-1",
+                "Name": "Onboard NIC",
+                "Status": {"Health": "OK"},
+                "NetworkPorts": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/ob-1/NetworkPorts"},
+            }
+        if text.endswith("/NetworkPorts"):
+            return {"Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/ob-1/NetworkPorts/1"}]}
+        if text.endswith("/NetworkPorts/1"):
+            return {"Id": "1", "Name": "Port 1", "LinkStatus": "LinkUp", "Status": {"Health": "OK"}}
+        raise AssertionError(f"unexpected GET {link}")
+
+    collector._get_json = fake_get
+    rows = await collector._resolve_nics(
+        object(),
+        "/redfish/v1/Chassis/1/NetworkAdapters",
+        {"EthernetInterfaces": {"@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces"}},
+    )
+
+    assert len(rows) == 1
+    adapter, ports = rows[0]
+    assert adapter["Id"] == "ob-1"
+    assert ports[0]["Id"] == "1"
+    assert not any("EthernetInterfaces" in link for link in requested)
+
+
+@pytest.mark.asyncio
+async def test_resolve_nics_falls_back_to_ethernet_interfaces_when_adapters_empty():
+    collector = _collector()
+
+    async def fake_get(_client, link, optional=False, **_kwargs):
+        text = str(link)
+        if text.endswith("/EthernetInterfaces"):
+            return {"Members": [{"@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces/eth0"}]}
+        if text.endswith("/eth0"):
+            return {
+                "Id": "eth0",
+                "Name": "NIC1",
+                "LinkStatus": "LinkUp",
+                "SpeedMbps": 1000,
+                "Status": {"Health": "OK", "State": "Enabled"},
+            }
+        return None
+
+    collector._get_json = fake_get
+    rows = await collector._resolve_nics(
+        object(),
+        "",
+        {"EthernetInterfaces": {"@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces"}},
+    )
+
+    assert len(rows) == 1
+    adapter, ports = rows[0]
+    current = {}
+    collector._emit_nic_metrics(current, rows)
+    assert adapter["Id"] == "eth0"
+    assert ports[0]["SpeedMbps"] == 1000
+    assert _named(current, "redfish_nic_health")["eth0"] == 1
+    assert _values(current, "redfish_nic_port_link_up") == [1]
+    assert _values(current, "redfish_nic_port_speed_mbps") == [1000]
+
+
+def test_ethernetinterfaces_remain_forbidden_on_generic_resource_url():
+    collector = _collector()
+    with pytest.raises(RedfishMonitorError, match="not allowed"):
+        collector._resource_url("/redfish/v1/Systems/1/EthernetInterfaces")
+
+
+def test_port_speed_uses_speed_mbps_only_when_standard_fields_missing():
+    from tasks.collectors.redfish_collector import port_speed_mbps
+
+    assert port_speed_mbps({"CurrentLinkSpeedMbps": 25000, "SpeedMbps": 1000}) == 25000
+    assert port_speed_mbps({"CurrentSpeedGbps": 10, "SpeedMbps": 1000}) == 10000
+    assert port_speed_mbps({"SpeedMbps": 1000}) == 1000
+
+
 def test_monitor_factory_loads_redfish_collector():
     assert _load_monitor_collector("redfish") is RedfishCollector
