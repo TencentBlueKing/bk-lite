@@ -12,7 +12,7 @@ from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence
 
 from core.collection.constants import SECRET_KEYS
 from core.collection.enums import LeaseAcquireStatus, RunStatus, SubmissionStatus, WorkloadClass
-from core.logger import logger, safe_log_value
+from core.logger import logger, safe_exception_info, safe_log_value
 
 # 兼容：历史调用方从 runtime 导入枚举
 __all__ = [
@@ -298,8 +298,8 @@ class CollectionRuntime:
         if acquisition.status == LeaseAcquireStatus.DUPLICATE_ACTIVE:
             fence = lease.fence if lease else 0
             logger.warning(
-                "event=collection_run_duplicate_skipped task_id=%s status=duplicate_active fence=%s",
-                safe_log_value(request.task_id),
+                "event=collection_run_duplicate_skipped %s fence=%s",
+                _run_log_identity(request),
                 fence,
             )
             return Submission(
@@ -359,18 +359,14 @@ class CollectionRuntime:
         status = RunStatus.COMPLETED
         summary: Mapping[str, Any] = {}
         logger.info(
-            "event=collection_run_started %s " "plugin_ref=%s plugin_name=%s model_id=%s | " "任务开始 目标数=%s 凭据数=%s 租约=%s",
+            "event=collection_run_started %s plugin_ref=%s | 任务开始 目标数=%s",
             _run_log_identity(request),
             request.plugin_ref,
-            request.params.get("plugin_name") or "-",
-            request.params.get("model_id") or "-",
             len(request.targets),
-            len(request.credentials),
-            lease.fence,
         )
         run_task = asyncio.current_task()
         heartbeat_task = asyncio.create_task(
-            self._heartbeat_loop(lease, run_task),
+            self._heartbeat_loop(lease, run_task, log_identity=_run_log_identity(request)),
             name=f"collection-heartbeat:{safe_log_value(request.task_id)}:{lease.fence}",
         )
         try:
@@ -385,14 +381,14 @@ class CollectionRuntime:
         except asyncio.CancelledError:
             status = RunStatus.ABANDONED
             raise
-        except Exception:
+        except Exception as error:
             status = RunStatus.FAILED
             logger.exception(
-                "collection run failed task_id=%s plugin_ref=%s model_id=%s fence=%s",
-                request.task_id,
+                "event=collection_run_failed %s plugin_ref=%s failed_stage=run error_type=%s",
+                _run_log_identity(request),
                 request.plugin_ref,
-                request.params.get("model_id") or "-",
-                lease.fence,
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
             )
         finally:
             heartbeat_task.cancel()
@@ -403,15 +399,11 @@ class CollectionRuntime:
             await self._state_store.finish(lease, status, summary)
             duration_ms = round((time.monotonic() - run_started_at) * 1000, 2)
             logger.info(
-                "event=collection_run_terminal %s plugin_ref=%s " "model_id=%s status=%s duration_ms=%s | " "任务结束 最终状态=%s 总耗时=%sms 执行批次=%s",
+                "event=collection_run_terminal %s plugin_ref=%s status=%s duration_ms=%s",
                 _run_log_identity(request),
                 request.plugin_ref,
-                request.params.get("model_id") or "-",
                 status.value,
                 duration_ms,
-                _run_status_zh(status),
-                duration_ms,
-                lease.fence,
             )
             await self._release_admission(len(request.targets))
 
@@ -428,7 +420,7 @@ class CollectionRuntime:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
-    async def _heartbeat_loop(self, lease: RunLease, run_task: asyncio.Task | None) -> None:
+    async def _heartbeat_loop(self, lease: RunLease, run_task: asyncio.Task | None, *, log_identity: str = "instance_id=-") -> None:
         while True:
             await asyncio.sleep(self._settings.lease_heartbeat_seconds)
             try:
@@ -438,18 +430,19 @@ class CollectionRuntime:
                 )
             except asyncio.CancelledError:
                 raise
-            except Exception:  # Redis 故障时 fail closed，停止失去保护的执行
+            except Exception as error:  # Redis 故障时 fail closed，停止失去保护的执行
                 logger.exception(
-                    "collection run heartbeat failed task_id=%s fence=%s",
-                    lease.task_id,
+                    "collection run heartbeat failed %s fence=%s",
+                    log_identity,
                     lease.fence,
+                    exc_info=safe_exception_info(error),
                 )
                 renewed = False
             if renewed:
                 continue
             logger.warning(
-                "collection run lost lease task_id=%s fence=%s",
-                lease.task_id,
+                "collection run lost lease %s fence=%s",
+                log_identity,
                 lease.fence,
             )
             if run_task is not None:
@@ -474,17 +467,8 @@ def _instance_id(params: Mapping[str, Any]) -> str:
 def _run_log_identity(request: CollectionRequest) -> str:
     instance_id = _instance_id(request.params)
     if instance_id != "-":
-        return f"instance_id={instance_id}"
-    return f"task_id={request.task_id}"
-
-
-def _run_status_zh(status: RunStatus) -> str:
-    return {
-        RunStatus.COMPLETED: "完成",
-        RunStatus.COMPLETED_WITH_ERRORS: "部分失败",
-        RunStatus.FAILED: "失败",
-        RunStatus.ABANDONED: "已终止",
-    }.get(status, status.value)
+        return f"instance_id={safe_log_value(instance_id)}"
+    return f"collect_task_id={safe_log_value(request.params.get('collect_task_id') or '-')}"
 
 
 def _normalize_summary(value: Any) -> Mapping[str, Any]:

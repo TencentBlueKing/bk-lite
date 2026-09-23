@@ -14,6 +14,16 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 from typing import Any, Mapping
 
+from apps.alerts.notification_templates.events import (
+    MAX_EVENT_BLOCKS,
+    TOKEN_PATTERN,
+    EventBlockBudgetError,
+    EventBlockError,
+    parse_event_block,
+    render_event_block,
+    validate_event_path,
+)
+
 MAX_SOURCE_BYTES = 64 * 1024
 MAX_OUTPUT_BYTES = 256 * 1024
 MAX_VALUE_BYTES = 64 * 1024
@@ -24,7 +34,7 @@ MAX_PLACEHOLDERS = 200
 MISSING_VALUE = "—"
 
 MARKDOWN_CHANNELS = {"enterprise_wechat_bot", "dingtalk_bot", "feishu_bot", "im_notification"}
-ALLOWED_ROOTS = {"alert", "labels", "dimensions", "enrichment", "notification", "summary"}
+ALLOWED_ROOTS = {"alert", "labels", "dimensions", "enrichment", "notification", "summary", "events"}
 ALERT_FIELDS = {
     "alert_id",
     "title",
@@ -62,7 +72,6 @@ OPERATION_NOTIFICATION_FIELDS = {
 }
 SUMMARY_FIELDS = {"total", "displayed", "omitted", "alerts"}
 PATH_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$")
-PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
 TEMPLATE_MARKER_PATTERN = re.compile(r"({{|}}|{%|%}|{#|#})")
 MARKDOWN_ESCAPE_PATTERN = re.compile(r"([\\`*_{}\[\]()#+\-.!|>~])")
 
@@ -145,6 +154,18 @@ def _validate_placeholder(path: str, *, scope: str) -> None:
         raise TemplateValidationError(f"不支持的变量: {path}")
     if len(parts) < 2:
         raise TemplateValidationError(f"变量必须包含字段路径: {path}")
+    if parts[0] == "events":
+        if scope == "unassigned_summary":
+            raise TemplateValidationError("汇总模板不能使用事件变量")
+        if parts[1] == "count" and len(parts) == 2:
+            return
+        if parts[1] in {"latest", "first"} and len(parts) > 2:
+            try:
+                validate_event_path(".".join(parts[2:]))
+            except EventBlockError as exc:
+                raise TemplateValidationError(str(exc)) from exc
+            return
+        raise TemplateValidationError(f"不支持的事件字段: {path}")
     if parts[0] == "alert" and parts[1] not in ALERT_FIELDS:
         raise TemplateValidationError(f"不支持的告警字段: {path}")
     if parts[0] == "notification" and parts[1] not in NOTIFICATION_FIELDS:
@@ -172,16 +193,29 @@ def validate_source(source: str, *, channel_type: str, is_subject: bool = False,
     if any(marker in source for marker in ("{%", "%}", "{#", "#}")):
         raise TemplateValidationError("模板只支持 {{ path }} 变量")
 
-    matches = list(PLACEHOLDER_PATTERN.finditer(source))
-    if len(matches) > MAX_PLACEHOLDERS:
+    matches = list(TOKEN_PATTERN.finditer(source))
+    placeholders = [match for match in matches if match.group(2) is not None]
+    blocks = [match for match in matches if match.group(1) is not None]
+    if len(placeholders) > MAX_PLACEHOLDERS:
         raise TemplateValidationError("模板变量不能超过 200 个")
+    if len(blocks) > MAX_EVENT_BLOCKS:
+        raise TemplateValidationError(f"事件区块不能超过 {MAX_EVENT_BLOCKS} 个")
+    if is_subject and blocks:
+        raise TemplateValidationError("标题不能使用事件区块")
     paths = []
-    for match in matches:
-        path = match.group(1).strip()
+    for match in placeholders:
+        path = match.group(2).strip()
         _validate_placeholder(path, scope=scope)
         paths.append(path)
+    for match in blocks:
+        if scope == "unassigned_summary":
+            raise TemplateValidationError("汇总模板不能使用事件变量")
+        try:
+            parse_event_block(match.group(1))
+        except EventBlockError as exc:
+            raise TemplateValidationError(str(exc)) from exc
 
-    residue = PLACEHOLDER_PATTERN.sub("", source)
+    residue = TOKEN_PATTERN.sub("", source)
     if TEMPLATE_MARKER_PATTERN.search(residue):
         raise TemplateValidationError("存在未闭合或不受支持的模板标记")
 
@@ -194,7 +228,7 @@ def validate_source(source: str, *, channel_type: str, is_subject: bool = False,
             prefix += "x"
         markers = [f"{prefix}{index}end" for index in range(len(matches))]
         marker_iter = iter(markers)
-        marked_source = PLACEHOLDER_PATTERN.sub(lambda _match: next(marker_iter), source)
+        marked_source = TOKEN_PATTERN.sub(lambda _match: next(marker_iter), source)
         parser = _EmailHTMLValidator(re.compile(rf"{prefix}\d+end"))
         try:
             parser.feed(marked_source)
@@ -272,7 +306,28 @@ def render_source(
 
     def replace(match):
         nonlocal replacement_bytes
-        path = match.group(1).strip()
+        block_body = match.group(1)
+        if block_body is not None:
+            try:
+                spec = parse_event_block(block_body)
+            except EventBlockError as exc:
+                raise TemplateValidationError(str(exc)) from exc
+            remaining = MAX_OUTPUT_BYTES - replacement_bytes - len(source.encode("utf-8"))
+            try:
+                serialized = render_event_block(
+                    spec,
+                    context.get("events") or {},
+                    family=_channel_family(channel_type),
+                    escape=_channel_escape(channel_type),
+                    max_bytes=remaining,
+                )
+            except EventBlockBudgetError as exc:
+                raise TemplateValidationError("模板渲染结果不能超过 256KB") from exc
+            replacement_bytes += len(serialized.encode("utf-8"))
+            if replacement_bytes + len(source.encode("utf-8")) > MAX_OUTPUT_BYTES:
+                raise TemplateValidationError("模板渲染结果不能超过 256KB")
+            return serialized
+        path = match.group(2).strip()
         value, present = _resolve_path(context, path)
         if not present:
             missing_fields.append(path)
@@ -288,7 +343,7 @@ def render_source(
             return _escape_markdown(serialized)
         return serialized
 
-    value = PLACEHOLDER_PATTERN.sub(replace, source)
+    value = TOKEN_PATTERN.sub(replace, source)
     if len(value.encode("utf-8")) > MAX_OUTPUT_BYTES:
         raise TemplateValidationError("模板渲染结果不能超过 256KB")
     if is_subject and ("\r" in value or "\n" in value):
@@ -296,6 +351,22 @@ def render_source(
     if is_subject and len(value) > MAX_SUBJECT_LENGTH:
         raise TemplateValidationError("标题渲染结果不能超过 200 个字符")
     return TemplateRenderResult(value=value, missing_fields=list(dict.fromkeys(missing_fields)))
+
+
+def _channel_family(channel_type: str) -> str:
+    if channel_type == "email":
+        return "html"
+    if channel_type in MARKDOWN_CHANNELS:
+        return "markdown"
+    return "text"
+
+
+def _channel_escape(channel_type: str):
+    if channel_type == "email":
+        return lambda value: html.escape(value, quote=False)
+    if channel_type in MARKDOWN_CHANNELS:
+        return _escape_markdown
+    return lambda value: value
 
 
 def build_alert_context(
@@ -306,6 +377,7 @@ def build_alert_context(
     generated_at: datetime | None = None,
     level_display_name: str | None = None,
     notification_context: Mapping[str, Any] | None = None,
+    events_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     scene_names = {
         "assignment": "告警分派",
@@ -337,7 +409,7 @@ def build_alert_context(
     operation_notification = {
         key: notification_context[key] for key in OPERATION_NOTIFICATION_FIELDS if notification_context and key in notification_context
     }
-    return {
+    context = {
         "alert": alert_data,
         "labels": getattr(alert, "labels", None) or {},
         "dimensions": getattr(alert, "dimensions", None) or {},
@@ -351,3 +423,6 @@ def build_alert_context(
             **operation_notification,
         },
     }
+    if events_context is not None:
+        context["events"] = events_context
+    return context

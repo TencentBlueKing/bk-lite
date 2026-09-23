@@ -28,6 +28,19 @@ make collect-static   # 收集静态文件
 make init-buckets     # 初始化 MinIO bucket
 ```
 
+CMDB 异步导入导出直接使用现有 `make celery` Worker 的默认队列，另由
+`make celery-beat` 驱动每分钟补发和每日清理；不需要单独的 CMDB Worker。
+API、Worker 和 Beat 必须使用相同的数据库、Broker 和对象存储环境配置。
+修改任务代码后重启现有 Worker；修改 Beat 配置后也重启 Beat。
+
+持续排队时可运行 `uv run celery -A apps.core.celery inspect active_queues --timeout=3`，
+确认在线 Worker 消费默认队列（默认名为 `celery`）；再检查 `inspect registered` 中是否包含
+`apps.cmdb.tasks.transfer.execute_transfer`。旧版本投递到 `cmdb_transfer` 的未超时排队记录，
+由每分钟维护补发到默认队列，复用原任务 ID，无需重新提交。不要清空 Broker 队列。
+若消费和任务注册正常，再检查全局执行占用（最多 2 个）和同模型导入互斥；中断任务须按
+[异步导入导出设计](specs/changes/cmdb-async-transfer/spec.md) 核对执行停止与副作用后解除占用。
+默认 threads 池不提供单任务强制终止；15 分钟预算由数据库截止时间、心跳和执行令牌协作检查。
+
 运营分析目录父链发布前检查：
 
 ```bash

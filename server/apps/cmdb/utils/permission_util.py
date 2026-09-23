@@ -1,16 +1,14 @@
 import uuid
 
-from apps.cmdb.constants.constants import OPERATE, VIEW, PERMISSION_INSTANCES, APP_NAME
+from apps.cmdb.constants.constants import APP_NAME, OPERATE, PERMISSION_INSTANCES, VIEW
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.system_mgmt.utils.group_utils import GroupUtils
-
 
 DENY_PERMISSION_PLACEHOLDER = "__cmdb_no_permission__"
 
 
 class CmdbRulesFormatUtil:
-
     @staticmethod
     def _normalize_user_group_ids(group_list):
         group_list = group_list or []
@@ -91,8 +89,7 @@ class CmdbRulesFormatUtil:
         return permission_rule_map
 
     @staticmethod
-    def has_object_permission(obj_type, operator, model_id, permission_instances_map, instance, team_id=None,
-                              default_group_id=None):
+    def has_object_permission(obj_type, operator, model_id, permission_instances_map, instance, team_id=None, default_group_id=None):
         """
         检查用户是否有权限操作对象
         :param model_id: 模型id
@@ -107,8 +104,7 @@ class CmdbRulesFormatUtil:
         :param default_group_id: 默认组织ID
         :return: 是否有权限
         """
-        organizations_instances_map = CmdbRulesFormatUtil.format_organizations_instances_map(
-            permission_instances_map)
+        organizations_instances_map = CmdbRulesFormatUtil.format_organizations_instances_map(permission_instances_map)
 
         if obj_type == "model":
             groups = instance.get("group", [])
@@ -129,7 +125,6 @@ class CmdbRulesFormatUtil:
                     return True
 
             return False
-
 
         elif obj_type == "instances":
             inst_name = instance.get("inst_name")
@@ -228,14 +223,18 @@ class CmdbRulesFormatUtil:
 
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
+        return CmdbRulesFormatUtil.format_user_context_permissions(request.user, current_team, include_children, model_id, permission_type)
+
+    @staticmethod
+    def format_user_context_permissions(user, current_team, include_children, model_id, permission_type=PERMISSION_INSTANCES):
         user_teams = CmdbRulesFormatUtil.get_authorized_team_ids(
-            user=request.user,
+            user=user,
             current_team=current_team,
             include_children=include_children,
         )
         permission_key = f"{permission_type}.{model_id}" if model_id else permission_type
         permission_rules = get_permission_rules(
-            user=request.user,
+            user=user,
             current_team=current_team,
             app_name=APP_NAME,
             permission_key=permission_key,
@@ -261,26 +260,32 @@ class CmdbRulesFormatUtil:
         for organizations_id, _permission_data in permission_instances_map.items():
             instances_map = _permission_data.get("permission_instances_map", {})
             if "__default_model" in _permission_data:
-                organizations_instances_map[organizations_id] = {"permission": {VIEW},
-                                                                 "organization": {organizations_id},
-                                                                 "organization_permission_map": {organizations_id: {VIEW}}}
+                organizations_instances_map[organizations_id] = {
+                    "permission": {VIEW},
+                    "organization": {organizations_id},
+                    "organization_permission_map": {organizations_id: {VIEW}},
+                }
                 continue
             if not instances_map:
                 # 说明这个组织没有额外配置条件 则全选都有权限
-                organizations_instances_map[organizations_id] = {"permission": {VIEW, OPERATE},
-                                                                 "organization": {organizations_id},
-                                                                 "organization_permission_map": {organizations_id: {VIEW, OPERATE}}}
+                organizations_instances_map[organizations_id] = {
+                    "permission": {VIEW, OPERATE},
+                    "organization": {organizations_id},
+                    "organization_permission_map": {organizations_id: {VIEW, OPERATE}},
+                }
                 continue
             for inst_name, permission in instances_map.items():
                 if inst_name not in organizations_instances_map:
-                    organizations_instances_map[inst_name] = {"permission": set(permission),
-                                                              "organization": {organizations_id},
-                                                              "organization_permission_map": {organizations_id: set(permission)}}
+                    organizations_instances_map[inst_name] = {
+                        "permission": set(permission),
+                        "organization": {organizations_id},
+                        "organization_permission_map": {organizations_id: set(permission)},
+                    }
                 else:
                     organizations_instances_map[inst_name]["permission"].update(set(permission))
                     organizations_instances_map[inst_name]["organization"].add(organizations_id)
-                    organizations_instances_map[inst_name].setdefault("organization_permission_map", {}).setdefault(
-                        organizations_id, set()
-                    ).update(set(permission))
+                    organizations_instances_map[inst_name].setdefault("organization_permission_map", {}).setdefault(organizations_id, set()).update(
+                        set(permission)
+                    )
 
         return organizations_instances_map

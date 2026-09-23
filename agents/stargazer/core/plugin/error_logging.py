@@ -121,13 +121,8 @@ def log_plugin_exception(
     log_method = getattr(logger, level, logger.error)
     frames = _traceback_frames(error)
     log_method(
-        "event=plugin_exception task_id=%s plugin_ref=%s model_id=%s "
-        "plugin_name=%s target=%s error_type=%s error_message=%s call_chain=%s\n"
-        "source_context=\n%s",
-        _safe_token(task_id),
+        "event=plugin_exception plugin_ref=%s target=%s error_type=%s error_message=%s call_chain=%s\nsource_context=\n%s",
         _safe_token(plugin_ref),
-        _safe_token(model_id),
-        _safe_token(plugin_name),
         _safe_token(target, default="logical"),
         _safe_token(type(error).__name__),
         _safe_error_message(error),

@@ -1183,7 +1183,7 @@ def reconcile_instance_auto_association_task(instance_id: int) -> dict:
 
 
 @shared_task
-def reconcile_instances_auto_association_task(instance_ids: list[int]) -> dict:
+def reconcile_instances_auto_association_task(instance_ids: list[int], schedule_incoming: bool = True) -> dict:
     """批量重算实例关联，并在服务层合并重复的目标侧规则。"""
     from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
 
@@ -1191,7 +1191,17 @@ def reconcile_instances_auto_association_task(instance_ids: list[int]) -> dict:
         "[AutoRelationRule] start batch instance reconcile, count=%s",
         len(instance_ids or []),
     )
-    return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids)
+    if schedule_incoming:
+        return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids)
+    return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids, schedule_incoming=False)
+
+
+@shared_task
+def sync_incoming_auto_association_task(instance_ids: list[int]) -> dict:
+    """串行批次结束后统一派发入向规则同步。"""
+    from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
+
+    return AutoRelationRuleReconcileService.sync_incoming_for_instances(instance_ids)
 
 
 @shared_task
