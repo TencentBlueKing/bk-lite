@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Any, Iterator
 from uuid import UUID
 
@@ -20,28 +21,74 @@ from langchain_core.outputs import ChatGenerationChunk, GenerationChunk
 from langchain_core.runnables.config import var_child_runnable_config
 
 OWNED_EVENT_QUEUE_KEY = "agui_owned_event_queue"
+OWNED_STREAM_CONTEXT_KEY = "agui_owned_stream_context"
 NODE_FINISHED_EVENT = "opspilot_node_finished"
 PLANNED_TOOL_STEPS_KEY = "planned_tool_steps"
 PLANNED_STEP_HOLDER_KEY = "planned_step_holder"
 
-# 本轮 SSE / 节点共用的引用（同一 dict 对象，不用 ContextVar：
-# agui 消费端与工具回调常在别的 Task/线程，ContextVar 读不到）。
-_active_planned_tool_steps: dict[str, int] | None = None
-_active_step_holder: dict[str, Any] | None = None
-_active_owned_queue: asyncio.Queue | None = None
+
+@dataclass
+class OwnedStreamContext:
+    """本轮 SSE / 节点共用的队列与步骤表。挂在 configurable，不进进程全局。"""
+
+    queue: asyncio.Queue | None = None
+    step_holder: dict[str, Any] = field(default_factory=lambda: {"step_index": None})
+    planned_tool_steps: dict[str, int] = field(default_factory=dict)
 
 
-def bind_owned_event_queue(queue: asyncio.Queue | None) -> asyncio.Queue | None:
-    """工具回调拿到的 config 经常没有本轮队列，选择事件回退到这里。"""
-    global _active_owned_queue
-    previous = _active_owned_queue
-    _active_owned_queue = queue
-    return previous
+def make_owned_stream_context(queue: asyncio.Queue | None = None) -> OwnedStreamContext:
+    return OwnedStreamContext(queue=queue)
+
+
+def attach_owned_stream_context(config: dict, ctx: OwnedStreamContext) -> dict:
+    """把本轮 context 写进 configurable，供工具回调与节点共用同一对象。"""
+    configurable = config.setdefault("configurable", {})
+    if not isinstance(configurable, dict):
+        configurable = {}
+        config["configurable"] = configurable
+    configurable[OWNED_STREAM_CONTEXT_KEY] = ctx
+    configurable[OWNED_EVENT_QUEUE_KEY] = ctx.queue
+    configurable[PLANNED_TOOL_STEPS_KEY] = ctx.planned_tool_steps
+    configurable[PLANNED_STEP_HOLDER_KEY] = ctx.step_holder
+    return config
+
+
+def _configurable_of(config: dict | None) -> dict:
+    configurable = (config or {}).get("configurable")
+    return configurable if isinstance(configurable, dict) else {}
+
+
+def owned_stream_context(config: dict | None) -> OwnedStreamContext | None:
+    """只从本请求 config / LangChain child config 取 context，没有则返回 None。"""
+    configurable = _configurable_of(config)
+    ctx = configurable.get(OWNED_STREAM_CONTEXT_KEY)
+    if isinstance(ctx, OwnedStreamContext):
+        return ctx
+    queue = configurable.get(OWNED_EVENT_QUEUE_KEY)
+    holder = configurable.get(PLANNED_STEP_HOLDER_KEY)
+    steps = configurable.get(PLANNED_TOOL_STEPS_KEY)
+    if isinstance(queue, asyncio.Queue) or isinstance(holder, dict) or isinstance(steps, dict):
+        ctx = OwnedStreamContext(
+            queue=queue if isinstance(queue, asyncio.Queue) else None,
+            step_holder=holder if isinstance(holder, dict) else {"step_index": None},
+            planned_tool_steps=steps if isinstance(steps, dict) else {},
+        )
+        if configurable:
+            attach_owned_stream_context(config if isinstance(config, dict) else {"configurable": configurable}, ctx)
+        return ctx
+    current = var_child_runnable_config.get()
+    if isinstance(current, dict) and current is not config:
+        child_cfg = _configurable_of(current)
+        if child_cfg is not configurable:
+            return owned_stream_context(current)
+    return None
 
 
 def owned_event_queue(config: dict | None) -> asyncio.Queue | None:
-    configurable = (config or {}).get("configurable") or {}
-    queue = configurable.get(OWNED_EVENT_QUEUE_KEY)
+    ctx = owned_stream_context(config)
+    if ctx is not None and isinstance(ctx.queue, asyncio.Queue):
+        return ctx.queue
+    queue = _configurable_of(config).get(OWNED_EVENT_QUEUE_KEY)
     if isinstance(queue, asyncio.Queue):
         return queue
     return None
@@ -56,14 +103,8 @@ class OwnedEventBridge(AsyncCallbackHandler):
         self._step_holder = step_holder if isinstance(step_holder, dict) else {}
 
     def _current_step_index(self) -> int | None:
-        # 工具回调常在线程池或 ainvoke 返回之后，读共享 holder，不读 ContextVar。
-        for source in (self._step_holder, _active_step_holder):
-            if not isinstance(source, dict):
-                continue
-            held = source.get("step_index")
-            if isinstance(held, int) and not isinstance(held, bool) and held >= 1:
-                return held
-        return None
+        # 只读本桥持有的 request-scoped holder，不回退进程全局。
+        return _step_index_from_holder(self._step_holder)
 
     def _send(self, event: dict) -> None:
         step_index = self._current_step_index()
@@ -170,17 +211,20 @@ class OwnedEventBridge(AsyncCallbackHandler):
 
 
 def planned_step_holder(config: dict | None) -> dict:
-    global _active_step_holder
+    ctx = owned_stream_context(config)
+    if ctx is not None:
+        configurable = _configurable_of(config)
+        if configurable:
+            configurable[PLANNED_STEP_HOLDER_KEY] = ctx.step_holder
+            configurable[OWNED_STREAM_CONTEXT_KEY] = ctx
+        return ctx.step_holder
     configurable = (config or {}).get("configurable")
     if not isinstance(configurable, dict):
-        holder = {"step_index": None}
-        _active_step_holder = holder
-        return holder
+        return {"step_index": None}
     holder = configurable.get(PLANNED_STEP_HOLDER_KEY)
     if not isinstance(holder, dict):
         holder = {"step_index": None}
         configurable[PLANNED_STEP_HOLDER_KEY] = holder
-    _active_step_holder = holder
     return holder
 
 
@@ -189,7 +233,6 @@ def nested_agent_callbacks(config: dict | None) -> list:
     queue = owned_event_queue(config)
     if queue is None:
         return []
-    bind_owned_event_queue(queue)
     return [OwnedEventBridge(queue, planned_step_holder(config))]
 
 
@@ -198,9 +241,8 @@ def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bo
     if isinstance(queue_or_config, asyncio.Queue):
         queue = queue_or_config
     else:
-        queue = owned_event_queue(queue_or_config if isinstance(queue_or_config, dict) else None)
-        if queue is None and isinstance(_active_owned_queue, asyncio.Queue):
-            queue = _active_owned_queue
+        config = queue_or_config if isinstance(queue_or_config, dict) else None
+        queue = owned_event_queue(config)
     if queue is None or not name:
         return False
     try:
@@ -254,10 +296,10 @@ def isolated_child_callback_context() -> Iterator[None]:
 
 @contextmanager
 def bind_planned_step_index(step_index: int, config: dict | None = None) -> Iterator[None]:
-    """本步执行期间把步骤号写进共享 holder。
+    """本步执行期间把步骤号写进本请求 holder。
 
     工具回调常晚于 ainvoke 返回，退出时不清空；下一步 bind 会覆盖，planned_run
-    结束时由 clear_planned_step_holder 收口。
+    结束时由 clear_planned_step_holder 收口。没有 config 时不写任何共享状态。
     """
     holder = planned_step_holder(config) if isinstance(config, dict) else None
     if isinstance(holder, dict):
@@ -266,37 +308,14 @@ def bind_planned_step_index(step_index: int, config: dict | None = None) -> Iter
 
 
 def clear_planned_step_holder(config: dict | None = None) -> None:
-    holder = planned_step_holder(config) if isinstance(config, dict) else _active_step_holder
+    if not isinstance(config, dict):
+        return
+    holder = planned_step_holder(config)
     if isinstance(holder, dict):
         holder["step_index"] = None
 
 
-def activate_planned_tool_steps(bindings: dict[str, int]) -> dict[str, int] | None:
-    """本轮 SSE 与节点共用同一张 tool_call_id → step_index 表。"""
-    global _active_planned_tool_steps
-    previous = _active_planned_tool_steps
-    _active_planned_tool_steps = bindings
-    return previous
-
-
-def reset_planned_tool_steps(previous: dict[str, int] | None) -> None:
-    global _active_planned_tool_steps, _active_step_holder
-    _active_planned_tool_steps = previous
-    _active_step_holder = None
-
-
-def lookup_planned_tool_step(tool_call_id: str) -> int | None:
-    bindings = _active_planned_tool_steps
-    if not isinstance(bindings, dict) or not tool_call_id:
-        return None
-    step_index = bindings.get(tool_call_id)
-    if isinstance(step_index, int) and not isinstance(step_index, bool) and step_index >= 1:
-        return step_index
-    return None
-
-
-def current_planned_step_index() -> int | None:
-    holder = _active_step_holder
+def _step_index_from_holder(holder: Any) -> int | None:
     if not isinstance(holder, dict):
         return None
     held = holder.get("step_index")
@@ -305,18 +324,52 @@ def current_planned_step_index() -> int | None:
     return None
 
 
+def _bindings_from_ctx(ctx: OwnedStreamContext | dict | None) -> dict[str, int] | None:
+    if isinstance(ctx, OwnedStreamContext):
+        return ctx.planned_tool_steps
+    if isinstance(ctx, dict):
+        if "configurable" in ctx or OWNED_STREAM_CONTEXT_KEY in ctx or PLANNED_TOOL_STEPS_KEY in ctx:
+            resolved = owned_stream_context(ctx)
+            if resolved is not None:
+                return resolved.planned_tool_steps
+            bindings = _configurable_of(ctx).get(PLANNED_TOOL_STEPS_KEY)
+            return bindings if isinstance(bindings, dict) else None
+        return ctx
+    return None
+
+
+def lookup_planned_tool_step(tool_call_id: str, ctx: OwnedStreamContext | dict | None = None) -> int | None:
+    bindings = _bindings_from_ctx(ctx)
+    if not isinstance(bindings, dict) or not tool_call_id:
+        return None
+    step_index = bindings.get(tool_call_id)
+    if isinstance(step_index, int) and not isinstance(step_index, bool) and step_index >= 1:
+        return step_index
+    return None
+
+
+def current_planned_step_index(ctx: OwnedStreamContext | dict | None = None) -> int | None:
+    if isinstance(ctx, OwnedStreamContext):
+        return _step_index_from_holder(ctx.step_holder)
+    if isinstance(ctx, dict):
+        resolved = owned_stream_context(ctx)
+        if resolved is not None:
+            return _step_index_from_holder(resolved.step_holder)
+        return _step_index_from_holder(ctx)
+    return None
+
+
 def remember_planned_tool_steps(config: dict | None, step_index: int, messages: list) -> None:
-    """把本步实际产生的 tool_call_id 记到共享表，供 chain_end 补发时归位。"""
-    global _active_planned_tool_steps
+    """把本步实际产生的 tool_call_id 记到本请求表，供 chain_end 补发时归位。"""
     if not isinstance(step_index, int) or step_index < 1:
         return
-    configurable = (config or {}).get("configurable") or {}
+    configurable = _configurable_of(config)
     bindings = configurable.get(PLANNED_TOOL_STEPS_KEY)
     if not isinstance(bindings, dict):
-        bindings = _active_planned_tool_steps
+        ctx = owned_stream_context(config)
+        bindings = ctx.planned_tool_steps if ctx is not None else None
     if not isinstance(bindings, dict):
         return
-    _active_planned_tool_steps = bindings
     for message in messages or []:
         if isinstance(message, ToolMessage):
             tool_call_id = str(getattr(message, "tool_call_id", "") or "").strip()

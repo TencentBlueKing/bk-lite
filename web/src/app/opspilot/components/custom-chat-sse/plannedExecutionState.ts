@@ -3,7 +3,7 @@
  * 将工具调用挂到当前执行步骤，供对话 UI 按方案 A（步骤嵌套工具组）渲染。
  */
 
-export type PlannedStepStatus = 'running' | 'done' | 'failed';
+export type PlannedStepStatus = 'running' | 'done' | 'failed' | 'skipped';
 
 export interface PlannedExecutionStepEvent {
   phase: 'start' | 'end' | string;
@@ -54,7 +54,17 @@ const normalizeStepIndex = (value: unknown): number | null => {
 
 export const isFailedPlannedStepStatus = (status: unknown): boolean => {
   if (typeof status !== 'string' || !status) return false;
-  return status === 'failed' || status.startsWith('failed_');
+  return (
+    status === 'failed' ||
+    status.startsWith('failed_') ||
+    status === 'missing_params' ||
+    status === 'target_unresolved'
+  );
+};
+
+export const isSkippedPlannedStepStatus = (status: unknown): boolean => {
+  if (typeof status !== 'string' || !status) return false;
+  return status === 'skipped' || status === 'skipped_context_overflow';
 };
 
 /**
@@ -78,7 +88,8 @@ export const applyPlannedExecutionStep = (
   const objective = normalizeObjective(event.objective);
   const phase = typeof event.phase === 'string' ? event.phase : '';
   const endFailed = phase === 'end' && isFailedPlannedStepStatus(event.status);
-  const endStatus: PlannedStepStatus = endFailed ? 'failed' : 'done';
+  const endSkipped = phase === 'end' && isSkippedPlannedStepStatus(event.status);
+  const endStatus: PlannedStepStatus = endFailed ? 'failed' : endSkipped ? 'skipped' : 'done';
   const endError =
     endFailed && typeof event.error === 'string' && event.error.trim()
       ? event.error.trim()
@@ -96,9 +107,7 @@ export const applyPlannedExecutionStep = (
   };
 
   if (phase === 'end') {
-    const reused =
-      event.outcome === 'reused_prior_result' ||
-      (Array.isArray(event.tools_invoked) && event.tools_invoked.length === 0 && !endFailed);
+    const reused = event.outcome === 'reused_prior_result';
     if (existingIdx >= 0) {
       steps[existingIdx] = {
         ...steps[existingIdx],
@@ -267,7 +276,7 @@ export const finalizePlannedExecutionSteps = (
   return {
     currentStepIndex: null,
     steps: state.steps.map((step) => {
-      if (step.status === 'done' || step.status === 'failed') {
+      if (step.status === 'done' || step.status === 'failed' || step.status === 'skipped') {
         return step;
       }
       return { ...step, status: 'done' as const };
