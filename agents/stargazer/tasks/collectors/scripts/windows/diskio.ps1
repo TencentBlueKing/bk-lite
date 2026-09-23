@@ -1,8 +1,8 @@
 $diskCounters = Get-MetricData 'Win32_PerfRawData_PerfDisk_PhysicalDisk' | Where-Object { $_.Name -and $_.Name -ne '_Total' }
-$utilByName = @{}
+$formattedByName = @{}
 Get-MetricData 'Win32_PerfFormattedData_PerfDisk_PhysicalDisk' | ForEach-Object {
-    if ($_.Name -and $_.Name -ne '_Total' -and $null -ne $_.PercentDiskTime) {
-        $utilByName[$_.Name] = [double]$_.PercentDiskTime
+    if ($_.Name -and $_.Name -ne '_Total') {
+        $formattedByName[$_.Name] = $_
     }
 }
 $diskioArr = @()
@@ -14,11 +14,20 @@ foreach ($d in $diskCounters) {
         read_bytes = [int64]$d.DiskReadBytesPersec
         write_bytes = [int64]$d.DiskWriteBytesPersec
     }
-    if ($utilByName.ContainsKey($d.Name)) {
-        $util = $utilByName[$d.Name]
-        if ($util -lt 0) { $util = 0 }
-        if ($util -gt 100) { $util = 100 }
-        $item['io_util_percent'] = [math]::Round($util, 2)
+    if ($formattedByName.ContainsKey($d.Name)) {
+        $formatted = $formattedByName[$d.Name]
+        if ($null -ne $formatted.PercentDiskTime) {
+            $util = [double]$formatted.PercentDiskTime
+            if ($util -lt 0) { $util = 0 }
+            if ($util -gt 100) { $util = 100 }
+            $item['io_util_percent'] = [math]::Round($util, 2)
+        }
+        if ($null -ne $formatted.AvgDiskSecPerRead) {
+            $item['read_latency_ms'] = [math]::Round([math]::Max([double]$formatted.AvgDiskSecPerRead, 0) * 1000, 4)
+        }
+        if ($null -ne $formatted.AvgDiskSecPerWrite) {
+            $item['write_latency_ms'] = [math]::Round([math]::Max([double]$formatted.AvgDiskSecPerWrite, 0) * 1000, 4)
+        }
     }
     $diskioArr += $item
 }

@@ -17,6 +17,7 @@ from apps.core.utils.time_util import parse_rfc3339_range_utc, rfc3339_to_timest
 from apps.monitor.services.host_metric_queries import (
     cpu_usage_query,
     disk_used_percent_query,
+    disk_read_latency_query,
     disk_write_latency_query,
     diskio_io_util_query,
     diskio_read_bytes_query,
@@ -63,6 +64,7 @@ SUPPORTED_RANGE_METRIC_TYPES = (
     "net_out",
     "disk_io",
     "disk_write_latency",
+    "disk_read_latency",
     "disk_read_rate",
     "disk_write_rate",
     "processes_blocked",
@@ -101,6 +103,10 @@ RANGE_METRIC_SPECS: dict[str, dict[str, Any]] = {
     },
     "disk_write_latency": {
         "query": disk_write_latency_query(),
+        "fold": RANGE_METRIC_FOLD_MAX,
+    },
+    "disk_read_latency": {
+        "query": disk_read_latency_query(),
         "fold": RANGE_METRIC_FOLD_MAX,
     },
     "disk_read_rate": {

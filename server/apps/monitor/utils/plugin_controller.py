@@ -73,6 +73,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "namespace",
     "node_id",
     "os_type",
+    "operating_system",
     "owa_url",
     "password",
     "pattern",
@@ -256,6 +257,35 @@ def _normalize_aliyun_region(value) -> str:
     return text or "cn-hangzhou"
 
 
+def resolve_operating_system(context: dict) -> str:
+    """Resolve linux/windows for Host Telegraf templates from context or Node.
+
+    Host child templates are shared across OS. Windows-only inputs such as
+    win_perf_counters must not render on Linux or Telegraf fails to start.
+    """
+    explicit = str(context.get("operating_system") or "").strip().lower()
+    if explicit in {"linux", "windows"}:
+        return explicit
+    node_id = context.get("node_id")
+    if not node_id:
+        return ""
+    from apps.node_mgmt.models import Node
+
+    os_value = Node.objects.filter(id=node_id).values_list("operating_system", flat=True).first()
+    text = str(os_value or "").strip().lower()
+    return text if text in {"linux", "windows"} else ""
+
+
+def operating_system_by_node_ids(node_ids) -> dict[str, str]:
+    ids = sorted({str(node_id) for node_id in node_ids if node_id not in (None, "")})
+    if not ids:
+        return {}
+    from apps.node_mgmt.models import Node
+
+    rows = Node.objects.filter(id__in=ids).values_list("id", "operating_system")
+    return {str(node_id): str(os_value or "").strip().lower() for node_id, os_value in rows if str(os_value or "").strip().lower() in {"linux", "windows"}}
+
+
 def _normalize_template_context(context: dict) -> dict:
     normalized = {**context}
     metrics_modules = normalized.get("metrics_modules")
@@ -344,6 +374,10 @@ class Controller:
         :raises ValueError: 当 instance_id 格式不正确时
         """
         _context = _normalize_template_context(context)
+        if not str(_context.get("operating_system") or "").strip():
+            resolved_os = resolve_operating_system(_context)
+            if resolved_os:
+                _context["operating_system"] = resolved_os
 
         # 优先使用显式 logical_instance_value（已规范化的逻辑实例值）。
         # 仅在缺失时才尝试解析 instance_id，保持向后兼容。
@@ -492,6 +526,7 @@ class Controller:
         node_configs, node_child_configs, collect_configs = [], [], []
 
         templates_by_type = self.get_templates_by_collector(collector, collect_type)
+        os_by_node = operating_system_by_node_ids(config_info.get("node_id") for config_info in configs)
 
         if not templates_by_type:
             logger.warning(f"未找到任何模板：collector={collector}, collect_type={collect_type}")
@@ -532,6 +567,9 @@ class Controller:
                         "plugin_id": plugin_template_id or plugin_id,
                         "monitor_plugin_id": plugin_id,
                     }
+                    node_os = os_by_node.get(str(config_info.get("node_id") or ""))
+                    if node_os and not str(render_context.get("operating_system") or "").strip():
+                        render_context["operating_system"] = node_os
                     from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_plugin
 
                     render_context["ifmib_capable"] = is_ifmib_capable_plugin(plugin_obj)

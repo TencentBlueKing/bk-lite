@@ -485,6 +485,40 @@
     },
     {
       "metric_group": "Disk IO",
+      "name": "disk_read_latency",
+      "query": "disk_read_latency_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "Disk Read Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average disk read latency in milliseconds from formatted AvgDiskSecPerRead"
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "disk_write_latency",
+      "query": "disk_write_latency_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "Disk Write Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average disk write latency in milliseconds from formatted AvgDiskSecPerWrite"
+    },
+    {
+      "metric_group": "Disk IO",
       "name": "diskio_reads_rate",
       "query": "rate(diskio_reads_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[5m])",
       "display_name": "Disk Read Rate",
