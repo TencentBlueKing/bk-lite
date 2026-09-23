@@ -16,8 +16,8 @@ const SemanticBadge = ({
   centered = false,
 }: SemanticBadgeProps) => {
   const className = centered
-    ? 'inline-flex items-center justify-center rounded px-2 py-0.5 text-xs font-medium'
-    : 'inline-flex items-center rounded px-2 py-0.5 text-xs font-medium';
+    ? 'inline-flex items-center justify-center rounded px-2 py-0.5 text-xs'
+    : 'inline-flex items-center rounded px-2 py-0.5 text-xs';
 
   return (
     <span

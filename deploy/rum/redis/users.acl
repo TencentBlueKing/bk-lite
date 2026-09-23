@@ -1,0 +1,8 @@
+user default off
+
+user rum-admission on >rum-admission-dev-secret-2026-000002 ~ops:rum:* &* +@all -@dangerous
+user rum-sessionizer on >rum-sessionizer-dev-secret-2026-000004 ~ops:rum:* &* +@all -@dangerous
+user rum-replay-exporter on >rum-replay-exporter-dev-secret-000003 ~ops:rum:* &* +@all -@dangerous
+user rum-controller on >rum-controller-dev-secret-2026-000001 ~ops:rum:* &* +@all -@dangerous
+user rum-maintainer on >rum-maintainer-dev-secret-2026-000005 ~ops:rum:* &* +@all -@dangerous
+user rum-replay-index-maintainer on >rum-replay-index-maintainer-dev-secret-000006 ~ops:rum:* &* +@all -@dangerous

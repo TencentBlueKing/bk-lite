@@ -27,6 +27,8 @@ REST_FRAMEWORK = {
         "dashboard_share_access": "300/minute",
         "dashboard_share_prepare": "30/minute",
         "dashboard_share_invalid_token": "20/minute",
+        # Unauthenticated CI sourcemap upload: per source IP, bounds token guessing.
+        "rum_sourcemap_ingest": "60/minute",
     },
 }
 
