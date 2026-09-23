@@ -127,7 +127,7 @@ const DryRunResultModal = ({
 
   return (
     <OperateModal
-      title={translate('monitor.events.dryRunResult', '试跑结果')}
+      title={translate('monitor.events.dryRunResult', '预检结果')}
       open={open}
       onCancel={onClose}
       footer={null}
