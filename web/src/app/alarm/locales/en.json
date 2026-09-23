@@ -1005,7 +1005,7 @@
     "actionParamAllowAdjust": "Editable at run",
     "actionParamTriggerEvent": "Trigger event type",
     "actionParamTriggerEventTip": "The script receives the event key, not the display name:",
-    "actionParamTriggerEventManual": "Manual run",
+    "actionParamTriggerEventManual": "Manual runs map the current alert status: unassigned→created, pending→assigned, processing→acknowledged, resolved→resolved, closed→closed",
     "actionReloadParams": "Reload from job template",
     "actionExecuteParams": "Execution parameters",
     "actionExecuteParamsTip": "Only adjustable constants are shown. Confirm to run.",

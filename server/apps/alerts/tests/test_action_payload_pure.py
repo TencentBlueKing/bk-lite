@@ -2,7 +2,7 @@ import pytest
 
 from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.overrides import validate_manual_param_overrides
-from apps.alerts.action.payload import build_match_payload, build_rule_payload, resolve_field
+from apps.alerts.action.payload import build_match_payload, build_rule_payload, resolve_field, resolve_trigger_event_param
 from apps.alerts.action.resolver import resolve_params
 
 
@@ -172,6 +172,21 @@ def test_resolve_params_reads_trigger_event_from_payload():
         [{"name": "event"}],
     )
     assert params == [{"name": "event", "value": "closed"}]
+
+
+def test_resolve_trigger_event_param_keeps_lifecycle_event():
+    execution = type("E", (), {"trigger_event": "closed"})()
+    alert = type("A", (), {"status": "unassigned"})()
+    assert resolve_trigger_event_param(execution, alert) == "closed"
+
+
+def test_resolve_trigger_event_param_maps_manual_from_alert_status():
+    execution = type("E", (), {"trigger_event": "manual"})()
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "unassigned"})()) == "created"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "pending"})()) == "assigned"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "processing"})()) == "acknowledged"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "resolved"})()) == "resolved"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "closed"})()) == "closed"
 
 
 def test_validate_manual_overrides_only_allows_adjustable_const():
