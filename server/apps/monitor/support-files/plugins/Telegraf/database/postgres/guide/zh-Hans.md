@@ -5,17 +5,27 @@
 ## 前置要求
 
 - 采集节点能够访问目标 PostgreSQL 主机和实际端口。
-- 准备可登录指定数据库并读取所需统计视图的账号；PostgreSQL 10 及以上可按最小权限授予 `pg_monitor`。
+- 准备可登录指定数据库并读取 `pg_stat_database`、`pg_stat_bgwriter` 的账号。PostgreSQL 10 及以上授予 `pg_read_all_stats`。
 - 目标的 `pg_hba.conf` 允许来自采集节点的该账号连接。
 - 页面可选 SSL 模式 `disable`、`prefer`、`require`；本模板不支持证书路径，`verify-ca` / `verify-full` 暂不可用。
 - 模板固定忽略 `template0` 和 `template1`。
 
 ## 接入步骤
 
-1. 从实际采集节点验证目标地址、账号、数据库名、SSL 模式和统计视图权限。
-2. 填写用户名、密码、主机、实际端口、数据库名、SSL 模式和采集间隔（默认 `60` 秒）。
-3. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
-4. 保存后等待至少一个采集周期。
+1. 由 DBA 创建专用账号。当前采集器是 Telegraf `inputs.postgresql`，读取 `pg_stat_database` 和 `pg_stat_bgwriter`。PostgreSQL 10 及以上授予 `pg_read_all_stats`。将 `<monitor_user>`、`<password>`、`<dbname>` 换成现场值，不要把密码写入命令历史：
+
+```sql
+CREATE ROLE <monitor_user> WITH LOGIN PASSWORD '<password>';
+GRANT CONNECT ON DATABASE <dbname> TO <monitor_user>;
+GRANT pg_read_all_stats TO <monitor_user>;
+```
+
+`<dbname>` 与页面数据库名一致，默认可用 `postgres`。不要授予超级用户，也不要改用 `postgres_exporter` 的 `SECURITY DEFINER` 包装视图；当前模板不查询那些视图。来源地址仍由 `pg_hba.conf` 限制。
+
+2. 从实际采集节点验证目标地址、账号、数据库名、SSL 模式和统计视图权限。
+3. 填写用户名、密码、主机、实际端口、数据库名、SSL 模式和采集间隔（默认 `60` 秒）。
+4. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
+5. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 
@@ -60,7 +70,7 @@ psql --host db.example.com --port 5432 --username monitor --dbname postgres --pa
 
 ### 登录成功但数据不完整
 
-- 确认账号能读取所需 `pg_stat_*` 视图；按版本使用 `pg_monitor` 或等效最小权限。
+- 确认账号能读取 `pg_stat_database` 和 `pg_stat_bgwriter`。PostgreSQL 10 及以上使用 `pg_read_all_stats`。
 - `template0` 和 `template1` 被模板明确忽略，不会产生数据。
 
 ### 目标强制 SSL

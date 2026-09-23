@@ -12,10 +12,20 @@
 
 ## 接入步骤
 
-1. 从实际采集节点验证目标地址、账号和基本状态查询权限。
-2. 填写用户名、密码、主机、实际端口和采集间隔（默认 `60` 秒）。
-3. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
-4. 保存后等待至少一个采集周期。
+1. 由 DBA 创建专用账号。将 `<monitor_user>`、`<password>`、`<collector_host>` 换成现场值；主机限制为采集节点地址，不要使用 `%`，也不要把密码写入命令历史：
+
+```sql
+CREATE USER '<monitor_user>'@'<collector_host>' IDENTIFIED BY '<password>';
+GRANT PROCESS, REPLICATION CLIENT ON *.* TO '<monitor_user>'@'<collector_host>';
+GRANT SELECT ON performance_schema.* TO '<monitor_user>'@'<collector_host>';
+```
+
+`PROCESS` 用于进程列表和 InnoDB 状态；`REPLICATION CLIENT` 用于复制状态和二进制日志；`performance_schema` 的 `SELECT` 用于表等待统计。不要授予业务库 `SELECT`。若 InnoDB 指标因 `information_schema.innodb_metrics` 被拒绝，只对该表补 `SELECT`。
+
+2. 从实际采集节点验证目标地址、账号和基本状态查询权限。
+3. 填写用户名、密码、主机、实际端口和采集间隔（默认 `60` 秒）。
+4. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
+5. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 

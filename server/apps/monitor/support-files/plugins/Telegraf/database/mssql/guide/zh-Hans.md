@@ -12,10 +12,22 @@
 
 ## 接入步骤
 
-1. 从实际采集节点验证目标 TCP 端口和监控账号。
-2. 填写用户名、密码、主机、实际 TCP 端口和采集间隔（默认 `60` 秒）。
-3. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
-4. 保存后等待至少一个采集周期。
+1. 由 DBA 在 `master` 中创建专用登录名。将 `<monitor_user>`、`<password>` 换成现场值，不要把密码写入命令历史，也不要使用 `sa`：
+
+```sql
+CREATE LOGIN [<monitor_user>] WITH PASSWORD = '<password>', CHECK_POLICY = ON, DEFAULT_DATABASE = [master];
+USE [master];
+CREATE USER [<monitor_user>] FOR LOGIN [<monitor_user>];
+GRANT VIEW SERVER STATE TO [<monitor_user>];
+GRANT VIEW ANY DEFINITION TO [<monitor_user>];
+```
+
+`VIEW SERVER STATE` 用于读取动态管理视图。`VIEW ANY DEFINITION` 只用于插件查询对象定义和库文件元数据，不能读取用户表数据。
+
+2. 从实际采集节点验证目标 TCP 端口和监控账号。
+3. 填写用户名、密码、主机、实际 TCP 端口和采集间隔（默认 `60` 秒）。
+4. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
+5. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 
