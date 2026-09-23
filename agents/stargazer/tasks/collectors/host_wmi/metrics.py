@@ -99,6 +99,10 @@ def wmi_results_to_prometheus(
         _append_gauge(lines, "diskio_write_bytes_gauge", diskio_labels, diskio.get("write_bytes"), timestamp)
         if "io_util_percent" in diskio:
             _append_gauge(lines, "diskio_io_util_gauge", diskio_labels, diskio.get("io_util_percent"), timestamp)
+        if "read_latency_ms" in diskio:
+            _append_gauge(lines, "disk_read_latency_gauge", diskio_labels, diskio.get("read_latency_ms"), timestamp)
+        if "write_latency_ms" in diskio:
+            _append_gauge(lines, "disk_write_latency_gauge", diskio_labels, diskio.get("write_latency_ms"), timestamp)
         if "read_time_ms" in diskio:
             _append_gauge(lines, "diskio_read_time_gauge", diskio_labels, diskio.get("read_time_ms"), timestamp)
         if "write_time_ms" in diskio:

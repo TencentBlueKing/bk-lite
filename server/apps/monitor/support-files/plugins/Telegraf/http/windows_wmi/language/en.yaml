@@ -19,6 +19,12 @@ monitor_object_metric:
       name: Disk I/O Usage
       desc: Indicates the proportion of time a disk device is busy handling I/O operations. Sustained
         high values usually suggest disk I/O saturation.
+    disk_read_latency:
+      name: Disk Read Latency
+      desc: Average disk read latency in milliseconds from formatted AvgDiskSecPerRead.
+    disk_write_latency:
+      name: Disk Write Latency
+      desc: Average disk write latency in milliseconds from formatted AvgDiskSecPerWrite.
     diskio_writes_rate:
       name: Disk Write IOPS
       desc: Represents the number of disk write operations completed per second, measuring write I/O intensity

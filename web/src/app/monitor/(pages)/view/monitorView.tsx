@@ -118,6 +118,18 @@ const MonitorView: React.FC<ViewModalProps> = ({
 
   const isProcessMetricsView = isHostProcessMetricsTab(activeTab);
   const hostLogicalId = String(form?.instance_id_values?.[0] || '').trim();
+  const instanceOperatingSystem = String(
+    (form as { operating_system?: string })?.operating_system || ''
+  )
+    .trim()
+    .toLowerCase();
+
+  const isMetricVisibleForInstanceOs = (metric: MetricItem) => {
+    const allowed = metric.view_config?.os;
+    if (!Array.isArray(allowed) || allowed.length === 0) return true;
+    if (!instanceOperatingSystem) return true;
+    return allowed.includes(instanceOperatingSystem);
+  };
 
   const snapshotActiveQueryWindow = () => {
     const nextQueryWindow = createMetricQueryWindow(timeValues);
@@ -320,6 +332,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
         child: [],
       }));
       res[1].items.forEach((metric: MetricItem) => {
+        if (!isMetricVisibleForInstanceOs(metric)) return;
         const target = groupData.find((item) => item.id === metric.metric_group);
         if (target) {
           target.child.push({ ...metric, viewData: [] });

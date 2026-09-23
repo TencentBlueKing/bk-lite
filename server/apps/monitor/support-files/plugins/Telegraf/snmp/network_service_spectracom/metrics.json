@@ -26,7 +26,7 @@
       "query": "max(network_service_spectracom_sync_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Spectracom Sync Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -39,7 +39,7 @@
       "query": "max(network_service_spectracom_dc_power_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Spectracom DC Power Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -52,7 +52,7 @@
       "query": "max(network_service_spectracom_minor_alarm_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Spectracom Minor Alarm Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -65,7 +65,7 @@
       "query": "max(network_service_spectracom_major_alarm_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Spectracom Major Alarm Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -78,7 +78,7 @@
       "query": "max(network_service_spectracom_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Spectracom NTP Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"

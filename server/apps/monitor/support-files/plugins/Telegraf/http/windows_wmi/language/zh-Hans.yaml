@@ -16,6 +16,12 @@ monitor_object_metric:
     diskio_io_util:
       name: 磁盘IO使用率
       desc: 表示磁盘设备处于忙碌状态的时间占比，用于衡量磁盘 I/O 资源的整体利用情况。持续高位通常意味着磁盘 I/O 成为性能瓶颈。
+    disk_read_latency:
+      name: 磁盘读出延迟
+      desc: 表示单次磁盘读取操作的平均耗时（毫秒），来自 AvgDiskSecPerRead。
+    disk_write_latency:
+      name: 磁盘写入延迟
+      desc: 表示单次磁盘写入操作的平均耗时（毫秒），来自 AvgDiskSecPerWrite。
     diskio_writes_rate:
       name: 磁盘写入IOPS
       desc: 表示磁盘每秒完成的写入操作次数，用于衡量写入请求的并发强度和 I/O 压力。

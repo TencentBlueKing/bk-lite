@@ -128,7 +128,7 @@
       "query": "pdu_tower_state{instance_type='network_service', __$labels__}",
       "display_name": "PDU Tower Status",
       "data_type": "Enum",
-      "unit": "none",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "index",

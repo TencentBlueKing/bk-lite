@@ -1,0 +1,67 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_advantech_router"
+        config_type = "advantech"
+        brand = "advantech"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 型号：sysObjectID 叶在 enterprises.conel.1.*（PEN 30140，ICR/Conel 路由，非 EKI/10297）----
+    # 公开产品身份包括 ICR-32xx / ICR-323x / ICR-416x 等（.30140.1.42 起及 .30140.1.>1000 新方案）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+    # ---- CPU：statusCPUUsage，INTEGER 百分比，标量顶层 field 带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30140.3.6.0"
+        name = "device_cpu_usage"
+    # ---- 温度：statusTemperature，内部温度 ℃；ICR-2[0|4|5|6]xx 不支持该叶，GET 失败则无点 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30140.3.3.0"
+        name = "device_temperature_celsius"
+    # ---- 内存：statusRAMUsage 直接 %；Used/Free/Total 为字节，标量顶层 field 带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30140.3.7.0"
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30140.3.8.0"
+        name = "device_memory_used"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30140.3.9.0"
+        name = "device_memory_free"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30140.3.10.0"
+        name = "device_memory_total"
+    # ---- 输入电压：statusVoltage；与温度相同，ICR-2[0|4|5|6]xx 不支持 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30140.3.4.0"
+        name = "device_voltage_volts"
+# ---- 风扇/电源：ICR/Conel 蜂窝工业路由为紧凑无风扇设计，status 树无风扇/电源状态叶 → N/A。----

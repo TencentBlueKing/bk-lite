@@ -596,7 +596,7 @@ def _collect_ondisk_builtin_plugin_names(path_list):
                 file_path,
                 type(exc).__name__,
             )
-            continue
+            raise
         plugin_name = plugin_data.get("plugin")
         if plugin_name:
             builtin_plugin_names.add(plugin_name)

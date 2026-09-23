@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.system_mgmt.models import NetworkWhiteList
 from apps.system_mgmt.serializers.network_white_list_serializer import NetworkWhiteListSerializer
+from apps.system_mgmt.utils.i18n import system_mgmt_request_message
 from apps.system_mgmt.utils.network_whitelist_cache import invalidate_network_whitelist_cache
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -28,7 +29,11 @@ class NetworkWhiteListViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "result": False,
-                "message": f"内置条目不可修改或删除: {self._label(instance)}",
+                "message": system_mgmt_request_message(
+                    self.request,
+                    "error.builtin_entry_immutable",
+                    label=self._label(instance),
+                ),
             },
             status=status.HTTP_403_FORBIDDEN,
         )
@@ -53,7 +58,7 @@ class NetworkWhiteListViewSet(viewsets.ModelViewSet):
         response = super().create(request, *args, **kwargs)
         if response.status_code == 201:
             invalidate_network_whitelist_cache()
-            log_operation(request, "create", "system-manager", f"新增内网白名单: {self._label_from_response(response)}")
+            log_operation(request, "create", "system-manager", f"新增网络白名单: {self._label_from_response(response)}")
         return response
 
     @HasPermission("network_white_list-Edit", "system-manager")
@@ -64,7 +69,7 @@ class NetworkWhiteListViewSet(viewsets.ModelViewSet):
         response = super().update(request, *args, **kwargs)
         if response.status_code == 200:
             invalidate_network_whitelist_cache()
-            log_operation(request, "update", "system-manager", f"编辑内网白名单: {self._label(instance)}")
+            log_operation(request, "update", "system-manager", f"编辑网络白名单: {self._label(instance)}")
         return response
 
     @HasPermission("network_white_list-Delete", "system-manager")
@@ -76,7 +81,7 @@ class NetworkWhiteListViewSet(viewsets.ModelViewSet):
         response = super().destroy(request, *args, **kwargs)
         if response.status_code == 204:
             invalidate_network_whitelist_cache()
-            log_operation(request, "delete", "system-manager", f"删除内网白名单: {label}")
+            log_operation(request, "delete", "system-manager", f"删除网络白名单: {label}")
         return response
 
     def _label_from_response(self, response):

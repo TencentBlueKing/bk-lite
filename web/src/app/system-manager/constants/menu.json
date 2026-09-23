@@ -13,18 +13,6 @@
           "url": "/system-manager/user/structure"
         },
         {
-          "title": "超级管理员",
-          "icon": "chaojiguanliyuan",
-          "name": "super_admin",
-          "url": "/system-manager/user/adminstrator"
-        },
-        {
-          "title": "安全策略",
-          "icon": "shezhi",
-          "name": "security_settings",
-          "url": "/system-manager/user/security-settings"
-        },
-        {
           "title": "登录认证",
           "icon": "renzhengyuanguanli",
           "name": "login_auth",
@@ -35,6 +23,18 @@
           "icon": "tongbuyonghu",
           "name": "user_sync",
           "url": "/system-manager/user/user-sync"
+        },
+        {
+          "title": "安全策略",
+          "icon": "shezhi",
+          "name": "security_settings",
+          "url": "/system-manager/user/security-settings"
+        },
+        {
+          "title": "超级管理员",
+          "icon": "chaojiguanliyuan",
+          "name": "super_admin",
+          "url": "/system-manager/user/adminstrator"
         }
       ]
     },
@@ -114,17 +114,11 @@
       "url": "/system-manager/credential"
     },
     {
-      "title": "平台设置",
+      "title": "平台管理",
       "icon": "settings-fill",
       "url": "/system-manager/settings",
       "name": "Setting",
       "children": [
-        {
-          "title": "密钥",
-          "url": "/system-manager/settings/key",
-          "icon": "key",
-          "name": "api_secret_key"
-        },
         {
           "title": "审计日志",
           "url": "/system-manager/settings/audit-log",
@@ -138,16 +132,22 @@
           "name": "error_logs"
         },
         {
-          "title": "白名单",
+          "title": "网络白名单",
           "url": "/system-manager/settings/network-whitelist",
           "icon": "whitelist",
           "name": "network_white_list"
         },
         {
-          "title": "接口文档",
+          "title": "API 文档",
           "url": "/system-manager/settings/openapi-docs",
           "icon": "wendang1",
           "name": "openapi_docs"
+        },
+        {
+          "title": "API 令牌",
+          "url": "/system-manager/settings/key",
+          "icon": "key",
+          "name": "api_secret_key"
         }
       ]
     }
@@ -166,18 +166,6 @@
           "url": "/system-manager/user/structure"
         },
         {
-          "title": "Super Administrator",
-          "icon": "chaojiguanliyuan",
-          "name": "super_admin",
-          "url": "/system-manager/user/adminstrator"
-        },
-        {
-          "title": "Security Settings",
-          "icon": "shezhi",
-          "name": "security_settings",
-          "url": "/system-manager/user/security-settings"
-        },
-        {
           "title": "Login Auth",
           "icon": "renzhengyuanguanli",
           "name": "login_auth",
@@ -188,6 +176,18 @@
           "icon": "tongbuyonghu",
           "name": "user_sync",
           "url": "/system-manager/user/user-sync"
+        },
+        {
+          "title": "Security Settings",
+          "icon": "shezhi",
+          "name": "security_settings",
+          "url": "/system-manager/user/security-settings"
+        },
+        {
+          "title": "Super Administrator",
+          "icon": "chaojiguanliyuan",
+          "name": "super_admin",
+          "url": "/system-manager/user/adminstrator"
         }
       ]
     },
@@ -267,17 +267,11 @@
       "url": "/system-manager/credential"
     },
     {
-      "title": "Platform Settings",
+      "title": "Platform Management",
       "icon": "settings-fill",
       "url": "/system-manager/settings",
       "name": "Setting",
       "children": [
-        {
-          "title": "API Secret Keys",
-          "url": "/system-manager/settings/key",
-          "icon": "key",
-          "name": "api_secret_key"
-        },
         {
           "title": "Audit Logs",
           "url": "/system-manager/settings/audit-log",
@@ -297,10 +291,16 @@
           "name": "network_white_list"
         },
         {
-          "title": "Interface Documentation",
+          "title": "API Documentation",
           "url": "/system-manager/settings/openapi-docs",
           "icon": "wendang1",
           "name": "openapi_docs"
+        },
+        {
+          "title": "API Token",
+          "url": "/system-manager/settings/key",
+          "icon": "key",
+          "name": "api_secret_key"
         }
       ]
     }

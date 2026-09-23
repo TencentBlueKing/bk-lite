@@ -77,7 +77,7 @@ const TrainTaskHistory = ({
       }
     },
     {
-      title: t(`common.action`),
+      title: t(`common.actions`),
       dataIndex: 'action',
       key: 'action',
       render: (_, record) => (

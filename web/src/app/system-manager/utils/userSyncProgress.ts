@@ -81,7 +81,7 @@ export function formatUserSyncErrorMessage(
   params?: Record<string, string>,
 ): string {
   if (errorCode === 'group_name_conflict' && params?.name) {
-    return t(`${P}.phaseError.groupNameConflict`).replace('{{name}}', params.name);
+    return t(`${P}.phaseError.groupNameConflict`).replace('{name}', params.name);
   }
   const messageKey = errorCode && PHASE_ERROR_MESSAGE_KEYS[errorCode];
   return messageKey ? t(`${P}.phaseError.${messageKey}`) : t(`${P}.phaseError.syncFailed`);
@@ -170,25 +170,25 @@ export function formatSyncUsersChangeParts(
   const includeUnchanged = mode === 'summary' || (mode === 'finish' && materialChange);
 
   if (newUsers > 0) {
-    parts.push(t(`${P}.phaseCounter.syncUsersNew`).replace('{{n}}', String(newUsers)));
+    parts.push(t(`${P}.phaseCounter.syncUsersNew`).replace('{n}', String(newUsers)));
   }
   if (updatedUsers > 0) {
-    parts.push(t(`${P}.phaseCounter.syncUsersUpdated`).replace('{{n}}', String(updatedUsers)));
+    parts.push(t(`${P}.phaseCounter.syncUsersUpdated`).replace('{n}', String(updatedUsers)));
   }
   if (includeUnchanged) {
     const unchangedUsers = resolveUnchangedUsers(counters, total);
     if (unchangedUsers > 0) {
-      parts.push(t(`${P}.phaseCounter.syncUsersUnchanged`).replace('{{n}}', String(unchangedUsers)));
+      parts.push(t(`${P}.phaseCounter.syncUsersUnchanged`).replace('{n}', String(unchangedUsers)));
     }
   }
   if (conflictUsers > 0) {
-    parts.push(t(`${P}.phaseCounter.syncUsersConflict`).replace('{{n}}', String(conflictUsers)));
+    parts.push(t(`${P}.phaseCounter.syncUsersConflict`).replace('{n}', String(conflictUsers)));
   }
   if (mode !== 'running' && skippedUsers > 0) {
-    parts.push(t(`${P}.phaseCounter.syncUsersSkipped`).replace('{{n}}', String(skippedUsers)));
+    parts.push(t(`${P}.phaseCounter.syncUsersSkipped`).replace('{n}', String(skippedUsers)));
   }
   if (mode === 'summary' && parts.length === 0 && asCount(total) > 0) {
-    parts.push(t(`${P}.phaseCounter.syncUsersUnchanged`).replace('{{n}}', String(asCount(total))));
+    parts.push(t(`${P}.phaseCounter.syncUsersUnchanged`).replace('{n}', String(asCount(total))));
   }
   return parts;
 }
@@ -207,22 +207,22 @@ export function formatSyncGroupsChangeParts(
   const includeUnchanged = mode === 'summary' || (mode === 'finish' && materialChange);
 
   if (createdGroups > 0) {
-    parts.push(t(`${P}.phaseCounter.syncGroupsCreated`).replace('{{n}}', String(createdGroups)));
+    parts.push(t(`${P}.phaseCounter.syncGroupsCreated`).replace('{n}', String(createdGroups)));
   }
   if (updatedGroups > 0) {
-    parts.push(t(`${P}.phaseCounter.syncGroupsUpdated`).replace('{{n}}', String(updatedGroups)));
+    parts.push(t(`${P}.phaseCounter.syncGroupsUpdated`).replace('{n}', String(updatedGroups)));
   }
   if (includeUnchanged) {
     const unchangedGroups = resolveUnchangedGroups(counters, total);
     if (unchangedGroups > 0) {
-      parts.push(t(`${P}.phaseCounter.syncGroupsUnchanged`).replace('{{n}}', String(unchangedGroups)));
+      parts.push(t(`${P}.phaseCounter.syncGroupsUnchanged`).replace('{n}', String(unchangedGroups)));
     }
   }
   if (mode !== 'running' && skippedGroups > 0) {
-    parts.push(t(`${P}.phaseCounter.syncGroupsSkipped`).replace('{{n}}', String(skippedGroups)));
+    parts.push(t(`${P}.phaseCounter.syncGroupsSkipped`).replace('{n}', String(skippedGroups)));
   }
   if (mode === 'summary' && parts.length === 0 && asCount(total) > 0) {
-    parts.push(t(`${P}.phaseCounter.syncGroupsUnchanged`).replace('{{n}}', String(asCount(total))));
+    parts.push(t(`${P}.phaseCounter.syncGroupsUnchanged`).replace('{n}', String(asCount(total))));
   }
   return parts;
 }
@@ -230,8 +230,8 @@ export function formatSyncGroupsChangeParts(
 function joinLedger(totalLabel: string, parts: string[], t: (key: string, fallback?: string) => string): string {
   if (parts.length === 0) return '';
   return t(`${P}.phaseCounter.ledger`)
-    .replace('{{total}}', totalLabel)
-    .replace('{{parts}}', parts.join(' · '));
+    .replace('{total}', totalLabel)
+    .replace('{parts}', parts.join(' · '));
 }
 
 /** per-phase counter 行(每个阶段只显示本阶段关心的数字)。
@@ -256,7 +256,7 @@ export function formatPhaseCounterLine(
     case 'sync_users': {
       const parts = formatSyncUsersChangeParts(counters, asCount(entry?.total), t, mode);
       if (mode === 'running') return parts.join(' · ');
-      const totalLabel = t(`${P}.phaseCounter.syncUsersTotal`).replace('{{n}}', String(asCount(entry?.total)));
+      const totalLabel = t(`${P}.phaseCounter.syncUsersTotal`).replace('{n}', String(asCount(entry?.total)));
       return joinLedger(totalLabel, parts, t);
     }
     case 'reconcile': {
@@ -264,21 +264,21 @@ export function formatPhaseCounterLine(
       if ((counters.deleted_users ?? 0) > 0) {
         parts.push(
           t(`${P}.phaseCounter.reconcileDeletedUsers`)
-            .replace('{{n}}', String(counters.deleted_users)),
+            .replace('{n}', String(counters.deleted_users)),
         );
       }
       if ((counters.disabled_users ?? 0) > 0) {
-        parts.push(t(`${P}.phaseCounter.reconcileDisabled`).replace('{{n}}', String(counters.disabled_users)));
+        parts.push(t(`${P}.phaseCounter.reconcileDisabled`).replace('{n}', String(counters.disabled_users)));
       }
       if ((counters.deleted_group_count ?? 0) > 0) {
-        parts.push(t(`${P}.phaseCounter.reconcileDeleted`).replace('{{n}}', String(counters.deleted_group_count)));
+        parts.push(t(`${P}.phaseCounter.reconcileDeleted`).replace('{n}', String(counters.deleted_group_count)));
       }
       return parts.join(' · ');
     }
     case 'sync_groups': {
       const parts = formatSyncGroupsChangeParts(counters, asCount(entry?.total), t, mode);
       if (mode === 'running') return parts.join(' · ');
-      const totalLabel = t(`${P}.phaseCounter.syncGroupsTotal`).replace('{{n}}', String(asCount(entry?.total)));
+      const totalLabel = t(`${P}.phaseCounter.syncGroupsTotal`).replace('{n}', String(asCount(entry?.total)));
       return joinLedger(totalLabel, parts, t);
     }
     case 'finalize': {
@@ -300,8 +300,8 @@ export function formatPhaseBusinessResult(
   if (phase === 'fetch_directory') {
     const input = payload?.input_summary;
     return t(`${P}.phaseResult.fetchDirectory`)
-      .replace('{{users}}', String(input?.fetched_user_count ?? 0))
-      .replace('{{groups}}', String(input?.fetched_group_count ?? 0));
+      .replace('{users}', String(input?.fetched_user_count ?? 0))
+      .replace('{groups}', String(input?.fetched_group_count ?? 0));
   }
   if (phase === 'reconcile') {
     const counters = payload?.phase_progress?.reconcile?.counters;
@@ -311,8 +311,8 @@ export function formatPhaseBusinessResult(
       return t(`${P}.phaseResult.reconcileUnchanged`);
     }
     return t(`${P}.phaseResult.reconcileChanged`)
-      .replace('{{users}}', String(deletedUsers))
-      .replace('{{groups}}', String(deletedGroups));
+      .replace('{users}', String(deletedUsers))
+      .replace('{groups}', String(deletedGroups));
   }
   if (phase === 'sync_groups') {
     const entry = payload?.phase_progress?.sync_groups;
@@ -323,7 +323,7 @@ export function formatPhaseBusinessResult(
     if (ledger) return ledger;
     if (entry?.status === 'finish') {
       return t(`${P}.phaseResult.syncGroupsUnchanged`)
-        .replace('{{groups}}', String(entry?.total ?? entry?.current ?? 0));
+        .replace('{groups}', String(entry?.total ?? entry?.current ?? 0));
     }
     return '';
   }
@@ -339,7 +339,7 @@ export function formatPhaseBusinessResult(
       || skipped > 0;
     if (!hasChanges && entry?.status === 'finish') {
       return t(`${P}.phaseResult.syncUsersUnchanged`)
-        .replace('{{users}}', String(entry.total ?? entry.current ?? 0));
+        .replace('{users}', String(entry.total ?? entry.current ?? 0));
     }
   }
   return formatPhaseCounterLine(phase, payload, t);
@@ -356,7 +356,7 @@ export function formatConflictUsernamesLine(
   );
   if (usernames.length === 0) return '';
   return t(`${P}.progressDrawer.conflictUsers`)
-    .replace('{{usernames}}', usernames.join(t(`${P}.runSummary.usernameListSeparator`)));
+    .replace('{usernames}', usernames.join(t(`${P}.runSummary.usernameListSeparator`)));
 }
 
 /** 初始密码通知的异步投递状态。 */
@@ -377,17 +377,17 @@ export function formatEmailNotificationResult(
   const sent = Number(emailStatus.sent ?? 0);
   const failed = Number(emailStatus.failed ?? 0);
   if (failed > 0) {
-    return t(`${P}.phaseResult.emailFailed`).replace('{{failed}}', String(failed));
+    return t(`${P}.phaseResult.emailFailed`).replace('{failed}', String(failed));
   }
   if (emailStatus.completed) {
-    return t(`${P}.phaseResult.emailCompleted`).replace('{{sent}}', String(sent));
+    return t(`${P}.phaseResult.emailCompleted`).replace('{sent}', String(sent));
   }
   if (sent > 0) {
     return t(`${P}.phaseResult.emailSending`)
-      .replace('{{sent}}', String(sent))
-      .replace('{{total}}', String(total));
+      .replace('{sent}', String(sent))
+      .replace('{total}', String(total));
   }
-  return t(`${P}.phaseResult.emailQueued`).replace('{{total}}', String(total));
+  return t(`${P}.phaseResult.emailQueued`).replace('{total}', String(total));
 }
 
 /** 阶段错误按当前界面语言渲染；旧记录保留 error_message 作为回退。 */
@@ -449,8 +449,8 @@ export function formatPhaseProgressMeta(
   if (entry.status === 'process' && entry.total > 0) {
     parts.push(
       t(`${P}.progressDrawer.processed`)
-        .replace('{{current}}', String(entry.current))
-        .replace('{{total}}', String(entry.total)),
+        .replace('{current}', String(entry.current))
+        .replace('{total}', String(entry.total)),
     );
   }
   if (counterLine) parts.push(counterLine);
@@ -482,7 +482,7 @@ export function formatElapsed(
   const secs = seconds % 60;
   const pad = (n: number) => String(n).padStart(2, '0');
   const formatted = hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(secs)}` : `${pad(minutes)}:${pad(secs)}`;
-  return t(`${P}.progressDrawer.elapsed`).replace('{{duration}}', formatted);
+  return t(`${P}.progressDrawer.elapsed`).replace('{duration}', formatted);
 }
 
 /** 进度条 percent(0-100)。total=0 时返回 0(避免除零)。 */

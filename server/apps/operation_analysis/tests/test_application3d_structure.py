@@ -118,44 +118,6 @@ def test_compose_architecture_tree_no_host_keeps_apps_without_host_nodes():
     assert tree["nodes"][0]["health"]["state"] != "normal"
 
 
-def test_compose_architecture_tree_draws_biz_groups_between_system_and_apps():
-    tree = compose_architecture_tree(
-        system_id="sys-1",
-        system_name="门户系统",
-        system_health=_health(),
-        application_ids=["app-1", "app-2"],
-        applications={
-            "app-1": {"name": "门户", "health": _health()},
-            "app-2": {"name": "直挂", "health": _health()},
-        },
-        hosts_by_application={"app-1": ["host-1"], "app-2": ["host-2"]},
-        hosts={
-            "host-1": {"name": "web-1", "health": _health()},
-            "host-2": {"name": "web-2", "health": _health()},
-        },
-        group_ids=["g1"],
-        groups={"g1": {"name": "生产", "health": _health()}},
-        group_parents={"g1": "sys-1"},
-        application_parents={"app-1": "g1", "app-2": "sys-1"},
-    )
-
-    assert [node["kind"] for node in tree["nodes"]] == [
-        "system",
-        "biz_group",
-        "application",
-        "host",
-        "application",
-        "host",
-    ]
-    assert {(edge["sourceId"], edge["targetId"], edge["relation"]) for edge in tree["edges"]} == {
-        ("sys-1", "g1", "system_contains_biz_group"),
-        ("g1", "app-1", "biz_group_contains_application"),
-        ("sys-1", "app-2", "system_contains_application"),
-        ("app-1", "host-1", "application_run_host"),
-        ("app-2", "host-2", "application_run_host"),
-    }
-
-
 def test_compose_architecture_tree_omits_invisible_apps_and_hosts():
     tree = compose_architecture_tree(
         system_id="sys-1",

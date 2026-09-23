@@ -71,7 +71,7 @@ export function canCreateApplication(
   if (typeof node.can_create_application === 'boolean') {
     return node.can_create_application;
   }
-  return node.kind === 'system' || node.kind === 'biz_group';
+  return node.kind === 'system';
 }
 
 export function flattenApplications(node: ServiceTreeNode): ServiceTreeNode[] {

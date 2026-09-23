@@ -1,7 +1,8 @@
 Router LANCOM SNMP:
   name: LANCOM (Telegraf)
-  desc: SNMP monitoring template for LANCOM router. It reports per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for LANCOM LCOS routers and VPN gateways. It reports
+    CPU utilization, memory total/free with derived usage, hardware temperature, and
+    built-in IF-MIB interface traffic.
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -22,29 +23,30 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      desc: This metric reports the total physical memory capacity of the LANCOM LCOS
+        router (lcsStatusHardwareInfoTotalMemoryKbytes, reported in KB and converted
+        to bytes).
     device_memory_free:
       name: Free Memory
       desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+        LANCOM LCOS router (lcsStatusHardwareInfoFreeMemoryKbytes, reported in KB
+        and converted to bytes). Persistently low free memory can indicate rising
+        memory pressure.
     device_memory_used:
       name: Used Memory
       desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+        LANCOM LCOS router, derived as total memory minus free memory. It helps gauge
+        absolute memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports CPU utilization of the LANCOM LCOS router
+        (lcsStatusHardwareInfoCpuLoadPercent) as a 0-100 percentage. Sustained high
+        usage indicates control-plane overload, VPN/session churn, or abnormal traffic.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports memory utilization of the LANCOM LCOS router, derived
+        as (total-free)/total*100 from TotalMemoryKbytes and FreeMemoryKbytes. Sustained
+        high usage may indicate memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

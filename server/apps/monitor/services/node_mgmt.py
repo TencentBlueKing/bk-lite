@@ -33,6 +33,42 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.models import User
 
+_REDACTED_CONFIG_KEYS = {"community"}
+_REDACTED_CONFIG_PLACEHOLDER = "***"
+
+
+def _redact_config_secrets(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            if str(key).lower() in _REDACTED_CONFIG_KEYS and item not in (None, ""):
+                redacted[key] = _REDACTED_CONFIG_PLACEHOLDER
+            else:
+                redacted[key] = _redact_config_secrets(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_config_secrets(item) for item in value]
+    return value
+
+
+def _restore_config_secrets(new_value, old_value):
+    if isinstance(new_value, dict):
+        old_map = old_value if isinstance(old_value, dict) else {}
+        restored = {}
+        for key, item in new_value.items():
+            if str(key).lower() in _REDACTED_CONFIG_KEYS and item in ("", _REDACTED_CONFIG_PLACEHOLDER):
+                restored[key] = old_map.get(key, item)
+            else:
+                restored[key] = _restore_config_secrets(item, old_map.get(key))
+        return restored
+    if isinstance(new_value, list):
+        old_items = old_value if isinstance(old_value, list) else []
+        return [
+            _restore_config_secrets(item, old_items[index] if index < len(old_items) else None)
+            for index, item in enumerate(new_value)
+        ]
+    return new_value
+
 
 class InstanceConfigService:
     DEFAULT_GROUPING_METRIC_BY_OBJECT = {
@@ -333,6 +369,7 @@ class InstanceConfigService:
                 config["content"] = ConfigFormat.yaml_to_dict(config[content_key])
             else:
                 raise BaseAppException("file_type must be toml or yaml")
+            config["content"] = _redact_config_secrets(config["content"])
             if config_obj.is_child:
                 result["child"] = config
             else:
@@ -1102,6 +1139,11 @@ class InstanceConfigService:
                     child_interval,
                 )
             from apps.monitor.utils.disk_fstype_filters import sync_disk_fstype_filters_on_writeback
+
+            existing_rows = NodeMgmt().get_child_configs_by_ids([child_info["id"]])
+            if existing_rows and existing_rows[0].get("content"):
+                old_content = ConfigFormat.toml_to_dict(existing_rows[0]["content"])
+                child_info["content"] = _restore_config_secrets(child_info.get("content") or {}, old_content)
 
             # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
             child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))

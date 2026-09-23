@@ -1,0 +1,54 @@
+Switch Robustel SNMP:
+  name: Robustel (Telegraf)
+  desc: SNMP monitoring template for Robustel MG460 industrial switches. It
+    reports CPU utilization (1s headline, optional 10s), memory total/used in
+    bytes and derived utilization, and board/junction temperature.
+monitor_object:
+  Switch: Switch
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the one-second CPU utilization of the Robustel
+        MG460 industrial switch (rosSysutilStatusCpuLoadAverage1sec) as a 0-100
+        percentage. Sustained high CPU usage can indicate control-plane overload,
+        forwarding instability, or attack traffic.
+    device_cpu_usage_10s:
+      name: CPU Utilization (10s)
+      desc: This metric reports the ten-second CPU utilization of the Robustel
+        MG460 industrial switch (rosSysutilStatusCpuLoadAverage10sec) as a 0-100
+        percentage.
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total physical memory of the Robustel MG460
+        industrial switch in bytes (rosSysutilStatusMemoryTotalKb, converted
+        from kilobytes).
+    device_memory_used:
+      name: Memory Used
+      desc: This metric reports the used physical memory of the Robustel MG460
+        industrial switch in bytes (rosSysutilStatusMemoryUsedKb, converted from
+        kilobytes).
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports overall memory utilization of the Robustel MG460
+        industrial switch, computed as used / total * 100. High memory usage may
+        indicate leaks, oversized MAC/ARP tables, or insufficient capacity.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports each ROS-SYSUTIL temperature monitor sensor of
+        the Robustel MG460 industrial switch in degrees Celsius. Index board=0 /
+        junction=1. Sustained high temperature can indicate cooling failure or
+        an overheated environment.
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Base: Base

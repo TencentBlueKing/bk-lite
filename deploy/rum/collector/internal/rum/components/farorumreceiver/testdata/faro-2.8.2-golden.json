@@ -1,0 +1,155 @@
+{
+  "generatedBy": "@grafana/faro-web-sdk@2.8.2",
+  "ordinary": {
+    "meta": {
+      "app": {
+        "name": "checkout",
+        "environment": "test",
+        "release": "2026.07.15"
+      },
+      "sdk": {
+        "name": "faro-web",
+        "version": "2.8.2"
+      },
+      "session": {
+        "id": "session-golden"
+      },
+      "page": {
+        "id": "page-golden",
+        "url": "https://shop.example.test/checkout?token=secret"
+      },
+      "view": {
+        "name": "checkout"
+      },
+      "user": {
+        "id": "user-golden"
+      }
+    },
+    "logs": [
+      {
+        "message": "checkout warning",
+        "level": "warn",
+        "context": {
+          "component": "checkout"
+        },
+        "timestamp": "2026-07-15T08:00:00.000Z"
+      }
+    ],
+    "exceptions": [
+      {
+        "type": "TypeError",
+        "value": "payment failed",
+        "timestamp": "2026-07-15T08:00:00.000Z",
+        "context": {
+          "component": "checkout"
+        },
+        "fingerprint": "payment-submit",
+        "stacktrace": {
+          "frames": [
+            {
+              "filename": "https://cdn.example.test/assets/checkout.js?v=7",
+              "function": "submitPayment",
+              "lineno": 42,
+              "colno": 7
+            }
+          ]
+        }
+      }
+    ],
+    "measurements": [
+      {
+        "type": "web-vitals",
+        "values": {
+          "lcp": 1234.5
+        },
+        "timestamp": "2026-07-15T08:00:00.000Z",
+        "context": {
+          "navigation_type": "navigate",
+          "rating": "good"
+        }
+      }
+    ],
+    "events": [
+      {
+        "name": "view_changed",
+        "domain": "browser",
+        "attributes": {
+          "fromView": "cart",
+          "toView": "checkout"
+        },
+        "timestamp": "2026-07-15T08:00:00.000Z"
+      }
+    ]
+  },
+  "traces": {
+    "meta": {
+      "app": {
+        "name": "checkout",
+        "environment": "test",
+        "release": "2026.07.15"
+      },
+      "sdk": {
+        "name": "faro-web",
+        "version": "2.8.2"
+      },
+      "session": {
+        "id": "session-golden"
+      },
+      "page": {
+        "id": "page-golden",
+        "url": "https://shop.example.test/checkout?token=secret"
+      },
+      "view": {
+        "name": "checkout"
+      },
+      "user": {
+        "id": "user-golden"
+      }
+    },
+    "traces": {
+      "resourceSpans": [
+        {
+          "resource": {
+            "attributes": [
+              {
+                "key": "service.name",
+                "value": {
+                  "stringValue": "checkout"
+                }
+              }
+            ],
+            "droppedAttributesCount": 0
+          },
+          "scopeSpans": [
+            {
+              "scope": {
+                "name": "golden",
+                "version": "1.0.0"
+              },
+              "spans": [
+                {
+                  "traceId": "00112233445566778899aabbccddeeff",
+                  "spanId": "0011223344556677",
+                  "parentSpanId": "",
+                  "name": "GET /checkout",
+                  "kind": 3,
+                  "startTimeUnixNano": "1784102400000000000",
+                  "endTimeUnixNano": "1784102400010000000",
+                  "attributes": [],
+                  "droppedAttributesCount": 0,
+                  "events": [],
+                  "droppedEventsCount": 0,
+                  "links": [],
+                  "droppedLinksCount": 0,
+                  "status": {
+                    "code": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

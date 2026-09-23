@@ -27,7 +27,8 @@ Status: ready
 
 - 取值与下发由告警中心完成。继续调用现有作业脚本执行入口，传入完整参数列表；本轮不改为 `script_id` 执行，也不依赖作业侧「缺 key 补默认值」。
 - 「自动执行」是规则级布尔字段，默认 `true`。存量无该字段视为 `true`。它与规则启停分离：停用规则则自动、手动都不可用；仅关自动执行时，评估命中不创建自动执行记录、不调作业。
-- 自动执行开启时保持现网：命中触发事件后落 `trigger_type=auto` 记录并执行；之后仍允许手动再跑。手动执行不校验触发事件，组织与权限边界与现在一致。
+- 自动执行开启时保持现网：命中触发事件后落 `trigger_type=auto` 记录并执行；之后仍允许手动再跑。手动执行不校验触发事件，组织与权限边界与现在一致。生命周期已结束（`closed` / `auto_close` / `auto_recovery` / `resolved`）禁止手动执行，接口与界面一并拦截。
+- 规则关闭自动执行且勾选了 `closed` 时，单条告警手动关闭前询问是否按现有手动执行流程跑一次；跳过仍关闭。批量关闭不弹。
 - 每个脚本参数一行绑定，形状为 `{ name, from: "const" | "field", value, allow_adjust? }`。`allow_adjust` 只对 `from=const` 有效，默认 `false`；保存时 `from=field` 的项不保留该开关为真。
 - 新选作业（含更换作业）：丢弃旧绑定，按脚本参数顺序全部生成 `from=const`，`value` 为明文默认值，`allow_adjust=false`。无默认值或默认值被脱敏（如 `******`）则 `value` 为空，不把掩码当真实值写入。
 - 变量传递的 `value` 是告警 payload 字段路径，保存时必填。手填允许空字符串。
@@ -38,7 +39,7 @@ Status: ready
 - 「从作业模板重新加载」再拉一次定义，做同样结构对齐，并把仍为 `const` 的项的 `value` 覆盖为模板最新明文默认值（加密/无默认则置空）。`from=field` 的字段映射与手填项的 `allow_adjust` 不因重新加载而改。打开抽屉期间模板变化只通过该按钮更新，不在输入过程中静默改手填值。
 - 自动路径不接受覆盖。手动覆盖后的实际下发参数写入该次执行记录结果，便于事后查看；幂等键、回调、状态机与现网一致。
 - 前端：规则表单增加自动执行开关；参数表提供取值方式、值（输入框、告警字段或触发事件类型）、仅手填可见的「执行时可改」，以及重新加载。变量下拉旁用 Tooltip 标明各生命周期事件下发给脚本的 Key。手动执行弹框只渲染可改手填项。
-- 绑定 `trigger_event` 时，作业 handler 把当次 `ActionExecution.trigger_event` 写入参数 payload。自动路径为 `created` / `assigned` / `acknowledged` / `resolved` / `closed`；手动路径为 `manual`。不把该字段并入规则匹配 payload。
+- 绑定 `trigger_event` 时，作业 handler 写入参数 payload。自动路径为当次生命周期事件 `created` / `assigned` / `acknowledged` / `resolved` / `closed`；手动路径按告警当前状态映射为同一套 Key（未分派→created，待响应→assigned，处理中→acknowledged，已处理→resolved，已关闭→closed）。不把该字段并入规则匹配 payload。
 - 本轮不改作业平台执行接口、不引入参数加密存进规则、不把目标主机改成与参数表同一套手动/变量模型（主机仍用现有从告警取 / 固定 IP）。
 
 ## Testing Decisions

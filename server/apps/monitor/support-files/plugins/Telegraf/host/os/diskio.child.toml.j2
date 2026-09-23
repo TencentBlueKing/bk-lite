@@ -6,3 +6,48 @@
         instance_type = "{{ instance_type }}"
         collect_type = "host"
         config_type = "diskio"
+
+{% if operating_system == "windows" %}
+# Windows Telegraf diskio_io_time is truncated to whole seconds, so util/latency
+# PromQL that rate() those counters stays at 0 or looks like nanosecond spikes.
+# LogicalDisk % Idle Time and Avg. Disk sec/Read|Write are the Host-path source.
+# Do not add this block on Linux: win_perf_counters makes Telegraf fail to start.
+[[inputs.win_perf_counters]]
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "LogicalDisk"
+        Instances = ["*"]
+        Counters = ["% Idle Time", "Avg. Disk sec/Read", "Avg. Disk sec/Write"]
+        Measurement = "win_logicaldisk"
+        IncludeTotal = false
+    [inputs.win_perf_counters.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "diskio"
+
+[[processors.starlark]]
+    namepass = ["win_logicaldisk"]
+    source = '''
+def _field(metric, names):
+    for name in names:
+        value = metric.fields.get(name)
+        if value != None:
+            return value
+    return None
+
+def apply(metric):
+    idle = _field(metric, ["Percent_Idle_Time", "Percent Idle Time", "% Idle Time"])
+    read_sec = _field(metric, ["Avg._Disk_sec/Read", "Avg. Disk sec/Read", "Avg_Disk_sec_Read"])
+    write_sec = _field(metric, ["Avg._Disk_sec/Write", "Avg. Disk sec/Write", "Avg_Disk_sec_Write"])
+    for name in ["Percent_Idle_Time", "Percent Idle Time", "% Idle Time", "Avg._Disk_sec/Read", "Avg. Disk sec/Read", "Avg_Disk_sec_Read", "Avg._Disk_sec/Write", "Avg. Disk sec/Write", "Avg_Disk_sec_Write"]:
+        if metric.fields.get(name) != None:
+            metric.fields.pop(name)
+    if idle != None:
+        metric.fields["idle_percent"] = idle
+    if read_sec != None:
+        metric.fields["read_latency_ms"] = read_sec * 1000.0
+    if write_sec != None:
+        metric.fields["write_latency_ms"] = write_sec * 1000.0
+    return metric
+'''
+{% endif %}

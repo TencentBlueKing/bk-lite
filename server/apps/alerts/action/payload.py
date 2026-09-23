@@ -47,6 +47,30 @@ def resolve_field(payload: dict, path: str):
     return payload.get(path)
 
 
+LIFECYCLE_TRIGGER_EVENTS = ("created", "assigned", "acknowledged", "resolved", "closed")
+
+# 手动执行没有生命周期事件，按告警当前状态映射为同一套 Key。
+_STATUS_TO_TRIGGER_EVENT = {
+    "unassigned": "created",
+    "pending": "assigned",
+    "processing": "acknowledged",
+    "resolved": "resolved",
+    "auto_recovery": "resolved",
+    "closed": "closed",
+    "auto_close": "closed",
+}
+
+
+def resolve_trigger_event_param(execution, alert) -> str:
+    event = getattr(execution, "trigger_event", None)
+    if isinstance(event, str) and event in LIFECYCLE_TRIGGER_EVENTS:
+        return event
+    status = getattr(alert, "status", None)
+    if not isinstance(status, str) or not status:
+        return ""
+    return _STATUS_TO_TRIGGER_EVENT.get(status, status)
+
+
 def build_rule_payload(alert, *, include_source_names=True):
     """派生来源仅供规则评估，不改变动作参数绑定的字段协议。"""
     from apps.alerts.service.source_names import source_names_by_alert

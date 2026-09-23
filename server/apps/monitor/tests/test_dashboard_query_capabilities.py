@@ -4,7 +4,11 @@ import pytest
 
 from apps.monitor.models import MonitorInstance, MonitorObject
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
-from apps.monitor.services.dashboard_query_capabilities import build_dashboard_query, dashboard_query_capability_id, load_dashboard_query_capabilities
+from apps.monitor.services.dashboard_query_capabilities import (
+    build_dashboard_query,
+    dashboard_query_capability_id,
+    load_dashboard_query_capabilities,
+)
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
 
 
@@ -17,6 +21,26 @@ def test_manifest_is_complete_and_content_addressed():
 
     assert len(capabilities) >= 800
     assert all(capability.id == dashboard_query_capability_id(capability.template) for capability in capabilities.values())
+
+
+def test_mongodb_capabilities_bind_canonical_plugin_object_name():
+    load_dashboard_query_capabilities.cache_clear()
+    capabilities = load_dashboard_query_capabilities()
+    mongodb_caps = [item for item in capabilities.values() if "MongoDB" in item.object_names]
+    drifted = [item.id for item in capabilities.values() if "Mongodb" in item.object_names]
+
+    assert len(mongodb_caps) == 27
+    assert drifted == []
+
+    query = build_dashboard_query(
+        capability_id=mongodb_caps[0].id,
+        monitor_object=_object("MongoDB"),
+        instance_ids=("('mongo-a',)",),
+        start=0,
+        end=60_000,
+    )
+    assert "__$" not in query
+    assert 'instance_id=~"mongo\\\\-a"' in query
 
 
 def test_static_capability_injects_authorized_instance_and_server_window():

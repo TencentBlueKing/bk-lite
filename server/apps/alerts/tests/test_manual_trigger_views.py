@@ -286,3 +286,58 @@ def test_manual_trigger_passes_legal_overrides(mock_get, superuser_client):
     assert resp.status_code == 200
     kwargs = mock_get.return_value.execute.call_args.kwargs
     assert kwargs["param_overrides"] == {"svc": "redis"}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ended_status", ["closed", "auto_close", "auto_recovery", "resolved"])
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_rejects_ended_alert(mock_get, superuser_client, ended_status):
+    alert = Alert.objects.create(
+        alert_id=f"A-END-{ended_status}",
+        fingerprint=f"f-end-{ended_status}",
+        title="ended",
+        content="c",
+        level="0",
+        team=[1],
+        status=ended_status,
+    )
+    rule = ActionRule.objects.create(name="r", team=[1], action_config={"script_id": 1})
+
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": rule.id},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY=f"manual-ended-{ended_status}",
+    )
+
+    assert resp.status_code == 400
+    assert ActionExecution.objects.count() == 0
+    mock_get.assert_not_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("active_status", ["pending", "processing", "unassigned"])
+@patch("apps.alerts.views.action.get_handler")
+def test_manual_trigger_allows_active_alert(mock_get, superuser_client, active_status):
+    mock_get.return_value.execute.return_value = None
+    alert = Alert.objects.create(
+        alert_id=f"A-ACT-{active_status}",
+        fingerprint=f"f-act-{active_status}",
+        title="active",
+        content="c",
+        level="0",
+        team=[1],
+        status=active_status,
+    )
+    rule = ActionRule.objects.create(name="r", team=[1], action_config={"script_id": 1})
+
+    resp = superuser_client.post(
+        "/api/v1/alerts/api/action_execution/manual_trigger/",
+        data={"alert_id": alert.alert_id, "rule_id": rule.id},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY=f"manual-active-{active_status}",
+    )
+
+    assert resp.status_code == 200
+    assert ActionExecution.objects.filter(alert=alert, rule=rule).exists()
+    mock_get.return_value.execute.assert_called_once()

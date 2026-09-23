@@ -1,0 +1,35 @@
+{
+  "index": {
+    "AcceptedAtUnixNano": 1784109601123000000,
+    "Application": "storefront",
+    "ChecksumSHA256": "7f378c30f2f30f1dd52627544dac502140e558dad584b9ad6df800f34977bdc3",
+    "CredentialLookupId": "0123456789abcdef",
+    "Environment": "production",
+    "ErasureKeyVersion": "v1",
+    "ErasureSessionKey": "0f0e559e116a50807396091832543e48d120a58a63bc305568dd7332b08c7f22",
+    "ErasureUserKey": "7a1ec0a93a488672fa688467cca5f726b497ee9b1617d939aed8fa55184d001e",
+    "EventCount": 1,
+    "HasFullSnapshot": 1,
+    "ObjectKey": "v1/80a707af7dc77ee1228f9127180f3964835e5beb4c4ab0d812f0fe7593579b3a/7a1ec0a93a488672fa688467cca5f726b497ee9b1617d939aed8fa55184d001e/0f0e559e116a50807396091832543e48d120a58a63bc305568dd7332b08c7f22/032778fa5dae5c627d06fe72acdecfd97f95c0e1ac087e462c360a9d759712e9/ede9a6d90439902eb0a49f46fca6b7e9bad3b5d8c80fefd209a2f74d0be8e7af/c46bef722267fc2907d03e2d1b57992afccc85493cb1cba2fef3f975fc54b103-7f378c30f2f30f1dd52627544dac502140e558dad584b9ad6df800f34977bdc3.json.gz",
+    "PageId": "page-1",
+    "RecordingId": "recording-1",
+    "Release": "2026.07.15",
+    "SegmentId": "segment-1",
+    "Sequence": 3,
+    "SessionId": "session-1",
+    "SessionKey": "0123456789abcdef0123456789abcdef",
+    "Status": "ready",
+    "tenant_id": "tenant-a"
+  },
+  "object": {
+    "bucket": "rum-replay",
+    "content_encoding": "",
+    "content_type": "application/octet-stream",
+    "key": "v1/80a707af7dc77ee1228f9127180f3964835e5beb4c4ab0d812f0fe7593579b3a/7a1ec0a93a488672fa688467cca5f726b497ee9b1617d939aed8fa55184d001e/0f0e559e116a50807396091832543e48d120a58a63bc305568dd7332b08c7f22/032778fa5dae5c627d06fe72acdecfd97f95c0e1ac087e462c360a9d759712e9/ede9a6d90439902eb0a49f46fca6b7e9bad3b5d8c80fefd209a2f74d0be8e7af/c46bef722267fc2907d03e2d1b57992afccc85493cb1cba2fef3f975fc54b103-7f378c30f2f30f1dd52627544dac502140e558dad584b9ad6df800f34977bdc3.json.gz",
+    "metadata": {
+      "accepted-at-unix-nano": "1784109601123000000",
+      "erasure-key-version": "v1",
+      "sha256": "7f378c30f2f30f1dd52627544dac502140e558dad584b9ad6df800f34977bdc3"
+    }
+  }
+}

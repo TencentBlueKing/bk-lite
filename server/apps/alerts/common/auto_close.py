@@ -181,9 +181,12 @@ class AlertAutoClose:
                 Alert.stamp_closed_at(locked_alert, locked_alert.updated_at)
                 locked_alert.save(update_fields=["status", "updated_at", "operate", "closed_at"])
 
+                from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
                 from apps.alerts.service.reminder_service import ReminderService
 
                 ReminderService.stop_reminder_task(locked_alert)
+                closed_alert_id = locked_alert.alert_id
+                transaction.on_commit(lambda aid=closed_alert_id: dispatch_alert_lifecycle([aid], "closed"))
 
                 # 记录操作日志
                 logs = OperatorLog(

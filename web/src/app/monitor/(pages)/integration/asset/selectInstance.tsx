@@ -23,6 +23,7 @@ import {
 } from '@/app/monitor/types';
 import { getBaseInstanceColumn } from '@/app/monitor/utils/common';
 import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
+import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 import { CloseOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
@@ -171,8 +172,12 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
               <div className="flex items-center justify-between mb-[10px]">
                 <Input
                   allowClear
-                  className="w-[320px]"
-                  placeholder={t('common.searchPlaceHolder')}
+                  className="w-[400px]"
+                  placeholder={t(
+                    getAssetSearchPlaceholderKey(
+                      findByMonitorId(objects as ObjectItem[], monitorObject)
+                    )
+                  )}
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   onPressEnter={() => fetchData()}

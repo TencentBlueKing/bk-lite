@@ -79,11 +79,10 @@ def rotating_file_handler(filename, **overrides):
         raise ValueError("rotating file handler backupCount must be positive")
     return config
 
+
 # 仅用于历史日志分组规则的迁移窗口。默认空集合保持 fail-closed；上线前通过
 # audit_log_group_rule_modes 盘点并只加入已明确需要短期保留旧 OR 语义的分组 ID。
-LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset(
-    item.strip() for item in os.getenv("LOG_GROUP_LEGACY_OR_GROUP_IDS", "").split(",") if item.strip()
-)
+LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset(item.strip() for item in os.getenv("LOG_GROUP_LEGACY_OR_GROUP_IDS", "").split(",") if item.strip())
 LOG_GROUP_RULE_MODE_ENFORCEMENT = os.getenv("LOG_GROUP_RULE_MODE_ENFORCEMENT", "strict").strip().lower()
 if LOG_GROUP_RULE_MODE_ENFORCEMENT not in {"legacy", "strict"}:
     raise ValueError("LOG_GROUP_RULE_MODE_ENFORCEMENT must be legacy or strict")
@@ -169,6 +168,7 @@ FILE_HANDLER_FILES = {
     "monitor": "monitor.log",
     "log": "log.log",
     "apm": "apm.log",
+    "rum": "rum.log",
     "node": "node.log",
     "ops-console": "ops-console.log",
     "system-manager": "system-manager.log",
@@ -186,6 +186,7 @@ APP_LOGGER_FILE_HANDLERS = {
     "monitor": "monitor",
     "log": "log",
     "apm": "apm",
+    "rum": "rum",
     "node": "node",
     "ops-console": "ops-console",
     "system-manager": "system-manager",

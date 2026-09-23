@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.object_detection import *
 from apps.mlops.utils.i18n import serializer_message
+from apps.mlops.utils.serving_port import ServingPortValidationMixin
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
@@ -395,7 +396,7 @@ class ObjectDetectionTrainJobSerializer(AuthSerializer):
         return validate_requested_teams(self.context["request"], value)
 
 
-class ObjectDetectionServingSerializer(AuthSerializer):
+class ObjectDetectionServingSerializer(ServingPortValidationMixin, AuthSerializer):
     """目标检测服务序列化器"""
 
     permission_key = "serving.object_detection_serving"

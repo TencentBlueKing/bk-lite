@@ -199,6 +199,34 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         parent_obj_by_id = self._build_parent_obj_by_id(plugins)
         return self._enrich_plugin_results(results, lan, parent_obj_by_id)
 
+    def _keyword_field_values(self, plugin, lan):
+        plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
+        if plugin.template_type in {"api", "pull"}:
+            display_name = plugin.display_name or plugin.name
+            display_description = lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
+        else:
+            display_name = lan.get(f"{plugin_key}.name") or plugin.display_name or plugin.name
+            display_description = lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
+        parent = MonitorPluginSerializer.get_parent_monitor_object_instance(plugin)
+        parent_display_name = ""
+        if parent is not None:
+            parent_display_name = parent.display_name or parent.name or ""
+        return {
+            "name": plugin.name or "",
+            "display_name": display_name or "",
+            "display_description": display_description or "",
+            "parent_object_display_name": parent_display_name,
+        }
+
+    def _filter_keyword_match_ids(self, queryset, kw, lan):
+        plugins = list(queryset.prefetch_related(self._entry_context_prefetch()))
+        matched_ids = []
+        for plugin in plugins:
+            values = self._keyword_field_values(plugin, lan)
+            if any(kw in (values.get(field) or "").lower() for field in self.KEYWORD_FIELDS):
+                matched_ids.append(plugin.id)
+        return matched_ids
+
     def _attach_stale_counts(self, results, request):
         if not results:
             return results
@@ -246,27 +274,27 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
 
         if kw:
             queryset = self._apply_keyword_coarse_filter(queryset, kw, lan)
+            matched_ids = self._filter_keyword_match_ids(queryset, kw, lan)
+            if not use_pagination:
+                page_qs = queryset.filter(id__in=matched_ids).order_by("id")
+                return WebUtils.response_success(self._attach_stale_counts(self._serialize_and_enrich(page_qs, lan), request))
+            page, page_size = parse_page_params(
+                request.query_params,
+                default_page=1,
+                default_page_size=20,
+                allow_page_size_all=True,
+            )
+            if page_size != -1:
+                page_size = min(page_size, CustomPageNumberPagination.max_page_size)
+            start = (page - 1) * page_size
+            end = start + page_size
+            page_ids = matched_ids[start:end]
+            page_qs = queryset.filter(id__in=page_ids).order_by("id")
+            items = self._attach_stale_counts(self._serialize_and_enrich(page_qs, lan), request)
+            return WebUtils.response_success({"count": len(matched_ids), "items": items})
 
         results = self._serialize_and_enrich(queryset, lan)
-
-        if kw:
-            results = [r for r in results if any(kw in (r.get(f) or "").lower() for f in self.KEYWORD_FIELDS)]
-
-        if not use_pagination:
-            return WebUtils.response_success(self._attach_stale_counts(results, request))
-
-        page, page_size = parse_page_params(
-            request.query_params,
-            default_page=1,
-            default_page_size=20,
-            allow_page_size_all=True,
-        )
-        if page_size != -1:
-            page_size = min(page_size, CustomPageNumberPagination.max_page_size)
-        count = len(results)
-        start = (page - 1) * page_size
-        end = start + page_size
-        return WebUtils.response_success({"count": count, "items": self._attach_stale_counts(results[start:end], request)})
+        return WebUtils.response_success(self._attach_stale_counts(results, request))
 
     @HasPermission("integration_list-Setting")
     def destroy(self, request, *args, **kwargs):

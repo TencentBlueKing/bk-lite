@@ -1,0 +1,127 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_dasan",
+  "plugin": "Switch DASAN SNMP",
+  "plugin_desc": "DASAN ethernet switch SNMP collection (enterprise PEN 6296, dsSwitchSystem). Collects CPU utilization as a 0-100 percent (dsCpuLoad1m, with optional dsCpuLoad5s and dsCpuLoad10m) and memory total/used/free as vendor INTEGER units, with utilization derived as used/total. Interface traffic comes from the built-in IF-MIB table. This plugin does not share discovery or OIDs with access_zhone (Zhone/DZS GPON access) and does not poll the 6296.101 OLT tree.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_dasan'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the one-minute CPU utilization of the DASAN ethernet switch (dsCpuLoad1m) as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, forwarding instability, or attack traffic."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_5s",
+      "query": "snmp_device_cpu_usage_5s{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization (5s)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the five-second CPU utilization of the DASAN ethernet switch (dsCpuLoad5s) as a 0-100 percentage. It is a short-window companion to the one-minute headline CPU metric."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_10m",
+      "query": "snmp_device_cpu_usage_10m{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization (10m)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the ten-minute CPU utilization of the DASAN ethernet switch (dsCpuLoad10m) as a 0-100 percentage. It is a long-window companion to the one-minute headline CPU metric."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total memory of the DASAN ethernet switch (dsTotalMem) as the vendor INTEGER value."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "snmp_device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the used memory of the DASAN ethernet switch (dsUsedMem) as the vendor INTEGER value."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the free memory of the DASAN ethernet switch (dsFreeMem) as the vendor INTEGER value."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "100 * snmp_device_memory_used{instance_type='switch', __$labels__} / snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the DASAN ethernet switch, computed as used / total * 100. Vendor INTEGER units cancel in the ratio. High memory usage may indicate leaks, oversized MAC/ARP tables, or insufficient capacity."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

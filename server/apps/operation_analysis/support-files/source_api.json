@@ -285,6 +285,7 @@
               {"label": "出流量", "value": "net_out"},
               {"label": "磁盘IO使用率", "value": "disk_io"},
               {"label": "磁盘写入延迟", "value": "disk_write_latency"},
+              {"label": "磁盘读取延迟", "value": "disk_read_latency"},
               {"label": "磁盘读速率", "value": "disk_read_rate"},
               {"label": "磁盘写速率", "value": "disk_write_rate"},
               {"label": "阻塞进程", "value": "processes_blocked"},

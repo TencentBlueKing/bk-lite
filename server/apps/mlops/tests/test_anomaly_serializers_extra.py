@@ -217,6 +217,16 @@ def test_predict_request_validate_data_empty():
     assert "不能为空" in str(exc.value)
 
 
+def test_predict_request_validate_data_empty_en(monkeypatch, mlops_user):
+    mlops_user.locale = "en"
+    context = make_serializer_context(monkeypatch, mlops_user)
+    serializer = AnomalyDetectionPredictRequestSerializer(context=context)
+    with pytest.raises(drf_serializers.ValidationError) as exc:
+        serializer.validate_data([])
+    assert "Data cannot be empty" in str(exc.value)
+    assert "不能为空" not in str(exc.value)
+
+
 def test_predict_request_validate_data_too_few():
     s = AnomalyDetectionPredictRequestSerializer()
     with pytest.raises(drf_serializers.ValidationError) as exc:

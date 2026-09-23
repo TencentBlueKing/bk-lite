@@ -1,0 +1,327 @@
+{
+  "object_name": "Wireless",
+  "instance_type": "wireless",
+  "collect_type": "snmp_aruba_wireless",
+  "config_type": [
+    "aruba_wireless"
+  ],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_aruba_wireless_{{ip}}",
+  "form_fields": [
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.agents[0]",
+        "to_form": {
+          "regex": "://([^:]+):"
+        }
+      },
+      "label_en": "IP"
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "inputNumber",
+      "required": true,
+      "editable": false,
+      "default_value": 161,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.agents[0]",
+        "to_form": {
+          "regex": ":(\\d+)$"
+        }
+      },
+      "label_en": "Port"
+    },
+    {
+      "name": "version",
+      "label": "版本",
+      "type": "select",
+      "required": true,
+      "editable": false,
+      "default_value": 2,
+      "options": [
+        {
+          "label": "v2c",
+          "value": 2,
+          "label_en": "v2c"
+        },
+        {
+          "label": "v3",
+          "value": 3,
+          "label_en": "v3"
+        }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.version"
+      },
+      "label_en": "Version"
+    },
+    {
+      "name": "community",
+      "label": "团体名",
+      "type": "input",
+      "required": true,
+      "default_value": "public",
+      "transform_on_edit": {
+        "origin_path": "child.content.config.community",
+        "to_api": {}
+      },
+      "label_en": "Community",
+      "dependency": {
+        "field": "version",
+        "value": 2
+      }
+    },
+    {
+      "name": "sec_name",
+      "label": "名称",
+      "type": "input",
+      "required": true,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.sec_name",
+        "to_api": {}
+      },
+      "label_en": "Name",
+      "dependency": {
+        "field": "version",
+        "value": 3
+      }
+    },
+    {
+      "name": "sec_level",
+      "label": "级别",
+      "type": "select",
+      "required": true,
+      "default_value": "authPriv",
+      "options": [
+        {
+          "label": "noAuthNoPriv",
+          "value": "noAuthNoPriv",
+          "label_en": "noAuthNoPriv"
+        },
+        {
+          "label": "authNoPriv",
+          "value": "authNoPriv",
+          "label_en": "authNoPriv"
+        },
+        {
+          "label": "authPriv",
+          "value": "authPriv",
+          "label_en": "authPriv"
+        }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.sec_level",
+        "to_api": {}
+      },
+      "label_en": "Level",
+      "dependency": {
+        "field": "version",
+        "value": 3
+      }
+    },
+    {
+      "name": "auth_protocol",
+      "label": "认证协议",
+      "type": "input",
+      "required": false,
+      "default_value": "SHA",
+      "transform_on_edit": {
+        "origin_path": "child.content.config.auth_protocol",
+        "to_api": {}
+      },
+      "label_en": "Auth Protocol",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "in": [
+                "authNoPriv",
+                "authPriv"
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "ENV_AUTH_PASSWORD",
+      "label": "认证密码",
+      "type": "password",
+      "required": false,
+      "label_en": "Auth Password",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "in": [
+                "authNoPriv",
+                "authPriv"
+              ]
+            }
+          ]
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.AUTH_PASSWORD__{{config_id}}"
+      },
+      "encrypted": true
+    },
+    {
+      "name": "priv_protocol",
+      "label": "加密协议",
+      "type": "input",
+      "required": false,
+      "default_value": "AES",
+      "transform_on_edit": {
+        "origin_path": "child.content.config.priv_protocol",
+        "to_api": {}
+      },
+      "label_en": "Privacy Protocol",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "equals": "authPriv"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "ENV_PRIV_PASSWORD",
+      "label": "加密密码",
+      "type": "password",
+      "required": false,
+      "label_en": "Privacy Password",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "equals": "authPriv"
+            }
+          ]
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PRIV_PASSWORD__{{config_id}}"
+      },
+      "encrypted": true
+    },
+    {
+      "name": "timeout",
+      "label": "超时时间",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.timeout",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Timeout"
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Interval"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "options_key": "node_ids_option",
+      "label_en": "Node"
+    },
+    {
+      "name": "ip",
+      "label": "IP",
+      "type": "input",
+      "label_en": "IP"
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "label_en": "Instance Name"
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": true,
+      "label_en": "Group"
+    }
+  ],
+  "extra_edit_fields": {
+    "agents": {
+      "origin_path": "child.content.config.agents",
+      "to_api": {
+        "template": "udp://{{ip}}:{{port}}",
+        "array": true
+      }
+    }
+  }
+}

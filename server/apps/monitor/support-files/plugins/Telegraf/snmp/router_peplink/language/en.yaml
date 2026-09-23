@@ -1,0 +1,41 @@
+Router Peplink SNMP:
+  name: Peplink (Telegraf)
+  desc: SNMP monitoring template for Peplink and Pepwave Balance, MAX and Edge
+    routers. It reports CPU utilization, memory used/total and derived utilization.
+monitor_object:
+  Router: Router
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the CPU utilization of the Peplink or Pepwave router
+        (DEVICE.mib deviceCpuLoad) as a 0-100 percentage. The SYNTAX is INTEGER(0..100)
+        and the value is used as-is. Sustained high CPU usage can indicate control-plane
+        overload, WAN steering churn, or attack traffic.
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total physical memory of the Peplink or Pepwave
+        router (DEVICE.mib deviceTotalMemory). The raw OID is in kilobytes and is
+        scaled by 1024 to bytes.
+    device_memory_used:
+      name: Memory Used
+      desc: This metric reports the used physical memory of the Peplink or Pepwave
+        router (DEVICE.mib deviceMemoryUsage). The raw OID is kilobytes used and is
+        scaled by 1024 to bytes.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports overall memory utilization of the Peplink or Pepwave
+        router, computed as used / total * 100. High memory usage may indicate leaks,
+        oversized connection tables, or insufficient capacity.
+monitor_object_metric_group:
+  Router:
+    CPU: CPU
+    Memory: Memory
+    Base: Base

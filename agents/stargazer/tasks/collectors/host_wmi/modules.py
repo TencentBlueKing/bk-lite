@@ -152,7 +152,7 @@ class DiskIOModule(WmiModule):
     def collect(self, client):
         raw_rows = client.query_class("Win32_PerfRawData_PerfDisk_PhysicalDisk")
         formatted_rows = client.query_class("Win32_PerfFormattedData_PerfDisk_PhysicalDisk")
-        util_by_name = {str(row.get("Name") or ""): _to_float(row.get("PercentDiskTime")) for row in formatted_rows}
+        formatted_by_name = {str(row.get("Name") or ""): row for row in formatted_rows}
         disks = []
         for row in raw_rows:
             name = str(row.get("Name") or "")
@@ -165,9 +165,16 @@ class DiskIOModule(WmiModule):
                 "read_bytes": _to_int(row.get("DiskReadBytesPersec")),
                 "write_bytes": _to_int(row.get("DiskWriteBytesPersec")),
             }
-            util = util_by_name.get(name)
+            formatted = formatted_by_name.get(name) or {}
+            util = _to_float(formatted.get("PercentDiskTime"))
             if util is not None:
                 item["io_util_percent"] = _clamp_percent(util)
+            read_sec = _to_float(formatted.get("AvgDiskSecPerRead"))
+            if read_sec is not None:
+                item["read_latency_ms"] = round(max(read_sec, 0.0) * 1000.0, 4)
+            write_sec = _to_float(formatted.get("AvgDiskSecPerWrite"))
+            if write_sec is not None:
+                item["write_latency_ms"] = round(max(write_sec, 0.0) * 1000.0, 4)
             disks.append(item)
         return disks
 

@@ -79,6 +79,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.workers: list[asyncio.Task] = []
+        self.rpc_subscriptions: list[Any] = []
         payload_encryption_secret = os.getenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "") or config.nats_password
         self.task_store = TaskStore(config.state_db_path, payload_encryption_secret)
 
@@ -511,19 +512,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
         self.js = nc.jetstream(timeout=120)
         await self._ensure_stream_and_consumer()
 
-        instance_id = self.config.nats_instance_id
-        subjects = {
-            f"ansible.adhoc.{instance_id}": self._handle_adhoc,
-            f"ansible.playbook.{instance_id}": self._handle_playbook,
-            f"ansible.task.query.{instance_id}": self._handle_task_query,
-        }
-        for subject, handler in subjects.items():
-
-            async def callback(msg, h=handler, iid=instance_id):
-                await h(msg, iid)
-
-            await nc.subscribe(subject, cb=callback)
-            logger.info("subscribed subject: %s", subject)
+        await self._subscribe_rpc_handlers(nc)
 
         worker_count = max(1, self.config.max_workers)
         self.workers = [asyncio.create_task(self._worker_loop(i + 1)) for i in range(worker_count)]
@@ -532,6 +521,24 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
         logger.info("workers started: %s", worker_count)
 
         await asyncio.Event().wait()
+
+    async def _subscribe_rpc_handlers(self, nc) -> None:
+        instance_id = self.config.nats_instance_id
+        subjects = {
+            f"ansible.adhoc.{instance_id}": self._handle_adhoc,
+            f"ansible.playbook.{instance_id}": self._handle_playbook,
+            f"ansible.task.query.{instance_id}": self._handle_task_query,
+        }
+        self.rpc_subscriptions = []
+        for subject, handler in subjects.items():
+
+            async def callback(msg, h=handler, iid=instance_id):
+                await h(msg, iid)
+
+            subscription = await nc.subscribe(subject, cb=callback)
+            self.rpc_subscriptions.append(subscription)
+            logger.info("subscribed subject: %s", subject)
+        await nc.flush()
 
 
 @dataclass

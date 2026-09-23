@@ -40,6 +40,7 @@ def _normalize_bounded_int(value, field_name: str, default, max_value: int):
 
 def _normalize_query_time_range(time_range):
     start_time, end_time = parse_rfc3339_range_utc(time_range)
+    VictoriaLogsConstants.ensure_query_window_span(start_time, end_time)
     return format_rfc3339_utc(start_time), format_rfc3339_utc(end_time)
 
 

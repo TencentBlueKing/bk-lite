@@ -3,7 +3,22 @@ from rest_framework import serializers
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 
 
-class LogFieldValuesSerializer(serializers.Serializer):
+class QueryTimeWindowSerializer(serializers.Serializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        try:
+            start_time, end_time = VictoriaLogsConstants.normalize_query_time_window(
+                attrs.get("start_time", ""),
+                attrs.get("end_time", ""),
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({"start_time": str(exc)}) from exc
+        attrs["start_time"] = start_time
+        attrs["end_time"] = end_time
+        return attrs
+
+
+class LogFieldValuesSerializer(QueryTimeWindowSerializer):
     filed = serializers.RegexField(
         regex=r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$",
         max_length=200,
@@ -18,7 +33,7 @@ class LogFieldValuesSerializer(serializers.Serializer):
     )
 
 
-class LogSearchSerializer(serializers.Serializer):
+class LogSearchSerializer(QueryTimeWindowSerializer):
     query = serializers.CharField(required=True, allow_blank=False)
     start_time = serializers.CharField(required=False, allow_blank=True, default="")
     end_time = serializers.CharField(required=False, allow_blank=True, default="")
@@ -35,7 +50,7 @@ class LogSearchSerializer(serializers.Serializer):
     )
 
 
-class LogHitsSerializer(serializers.Serializer):
+class LogHitsSerializer(QueryTimeWindowSerializer):
     query = serializers.CharField(required=True, allow_blank=False)
     start_time = serializers.CharField(required=False, allow_blank=True, default="")
     end_time = serializers.CharField(required=False, allow_blank=True, default="")
@@ -58,7 +73,7 @@ class LogHitsSerializer(serializers.Serializer):
     )
 
 
-class LogTopStatsSerializer(serializers.Serializer):
+class LogTopStatsSerializer(QueryTimeWindowSerializer):
     NON_AGGREGATABLE_META_FIELDS = {"_stream", "_stream_id", "_time"}
 
     query = serializers.CharField(required=False, allow_blank=True, default="*")
@@ -78,6 +93,7 @@ class LogTopStatsSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
         if attrs["attr"] in self.NON_AGGREGATABLE_META_FIELDS:
             raise serializers.ValidationError({"attr": "该字段不支持 TopN 统计"})
         return attrs

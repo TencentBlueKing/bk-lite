@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional, Set
 from collections import Counter, defaultdict
+import copy
 import time
 
 import mlflow
@@ -489,6 +490,17 @@ class SpellModel(BaseLogClusterModel):
         joblib.dump(model_data, output_path)
         logger.info(f"Spell model saved to {output_path}")
 
+    def for_inference(self) -> "SpellModel":
+        """返回不含训练原文的浅拷贝，供 MLflow/pyfunc 制品序列化。
+
+        训练进程内的 ``self.raw_logs`` 与 LCS 缓存保持不变，explain 仍可用。
+        """
+        inference = copy.copy(self)
+        inference.raw_logs = []
+        if inference.lcs_cache is not None:
+            inference.lcs_cache = type(inference.lcs_cache)()
+        return inference
+
     def save_mlflow(self, artifact_path: str = "model") -> None:
         """将模型保存到 MLflow
         
@@ -535,7 +547,7 @@ class SpellModel(BaseLogClusterModel):
         from .spell_wrapper import SpellWrapper
         
         try:
-            wrapped_model = SpellWrapper(model=self, preprocessor=preprocessor)
+            wrapped_model = SpellWrapper(model=self.for_inference(), preprocessor=preprocessor)
             logger.info("✓ Wrapper 创建成功")
         except Exception as e:
             logger.error(f"✗ Wrapper 创建失败: {type(e).__name__}: {e}")

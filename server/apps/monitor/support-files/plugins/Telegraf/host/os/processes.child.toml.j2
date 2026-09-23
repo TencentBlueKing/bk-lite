@@ -6,3 +6,18 @@
         instance_type = "{{ instance_type }}"
         collect_type = "host"
         config_type = "processes"
+
+{% if operating_system == "windows" %}
+[[processors.starlark]]
+    namepass = ["processes"]
+    source = '''
+def apply(metric):
+    if metric.fields.get("blocked") != None:
+        metric.fields.pop("blocked")
+    if metric.fields.get("zombies") != None:
+        metric.fields.pop("zombies")
+    if metric.fields.get("sleeping") != None:
+        metric.fields.pop("sleeping")
+    return metric
+'''
+{% endif %}

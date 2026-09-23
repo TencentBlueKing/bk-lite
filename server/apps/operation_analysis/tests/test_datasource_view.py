@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -485,6 +486,56 @@ def test_get_source_data_preserves_nats_business_payload_inside_transport_envelo
     }
 
 
+def _is_get_source_data_success_envelope(payload):
+    if not isinstance(payload, dict):
+        return False
+    inner = payload.get("data")
+    return payload.get("result") is True and payload.get("message") == "success" and isinstance(inner, dict) and "warnings" in inner
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "downstream_result",
+    [None, [], "timeout", {}, {"data": []}],
+)
+def test_get_source_data_rejects_nonstandard_downstream_result(
+    authenticated_user,
+    monkeypatch,
+    downstream_result,
+):
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user)
+
+    response, payload, _ = _build_view_response(request, monkeypatch, downstream_result)
+
+    assert response.status_code >= 400
+    assert payload.get("result") is False
+    assert payload.get("message") == "下游返回非标准结果"
+    assert not _is_get_source_data_success_envelope(payload)
+
+
+@pytest.mark.django_db
+def test_get_source_data_nonstandard_downstream_logs_payload_type_only(authenticated_user, monkeypatch, caplog):
+    secret = "super-secret-token-do-not-log"
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user)
+
+    with caplog.at_level(logging.WARNING, logger="operation_analysis"):
+        response, payload, _ = _build_view_response(
+            request,
+            monkeypatch,
+            {"password": secret, "data": ["x" * 200]},
+        )
+
+    assert response.status_code >= 400
+    assert payload.get("result") is False
+    warning_text = "\n".join(record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING)
+    assert "payload_type=dict" in warning_text
+    assert "下游返回非标准结果" in warning_text
+    assert secret not in warning_text
+    assert "x" * 200 not in warning_text
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     "source_type",
@@ -512,11 +563,12 @@ def test_get_source_data_wraps_inline_datasources_in_transport_envelope(
         source_type=source_type,
         connection_config={},
         query_config={},
+        transform_config={},
         params=[],
     )
 
     class FakeExecutor:
-        def preview(self, connection_config, query_config, limit=100):
+        def preview(self, connection_config, query_config, limit=100, **_kwargs):
             return PreviewResult(
                 items=business_rows,
                 count=len(business_rows),
@@ -532,6 +584,10 @@ def test_get_source_data_wraps_inline_datasources_in_transport_envelope(
         datasource_view,
         "get_preview_executor",
         lambda current_source_type: FakeExecutor(),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.excel_materialize.load_excel_runtime",
+        lambda _instance, limit=100: {"items": business_rows, "warnings": []},
     )
 
     response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")

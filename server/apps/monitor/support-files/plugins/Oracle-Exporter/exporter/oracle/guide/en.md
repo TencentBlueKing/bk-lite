@@ -5,18 +5,62 @@ This capability runs Oracle-Exporter on the selected node, and Telegraf scrapes 
 ## Prerequisites
 
 - The collector node can reach the Oracle database host and actual listener port.
-- Prepare a dedicated monitoring account that can log in to the specified `service_name` and read the dynamic performance views queried by the exporter, such as `v$session`, `v$sysstat`, and `v$database`.
+- Prepare a dedicated monitoring account that can log in to the specified `service_name` and read the default-metric views plus the RAC, ASM, archive, and Data Guard queries. Grant the underlying `V_$` / `DBA_` objects. Do not grant `DBA` or `SELECT ANY DICTIONARY`.
 - The page requires an Oracle `service_name`, not a SID.
 - Reserve an unused exporter listen port on the collector node. It is separate from the Oracle database port.
 - The current page has no fields for a SID, TCPS, Wallet, or a custom connection string.
 
 ## Setup Steps
 
-1. From the actual collector node, validate the database host, port, `service_name`, and monitoring account.
-2. Enter the username, password, service name, database host, and database port.
-3. Enter an unused exporter listen port and the interval (default `60` seconds).
-4. In the monitored objects table, select the node and enter the listen port, host, port, instance name, and optional group.
-5. Save the configuration and wait for at least one collection interval.
+1. Have the DBA create a dedicated account in the container the collector actually connects to. Grant `V_$` / `DBA_` objects, not the `V$` synonyms. Replace `<monitor_user>` and `<password>` with site values. Do not grant `DBA` or `SELECT ANY DICTIONARY`:
+
+```sql
+CREATE USER <monitor_user> IDENTIFIED BY "<password>";
+GRANT CREATE SESSION TO <monitor_user>;
+
+-- default metrics
+GRANT SELECT ON V_$INSTANCE TO <monitor_user>;
+GRANT SELECT ON V_$SESSION TO <monitor_user>;
+GRANT SELECT ON V_$RESOURCE_LIMIT TO <monitor_user>;
+GRANT SELECT ON V_$SYSSTAT TO <monitor_user>;
+GRANT SELECT ON V_$PROCESS TO <monitor_user>;
+GRANT SELECT ON V_$SYSMETRIC TO <monitor_user>;
+GRANT SELECT ON V_$WAITCLASSMETRIC TO <monitor_user>;
+GRANT SELECT ON V_$SYSTEM_WAIT_CLASS TO <monitor_user>;
+GRANT SELECT ON V_$SGA TO <monitor_user>;
+GRANT SELECT ON V_$SGASTAT TO <monitor_user>;
+GRANT SELECT ON V_$PGASTAT TO <monitor_user>;
+GRANT SELECT ON V_$PARAMETER TO <monitor_user>;
+GRANT SELECT ON V_$DATAFILE TO <monitor_user>;
+GRANT SELECT ON V_$LOG_HISTORY TO <monitor_user>;
+GRANT SELECT ON V_$EVENTMETRIC TO <monitor_user>;
+GRANT SELECT ON V_$EVENT_NAME TO <monitor_user>;
+GRANT SELECT ON V_$LOCKED_OBJECT TO <monitor_user>;
+GRANT SELECT ON V_$ASM_DISKGROUP_STAT TO <monitor_user>;
+GRANT SELECT ON DBA_TABLESPACE_USAGE_METRICS TO <monitor_user>;
+GRANT SELECT ON DBA_TABLESPACES TO <monitor_user>;
+GRANT SELECT ON DBA_INDEXES TO <monitor_user>;
+GRANT SELECT ON DBA_OBJECTS TO <monitor_user>;
+GRANT SELECT ON DBA_USERS TO <monitor_user>;
+
+-- the packaged collector always starts with --isRAC --isASM --isArchiveLog --isDataGuard
+GRANT SELECT ON GV_$INSTANCE TO <monitor_user>;
+GRANT SELECT ON V_$ASM_DISK_STAT TO <monitor_user>;
+GRANT SELECT ON V_$ASM_ALIAS TO <monitor_user>;
+GRANT SELECT ON V_$ASM_DISKGROUP TO <monitor_user>;
+GRANT SELECT ON V_$ASM_FILE TO <monitor_user>;
+GRANT SELECT ON V_$DATAGUARD_STATS TO <monitor_user>;
+GRANT SELECT ON V_$DATABASE TO <monitor_user>;
+GRANT SELECT ON V_$ARCHIVE_DEST TO <monitor_user>;
+```
+
+These objects match the exporter `default_metrics.toml`, `rac_metrics.toml`, `asm_metrics.toml`, `dg_metrics.toml`, and archive queries. Use a local user for a non-CDB or a single PDB. Use a `C##` common user only when monitoring multiple containers from the CDB root.
+
+2. From the actual collector node, validate the database host, port, `service_name`, and monitoring account.
+3. Enter the username, password, service name, database host, and database port.
+4. Enter an unused exporter listen port and the interval (default `60` seconds).
+5. In the monitored objects table, select the node and enter the listen port, host, port, instance name, and optional group.
+6. Save the configuration and wait for at least one collection interval.
 
 ## Pre-checks
 

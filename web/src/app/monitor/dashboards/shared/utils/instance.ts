@@ -116,6 +116,7 @@ export interface DashboardInstanceOption {
   instanceIdValues: string[];
   searchTokens?: string[];
   interval?: number;
+  operatingSystem?: string;
 }
 
 export const buildClusterFilterOptions = (
