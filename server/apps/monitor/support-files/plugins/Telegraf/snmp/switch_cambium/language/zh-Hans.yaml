@@ -1,0 +1,27 @@
+Switch Cambium SNMP:
+  name: Cambium（Telegraf）
+  desc: 面向 Cambium cnMatrix 企业交换机的 SNMP 监控模板，可采集机箱 CPU 使用率、内存已用百分比与机箱温度（摄氏度）。不覆盖 ePMP / cnPilot 无线设备。
+monitor_object:
+  Switch: 交换机
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Cambium cnMatrix 交换机的机箱 CPU 使用率（issSwitchCurrentCPUThreshold），按 0-100 百分比记录。持续偏高可能意味着控制平面过载、转发表震荡或异常流量。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 Cambium cnMatrix 交换机的机箱内存已用百分比（issSwitchCurrentRAMUsage），按 0-100 百分比记录。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
+    device_temperature_celsius:
+      name: 机箱温度
+      desc: 该指标表示 Cambium cnMatrix 交换机的机箱温度（issSwitchCurrentTemperature），单位为摄氏度。持续偏高可能意味着散热不良或环境过热。
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Base: 基础

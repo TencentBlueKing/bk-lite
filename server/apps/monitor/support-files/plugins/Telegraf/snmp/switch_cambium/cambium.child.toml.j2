@@ -1,0 +1,47 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cambium_switch"
+        config_type = "cambium"
+        brand = "cambium"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 机箱健康：ARICENT-ISS-MIB 标量，顶层 field GET 必须带实例 .0；禁止 table.field+.0 ----
+    # 发现身份为 cnMatrix sysObjectID 前缀 1.3.6.1.4.1.17713.24。不采集 ePMP / cnPilot 无线树，也不与 wireless_cambium 共用发现。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2076.81.1.68.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2076.81.1.73.0"
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2076.81.1.66.0"
+        name = "device_temperature_celsius"
+# ---- 风扇表未进本轮最小集。----
