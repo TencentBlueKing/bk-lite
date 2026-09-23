@@ -357,34 +357,36 @@ class CustomSnmpPluginService:
             for item in update_plan:
                 node_mgmt.update_child_config_content(item["id"], item["rendered_content"])
                 applied_updates.append(item)
+            from apps.monitor.models import CollectConfig as CollectConfigModel
+            from apps.monitor.services.collect_config_update import plugin_content_fingerprint, stamp_applied
+
+            config_ids = [item["id"] for item in update_plan]
+            config_map = {
+                config.id: config for config in CollectConfigModel.objects.filter(id__in=config_ids).select_related("monitor_plugin")
+            }
+            for item in update_plan:
+                config_obj = config_map.get(item["id"])
+                if config_obj is None:
+                    continue
+                stamp_applied(
+                    config_obj,
+                    plugin_fp=plugin_content_fingerprint(config_obj.monitor_plugin),
+                    rendered_content=item.get("rendered_content") or "",
+                    hand_edited=False,
+                )
+                config_obj.save(
+                    update_fields=[
+                        "applied_content_sha256",
+                        "applied_rendered_sha256",
+                        "applied_pack_version",
+                        "content_hand_edited",
+                        "updated_at",
+                    ]
+                )
         except Exception as exc:
             rollback_failures = CustomSnmpPluginService._rollback_propagation(node_mgmt, applied_updates)
             rollback_tip = f"；以下实例回滚可能未完成: {', '.join(rollback_failures)}" if rollback_failures else ""
             raise BaseAppException(f"采集模板同步失败: {exc}{rollback_tip}") from exc
-        from apps.monitor.models import CollectConfig as CollectConfigModel
-        from apps.monitor.services.collect_config_update import plugin_content_fingerprint, stamp_applied
-
-        config_ids = [item["id"] for item in update_plan]
-        config_map = {config.id: config for config in CollectConfigModel.objects.filter(id__in=config_ids).select_related("monitor_plugin")}
-        for item in update_plan:
-            config_obj = config_map.get(item["id"])
-            if config_obj is None:
-                continue
-            stamp_applied(
-                config_obj,
-                plugin_fp=plugin_content_fingerprint(config_obj.monitor_plugin),
-                rendered_content=item.get("rendered_content") or "",
-                hand_edited=False,
-            )
-            config_obj.save(
-                update_fields=[
-                    "applied_content_sha256",
-                    "applied_rendered_sha256",
-                    "applied_pack_version",
-                    "content_hand_edited",
-                    "updated_at",
-                ]
-            )
 
     @staticmethod
     def update_collect_template(plugin: MonitorPlugin, snippet: str):
