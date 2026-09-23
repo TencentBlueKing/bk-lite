@@ -125,6 +125,10 @@ export interface ValueConfig {
   descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
+  dimensionField?: string;
+  valueField?: string;
+  multiValueLabelField?: string;
+  multiValueValueField?: string;
   nodeGraphIdentityMode?: 'ip' | 'service';
   nodeGraphSourceField?: string;
   nodeGraphTargetField?: string;
@@ -144,6 +148,12 @@ export interface ValueConfig {
   gaugeShape?: 'semicircle' | 'circle';
   eventTimeline?: {
     sortOrder?: 'asc' | 'desc';
+    timeField?: string;
+    titleField?: string;
+    descriptionField?: string;
+    categoryField?: string;
+    statusField?: string;
+    linkField?: string;
   };
   radar?: {
     min?: number;
@@ -152,6 +162,8 @@ export interface ValueConfig {
       key: string;
       label?: string;
     }>;
+    arrayNameField?: string;
+    arrayValueField?: string;
   };
   cardList?: CardListConfig;
   actions?: DashboardActionConfig[];

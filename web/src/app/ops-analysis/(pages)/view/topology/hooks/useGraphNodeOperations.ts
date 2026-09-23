@@ -52,8 +52,13 @@ function formatNumericValue(
   conversionFactor?: number,
   decimalPlaces?: number,
 ): string {
-  const numericValue =
-    typeof rawValue === 'string' ? parseFloat(rawValue) : rawValue;
+  const numericValue = toComparableNumber(
+    typeof rawValue === 'number' || typeof rawValue === 'string' ? rawValue : null,
+  );
+
+  if (numericValue === null) {
+    return '--';
+  }
 
   if (typeof numericValue === 'number' && !isNaN(numericValue)) {
     const factor = isFiniteNumber(conversionFactor) ? conversionFactor : 1;

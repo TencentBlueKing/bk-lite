@@ -1,4 +1,5 @@
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
 
 export type NodeGraphIdentityMode = 'ip' | 'service';
 
@@ -54,11 +55,8 @@ const cellText = (row: unknown, field?: string): string => {
   return String(raw).trim();
 };
 
-const cellNumber = (row: unknown, field?: string): number | null => {
-  const raw = getValueByPath(row, field);
-  const value = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(value) ? value : null;
-};
+const cellNumber = (row: unknown, field?: string): number | null =>
+  coerceTopNNumericValue(getValueByPath(row, field));
 
 export const toNodeGraphMapping = (config?: {
   nodeGraphIdentityMode?: NodeGraphIdentityMode;
