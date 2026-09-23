@@ -22,6 +22,7 @@ error:
   user_id_empty: user_id cannot be empty
   username_empty: Username cannot be empty
   otp_empty: Username or OTP code cannot be empty
+  api_token_update_not_supported: API tokens cannot be fully replaced
 
 # Built-in application display names
 app_name:

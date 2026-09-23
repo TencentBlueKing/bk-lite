@@ -190,6 +190,53 @@ def test_accepts_timeleft_with_last_over_time(metric_ctx):
 
 
 @pytest.mark.django_db
+def test_accepts_timeleft_target_unit_in_same_system(metric_ctx):
+    serializer = MonitorPolicySerializer(
+        data=_payload(
+            metric_ctx,
+            algorithm="last_over_time",
+            compare_mode="timeleft",
+            compare_value_kind="hours",
+            metric_unit="bytes",
+            calculation_unit="bytes",
+            forecast_target=1,
+            forecast_target_unit="gibibytes",
+            threshold=[{"level": "warning", "method": "<", "value": 24}],
+        )
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["forecast_target_unit"] == "gibibytes"
+
+
+@pytest.mark.django_db
+def test_rejects_timeleft_target_unit_outside_metric_system(metric_ctx):
+    serializer = MonitorPolicySerializer(
+        data=_payload(
+            metric_ctx,
+            algorithm="last_over_time",
+            compare_mode="timeleft",
+            compare_value_kind="hours",
+            metric_unit="bytes",
+            calculation_unit="bytes",
+            forecast_target=90,
+            forecast_target_unit="percent",
+            threshold=[{"level": "warning", "method": "<", "value": 24}],
+        )
+    )
+    assert not serializer.is_valid()
+    assert "forecast_target_unit" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_clears_forecast_target_unit_when_not_timeleft(metric_ctx):
+    serializer = MonitorPolicySerializer(
+        data=_payload(metric_ctx, forecast_target_unit="gibibytes")
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["forecast_target_unit"] == ""
+
+
+@pytest.mark.django_db
 def test_rejects_timeleft_with_high_side_threshold(metric_ctx):
     serializer = MonitorPolicySerializer(
         data=_payload(

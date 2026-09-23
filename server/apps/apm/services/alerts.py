@@ -202,11 +202,12 @@ class DjangoApmAlertService:
         }
 
     @staticmethod
-    def close(alert: ApmAlert, *, actor: str, occurred_at: datetime) -> ApmAlert:
+    def close(alert: ApmAlert, *, actor: str, occurred_at: datetime, actor_user) -> ApmAlert:
         with transaction.atomic():
             locked = ApmAlert.objects.select_for_update().get(id=alert.id)
             if locked.status != ApmAlert.Status.ACTIVE:
                 return locked
+            DjangoApmAlertService._ensure_manual_close_allowed(locked.handlers, actor_user)
             state = (
                 ApmPolicyTargetState.objects.select_for_update().filter(policy=locked.policy, active_alert_id=locked.external_id).first()
                 if locked.policy_id
@@ -484,6 +485,11 @@ class DjangoApmAlertService:
             delivery_mode=ApmPolicyNotificationTarget.DeliveryMode.MESSAGE,
             recipient_mode=ApmPolicyNotificationTarget.RecipientMode.SYSTEM_USER,
         ).exists()
+
+    @staticmethod
+    def _ensure_manual_close_allowed(handlers, actor) -> None:
+        if list(handlers or []) and not DjangoApmAlertService._actor_in_handlers(handlers, actor):
+            raise AlertHandlerConflict("只有当前处理人可以关闭该告警")
 
     @staticmethod
     def _actor_in_handlers(handlers, actor) -> bool:

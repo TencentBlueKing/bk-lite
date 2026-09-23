@@ -69,6 +69,10 @@ import {
   resolveEffectiveCalculationUnit,
   resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
+  resolveEditFormCollectType,
+  shouldHydrateMetricOnEdit,
+  extractMetricIdsFromQueryCondition,
+  resolvePluginIdFromMetricPlugins,
   resolveThresholdUnit,
   resolveThresholdUnitBase,
   resolveUnitOnMetricSelect,
@@ -80,9 +84,19 @@ import {
   DEFAULT_FORECAST_LOOKBACK,
   coerceRecoveryForThresholds,
   coerceThresholdsForCompareMode,
+  COMPARE_MODE_TIMELEFT,
+  completedThresholds,
+  getAllowedThresholdMethods,
   defaultCompareValueKind,
   getCompareModeSelectOptions,
-  getCompareValueKinds
+  getCompareValueKinds,
+  getThresholdUnitOptions,
+  resolveForecastTargetUnit,
+  resolveLoadedCompareOffset,
+  compareSpanSpec,
+  compareSpanIssue,
+  compareResultFamily,
+  clearThresholdNumbers
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
 import { resolveTemplateDuration } from '../../template/templateBulkUtils';
@@ -236,11 +250,13 @@ const StrategyOperation = () => {
   const [algorithm, setAlgorithm] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState<string>(COMPARE_MODE_ABSOLUTE);
   const [compareValueKind, setCompareValueKind] = useState<string>('');
+  const [compareOffsetHours, setCompareOffsetHours] = useState<number | null>(1);
   const [countPredicate, setCountPredicate] = useState<{
     method: string;
     value: number | null;
   }>({ method: '>', value: null });
   const [forecastTarget, setForecastTarget] = useState<number | null>(null);
+  const [forecastTargetUnit, setForecastTargetUnit] = useState<string>('');
   const [forecastLookback, setForecastLookback] = useState<{
     type: string;
     value: number;
@@ -289,6 +305,16 @@ const StrategyOperation = () => {
   });
   const selectedMetricUnit =
     metrics.find((item) => item.name === metric)?.unit || null;
+  const forecastTargetUnitForQuery = resolveForecastTargetUnit({
+    isFormulaMode: metricExpressionMode === 'formula',
+    metricUnit: selectedMetricUnit,
+    forecastTargetUnit,
+    unitOptions: getThresholdUnitOptions({
+      unitList,
+      metricUnit: selectedMetricUnit,
+      isEnumMetric: false
+    })
+  });
   const thresholdBaseUnit = resolveThresholdUnitBase({
     compareValueKind,
     calculationUnit: effectiveCalculationUnit,
@@ -647,9 +673,12 @@ const StrategyOperation = () => {
 
   useEffect(() => {
     if (
-      initMetricData.length > 0 &&
       formData &&
-      !['builtIn', 'add'].includes(type)
+      shouldHydrateMetricOnEdit({
+        type,
+        initMetricCount: initMetricData.length,
+        policyId: formData.id
+      })
     ) {
       processMetricData(formData);
     }
@@ -681,11 +710,71 @@ const StrategyOperation = () => {
     }
   }, [metricRows, metrics]);
 
+  const [metricResolvedPluginId, setMetricResolvedPluginId] = useState<
+    string | number | null
+  >(null);
+
+  useEffect(() => {
+    setMetricResolvedPluginId(null);
+  }, [formData?.id]);
+
+  useEffect(() => {
+    if (['add', 'builtIn'].includes(type)) return;
+    if (formData?.id == null || !pluginList.length || monitorObjId == null) return;
+    const collect = formData?.collect_type;
+    const known =
+      collect != null &&
+      collect !== '' &&
+      pluginList.some((item) => String(item.value) === String(collect));
+    if (known) return;
+    if (pluginList.length === 1) return;
+    const queryCondition =
+      resolveTemplateQueryCondition(formData) || formData?.query_condition;
+    const metricIds = extractMetricIdsFromQueryCondition(
+      queryCondition as {
+        type?: string;
+        metric_id?: number | null;
+        queries?: Array<{ metric_id?: number | null }>;
+      }
+    );
+    if (!metricIds.length) return;
+    let cancelled = false;
+    void getMonitorMetrics({
+      monitor_object_id: monitorObjId,
+      id_in: metricIds.join(','),
+      page: 1,
+      page_size: Math.max(metricIds.length, 1)
+    })
+      .then((page) => {
+        if (cancelled) return;
+        const items = (page?.items || []) as Array<{
+          monitor_plugin?: string | number | null;
+        }>;
+        const pluginId = resolvePluginIdFromMetricPlugins(pluginList, items);
+        if (pluginId == null) return;
+        setMetricResolvedPluginId(pluginId);
+        form.setFieldsValue({ collect_type: pluginId });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    type,
+    formData?.id,
+    formData?.collect_type,
+    formData?.query_condition,
+    pluginList,
+    monitorObjId
+  ]);
+
   useEffect(() => {
     const targetPluginId = resolveInitialMetricPluginId({
       type,
       pluginList,
-      policyCollectType: formData?.collect_type
+      policyCollectType: formData?.collect_type,
+      policyDetailReady: formData?.id != null,
+      metricResolvedPluginId
     });
     if (!monitorObjId || !targetPluginId) return;
     if (initialMetricPluginIdRef.current === targetPluginId) return;
@@ -697,7 +786,14 @@ const StrategyOperation = () => {
       },
       'init'
     );
-  }, [type, pluginList, formData?.collect_type, monitorObjId]);
+  }, [
+    type,
+    pluginList,
+    formData?.collect_type,
+    formData?.id,
+    monitorObjId,
+    metricResolvedPluginId
+  ]);
 
   const getObjects = async () => {
     const data = await getMonitorObject();
@@ -757,7 +853,7 @@ const StrategyOperation = () => {
     } = data;
     form.setFieldsValue({
       ...data,
-      collect_type: collect_type ? +collect_type : '',
+      collect_type: resolveEditFormCollectType(collect_type, pluginList, metricResolvedPluginId),
       trigger_count: trigger_count || 1,
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,
@@ -773,7 +869,14 @@ const StrategyOperation = () => {
     setPeriodUnit(period?.type || 'min');
     setGroupAlgorithm(data.group_algorithm || 'avg');
     setAlgorithm(data.algorithm || null);
-    setCompareMode((data.compare_mode as string) || COMPARE_MODE_ABSOLUTE);
+    const loadedOffset = resolveLoadedCompareOffset({
+      mode: data.compare_mode as string,
+      hours: data.compare_offset_hours as number | null,
+      days: data.compare_offset_days as number | null,
+      weeks: data.compare_baseline_weeks as number | null
+    });
+    setCompareMode(loadedOffset.mode);
+    setCompareOffsetHours(loadedOffset.amount);
     setCompareValueKind((data.compare_value_kind as string) || '');
     const savedRecovery = data.recovery_threshold as
       | { method?: string; value?: number }
@@ -792,6 +895,11 @@ const StrategyOperation = () => {
     });
     setForecastTarget(
       typeof data.forecast_target === 'number' ? data.forecast_target : null
+    );
+    setForecastTargetUnit(
+      typeof data.forecast_target_unit === 'string'
+        ? data.forecast_target_unit
+        : ''
     );
     const savedLookback = data.forecast_lookback as
       | { type?: string; value?: number }
@@ -1042,13 +1150,16 @@ const StrategyOperation = () => {
     const newIsEnumMetric = isStringArray(target?.unit || '');
     const newComparisonMethods = newIsEnumMetric
       ? ENUM_COMPARISON_METHOD
-      : COMPARISON_METHOD;
+      : getAllowedThresholdMethods(compareMode, COMPARISON_METHOD);
+    const defaultMethod =
+      newComparisonMethods[0]?.value ||
+      (compareMode === COMPARE_MODE_TIMELEFT ? '<' : '>');
 
-    // 重置阈值：切换指标时，操作符选中下拉列表的第一个值，并清空值
+    // 重置阈值：切换指标时，操作符选中当前比较基准允许的第一个值，并清空值
     const newThreshold = threshold.map((item) => {
       return {
         ...item,
-        method: newComparisonMethods[0].value,
+        method: defaultMethod,
         value: null // 切换指标时清空值
       };
     });
@@ -1208,30 +1319,92 @@ const StrategyOperation = () => {
     }
   }, [compareMode, period, periodUnit, algorithm]);
 
+  const applyCompareFamilyChange = (
+    previousMode: string,
+    previousKind: string,
+    nextMode: string,
+    nextKind: string,
+    nextThresholds: ThresholdField[]
+  ) => {
+    if (
+      compareResultFamily(previousMode, previousKind) ===
+      compareResultFamily(nextMode, nextKind)
+    ) {
+      return nextThresholds;
+    }
+    setRecoveryThreshold((currentRecovery) => ({
+      ...currentRecovery,
+      value: null
+    }));
+    return clearThresholdNumbers(nextThresholds);
+  };
+
   const handleCompareModeChange = (val: string) => {
     setCompareMode(val);
-    const nextThresholds = coerceThresholdsForCompareMode(val, threshold);
-    setThreshold(nextThresholds);
-    setRecoveryThreshold(
-      coerceRecoveryForThresholds(recoveryThreshold, nextThresholds)
-    );
-    if (val === COMPARE_MODE_ABSOLUTE) {
-      setCompareValueKind('');
-      return;
+    const nextSpan = compareSpanSpec(val);
+    if (nextSpan) {
+      const previousSpan = compareSpanSpec(compareMode);
+      setCompareOffsetHours((current) => {
+        if (
+          previousSpan &&
+          current != null &&
+          current >= nextSpan.min &&
+          current <= nextSpan.max
+        ) {
+          return Math.floor(current);
+        }
+        return nextSpan.fallback;
+      });
     }
-    setCompareValueKind((current) => {
-      const allowed = getCompareValueKinds(val);
-      if (current && allowed.includes(current)) {
-        return current;
-      }
-      return defaultCompareValueKind(val);
-    });
+    const nextKind =
+      val === COMPARE_MODE_ABSOLUTE
+        ? ''
+        : getCompareValueKinds(val).includes(compareValueKind)
+          ? compareValueKind
+          : defaultCompareValueKind(val);
+    const nextThresholds = applyCompareFamilyChange(
+      compareMode,
+      compareValueKind,
+      val,
+      nextKind,
+      coerceThresholdsForCompareMode(val, threshold)
+    );
+    setThreshold(nextThresholds);
+    setRecoveryThreshold((currentRecovery) =>
+      coerceRecoveryForThresholds(currentRecovery, nextThresholds)
+    );
+    setCompareValueKind(nextKind);
+  };
+
+  const handleCompareValueKindChange = (kind: string) => {
+    const nextThresholds = applyCompareFamilyChange(
+      compareMode,
+      compareValueKind,
+      compareMode,
+      kind,
+      threshold
+    );
+    if (nextThresholds !== threshold) {
+      setThreshold(nextThresholds);
+    }
+    setCompareValueKind(kind);
   };
 
   const handleAlgorithmChange = (val: string) => {
     setAlgorithm(val);
     form.setFieldsValue({ algorithm: val });
     if (val === COUNT_IF_ALGORITHM) {
+      const nextThresholds = applyCompareFamilyChange(
+        compareMode,
+        compareValueKind,
+        COMPARE_MODE_ABSOLUTE,
+        '',
+        threshold
+      );
+      setThreshold(nextThresholds);
+      setRecoveryThreshold((currentRecovery) =>
+        coerceRecoveryForThresholds(currentRecovery, nextThresholds)
+      );
       setCompareMode(COMPARE_MODE_ABSOLUTE);
       setCompareValueKind('');
     }
@@ -1305,6 +1478,19 @@ const StrategyOperation = () => {
         (item) => item.value === params.collect_type
       );
       const isTrapPlugin = target?.name === 'SNMP Trap';
+      if (!isTrapPlugin) {
+        const spanIssue = compareSpanIssue({
+          mode: compareMode,
+          amount: compareOffsetHours,
+          periodType: periodUnit,
+          periodValue: period,
+          t
+        });
+        if (spanIssue) {
+          message.error(spanIssue);
+          return null;
+        }
+      }
       let selectedMetricSourceUnit: string | null | undefined = null;
       if (isTrapPlugin) {
         params.query_condition = {
@@ -1346,9 +1532,7 @@ const StrategyOperation = () => {
         groupAlgorithm ||
         'avg';
       params.algorithm = params.algorithm || algorithm || 'avg_over_time';
-      params.threshold = threshold.filter(
-        (item) => !!item.value || item.value === 0
-      );
+      params.threshold = completedThresholds(threshold);
       const policyUnits = isTrapPlugin
         ? { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
         : resolveMetricExpressionUnits({
@@ -1370,12 +1554,18 @@ const StrategyOperation = () => {
         algorithm: params.algorithm,
         countPredicate,
         forecastTarget,
-        forecastLookback
+        forecastTargetUnit: forecastTargetUnitForQuery,
+        forecastLookback,
+        compareOffsetHours
       });
       params.compare_mode = compareFields.compare_mode;
       params.compare_value_kind = compareFields.compare_value_kind;
+      params.compare_offset_hours = compareFields.compare_offset_hours;
+      params.compare_offset_days = compareFields.compare_offset_days;
+      params.compare_baseline_weeks = compareFields.compare_baseline_weeks;
       params.count_predicate = compareFields.count_predicate;
       params.forecast_target = compareFields.forecast_target;
+      params.forecast_target_unit = compareFields.forecast_target_unit;
       params.forecast_lookback = compareFields.forecast_lookback;
       params.recovery_threshold = resolveRecoveryThresholdForSave({
         isTrap: isTrapPlugin,
@@ -1802,8 +1992,10 @@ const StrategyOperation = () => {
                           periodUnit={periodUnit}
                           compareMode={compareMode}
                           compareValueKind={compareValueKind}
+                          compareOffsetHours={compareOffsetHours}
                           algorithm={algorithm}
                           forecastTarget={forecastTarget}
+                          forecastTargetUnit={forecastTargetUnit}
                           forecastLookback={forecastLookback}
                           metricLabel={
                             metrics.find((item) => item.name === metric)
@@ -1828,8 +2020,10 @@ const StrategyOperation = () => {
                           }
                           onNoDataAlertNameChange={handleNoDataAlertNameChange}
                           onCompareModeChange={handleCompareModeChange}
-                          onCompareValueKindChange={setCompareValueKind}
+                          onCompareValueKindChange={handleCompareValueKindChange}
+                          onCompareOffsetHoursChange={setCompareOffsetHours}
                           onForecastTargetChange={setForecastTarget}
+                          onForecastTargetUnitChange={setForecastTargetUnit}
                           onForecastLookbackChange={setForecastLookback}
                           recoveryThreshold={recoveryThreshold}
                           onRecoveryThresholdChange={setRecoveryThreshold}
@@ -1877,8 +2071,10 @@ const StrategyOperation = () => {
                 thresholdUnit={effectiveThresholdUnit}
                 compareMode={compareMode}
                 compareValueKind={compareValueKind}
+                compareOffsetHours={compareOffsetHours}
                 countPredicate={countPredicate}
                 forecastTarget={forecastTarget}
+                forecastTargetUnit={forecastTargetUnitForQuery}
                 forecastLookback={forecastLookback}
                 metricRows={metricRows}
                 metricExpressionMode={metricExpressionMode}
@@ -2000,6 +2196,16 @@ const StrategyOperation = () => {
         open={dryRunVisible}
         loading={dryRunLoading}
         data={dryRunResult}
+        dimensions={
+          metrics.find((item) => {
+            const row = metricRows[0];
+            return (
+              (row?.metricId != null &&
+                String(item.id) === String(row.metricId)) ||
+              item.name === row?.metricName
+            );
+          })?.dimensions
+        }
         onClose={() => setDryRunVisible(false)}
         t={t}
       />

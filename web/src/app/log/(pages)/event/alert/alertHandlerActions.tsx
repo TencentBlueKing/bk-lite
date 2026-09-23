@@ -9,7 +9,7 @@ import { formatUserName } from '@/utils/userDisplay';
 import useLogApi from '@/app/log/api';
 import useLogEventApi from '@/app/log/api/event';
 import { TableDataItem, UserItem } from '@/app/log/types';
-import { canClaimOrAssignAlert, canReassignAlert } from './alertHandlerUtils';
+import { canClaimOrAssignAlert, canCloseAlert, canReassignAlert } from './alertHandlerUtils';
 
 interface AlertHandlerActionsProps {
   record: TableDataItem;
@@ -36,6 +36,7 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
   const actor = { id: userId, username };
   const canClaimOrAssign = canClaimOrAssignAlert(record.status, record.handlers);
   const canReassign = canReassignAlert(record.status, record.handlers, actor);
+  const canClose = canCloseAlert(record.handlers, actor);
 
   const handleClaim = async () => {
     setActionLoading(true);
@@ -117,18 +118,20 @@ const AlertHandlerActions: React.FC<AlertHandlerActionsProps> = ({
             {t('log.event.reassign')}
           </Button>
         ) : null}
-        <Popconfirm
-          title={t('log.event.closeTitle')}
-          description={t('log.event.closeContent')}
-          okText={t('common.confirm')}
-          cancelText={t('common.cancel')}
-          okButtonProps={{ loading: actionLoading }}
-          onConfirm={handleClose}
-        >
-          <Button type="link" disabled={record.status !== 'new'}>
-            {closeText}
-          </Button>
-        </Popconfirm>
+        {canClose ? (
+          <Popconfirm
+            title={t('log.event.closeTitle')}
+            description={t('log.event.closeContent')}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ loading: actionLoading }}
+            onConfirm={handleClose}
+          >
+            <Button type="link" disabled={record.status !== 'new'}>
+              {closeText}
+            </Button>
+          </Popconfirm>
+        ) : null}
       </Permission>
       <Modal
         title={t(handlerAction === 'reassign' ? 'log.event.reassignTitle' : 'log.event.assignTitle')}

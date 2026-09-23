@@ -100,6 +100,7 @@ class TestGetDisplayUnit:
     def test_已知单位映射(self):
         assert UnitConverter.get_display_unit("kibibytes") == "KiB"
         assert UnitConverter.get_display_unit("percent") == "%"
+        assert UnitConverter.get_display_unit("hour") == "小时"
 
     def test_未知单位原样标准化返回(self):
         assert UnitConverter.get_display_unit("unknown_unit") == "unknown_unit"

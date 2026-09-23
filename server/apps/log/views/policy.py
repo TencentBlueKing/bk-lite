@@ -30,6 +30,7 @@ from apps.log.services.alert_handlers import (
     AlertHandlerInvalid,
     assign_alert,
     claim_alert,
+    ensure_manual_close_allowed,
     filter_my_handler_alerts,
     is_my_alert_query,
     reassign_alert,
@@ -676,6 +677,12 @@ class AlertViewSet(viewsets.ModelViewSet):
             update_values["notice"] = False
 
         with transaction.atomic():
+            locked = Alert.objects.select_for_update().get(id=alert.id)
+            if locked.status == AlertConstants.STATUS_NEW:
+                try:
+                    ensure_manual_close_allowed(locked.handlers, request.user)
+                except AlertHandlerConflict as exc:
+                    return alert, WebUtils.response_error(str(exc), status_code=409)
             changed = Alert.objects.filter(
                 id=alert.id,
                 status=AlertConstants.STATUS_NEW,

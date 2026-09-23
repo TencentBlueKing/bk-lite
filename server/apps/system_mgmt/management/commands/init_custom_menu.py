@@ -26,7 +26,7 @@ class Command(BaseCommand):
                         defaults={
                             "is_enabled": True,
                             "is_build_in": True,
-                            "description": f"{app.display_name}的默认菜单配置",
+                            "description": f"Default menu configuration for {app.display_name}",
                             "created_by": "system",
                             "updated_by": "system",
                             "menus": [],
