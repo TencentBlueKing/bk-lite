@@ -2,7 +2,7 @@ from django.conf import settings
 
 from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.handlers.base import ActionHandler
-from apps.alerts.action.payload import build_match_payload, resolve_field
+from apps.alerts.action.payload import build_match_payload, resolve_field, resolve_trigger_event_param
 from apps.alerts.action.resolver import resolve_params
 from apps.alerts.action.target_resolver import resolve_effective_team, resolve_node_target
 from apps.core.logger import alert_logger as logger
@@ -21,8 +21,7 @@ class JobActionHandler(ActionHandler):
                 return self._config_error(execution, "作业不存在")
 
             payload = build_match_payload(alert)
-            event = getattr(execution, "trigger_event", None)
-            payload["trigger_event"] = event if isinstance(event, str) else ""
+            payload["trigger_event"] = resolve_trigger_event_param(execution, alert)
             binding = cfg.get("target_binding", {})
             # mode: from_alert(默认，保留旧行为) | fixed（用规则内写死的 ip，不读 alert）
             mode = (binding.get("mode") or "from_alert").strip().lower()

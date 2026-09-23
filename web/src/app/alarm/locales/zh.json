@@ -1005,7 +1005,7 @@
     "actionParamAllowAdjust": "执行时可改",
     "actionParamTriggerEvent": "触发事件类型",
     "actionParamTriggerEventTip": "脚本收到的是事件 Key，不是中文名：",
-    "actionParamTriggerEventManual": "手动执行",
+    "actionParamTriggerEventManual": "手动执行按告警当前状态映射：未分派→created，待响应→assigned，处理中→acknowledged，已处理→resolved，已关闭→closed",
     "actionReloadParams": "从作业模板重新加载",
     "actionExecuteParams": "执行参数",
     "actionExecuteParamsTip": "以下为允许手动调整的参数，确认后执行",

@@ -1,20 +1,14 @@
-"""Linux yum/dnf repo 元数据同步测试(mock 网络,不依赖外网)。
+"""Linux yum/dnf repo 元数据同步服务测试(mock 网络,不依赖外网)。
 
 覆盖:
   - fetch_advisories():解析 repomd → updateinfo,提取 id/类型/严重级别/CVE/包
   - 无 updateinfo / 非 yum 源 → 返回空
   - sync_linux_repo():建 Patch + LinuxPatchDetail、严重级别映射、team 继承、幂等
-  - sync view action:返回计数;非 Linux 源 400
-
-sync view 会 import apps.node_mgmt.models.Node；相关 pytest 包装器
-需要据此把 node_mgmt 列入 INSTALL_APPS。node_mgmt.urls 会再拉起 monitor。
 """
 import gzip
 
 import pytest
 
-from apps.monitor.models import MonitorPlugin  # noqa: F401  INSTALL_APPS 需含 monitor（node_mgmt.urls → collector_release）
-from apps.node_mgmt.models import Node  # noqa: F401  列表 URL 加载依赖 node_mgmt
 from apps.patch_mgmt.constants import (
     OSType,
     PackageManagerType,
@@ -22,7 +16,7 @@ from apps.patch_mgmt.constants import (
     PatchSourceType,
     PatchType,
 )
-from apps.patch_mgmt.models import LinuxPatchDetail, Patch, PatchSource
+from apps.patch_mgmt.models import LinuxPatchDetail, Patch
 from apps.patch_mgmt.services import connectivity_prober  # noqa: F401 (确保 services 包可导入)
 from apps.patch_mgmt.services import linux_repo_sync
 from apps.patch_mgmt.services.linux_repo_sync import (
@@ -38,79 +32,11 @@ from apps.patch_mgmt.services.source_sync_service import (
     SourceSyncError,
     SourceSyncService,
 )
-
-REPOMD = """<?xml version="1.0" encoding="UTF-8"?>
-<repomd xmlns="http://linux.duke.edu/metadata/repo">
-  <data type="primary"><location href="repodata/primary.xml.gz"/></data>
-  <data type="updateinfo"><location href="repodata/updateinfo.xml.gz"/></data>
-</repomd>"""
-
-REPOMD_NO_UPDATEINFO = """<?xml version="1.0" encoding="UTF-8"?>
-<repomd xmlns="http://linux.duke.edu/metadata/repo">
-  <data type="primary"><location href="repodata/primary.xml.gz"/></data>
-</repomd>"""
-
-UPDATEINFO = """<?xml version="1.0"?>
-<updates>
-  <update from="x" status="final" type="security" version="2">
-    <id>RHSA-2024:0001</id>
-    <title>Important: openssl security update</title>
-    <severity>Important</severity>
-    <issued date="2024-01-01 00:00:00"/>
-    <references>
-      <reference href="h" id="CVE-2024-0001" type="cve" title="CVE-2024-0001"/>
-      <reference href="h" id="CVE-2024-0002" type="cve" title="CVE-2024-0002"/>
-    </references>
-    <pkglist>
-      <collection short="s">
-        <package name="openssl" version="1.1.1k" release="7.el8" arch="x86_64"/>
-        <package name="openssl-libs" version="1.1.1k" release="7.el8" arch="x86_64"/>
-        <package name="openssl-libs" version="1.1.1k" release="7.el8" arch="x86_64"/>
-        <package name="" version="1.1.1k" release="7.el8" arch="x86_64"/>
-      </collection>
-    </pkglist>
-  </update>
-  <update type="bugfix" version="1">
-    <id>RHBA-2024:0002</id>
-    <title>bash bugfix</title>
-    <pkglist><collection><package name="bash" version="5.0" release="1.el8" arch="x86_64"/></collection></pkglist>
-  </update>
-</updates>"""
-
-
-def _make_get(mocker, repomd=REPOMD, updateinfo=UPDATEINFO):
-    def fake_get(url, **kwargs):
-        resp = mocker.Mock()
-        resp.raise_for_status = mocker.Mock()
-        if url.endswith("repomd.xml"):
-            payload = repomd.encode()
-        elif "updateinfo" in url:
-            payload = gzip.compress(updateinfo.encode())
-        else:
-            payload = b""
-        resp.content = payload
-
-        def iter_content(chunk_size=1):
-            size = chunk_size if chunk_size and chunk_size > 0 else 1
-            for index in range(0, len(payload), size):
-                yield payload[index : index + size]
-
-        resp.iter_content = iter_content
-        resp.close = mocker.Mock()
-        return resp
-    return mocker.patch.object(linux_repo_sync.requests, "get", side_effect=fake_get)
-
-
-def _source(**kw) -> PatchSource:
-    return PatchSource.objects.create(**{
-        "name": "centos7",
-        "source_type": PatchSourceType.YUM_REPO,
-        "url": "https://mirror.example.com/centos/7/os/x86_64",
-        "distro_name": "centos",
-        "os_version": ">=7",
-        "team": [1],
-        **kw,
-    })
+from apps.patch_mgmt.tests.linux_repo_sync_fixtures import (
+    REPOMD_NO_UPDATEINFO,
+    _make_get,
+    _source,
+)
 
 
 @pytest.mark.django_db
@@ -591,55 +517,3 @@ class TestSyncLinuxRepo:
         _make_get(mocker)
         with pytest.raises(SourceSyncError):
             SourceSyncService.sync_linux_repo(_source(source_type="unsupported_source"))
-
-
-@pytest.mark.django_db
-class TestSyncViewApi:
-    def test_sync_action_returns_counts(self, su_client, mocker):
-        _make_get(mocker)
-        source = _source()
-        resp = su_client.post(f"/api/v1/patch_mgmt/api/patch_source/{source.id}/sync/")
-        assert resp.status_code == 200
-        assert resp.data["created"] == 2
-
-    def test_sync_action_rejects_unsupported_source(self, su_client, mocker):
-        """未知源类型同步被拒绝。"""
-        _make_get(mocker)
-        source = _source(source_type="unsupported_source", url="https://unsupported.example.com")
-        resp = su_client.post(f"/api/v1/patch_mgmt/api/patch_source/{source.id}/sync/")
-        assert resp.status_code == 400
-
-    def test_sync_action_wsus_returns_error_without_server(self, su_client, mocker):
-        """WSUS 源同步在没有 WSUS 服务器时返回 400（可接受，不 500）。"""
-        source = _source(source_type=PatchSourceType.WSUS, url="https://wsus.invalid:8531")
-        resp = su_client.post(f"/api/v1/patch_mgmt/api/patch_source/{source.id}/sync/")
-        assert resp.status_code == 400
-        assert "error" in resp.data
-
-    def test_sync_action_apt_succeeds(self, su_client, mocker):
-        """apt 源同步通过 Packages.gz 成功建档。"""
-        from apps.patch_mgmt.services import apt_sync
-
-        packages_gz_content = """Package: test-pkg
-Version: 1.0-1ubuntu0.1
-Architecture: amd64
-Depends: libc6 (>= 2.38)
-Description: Test package
-
-"""
-        resp = mocker.Mock()
-        resp.raise_for_status = mocker.Mock()
-        resp.content = gzip.compress(packages_gz_content.encode())
-        mocker.patch.object(apt_sync.requests, "get", return_value=resp)
-
-        source = _source(
-            source_type=PatchSourceType.APT_REPO,
-            url="https://mirrors.aliyun.com/ubuntu/",
-            os_version="22.04",
-            distro_name="Ubuntu",
-            arch="x86_64",
-        )
-        resp = su_client.post(f"/api/v1/patch_mgmt/api/patch_source/{source.id}/sync/")
-        assert resp.status_code == 200
-        assert resp.data["total"] == 1
-        assert resp.data["created"] == 1

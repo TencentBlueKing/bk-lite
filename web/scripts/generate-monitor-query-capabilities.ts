@@ -5,7 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dashboardQueryCapabilityId } from '../src/app/monitor/dashboards/shared/utils/query-capability';
 import {
   listContractDashboardQueries,
-  METRIC_UNAVAILABLE_CONTRACTS
+  METRIC_UNAVAILABLE_CONTRACTS,
+  temperatureUint16ByCollectTypeQuery
 } from '../src/app/monitor/dashboards/shared/unavailable-contract';
 import {
   FLOW_SUPPORTED_OBJECT_NAMES,
@@ -138,6 +139,10 @@ const registerUnavailableContractCapabilities = () => {
     for (const objectName of objectNames) {
       register(template, objectName);
     }
+  }
+  // 温度 65535 按序列标签 collect_type 判断，实例名不含 snmp_h3c 时也要能下发这条查询。
+  for (const objectName of objectNames) {
+    register(temperatureUint16ByCollectTypeQuery, objectName);
   }
 };
 

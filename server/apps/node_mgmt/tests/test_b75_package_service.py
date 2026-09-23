@@ -264,12 +264,11 @@ def test_delete_file_succeeds_on_first_candidate():
 
 
 @pytest.mark.django_db
-def test_delete_file_all_missing_raises():
+def test_delete_file_all_missing_is_success():
     obj = SimpleNamespace(cpu_architecture="x86_64", os="linux", object="t", version="1.0.0", name="t.tar.gz")
     delete = AsyncMock(side_effect=ObjectNotFoundError())
     with patch("apps.node_mgmt.services.package.delete_s3_file", delete):
-        with pytest.raises(ObjectNotFoundError):
-            PackageService.delete_file(obj)
+        assert PackageService.delete_file(obj) is True
 
 
 @pytest.mark.django_db
@@ -284,12 +283,27 @@ def test_list_files_maps_attributes():
 
 @pytest.mark.django_db
 def test_upload_file_builds_path_and_calls_s3():
-    captured = {}
+    captured = []
 
     async def fake_upload(file, path):
-        captured["path"] = path
+        captured.append(path)
 
-    data = {"os": "linux", "cpu_architecture": "arm64", "object": "telegraf", "version": "1.0.0", "name": "t.tar.gz"}
-    with patch("apps.node_mgmt.services.package.upload_file_to_s3", fake_upload):
-        PackageService.upload_file(MagicMock(), data)
-    assert captured["path"] == "linux/arm64/telegraf/1.0.0/t.tar.gz"
+    async def fake_delete(path):
+        return None
+
+    data = {
+        "os": "linux",
+        "cpu_architecture": "arm64",
+        "type": "collector",
+        "object": "telegraf",
+        "version": "1.0.0",
+        "name": "t.tar.gz",
+    }
+    with (
+        patch("apps.node_mgmt.services.package.upload_file_to_s3", fake_upload),
+        patch("apps.node_mgmt.services.package.delete_s3_file", fake_delete),
+    ):
+        package = PackageService.upload_file(MagicMock(), data)
+    assert "linux/arm64/telegraf/1.0.0/t.tar.gz" in captured
+    assert any(".staging-" in path for path in captured)
+    assert package.status == PackageVersion.STATUS_READY
