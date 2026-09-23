@@ -914,6 +914,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /exalt|ex-i|exaltcom/i, label: 'Exalt', icon: 'mm-exalt_exalt' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
+  { match: /exinda|gfi\s*exos/i, label: 'Exinda / GFI ExOS', icon: 'mm-exinda_exinda' },
   { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
 ];
 

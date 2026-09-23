@@ -50,6 +50,7 @@ const COMMUNITY_DASHBOARD_COMPONENT_LOADERS: Record<string, DashboardComponentLo
   network_service: () => import('./objects/network_service'),
   console_server: () => import('./objects/console_server'),
   voice_gateway: () => import('./objects/voice_gateway'),
+  wanopt: () => import('./objects/wanopt'),
   'k8s-cluster': () => import('./objects/k8s-cluster'),
   'k8s-node': () => import('./objects/k8s-node'),
   'k8s-pod': () => import('./objects/k8s-pod'),

@@ -1593,5 +1593,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "traffic"
       ]
     }
+  ],
+  "wanopt": [
+    {
+      "collectType": "snmp_exinda",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "traffic"
+      ]
+    }
   ]
 };
