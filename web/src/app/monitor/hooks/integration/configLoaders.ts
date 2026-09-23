@@ -57,6 +57,7 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
     import('./objects/networkDevice/consoleServer').then((m) => m.useConsoleServerConfig),
   VoiceGateway: () =>
     import('./objects/networkDevice/voiceGateway').then((m) => m.useVoiceGatewayConfig),
+  Wanopt: () => import('./objects/networkDevice/wanopt').then((m) => m.useWanoptConfig),
   vCenter: () => import('./objects/vmWare/vCenter').then((m) => m.useVCenterConfig),
   Docker: () =>
     import('./objects/containerManagement/docker').then((m) => m.useDockerConfig),

@@ -64,6 +64,7 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'network_service', aliases: ['网络服务'], groupKey: 'network', objectName: 'NetworkService', objectDisplayName: '网络服务', inheritedPermissionPath: '/monitor/view' },
   { key: 'console_server', aliases: ['控制台服务器'], groupKey: 'network', objectName: 'ConsoleServer', objectDisplayName: '控制台服务器', inheritedPermissionPath: '/monitor/view' },
   { key: 'voice_gateway', aliases: ['语音网关'], groupKey: 'network', objectName: 'VoiceGateway', objectDisplayName: '语音网关', inheritedPermissionPath: '/monitor/view' },
+  { key: 'wanopt', aliases: ['WAN优化', 'WAN Optimisation', 'WAN Optimization'], groupKey: 'network', objectName: 'Wanopt', objectDisplayName: 'WAN优化', inheritedPermissionPath: '/monitor/view' },
   { key: 'k8s-cluster', aliases: ['cluster'], groupKey: 'container', objectName: 'Cluster', objectDisplayName: '集群', inheritedPermissionPath: '/monitor/view' },
   { key: 'k8s-node', aliases: ['node'], groupKey: 'container', objectName: 'Node', objectDisplayName: '节点', inheritedPermissionPath: '/monitor/view' },
   { key: 'k8s-pod', aliases: ['pod'], groupKey: 'container', objectName: 'Pod', objectDisplayName: 'Pod', inheritedPermissionPath: '/monitor/view' },
