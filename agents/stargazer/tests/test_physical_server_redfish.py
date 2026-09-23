@@ -452,3 +452,52 @@ async def test_redfish_protocol_collects_standard_child_inventory():
     assert result["result"]["nic"][0]["nic_mac"] == "aa:bb:cc:dd:ee:ff"
     assert "EthernetInterfaces" not in "".join(requested)
     assert requested.count("/redfish/v1/Chassis/1/Drives/1") == 1
+
+
+async def test_redfish_protocol_collects_storage_drives_array():
+    requested = []
+
+    def handler(request):
+        requested.append(request.url.path)
+        payloads = {
+            "/redfish/v1/": {"Systems": {"@odata.id": "/redfish/v1/Systems"}},
+            "/redfish/v1/Systems": {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+            "/redfish/v1/Systems/1": {
+                "Manufacturer": "Huawei",
+                "Storage": {"@odata.id": "/redfish/v1/Systems/1/Storage"},
+            },
+            "/redfish/v1/Systems/1/Storage": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Storage/1"}]},
+            "/redfish/v1/Systems/1/Storage/1": {
+                "Drives": [
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                ]
+            },
+            "/redfish/v1/Chassis/1/Drives/1": {
+                "Id": "Disk.Bay.0",
+                "Manufacturer": "Samsung",
+                "MediaType": "SSD",
+            },
+        }
+        if request.url.path not in payloads:
+            raise AssertionError(request.url.path)
+        return _response(request, payloads[request.url.path])
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "port": 443,
+            "username": "Administrator",
+            "password": "secret",
+            "model_id": "physcial_server",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert result["result"]["disk"][0]["disk_name"] == "Disk.Bay.0"
+    assert "/redfish/v1/Systems/1/Storage/1/Drives" not in requested
+    assert requested.count("/redfish/v1/Chassis/1/Drives/1") == 1

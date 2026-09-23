@@ -231,9 +231,13 @@ class PhyscialServerRedfishInfo:
             storage = await self._read_resource(client, storage_link_item)
             if storage is None:
                 continue
-            members = await self._read_optional_collection(client, storage.get("Drives"))
-            if members:
-                drive_links.extend(members)
+            drives = storage.get("Drives")
+            if isinstance(drives, list):
+                drive_links.extend(self._as_links(drives))
+            elif isinstance(drives, dict):
+                members = await self._read_optional_collection(client, drives)
+                if members:
+                    drive_links.extend(members)
         return await self._read_linked_resources(client, drive_links)
 
     async def _read_chassis_inventory(self, client, system):
