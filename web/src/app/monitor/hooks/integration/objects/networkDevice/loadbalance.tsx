@@ -71,7 +71,7 @@ export const useLoadbalanceConfig = () => {
       'Loadbalance SNMP General': 'snmp',
       'Loadbalance F5 SNMP': 'snmp_f5',
       'Loadbalance Citrix NetScaler SNMP': 'snmp_netscaler',
-      'Loadbalance A10 Thunder SNMP': 'snmp_a10',
+      'Loadbalance A10 SNMP': 'snmp_a10',
       'Loadbalance FortiADC SNMP': 'snmp_fortiadc',
       'Loadbalance Kemp LoadMaster SNMP': 'snmp_kemp',
       'Loadbalance Superiority SNMP': 'snmp_superiority',
