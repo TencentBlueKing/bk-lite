@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("system_mgmt", "0049_credential_vault"),
-        ("cmdb", "0055_firstcollectionrun_lock_retries"),
+        ("cmdb", "0056_scan_execution_schedule_family_run_batch"),
     ]
 
     operations = [
