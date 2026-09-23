@@ -69,6 +69,10 @@ import {
   resolveEffectiveCalculationUnit,
   resolveFunctionDelayMinutes,
   resolveInitialMetricPluginId,
+  resolveEditFormCollectType,
+  shouldHydrateMetricOnEdit,
+  extractMetricIdsFromQueryCondition,
+  resolvePluginIdFromMetricPlugins,
   resolveThresholdUnit,
   resolveThresholdUnitBase,
   resolveUnitOnMetricSelect,
@@ -669,9 +673,12 @@ const StrategyOperation = () => {
 
   useEffect(() => {
     if (
-      initMetricData.length > 0 &&
       formData &&
-      !['builtIn', 'add'].includes(type)
+      shouldHydrateMetricOnEdit({
+        type,
+        initMetricCount: initMetricData.length,
+        policyId: formData.id
+      })
     ) {
       processMetricData(formData);
     }
@@ -703,11 +710,71 @@ const StrategyOperation = () => {
     }
   }, [metricRows, metrics]);
 
+  const [metricResolvedPluginId, setMetricResolvedPluginId] = useState<
+    string | number | null
+  >(null);
+
+  useEffect(() => {
+    setMetricResolvedPluginId(null);
+  }, [formData?.id]);
+
+  useEffect(() => {
+    if (['add', 'builtIn'].includes(type)) return;
+    if (formData?.id == null || !pluginList.length || monitorObjId == null) return;
+    const collect = formData?.collect_type;
+    const known =
+      collect != null &&
+      collect !== '' &&
+      pluginList.some((item) => String(item.value) === String(collect));
+    if (known) return;
+    if (pluginList.length === 1) return;
+    const queryCondition =
+      resolveTemplateQueryCondition(formData) || formData?.query_condition;
+    const metricIds = extractMetricIdsFromQueryCondition(
+      queryCondition as {
+        type?: string;
+        metric_id?: number | null;
+        queries?: Array<{ metric_id?: number | null }>;
+      }
+    );
+    if (!metricIds.length) return;
+    let cancelled = false;
+    void getMonitorMetrics({
+      monitor_object_id: monitorObjId,
+      id_in: metricIds.join(','),
+      page: 1,
+      page_size: Math.max(metricIds.length, 1)
+    })
+      .then((page) => {
+        if (cancelled) return;
+        const items = (page?.items || []) as Array<{
+          monitor_plugin?: string | number | null;
+        }>;
+        const pluginId = resolvePluginIdFromMetricPlugins(pluginList, items);
+        if (pluginId == null) return;
+        setMetricResolvedPluginId(pluginId);
+        form.setFieldsValue({ collect_type: pluginId });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    type,
+    formData?.id,
+    formData?.collect_type,
+    formData?.query_condition,
+    pluginList,
+    monitorObjId
+  ]);
+
   useEffect(() => {
     const targetPluginId = resolveInitialMetricPluginId({
       type,
       pluginList,
-      policyCollectType: formData?.collect_type
+      policyCollectType: formData?.collect_type,
+      policyDetailReady: formData?.id != null,
+      metricResolvedPluginId
     });
     if (!monitorObjId || !targetPluginId) return;
     if (initialMetricPluginIdRef.current === targetPluginId) return;
@@ -719,7 +786,14 @@ const StrategyOperation = () => {
       },
       'init'
     );
-  }, [type, pluginList, formData?.collect_type, monitorObjId]);
+  }, [
+    type,
+    pluginList,
+    formData?.collect_type,
+    formData?.id,
+    monitorObjId,
+    metricResolvedPluginId
+  ]);
 
   const getObjects = async () => {
     const data = await getMonitorObject();
@@ -779,7 +853,7 @@ const StrategyOperation = () => {
     } = data;
     form.setFieldsValue({
       ...data,
-      collect_type: collect_type ? +collect_type : '',
+      collect_type: resolveEditFormCollectType(collect_type, pluginList, metricResolvedPluginId),
       trigger_count: trigger_count || 1,
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,
