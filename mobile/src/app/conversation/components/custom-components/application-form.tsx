@@ -95,7 +95,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
         if (missingFields.length > 0) {
             Toast.show({
                 icon: 'fail',
-                content: `请填写必填字段: ${missingFields.join(', ')}`,
+                content: t('chat.requiredFields', '请填写必填字段: {fields}', { fields: missingFields.join(', ') }),
             });
             return;
         }
@@ -172,7 +172,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                         <Input
                             value={displayValue}
                             onChange={(val) => handleFieldChange(name, val)}
-                            placeholder={placeholder || `请输入${label}`}
+                            placeholder={placeholder || t('chat.pleaseEnter', '请输入{label}', { label })}
                             disabled={!editable || formState === 'submitted'}
                             className="border border-[var(--color-border)] rounded-lg"
                             style={{ '--font-size': '13px' } as any}
@@ -184,7 +184,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                         <TextArea
                             value={displayValue}
                             onChange={(val) => handleFieldChange(name, val)}
-                            placeholder={placeholder || `请输入${label}`}
+                            placeholder={placeholder || t('chat.pleaseEnter', '请输入{label}', { label })}
                             disabled={!editable || formState === 'submitted'}
                             rows={rows || 3}
                             className="border border-[var(--color-border)] rounded-lg"
@@ -198,7 +198,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                             type="number"
                             value={value}
                             onChange={(val) => handleFieldChange(name, Number(val))}
-                            placeholder={placeholder || `请输入${label}`}
+                            placeholder={placeholder || t('chat.pleaseEnter', '请输入{label}', { label })}
                             disabled={!editable || formState === 'submitted'}
                             min={min}
                             max={max}
@@ -227,7 +227,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     day: '2-digit',
                                     hour: '2-digit',
                                     minute: '2-digit'
-                                }) : placeholder || `请选择${label}`}
+                                }) : placeholder || t('chat.pleaseSelect', '请选择{label}', { label })}
                             </div>
                             <DatePicker
                                 visible={datePickerVisible === name}
@@ -256,7 +256,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     : 'bg-white text-[var(--color-text-1)] cursor-pointer'
                                     }`}
                             >
-                                {dateValue ? dateValue.toLocaleDateString('zh-CN') : placeholder || `请选择${label}`}
+                                {dateValue ? dateValue.toLocaleDateString('zh-CN') : placeholder || t('chat.pleaseSelect', '请选择{label}', { label })}
                             </div>
                             <DatePicker
                                 visible={datePickerVisible === name}
@@ -288,7 +288,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                 {dateValue ? dateValue.toLocaleTimeString('zh-CN', {
                                     hour: '2-digit',
                                     minute: '2-digit'
-                                }) : placeholder || `请选择${label}`}
+                                }) : placeholder || t('chat.pleaseSelect', '请选择{label}', { label })}
                             </div>
                             <DatePicker
                                 visible={datePickerVisible === name}
