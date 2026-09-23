@@ -12,11 +12,23 @@
 
 ## 接入步骤
 
-1. 从实际采集节点验证数据库主机、端口、`service_name` 和监控账号。
-2. 填写用户名、密码、服务名称、数据库主机和端口。
-3. 填写未占用的 exporter 监听端口和采集间隔（默认 `60` 秒）。
-4. 在监控对象表格中选择节点，填写监听端口、主机、端口、实例名称和可选分组。
-5. 保存后等待至少一个采集周期。
+1. 由 DBA 创建专用账号。授权对象是底层视图 `sys.v_$*`，不是同名公共同义词。将 `<monitor_user>`、`<password>` 换成现场值，不要把密码写入命令历史，也不要授予 `DBA` 或 `SELECT ANY DICTIONARY`：
+
+```sql
+CREATE USER <monitor_user> IDENTIFIED BY "<password>";
+GRANT CREATE SESSION TO <monitor_user>;
+GRANT SELECT ON sys.v_$session TO <monitor_user>;
+GRANT SELECT ON sys.v_$sysstat TO <monitor_user>;
+GRANT SELECT ON sys.v_$database TO <monitor_user>;
+```
+
+当前仓库只明确这三项动态性能视图。表空间、SGA、PGA、等待、RAC、ASM、归档和 Data Guard 的 SQL 在 exporter 二进制中；某项指标失败时，只按日志里的 `ORA-` 对象补 `SELECT`。
+
+2. 从实际采集节点验证数据库主机、端口、`service_name` 和监控账号。
+3. 填写用户名、密码、服务名称、数据库主机和端口。
+4. 填写未占用的 exporter 监听端口和采集间隔（默认 `60` 秒）。
+5. 在监控对象表格中选择节点，填写监听端口、主机、端口、实例名称和可选分组。
+6. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 

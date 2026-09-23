@@ -12,10 +12,20 @@
 
 ## 接入步骤
 
-1. 从实际采集节点验证目标地址、账号、数据库名、SSL 模式和统计视图权限。
-2. 填写用户名、密码、主机、实际端口、数据库名、SSL 模式和采集间隔（默认 `60` 秒）。
-3. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
-4. 保存后等待至少一个采集周期。
+1. 由 DBA 创建专用账号。PostgreSQL 10 及以上使用 `pg_monitor`；将 `<monitor_user>`、`<password>`、`<dbname>` 换成现场值，不要把密码写入命令历史：
+
+```sql
+CREATE ROLE <monitor_user> WITH LOGIN PASSWORD '<password>';
+GRANT CONNECT ON DATABASE <dbname> TO <monitor_user>;
+GRANT pg_monitor TO <monitor_user>;
+```
+
+`<dbname>` 与页面数据库名一致，默认可用 `postgres`。`pg_monitor` 只包含统计视图的只读权限，不要授予超级用户。来源地址仍由 `pg_hba.conf` 限制。
+
+2. 从实际采集节点验证目标地址、账号、数据库名、SSL 模式和统计视图权限。
+3. 填写用户名、密码、主机、实际端口、数据库名、SSL 模式和采集间隔（默认 `60` 秒）。
+4. 在监控对象表格中选择节点，填写主机、端口、实例名称和可选分组。
+5. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 

@@ -12,11 +12,23 @@ This capability runs Oracle-Exporter on the selected node, and Telegraf scrapes 
 
 ## Setup Steps
 
-1. From the actual collector node, validate the database host, port, `service_name`, and monitoring account.
-2. Enter the username, password, service name, database host, and database port.
-3. Enter an unused exporter listen port and the interval (default `60` seconds).
-4. In the monitored objects table, select the node and enter the listen port, host, port, instance name, and optional group.
-5. Save the configuration and wait for at least one collection interval.
+1. Have the DBA create a dedicated account. Grant the underlying `sys.v_$*` views, not the public synonyms of the same name. Replace `<monitor_user>` and `<password>` with site values. Do not put the password in command history, and do not grant `DBA` or `SELECT ANY DICTIONARY`:
+
+```sql
+CREATE USER <monitor_user> IDENTIFIED BY "<password>";
+GRANT CREATE SESSION TO <monitor_user>;
+GRANT SELECT ON sys.v_$session TO <monitor_user>;
+GRANT SELECT ON sys.v_$sysstat TO <monitor_user>;
+GRANT SELECT ON sys.v_$database TO <monitor_user>;
+```
+
+This repository only names those three dynamic performance views. Tablespace, SGA, PGA, wait, RAC, ASM, archive, and Data Guard SQL lives in the exporter binary. When a metric fails, grant `SELECT` only on the object named by the `ORA-` error.
+
+2. From the actual collector node, validate the database host, port, `service_name`, and monitoring account.
+3. Enter the username, password, service name, database host, and database port.
+4. Enter an unused exporter listen port and the interval (default `60` seconds).
+5. In the monitored objects table, select the node and enter the listen port, host, port, instance name, and optional group.
+6. Save the configuration and wait for at least one collection interval.
 
 ## Pre-checks
 

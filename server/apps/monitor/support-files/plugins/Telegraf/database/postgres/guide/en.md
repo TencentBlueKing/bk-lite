@@ -12,10 +12,20 @@ This capability uses Telegraf `inputs.postgresql` to connect to a specified Post
 
 ## Setup Steps
 
-1. From the actual collector node, validate the target address, account, database name, SSL mode, and statistics-view permissions.
-2. Enter the username, password, host, actual port, database name, SSL mode, and interval (default `60` seconds).
-3. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
-4. Save the configuration and wait for at least one collection interval.
+1. Have the DBA create a dedicated account. PostgreSQL 10 and later should use `pg_monitor`. Replace `<monitor_user>`, `<password>`, and `<dbname>` with site values, and do not put the password in command history:
+
+```sql
+CREATE ROLE <monitor_user> WITH LOGIN PASSWORD '<password>';
+GRANT CONNECT ON DATABASE <dbname> TO <monitor_user>;
+GRANT pg_monitor TO <monitor_user>;
+```
+
+`<dbname>` must match the page database name; `postgres` is the usual default. `pg_monitor` is read-only access to statistics views. Do not grant superuser. Source addresses are still controlled by `pg_hba.conf`.
+
+2. From the actual collector node, validate the target address, account, database name, SSL mode, and statistics-view permissions.
+3. Enter the username, password, host, actual port, database name, SSL mode, and interval (default `60` seconds).
+4. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
+5. Save the configuration and wait for at least one collection interval.
 
 ## Pre-checks
 
