@@ -1,3 +1,5 @@
+from apps.alerts.notification_templates.events import EVENT_JSON_ROOTS, EVENT_SCALAR_FIELDS
+
 TOP_FIELDS = [
     "alert_id",
     "title",
@@ -32,13 +34,32 @@ def _base_payload(alert) -> dict:
     return payload
 
 
+def _copy_event_fields(event, payload):
+    """把代表事件的标量和 JSON 叶子铺进 payload。MagicMock 等非标量值直接跳过。"""
+    for field in EVENT_SCALAR_FIELDS:
+        if field == "source_name":
+            source = getattr(event, "source", None)
+            value = getattr(source, "name", None) if source is not None else None
+        else:
+            value = getattr(event, field, None)
+        if isinstance(value, (str, int, float, bool)) and value != "":
+            payload[f"event.{field}"] = value
+    for root in EVENT_JSON_ROOTS:
+        raw = getattr(event, root, None)
+        if isinstance(raw, dict):
+            _flatten(f"event.{root}", raw, payload)
+
+
 def build_match_payload(alert) -> dict:
-    """保留动作参数绑定使用的首个关联事件 source_id。"""
+    """保留动作参数绑定使用的首个关联事件 source_id，并铺平该事件的白名单字段。"""
     payload = _base_payload(alert)
     events = getattr(alert, "events", None)
     first_event = events.first() if events is not None else None
     if first_event is not None:
-        payload["source_id"] = first_event.source_id
+        source_id = getattr(first_event, "source_id", None)
+        if isinstance(source_id, (str, int)) and not isinstance(source_id, bool):
+            payload["source_id"] = source_id
+        _copy_event_fields(first_event, payload)
     return payload
 
 
