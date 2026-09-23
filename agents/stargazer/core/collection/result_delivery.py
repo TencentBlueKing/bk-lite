@@ -403,17 +403,13 @@ class ResultDeliveryCoordinator:
             )
             return
         logger.warning(
-            "event=result_publish_failed %s plugin_ref=%s "
-            "model_id=%s target=%s phase=%s reason=%s attempts=%s "
-            "budget_limit_seconds=%s failed_stage=result_publish error_type=PublishFailure",
+            "event=result_publish_failed %s plugin_ref=%s target=%s failed_stage=%s error_code=%s budget_limit_seconds=%s",
             safe_log_value(self._log_identity, max_length=255),
             safe_log_value(self._request.plugin_ref),
-            safe_log_value(self._request.params.get("model_id") or "-"),
             safe_log_value(pending.target or (pending.result.target if pending.result is not None else "-"), max_length=255),
             phase,
             safe_log_value(error_code or publish_status),
-            attempts,
-            (self._settings.publish_queue_timeout_seconds if phase == "enqueue" else self._settings.publish_total_timeout_seconds),
+            self._settings.publish_queue_timeout_seconds if phase == "enqueue" else self._settings.publish_total_timeout_seconds,
         )
 
 

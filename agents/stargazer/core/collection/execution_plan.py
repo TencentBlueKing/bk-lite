@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from core.collection.runtime import CollectionRequest
+from core.collection.runtime import CollectionRequest, _run_log_identity
 from core.logger import logger, safe_log_value
 from core.plugin.yaml_reader import ExecutorConfig, PluginYamlReader, yaml_reader
 
@@ -91,9 +91,8 @@ class ExecutionPlanResolver:
                 )
             except FileNotFoundError as exc:
                 logger.warning(
-                    "event=execution_plan_yaml_missing task_id=%s plugin=%s executor=%s "
-                    "action=use_defaults failed_stage=run_preparation error_type=%s",
-                    safe_log_value(request.task_id),
+                    "event=execution_plan_yaml_missing %s plugin=%s executor=%s action=use_defaults failed_stage=run_preparation error_type=%s",
+                    _run_log_identity(request),
                     safe_log_value(plugin_name or "-"),
                     safe_log_value(executor_type or "protocol"),
                     type(exc).__name__,
@@ -124,10 +123,9 @@ class ExecutionPlanResolver:
             if self._metrics is not None:
                 self._metrics.increment("snmp_timeout_clamped_total")
             logger.warning(
-                "event=snmp_collection_timeout_clamped task_id=%s plugin=%s "
-                "configured_seconds=%s effective_seconds=%s "
+                "event=snmp_collection_timeout_clamped %s plugin=%s configured_seconds=%s effective_seconds=%s "
                 "failed_stage=run_preparation error_type=CollectionTimeoutClamped",
-                safe_log_value(request.task_id),
+                _run_log_identity(request),
                 safe_log_value(plugin_name or "-"),
                 requested_collection_timeout,
                 collection_timeout,

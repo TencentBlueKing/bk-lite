@@ -23,6 +23,7 @@ from typing import Any, Dict, Iterable, Iterator
 from core.collection.contracts import StructuredMetricsPayload
 from core.infra.control_transport import get_control_transport
 from core.infra.nats_utils import NatsLinesPublishError, nats_publish_lines
+from core.logger import safe_exception_info, safe_log_value
 from influxdb_client import Point, WritePrecision
 from sanic.log import logger
 
@@ -197,14 +198,8 @@ async def _publish_lines_with_retry(
     expected_count = total_lines - skipped_count
     if success_count == expected_count:
         logger.debug(
-            "event=nats_metrics_publish_succeeded task_id=%s subject=%s "
-            "success_count=%s total_lines=%s skipped_count=%s | "
-            "NATS指标推送成功 成功行数=%s/%s 跳过行数=%s",
-            task_id,
+            "event=nats_metrics_publish_succeeded subject=%s success_count=%s total_lines=%s skipped_count=%s",
             subject,
-            success_count,
-            total_lines,
-            skipped_count,
             success_count,
             total_lines,
             skipped_count,
@@ -270,7 +265,7 @@ class _DeliveryAttemptFilter:
 async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
     callback_subject = params.get("callback_subject")
     if not callback_subject:
-        logger.warning(f"[NATS Helper] callback_subject missing for task {task_id}")
+        logger.warning("event=callback_subject_missing collect_task_id=%s", safe_log_value(params.get("collect_task_id") or "-"))
         return
 
     callback_data = dict(result or {})
@@ -280,13 +275,13 @@ async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any
 
     try:
         await get_control_transport().publish_collection_callback(str(callback_subject), callback_data)
-        logger.debug(f"[NATS Helper] Published callback to {subject} for task {task_id}")
+        logger.debug("event=callback_published subject=%s", subject)
     except Exception as err:
         logger.exception(
-            "event=callback_publish_failed task_id=%s subject=%s " "failed_stage=callback_publish error_type=%s",
-            task_id,
+            "event=callback_publish_failed subject=%s failed_stage=callback_publish error_type=%s",
             subject,
             type(err).__name__,
+            exc_info=safe_exception_info(err),
         )
         raise
 
@@ -333,8 +328,7 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
         )
         line_ordinal += len(chunk)
     logger.debug(
-        "event=nats_metrics_result_published task_id=%s subject=%s success_count=%s",
-        task_id,
+        "event=nats_metrics_result_published subject=%s success_count=%s",
         subject,
         success_count,
     )

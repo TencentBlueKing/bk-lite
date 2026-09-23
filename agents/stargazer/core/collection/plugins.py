@@ -19,7 +19,7 @@ from core.collection.contracts import (
     TargetCollectionContext,
 )
 from core.collection.node_info_lookup import RunNodeInfoLookup
-from core.collection.runtime import CollectionRequest
+from core.collection.runtime import CollectionRequest, _run_log_identity
 from core.logger import logger, safe_log_value
 from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 
@@ -68,8 +68,8 @@ class ConfigurationCollectionPlugin:
                 if self._metrics is not None:
                     self._metrics.increment("run_preparation_fallback_total")
                 logger.warning(
-                    "event=collection_run_preparation_fallback task_id=%s " "plugin_ref=%s failed_stage=run_preparation error_type=%s",
-                    safe_log_value(request.task_id),
+                    "event=collection_run_preparation_fallback %s plugin_ref=%s failed_stage=run_preparation error_type=%s",
+                    _run_log_identity(request),
                     safe_log_value(request.plugin_ref),
                     type(exc).__name__,
                 )

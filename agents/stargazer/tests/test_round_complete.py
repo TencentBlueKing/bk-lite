@@ -229,9 +229,8 @@ async def test_publish_round_complete_marker_owns_safe_failure_log(monkeypatch, 
     records = [record for record in caplog.records if record.levelno == logging.ERROR]
     assert len(records) == 1
     record = records[0]
-    assert record.msg == ("event=round_complete_marker_failed task_id=%s instance_id=%s model_id=%s " "round_ts=%s failed_stage=%s error_type=%s")
+    assert record.msg == ("event=round_complete_marker_failed instance_id=%s model_id=%s " "round_ts=%s failed_stage=%s error_type=%s")
     assert record.args == (
-        "run-3",
         "cmdb_7",
         "network",
         1_700_000_333,
