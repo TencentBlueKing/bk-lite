@@ -1550,8 +1550,18 @@ def list_alerts(query_data=None, user_info=None, **kwargs):
         levels = level if isinstance(level, list) else [level]
         queryset = queryset.filter(level__in=levels)
     keyword = str(query_data.get("keyword") or "").strip()
-    if keyword:
-        queryset = queryset.filter(Q(title__icontains=keyword) | Q(resource_name__icontains=keyword) | Q(alert_id__icontains=keyword))
+    raw_keywords = query_data.get("keywords")
+    if isinstance(raw_keywords, (list, tuple)):
+        keywords = [str(term).strip() for term in raw_keywords if str(term).strip()]
+    elif keyword:
+        keywords = [keyword]
+    else:
+        keywords = []
+    if keywords:
+        matched = Q()
+        for term in keywords:
+            matched |= Q(title__icontains=term) | Q(content__icontains=term) | Q(resource_name__icontains=term) | Q(alert_id__icontains=term)
+        queryset = queryset.filter(matched)
 
     try:
         page = max(int(query_data.get("page") or 1), 1)

@@ -1326,6 +1326,7 @@
         "enterprise_wechat": "Enterprise WeChat",
         "enterprise_wechat_aibot": "Enterprise WeChat AI Bot",
         "dingtalk": "DingTalk",
+        "feishu": "Feishu",
         "wechat_official": "WeChat Official Account"
       },
       "webChatEntry": "Web chat entry: ",
@@ -1337,7 +1338,7 @@
       "embeddedApiInfo": "This endpoint can be embedded on a web page via WebChat. After the channel is saved, copy the URL below.",
       "embeddedSaveHint": "After saving this channel, you can copy the integration URL from the list.",
       "callbackUrl": "Callback URL",
-      "callbackUrlHint": "Copy this URL and paste it into the WeCom / DingTalk / Official Account webhook URL field.",
+      "callbackUrlHint": "Copy this URL and paste it into the WeCom / DingTalk / Feishu / Official Account webhook URL field.",
       "callbackUrlSaveHint": "Generated after you pick a channel type",
       "callbackUrlGenerating": "Generating callback URL…",
       "callbackUrlFailed": "Failed to generate callback URL",
@@ -1362,7 +1363,7 @@
       "groupSaas": "In-product",
       "groupSaasDesc": "Platform / Web chat / Embedded",
       "groupIm": "Messaging",
-      "groupImDesc": "WeCom / DingTalk / Official Account (org check skipped)",
+      "groupImDesc": "WeCom / DingTalk / Feishu / Official Account (org check skipped)",
       "fields": {
         "token": "Token",
         "secret": "Secret",
@@ -1372,7 +1373,10 @@
         "encodingAESKey": "EncodingAESKey",
         "client_id": "Client ID",
         "client_secret": "Client Secret",
-        "app_id": "App ID"
+        "app_id": "App ID",
+        "app_secret": "App Secret",
+        "verification_token": "Verification Token",
+        "encrypt_key": "Encrypt Key"
       }
     },
     "skillParams": {

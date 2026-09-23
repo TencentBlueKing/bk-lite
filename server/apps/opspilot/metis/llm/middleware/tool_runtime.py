@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections.abc import Awaitable, Callable, Sequence
@@ -67,6 +68,82 @@ def is_progressive_tools_enabled() -> bool:
     """按步工具可见性总开关；默认开启，显式 0/false/off/no 时回退全量 Schema。"""
     raw = os.getenv(_PROGRESSIVE_TOOLS_ENV, "1").strip().lower()
     return raw not in _PROGRESSIVE_TOOLS_FALSE
+
+
+def _canonical_tool_args(args: Any) -> str:
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            return args
+    try:
+        return json.dumps(args if args is not None else {}, sort_keys=True, ensure_ascii=False, default=str)
+    except TypeError:
+        return str(args)
+
+
+_OR_SEARCH_TOOLS = frozenset({"alerts_list_alerts", "log_search_structured"})
+
+
+def repeated_or_search_denial(request: Any) -> ToolMessage | None:
+    """词表已经或检索过一次，换关键字再调同名工具不会得到新范围。"""
+    call = getattr(request, "tool_call", None) or {}
+    name = str(call.get("name") or "")
+    if name not in _OR_SEARCH_TOOLS:
+        return None
+    for message in _request_messages(request):
+        if not isinstance(message, ToolMessage):
+            continue
+        if str(getattr(message, "name", "") or "") != name:
+            continue
+        if str(getattr(message, "status", "") or "").lower() == "error":
+            continue
+        content = str(getattr(message, "content", "") or "")
+        if POLICY_RESULT_MARKER in content:
+            continue
+        return ToolMessage(
+            content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已按用户原问的词表做过或检索。" "不要换关键字再搜。空结果就是这些词都未命中，直接根据已有结果回答。"),
+            tool_call_id=str(call.get("id") or ""),
+            name=name,
+            status="error",
+        )
+    return None
+
+
+def repeated_successful_tool_denial(request: Any) -> ToolMessage | None:
+    """同名同参已经成功过，就不再真正执行第二次。"""
+    call = getattr(request, "tool_call", None) or {}
+    name = str(call.get("name") or "")
+    if not name:
+        return None
+    args_key = _canonical_tool_args(call.get("args"))
+    args_by_id: dict[str, tuple[str, str]] = {}
+    messages = _request_messages(request)
+    for message in messages:
+        for previous in getattr(message, "tool_calls", None) or []:
+            if not isinstance(previous, dict) or not previous.get("id"):
+                continue
+            args_by_id[str(previous["id"])] = (
+                str(previous.get("name") or ""),
+                _canonical_tool_args(previous.get("args")),
+            )
+    for message in messages:
+        if not isinstance(message, ToolMessage):
+            continue
+        if str(getattr(message, "status", "") or "").lower() == "error":
+            continue
+        content = str(getattr(message, "content", "") or "")
+        if POLICY_RESULT_MARKER in content:
+            continue
+        previous = args_by_id.get(str(getattr(message, "tool_call_id", "") or ""))
+        if previous == (name, args_key):
+            return ToolMessage(
+                content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已用相同参数成功执行过。" "不要再调用。直接根据已有结果回答并结束本步。"),
+                tool_call_id=str(call.get("id") or ""),
+                name=name,
+                status="error",
+            )
+    return None
 
 
 def _tool_name(tool: Any) -> str:
@@ -169,12 +246,18 @@ class ToolVisibilityMiddleware(AgentMiddleware):
         denied = self._deny_invisible_tool(request)
         if denied is not None:
             return denied
+        repeated = repeated_successful_tool_denial(request) or repeated_or_search_denial(request)
+        if repeated is not None:
+            return repeated
         return handler(request)
 
     async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
         denied = self._deny_invisible_tool(request)
         if denied is not None:
             return denied
+        repeated = repeated_successful_tool_denial(request) or repeated_or_search_denial(request)
+        if repeated is not None:
+            return repeated
         return await handler(request)
 
 

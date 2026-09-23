@@ -53,6 +53,16 @@ def test_alerts_events_maps_to_rpc():
     assert out["data"]["items"][0]["event_id"] == "e1"
 
 
-def test_alerts_require_caller_identity():
+def test_alerts_list_uses_question_terms_instead_of_glued_keyword():
+    config = cfg()
+    config["configurable"]["user_message"] = "下单接口超时了，有没有 timeout"
+    with patch("apps.opspilot.metis.llm.tools.alerts.utils.AlertOperationAnaRpc") as rpc_cls:
+        rpc_cls.return_value.list_alerts.return_value = {"result": True, "data": {"count": 0, "items": []}}
+        out = alerts_list_alerts.invoke({"keyword": "下单超时"}, config=config)
+    keywords = rpc_cls.return_value.list_alerts.call_args.kwargs["query_data"]["keywords"]
+    assert "下单接口" in keywords
+    assert "timeout" in keywords
+    assert "下单超时" not in keywords
+    assert out["searched_keywords"] == keywords
     out = alerts_list_alerts.invoke({}, config={"configurable": {}})
     assert "caller_identity" in out["error"]

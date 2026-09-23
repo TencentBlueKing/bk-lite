@@ -192,6 +192,8 @@ export interface HexagonData {
   name: string;
   description: React.ReactNode | string;
   fill: string;
+  aiName?: string;
+  aiValue?: string;
 }
 
 export interface TimeValuesProps {

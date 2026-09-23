@@ -1,4 +1,5 @@
 'use client';
+import './register-list-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Spin,

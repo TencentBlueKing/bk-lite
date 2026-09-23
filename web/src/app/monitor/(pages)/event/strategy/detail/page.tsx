@@ -1,4 +1,5 @@
 'use client';
+import './register-strategy-detail-pilot';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { Spin, Button, Form, Input, message, Modal, Steps } from 'antd';
 import useApiClient from '@/utils/request';
@@ -102,6 +103,10 @@ import {
   resolveQueryConditionMetricIds,
   resolveTemplateQueryCondition
 } from './formulaExpressionUtils';
+import {
+  buildStrategyDetailContext,
+  publishStrategyDetailSnapshot,
+} from './strategyDetail.pilot';
 const defaultGroup = ['instance_id'];
 
 const StrategyOperation = () => {
@@ -295,6 +300,54 @@ const StrategyOperation = () => {
     calculationUnit: thresholdBaseUnit,
     unitList
   });
+  const watchedName = Form.useWatch('name', form);
+  const watchedAlertName = Form.useWatch('alert_name', form);
+  const watchedNoticeUsers = Form.useWatch('notice_users', form);
+  const watchedHandlers = Form.useWatch('handlers', form);
+  const watchedNoticeTypeIds = Form.useWatch('notice_type_ids', form);
+  const watchedSchedule = Form.useWatch('schedule', form);
+
+  useEffect(() => {
+    const metricLabel = metrics.find((item) => item.name === metric)?.display_name || metric || '';
+    publishStrategyDetailSnapshot(buildStrategyDetailContext({
+      name: watchedName || watchedAlertName || detailName,
+      objectName: monitorName || currentMonitorObject?.display_name || currentMonitorObject?.name,
+      source,
+      schedule: watchedSchedule,
+      scheduleUnit: unit,
+      period,
+      periodUnit,
+      expression: metricExpressionMode === 'formula' ? formulaExpression : metricLabel,
+      thresholds: threshold,
+      noticeChannelTypes: watchedNoticeTypeIds,
+      noticeUsers: watchedNoticeUsers,
+      handlers: watchedHandlers,
+      userList: noticeUserList,
+      channels: channelList,
+    }));
+    return () => publishStrategyDetailSnapshot(null);
+  }, [
+    watchedName,
+    watchedAlertName,
+    watchedNoticeUsers,
+    watchedHandlers,
+    watchedNoticeTypeIds,
+    watchedSchedule,
+    detailName,
+    monitorName,
+    currentMonitorObject,
+    source,
+    unit,
+    period,
+    periodUnit,
+    metricExpressionMode,
+    formulaExpression,
+    metric,
+    metrics,
+    threshold,
+    noticeUserList,
+    channelList,
+  ]);
   const functionDelayQueries = useMemo(
     () =>
       collectMetricQueryTexts({

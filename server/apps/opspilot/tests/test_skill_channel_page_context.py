@@ -85,6 +85,7 @@ class TestInjectPageContext:
         assert "<current_page>" in text
         assert "主机 A" in text
         assert "仅当问题与页面相关时参考" in text
+        assert "request_user_choice" in text
         assert "CPU" in text
 
     def test_empty_context_keeps_original(self):
@@ -354,6 +355,104 @@ class TestInjectPageContext:
         image_items = [item for item in result if item.get("type") == "image_url"]
         assert len(image_items) == 1
         assert image_items[0]["image_url"].startswith("data:image/")
+
+    def test_metric_series_keeps_matching_values_and_full_catalog(self):
+        series = [
+            {"name": "磁盘使用率", "group": "磁盘", "metric": "disk_used_percent", "latest": 82.9, "min": 16.8, "max": 82.9, "value": [71, 80, 83]},
+            {"name": "磁盘吞吐", "group": "磁盘", "metric": "disk_io", "latest": 12.1, "value": [10, 12, 8]},
+            {"name": "CPU 使用率", "group": "计算", "metric": "cpu_usage", "latest": 39.6, "value": [30, 39, 40]},
+        ]
+        page_context = {
+            "sections": [
+                {
+                    "id": "metric-catalog",
+                    "label": "指标目录",
+                    "content": "磁盘: 磁盘使用率 (disk_used_percent)；磁盘吞吐 (disk_io)\n计算: CPU 使用率 (cpu_usage)",
+                    "priority": 8,
+                },
+                {"id": "metric-series", "label": "已加载曲线", "content": json.dumps(series, ensure_ascii=False), "priority": 7},
+            ]
+        }
+        text = chat_svc.inject_page_context("磁盘使用率高吗", page_context)
+        assert "磁盘: 磁盘使用率" in text
+        assert "CPU 使用率 (cpu_usage)" in text
+        assert '"value":[71,80,83]' in text.replace(" ", "")
+        assert "磁盘吞吐" in text
+        assert '"value":[10,12,8]' not in text.replace(" ", "")
+        assert '"value":[30,39,40]' not in text.replace(" ", "")
+        assert "《磁盘使用率》" in text
+
+    def test_metric_group_match_keeps_group_values(self):
+        series = [
+            {"name": "磁盘使用率", "group": "磁盘", "metric": "disk_used_percent", "value": [82.9]},
+            {"name": "磁盘吞吐", "group": "磁盘", "metric": "disk_io", "value": [12.1]},
+            {"name": "CPU 使用率", "group": "计算", "metric": "cpu_usage", "value": [39.6]},
+        ]
+        page_context = {
+            "sections": [
+                {"id": "metric-catalog", "label": "指标目录", "content": "磁盘\n计算", "priority": 8},
+                {"id": "metric-series", "label": "已加载曲线", "content": json.dumps(series, ensure_ascii=False), "priority": 7},
+            ]
+        }
+        text = chat_svc.inject_page_context("磁盘怎么样", page_context)
+        compact = text.replace(" ", "")
+        assert '"value":[82.9]' in compact
+        assert '"value":[12.1]' in compact
+        assert '"value":[39.6]' not in compact
+
+    def test_metric_miss_strips_all_values_keeps_catalog(self):
+        series = [
+            {"name": "磁盘使用率", "group": "磁盘", "metric": "disk_used_percent", "latest": 82.9, "value": [71, 80, 83]},
+            {"name": "CPU 使用率", "group": "计算", "metric": "cpu_usage", "latest": 39.6, "value": [30, 39]},
+        ]
+        page_context = {
+            "sections": [
+                {"id": "metric-catalog", "label": "指标目录", "content": "磁盘: 磁盘使用率\n计算: CPU 使用率", "priority": 8},
+                {"id": "metric-series", "label": "已加载曲线", "content": json.dumps(series, ensure_ascii=False), "priority": 7},
+            ]
+        }
+        text = chat_svc.inject_page_context("当前哪个指标异常", page_context)
+        assert "磁盘: 磁盘使用率" in text
+        assert '"latest":82.9' in text.replace(" ", "")
+        assert '"value"' not in text.split("已加载曲线", 1)[-1]
+
+    def test_usage_does_not_keep_throughput_series_values(self):
+        series = [
+            {"name": "磁盘使用率", "group": "磁盘", "metric": "disk_used_percent", "value": [82.9]},
+            {"name": "磁盘吞吐", "group": "磁盘", "metric": "disk_io", "value": [12.1]},
+        ]
+        page_context = {"sections": [{"id": "metric-series", "label": "已加载曲线", "content": json.dumps(series, ensure_ascii=False), "priority": 7}]}
+        text = chat_svc.inject_page_context("磁盘使用率高吗", page_context)
+        compact = text.replace(" ", "")
+        assert '"value":[82.9]' in compact
+        assert '"value":[12.1]' not in compact
+
+    def test_notice_people_only_when_asked(self):
+        page_context = {
+            "sections": [
+                {"id": "strategy-detail", "label": "策略详情", "content": "名称: CPU 高\n阈值: >= 80", "priority": 9},
+                {"id": "notice-people", "label": "通知人与处理人", "content": "通知人: 张三\n处理人: 李四", "priority": 6},
+            ]
+        }
+        threshold_text = chat_svc.inject_page_context("这条策略阈值是多少", page_context)
+        assert "阈值: >= 80" in threshold_text
+        assert "张三" not in threshold_text
+        assert "李四" not in threshold_text
+        notice_text = chat_svc.inject_page_context("通知谁", page_context)
+        assert "张三" in notice_text
+        assert "李四" in notice_text
+
+    def test_credential_question_adds_refuse_guide_without_secret(self):
+        page_context = {
+            "sections": [
+                {"id": "integration-config", "label": "接入配置", "content": "插件: Host\n节点: node-1\n协议: snmp", "priority": 9},
+            ]
+        }
+        text = chat_svc.inject_page_context("community 是什么", page_context)
+        assert "禁止回答、复述、猜测或生成密码" in text
+        assert "node-1" in text
+        assert "super-secret" not in text
+        assert "public" not in text
 
 
 class TestStreamPageContext:

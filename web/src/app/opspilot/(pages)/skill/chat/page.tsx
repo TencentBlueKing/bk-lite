@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button, Dropdown, List, Popconfirm, Skeleton, Tag } from 'antd';
 import type { MenuProps } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
@@ -8,6 +9,7 @@ import { processHistoryMessageWithExtras } from '@/app/opspilot/components/custo
 import { parseLlmContextUsage, type LlmContextUsage } from '@/app/opspilot/components/custom-chat-sse/llmContextUsage';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
+import { readWebChatEntry } from '@/app/opspilot/(pages)/skill/chat/entry';
 
 interface WebChatChannel {
   id: number;
@@ -28,6 +30,12 @@ interface SkillChatSession {
   persisted?: boolean;
 };
 
+interface MountedChatSession {
+  id: string;
+  initialMessages: any[];
+  initialContextUsage: LlmContextUsage | null;
+}
+
 const CHANNEL_TYPE_TAG: Record<string, { color: string; label: string }> = {
   platform: { color: 'cyan', label: '平台' },
   web_chat: { color: 'blue', label: 'Web' },
@@ -35,6 +43,7 @@ const CHANNEL_TYPE_TAG: Record<string, { color: string; label: string }> = {
   enterprise_wechat: { color: 'green', label: '企微' },
   enterprise_wechat_aibot: { color: 'green', label: '企微机器人' },
   dingtalk: { color: 'orange', label: '钉钉' },
+  feishu: { color: 'blue', label: '飞书' },
   wechat_official: { color: 'green', label: '公众号' },
 };
 
@@ -76,6 +85,8 @@ const mapWebChatChannels = (data: any[]): WebChatChannel[] => {
 };
 
 const SkillWebChatPage: React.FC = () => {
+  const searchParams = useSearchParams();
+  const entryToken = searchParams?.get('entry') || '';
   const { fetchWebChatSkillChannels, fetchSkillConversations, fetchSkillSessionMessages, deleteSkillSession } = useSkillApi();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [agentLoading, setAgentLoading] = useState(true);
@@ -85,17 +96,8 @@ const SkillWebChatPage: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState('');
   const [functionList, setFunctionList] = useState<SkillChatSession[]>([]);
   const [functionLoading, setFunctionLoading] = useState(false);
-  const [chatKey, setChatKey] = useState(0);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [initialMessages, setInitialMessages] = useState<any[]>([]);
-  const [initialContextUsage, setInitialContextUsage] = useState<LlmContextUsage | null>(null);
-  const chatLoadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
-    };
-  }, []);
+  const [mountedChats, setMountedChats] = useState<MountedChatSession[]>([]);
+  const [openingSessionId, setOpeningSessionId] = useState('');
 
   useEffect(() => {
     async function loadChannels() {
@@ -104,7 +106,12 @@ const SkillWebChatPage: React.FC = () => {
         const data = await fetchWebChatSkillChannels();
         const agents = mapWebChatChannels(data);
         setAgentList(agents);
-        setCurrentAgent(agents[0] || null);
+        const requestedChannelId = readWebChatEntry(entryToken);
+        const preferred = requestedChannelId
+          ? agents.find((agent) => String(agent.id) === requestedChannelId)
+          : undefined;
+        // 带了入口凭证却对不上时，不回退到列表第一项。
+        setCurrentAgent(entryToken ? preferred || null : preferred || agents[0] || null);
       } catch {
         setAgentList([]);
         setCurrentAgent(null);
@@ -113,7 +120,7 @@ const SkillWebChatPage: React.FC = () => {
       }
     }
     loadChannels();
-  }, []);
+  }, [entryToken]);
 
   useEffect(() => {
     async function loadSessions() {
@@ -121,25 +128,25 @@ const SkillWebChatPage: React.FC = () => {
         setFunctionList([]);
         setSessionId(null);
         setSelectedItem('');
-        setInitialMessages([]);
-        setInitialContextUsage(null);
+        setMountedChats([]);
         return;
       }
       setFunctionLoading(true);
       setSessionId(null);
       setSelectedItem('');
-      setInitialMessages([]);
-      setInitialContextUsage(null);
+      setMountedChats([]);
       try {
         const sessions = await fetchSkillConversations(currentAgent.id);
         setFunctionList(
-          (sessions || []).map((item: any) => ({
-            id: item.session_id,
-            title: item.title || '新会话',
-            icon: 'jiqiren3',
-            channel_type: item.channel_type || 'web_chat',
-            persisted: true,
-          }))
+          (sessions || [])
+            .filter((item: any) => (item.channel_type || 'web_chat') === 'web_chat')
+            .map((item: any) => ({
+              id: item.session_id,
+              title: item.title || '新会话',
+              icon: 'jiqiren3',
+              channel_type: 'web_chat',
+              persisted: true,
+            }))
         );
       } catch {
         setFunctionList([]);
@@ -163,15 +170,9 @@ const SkillWebChatPage: React.FC = () => {
       const newId = `session_${Date.now()}`;
       setSessionId(newId);
       setSelectedItem(newId);
-      setInitialMessages([]);
-      setInitialContextUsage(null);
-      setChatKey((k) => k + 1);
+      setMountedChats([{ id: newId, initialMessages: [], initialContextUsage: null }]);
     }
   }, [functionList]);
-
-  useEffect(() => {
-    setChatKey((k) => k + 1);
-  }, [initialMessages]);
 
   const agentMenuItems: MenuProps['items'] = agentList.map((agent) => ({
     key: String(agent.id),
@@ -184,19 +185,23 @@ const SkillWebChatPage: React.FC = () => {
     onClick: () => setCurrentAgent(agent),
   }));
 
+  const mountChat = (session: MountedChatSession) => {
+    setMountedChats((current) => (current.some((item) => item.id === session.id) ? current : [...current, session]));
+  };
+
   const handleSelectSession = async (item: SkillChatSession | string) => {
     const session = typeof item === 'string' ? functionList.find((row) => row.id === item) : item;
     const id = session?.id || (typeof item === 'string' ? item : '');
-    setChatLoading(true);
     setSelectedItem(id);
     setSessionId(id);
-    if (!session?.persisted) {
-      setInitialMessages([]);
-      setInitialContextUsage(null);
-      if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
-      chatLoadingTimerRef.current = setTimeout(() => setChatLoading(false), 300);
+    if (mountedChats.some((chat) => chat.id === id)) {
       return;
     }
+    if (!session?.persisted) {
+      mountChat({ id, initialMessages: [], initialContextUsage: null });
+      return;
+    }
+    setOpeningSessionId(id);
     try {
       const payload = await fetchSkillSessionMessages(id);
       const messages = (payload.messages || []).map((row: any) => {
@@ -223,19 +228,19 @@ const SkillWebChatPage: React.FC = () => {
           reportFileDownloads: processed.reportFileDownloads,
         };
       });
-      setInitialMessages(messages);
-      setInitialContextUsage(parseLlmContextUsage(payload.llm_context_usage));
+      mountChat({
+        id,
+        initialMessages: messages,
+        initialContextUsage: parseLlmContextUsage(payload.llm_context_usage),
+      });
     } catch {
-      setInitialMessages([]);
-      setInitialContextUsage(null);
+      mountChat({ id, initialMessages: [], initialContextUsage: null });
     } finally {
-      if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
-      chatLoadingTimerRef.current = setTimeout(() => setChatLoading(false), 400);
+      setOpeningSessionId((current) => (current === id ? '' : current));
     }
   };
 
   const handleNewChat = () => {
-    setChatLoading(true);
     const newId = `session_${Date.now()}`;
     setFunctionList((list) => [
       {
@@ -249,10 +254,7 @@ const SkillWebChatPage: React.FC = () => {
     ]);
     setSessionId(newId);
     setSelectedItem(newId);
-    setInitialMessages([]);
-    setInitialContextUsage(null);
-    if (chatLoadingTimerRef.current) clearTimeout(chatLoadingTimerRef.current);
-    chatLoadingTimerRef.current = setTimeout(() => setChatLoading(false), 300);
+    mountChat({ id: newId, initialMessages: [], initialContextUsage: null });
   };
 
   const handleDeleteSession = async (sessionIdToDelete: string) => {
@@ -262,49 +264,45 @@ const SkillWebChatPage: React.FC = () => {
         await deleteSkillSession(sessionIdToDelete);
       }
       setFunctionList((list) => list.filter((item) => item.id !== sessionIdToDelete));
+      setMountedChats((current) => current.filter((chat) => chat.id !== sessionIdToDelete));
       if (selectedItem === sessionIdToDelete) {
         setSelectedItem('');
         setSessionId(null);
-        setInitialMessages([]);
-        setInitialContextUsage(null);
-        setChatKey((k) => k + 1);
       }
     } catch (error) {
       console.error('Failed to delete session:', error);
     }
   };
 
-  const handleSendMessage = async (message: string) => {
+  const handleSendMessage = (panelSessionId: string) => async (message: string) => {
     if (!currentAgent?.id) return null;
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const url = `${baseUrl}/api/proxy/opspilot/skill_channel/${currentAgent.id}/chat/`;
-    if (sessionId) {
-      const preview = message.replace(/\n/g, ' ').slice(0, 50);
-      setFunctionList((list) => {
-        if (list.find((item) => item.id === sessionId)) {
-          return list.map((item) =>
-            item.id === sessionId && (!item.persisted || item.title.startsWith('新会话'))
-              ? { ...item, title: preview || item.title, persisted: true, channel_type: item.channel_type || 'web_chat' }
-              : item.id === sessionId
-                ? { ...item, persisted: true }
-                : item
-          );
-        }
-        return [
-          {
-            id: sessionId,
-            title: preview || newSessionTitle(),
-            icon: 'jiqiren3',
-            channel_type: 'web_chat',
-            persisted: true,
-          },
-          ...list,
-        ];
-      });
-    }
+    const preview = message.replace(/\n/g, ' ').slice(0, 50);
+    setFunctionList((list) => {
+      if (list.find((item) => item.id === panelSessionId)) {
+        return list.map((item) =>
+          item.id === panelSessionId && (!item.persisted || item.title.startsWith('新会话'))
+            ? { ...item, title: preview || item.title, persisted: true, channel_type: item.channel_type || 'web_chat' }
+            : item.id === panelSessionId
+              ? { ...item, persisted: true }
+              : item
+        );
+      }
+      return [
+        {
+          id: panelSessionId,
+          title: preview || newSessionTitle(),
+          icon: 'jiqiren3',
+          channel_type: 'web_chat',
+          persisted: true,
+        },
+        ...list,
+      ];
+    });
     return {
       url,
-      payload: { message, session_id: sessionId },
+      payload: { message, session_id: panelSessionId },
       interruptRequest: {
         enabled: true,
         url: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',
@@ -402,25 +400,29 @@ const SkillWebChatPage: React.FC = () => {
         </div>
       )}
 
-      <div className="flex-1 bg-[var(--color-bg)] min-w-0 h-full">
+      <div className="flex-1 bg-[var(--color-bg)] min-w-0 h-full relative">
         {!currentAgent && !agentLoading ? (
           <div className="w-full h-full flex items-center justify-center text-[var(--color-text-3)]">当前组织暂无已启用的 Web 对话渠道</div>
-        ) : chatLoading ? (
-          <div className="w-full h-full flex items-center justify-center text-[var(--color-text-4)]">加载中...</div>
         ) : (
-          <CustomChatSSE
-            key={chatKey}
-            handleSendMessage={handleSendMessage}
-            guide={currentAgent?.app_description || ''}
-            useAGUIProtocol={true}
-            showHeader={false}
-            requirePermission={false}
-            initialMessages={initialMessages}
-            initialContextUsage={initialContextUsage}
-            removePendingBotMessageOnCancel={true}
-            conversationHistoryEnabled={currentAgent?.enable_conversation_history !== false}
-          />
+          mountedChats.map((chat) => (
+            <div key={chat.id} className={chat.id === selectedItem ? 'h-full' : 'hidden'}>
+              <CustomChatSSE
+                handleSendMessage={handleSendMessage(chat.id)}
+                guide={currentAgent?.app_description || ''}
+                useAGUIProtocol={true}
+                showHeader={false}
+                requirePermission={false}
+                initialMessages={chat.initialMessages}
+                initialContextUsage={chat.initialContextUsage}
+                removePendingBotMessageOnCancel={true}
+                conversationHistoryEnabled={currentAgent?.enable_conversation_history !== false}
+              />
+            </div>
+          ))
         )}
+        {openingSessionId === selectedItem ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-4)]">加载中...</div>
+        ) : null}
       </div>
     </div>
   );

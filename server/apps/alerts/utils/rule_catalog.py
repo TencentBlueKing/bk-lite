@@ -5,7 +5,7 @@ import math
 import re
 from pathlib import Path
 
-FIELDS = {field["key"]: field for field in json.loads(Path(__file__).with_name("rule_fields.json").read_text())}
+FIELDS = {field["key"]: field for field in json.loads(Path(__file__).with_name("rule_fields.json").read_text(encoding="utf-8"))}
 EVENT_SCOPES = {"correlation", "shield", "enrichment"}
 SCOPES = EVENT_SCOPES | {"assignment", "action"}
 

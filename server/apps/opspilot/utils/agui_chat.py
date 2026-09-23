@@ -12,6 +12,7 @@ import time
 from asgiref.sync import sync_to_async
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.chain.entity import is_ephemeral_agui_custom_event
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import classify_llm_error, format_llm_failure_log, summarize_llm_endpoint
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, SkillRequestLog
@@ -19,7 +20,7 @@ from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.utils.agent_factory import create_agent_instance
-from apps.opspilot.utils.stream_common import is_interrupt_requested_async, make_sse_response
+from apps.opspilot.utils.stream_common import make_sse_response
 from apps.opspilot.utils.stream_common import process_think_content as _process_think_content
 from apps.opspilot.utils.stream_common import split_think_content as _split_think_content
 
@@ -439,7 +440,6 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
         accumulated_content = []
         state = _init_agui_stream_state()
         enable_thinking_split = _supports_thinking_events(request)
-        execution_id = request.typed_extra_config().execution_id or request.thread_id
         matched_skill_packages = params.get("matched_skill_packages") or []
         if matched_skill_packages:
             skill_view_event = {
@@ -473,22 +473,14 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
                 request,
                 token_usage_accumulator=token_usage_accumulator,
             ):
-                if execution_id and await is_interrupt_requested_async(execution_id):
-                    interrupt_data = {
-                        "type": "INTERRUPTED",
-                        "error": "执行已中断",
-                        "execution_id": execution_id,
-                        "timestamp": int(time.time() * 1000),
-                    }
-                    yield _build_sse_line(interrupt_data)
-                    return
+                # 中断由 graph SSE 主循环的 InterruptWatch 统一处理，此处不再每帧查库。
                 output_line = sse_line
                 immediate_lines = []
                 if sse_line.startswith("data: "):
                     try:
                         data_json = json.loads(sse_line[6:].strip())
                         output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
-                        if not (data_json.get("type") == "CUSTOM" and data_json.get("name") == "stream_keepalive"):
+                        if not is_ephemeral_agui_custom_event(data_json):
                             accumulated_content.append(data_json)
                     except (json.JSONDecodeError, ValueError) as parse_err:
                         sample = sse_line[6:].strip()[:200]

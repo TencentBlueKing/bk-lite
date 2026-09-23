@@ -467,6 +467,7 @@ describe('ops-analysis dashboard.pilot text context', () => {
       }],
       captureEchartsFromDom: async () => [],
       captionFromOption: () => '图表',
+      captureRechartsFromDoms: async () => [],
     };
     const full = await getContext(toolkit);
     const captions = (full.images || []).map((image) => image.caption).join('\n');
@@ -518,6 +519,7 @@ describe('ops-analysis dashboard.pilot text context', () => {
       captureEchartsFromDoms: async () => [{ dataUrl: 'data:image/jpeg,x', caption: '不该出现' }],
       captureEchartsFromDom: async () => [],
       captionFromOption: () => '',
+      captureRechartsFromDoms: async () => [],
     };
     const full = await getContext(toolkit);
     expect(full.images || []).toEqual([]);

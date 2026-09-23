@@ -8,13 +8,6 @@ from django.conf import settings
 from django.core import signing
 from django.core.files.base import ContentFile
 from django.utils import timezone
-from docx import Document
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import WorkflowAttachmentAsset
@@ -189,6 +182,10 @@ def cleanup_expired_workflow_attachments(*, retention_days: int = 3) -> int:
 
 
 def _build_docx_bytes(content: str, title: str) -> bytes:
+    # 显著启动成本：python-docx 仅在生成 Word 附件时需要；模块顶层导入会让
+    # Django AppConfig.ready() → nats_api → AgentNode 在 migrate 时触发 MemoryError。
+    from docx import Document
+
     document = Document()
     document.add_heading(title, level=1)
     for line in content.splitlines() or [""]:
@@ -199,6 +196,12 @@ def _build_docx_bytes(content: str, title: str) -> bytes:
 
 
 def _build_pdf_bytes(content: str, title: str) -> bytes:
+    # 显著启动成本：reportlab 仅在生成 PDF 附件时需要，不得随 Django setup 加载。
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
     font_name = _resolve_pdf_font()
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -242,6 +245,9 @@ def _escape_pdf_text(text: str) -> str:
 
 
 def _resolve_pdf_font() -> str:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
     font_candidates = [
         ("微软雅黑", "C:/Windows/Fonts/msyh.ttf"),
         ("微软雅黑", "C:/Windows/Fonts/msyh.ttc"),

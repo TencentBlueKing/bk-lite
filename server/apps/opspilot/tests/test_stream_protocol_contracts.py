@@ -7,7 +7,6 @@ import pytest
 
 from apps.opspilot.utils import agui_chat, sse_chat, stream_common
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -18,28 +17,24 @@ def parse_sse(line):
 
 def test_think_filter_hides_tagged_reasoning_and_preserves_visible_text():
     state = ("", False, True, True)
-    output, buffer, in_think, first, has_tags = (
-        stream_common.process_think_content(
-            "<think>inspect internal state",
-            state[0],
-            state[1],
-            state[2],
-            False,
-            state[3],
-        )
+    output, buffer, in_think, first, has_tags = stream_common.process_think_content(
+        "<think>inspect internal state",
+        state[0],
+        state[1],
+        state[2],
+        False,
+        state[3],
     )
     assert output == ""
     assert in_think is True
 
-    output, buffer, in_think, first, has_tags = (
-        stream_common.process_think_content(
-            "</think>database is healthy and ready",
-            buffer,
-            in_think,
-            first,
-            False,
-            has_tags,
-        )
+    output, buffer, in_think, first, has_tags = stream_common.process_think_content(
+        "</think>database is healthy and ready",
+        buffer,
+        in_think,
+        first,
+        False,
+        has_tags,
     )
 
     assert "inspect internal state" not in output
@@ -48,14 +43,12 @@ def test_think_filter_hides_tagged_reasoning_and_preserves_visible_text():
 
 
 def test_think_split_emits_reasoning_and_visible_channels_separately():
-    visible, thinking, buffer, in_think, first, has_tags = (
-        stream_common.split_think_content(
-            "preface<think>check logs</think>service healthy",
-            "",
-            False,
-            True,
-            True,
-        )
+    visible, thinking, buffer, in_think, first, has_tags = stream_common.split_think_content(
+        "preface<think>check logs</think>service healthy",
+        "",
+        False,
+        True,
+        True,
     )
 
     assert visible == "prefaceservice healthy"
@@ -87,10 +80,7 @@ async def test_openai_agent_stream_filters_thinking_and_replays_custom_events():
             yield "event: ignored\n\n"
             yield "data: not-json\n\n"
             yield 'data: {"type":"CUSTOM","name":"browser_step","step":1}\n\n'
-            yield (
-                'data: {"type":"TEXT_MESSAGE_CONTENT",'
-                '"delta":"<think>internal</think>database healthy"}\n\n'
-            )
+            yield ('data: {"type":"TEXT_MESSAGE_CONTENT",' '"delta":"<think>internal</think>database healthy"}\n\n')
 
     events = []
     async for item in sse_chat._generate_agent_stream(
@@ -101,22 +91,12 @@ async def test_openai_agent_stream_filters_thinking_and_replays_custom_events():
     ):
         events.append(item)
 
-    chunks = [
-        parse_sse(item)
-        for item in events
-        if isinstance(item, str)
-        and '"chat.completion.chunk"' in item
-    ]
-    visible = "".join(
-        chunk["choices"][0]["delta"]["content"] for chunk in chunks
-    )
+    chunks = [parse_sse(item) for item in events if isinstance(item, str) and '"chat.completion.chunk"' in item]
+    visible = "".join(chunk["choices"][0]["delta"]["content"] for chunk in chunks)
     assert "internal" not in visible
     assert visible == "database healthy"
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
-    assert any(
-        isinstance(item, str) and '"browser_step"' in item
-        for item in events
-    )
+    assert any(isinstance(item, str) and '"browser_step"' in item for item in events)
     assert events[-1] == (
         "STATS",
         "<think>internal</think>database healthy",
@@ -149,12 +129,10 @@ async def test_openai_agent_stream_maps_runtime_errors_to_terminal_chunk():
 @pytest.mark.asyncio
 async def test_error_stream_response_has_terminal_done_frame_and_headers():
     response = sse_chat.create_error_stream_response("invalid model")
-    frames = [
-        frame.decode() if isinstance(frame, bytes) else frame
-        async for frame in response.streaming_content
-    ]
+    frames = [frame.decode() if isinstance(frame, bytes) else frame async for frame in response.streaming_content]
 
     assert json.loads(frames[0][6:]) == {
+        "type": "RUN_ERROR",
         "result": False,
         "message": "invalid model",
         "error": True,
@@ -165,9 +143,7 @@ async def test_error_stream_response_has_terminal_done_frame_and_headers():
 
 
 def test_agui_native_thinking_event_respects_model_capability_and_visibility():
-    assert agui_chat._supports_thinking_events(
-        type("Request", (), {"model": "qwen3-32b"})()
-    )
+    assert agui_chat._supports_thinking_events(type("Request", (), {"model": "qwen3-32b"})())
     state = agui_chat._init_agui_stream_state()
     hidden, _ = agui_chat._handle_agui_data_event(
         {
@@ -294,6 +270,4 @@ def test_agui_hidden_thinking_strips_post_tool_meta_preamble():
         enable_thinking_split=False,
     )
 
-    assert [parse_sse(line)["delta"] for line in lines] == [
-        "服务运行正常。"
-    ]
+    assert [parse_sse(line)["delta"] for line in lines] == ["服务运行正常。"]

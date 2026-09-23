@@ -1,5 +1,6 @@
 'use client';
 
+import './register-collect-pilot';
 import React, { useEffect, useState } from 'react';
 import { Button, Modal, Spin, message } from 'antd';
 import { useSearchParams } from 'next/navigation';
