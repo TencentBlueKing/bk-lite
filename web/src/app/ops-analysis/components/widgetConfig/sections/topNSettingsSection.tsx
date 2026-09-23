@@ -1,7 +1,8 @@
 import React from 'react';
-import { Button, Form, Select } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { Form, Select } from 'antd';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import { ConfigGroupTitle } from '../configTitles';
+import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 interface TopNSettingsSectionProps {
   t: (key: string) => string;
@@ -25,38 +26,42 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
   const resolvedSectionTitle =
     sectionTitle !== undefined ? sectionTitle : t('topology.nodeConfig.dataSettings');
   const fieldSelectorDisabled = !selectedDataSource || loadingFields;
-
-  const refreshFieldsButton = (
-    <Button
-      type="text"
-      size="small"
-      icon={<ReloadOutlined aria-hidden />}
-      onClick={onRefreshFields}
-      loading={loadingFields}
-      disabled={!selectedDataSource}
-      className="h-6 px-1.5 text-xs text-(--color-text-3) hover:text-(--color-primary)"
-    >
-      {t('dashboard.refreshFields')}
-    </Button>
-  );
+  const placeholder = topNLabelFieldOptions.length === 0
+    ? t('topology.nodeConfig.clickRefreshToGetFields')
+    : t('topology.nodeConfig.selectDisplayField');
 
   return (
-    <div className="space-y-4">
+    <div>
       {resolvedSectionTitle ? (
-        <div className="flex items-center gap-2 mb-2">
+        <div className="mb-2 flex items-center gap-2">
           <span className="text-[13px] font-semibold text-(--color-text-2)">
             {resolvedSectionTitle}
           </span>
         </div>
       ) : null}
 
-      <div className="relative">
-        <div className="absolute right-0 top-0 z-10">{refreshFieldsButton}</div>
+      <ConfigGroupTitle
+        actions={(
+          <RefreshFieldsButton
+            label={t('dashboard.refreshFields')}
+            loading={loadingFields}
+            disabled={!selectedDataSource}
+            onClick={onRefreshFields}
+          />
+        )}
+      >
+        {t('dashboard.dataFields')}
+      </ConfigGroupTitle>
 
+      <div>
         <Form.Item
-          label={t('topology.nodeConfig.displayField')}
+          label={(
+            <ChartRoleLabel
+              text={t('topology.nodeConfig.displayField')}
+              tip={t('dashboard.topNLabelFieldTip')}
+            />
+          )}
           name="topNLabelField"
-          className="[&_.ant-form-item-label]:pr-24"
           rules={[
             {
               required: true,
@@ -65,7 +70,7 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           ]}
         >
           <Select
-            placeholder={t('topology.nodeConfig.selectDisplayField')}
+            placeholder={placeholder}
             options={topNLabelFieldOptions}
             disabled={fieldSelectorDisabled}
             showSearch
@@ -74,7 +79,12 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
         </Form.Item>
 
         <Form.Item
-          label={t('topology.nodeConfig.valueField')}
+          label={(
+            <ChartRoleLabel
+              text={t('topology.nodeConfig.valueField')}
+              tip={t('dashboard.topNValueFieldTip')}
+            />
+          )}
           name="topNValueField"
           rules={[
             {
@@ -84,7 +94,9 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           ]}
         >
           <Select
-            placeholder={t('topology.nodeConfig.selectValueField')}
+            placeholder={topNValueFieldOptions.length === 0
+              ? t('topology.nodeConfig.clickRefreshToGetFields')
+              : t('topology.nodeConfig.selectValueField')}
             options={topNValueFieldOptions}
             disabled={fieldSelectorDisabled}
             showSearch

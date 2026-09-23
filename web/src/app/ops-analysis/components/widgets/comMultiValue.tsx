@@ -26,7 +26,13 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
   const { t } = useTranslation();
   const theme = getOpsChartThemeByMode(config?.chartThemeMode);
   const errorMessage = t('dashboard.dataFormatMismatch');
-  const result = useMemo(() => validateMultiValueData(rawData, errorMessage), [errorMessage, rawData]);
+  const result = useMemo(
+    () => validateMultiValueData(rawData, errorMessage, {
+      labelField: config?.multiValueLabelField,
+      valueField: config?.multiValueValueField,
+    }),
+    [config?.multiValueLabelField, config?.multiValueValueField, errorMessage, rawData],
+  );
 
   useEffect(() => {
     if (!loading) onReady?.(result.isValid && result.items.length > 0);

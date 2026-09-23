@@ -174,6 +174,10 @@ function buildClearedChartDependentFormFields() {
     selectedFields: [] as string[],
     topNLabelField: undefined,
     topNValueField: undefined,
+    dimensionField: undefined,
+    valueField: undefined,
+    multiValueLabelField: undefined,
+    multiValueValueField: undefined,
     nodeGraphIdentityMode: 'ip' as const,
     nodeGraphSourceField: undefined,
     nodeGraphTargetField: undefined,
@@ -319,6 +323,18 @@ export function applyOpenedValueConfigToFormValues(
   }
   if (valueConfig?.topNValueField !== undefined) {
     formValues.topNValueField = valueConfig.topNValueField;
+  }
+  if (valueConfig?.dimensionField !== undefined) {
+    formValues.dimensionField = valueConfig.dimensionField;
+  }
+  if (valueConfig?.valueField !== undefined) {
+    formValues.valueField = valueConfig.valueField;
+  }
+  if (valueConfig?.multiValueLabelField !== undefined) {
+    formValues.multiValueLabelField = valueConfig.multiValueLabelField;
+  }
+  if (valueConfig?.multiValueValueField !== undefined) {
+    formValues.multiValueValueField = valueConfig.multiValueValueField;
   }
   if (valueConfig?.nodeGraphIdentityMode !== undefined) {
     formValues.nodeGraphIdentityMode = valueConfig.nodeGraphIdentityMode;

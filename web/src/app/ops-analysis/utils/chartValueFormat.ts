@@ -11,6 +11,7 @@ import {
   applyValueMapping,
   type ValueMapping,
 } from '@/app/ops-analysis/utils/valueMapping';
+import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
 
 export interface ChartValueFormatConfig {
   unit?: string;
@@ -95,8 +96,8 @@ export const resolveMultiValueRowDisplay = (
   defaultColor: string = '#000000',
 ): { text: string; color: string } => {
   const mapping = applyValueMapping(rawValue, config?.valueMappings);
-  const numericValue = parseFloat(rawValue);
-  const hasNumericValue = Number.isFinite(numericValue);
+  const numericValue = coerceTopNNumericValue(rawValue);
+  const hasNumericValue = numericValue !== null;
   const thresholdColor =
     hasNumericValue && config?.thresholdColors?.length
       ? getColorByThreshold(numericValue, config.thresholdColors, defaultColor)

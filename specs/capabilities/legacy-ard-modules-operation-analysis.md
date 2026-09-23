@@ -207,6 +207,11 @@
 
 - `[operation_analysis#20260911-001]` 屏显大屏/网络拓扑/架构依赖的壳层高度链由控制台 S1 收口，运营分析画布组件不另叠 `100vh`。证据：`web/src/app/layout.tsx`、`specs/changes/console-iframe-screen-height/spec.md`。
 
+## 2026-09-22 图表按角色选列
+
+- `[operation_analysis#20260922-001]` 折线、柱状、饼图、多值、雷达数组、事件时间线按各自角色选列；排行榜、单值、仪表盘、通信关系、卡片列表共用字段名单、一次刷新和问号。未保存映射的旧组件仍按原形状认列。证据：`web/src/app/ops-analysis/utils/chartDataTransform.ts`、`web/src/app/ops-analysis/components/widgetConfig/utils/submitConfig.ts`、`specs/changes/ops-analysis-chart-field-roles/spec.md`。
+- `[operation_analysis#20260922-002]` 卡片列表字段名单改为字段定义并上样本列名，槽位和校验不变。证据：`web/src/app/ops-analysis/components/widgetConfig/utils/cardListSettingsModel.ts`。
+
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。
 

@@ -2,6 +2,11 @@ import dayjs from 'dayjs';
 import { getAppliedThemeMode } from '@/theme';
 import { formatOpsDisplayTime } from '@/app/ops-analysis/components/ops-analysis-widgets/date-time';
 import { getValueByPath } from '@/app/ops-analysis/components/ops-analysis-config-sections';
+import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
+import {
+  ChartDataTransformer as SharedChartDataTransformer,
+  type ChartFieldMapping,
+} from '@/app/ops-analysis/utils/chartDataTransform';
 import type { DashboardActionParamMapping } from '@/app/ops-analysis/components/ops-analysis-widgets';
 
 export interface ChartDataItem {
@@ -11,12 +16,12 @@ export interface ChartDataItem {
 
 export interface SeriesDataItem {
   name: string;
-  data: number[];
+  data: Array<number | null>;
 }
 
 export interface LineBarChartData {
   categories: string[];
-  values?: number[];
+  values?: Array<number | null>;
   series?: SeriesDataItem[];
 }
 
@@ -342,7 +347,14 @@ export class ChartDataTransformer {
     return String(value);
   }
 
-  static transformToLineBarData(rawData: any): LineBarChartData {
+  static transformToLineBarData(
+    rawData: any,
+    mapping?: ChartFieldMapping,
+  ): LineBarChartData {
+    if (mapping?.dimensionField?.trim() || mapping?.valueField?.trim()) {
+      return SharedChartDataTransformer.transformToLineBarData(rawData, mapping);
+    }
+
     if (!rawData) {
       return { categories: [], values: [] };
     }
@@ -444,7 +456,14 @@ export class ChartDataTransformer {
     return { categories: [], values: [] };
   }
 
-  static transformToPieData(rawData: any): PieChartData {
+  static transformToPieData(
+    rawData: any,
+    mapping?: ChartFieldMapping,
+  ): PieChartData {
+    if (mapping?.dimensionField?.trim() || mapping?.valueField?.trim()) {
+      return SharedChartDataTransformer.transformToPieData(rawData, mapping);
+    }
+
     if (!rawData) return [];
 
     if (Array.isArray(rawData)) {
@@ -616,15 +635,7 @@ export const extractComparableValue = (
 
 export const toComparableNumber = (
   value: number | string | null,
-): number | null => {
-  if (value === null) {
-    return null;
-  }
-  const numericValue = typeof value === 'string' ? parseFloat(value) : value;
-  return typeof numericValue === 'number' && !Number.isNaN(numericValue)
-    ? numericValue
-    : null;
-};
+): number | null => coerceTopNNumericValue(value);
 
 export const getChangePercent = (
   currentValue: number | null,

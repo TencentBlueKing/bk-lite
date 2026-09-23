@@ -155,6 +155,61 @@ test('radar marks multi-series object input as unsupported', () => {
   assert.deepEqual(series.indicatorLabels, []);
 });
 
+test('event timeline reads saved columns and skips rows missing time or title', () => {
+  const parsed = parseEventTimelineItems(
+    [
+      { occurred_at: 'not-a-date', headline: 'A', note: 'detail', state: 'custom' },
+      { occurred_at: '', headline: 'B' },
+      { headline: 'C' },
+    ],
+    {
+      sortOrder: 'asc',
+      timeField: 'occurred_at',
+      titleField: 'headline',
+      descriptionField: 'note',
+      statusField: 'state',
+    },
+  );
+
+  assert.equal(parsed.total, 1);
+  assert.equal(parsed.items[0]?.time, 'not-a-date');
+  assert.equal(parsed.items[0]?.title, 'A');
+  assert.equal(parsed.items[0]?.description, 'detail');
+  assert.equal(parsed.items[0]?.status, 'unknown');
+  assert.equal(parsed.items[0]?.category, undefined);
+});
+
+test('radar array mapping reads selected columns and skips incomplete numbers', () => {
+  const series = resolveRadarSeriesData(
+    [
+      { metric: 'CPU', reading: '80' },
+      { metric: 'Memory', reading: '1abc' },
+      { metric: 'Disk', reading: 40 },
+    ],
+    { arrayNameField: 'metric', arrayValueField: 'reading' },
+  );
+
+  assert.deepEqual(series.indicatorLabels, ['CPU', 'Disk']);
+  assert.deepEqual(series.indicatorValues, [80, 40]);
+});
+
+test('radar object mode ignores array field mapping', () => {
+  const series = resolveRadarSeriesData(
+    { cpu: 70, memory: 55, disk: 45 },
+    {
+      arrayNameField: 'name',
+      arrayValueField: 'value',
+      indicators: [
+        { key: 'cpu', label: 'CPU' },
+        { key: 'memory', label: '内存' },
+        { key: 'disk' },
+      ],
+    },
+  );
+
+  assert.deepEqual(series.indicatorLabels, ['CPU', '内存', 'disk']);
+});
+
 test('radar min/max uses defaults and supports override', () => {
   assert.deepEqual(normalizeRadarRange(undefined), { min: 0, max: 100 });
   assert.deepEqual(normalizeRadarRange({ min: 10, max: 50 }), {

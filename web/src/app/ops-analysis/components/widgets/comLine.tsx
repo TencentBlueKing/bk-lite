@@ -108,7 +108,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }, []);
 
   const transformData = (rawData: any) => {
-    return ChartDataTransformer.transformToLineBarData(rawData);
+    return ChartDataTransformer.transformToLineBarData(rawData, {
+      dimensionField: config?.dimensionField,
+      valueField: config?.valueField,
+    });
   };
 
   const chartData = transformData(rawData);

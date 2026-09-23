@@ -4,7 +4,6 @@
  */
 import React from 'react';
 import {
-  Button,
   Form,
   Input,
   InputNumber,
@@ -13,7 +12,9 @@ import {
   TreeSelect,
   Tooltip,
 } from 'antd';
-import { ReloadOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+import { ConfigGroupTitle } from '@/app/ops-analysis/components/widgetConfig/configTitles';
+import { RefreshFieldsButton } from '@/app/ops-analysis/components/widgetConfig/sections/chartRoleLabel';
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
@@ -155,20 +156,6 @@ export const SingleValueSettingsSection: React.FC<
     onSingleValueFieldChange(value ? [value] : []);
   };
 
-  const refreshFieldsButton = (
-    <Button
-      type="text"
-      size="small"
-      icon={<ReloadOutlined aria-hidden />}
-      onClick={onFetchSingleValueDataFields}
-      loading={loadingSingleValueData}
-      disabled={!selectedDataSource || readonly}
-      className="h-6 px-1.5 text-xs text-(--color-text-3) hover:text-(--color-primary)"
-    >
-      {t('dashboard.refreshFields')}
-    </Button>
-  );
-
   const displayFieldSelect = (
     <TreeSelect
       value={selectedFields[0]}
@@ -188,7 +175,7 @@ export const SingleValueSettingsSection: React.FC<
       }
       disabled={fieldSelectorDisabled}
       onChange={(value) => handleFieldSelect(value as string | undefined)}
-      className={`${showDescriptionField ? 'w-full' : 'flex-1'} ${fieldSelectorClassName}`}
+      className={`w-full ${fieldSelectorClassName}`}
       popupClassName={fieldPopupClassName}
       dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
     />
@@ -204,10 +191,18 @@ export const SingleValueSettingsSection: React.FC<
         </div>
       ) : null}
 
-      <div className={showDescriptionField ? 'relative' : undefined}>
-        {showDescriptionField ? (
-          <div className="absolute right-0 top-0 z-10">{refreshFieldsButton}</div>
-        ) : null}
+      <ConfigGroupTitle
+        actions={(
+          <RefreshFieldsButton
+            label={t('dashboard.refreshFields')}
+            loading={loadingSingleValueData}
+            disabled={!selectedDataSource || readonly}
+            onClick={onFetchSingleValueDataFields}
+          />
+        )}
+      >
+        {t('dashboard.dataFields')}
+      </ConfigGroupTitle>
 
       <Form.Item
         label={
@@ -222,7 +217,6 @@ export const SingleValueSettingsSection: React.FC<
           </span>
         }
         name="selectedFields"
-        className={showDescriptionField ? '[&_.ant-form-item-label]:pr-24' : undefined}
         rules={[
           {
             required: true,
@@ -237,23 +231,7 @@ export const SingleValueSettingsSection: React.FC<
           },
         ]}
       >
-        {showDescriptionField ? (
-          <div>{displayFieldSelect}</div>
-        ) : (
-          <div className="flex items-center gap-2">
-            {displayFieldSelect}
-            <Button
-              type="text"
-              icon={<ReloadOutlined aria-hidden />}
-              onClick={onFetchSingleValueDataFields}
-              loading={loadingSingleValueData}
-              disabled={!selectedDataSource || readonly}
-              title={t('topology.nodeConfig.refreshDataFields')}
-              aria-label={t('topology.nodeConfig.refreshDataFields')}
-              className="shrink-0 text-(--color-text-3) hover:text-(--color-primary)"
-            />
-          </div>
-        )}
+        {displayFieldSelect}
       </Form.Item>
 
         {showDescriptionField ? (
@@ -290,7 +268,6 @@ export const SingleValueSettingsSection: React.FC<
             />
           </Form.Item>
         ) : null}
-      </div>
 
       <Form.Item
         label={
