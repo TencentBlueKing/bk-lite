@@ -9,7 +9,7 @@
 
 import pytest
 
-from apps.core.utils.loader import LanguageLoader, clear_language_cache
+from apps.core.utils.loader import LanguageLoader, clear_language_cache, normalize_language
 
 pytestmark = pytest.mark.unit
 
@@ -59,6 +59,35 @@ class TestEmptyAppFallback:
     def test_不存在的app翻译为空(self):
         lo = LanguageLoader(app="__no_such_app__", default_lang="en")
         assert lo.get("anything", "d") == "d"
+
+
+class TestNormalizeLanguage:
+    def test_zh_aliases_map_to_simplified_pack(self):
+        for alias in ("zh", "zh-CN", "zh_CN", "zh-Hans"):
+            assert normalize_language(alias) == "zh-Hans"
+
+    def test_en_aliases_map_to_en(self):
+        for alias in ("en", "en-US", "en_US"):
+            assert normalize_language(alias) == "en"
+
+    def test_unknown_locale_kept(self):
+        assert normalize_language("zh-TW") == "zh-TW"
+        assert normalize_language("ja") == "ja"
+
+    def test_empty_and_none_fall_back_to_en(self):
+        assert normalize_language(None) == "en"
+        assert normalize_language("  ") == "en"
+
+    def test_zh_cn_loads_core_simplified_pack(self):
+        clear_language_cache(app="core")
+        loader = LanguageLoader(app="core", default_lang="zh-CN")
+        assert loader.default_lang == "zh-Hans"
+        assert loader.get("error.no_permission_access_team") == "无权访问该团队数据"
+
+    def test_en_us_loads_core_english_pack(self):
+        loader = LanguageLoader(app="core", default_lang="en-US")
+        assert loader.default_lang == "en"
+        assert loader.get("error.no_permission_access_team") == "No permission to access this team"
 
 
 class TestClearCache:
