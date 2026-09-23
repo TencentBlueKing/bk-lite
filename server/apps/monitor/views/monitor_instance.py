@@ -322,6 +322,14 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
 
         monitor_object = instance.monitor_object
         instance_id_keys = list(monitor_object.instance_id_keys) if monitor_object.instance_id_keys else ["instance_id"]
+        operating_system = ""
+        if instance.node_id:
+            from apps.node_mgmt.models import Node
+
+            os_value = Node.objects.filter(id=instance.node_id).values_list("operating_system", flat=True).first()
+            text = str(os_value or "").strip().lower()
+            if text in {"linux", "windows"}:
+                operating_system = text
         return WebUtils.response_success(
             {
                 "monitor_object": {
@@ -337,6 +345,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
                     "instance_id_keys": instance_id_keys,
                     "cmdb_id": instance.cmdb_id or "",
                     "node_id": instance.node_id or "",
+                    "operating_system": operating_system,
                 },
             }
         )

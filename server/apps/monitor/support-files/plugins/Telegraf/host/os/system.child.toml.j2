@@ -6,3 +6,18 @@
         instance_type = "{{ instance_type }}"
         collect_type = "host"
         config_type = "system"
+
+{% if operating_system == "windows" %}
+[[processors.starlark]]
+    namepass = ["system"]
+    source = '''
+def apply(metric):
+    if metric.fields.get("load1") != None:
+        metric.fields.pop("load1")
+    if metric.fields.get("load5") != None:
+        metric.fields.pop("load5")
+    if metric.fields.get("load15") != None:
+        metric.fields.pop("load15")
+    return metric
+'''
+{% endif %}
