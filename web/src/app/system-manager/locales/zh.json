@@ -123,6 +123,8 @@
       "urlRequired": "请输入应用URL",
       "createTitle": "创建应用",
       "title": "应用",
+      "pageTitle": "应用管理",
+      "pageDesc": "管理平台里的各个应用，配置角色、数据权限和菜单，也可以添加新的应用。",
       "tagsHelp": "最多8个标签，每个标签最多6个字符"
     },
     "administrator": {
@@ -1071,6 +1073,8 @@
       }
     },
     "channel": {
+      "pageTitle": "通知渠道",
+      "pageDesc": "配置平台发送通知的渠道，供告警、许可提醒等场景选用。",
       "settings": {
         "editChannel": "编辑通知渠道",
         "smtp_usetls": "是否使用 TLS",
