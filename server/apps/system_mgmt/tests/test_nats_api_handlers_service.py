@@ -443,6 +443,9 @@ def test_get_channel_detail_found_and_missing():
     assert ok["data"]["team"] == [1, 2]
     missing = nats_api.get_channel_detail(999999)
     assert missing["result"] is False
+    assert missing["message"] == "传入的channel_id无法匹配到channel"
+    missing_en = nats_api.get_channel_detail(999999, locale="en")
+    assert missing_en["message"] == "No channel matches the given channel_id"
 
 
 def test_search_channel_list_empty_teams():

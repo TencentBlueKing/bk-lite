@@ -232,7 +232,7 @@ export const createUserTableColumns = ({
             {status === 'locked' && (
               <PermissionWrapper requiredPermissions={['Edit User']}>
                 <Popconfirm
-                  title={t('system.user.status.unlockConfirm') || t('common.operateConfirm')}
+                  title={t('system.user.status.unlockConfirm')}
                   okText={t('common.confirm')}
                   cancelText={t('common.cancel')}
                   onConfirm={() => onChangeUserStatus(key, 'unlock')}
@@ -244,7 +244,7 @@ export const createUserTableColumns = ({
             {status === 'disabled' ? (
               <PermissionWrapper requiredPermissions={['Edit User']}>
                 <Popconfirm
-                  title={t('system.user.status.enableConfirm') || t('common.operateConfirm')}
+                  title={t('system.user.status.enableConfirm')}
                   okText={t('common.confirm')}
                   cancelText={t('common.cancel')}
                   onConfirm={() => onChangeUserStatus(key, 'enable')}
@@ -255,7 +255,7 @@ export const createUserTableColumns = ({
             ) : (
               <PermissionWrapper requiredPermissions={['Edit User']}>
                 <Popconfirm
-                  title={t('system.user.status.disableConfirm') || t('common.operateConfirm')}
+                  title={t('system.user.status.disableConfirm')}
                   okText={t('common.confirm')}
                   cancelText={t('common.cancel')}
                   onConfirm={() => onChangeUserStatus(key, 'disable')}
@@ -266,7 +266,7 @@ export const createUserTableColumns = ({
             )}
             {otpEnabled && record.has_otp && (
               <PermissionWrapper requiredPermissions={['Edit User']}>
-                <Popconfirm title={t('system.user.status.unbindOtpConfirm') || t('common.operateConfirm')} okText={t('common.confirm')} cancelText={t('common.cancel')} onConfirm={() => onChangeUserStatus(key, 'unbind_otp')}>
+                <Popconfirm title={t('system.user.status.unbindOtpConfirm')} okText={t('common.confirm')} cancelText={t('common.cancel')} onConfirm={() => onChangeUserStatus(key, 'unbind_otp')}>
                   <Button type="link" className="mr-[8px] p-0">{t('system.user.status.unbindOtp')}</Button>
                 </Popconfirm>
               </PermissionWrapper>

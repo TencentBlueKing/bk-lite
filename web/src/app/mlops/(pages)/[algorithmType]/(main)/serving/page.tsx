@@ -167,7 +167,7 @@ const ServingPage = () => {
       }
     },
     {
-      title: t(`common.action`),
+      title: t(`common.actions`),
       dataIndex: 'action',
       key: 'action',
       width: 180,

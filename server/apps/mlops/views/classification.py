@@ -200,7 +200,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
             # 获取 MLflow tracking URI
             mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
-                logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
+                logger.error("MLFLOW_TRACKER_URL is not configured")
                 serving.container_info = {
                     "status": "error",
                     "message": mlops_message(request, "error.mlflow_tracker_url_not_configured"),

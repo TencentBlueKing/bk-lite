@@ -300,10 +300,10 @@ export function useMenuSave(
         menus: menus,
       });
 
-      message.success(t('common.success'));
+      message.success(t('common.operationSuccess'));
     } catch (error) {
       console.error('Failed to save menu:', error);
-      message.error(t('common.failed'));
+      message.error(t('common.operationFailed'));
     } finally {
       setSaveLoading(false);
     }

@@ -354,3 +354,28 @@ def test_webhook_and_config_errors_do_not_passthrough_str_e():
         assert '{"error": str(e)}' not in source, module
         assert 'raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")' not in source, module
         assert '"message": "环境变量 MLFLOW_TRACKER_URL 未配置"' not in source, module
+        assert 'logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")' not in source, module
+
+
+def test_mlflow_and_container_logs_use_stable_templates():
+    views_dir = Path(__file__).resolve().parents[1] / "views"
+    secret = "smtp_pwd=super-secret-value"
+    template = "previous container removed, container_id=%s"
+    rendered = template % ("ctr-1",)
+    assert rendered == "previous container removed, container_id=ctr-1"
+    assert secret not in rendered
+    assert "%s" in template
+
+    for module in (
+        "classification.py",
+        "timeseries_predict.py",
+        "image_classification.py",
+        "object_detection.py",
+    ):
+        source = (views_dir / module).read_text(encoding="utf-8")
+        assert 'logger.error("MLFLOW_TRACKER_URL is not configured")' in source, module
+        assert secret not in source
+
+    clustering = (views_dir / "log_clustering.py").read_text(encoding="utf-8")
+    assert 'logger.warning("previous container removed, container_id=%s", container_id)' in clustering
+    assert "旧容器已删除" not in clustering

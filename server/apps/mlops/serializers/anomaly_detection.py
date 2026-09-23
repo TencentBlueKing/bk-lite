@@ -361,9 +361,9 @@ class AnomalyDetectionPredictRequestSerializer(serializers.Serializer):
     def validate_data(self, value):
         """验证时序数据"""
         if not value:
-            raise serializers.ValidationError("数据不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.predict_data_empty"))
         if len(value) < 2:
-            raise serializers.ValidationError("至少需要2个数据点")
+            raise serializers.ValidationError(serializer_message(self, "error.predict_data_min_points"))
         return value
 
 

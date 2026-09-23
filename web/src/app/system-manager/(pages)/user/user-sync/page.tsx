@@ -191,10 +191,10 @@ const UserSyncPage: React.FC = () => {
   const showPreviewSuccess = (result: { estimated_user_count: number; estimated_group_count?: number }) => {
     const countMessage = result.estimated_group_count !== undefined
       ? t('system.user.userSyncPage.previewSuccessWithGroups')
-        .replace('{{userCount}}', String(result.estimated_user_count))
-        .replace('{{groupCount}}', String(result.estimated_group_count))
+        .replace('{userCount}', String(result.estimated_user_count))
+        .replace('{groupCount}', String(result.estimated_group_count))
       : t('system.user.userSyncPage.previewSuccess')
-        .replace('{{userCount}}', String(result.estimated_user_count));
+        .replace('{userCount}', String(result.estimated_user_count));
     message.success(countMessage);
   };
 
@@ -383,16 +383,16 @@ const UserSyncPage: React.FC = () => {
   const handleDelete = (source: UserSyncSource) => {
     Modal.confirm({
       title: t('system.user.userSyncPage.deleteConfirm'),
-      content: t('system.user.userSyncPage.deleteConfirmContent').replace('{{sourceName}}', source.name),
+      content: t('system.user.userSyncPage.deleteConfirmContent').replace('{sourceName}', source.name),
       okType: 'danger',
       onOk: async () => {
         try {
           await deleteSyncSource(source.id);
-          message.success(t('common.deleteSuccess'));
+          message.success(t('common.delSuccess'));
           fetchSources();
         } catch (error) {
           if (!isSilentRequestError(error)) {
-            message.error(error instanceof Error ? error.message : t('common.deleteFailed'));
+            message.error(error instanceof Error ? error.message : t('common.delFailed'));
           }
         }
       },

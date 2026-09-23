@@ -13,6 +13,7 @@ from apps.core.utils.internal_event_auth import (
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
 from apps.system_mgmt.services.im_notification_service import send_im_notification
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.i18n import OPSPILOT_NATS_DESCRIPTION_MARKER, localized_channel_description, system_mgmt_message
 
 from .common import *  # noqa: F401,F403
 from .users import _actor_scope_response
@@ -24,13 +25,13 @@ except (ImportError, ModuleNotFoundError):
 
 
 @nats_client.register
-def get_channel_detail(channel_id):
+def get_channel_detail(channel_id, locale=None):
     channel_obj = Channel.objects.filter(id=channel_id).first()
     if not channel_obj:
-        return {"result": False, "message": "传入的channel_id无法匹配到channel"}
+        return {"result": False, "message": system_mgmt_message(locale, "error.channel_id_not_found")}
     return_data = {
         "name": channel_obj.name,
-        "description": channel_obj.description,
+        "description": localized_channel_description(channel_obj.description, locale),
         "config": channel_obj.config,
         "team": channel_obj.team,
         "channel_type": channel_obj.channel_type,
@@ -79,7 +80,7 @@ def search_channel_list(channel_type="", teams=None, include_children=False, cha
             "id": channel.id,
             "name": channel.name,
             "channel_type": channel.channel_type,
-            "description": channel.description,
+            "description": localized_channel_description(channel.description),
         }
         if channel.channel_type == ChannelChoices.NATS:
             item["supports_notify_person"] = _supports_notify_person(channel.config)
@@ -218,7 +219,7 @@ def _notification_channel_capabilities(channel):
         "id": channel.id,
         "name": channel.name,
         "channel_type": channel.channel_type,
-        "description": channel.description,
+        "description": localized_channel_description(channel.description),
         "delivery_mode": delivery_mode,
         "recipient_mode": recipient_mode,
         "availability": "available",
@@ -701,7 +702,7 @@ def sync_opspilot_nats_channels(bot_id, bot_name, team, nodes, timeout=60):
 
     team = team or []
     nodes = nodes or []
-    description = "OpsPilot 工作流自动创建的 NATS 触发通道"
+    description = OPSPILOT_NATS_DESCRIPTION_MARKER
 
     existing_by_node = {(ch.config or {}).get("node_id"): ch for ch in _list_opspilot_nats_channels(bot_id)}
 
@@ -812,7 +813,7 @@ def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=Fals
         item = {
             "id": channel.id,
             "name": channel.name,
-            "description": channel.description,
+            "description": localized_channel_description(channel.description),
             "team": channel.team,
             "bot_id": config.get("bot_id"),
             "node_id": config.get("node_id"),

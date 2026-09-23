@@ -75,6 +75,12 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
+    def _export_label(self, key, fallback):
+        loader = getattr(self, "loader", None)
+        if loader is None:
+            return fallback
+        return loader.get(key) or fallback
+
     def get_http_method_names(self):
         """动态返回允许的HTTP方法"""
         # export_excel action 允许 POST，其他只允许 GET
@@ -137,17 +143,17 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
         # 创建Excel工作簿
         workbook = Workbook()
         sheet = workbook.active
-        sheet.title = "用户操作日志"
+        sheet.title = self._export_label("export.operation_log_sheet", "用户操作日志")
 
         # 设置表头
         headers = [
-            "用户名",
-            "域名",
-            "操作时间",
-            "源IP地址",
-            "应用",
-            "操作类型",
-            "概要描述",
+            self._export_label("export.column_username", "用户名"),
+            self._export_label("export.column_domain", "域名"),
+            self._export_label("export.column_operation_time", "操作时间"),
+            self._export_label("export.column_source_ip", "源IP地址"),
+            self._export_label("export.column_app", "应用"),
+            self._export_label("export.column_action_type", "操作类型"),
+            self._export_label("export.column_summary", "概要描述"),
         ]
 
         # 写入表头
@@ -204,7 +210,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
         # 生成文件名
         from datetime import datetime
 
-        filename = f"用户操作日志_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = f"{self._export_label('export.operation_log_filename', '用户操作日志')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
         # 返回Excel文件
         response = HttpResponse(file_stream.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

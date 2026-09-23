@@ -93,7 +93,7 @@ const AlgorithmConfigPage = () => {
       ),
     },
     {
-      title: t('common.action'),
+      title: t('common.actions'),
       key: 'action',
       dataIndex: 'action',
       width: 120,

@@ -268,7 +268,7 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       render: (_, record: DatasetRelease) => <>{convertToLocalizedTime(record.created_at, 'YYYY-MM-DD HH:mm:ss')}</>,
     },
     {
-      title: t(`common.action`),
+      title: t(`common.actions`),
       key: 'action',
       dataIndex: 'action',
       width: 100,

@@ -9,7 +9,10 @@ from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids
 
 
-CURRENT_TEAM_ARCHIVED_MESSAGE = "current_team 对应组织已归档或不存在"
+def _current_team_archived_message(user_obj):
+    from apps.system_mgmt.utils.i18n import system_mgmt_message
+
+    return system_mgmt_message(getattr(user_obj, "locale", None), "error.current_team_archived_or_missing")
 
 
 def _is_persisted_superuser(user_obj):
@@ -80,11 +83,11 @@ def _get_actor_user_scope(actor_context, include_children=False):
         return user_obj, [], None
 
     if Group.objects.filter(id=current_team, is_delete=True).exists():
-        return user_obj, [], CURRENT_TEAM_ARCHIVED_MESSAGE
+        return user_obj, [], _current_team_archived_message(user_obj)
 
     if is_superuser:
         if not GroupUtils.active_queryset(id=current_team).exists():
-            return user_obj, [], CURRENT_TEAM_ARCHIVED_MESSAGE
+            return user_obj, [], _current_team_archived_message(user_obj)
         if include_children:
             return user_obj, GroupUtils.get_group_with_descendants(current_team), None
         return user_obj, [current_team], None
