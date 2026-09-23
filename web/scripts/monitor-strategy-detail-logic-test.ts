@@ -25,6 +25,8 @@ import {
   resolveInitialMetricPluginId,
   resolveEditFormCollectType,
   shouldHydrateMetricOnEdit,
+  extractMetricIdsFromQueryCondition,
+  resolvePluginIdFromMetricPlugins,
   resolveMetricDisplayUnit,
   resolvePreviewChartUnit,
   resolveThresholdUnit,
@@ -90,7 +92,48 @@ assert.equal(resolveInitialMetricPluginId({
   type: 'edit',
   pluginList: plugins,
   policyCollectType: 99,
-}), 1);
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: 99,
+  metricResolvedPluginId: 2,
+}), 2);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: '',
+  policyDetailReady: true,
+  metricResolvedPluginId: 2,
+}), 2);
+assert.deepEqual(
+  extractMetricIdsFromQueryCondition({ type: 'metric', metric_id: 17 }),
+  [17]
+);
+assert.deepEqual(
+  extractMetricIdsFromQueryCondition({
+    type: 'formula',
+    queries: [{ metric_id: 17 }, { metric_id: 17 }, { metric_id: 8 }],
+  }),
+  [17, 8]
+);
+assert.equal(
+  resolvePluginIdFromMetricPlugins(plugins, [
+    { monitor_plugin: 2 },
+    { monitor_plugin: 2 },
+  ]),
+  2
+);
+assert.equal(
+  resolvePluginIdFromMetricPlugins(plugins, [
+    { monitor_plugin: 1 },
+    { monitor_plugin: 2 },
+  ]),
+  undefined
+);
+assert.equal(resolveEditFormCollectType(99, plugins), '');
+assert.equal(resolveEditFormCollectType(99, plugins, 3), 3);
+assert.equal(resolveEditFormCollectType('', plugins, 2), 2);
 
 assert.equal(resolveInitialMetricPluginId({
   type: 'edit',
@@ -776,6 +819,21 @@ assert.match(
 );
 assert.match(
   strategyDetailSource,
+  /extractMetricIdsFromQueryCondition/,
+  '多插件空/无效 collect_type 须能从 query_condition 抽 metric_id'
+);
+assert.match(
+  strategyDetailSource,
+  /resolvePluginIdFromMetricPlugins/,
+  'metric→plugin 反查必须接到编辑回填路径'
+);
+assert.match(
+  strategyDetailSource,
+  /metricResolvedPluginId/,
+  '反查结果须进入 resolveInitialMetricPluginId / 表单回填'
+);
+assert.match(
+  strategyDetailSource,
   /formData\?\.collect_type, formData\?\.id, monitorObjId/,
   '插件目录加载必须在策略 id 到达后重跑，避免空 collect_type 错过回退'
 );
@@ -786,7 +844,7 @@ assert.match(
 );
 assert.match(
   strategyDetailSource,
-  /resolveEditFormCollectType\(collect_type, pluginList\)/,
+  /resolveEditFormCollectType\(collect_type, pluginList, metricResolvedPluginId\)/,
   '编辑回填空 collect_type 且单插件时写入表单，避免再次存成空串'
 );
 assert.match(
