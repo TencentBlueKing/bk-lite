@@ -13,7 +13,7 @@ def test_search_hits_without_group_info_returns_raw(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.hits.return_value = {"hits": [{"count": 1}]}
-    out = SearchService.search_hits("q", "s", "e", "host")
+    out = SearchService.search_hits("q", "2026-04-22T00:00:00.000Z", "2026-04-22T00:15:00.000Z", "host")
     assert out == {"hits": [{"count": 1}]}
     assert "_log_group_info" not in out
 
@@ -38,7 +38,7 @@ def test_top_stats_empty_total_response(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.query.side_effect = [None, []]
-    out = SearchService.top_stats("q", "s", "e", "host")
+    out = SearchService.top_stats("q", "2026-04-22T00:00:00.000Z", "2026-04-22T00:15:00.000Z", "host")
     assert out == {"attr": "host", "top_num": 5, "total": 0, "items": []}
 
 
