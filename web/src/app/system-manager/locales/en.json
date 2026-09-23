@@ -123,6 +123,8 @@
       "urlRequired": "Please enter application URL",
       "createTitle": "Create Application",
       "title": "Application",
+      "pageTitle": "Application Management",
+      "pageDesc": "Manage the applications in the platform, configure their roles, data permissions, and menus, and add new applications.",
       "tagsHelp": "Maximum 8 tags, each up to 6 characters"
     },
     "administrator": {
@@ -1046,6 +1048,8 @@
       }
     },
     "channel": {
+      "pageTitle": "Notification Channels",
+      "pageDesc": "Configure the channels the platform uses to send notifications for alerts, license reminders, and similar cases.",
       "settings": {
         "editChannel": "Edit Channel",
         "smtp_usetls": "Use TLS",

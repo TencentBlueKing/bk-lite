@@ -23,9 +23,9 @@ import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import TopSection from '@/components/top-section';
 import PageLayout from '@/components/page-layout';
 import SearchActionBar from '@/components/search-action-bar';
-import TopSection from '@/components/top-section';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import IMNotificationConfigModal, {
   type IMNotificationChannelFormValues,
