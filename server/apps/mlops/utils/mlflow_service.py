@@ -116,13 +116,18 @@ def get_experiment_by_name(experiment_name: str) -> Optional[object]:
         raise
 
 
-def get_experiment_runs(experiment_id: str, order_by: str = "start_time DESC") -> pd.DataFrame:
+def get_experiment_runs(
+    experiment_id: str,
+    order_by: str = "start_time DESC",
+    max_results: int = 1000,
+) -> pd.DataFrame:
     """
-    获取实验的所有运行记录
+    获取实验的运行记录
 
     Args:
         experiment_id: 实验 ID
         order_by: 排序字段，默认按开始时间倒序
+        max_results: 最多返回的运行条数，默认 1000，避免全量扫描
 
     Returns:
         pd.DataFrame: 运行记录 DataFrame
@@ -132,7 +137,11 @@ def get_experiment_runs(experiment_id: str, order_by: str = "start_time DESC") -
     """
     try:
         mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-        runs = mlflow.search_runs(experiment_ids=[experiment_id], order_by=[order_by])
+        runs = mlflow.search_runs(
+            experiment_ids=[experiment_id],
+            order_by=[order_by],
+            max_results=max_results,
+        )
 
         return runs
 
