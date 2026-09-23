@@ -34,6 +34,10 @@ def _serving_serializer(monkeypatch, module_name, class_name, data):
     return serializer_cls(data=data, partial=True, context={"request": request})
 
 
+def _port_error_text(errors):
+    return "".join(str(item) for item in errors["port"])
+
+
 @pytest.mark.parametrize("module_name,class_name", SERVING_SERIALIZERS, ids=SERIALIZER_IDS)
 @pytest.mark.parametrize("port", REJECTED_PORTS, ids=["22", "80", "8080", "65536"])
 def test_serving_serializer_rejects_sensitive_and_out_of_range_ports(monkeypatch, module_name, class_name, port):
@@ -42,6 +46,20 @@ def test_serving_serializer_rejects_sensitive_and_out_of_range_ports(monkeypatch
     assert "port" in serializer.errors
     with pytest.raises(drf_serializers.ValidationError):
         serializer.validate_port(port)
+
+
+def test_serving_serializer_rejects_port_22_with_localized_copy(monkeypatch):
+    serializer = _serving_serializer(monkeypatch, "anomaly_detection", "AnomalyDetectionServingSerializer", {"port": 22})
+    assert not serializer.is_valid()
+    text = _port_error_text(serializer.errors)
+    assert "error.serving_port_invalid" not in text
+    assert any(
+        phrase in text
+        for phrase in (
+            "端口须在 1024-65535 且不能是系统或数据库常用端口",
+            "Port must be in 1024-65535 and cannot be a common system or database port",
+        )
+    )
 
 
 @pytest.mark.parametrize("module_name,class_name", SERVING_SERIALIZERS, ids=SERIALIZER_IDS)
