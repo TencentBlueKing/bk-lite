@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import PageVersion, WikiGeneration, WikiGenerationIndexEntry
 from apps.opspilot.services.wiki.build_service import BuildOutputInvalid
-from apps.opspilot.services.wiki.title_service import title_identity_key
+from apps.opspilot.services.wiki.title_service import COMMON_TITLE_ALIASES, compact_title_key, title_identity_key
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
 
 _MAX_COMPACT_CANDIDATES = 20
@@ -20,6 +20,31 @@ _CONFLICT_INPUT_TOKEN_LIMIT = 12000
 _CONFLICT_LLM_MAX_ATTEMPTS = 2
 _MIN_BODY_EVIDENCE_TOKENS = 256
 _TOKEN_RE = re.compile(r"[\w\-]{2,}", re.UNICODE)
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+)$", re.MULTILINE)
+_GENERIC_SUBJECTS = frozenset(
+    title_identity_key(item)
+    for item in (
+        "概述",
+        "简介",
+        "定义",
+        "说明",
+        "背景",
+        "摘要",
+        "介绍",
+        "总览",
+        "前言",
+        "目录",
+        "文档版本信息",
+        "文档信息",
+        "基本信息",
+        "模块定位",
+        "功能清单",
+        "修订记录",
+        "范围",
+        "目的",
+    )
+)
+_MIN_SUBJECT_CONTAINMENT_LEN = 4
 
 
 @dataclass(frozen=True)
@@ -46,6 +71,53 @@ def _terms(page_data):
     if title:
         result.add(title)
     return result
+
+
+def _heading_identity(text):
+    match = _HEADING_RE.search(str(text or ""))
+    if not match:
+        return ""
+    return title_identity_key(match.group(1))
+
+
+def _concrete_subject(title, body):
+    heading = _heading_identity(body)
+    if heading and heading not in _GENERIC_SUBJECTS:
+        return heading
+    title_key = title_identity_key(title)
+    if title_key and title_key not in _GENERIC_SUBJECTS:
+        return title_key
+    return heading or title_key
+
+
+def _canonical_subject_key(value):
+    compact = compact_title_key(value)
+    if not compact:
+        return ""
+    return compact_title_key(COMMON_TITLE_ALIASES.get(compact, value))
+
+
+def _subjects_compatible(left, right):
+    if not left or not right:
+        return True
+    if left == right:
+        return True
+    left_key = _canonical_subject_key(left)
+    right_key = _canonical_subject_key(right)
+    if not left_key or not right_key:
+        return True
+    if left_key == right_key:
+        return True
+    shorter, longer = sorted((left_key, right_key), key=len)
+    return len(shorter) >= _MIN_SUBJECT_CONTAINMENT_LEN and shorter in longer
+
+
+def _distinct_subject_pair(page_data, old_title, old_body):
+    incoming_subject = _concrete_subject(page_data.get("title"), page_data.get("body"))
+    old_subject = _concrete_subject(old_title, old_body)
+    if not incoming_subject or not old_subject:
+        return False
+    return not _subjects_compatible(incoming_subject, old_subject)
 
 
 def _candidate_score(page_data, entry):
@@ -105,11 +177,17 @@ def _compact_candidates(base_generation_id, pages_data):
         if current_body is None:
             continue
         incoming_body = str(pages_data[item["incoming_index"]].get("body") or "").strip()
+        if incoming_body and incoming_body == current_body:
+            relation = "unchanged"
+        elif _distinct_subject_pair(pages_data[item["incoming_index"]], item["old_title"], current_body):
+            relation = "unrelated"
+        else:
+            relation = None
         hydrated.append(
             {
                 **item,
                 "old_body": current_body,
-                "deterministic_relation": ("unchanged" if incoming_body and incoming_body == current_body else None),
+                "deterministic_relation": relation,
             }
         )
     return hydrated, max(
@@ -123,7 +201,7 @@ def _evidence_candidates(compact):
     selected_page_ids = set()
     used_tokens = 0
     for item in compact:
-        if item["deterministic_relation"] == "unchanged":
+        if item["deterministic_relation"] in {"unchanged", "unrelated"}:
             continue
         page_id = item["old_page_id"]
         body_tokens = estimate_tokens(item["old_body"])
@@ -246,8 +324,11 @@ def _parse_comparisons(raw, allowed_pairs):
         relation = item.get("relation")
         if pair not in allowed_pairs or relation not in {"unchanged", "supplement", "conflict", "unrelated"}:
             continue
+        same_subject = bool(item.get("same_subject"))
+        if relation in {"conflict", "supplement", "unchanged"} and not same_subject:
+            relation = "unrelated"
         results[pair] = {
-            "same_subject": bool(item.get("same_subject")),
+            "same_subject": same_subject,
             "relation": relation,
             "reason": str(item.get("reason") or "").strip()[:500],
         }
@@ -256,14 +337,20 @@ def _parse_comparisons(raw, allowed_pairs):
 
 def _reduce_by_incoming(comparisons):
     by_incoming = {}
-    priority = {"unresolved": 5, "conflict": 4, "supplement": 3, "unchanged": 2, "unrelated": 1}
+    same_subject_priority = {"unresolved": 5, "conflict": 4, "supplement": 3, "unchanged": 2, "unrelated": 1}
+    other_priority = {"unrelated": 4, "unchanged": 3, "supplement": 2, "conflict": 1, "unresolved": 0}
+
+    def rank(item):
+        relation = item["relation"]
+        if item.get("same_subject") is True:
+            return (1, same_subject_priority[relation])
+        return (0, other_priority[relation])
+
     for (incoming_index, old_page_id), comparison in comparisons.items():
+        candidate = {**comparison, "old_page_id": old_page_id}
         current = by_incoming.get(incoming_index)
-        if current is None or priority[comparison["relation"]] > priority[current["relation"]]:
-            by_incoming[incoming_index] = {
-                **comparison,
-                "old_page_id": old_page_id,
-            }
+        if current is None or rank(candidate) > rank(current):
+            by_incoming[incoming_index] = candidate
     return by_incoming
 
 
@@ -358,15 +445,21 @@ def route_material_conflicts(
     if base_generation_id is None or not pages_data:
         return ConflictRoutingResult({}, 0, (), 0, 0, False, ())
     compact, overflow = _compact_candidates(base_generation_id, pages_data)
-    deterministic = {
-        (item["incoming_index"], item["old_page_id"]): {
-            "same_subject": True,
-            "relation": "unchanged",
-            "reason": "exact_body_match",
-        }
-        for item in compact
-        if item["deterministic_relation"] == "unchanged"
-    }
+    deterministic = {}
+    for item in compact:
+        relation = item.get("deterministic_relation")
+        if relation == "unchanged":
+            deterministic[(item["incoming_index"], item["old_page_id"])] = {
+                "same_subject": True,
+                "relation": "unchanged",
+                "reason": "exact_body_match",
+            }
+        elif relation == "unrelated":
+            deterministic[(item["incoming_index"], item["old_page_id"])] = {
+                "same_subject": False,
+                "relation": "unrelated",
+                "reason": "title_match_different_subject",
+            }
     evidence, evidence_page_ids, old_tokens = _evidence_candidates(compact)
     if not evidence or not llm_model_id:
         unresolved_pairs = {

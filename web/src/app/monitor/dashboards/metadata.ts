@@ -16,7 +16,7 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'jvm', groupKey: 'middleware', objectName: 'JVM', objectDisplayName: 'JVM', inheritedPermissionPath: '/monitor/view' },
   { key: 'mysql', groupKey: 'database', objectName: 'Mysql', objectDisplayName: 'MySQL', inheritedPermissionPath: '/monitor/view' },
   { key: 'redis', groupKey: 'database', objectName: 'Redis', objectDisplayName: 'Redis', inheritedPermissionPath: '/monitor/view' },
-  { key: 'mongodb', groupKey: 'database', objectName: 'Mongodb', objectDisplayName: 'MongoDB', inheritedPermissionPath: '/monitor/view' },
+  { key: 'mongodb', groupKey: 'database', objectName: 'MongoDB', objectDisplayName: 'MongoDB', inheritedPermissionPath: '/monitor/view' },
   { key: 'mssql', groupKey: 'database', objectName: 'MSSQL', objectDisplayName: 'MSSQL', inheritedPermissionPath: '/monitor/view' },
   { key: 'nginx', groupKey: 'middleware', objectName: 'nginx', objectDisplayName: 'Nginx', inheritedPermissionPath: '/monitor/view' },
   { key: 'docker', groupKey: 'middleware', objectName: 'Docker', objectDisplayName: 'Docker', inheritedPermissionPath: '/monitor/view' },

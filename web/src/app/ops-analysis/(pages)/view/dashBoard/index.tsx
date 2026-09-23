@@ -970,6 +970,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             descriptionField: config.descriptionField,
             topNLabelField: config.topNLabelField,
             topNValueField: config.topNValueField,
+            dimensionField: config.dimensionField,
+            valueField: config.valueField,
+            multiValueLabelField: config.multiValueLabelField,
+            multiValueValueField: config.multiValueValueField,
+            eventTimeline: config.eventTimeline,
+            radar: config.radar,
             nodeGraphIdentityMode: config.nodeGraphIdentityMode,
             nodeGraphSourceField: config.nodeGraphSourceField,
             nodeGraphTargetField: config.nodeGraphTargetField,
@@ -1390,6 +1396,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   descriptionField: values.descriptionField,
                   topNLabelField: values.topNLabelField,
                   topNValueField: values.topNValueField,
+                  dimensionField: values.dimensionField,
+                  valueField: values.valueField,
+                  multiValueLabelField: values.multiValueLabelField,
+                  multiValueValueField: values.multiValueValueField,
+                  eventTimeline: values.eventTimeline,
+                  radar: values.radar,
                   nodeGraphIdentityMode: values.nodeGraphIdentityMode,
                   nodeGraphSourceField: values.nodeGraphSourceField,
                   nodeGraphTargetField: values.nodeGraphTargetField,
@@ -1489,6 +1501,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         newDefinitions,
         filterValues,
         appliedFilterValues,
+        definitions,
       );
       updateDefinitions(snapshot.definitions);
       setAppliedFilterDefinitions(snapshot.definitions);

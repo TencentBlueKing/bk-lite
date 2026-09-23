@@ -52,6 +52,7 @@ async def test_lightweight_direct_reply_merges_leading_system_for_qwen():
     class _FakeLLM:
         async def ainvoke(self, messages, config=None):
             captured["messages"] = list(messages)
+            captured["config"] = config
             return AIMessage(content="ok")
 
     node = ToolsNodes()
@@ -76,6 +77,42 @@ async def test_lightweight_direct_reply_merges_leading_system_for_qwen():
     assert "图前置系统" in msgs[0].content
     assert [type(m) for m in msgs[1:]] == [HumanMessage, AIMessage, HumanMessage]
     assert result["messages"][0].content == "ok"
+    assert captured["config"]["callbacks"] == []
+
+
+@pytest.mark.asyncio
+async def test_lightweight_direct_reply_does_not_forward_parent_stream_callbacks():
+    """寒暄直答不得把 graph.astream_events 的 callbacks 传给 LLM 流。"""
+    from langchain_core.messages import AIMessageChunk
+
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    captured = {}
+    parent_callbacks = ["parent-astream-events"]
+
+    class _FakeStreamLLM:
+        async def astream(self, messages, config=None, stream_usage=False):
+            captured["config"] = config
+            captured["stream_usage"] = stream_usage
+            yield AIMessageChunk(content="hi")
+
+        async def ainvoke(self, messages, config=None):
+            raise AssertionError("有 astream 时不应回退 ainvoke")
+
+    node = ToolsNodes()
+    parent_config = {"configurable": {}, "callbacks": parent_callbacks}
+    result = await node._invoke_lightweight_direct_reply(
+        llm=_FakeStreamLLM(),
+        light_system="轻量系统",
+        original_messages=[HumanMessage(content="你好")],
+        config=parent_config,
+        token_usage_accumulator=None,
+        log_reason="unit",
+    )
+
+    assert result["messages"][0].content == "hi"
+    assert captured["config"]["callbacks"] == []
+    assert parent_config["callbacks"] is parent_callbacks
 
 
 @pytest.mark.asyncio

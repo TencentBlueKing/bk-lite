@@ -1,0 +1,182 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_h3c_firewall",
+  "plugin": "Firewall H3C SNMP",
+  "plugin_desc": "H3C SecPath firewall SNMP collection (HH3C-ENTITY-EXT-MIB and HH3C-FIREWALL-MIB, IANA PEN 25506). Collects per-entity CPU and memory utilization (hh3cEntityExtCpuUsage / hh3cEntityExtMemUsage), temperature (hh3cEntityExtTemperature; 65535 unsupported sentinel filtered), fan and power-supply operational state from hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad, plus firewall session scalars (hh3cFWConnNumCurr, hh3cFWMaxConnNum, hh3cFWConnRate). Interface counters come from the built-in IF-MIB catalog, not this plugin. Distinct from Switch H3C SNMP (snmp_h3c). Supported models — H3C SecPath F1000/F5000/T9000 and related Comware firewall appliances.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_h3c_firewall'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state",
+    "firewall_active_sessions"
+  ],
+  "display_fields": [],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the H3C SecPath firewall control plane (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage), as a 0-100 percentage per physical entity. Most entities return 0 and the CPU-bearing board carries the real value. Sustained high CPU usage can indicate inspection overload or attack traffic."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "device_memory_usage{instance_type='firewall', __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports memory utilization of the H3C SecPath firewall (HH3C-ENTITY-EXT-MIB hh3cEntityExtMemUsage, a direct percent value) per physical entity. High memory pressure can degrade session handling."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='firewall', collect_type='snmp_h3c_firewall', __$labels__} != 65535",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the temperature reading of each H3C SecPath hardware entity (HH3C-ENTITY-EXT-MIB hh3cEntityExtTemperature) in degrees Celsius. The 65535 unsupported sentinel is filtered out. Abnormally high temperatures may indicate cooling issues."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='firewall', entPhysicalClass='7', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each H3C SecPath cooling fan (HH3C-ENTITY-EXT-MIB hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass fan=7), normalized so that 1 means ok (enabled) and 2 means bad."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='firewall', entPhysicalClass='6', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each H3C SecPath power supply (HH3C-ENTITY-EXT-MIB hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass powerSupply=6), normalized so that 1 means ok (enabled) and 2 means bad."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions",
+      "query": "snmp_firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Active Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of connections that currently exist on the H3C SecPath firewall (HH3C-FIREWALL-MIB hh3cFWConnNumCurr). A rapid rise can indicate a connection flood or session-table pressure."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_max_sessions",
+      "query": "snmp_firewall_max_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Max Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Maximum connection number of the H3C SecPath firewall (HH3C-FIREWALL-MIB hh3cFWMaxConnNum). Combined with active sessions it gauges remaining session-table headroom."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_session_rate",
+      "query": "snmp_firewall_session_rate{instance_type='firewall', __$labels__}",
+      "display_name": "Session Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Connection establishment rate of the H3C SecPath firewall (HH3C-FIREWALL-MIB hh3cFWConnRate), in connections per second. A sudden spike can indicate a flood or a burst of new sessions."
+    }
+  ]
+}

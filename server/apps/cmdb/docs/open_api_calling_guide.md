@@ -7,7 +7,7 @@
 准备以下信息：
 
 - BK-Lite 根地址，例如 `https://bk-lite.example.com`。
-- 一个有效的 API Token。请登录 BK-Lite 产品页面，在“系统管理 → 平台设置 → 密钥”中申请。产品页面申请到的 API Token 即本文和请求头中使用的 API Secret。
+- 一个有效的 API Token。请登录 BK-Lite 产品页面，在“系统管理 → 平台管理 → API 令牌”中申请。产品页面申请到的 API Token 即本文和请求头中使用的 API Secret。
 - API Token 必须只绑定一个团队，并关联到有相应 CMDB 权限的用户。
 - 要操作的模型 ID，例如 `host`。
 - 创建实例时，需要先通过属性接口确认字段 ID、类型、必填性和可编辑性。

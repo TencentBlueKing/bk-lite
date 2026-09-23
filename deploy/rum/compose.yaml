@@ -1,0 +1,133 @@
+name: bk-lite-rum
+
+services:
+  rum-redis:
+    image: ${RUM_REDIS_IMAGE:-redis:7.4-alpine}
+    restart: unless-stopped
+    command: ["redis-server", "/etc/redis/redis.conf"]
+    volumes:
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+      - ./redis/users.acl:/etc/redis/users.acl:ro
+      - rum_redis_data:/data
+    ports:
+      - "${RUM_REDIS_BIND:-127.0.0.1}:${RUM_REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "rum-controller", "-a", "rum-controller-dev-secret-2026-000001", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: ${RUM_REDIS_MEMORY_LIMIT:-256m}
+    security_opt:
+      - no-new-privileges:true
+
+  rum-nats:
+    image: ${RUM_NATS_IMAGE:-nats:2.11-alpine}
+    restart: unless-stopped
+    command: ["--config", "/etc/nats/nats-server.conf"]
+    environment:
+      RUM_NATS_CTL_USERNAME: ${RUM_NATS_CTL_USERNAME:-rum_ctl}
+      RUM_NATS_CTL_PASSWORD: ${RUM_NATS_CTL_PASSWORD:-rum-ctl-contract-password}
+      RUM_NATS_CONTROLLER_USERNAME: ${RUM_NATS_CONTROLLER_USERNAME:-rum_controller}
+      RUM_NATS_CONTROLLER_PASSWORD: ${RUM_NATS_CONTROLLER_PASSWORD:-rum-controller-contract-password}
+    volumes:
+      - ./nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+    ports:
+      - "${RUM_NATS_BIND:-127.0.0.1}:${RUM_NATS_PORT:-14222}:4222"
+      - "${RUM_NATS_BIND:-127.0.0.1}:${RUM_NATS_MONITOR_PORT:-18223}:8222"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: ${RUM_NATS_MEMORY_LIMIT:-256m}
+    security_opt:
+      - no-new-privileges:true
+
+  rum-victoria-logs:
+    image: ${RUM_VICTORIA_LOGS_IMAGE:-victoriametrics/victoria-logs:v1.38.0}
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -httpListenAddr=:9428
+      # Required by bklite-rum-maintainer compliance erase (VictoriaWarehouse.Start).
+      - -delete.enable
+    volumes:
+      - rum_victoria_logs_data:/victoria-logs-data
+    ports:
+      - "${RUM_VICTORIA_LOGS_BIND:-127.0.0.1}:${RUM_VICTORIA_LOGS_PORT:-19428}:9428"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9428/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: ${RUM_VICTORIA_LOGS_MEMORY_LIMIT:-512m}
+    security_opt:
+      - no-new-privileges:true
+
+  rum-victoria-traces:
+    image: ${RUM_VICTORIA_TRACES_IMAGE:-victoriametrics/victoria-traces:v0.9.4}
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-traces-data
+      - -httpListenAddr=:10428
+      # Required by bklite-rum-maintainer compliance erase (VictoriaWarehouse.Start).
+      - -delete.enable
+    volumes:
+      - rum_victoria_traces_data:/victoria-traces-data
+    ports:
+      - "${RUM_VICTORIA_TRACES_BIND:-127.0.0.1}:${RUM_VICTORIA_TRACES_PORT:-10429}:10428"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:10428/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: ${RUM_VICTORIA_TRACES_MEMORY_LIMIT:-512m}
+    security_opt:
+      - no-new-privileges:true
+
+  rum-minio:
+    image: ${RUM_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${RUM_MINIO_ROOT_USER:-rumminio}
+      MINIO_ROOT_PASSWORD: ${RUM_MINIO_ROOT_PASSWORD:-rum-minio-contract-password}
+    volumes:
+      - rum_minio_data:/data
+    ports:
+      - "${RUM_MINIO_API_BIND:-127.0.0.1}:${RUM_MINIO_API_PORT:-19000}:9000"
+      - "${RUM_MINIO_CONSOLE_BIND:-127.0.0.1}:${RUM_MINIO_CONSOLE_PORT:-19001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: ${RUM_MINIO_MEMORY_LIMIT:-512m}
+    security_opt:
+      - no-new-privileges:true
+
+  rum-minio-init:
+    image: ${RUM_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-08-13T08-35-41Z}
+    restart: "no"
+    depends_on:
+      rum-minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set rum http://rum-minio:9000 \
+          "$${RUM_MINIO_ROOT_USER:-rumminio}" \
+          "$${RUM_MINIO_ROOT_PASSWORD:-rum-minio-contract-password}"
+        mc mb --ignore-existing rum/"$${RUM_MINIO_BUCKET:-rum-replay}"
+    environment:
+      RUM_MINIO_ROOT_USER: ${RUM_MINIO_ROOT_USER:-rumminio}
+      RUM_MINIO_ROOT_PASSWORD: ${RUM_MINIO_ROOT_PASSWORD:-rum-minio-contract-password}
+      RUM_MINIO_BUCKET: ${RUM_MINIO_BUCKET:-rum-replay}
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  rum_redis_data:
+  rum_victoria_logs_data:
+  rum_victoria_traces_data:
+  rum_minio_data:

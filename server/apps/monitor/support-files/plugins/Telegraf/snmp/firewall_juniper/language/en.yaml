@@ -1,0 +1,41 @@
+Firewall Juniper SNMP:
+  name: Juniper SRX (Telegraf)
+  desc: SNMP monitoring template for Juniper SRX firewalls. It reports per-SPU CPU,
+    memory, current flow sessions, and session capacity, optionally tagged by SPU
+    node description. Interface traffic uses the built-in IF-MIB catalog; this plugin
+    does not declare ifHC*. Distinct from Switch Juniper SNMP (snmp_juniper) and
+    Router Juniper MX SNMP (snmp_juniper_mx).
+monitor_object:
+  Firewall: Firewall
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the device since the last restart.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Per-SPU CPU utilization of the Juniper SRX firewall
+        (jnxJsSPUMonitoringCPUUsage, 0-100). Dimension index is the SNMP table
+        row; node_descr is the optional SPU node description. Sustained high CPU
+        may indicate inspection load or attack traffic.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Per-SPU memory utilization of the Juniper SRX firewall
+        (jnxJsSPUMonitoringMemoryUsage, a direct percent value). High memory
+        pressure can degrade session handling.
+    firewall_active_sessions:
+      name: Active Sessions
+      desc: Number of flow sessions currently tracked by each Juniper SRX SPU
+        (jnxJsSPUMonitoringCurrentFlowSession). A rapid rise can indicate a
+        connection flood or session-table pressure.
+    firewall_max_sessions:
+      name: Max Sessions
+      desc: Maximum flow-session capacity of each Juniper SRX SPU
+        (jnxJsSPUMonitoringMaxFlowSession). Combined with active sessions it
+        gauges remaining session-table headroom.
+monitor_object_metric_group:
+  Firewall:
+    Base: Base
+    Firewall: Firewall

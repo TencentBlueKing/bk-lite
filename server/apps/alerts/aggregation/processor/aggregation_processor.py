@@ -504,11 +504,14 @@ class AggregationProcessor:
         Alert.stamp_closed_at(active_alert, now)
         active_alert.save(update_fields=["status", "last_event_time", "updated_at", "closed_at"])
 
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
         from apps.alerts.service.recovery_notify import notify_alert_recovered
         from apps.alerts.service.reminder_service import ReminderService
 
         ReminderService.stop_reminder_task(active_alert)
+        recovered_alert_id = active_alert.alert_id
         transaction.on_commit(lambda a=active_alert: notify_alert_recovered(a))
+        transaction.on_commit(lambda aid=recovered_alert_id: dispatch_alert_lifecycle([aid], "resolved"))
         logger.info(
             "自动恢复成功: strategy_id=%s, alert_id=%s",
             strategy.id,

@@ -37,6 +37,12 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
   const parsed = parseEventTimelineItems(rawData, {
     sortOrder: timelineConfig?.sortOrder,
     maxItems: DEFAULT_EVENT_TIMELINE_MAX_ITEMS,
+    timeField: timelineConfig?.timeField,
+    titleField: timelineConfig?.titleField,
+    descriptionField: timelineConfig?.descriptionField,
+    categoryField: timelineConfig?.categoryField,
+    statusField: timelineConfig?.statusField,
+    linkField: timelineConfig?.linkField,
   });
   const hasData = parsed.items.length > 0;
 

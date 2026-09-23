@@ -15,6 +15,8 @@ export interface Room3DRack {
   location?: string;
   rack_type?: string | null;
   rack_type_name?: string | null;
+  rack_state?: string | null;
+  rack_state_name?: string | null;
   u_count?: number;
   used_u?: number;
   free_u?: number;
@@ -249,6 +251,22 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
 
+const normalizeRoom3DEnumValue = (
+  value: unknown,
+): string | null | undefined => {
+  const scalar = Array.isArray(value) ? value[0] : value;
+  if (typeof scalar === 'string') {
+    return scalar;
+  }
+  if (typeof scalar === 'number' && Number.isFinite(scalar)) {
+    return String(scalar);
+  }
+  if (scalar === null) {
+    return null;
+  }
+  return undefined;
+};
+
 const isPositiveInteger = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 1;
 
@@ -464,18 +482,22 @@ export const validateRoom3DData = (
     const row = parsedLocation?.row ?? rack.row;
     const col = parsedLocation?.col ?? rack.col;
     const location = parsedLocation?.location ?? getRoom3DStandardLocation(row, col);
-    const rawRackType = rack.rack_type;
-    const rackType: Room3DRack['rack_type'] =
-      typeof rawRackType === 'string'
-        ? rawRackType
-        : rawRackType === null
+    const rackType: Room3DRack['rack_type'] = normalizeRoom3DEnumValue(
+      rack.rack_type,
+    );
+    const rackTypeName: Room3DRack['rack_type_name'] =
+      isNonEmptyString(rack.rack_type_name)
+        ? rack.rack_type_name.trim()
+        : rack.rack_type_name === null
           ? null
           : undefined;
-    const rawRackTypeName = rack.rack_type_name;
-    const rackTypeName: Room3DRack['rack_type_name'] =
-      isNonEmptyString(rawRackTypeName)
-        ? rawRackTypeName.trim()
-        : rawRackTypeName === null
+    const rackState: Room3DRack['rack_state'] = normalizeRoom3DEnumValue(
+      rack.rack_state,
+    );
+    const rackStateName: Room3DRack['rack_state_name'] =
+      isNonEmptyString(rack.rack_state_name)
+        ? rack.rack_state_name.trim()
+        : rack.rack_state_name === null
           ? null
           : undefined;
     const numberFieldError = validateOptionalNumberFields(rack, index, t);
@@ -496,6 +518,8 @@ export const validateRoom3DData = (
       location,
       rack_type: rackType,
       rack_type_name: rackTypeName,
+      rack_state: rackState,
+      rack_state_name: rackStateName,
       u_count: rack.u_count as number | undefined,
       used_u: rack.used_u as number | undefined,
       free_u: rack.free_u as number | undefined,

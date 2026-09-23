@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, message, Segmented, Tooltip } from 'antd';
+import { Button, Spin, message, Segmented, Tooltip } from 'antd';
 import {
   CopyOutlined,
   CheckOutlined,
@@ -39,6 +39,9 @@ interface WidgetConfigPreviewProps {
   surface?: OpsAnalysisWidgetSurface;
   reloadVersion: number;
   rawData: unknown;
+  suppliedRawData?: unknown;
+  suppliedRawDataVersion?: number;
+  loading?: boolean;
   onRawData: (data: unknown) => void;
   liveName?: string;
   liveDescription?: string;
@@ -68,6 +71,9 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   surface = 'dashboard',
   reloadVersion,
   rawData,
+  suppliedRawData,
+  suppliedRawDataVersion = 0,
+  loading = false,
   onRawData,
   liveName,
   liveDescription,
@@ -118,9 +124,10 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                 type="text"
                 size="small"
                 className="inline-flex !h-7 !w-7 shrink-0 items-center justify-center text-(--ant-color-warning) hover:text-(--ant-color-warning)"
-                icon={<ReloadOutlined aria-hidden />}
+                icon={<ReloadOutlined aria-hidden spin={loading} />}
                 aria-label={t('dashboard.configPreviewRefresh')}
                 onClick={onRefresh}
+                disabled={loading}
                 data-testid="widget-config-preview-refresh"
               />
             ) : (
@@ -129,9 +136,10 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                   type="text"
                   size="small"
                   className="inline-flex !h-7 !w-7 shrink-0 items-center justify-center text-(--color-text-3) hover:text-(--color-primary)"
-                  icon={<ReloadOutlined aria-hidden />}
+                  icon={<ReloadOutlined aria-hidden spin={loading} />}
                   aria-label={t('dashboard.configPreviewRefresh')}
                   onClick={onRefresh}
+                  disabled={loading}
                   data-testid="widget-config-preview-refresh"
                 />
               </Tooltip>
@@ -207,26 +215,37 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
           <div className="px-3 pb-3">
             {tab === 'json' ? (
               <div className="relative overflow-hidden rounded-md bg-(--color-bg)">
-                {jsonText ? (
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={copied ? <CheckOutlined className="text-(--color-success)" /> : <CopyOutlined />}
-                    onClick={handleCopyJson}
-                    data-testid="widget-config-preview-copy-json"
-                    className="absolute right-1 top-1 z-10 !h-6 !px-2 text-xs text-(--color-text-3)"
+                {loading ? (
+                  <div
+                    className="flex min-h-[300px] items-center justify-center"
+                    data-testid="widget-config-preview-json-loading"
                   >
-                    {copied
-                      ? t('common.copySuccess')
-                      : t('common.copy')}
-                  </Button>
-                ) : null}
-                <pre
-                  className="max-h-[500px] min-h-[300px] overflow-auto p-3 pr-16 text-xs font-mono leading-relaxed text-(--color-text-1) scrollbar-thin"
-                  data-testid="widget-config-preview-json"
-                >
-                  {jsonText || t('dashboard.configPreviewRawJsonEmpty')}
-                </pre>
+                    <Spin spinning />
+                  </div>
+                ) : (
+                  <>
+                    {jsonText ? (
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={copied ? <CheckOutlined className="text-(--color-success)" /> : <CopyOutlined />}
+                        onClick={handleCopyJson}
+                        data-testid="widget-config-preview-copy-json"
+                        className="absolute right-1 top-1 z-10 !h-6 !px-2 text-xs text-(--color-text-3)"
+                      >
+                        {copied
+                          ? t('common.copySuccess')
+                          : t('common.copy')}
+                      </Button>
+                    ) : null}
+                    <pre
+                      className="max-h-[500px] min-h-[300px] overflow-auto p-3 pr-16 text-xs font-mono leading-relaxed text-(--color-text-1) scrollbar-thin"
+                      data-testid="widget-config-preview-json"
+                    >
+                      {jsonText || t('dashboard.configPreviewRawJsonEmpty')}
+                    </pre>
+                  </>
+                )}
               </div>
             ) : null}
 
@@ -255,7 +274,13 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                             builtinNamespaceId={builtinNamespaceId}
                             surface={surface}
                             reloadVersion={String(reloadVersion)}
+                            suppliedRawData={suppliedRawData}
+                            suppliedRawDataVersion={suppliedRawDataVersion}
                             runtimeActive
+                            layoutEditable={
+                              config.chartType === 'room3D' ||
+                              config.sceneWidgetType === 'room3D'
+                            }
                             onRawData={onRawData}
                           />
                         </React.Suspense>

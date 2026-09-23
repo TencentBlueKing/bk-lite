@@ -1,6 +1,6 @@
 """SystemAPIToken 管理 API：发放 / 列表 / PATCH 元数据 / 吊销 / 独立权限位。
 
-对照 specs/changes/openapi-system-token：系统密钥走系统管理 CRUD，权限位独立于
+对照 specs/changes/openapi-system-token：系统令牌走系统管理 CRUD，权限位独立于
 个人 api_secret_key，明文仅创建响应返回一次，发放与吊销写操作日志且不含令牌值。
 """
 
@@ -330,7 +330,7 @@ def test_create_writes_issue_operation_log_without_secret():
     assert log.username == "sys-token-admin"
     assert log.app == "system-manager"
     assert log.target_id == str(response.data["id"])
-    assert log.summary == "创建系统密钥: ITSM (itsm)"
+    assert log.summary == "创建系统令牌: ITSM (itsm)"
     assert log.detail == {"kind": "system", "name": "ITSM", "system_id": "itsm"}
     _assert_log_has_no_secret(log, response.data["api_secret"])
 
@@ -342,7 +342,7 @@ def test_delete_writes_revoke_operation_log_without_secret():
     assert response.status_code in (200, 204)
     log = OperationLog.objects.get(target_type="system_api_token", action_type="delete")
     assert log.username == "sys-token-admin"
-    assert log.summary == f"删除系统密钥: {token.name} ({token.system_id})"
+    assert log.summary == f"删除系统令牌: {token.name} ({token.system_id})"
     assert log.detail == {"kind": "system", "name": token.name, "system_id": "itsm"}
     assert log.target_id == str(token.pk)
     _assert_log_has_no_secret(log, secret)
@@ -360,6 +360,6 @@ def test_patch_writes_update_operation_log():
     )
     assert response.status_code == 200
     log = OperationLog.objects.get(target_type="system_api_token", action_type="update")
-    assert log.summary == f"更新系统密钥: {token.name} ({token.system_id})"
+    assert log.summary == f"更新系统令牌: {token.name} ({token.system_id})"
     assert log.detail == {"kind": "system", "name": token.name, "system_id": "itsm"}
     _assert_log_has_no_secret(log, secret)

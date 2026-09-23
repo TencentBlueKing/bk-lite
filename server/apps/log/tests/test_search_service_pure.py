@@ -1,14 +1,25 @@
 import pydantic.root_model  # noqa
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
+from apps.core.utils.time_util import format_rfc3339_utc
 from apps.log.services.search import SearchService
 from apps.log.utils.log_group import LogGroupQueryBuilder
 
 
 pytestmark = pytest.mark.unit
+
+WINDOW_START = "2026-04-22T00:00:00.000Z"
+WINDOW_END = "2026-04-22T00:15:00.000Z"
+SEVEN_DAY_START = "2026-04-01T00:00:00.000Z"
+SEVEN_DAY_END = "2026-04-08T00:00:00.000Z"
+THIRTY_DAY_START = "2026-04-01T00:00:00.000Z"
+THIRTY_DAY_END = "2026-05-01T00:00:00.000Z"
+OVERSIZED_START = "2026-01-01T00:00:00.000Z"
+OVERSIZED_END = "2026-02-02T00:00:00.000Z"
 
 
 # ----------------------- _apply_default_time_window -----------------------
@@ -17,18 +28,63 @@ pytestmark = pytest.mark.unit
 def test_apply_default_time_window_fills_when_both_empty():
     start, end = SearchService._apply_default_time_window("", "")
     assert start.endswith("Z") and end.endswith("Z")
-    assert start < end  # start 比 end 早 15 分钟
+    start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+    end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    assert end_dt - start_dt == timedelta(minutes=15)
 
 
-def test_apply_default_time_window_keeps_provided_values():
-    start, end = SearchService._apply_default_time_window("2024-01-01", "2024-01-02")
-    assert (start, end) == ("2024-01-01", "2024-01-02")
+def test_apply_default_time_window_keeps_provided_rfc3339():
+    start, end = SearchService._apply_default_time_window(WINDOW_START, WINDOW_END)
+    assert (start, end) == (WINDOW_START, WINDOW_END)
 
 
-def test_apply_default_time_window_keeps_partial_values():
-    # 只要有一个非空就不覆盖
-    start, end = SearchService._apply_default_time_window("2024-01-01", "")
-    assert (start, end) == ("2024-01-01", "")
+def test_apply_default_time_window_fills_missing_end():
+    start_input = format_rfc3339_utc(datetime.now(timezone.utc) - timedelta(minutes=10))
+    start, end = SearchService._apply_default_time_window(start_input, "")
+    assert start == start_input
+    assert end.endswith("Z")
+    assert start < end
+
+
+def test_apply_default_time_window_rejects_stale_start_after_filling_end():
+    with pytest.raises(ValueError):
+        SearchService._apply_default_time_window(WINDOW_START, "")
+
+
+def test_apply_default_time_window_fills_missing_start():
+    start, end = SearchService._apply_default_time_window("", WINDOW_END)
+    assert (start, end) == (WINDOW_START, WINDOW_END)
+
+
+def test_apply_default_time_window_rejects_illegal_and_timezone_less_values():
+    with pytest.raises(ValueError):
+        SearchService._apply_default_time_window("2024-01-01", "2024-01-02")
+    with pytest.raises(ValueError):
+        SearchService._apply_default_time_window("2026-04-22T00:00:00", "2026-04-22T00:15:00")
+
+
+def test_apply_default_time_window_rejects_end_not_after_start():
+    with pytest.raises(ValueError):
+        SearchService._apply_default_time_window(WINDOW_END, WINDOW_START)
+
+
+def test_apply_default_time_window_accepts_seven_and_thirty_day_range():
+    assert SearchService._apply_default_time_window(SEVEN_DAY_START, SEVEN_DAY_END) == (SEVEN_DAY_START, SEVEN_DAY_END)
+    assert SearchService._apply_default_time_window(THIRTY_DAY_START, THIRTY_DAY_END) == (THIRTY_DAY_START, THIRTY_DAY_END)
+
+
+def test_apply_default_time_window_rejects_oversized_range():
+    with pytest.raises(ValueError):
+        SearchService._apply_default_time_window(OVERSIZED_START, OVERSIZED_END)
+
+
+def test_search_logs_rejects_oversized_range_without_vm_query(mocker):
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
+
+    with pytest.raises(ValueError):
+        SearchService.search_logs("q", OVERSIZED_START, OVERSIZED_END)
+
+    vm.query.assert_not_called()
 
 
 # ----------------------- _compact_query -----------------------
@@ -158,9 +214,9 @@ def test_field_values_forwards_final_query_to_api(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.field_values.return_value = {"values": [{"value": "x"}]}
-    out = SearchService.field_values("2024-01-01", "2024-01-02", "host", limit=20, query="q", log_groups=["g1"])
+    out = SearchService.field_values(WINDOW_START, WINDOW_END, "host", limit=20, query="q", log_groups=["g1"])
     assert out == {"values": [{"value": "x"}]}
-    vm.field_values.assert_called_once_with("2024-01-01", "2024-01-02", "host", 20, query="FINAL_Q")
+    vm.field_values.assert_called_once_with(WINDOW_START, WINDOW_END, "host", 20, query="FINAL_Q")
 
 
 def test_field_values_maps_logical_message_to_storage_field(mocker):
@@ -168,9 +224,9 @@ def test_field_values_maps_logical_message_to_storage_field(mocker):
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.field_values.return_value = {"values": []}
 
-    SearchService.field_values("s", "e", "message", query="q")
+    SearchService.field_values(WINDOW_START, WINDOW_END, "message", query="q")
 
-    vm.field_values.assert_called_once_with("s", "e", "_msg", 100, query="FINAL_Q")
+    vm.field_values.assert_called_once_with(WINDOW_START, WINDOW_END, "_msg", 100, query="FINAL_Q")
 
 
 def test_field_values_skips_exists_filter_for_stream_id(mocker):
@@ -181,10 +237,10 @@ def test_field_values_skips_exists_filter_for_stream_id(mocker):
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.field_values.return_value = {"values": []}
 
-    SearchService.field_values("s", "e", "_stream_id", query="*")
+    SearchService.field_values(WINDOW_START, WINDOW_END, "_stream_id", query="*")
 
     assert builder.call_args.args[0] == "*"
-    vm.field_values.assert_called_once_with("s", "e", "_stream_id", 100, query="FINAL_Q")
+    vm.field_values.assert_called_once_with(WINDOW_START, WINDOW_END, "_stream_id", 100, query="FINAL_Q")
 
 
 def test_field_values_quotes_metadata_exists_filter(mocker):
@@ -194,16 +250,16 @@ def test_field_values_quotes_metadata_exists_filter(mocker):
     )
     mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value.field_values.return_value = {"values": []}
 
-    SearchService.field_values("s", "e", "@metadata.beat", query="*")
+    SearchService.field_values(WINDOW_START, WINDOW_END, "@metadata.beat", query="*")
 
     assert builder.call_args.args[0] == '"@metadata.beat":*'
 
 
 def test_field_names_forwards_to_field_values(mocker):
     fv = mocker.patch("apps.log.services.search.SearchService.field_values", return_value={"v": 1})
-    out = SearchService.field_names("s", "e", "host", limit=5, query="q", log_groups=["g"])
+    out = SearchService.field_names(WINDOW_START, WINDOW_END, "host", limit=5, query="q", log_groups=["g"])
     assert out == {"v": 1}
-    fv.assert_called_once_with("s", "e", "host", 5, query="q", log_groups=["g"])
+    fv.assert_called_once_with(WINDOW_START, WINDOW_END, "host", 5, query="q", log_groups=["g"])
 
 
 def test_all_field_names_extracts_and_sorts_unique_strings(mocker):
@@ -222,7 +278,7 @@ def test_all_field_names_extracts_and_sorts_unique_strings(mocker):
             "not-a-dict",  # 非 dict 忽略
         ]
     }
-    out = SearchService.all_field_names("q", "s", "e")
+    out = SearchService.all_field_names("q", WINDOW_START, WINDOW_END)
     assert out == ["app", "host"]
 
 
@@ -233,7 +289,7 @@ def test_all_field_names_non_dict_response_yields_empty(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.all_field_names.return_value = ["unexpected"]
-    assert SearchService.all_field_names("q", "s", "e") == []
+    assert SearchService.all_field_names("q", WINDOW_START, WINDOW_END) == []
 
 
 def test_all_field_names_hides_victoria_logs_message_field(mocker):
@@ -241,7 +297,7 @@ def test_all_field_names_hides_victoria_logs_message_field(mocker):
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.all_field_names.return_value = {"values": [{"value": "_msg"}, {"value": "message"}]}
 
-    assert SearchService.all_field_names("q", "s", "e") == ["message"]
+    assert SearchService.all_field_names("q", WINDOW_START, WINDOW_END) == ["message"]
 
 
 def test_all_field_names_hides_beat_timestamp_field(mocker):
@@ -251,7 +307,7 @@ def test_all_field_names_hides_beat_timestamp_field(mocker):
         "values": [{"value": "@timestamp"}, {"value": "_stream_id"}, {"value": "timestamp"}, {"value": "host"}]
     }
 
-    assert SearchService.all_field_names("q", "s", "e") == ["host", "timestamp"]
+    assert SearchService.all_field_names("q", WINDOW_START, WINDOW_END) == ["host", "timestamp"]
 
 
 # ----------------------- search_logs -----------------------
@@ -264,9 +320,9 @@ def test_search_logs_appends_group_info_for_dict_response(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.query.return_value = {"data": [1]}
-    out = SearchService.search_logs("q", "s", "e", limit=3, log_groups=["g1"])
+    out = SearchService.search_logs("q", WINDOW_START, WINDOW_END, limit=3, log_groups=["g1"])
     assert out == {"data": [1], "_log_group_info": [{"id": "g1"}]}
-    vm.query.assert_called_once_with("FQ", "s", "e", 3)
+    vm.query.assert_called_once_with("FQ", WINDOW_START, WINDOW_END, 3)
 
 
 def test_search_logs_list_response_returned_as_is(mocker):
@@ -276,7 +332,7 @@ def test_search_logs_list_response_returned_as_is(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.query.return_value = [{"a": 1}]
-    out = SearchService.search_logs("q", "s", "e")
+    out = SearchService.search_logs("q", WINDOW_START, WINDOW_END)
     assert out == [{"a": 1}]
 
 
@@ -285,7 +341,7 @@ def test_search_logs_exposes_only_logical_message(mocker):
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.query.return_value = [{"_msg": "hello", "host": "node-1"}]
 
-    assert SearchService.search_logs("q", "s", "e") == [{"message": "hello", "host": "node-1"}]
+    assert SearchService.search_logs("q", WINDOW_START, WINDOW_END) == [{"message": "hello", "host": "node-1"}]
 
 
 # ----------------------- search_hits -----------------------
@@ -298,9 +354,9 @@ def test_search_hits_attaches_group_info(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.hits.return_value = {"hits": []}
-    out = SearchService.search_hits("q", "s", "e", "host", fields_limit=2, step="1m", log_groups=["g"])
+    out = SearchService.search_hits("q", WINDOW_START, WINDOW_END, "host", fields_limit=2, step="1m", log_groups=["g"])
     assert out["_log_group_info"] == [{"id": "g"}]
-    vm.hits.assert_called_once_with("FQ", "s", "e", "host", 2, "1m")
+    vm.hits.assert_called_once_with("FQ", WINDOW_START, WINDOW_END, "host", 2, "1m")
 
 
 def test_search_hits_maps_logical_message_field(mocker):
@@ -308,9 +364,9 @@ def test_search_hits_maps_logical_message_field(mocker):
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.hits.return_value = {"hits": []}
 
-    SearchService.search_hits("q", "s", "e", "message")
+    SearchService.search_hits("q", WINDOW_START, WINDOW_END, "message")
 
-    vm.hits.assert_called_once_with("FQ", "s", "e", "_msg", 5, "5m")
+    vm.hits.assert_called_once_with("FQ", WINDOW_START, WINDOW_END, "_msg", 5, "5m")
 
 
 # ----------------------- top_stats -----------------------
@@ -330,7 +386,7 @@ def test_top_stats_builds_items_with_ratio(mocker):
             {"host": "web-2", "entry_count": "4"},
         ],
     ]
-    out = SearchService.top_stats("q", "s", "e", "host", top_num=2, log_groups=["g"])
+    out = SearchService.top_stats("q", WINDOW_START, WINDOW_END, "host", top_num=2, log_groups=["g"])
     assert out["attr"] == "host"
     assert out["total"] == 10
     assert out["items"][0] == {"value": "web-1", "count": 6, "ratio": 0.6}
@@ -345,7 +401,7 @@ def test_top_stats_zero_total_when_no_response(mocker):
     )
     vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
     vm.query.side_effect = [[], [{"host": "a", "entry_count": "0"}]]
-    out = SearchService.top_stats("q", "s", "e", "host")
+    out = SearchService.top_stats("q", WINDOW_START, WINDOW_END, "host")
     assert out["total"] == 0
     assert out["items"][0]["ratio"] == 0.0
     assert "_log_group_info" not in out

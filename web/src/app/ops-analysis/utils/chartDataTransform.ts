@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import { formatOpsDisplayTime } from '@/app/ops-analysis/utils/dateTime';
+import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 
 export interface ChartDataItem {
   name: string;
@@ -8,13 +9,18 @@ export interface ChartDataItem {
 
 export interface SeriesDataItem {
   name: string;
-  data: number[];
+  data: Array<number | null>;
 }
 
 export interface LineBarChartData {
   categories: string[];
-  values?: number[];
+  values?: Array<number | null>;
   series?: SeriesDataItem[];
+}
+
+export interface ChartFieldMapping {
+  dimensionField?: string;
+  valueField?: string;
 }
 
 export type PieChartData = ChartDataItem[];
@@ -39,6 +45,12 @@ const parseFiniteDecimal = (value: unknown): number => {
   const numericValue = Number(normalizedValue);
   return Number.isFinite(numericValue) ? numericValue : Number.NaN;
 };
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const hasExplicitFieldMapping = (mapping?: ChartFieldMapping) =>
+  Boolean(mapping?.dimensionField?.trim() || mapping?.valueField?.trim());
 
 export class ChartDataTransformer {
   static formatCategoryValue(value: any): string {
@@ -164,7 +176,14 @@ export class ChartDataTransformer {
     return String(value);
   }
 
-  static transformToLineBarData(rawData: any): LineBarChartData {
+  static transformToLineBarData(
+    rawData: any,
+    mapping?: ChartFieldMapping,
+  ): LineBarChartData {
+    if (hasExplicitFieldMapping(mapping)) {
+      return this.transformMappedLineBar(rawData, mapping);
+    }
+
     if (!rawData) {
       return { categories: [], values: [] };
     }
@@ -257,7 +276,57 @@ export class ChartDataTransformer {
     return { categories: [], values: [] };
   }
 
-  static transformToPieData(rawData: any): PieChartData {
+  private static transformMappedLineBar(
+    rawData: unknown,
+    mapping?: ChartFieldMapping,
+  ): LineBarChartData {
+    const rows = unwrapTopNData(rawData).filter(isPlainRecord);
+    const dimensionField = mapping?.dimensionField?.trim() || '';
+    const valueField = mapping?.valueField?.trim() || '';
+    const dimensionValues = rows.map((row) => row[dimensionField]);
+    const shouldFormatAsTime = this.shouldFormatAsTimeDimension(dimensionValues);
+
+    return {
+      categories: dimensionValues.map((value) =>
+        this.formatDimensionValue(value, shouldFormatAsTime),
+      ),
+      values: rows.map((row) => coerceTopNNumericValue(row[valueField])),
+    };
+  }
+
+  private static transformMappedPie(
+    rawData: unknown,
+    mapping?: ChartFieldMapping,
+  ): PieChartData {
+    const dimensionField = mapping?.dimensionField?.trim() || '';
+    const valueField = mapping?.valueField?.trim() || '';
+    const slices: PieChartData = [];
+
+    unwrapTopNData(rawData).forEach((item) => {
+      if (!isPlainRecord(item)) {
+        return;
+      }
+      const value = coerceTopNNumericValue(item[valueField]);
+      if (value === null) {
+        return;
+      }
+      slices.push({
+        name: this.formatCategoryValue(item[dimensionField]),
+        value,
+      });
+    });
+
+    return slices;
+  }
+
+  static transformToPieData(
+    rawData: any,
+    mapping?: ChartFieldMapping,
+  ): PieChartData {
+    if (hasExplicitFieldMapping(mapping)) {
+      return this.transformMappedPie(rawData, mapping);
+    }
+
     if (!rawData) return [];
 
     if (Array.isArray(rawData)) {
@@ -307,16 +376,24 @@ export class ChartDataTransformer {
     return data.categories && data.categories.length > 0;
   }
 
-  static validateLineBarData(rawData: any, errorMessage?: string): { isValid: boolean; message?: string } {
+  static validateLineBarData(
+    rawData: any,
+    errorMessage?: string,
+    mapping?: ChartFieldMapping,
+  ): { isValid: boolean; message?: string } {
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }
 
     try {
-      const transformedData = this.transformToLineBarData(rawData);
+      const transformedData = this.transformToLineBarData(rawData, mapping);
 
       if (!transformedData.categories || transformedData.categories.length === 0) {
         return { isValid: false, message: errorMessage || '数据格式不匹配' };
+      }
+
+      if (hasExplicitFieldMapping(mapping)) {
+        return { isValid: true };
       }
 
       const hasValidData = transformedData.series
@@ -337,13 +414,25 @@ export class ChartDataTransformer {
     }
   }
 
-  static validatePieData(rawData: any, errorMessage?: string): { isValid: boolean; message?: string } {
+  static validatePieData(
+    rawData: any,
+    errorMessage?: string,
+    mapping?: ChartFieldMapping,
+  ): { isValid: boolean; message?: string } {
     if (this.isStructurallyEmpty(rawData)) {
       return { isValid: true };
     }
 
     try {
-      const transformedData = this.transformToPieData(rawData);
+      const transformedData = this.transformToPieData(rawData, mapping);
+
+      if (
+        hasExplicitFieldMapping(mapping)
+        && (!transformedData || transformedData.length === 0)
+        && unwrapTopNData(rawData).some(isPlainRecord)
+      ) {
+        return { isValid: true };
+      }
 
       if (!transformedData || transformedData.length === 0) {
         return { isValid: false, message: errorMessage || '数据格式不匹配' };

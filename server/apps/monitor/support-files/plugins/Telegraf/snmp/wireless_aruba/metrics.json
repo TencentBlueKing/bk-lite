@@ -1,0 +1,104 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_aruba_wireless",
+  "plugin": "Wireless Aruba SNMP",
+  "plugin_desc": "Aruba AOS wireless controller SNMP collection under Aruba PEN 14823. It collects WLSX-SYSTEMEXT CPU utilization (wlsxSysExtCpuUsedPercent), memory utilization (wlsxSysExtMemoryUsedPercent), and internal temperature (wlsxSysExtInternalTemparature, MIB spelling), plus WLSX-SWITCH controller AP count (wlsxSwitchTotalNumAccessPoints) and associated station count (wlsxSwitchTotalNumStationsAssociated). Interface traffic comes from the built-in IF-MIB table. This plugin is for AOS controllers only; it does not share discovery or OIDs with ArubaOS-CX switch_aruba (enterprise 47196) and does not collect Instant/IAP objects.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_aruba_wireless'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "wireless_ap_count",
+    "wireless_station_count"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Aruba AOS wireless controller since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='wireless', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Aruba AOS wireless controller (WLSX-SYSTEMEXT-MIB wlsxSysExtCpuUsedPercent), reported directly as a 0-100 percentage. Sustained high CPU usage can indicate heavy AP or station management load affecting roaming and management responsiveness."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "snmp_device_memory_usage{instance_type='wireless', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Aruba AOS wireless controller (WLSX-SYSTEMEXT-MIB wlsxSysExtMemoryUsedPercent), reported directly as a 0-100 percentage. High memory pressure can cause the controller to drop station associations or delay AP joins."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "snmp_device_temperature_celsius{instance_type='wireless', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Internal temperature of the Aruba AOS wireless controller in degrees Celsius (WLSX-SYSTEMEXT-MIB wlsxSysExtInternalTemparature; MIB spelling Temparature). Abnormally high values may indicate cooling failure or excessive ambient heat."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_ap_count",
+      "query": "snmp_wireless_ap_count{instance_type='wireless', __$labels__}",
+      "display_name": "Access Point Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total number of access points on this Aruba AOS wireless controller (WLSX-SWITCH-MIB wlsxSwitchTotalNumAccessPoints). A sudden drop can indicate AP connectivity loss or a controller failover."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_station_count",
+      "query": "snmp_wireless_station_count{instance_type='wireless', __$labels__}",
+      "display_name": "Associated Station Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of wireless stations currently associated through this Aruba AOS wireless controller (WLSX-SWITCH-MIB wlsxSwitchTotalNumStationsAssociated). Rapid growth can correlate with CPU and memory pressure on the controller."
+    }
+  ]
+}

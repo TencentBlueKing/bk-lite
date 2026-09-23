@@ -1,3 +1,5 @@
+from django.core.management import CommandError
+
 from apps.monitor.constants.database import DatabaseConstants
 from apps.core.logger import monitor_logger as logger
 
@@ -12,7 +14,7 @@ def migrate_default_order():
     """
     try:
         from django.db import transaction
-        from apps.monitor.constants.monitor_object import MonitorObjConstants
+        from apps.monitor.constants.monitor_object import MonitorObjConstants, default_order_name_matches
         from apps.monitor.models import MonitorObjectType, MonitorObject
 
         with transaction.atomic():
@@ -43,7 +45,7 @@ def migrate_default_order():
                 # 初始化该分类下需要初始化的对象
                 for name_idx, name in enumerate(name_list):
                     for obj_id, obj in uninit_objects.items():
-                        if obj.name == name and obj.type_id == type_id:
+                        if default_order_name_matches(obj.name, name) and obj.type_id == type_id:
                             obj.order = name_idx
                             object_updates.append(obj)
 
@@ -71,3 +73,4 @@ def migrate_default_order():
         logger.error(f'初始化默认顺序失败: {e}')
         import traceback
         logger.error(traceback.format_exc())
+        raise CommandError(f"初始化默认顺序失败: {e}") from e

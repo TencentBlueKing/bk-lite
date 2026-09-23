@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Input, Button, Select, message } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
@@ -34,6 +34,7 @@ import {
   getDerivativeObjectNames
 } from '@/app/monitor/utils/monitorObject';
 import { findByMonitorId, sameMonitorId } from '@/app/monitor/utils/monitorIds';
+import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 import {
   DEFAULT_VIEW_FIXED_FIELD_KEYS,
   resolveViewColumns
@@ -45,6 +46,11 @@ import {
   displayFieldKey,
   displayFieldParamKey
 } from './instanceViewColumns';
+import {
+  readUrlColonyIds,
+  readUrlTableSort,
+  resolveColonyAfterEnumLoad
+} from './viewListUrlPrefill';
 const { Option } = Select;
 
 const ViewList: React.FC<ViewListProps> = ({
@@ -425,29 +431,32 @@ const ViewList: React.FC<ViewListProps> = ({
         ...prev,
         current: 1
       }));
-      const hostFromUrl =
-        findByMonitorId(objects, objectId)?.name === 'Process'
-          ? searchParams.get('vm_params.instance_id')
+      const targetObject = findByMonitorId(objects, objectId);
+      const nextColony = readUrlColonyIds(searchParams, targetObject?.name);
+      const nextSort =
+        isPod || isNode
+          ? readUrlTableSort(searchParams, targetObject?.display_fields)
           : null;
-      const nextColony = hostFromUrl ? [hostFromUrl] : [];
       setNode(null);
       nodeRef.current = null;
       setColony(nextColony);
       colonyRef.current = nextColony;
       setColumnFilters({});
       columnFiltersRef.current = {};
-      setTableSort(null);
-      tableSortRef.current = null;
+      setTableSort(nextSort);
+      tableSortRef.current = nextSort;
       setIpFilterOptions([]);
       setFieldFilterOptions({});
       getColoumnAndData();
     }
-    // searchParams host 过滤变更时也要重载（同对象再次跳转）
+    // searchParams 过滤/排序变更时也要重载（同对象再次跳转）
   }, [
     objectId,
     objects,
     isLoading,
-    searchParams.get('vm_params.instance_id')
+    searchParams.get('vm_params.instance_id'),
+    searchParams.get('ordering'),
+    searchParams.get('order')
   ]);
 
   useEffect(() => {
@@ -627,6 +636,11 @@ const ViewList: React.FC<ViewListProps> = ({
           setColony(resolved);
         }
       }
+      const nextColony = resolveColonyAfterEnumLoad(objName, colonyRef.current);
+      if (!sameStringArray(nextColony, colonyRef.current)) {
+        colonyRef.current = nextColony;
+        setColony(nextColony);
+      }
       setMetrics(res[0].items);
       if (objName) {
         const actionColumn = columns.find(
@@ -651,13 +665,7 @@ const ViewList: React.FC<ViewListProps> = ({
         if (currentRequestId !== columnRequestIdRef.current) {
           return;
         }
-        if (!colonyRef.current.length || objName === 'Process') {
-          onRefresh();
-        } else {
-          setColony([]);
-          colonyRef.current = [];
-          onRefresh();
-        }
+        onRefresh();
       }
     } finally {
       if (currentRequestId !== columnRequestIdRef.current) {
@@ -966,8 +974,10 @@ const ViewList: React.FC<ViewListProps> = ({
           )}
           <Input
             allowClear
-            className={`w-[240px] ${showTopFilterBar ? 'ml-2' : ''}`}
-            placeholder={t('common.searchPlaceHolder')}
+            className={`w-[360px] ${showTopFilterBar ? 'ml-2' : ''}`}
+            placeholder={t(
+              getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId))
+            )}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             onPressEnter={onRefresh}

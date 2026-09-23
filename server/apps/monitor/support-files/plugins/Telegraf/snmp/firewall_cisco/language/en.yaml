@@ -2,8 +2,9 @@ Firewall Cisco SNMP:
   name: Cisco ASA / Secure Firewall (Telegraf)
   desc: SNMP monitoring template for Cisco ASA, ASA Virtual, and Secure Firewall.
     It reports 5-minute CPU (optional 1-minute Rev), per-pool memory used/free
-    bytes (MEMPOOL_GLOBAL_SHARED dropped), and current-in-use sessions. Interface
-    traffic uses the built-in IF-MIB catalog; this plugin does not declare ifHC*.
+    bytes (MEMPOOL_GLOBAL_SHARED dropped), and current-in-use sessions (type=6).
+    Interface traffic uses the built-in IF-MIB catalog; this plugin does not
+    declare ifHC*. Distinct from Switch Cisco SNMP (snmp_cisco).
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -39,8 +40,8 @@ monitor_object_metric:
     firewall_active_sessions:
       name: Active Sessions
       desc: Connections currently in use on the Cisco firewall (CISCO-FIREWALL-MIB
-        cfwConnectionStatValue, Services protoIp(40) + ConnectionStat currentInUse(6)).
-        A rapid rise can indicate a connection flood or session-table pressure.
+        cfwConnectionStatValue, service+type index, type=6 current-in-use). A rapid
+        rise can indicate a connection flood or session-table pressure.
 monitor_object_metric_group:
   Firewall:
     Base: Base

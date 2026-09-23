@@ -49,7 +49,11 @@ RUNTIME_ALLOWED_KEYS = {"namespace_id", "page", "page_size", "query_list", "orga
 def _normalize_downstream_result(result):
     if isinstance(result, dict) and "result" in result:
         return result
-    return {"result": True, "data": result, "message": ""}
+    logger.warning(
+        "[DataSourceQuery] 下游返回非标准结果 payload_type=%s",
+        type(result).__name__,
+    )
+    return {"result": False, "data": result, "message": "下游返回非标准结果"}
 
 
 def _build_error_response(detail, status_code, data=None):

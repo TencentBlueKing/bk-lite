@@ -4,22 +4,24 @@
 因为 email 通道没有对应的 provider manifest)。
 """
 from apps.core.logger import system_mgmt_logger as logger
+from apps.system_mgmt.utils.i18n import system_mgmt_message
 
 
 class PasswordEmailBatchConnectionError(Exception):
     """SMTP 连接或通道配置错误，整批可稍后重试。"""
 
 
+def _email_locale(user) -> str:
+    return getattr(user, "locale", None) or "zh-Hans"
+
+
+def _email_title(user) -> str:
+    return system_mgmt_message(_email_locale(user), "error.initial_password_email_title")
+
+
 def _email_content(user, raw_password: str) -> str:
-    return (
-        "<p>您好：</p>"
-        "<p>您的 BK-Lite 账号已由管理员开通，账号信息如下：</p>"
-        f"<p><strong>用户名：</strong>{user.username}</p>"
-        f"<p><strong>初始密码：</strong>{raw_password}</p>"
-        "<p>请使用以上初始密码登录，并在首次登录后立即修改密码。</p>"
-        "<p><strong>安全提醒：</strong>请勿转发、截图或长期保存本邮件；如非本人操作，请联系管理员。</p>"
-        "<p>此致<br>BK-Lite 平台</p>"
-    )
+    template = system_mgmt_message(_email_locale(user), "error.initial_password_email_body")
+    return template.replace("{username}", str(user.username)).replace("{password}", str(raw_password))
 
 
 def send_initial_password_emails(source, deliveries: list[dict]) -> dict:
@@ -31,13 +33,13 @@ def send_initial_password_emails(source, deliveries: list[dict]) -> dict:
     channel_id = password_init.get("email_channel_id")
     channel = Channel.objects.filter(id=channel_id, channel_type="email").first() if channel_id else None
     if not channel:
-        raise PasswordEmailBatchConnectionError("邮件通道不存在或类型不是 email")
+        raise PasswordEmailBatchConnectionError(system_mgmt_message("zh-Hans", "error.initial_password_email_channel_absent"))
     messages = []
     for delivery in deliveries:
         user = delivery["user"]
         if not user.email:
             continue
-        messages.append({"key": user.username, "receiver": user.email, "title": "BK-Lite 账号开通通知", "content": _email_content(user, delivery["raw_password"])})
+        messages.append({"key": user.username, "receiver": user.email, "title": _email_title(user), "content": _email_content(user, delivery["raw_password"])})
     try:
         return send_personalized_email_messages(channel, messages)
     except Exception as exc:
@@ -54,29 +56,33 @@ def _send_initial_password_email_via_channel(user, raw_password: str, channel_id
     from apps.system_mgmt.models import Channel, User
     from apps.system_mgmt.utils.channel_utils import send_email as channel_send_email
 
+    locale = _email_locale(user)
     if not channel_id:
-        return {"result": False, "message": "缺少 email_channel_id"}
+        return {"result": False, "message": system_mgmt_message(locale, "error.email_channel_id_required")}
 
     channel = Channel.objects.filter(id=channel_id, channel_type="email").first()
     if not channel:
-        return {"result": False, "message": f"邮件通道 {channel_id} 不存在或类型不是 email"}
+        return {"result": False, "message": system_mgmt_message(locale, "error.email_channel_missing", channel_id=channel_id)}
 
     if not user.email:
-        return {"result": False, "message": "用户邮箱为空,无法发送"}
+        return {"result": False, "message": system_mgmt_message(locale, "error.user_email_empty")}
 
     try:
         # channel_utils.send_email(channel_obj, title, content, user_list_queryset)
         # 直接 SMTP 发邮件,不走 provider manifest 体系
         result = channel_send_email(
             channel,
-            title="BK-Lite 账号开通通知",
+            title=_email_title(user),
             content=_email_content(user, raw_password),
             user_list=User.objects.filter(id=user.id),
         )
         if isinstance(result, dict):
             return result
         # 旧版 send_email 可能返回 True/False
-        return {"result": bool(result), "message": "已发送" if result else "发送失败"}
+        return {
+            "result": bool(result),
+            "message": system_mgmt_message(locale, "error.email_sent" if result else "error.email_send_failed"),
+        }
     except Exception as e:
         logger.error(
             f"发送初始密码邮件失败 user={user.username}: {e}",

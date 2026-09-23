@@ -284,6 +284,8 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
           isStringArray(tagetMerticItem.unit || '');
         return {
           name: '',
+          aiName: item.instance_name,
+          aiValue: getEnumValueUnit(tagetMerticItem, cellValue),
           description: (
             <>
               <div>{item.instance_name}</div>
@@ -300,6 +302,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       }
       return {
         name: '',
+        aiName: item.instance_name,
         description: item.instance_name,
         fill: '#10e433'
       };
@@ -481,6 +484,10 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       <div
         className="w-full h-full overflow-hidden overflow-y-auto"
         ref={hexGridRef}
+        data-ai-hive-total={pagination.total}
+        data-ai-hive-loaded={chartData.length}
+        data-ai-hive-metric={metricList.find((item) => item.name === queryMetric)?.display_name || queryMetric || ''}
+        data-ai-hive-node={nodeList.find((item) => item.id === node)?.name || node || ''}
         onScroll={handleScroll}
       >
         <Spin spinning={tableLoading} className="w-full h-full">

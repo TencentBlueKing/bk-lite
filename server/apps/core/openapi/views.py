@@ -15,7 +15,8 @@ import time
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
-from apps.core.logger import openapi_logger as logger
+from apps.core.logger import openapi_logger as logger, safe_exception_info, safe_log_value
+from apps.core.openapi.call_audit import ENTRY_FORWARD_AUTH, ENTRY_INVOKE, persist_call_log
 from apps.core.openapi.dispatcher import dispatch
 from apps.core.openapi.envelope import ErrorCode, fail, ok
 from apps.core.openapi.identity import (
@@ -66,7 +67,7 @@ def _audit_label(value, limit=128):
     return text[:limit]
 
 
-def _audit(request, identity, response, started_at):
+def _audit(request, identity, response, started_at, *, persist=False, entry=""):
     try:
         team_ids = getattr(identity, "team_ids", None)
         request_digest = hashlib.sha256(request.body or b"").hexdigest()
@@ -89,8 +90,17 @@ def _audit(request, identity, response, started_at):
             len(getattr(response, "content", b"") or b""),
             request_digest,
         )
-    except Exception:  # 审计日志绝不影响主流程
-        logger.exception("openapi audit logging failed")
+    except Exception as exc:  # 审计日志绝不影响主流程
+        token_id = getattr(identity, "token_id", None)
+        logger.error(
+            "event=openapi_access_log_failed failed_stage=access_log error_type=%s token_id=%s path=%s",
+            type(exc).__name__,
+            token_id if token_id is not None else "-",
+            safe_log_value(getattr(request, "path", ""), max_length=128),
+            exc_info=safe_exception_info(exc),
+        )
+    if persist:
+        persist_call_log(request, identity, response, entry=entry)
 
 
 def _invoke(request, service, sub_path, identity):
@@ -116,7 +126,14 @@ def invoke_view(request, service, sub_path):
             response = _invoke(request, service, sub_path, identity)
         return response
     finally:
-        _audit(request, identity, response, started_at)
+        _audit(
+            request,
+            identity,
+            response,
+            started_at,
+            persist=True,
+            entry=ENTRY_INVOKE,
+        )
 
 
 @api_exempt
@@ -274,7 +291,14 @@ def forward_auth_view(request):
             response["X-On-Behalf-Of"] = ""
         return response
     finally:
-        _audit(request, identity, response, started_at)
+        _audit(
+            request,
+            identity,
+            response,
+            started_at,
+            persist=True,
+            entry=ENTRY_FORWARD_AUTH,
+        )
 
 
 def _build_me_payload(identity):

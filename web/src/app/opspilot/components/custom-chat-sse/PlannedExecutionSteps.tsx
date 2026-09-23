@@ -178,7 +178,11 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                       />
                     ) : (
                       <div className="px-2 py-0.5 text-[11px] text-[var(--color-text-4)]">
-                        {isActive ? '等待工具调用…' : '本步无工具调用'}
+                        {isActive
+                          ? '等待工具调用…'
+                          : step.reusedPriorResult
+                            ? '复用上一步结果'
+                            : '本步无工具调用'}
                       </div>
                     )}
                   </div>

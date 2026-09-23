@@ -13,6 +13,7 @@ from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.k8s_report_tools import build_a2ui_report_contract
+from apps.opspilot.metis.llm.chain.nested_stream import publish_owned_custom_event
 from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
 from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
 from apps.opspilot.services.approval import wait_for_approval
@@ -168,17 +169,40 @@ class ApprovalToolsMixin:
                 "display_hint": "text" if question_type == "text" else "auto",
             }
 
-            # 深 agent 包装节点里 sync dispatch 可能因缺 parent run id 静默失败；
-            # 优先 adispatch，保证修复闭环的选择卡一定能推到前端。
-            try:
-                await adispatch_custom_event("user_choice_request", choice_request_data, config=config)
-            except Exception:
+            published = publish_owned_custom_event(config, "user_choice_request", choice_request_data)
+            if not published:
                 try:
-                    dispatch_custom_event("user_choice_request", choice_request_data, config=config)
+                    await adispatch_custom_event("user_choice_request", choice_request_data, config=config)
+                    published = True
                 except Exception:
-                    pass
+                    try:
+                        dispatch_custom_event("user_choice_request", choice_request_data, config=config)
+                        published = True
+                    except Exception:
+                        published = False
+            if published:
+                logger.info("[choice_tool] 提问已发射: question=%s, type=%s, id=%s", question[:50], question_type, choice_id)
+            else:
+                logger.warning("[choice_tool] 提问未送达前端: question=%s, type=%s, id=%s", question[:50], question_type, choice_id)
 
-            logger.info(f"[choice_tool] 提问已发射: question={question[:50]}, " f"type={question_type}, id={choice_id}")
+            # QA batch only: OPSPILOT_QA_AUTO_CHOICE=1 resolves HITL with defaults (prefer Host).
+            import os as _os_qa
+
+            _qa_auto = _os_qa.getenv("OPSPILOT_QA_AUTO_CHOICE", "").strip().lower() in {"1", "true", "yes"}
+            _wait_trigger = "interactive"
+            if _qa_auto:
+                _wait_trigger = "unattended"
+                for _o in options_data:
+                    _k = str(_o.get("key") or "").strip()
+                    _kl = _k.lower()
+                    if _kl in {"host", "主机"} or "host" in _kl:
+                        default_keys = [_k]
+                        break
+                logger.info(
+                    "[choice_tool] QA_AUTO_CHOICE unattended default_keys=%s options=%s",
+                    default_keys,
+                    [o.get("key") for o in options_data],
+                )
 
             result = await wait_for_choice(
                 execution_id=execution_id,
@@ -188,7 +212,7 @@ class ApprovalToolsMixin:
                 default_keys=default_keys,
                 timeout_seconds=120,
                 poll_interval=1.0,
-                trigger_type="interactive",
+                trigger_type=_wait_trigger,
             )
 
             selected = result["selected"]
@@ -202,13 +226,14 @@ class ApprovalToolsMixin:
                 "selected": selected,
                 "source": source,
             }
-            try:
-                await adispatch_custom_event("user_choice_result", result_payload, config=config)
-            except Exception:
+            if not publish_owned_custom_event(config, "user_choice_result", result_payload):
                 try:
-                    dispatch_custom_event("user_choice_result", result_payload, config=config)
+                    await adispatch_custom_event("user_choice_result", result_payload, config=config)
                 except Exception:
-                    pass
+                    try:
+                        dispatch_custom_event("user_choice_result", result_payload, config=config)
+                    except Exception:
+                        pass
 
             # Build response text for LLM
             if question_type == "text":

@@ -15,13 +15,17 @@ import type {
   DatasourceItem,
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
-import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import {
   getScreenWidgetScale,
   scaleScreenMetric,
 } from './shared/screenMetrics';
 import { isTopNContentReady, resolveTopNContentState } from '@/app/ops-analysis/utils/topNContentState';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
+import {
+  buildTopNItems,
+  resolveTopNBarPercent,
+  resolveTopNMaxValue,
+} from '@/app/ops-analysis/utils/topNData';
 
 interface TopNProps {
   rawData: any;
@@ -33,28 +37,6 @@ interface TopNProps {
   componentSwitchControl?: React.ReactNode;
   errorMessage?: string;
 }
-
-interface TopNItem {
-  name: string;
-  value: number;
-}
-
-const unwrapTopNData = (data: any): any[] => {
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (data && typeof data === 'object') {
-    if (Array.isArray(data.items)) {
-      return data.items;
-    }
-    if (Array.isArray(data.data)) {
-      return data.data;
-    }
-  }
-
-  return [];
-};
 
 export const resolveTopNHeaderLabel = (
   fieldKey?: string,
@@ -103,65 +85,8 @@ const TopN: React.FC<TopNProps> = ({
   const gridTemplateColumns =
     'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)';
   const cellPadding = scaleScreenMetric(8, screenRenderContext);
-
-  const transformData = (data: any): TopNItem[] => {
-    const rows = unwrapTopNData(data);
-    if (rows.length === 0) return [];
-
-    // [[name, value], ...] format
-    if (Array.isArray(rows[0])) {
-      return rows
-        .map((item: any[]) => {
-          const rawName = getValueByPath(item, labelField);
-          const rawValue = getValueByPath(item, valueField);
-
-          const name =
-            rawName === undefined || rawName === null
-              ? ''
-              : String(rawName).trim();
-          const value = Number(rawValue);
-          if (!name || Number.isNaN(value)) {
-            return null;
-          }
-
-          return {
-            name,
-            value,
-          };
-        })
-        .filter((item: TopNItem | null): item is TopNItem => item !== null);
-    }
-
-    // [{name, value}] format
-    if (typeof rows[0] === 'object') {
-      return rows
-        .map((item: any) => {
-          const rawName = getValueByPath(item, labelField);
-          const rawValue = getValueByPath(item, valueField);
-
-          const name =
-            rawName === undefined || rawName === null
-              ? ''
-              : String(rawName).trim();
-          const value = Number(rawValue);
-          if (!name || Number.isNaN(value)) {
-            return null;
-          }
-
-          return {
-            name,
-            value,
-          };
-        })
-        .filter((item: TopNItem | null): item is TopNItem => item !== null);
-    }
-
-    return [];
-  };
-
-  const items = transformData(rawData);
-  const maxValue =
-    items.length > 0 ? Math.max(...items.map((i) => i.value)) : 0;
+  const items = buildTopNItems(rawData, labelField, valueField);
+  const maxValue = resolveTopNMaxValue(items);
   const isDataReady = items.length > 0;
   const contentState = resolveTopNContentState({
     loading,
@@ -236,7 +161,7 @@ const TopN: React.FC<TopNProps> = ({
           }}
         >
           {items.map((item, index) => {
-            const percent = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
+            const percent = resolveTopNBarPercent(item.value, maxValue);
 
             return (
               <React.Fragment key={`${item.name}-${index}`}>
@@ -272,7 +197,7 @@ const TopN: React.FC<TopNProps> = ({
                     <div
                       className="h-full rounded-full transition-all duration-300"
                       style={{
-                        width: `${Math.max(percent, item.value > 0 ? 2 : 0)}%`,
+                        width: `${Math.max(percent, (item.value ?? 0) > 0 ? 2 : 0)}%`,
                         background: usesScreenChartTheme && barColors.length > 0
                           ? `linear-gradient(90deg, ${barColors[index % barColors.length]} 0%, ${barColors[(index + 1) % barColors.length]} 100%)`
                           : isDark

@@ -42,6 +42,7 @@ from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlf
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
+from apps.mlops.utils.release_archive import with_archive_description, without_archive_description
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
 from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
 from config.drf.pagination import CustomPageNumberPagination
@@ -630,7 +631,7 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
                 )
 
             release.status = DatasetReleaseStatus.ARCHIVED
-            release.description = f"[已归档] {release.description or ''}"
+            release.description = with_archive_description(release.description)
             release.save(update_fields=["status", "description"])
 
             return Response({"message": mlops_message(request, "message.archive_success"), "release_id": release.id})
@@ -658,9 +659,7 @@ class AnomalyDetectionDatasetReleaseViewSet(ModelViewSet):
                 )
 
             # 移除归档标记
-            original_description = release.description or ""
-            if original_description.startswith("[已归档] "):
-                release.description = original_description.replace("[已归档] ", "", 1)
+            release.description = without_archive_description(release.description)
 
             release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])

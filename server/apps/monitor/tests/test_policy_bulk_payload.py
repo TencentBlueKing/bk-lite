@@ -248,3 +248,22 @@ def test_build_bulk_policy_payloads_keeps_rate_and_defaults_new_fields():
     assert payload["compare_baseline_weeks"] is None
     assert payload["forecast_lookback"] == {}
     assert payload["recovery_threshold"] == {}
+
+
+def test_build_bulk_policy_payloads_keeps_metric_dimensions_in_group_by():
+    payloads = build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "华为交换机CSS端口异常",
+                "metric_name": "device_css_port_state",
+                "metric_id": 101,
+                "algorithm": "last_over_time",
+                "dimensions": [{"name": "descr"}],
+            }
+        ],
+        assets=[{"instance_id": "('switch-a',)", "organizations": [7]}],
+        config={},
+    )
+
+    assert payloads[0]["group_by"] == ["instance_id", "descr"]

@@ -100,7 +100,10 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
     setLegendSelected(selected);
   }, []);
 
-  const chartData = ChartDataTransformer.transformToLineBarData(rawData);
+  const chartData = ChartDataTransformer.transformToLineBarData(rawData, {
+    dimensionField: config?.dimensionField,
+    valueField: config?.valueField,
+  });
   const isDataReady = chartData.categories.length > 0;
 
   useEffect(() => {

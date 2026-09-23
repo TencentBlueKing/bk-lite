@@ -9,7 +9,13 @@ export { SessionManager } from './sessionManager';
 export { StateMachine } from './stateMachine';
 export { SSEHandler } from './sse';
 export { SSEStreamParser } from './sseParser';
-export { assembleAguiHistoryText, assembleAguiHistoryParts, isSilentCustomEvent } from './aguiHistoryText';
+export {
+  assembleAguiHistoryText,
+  assembleAguiHistoryParts,
+  isSilentCustomEvent,
+  type HistoryContentChunk,
+  type HistoryToolCall,
+} from './aguiHistoryText';
 export { extractMessageText } from './messageContent';
 export * from './utils';
 export * from './imeKeyboard';

@@ -1,0 +1,36 @@
+Switch Robustel SNMP:
+  name: Robustel（Telegraf）
+  desc: 面向 Robustel MG460 工业交换机的 SNMP 监控模板，可采集 CPU 使用率（1 秒主指标，可选 10 秒）、内存总量/已用（字节）及推导出的利用率，以及板卡/结温温度。
+monitor_object:
+  Switch: 交换机
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Robustel MG460 工业交换机的一秒 CPU 使用率（rosSysutilStatusCpuLoadAverage1sec），按 0-100 百分比记录。持续偏高可能意味着控制平面过载、转发表震荡或异常流量。
+    device_cpu_usage_10s:
+      name: CPU 使用率（10 秒）
+      desc: 该指标表示 Robustel MG460 工业交换机的十秒 CPU 使用率（rosSysutilStatusCpuLoadAverage10sec），按 0-100 百分比记录。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标表示 Robustel MG460 工业交换机的物理内存总量（rosSysutilStatusMemoryTotalKb，已从 KB 换算为字节）。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标表示 Robustel MG460 工业交换机当前已使用的物理内存（rosSysutilStatusMemoryUsedKb，已从 KB 换算为字节）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 Robustel MG460 工业交换机整体内存使用率，按 已用/总量*100 计算。持续偏高可能由内存泄漏、MAC/ARP 表过大或容量不足导致。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标表示 Robustel MG460 工业交换机各 ROS-SYSUTIL 温度传感器读数，单位为摄氏度。索引 board=0 / junction=1。持续偏高可能意味着散热不良或环境过热。
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Base: 基础

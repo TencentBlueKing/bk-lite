@@ -32,27 +32,7 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+# @bk_include_ifmib_table
     # ---- Juniper jnxOperating CPU (JUNIPER-MIB jnxOperatingCPU, per operating entity) ----
     # 待现网核验：jnxOperatingCPU 1.3.6.1.4.1.2636.3.1.13.1.8（路由引擎为真实值，风扇/电源该列为 0；已是 0-100%）
     [[inputs.snmp.table]]
@@ -109,6 +89,33 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2636.3.1.13.1.6.2"
         name = "state"
+    # ---- 光模块 DDM：JUNIPER-DOM-MIB jnxDomCurrentTable，按 ifIndex，表列禁止 .0 ----
+    # 表 OID 1.3.6.1.4.1.2636.3.60.1.1.1。TX/RX 单位 0.01 dBm（查询侧 /100）；温度摄氏度；
+    # 偏置 0.001 mA（查询侧 /1000）；电压 0.001 V（查询侧 /1000）。
+    # ifDescr 同 ifIndex 作 is_tag。接口计数仍走内置 IF-MIB 底座，本表不扩 ifHC*/ifXTable。
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.60.1.1.1.1.5"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.60.1.1.1.1.7"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.60.1.1.1.1.8"
+        name = "temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.60.1.1.1.1.6"
+        name = "bias"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.60.1.1.1.1.25"
+        name = "voltage"
 
 # ---- 枚举归一：把 Juniper jnxOperatingState 映射到统一 1=normal/2=abnormal（偏离1即异常）----
 # 待现网核验：仅作用于本品牌(tagpass brand=juniper)。

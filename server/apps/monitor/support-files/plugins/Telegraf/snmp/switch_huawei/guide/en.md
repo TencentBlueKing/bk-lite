@@ -6,9 +6,9 @@ This plugin monitors Huawei campus, chassis, and CloudEngine switch health: per-
 
 One plugin covers the following Huawei switch families. Standalone boxes, iStack, CSS chassis, and M-LAG dual-active pairs all use this object; no extra monitor objects are required.
 
-- Campus and aggregation S-series: S5700, S6700, S7700, S8700, S9300
-- Chassis campus / CSS: S9700, S12700, S12700E, S12700H, S16700
-- CloudEngine CE series, including SKUs such as CE6881 and CE5881
+- Campus and aggregation S-series: S5700, S6700, S7700, S8700 (S8704/S8706/S8710), S9300
+- Chassis campus / CSS: S9700, S12700, S12700E, S12700H, S16700 (S16704/S16708)
+- CloudEngine CE series, including CE16800-X4/X8/X16, CE16804/CE16808/CE16816, and SKUs such as CE6881 and CE5881
 
 S12700H and S16700 are V600-generation chassis and still use this plugin and Switch object. A device that does not enable stack, CSS, or M-LAG simply returns empty tables. Missing private tables do not block CPU, memory, fan, PSU, or optical metrics. Stack/CSS link-up/down objects and M-LAG consistency checks are traps, not pollable tables; use stack/CSS/M-LAG port status and member heartbeat for link health.
 
@@ -37,7 +37,28 @@ snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.3.0
 snmpget -v2c -c "$SNMP_COMMUNITY" "$TARGET" 1.3.6.1.2.1.1.2.0
 ```
 
-`sysUpTime` (`1.3.6.1.2.1.1.3.0`) should return TimeTicks. `sysObjectID` (`1.3.6.1.2.1.1.2.0`) belongs to enterprise `2011` on Huawei switches.
+`sysUpTime` (`1.3.6.1.2.1.1.3.0`) should return TimeTicks. `sysObjectID` (`1.3.6.1.2.1.1.2.0`) identifies the chassis with this dictionary. Interface counters use the built-in IF-MIB table; this plugin does not expand IF-MIB.
+
+## sysObjectID model dictionary
+
+Chassis identity only. No new Switch object. No extra private metrics.
+
+| sysObjectID | Display name |
+| --- | --- |
+| `1.3.6.1.4.1.2011.2.239` | CloudEngine CE / dcswitch family |
+| `1.3.6.1.4.1.2011.2.239.58` | CE16804 |
+| `1.3.6.1.4.1.2011.2.239.59` | CE16808 |
+| `1.3.6.1.4.1.2011.2.239.60` | CE16816 |
+| `1.3.6.1.4.1.2011.2.239.120` | CE16800-X4 |
+| `1.3.6.1.4.1.2011.2.239.121` | CE16800-X8 |
+| `1.3.6.1.4.1.2011.2.239.122` | CE16800-X16 |
+| `1.3.6.1.4.1.2011.2.383` | S8700 |
+| `1.3.6.1.4.1.2011.2.383.3` | S8704 |
+| `1.3.6.1.4.1.2011.2.383.1` | S8706 |
+| `1.3.6.1.4.1.2011.2.383.2` | S8710 |
+| `1.3.6.1.4.1.2011.2.409` | S16700 |
+| `1.3.6.1.4.1.2011.2.409.1` | S16704 |
+| `1.3.6.1.4.1.2011.2.409.2` | S16708 |
 
 ## Form fields
 

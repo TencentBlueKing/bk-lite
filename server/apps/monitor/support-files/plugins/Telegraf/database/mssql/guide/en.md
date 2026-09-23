@@ -12,10 +12,22 @@ This capability uses Telegraf `inputs.sqlserver` to connect to a specified host 
 
 ## Setup Steps
 
-1. From the actual collector node, validate the target TCP port and monitoring account.
-2. Enter the username, password, host, actual TCP port, and interval (default `60` seconds).
-3. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
-4. Save the configuration and wait for at least one collection interval.
+1. Have the DBA create a dedicated login in `master`. Replace `<monitor_user>` and `<password>` with site values. Do not put the password in command history, and do not use `sa`:
+
+```sql
+CREATE LOGIN [<monitor_user>] WITH PASSWORD = '<password>', CHECK_POLICY = ON, DEFAULT_DATABASE = [master];
+USE [master];
+CREATE USER [<monitor_user>] FOR LOGIN [<monitor_user>];
+GRANT VIEW SERVER STATE TO [<monitor_user>];
+GRANT VIEW ANY DEFINITION TO [<monitor_user>];
+```
+
+`VIEW SERVER STATE` reads dynamic management views. `VIEW ANY DEFINITION` is only for object-definition and database-file metadata queried by the plugin. It does not grant access to user-table data.
+
+2. From the actual collector node, validate the target TCP port and monitoring account.
+3. Enter the username, password, host, actual TCP port, and interval (default `60` seconds).
+4. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
+5. Save the configuration and wait for at least one collection interval.
 
 ## Pre-checks
 

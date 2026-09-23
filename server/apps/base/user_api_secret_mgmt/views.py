@@ -21,7 +21,7 @@ def _log_secret_operation(request, action_type, instance):
         request,
         action_type,
         "system-manager",
-        f"{_SECRET_LOG_VERBS[action_type]}个人密钥: {name}",
+        f"{_SECRET_LOG_VERBS[action_type]}个人令牌: {name}",
         target_type="user_api_secret",
         target_id=instance.pk,
         detail={"kind": "personal", "name": instance.name or "", "team": instance.team},
@@ -123,7 +123,7 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
     @HasPermission("api_secret_key-Add", "system-manager")
     def update(self, request, *args, **kwargs):
         if not kwargs.get("partial"):
-            return JsonResponse({"result": False, "message": "API密钥不支持修改"})
+            return JsonResponse({"result": False, "message": "API 令牌不支持修改"})
         loader = _get_loader(request)
         _, error_response = _parse_current_team(request, loader)
         if error_response:

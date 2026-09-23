@@ -1,8 +1,9 @@
 import json
-from types import SimpleNamespace
 
 from django.http import HttpResponse, JsonResponse
 
+from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_log_value
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import SkillChannelChoices
@@ -35,6 +36,8 @@ from apps.opspilot.services.skill_channel_service import (
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.sse_chat import create_error_stream_response
 from apps.opspilot.views.chat_flow import parse_json_body
+
+SKILL_CHANNEL_IM_ACCEPTED_TEMPLATE = "event=skill_channel_im_accepted channel_id=%s channel_type=%s method=%s"
 
 
 def _serialize_saas_skill_channels(qs):
@@ -242,31 +245,23 @@ def execute_skill_channel_chat(request, channel_id):
 
 
 @api_exempt
-def execute_skill_embedded_chat(request, skill_id, channel_id):
-    """嵌入式对话：Api-Authorization + 固定 skill_id + channel_id。"""
+def execute_skill_embedded_chat(request, skill_id, channel_id=None, public_id=None):
+    """嵌入式对话：Api-Authorization + 固定 skill_id + public_id（兼容历史 channel_id）。"""
     kwargs, parse_error = parse_json_body(request)
     if parse_error:
         return JsonResponse({"result": False, "message": parse_error}, status=400)
     message = (kwargs or {}).get("message", "") or (kwargs or {}).get("user_message", "")
     if not message:
         return create_error_stream_response("message 必填")
-    session_id = (kwargs or {}).get("session_id") or ""
+    session_id = (kwargs or {}).get("session_id") or (kwargs or {}).get("sessionId") or ""
     try:
         user_secret, team_id = authenticate_embedded(request)
-        channel = get_enabled_channel(int(channel_id), EMBEDDED)
+        channel = get_enabled_channel(public_id if public_id is not None else channel_id, EMBEDDED)
         if int(channel.skill_id) != int(skill_id):
             raise SkillChannelChatError("skill_id 与渠道不匹配", status=400)
         assert_org_access(channel, team_id)
-        # 构造可被 caller_identity 识别的用户对象
-        user = SimpleNamespace(
-            username=user_secret.username,
-            domain=user_secret.domain,
-            id=None,
-            locale="zh-CN",
-            is_authenticated=True,
-        )
-        mark_api_secret_identity(user)
-        request.user = user
+        mark_api_secret_identity(user_secret)
+        request.user = user_secret
         request._api_current_team = team_id
         return stream_skill_channel_chat(
             channel=channel,
@@ -274,18 +269,39 @@ def execute_skill_embedded_chat(request, skill_id, channel_id):
             request=request,
             external_user_id=f"{user_secret.username}@{user_secret.domain}",
             session_id=session_id or None,
-            identity_user=user,
+            identity_user=user_secret,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(e.message)
 
 
-@api_exempt
-def execute_skill_channel_im(request, channel_id, channel_type):
-    """IM 回调入口：企微 aibot / 企微应用 / 公众号 / 钉钉 HTTP 已接完整协议。
+def _im_channel_id(channel_id=None, public_id=None, channel_type=None):
+    if public_id is None:
+        return channel_id
+    channel = SkillChannel.objects.filter(public_id=public_id, channel_type=channel_type).first()
+    return channel.id if channel else None
 
-    GET 用于 URL 校验；POST 在渠道未启用时拒绝。企微/钉钉/公众号不校验组织。
+
+@api_exempt
+def execute_skill_channel_im(request, channel_id=None, channel_type=None, public_id=None):
+    """IM 回调入口：企微 aibot / 企微应用 / 公众号 / 钉钉 / 飞书 HTTP 已接完整协议。
+
+    GET 用于 URL 校验；POST 在渠道未启用时拒绝。企微/钉钉/公众号/飞书不校验组织。
+    对外 URL 使用 public_id；整数 channel_id 路径仅兼容已部署回调。
     """
+    channel_ref = public_id if public_id is not None else channel_id
+    logger.info(
+        SKILL_CHANNEL_IM_ACCEPTED_TEMPLATE,
+        channel_ref,
+        safe_log_value(channel_type),
+        safe_log_value(request.method),
+    )
+    resolved_id = _im_channel_id(channel_id=channel_id, public_id=public_id, channel_type=channel_type)
+    if resolved_id is None:
+        if request.method == "GET":
+            return HttpResponse("fail", status=403)
+        return JsonResponse({"result": False, "message": "渠道不存在或已下线"}, status=403)
+    channel_id = resolved_id
     if channel_type == SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT:
         from apps.opspilot.services.skill_channel_aibot import SkillChannelAibotUtils
 
@@ -305,6 +321,11 @@ def execute_skill_channel_im(request, channel_id, channel_type):
         from apps.opspilot.services.skill_channel_dingtalk import SkillChannelDingtalkUtils
 
         return SkillChannelDingtalkUtils(channel_id).handle_request(request)
+
+    if channel_type == SkillChannelChoices.FEISHU:
+        from apps.opspilot.services.skill_channel_feishu import SkillChannelFeishuUtils
+
+        return SkillChannelFeishuUtils(channel_id).handle_request(request)
 
     channel = SkillChannel.objects.filter(id=channel_id, channel_type=channel_type).first()
     if not channel or not channel.enabled:

@@ -97,20 +97,27 @@ def wmi_results_to_prometheus(
         _append_gauge(lines, "diskio_writes_gauge", diskio_labels, diskio.get("writes"), timestamp)
         _append_gauge(lines, "diskio_read_bytes_gauge", diskio_labels, diskio.get("read_bytes"), timestamp)
         _append_gauge(lines, "diskio_write_bytes_gauge", diskio_labels, diskio.get("write_bytes"), timestamp)
-        _append_gauge(lines, "diskio_io_util_gauge", diskio_labels, diskio.get("io_time_ms"), timestamp)
-        _append_gauge(lines, "diskio_read_time_gauge", diskio_labels, diskio.get("read_time_ms"), timestamp)
-        _append_gauge(lines, "diskio_write_time_gauge", diskio_labels, diskio.get("write_time_ms"), timestamp)
+        if "io_util_percent" in diskio:
+            _append_gauge(lines, "diskio_io_util_gauge", diskio_labels, diskio.get("io_util_percent"), timestamp)
+        if "read_latency_ms" in diskio:
+            _append_gauge(lines, "disk_read_latency_gauge", diskio_labels, diskio.get("read_latency_ms"), timestamp)
+        if "write_latency_ms" in diskio:
+            _append_gauge(lines, "disk_write_latency_gauge", diskio_labels, diskio.get("write_latency_ms"), timestamp)
+        if "read_time_ms" in diskio:
+            _append_gauge(lines, "diskio_read_time_gauge", diskio_labels, diskio.get("read_time_ms"), timestamp)
+        if "write_time_ms" in diskio:
+            _append_gauge(lines, "diskio_write_time_gauge", diskio_labels, diskio.get("write_time_ms"), timestamp)
 
     processes = results.get("processes") or {}
     _append_gauge(lines, "processes_running_gauge", base_labels, processes.get("running"), timestamp)
-    _append_gauge(lines, "processes_blocked_gauge", base_labels, processes.get("blocked"), timestamp)
-    _append_gauge(lines, "processes_zombies_gauge", base_labels, processes.get("zombies"), timestamp)
-    _append_gauge(lines, "processes_sleeping_gauge", base_labels, processes.get("sleeping"), timestamp)
+    for key in ("blocked", "zombies", "sleeping"):
+        if key in processes:
+            _append_gauge(lines, f"processes_{key}_gauge", base_labels, processes.get(key), timestamp)
 
     system = results.get("system") or {}
     _append_gauge(lines, "system_uptime_gauge", base_labels, system.get("uptime_seconds"), timestamp)
-    _append_gauge(lines, "system_load1_gauge", base_labels, system.get("load1"), timestamp)
-    _append_gauge(lines, "system_load5_gauge", base_labels, system.get("load5"), timestamp)
-    _append_gauge(lines, "system_load15_gauge", base_labels, system.get("load15"), timestamp)
+    for key in ("load1", "load5", "load15"):
+        if key in system:
+            _append_gauge(lines, f"system_{key}_gauge", base_labels, system.get(key), timestamp)
 
     return "\n".join(lines) + ("\n" if lines else "")

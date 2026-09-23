@@ -333,6 +333,23 @@ def test_serve_omits_optional_params(monkeypatch):
     assert "device" not in captured
 
 
+@pytest.mark.parametrize("port", [22, 80, 8080, 65536])
+def test_serve_rejects_illegal_port_without_http(monkeypatch, port):
+    _setup_hook(monkeypatch)
+    called = []
+
+    def fake_request(endpoint, payload, timeout=30):
+        called.append((endpoint, payload))
+        return {"status": "success"}
+
+    monkeypatch.setattr(WebhookClient, "_request", staticmethod(fake_request))
+
+    with pytest.raises(WebhookError, match="error.serving_port_invalid"):
+        WebhookClient.serve("Svc_1", "http://mlflow", "models:/m/1", port=port)
+
+    assert called == []
+
+
 def test_serve_uses_configured_docker_startup_budget(monkeypatch):
     _setup_hook(monkeypatch)
     monkeypatch.setenv("MLOPS_SERVING_STARTUP_TIMEOUT_SECONDS", "45")

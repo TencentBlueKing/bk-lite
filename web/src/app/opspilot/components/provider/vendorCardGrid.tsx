@@ -9,7 +9,7 @@ import type { ModelVendor } from '@/app/opspilot/types/provider';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import { ProviderGridSkeleton } from '@/app/opspilot/components/provider/skeleton';
 import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
-import { formatRelativeTime, pickEntityTimestamp } from '@/app/opspilot/utils/relativeTime';
+import { formatRelativeTime, pickEntityTimestamp } from '@/utils/relativeTime';
 
 interface VendorCardGridProps {
   vendors: ModelVendor[];

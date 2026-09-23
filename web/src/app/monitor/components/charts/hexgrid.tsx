@@ -56,6 +56,9 @@ const HexGrid: React.FC<HexGridProps> = ({ data }) => {
       <Tooltip key={index} title={hex.description} placement="top">
         <div
           className="w-[104px] h-[80px] flex justify-center items-center"
+          data-ai-hive-name={hex.aiName || undefined}
+          data-ai-hive-value={hex.aiValue || undefined}
+          data-ai-hive-fill={hex.fill}
           style={{
             clipPath:
               'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',

@@ -1305,6 +1305,20 @@
       "spaceNotEnabledHint": "未选择记忆体时不会沉淀长期记忆"
     },
     "channelPublish": "发布",
+    "history": {
+      "menu": "历史",
+      "title": "标题",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间",
+      "user": "用户",
+      "channel": "渠道",
+      "count": "数量",
+      "filterChannel": "全部渠道",
+      "filterUser": "请输入用户名进行搜索...",
+      "detail": "详情",
+      "empty": "暂无会话记录",
+      "drawerTitle": "会话详情"
+    },
     "channel": {
       "type": "渠道类型",
       "name": "名称",
@@ -1318,10 +1332,24 @@
         "enterprise_wechat": "企微应用",
         "enterprise_wechat_aibot": "企微机器人",
         "dingtalk": "钉钉",
+        "feishu": "飞书",
         "wechat_official": "微信公众号"
       },
       "webChatEntry": "Web 对话入口：",
+      "embeddedEntry": "嵌入式对话入口",
       "embeddedHint": "嵌入式请求需携带 Api-Authorization（系统管理 UserAPISecret），路径含 skill_id 与 channel_id。",
+      "copyLink": "链接",
+      "copyCallback": "回调",
+      "viewDocs": "文档",
+      "embeddedApiInfo": "提供可通过 WebChat 嵌入网页的对话接口。保存渠道后即可复制下方调用地址。",
+      "embeddedSaveHint": "保存渠道后，可在列表中复制对接链接。",
+      "callbackUrl": "回调地址",
+      "callbackUrlHint": "复制此地址，粘贴到企微机器人 / 钉钉 / 飞书 / 公众号后台的 URL",
+      "callbackUrlSaveHint": "选择渠道类型后自动生成",
+      "callbackUrlGenerating": "正在生成回调地址…",
+      "callbackUrlFailed": "生成回调地址失败",
+      "moreDetails": "如何对接请查看",
+      "viewApiDocs": "接入文档 →",
       "deleteConfirm": "确认删除渠道「{name}」？",
       "loadFailed": "加载渠道失败",
       "saveFailed": "保存失败",
@@ -1341,7 +1369,7 @@
       "groupSaas": "站内入口",
       "groupSaasDesc": "平台弹窗 / Web 对话 / 嵌入式",
       "groupIm": "即时通讯",
-      "groupImDesc": "企微 / 钉钉 / 公众号（回调不校组织）",
+      "groupImDesc": "企微 / 钉钉 / 飞书 / 公众号（回调不校组织）",
       "fields": {
         "token": "Token",
         "secret": "Secret",
@@ -1349,10 +1377,12 @@
         "corp_id": "企业 ID",
         "agent_id": "应用 Agent ID",
         "encodingAESKey": "EncodingAESKey",
-        "aibotid": "机器人 ID",
         "client_id": "Client ID",
         "client_secret": "Client Secret",
-        "app_id": "App ID"
+        "app_id": "App ID",
+        "app_secret": "App Secret",
+        "verification_token": "Verification Token",
+        "encrypt_key": "Encrypt Key"
       }
     },
     "skillParams": {

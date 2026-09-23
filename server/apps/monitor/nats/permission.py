@@ -1,6 +1,9 @@
 import nats_client
 from apps.monitor.models import MonitorInstance, MonitorObject, MonitorPolicy
 from apps.monitor.models.monitor_condition import MonitorCondition
+from apps.monitor.services.nats_query_contract import normalize_positive_int
+
+_MAX_MODULE_DATA_PAGE_SIZE = 100
 
 
 @nats_client.register
@@ -8,6 +11,14 @@ def get_monitor_module_data(module, child_module, page, page_size, group_id):
     """
     获取监控模块数据
     """
+    try:
+        page = normalize_positive_int(page, "page", default=1)
+        page_size = normalize_positive_int(page_size, "page_size", default=10)
+    except ValueError as exc:
+        return {"result": False, "message": str(exc)}
+    if page_size > _MAX_MODULE_DATA_PAGE_SIZE:
+        return {"result": False, "message": "page_size 不能大于 100"}
+
     if module == "instance":
         queryset = MonitorInstance.objects.filter(
             monitor_object_id=child_module,

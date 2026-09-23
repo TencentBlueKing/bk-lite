@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+import os
 import uuid
 
 import yaml
@@ -32,7 +33,7 @@ class Command(BaseCommand):
             raise CommandError(f"创建监控实例失败: {error}") from error
 
         result = {
-            "request": request_data,
+            "request": self._redact_secrets(request_data),
             "result": {
                 "status": "success",
                 "instances": self._build_instances_output(service_data),
@@ -160,12 +161,37 @@ class Command(BaseCommand):
             )
         return results
 
+    _SENSITIVE_KEYS = frozenset(
+        {
+            "password",
+            "passwd",
+            "secret",
+            "token",
+            "community",
+            "api_key",
+            "access_key",
+            "secret_key",
+        }
+    )
+
+    def _redact_secrets(self, value, placeholder="***"):
+        if isinstance(value, dict):
+            return {
+                key: placeholder if str(key).lower() in self._SENSITIVE_KEYS else self._redact_secrets(item, placeholder)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._redact_secrets(item, placeholder) for item in value]
+        return value
+
     def _write_output(self, output_path, data):
         path = Path(output_path)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("w", encoding="utf-8") as file:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
                 yaml.safe_dump(data, file, allow_unicode=True, sort_keys=False)
+            os.chmod(path, 0o600)
         except OSError as error:
             raise CommandError(f"结果文件写入失败: {error}") from error
         return path

@@ -123,6 +123,29 @@ def test_initial_password_email_uses_formal_chinese_template(user_with_vault):
 
 
 @pytest.mark.django_db
+def test_initial_password_email_uses_english_template_for_en_user(user_with_vault):
+    user, _ = user_with_vault
+    user.locale = "en"
+    user.save(update_fields=["locale"])
+
+    with patch("apps.system_mgmt.models.Channel.objects.filter") as query:
+        query.return_value.first.return_value = object()
+        with patch(
+            "apps.system_mgmt.utils.channel_utils.send_email",
+            return_value={"result": True},
+        ) as channel_send_email:
+            from apps.system_mgmt.services.password_init_email import send_email_via_runtime
+
+            send_email_via_runtime(user, "RandomP@ss!2026")
+
+    _, kwargs = channel_send_email.call_args
+    assert kwargs["title"] == "Your BK-Lite account is ready"
+    assert "Username" in kwargs["content"]
+    assert "RandomP@ss!2026" in kwargs["content"]
+    assert "账号已由管理员开通" not in kwargs["content"]
+
+
+@pytest.mark.django_db
 def test_channel_failure_marks_failed_and_pops_vault(user_with_vault):
     """#11 通道失败 → email_status.failed += 1, vault 仍 pop。"""
     user, run = user_with_vault

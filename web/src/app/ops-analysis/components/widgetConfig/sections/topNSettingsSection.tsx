@@ -1,6 +1,8 @@
 import React from 'react';
 import { Form, Select } from 'antd';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import { ConfigGroupTitle } from '../configTitles';
+import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 interface TopNSettingsSectionProps {
   t: (key: string) => string;
@@ -8,6 +10,8 @@ interface TopNSettingsSectionProps {
   selectedDataSource?: DatasourceItem;
   topNLabelFieldOptions: Array<{ label: React.ReactNode; value: string }>;
   topNValueFieldOptions: Array<{ label: React.ReactNode; value: string }>;
+  loadingFields?: boolean;
+  onRefreshFields?: () => void;
 }
 
 export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
@@ -16,34 +20,47 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
   selectedDataSource,
   topNLabelFieldOptions,
   topNValueFieldOptions,
+  loadingFields = false,
+  onRefreshFields,
 }) => {
   const resolvedSectionTitle =
     sectionTitle !== undefined ? sectionTitle : t('topology.nodeConfig.dataSettings');
+  const fieldSelectorDisabled = !selectedDataSource || loadingFields;
+  const placeholder = topNLabelFieldOptions.length === 0
+    ? t('topology.nodeConfig.clickRefreshToGetFields')
+    : t('topology.nodeConfig.selectDisplayField');
 
   return (
-    <div className="space-y-4">
+    <div>
       {resolvedSectionTitle ? (
-        <div className="flex items-center gap-2 mb-2">
+        <div className="mb-2 flex items-center gap-2">
           <span className="text-[13px] font-semibold text-(--color-text-2)">
             {resolvedSectionTitle}
           </span>
         </div>
       ) : null}
 
-      {!selectedDataSource ? (
-        <div className="text-center py-4 text-xs text-(--color-text-3)">
-          {t('topology.nodeConfig.selectDataSourceFirst')}
-        </div>
-      ) : null}
+      <ConfigGroupTitle
+        actions={(
+          <RefreshFieldsButton
+            label={t('dashboard.refreshFields')}
+            loading={loadingFields}
+            disabled={!selectedDataSource}
+            onClick={onRefreshFields}
+          />
+        )}
+      >
+        {t('dashboard.dataFields')}
+      </ConfigGroupTitle>
 
-      {selectedDataSource && topNLabelFieldOptions.length === 0 ? (
-        <div className="text-center py-4 text-xs text-(--color-text-3)">
-          {t('topology.nodeConfig.noAvailableFields')}
-        </div>
-      ) : null}
-
+      <div>
         <Form.Item
-          label={t('topology.nodeConfig.displayField')}
+          label={(
+            <ChartRoleLabel
+              text={t('topology.nodeConfig.displayField')}
+              tip={t('dashboard.topNLabelFieldTip')}
+            />
+          )}
           name="topNLabelField"
           rules={[
             {
@@ -53,16 +70,21 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           ]}
         >
           <Select
-            placeholder={t('topology.nodeConfig.selectDisplayField')}
+            placeholder={placeholder}
             options={topNLabelFieldOptions}
-            disabled={!selectedDataSource}
+            disabled={fieldSelectorDisabled}
             showSearch
             optionFilterProp="value"
           />
         </Form.Item>
 
         <Form.Item
-          label={t('topology.nodeConfig.valueField')}
+          label={(
+            <ChartRoleLabel
+              text={t('topology.nodeConfig.valueField')}
+              tip={t('dashboard.topNValueFieldTip')}
+            />
+          )}
           name="topNValueField"
           rules={[
             {
@@ -72,13 +94,16 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           ]}
         >
           <Select
-            placeholder={t('topology.nodeConfig.selectValueField')}
+            placeholder={topNValueFieldOptions.length === 0
+              ? t('topology.nodeConfig.clickRefreshToGetFields')
+              : t('topology.nodeConfig.selectValueField')}
             options={topNValueFieldOptions}
-            disabled={!selectedDataSource}
+            disabled={fieldSelectorDisabled}
             showSearch
             optionFilterProp="value"
           />
         </Form.Item>
+      </div>
     </div>
   );
 };

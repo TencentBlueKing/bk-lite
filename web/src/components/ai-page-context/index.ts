@@ -27,5 +27,6 @@ export {
   captionFromOption,
   captureEchartsFromDom,
   captureEchartsFromDoms,
+  captureRechartsFromDoms,
 } from '@/components/chart-snapshot';
 export { useAiPageContext } from './useAiPageContext';

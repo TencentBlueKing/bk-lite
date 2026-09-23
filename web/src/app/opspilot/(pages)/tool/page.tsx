@@ -22,9 +22,8 @@ import UrlInputWithButton from '@/app/opspilot/components/tool/urlInputWithButto
 import SkillPackageDetailDrawer from '@/app/opspilot/components/tool/SkillPackageDetailDrawer';
 import Icon from '@/components/icon';
 import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
-import OpsPilotListPageHeader from '@/app/opspilot/components/opspilot-list-page-header';
-import OpsPilotCardGridSkeleton from '@/app/opspilot/components/opspilot-card-grid-skeleton';
-import { formatRelativeTime, pickEntityTimestamp } from '@/app/opspilot/utils/relativeTime';
+import ListPageHeader from '@/components/list-page-header';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
 
 const ToolListPage: React.FC = () => {
   const { useForm } = Form;
@@ -550,7 +549,7 @@ const ToolListPage: React.FC = () => {
     <div className="w-full" aria-label="技能资产">
       <div className="mb-4">{renderAssetSwitcher()}</div>
       {skillAssetsLoading ? (
-        <OpsPilotCardGridSkeleton count={6} />
+        <CardGridSkeleton count={6} />
       ) : filteredSkillAssets.length ? (
         <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {filteredSkillAssets.map((asset) => {
@@ -575,7 +574,6 @@ const ToolListPage: React.FC = () => {
                 name={asset.name}
                 description={asset.description || ''}
                 icon="jinengpeixun"
-                updatedAt={formatRelativeTime(pickEntityTimestamp(asset), t) || undefined}
                 meta={[asset.category, asset.version].filter(Boolean) as string[]}
                 footer="none"
                 menuOverlay={deleteMenu}
@@ -592,7 +590,7 @@ const ToolListPage: React.FC = () => {
 
   return (
     <div className="w-full h-full">
-      <OpsPilotListPageHeader
+      <ListPageHeader
         title={t('tool.pageTitle')}
         description={t('tool.pageDescription')}
         actions={headerActions}
@@ -620,7 +618,7 @@ const ToolListPage: React.FC = () => {
             nameField="display_name"
             showBuiltinTag={false}
             loading={loading}
-            loadingContent={<OpsPilotCardGridSkeleton />}
+            loadingContent={<CardGridSkeleton />}
             search={false}
             hideToolbar
             menuActions={assetView === 'mcp' ? menuActions : undefined}
@@ -661,7 +659,6 @@ const ToolListPage: React.FC = () => {
                   name={title}
                   description={tool.description || ''}
                   icon={tool.icon || 'gongjuji'}
-                  updatedAt={formatRelativeTime(pickEntityTimestamp(tool), t) || undefined}
                   meta={meta}
                   footer="none"
                   menuOverlay={menu}

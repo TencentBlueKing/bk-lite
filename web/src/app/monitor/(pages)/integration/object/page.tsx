@@ -1,5 +1,6 @@
 'use client';
 
+import './register-object-pilot';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Input, Button, Switch, Popconfirm, message, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';

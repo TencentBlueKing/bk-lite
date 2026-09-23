@@ -12,6 +12,7 @@ import { runManualActionTrigger } from './manualActionExecuteModal';
 
 interface ActionTimelineProps {
   alertId: string;
+  allowRerun?: boolean;
 }
 
 const STATUS_COLOR_MAP: Record<string, string> = {
@@ -23,7 +24,7 @@ const STATUS_COLOR_MAP: Record<string, string> = {
   config_error: 'gray',
 };
 
-const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
+const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId, allowRerun = true }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getActionExecutions, getActionRule, manualTriggerAction } = useSettingApi();
@@ -136,15 +137,17 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
               {errorMsg && (
                 <span className="text-red-500 flex-1">{errorMsg}</span>
               )}
-              <Button
-                size="small"
-                danger
-                loading={rerunLoadingId === item.id}
-                disabled={!item.rule}
-                onClick={() => handleRerun(item)}
-              >
-                {t('settings.actionRerun')}
-              </Button>
+              {allowRerun && (
+                <Button
+                  size="small"
+                  danger
+                  loading={rerunLoadingId === item.id}
+                  disabled={!item.rule}
+                  onClick={() => handleRerun(item)}
+                >
+                  {t('settings.actionRerun')}
+                </Button>
+              )}
             </div>
           )}
         </div>

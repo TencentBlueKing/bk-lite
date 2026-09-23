@@ -18,12 +18,13 @@ import {
 import {
   PlusOutlined,
   ReloadOutlined,
-  ExportOutlined,
   CheckCircleOutlined,
   StopOutlined,
   DeploymentUnitOutlined,
   InfoCircleOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useSkillApi } from '@/app/opspilot/api/skill';
@@ -35,9 +36,11 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import OperateModal from '@/components/operate-modal';
 import Icon from '@/components/icon';
 import OpsPilotChannelPageSkeleton from '@/app/opspilot/components/opspilot-channel-page-skeleton';
+import { rememberWebChatEntry } from '@/app/opspilot/(pages)/skill/chat/entry';
 
 interface SkillChannelItem {
   id: number;
+  public_id?: string;
   name: string;
   channel_type: string;
   enabled: boolean;
@@ -57,6 +60,90 @@ const SKELETON_ROWS: TableItem[] = [
 ];
 
 const WEB_CHAT_PATH = '/opspilot/skill/chat';
+const SKILL_API_DOCS_PATH = '/opspilot/skill/detail/api';
+const IM_CALLBACK_TYPES = new Set([
+  'enterprise_wechat',
+  'enterprise_wechat_aibot',
+  'dingtalk',
+  'feishu',
+  'wechat_official',
+]);
+
+const needsPublicLink = (channelType?: string) =>
+  !!channelType && (IM_CALLBACK_TYPES.has(channelType) || channelType === 'embedded_chat');
+
+const generatePublicId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+const consoleOrigin = () => (typeof window !== 'undefined' ? window.location.origin : '');
+
+const skillEmbeddedChatUrl = (skillId: string, channelRef: number | string) =>
+  `${consoleOrigin()}/api/v1/opspilot/skill_channel/embedded/${skillId}/${channelRef}/`;
+
+const skillChannelCallbackPath = (channelRef: number | string, channelType: string) =>
+  `/api/v1/opspilot/skill_channel/${channelRef}/${channelType}/`;
+
+const skillChannelCallbackUrl = (
+  channel: Pick<SkillChannelItem, 'id' | 'channel_type' | 'callback_path' | 'public_id'>
+) => {
+  const ref = channel.public_id || channel.id;
+  const path = channel.callback_path || skillChannelCallbackPath(ref, channel.channel_type);
+  return path.startsWith('http') ? path : `${consoleOrigin()}${path}`;
+};
+
+const toChannelRecord = (raw: unknown, fallbackType: string): SkillChannelItem | null => {
+  const envelope = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+  const row = envelope && typeof envelope.id === 'number'
+    ? envelope
+    : envelope && envelope.data && typeof envelope.data === 'object'
+      ? (envelope.data as Record<string, unknown>)
+      : null;
+  if (typeof row.id !== 'number') {
+    return null;
+  }
+  const id = row.id;
+  const publicId = row.public_id;
+  return {
+    id,
+    public_id: typeof publicId === 'string' ? publicId : '',
+    name: typeof row.name === 'string' ? row.name : '',
+    channel_type: typeof row.channel_type === 'string' ? row.channel_type : fallbackType,
+    enabled: Boolean(row.enabled),
+    channel_config:
+      row.channel_config && typeof row.channel_config === 'object'
+        ? (row.channel_config as Record<string, any>)
+        : undefined,
+    callback_path: typeof row.callback_path === 'string' ? row.callback_path : undefined,
+  };
+};
+
+const skillApiDocsHref = (skillId?: string | null) => {
+  if (!skillId) {
+    return SKILL_API_DOCS_PATH;
+  }
+  return `${SKILL_API_DOCS_PATH}?id=${encodeURIComponent(skillId)}`;
+};
+
+const copyText = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+  }
+};
 
 const CHANNEL_OPTIONS = [
   { value: 'platform' },
@@ -65,6 +152,7 @@ const CHANNEL_OPTIONS = [
   { value: 'enterprise_wechat' },
   { value: 'enterprise_wechat_aibot' },
   { value: 'dingtalk' },
+  { value: 'feishu' },
   { value: 'wechat_official' },
 ];
 
@@ -75,13 +163,15 @@ const CHANNEL_META: Record<string, { icon: string; color: string }> = {
   enterprise_wechat: { icon: 'qiwei2', color: 'green' },
   enterprise_wechat_aibot: { icon: 'qiwei2', color: 'green' },
   dingtalk: { icon: 'dingding', color: 'orange' },
+  feishu: { icon: 'feishu', color: 'blue' },
   wechat_official: { icon: 'weixingongzhonghao', color: 'lime' },
 };
 
 const CONFIG_FIELDS: Record<string, string[]> = {
   enterprise_wechat: ['token', 'secret', 'aes_key', 'corp_id', 'agent_id'],
-  enterprise_wechat_aibot: ['token', 'encodingAESKey', 'aibotid'],
+  enterprise_wechat_aibot: ['token', 'encodingAESKey'],
   dingtalk: ['client_id', 'client_secret'],
+  feishu: ['app_id', 'app_secret', 'encrypt_key', 'verification_token'],
   wechat_official: ['token', 'secret', 'aes_key', 'app_id'],
   platform: [],
   web_chat: [],
@@ -96,7 +186,7 @@ const channelFieldLabel = (t: (key: string, fallback?: string) => string, field:
 
 const isSecretConfigField = (field: string) => {
   const key = field.toLowerCase();
-  return key.includes('secret') || key.includes('token') || key.includes('aes');
+  return key.includes('secret') || key.includes('token') || key.includes('aes') || key.includes('key');
 };
 
 const ChannelTypeIcon: React.FC<{ channelType: string; className?: string }> = ({
@@ -125,11 +215,26 @@ const SkillChannelPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SkillChannelItem | null>(null);
   const [saving, setSaving] = useState(false);
+  const [draftPublicId, setDraftPublicId] = useState('');
   const [nameQuery, setNameQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>();
   const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>({});
   const [form] = Form.useForm();
-  const channelType = Form.useWatch('channel_type', form);
+  const watchedType = Form.useWatch('channel_type', form);
+  const activeType = editing?.channel_type || watchedType;
+  const publicRef = (editing?.public_id || draftPublicId || '').toString();
+  const callbackUrl =
+    activeType && IM_CALLBACK_TYPES.has(activeType) && (editing || publicRef)
+      ? skillChannelCallbackUrl({
+        id: editing?.id || 0,
+        public_id: publicRef || undefined,
+        channel_type: activeType,
+        callback_path: editing?.callback_path,
+      })
+      : '';
+  const embeddedUrl = skillId && needsPublicLink(activeType) && activeType === 'embedded_chat' && (publicRef || editing)
+    ? skillEmbeddedChatUrl(skillId, publicRef || editing?.id || '')
+    : '';
 
   const apiRef = useRef({
     fetchSkillChannels,
@@ -173,7 +278,7 @@ const SkillChannelPage: React.FC = () => {
     void load(true);
   }, [load]);
 
-  const configFields = useMemo(() => CONFIG_FIELDS[channelType] || [], [channelType]);
+  const configFields = useMemo(() => CONFIG_FIELDS[activeType] || [], [activeType]);
 
   const enabledCount = useMemo(() => channels.filter((c) => c.enabled).length, [channels]);
   const disabledCount = useMemo(() => channels.length - enabledCount, [channels.length, enabledCount]);
@@ -189,6 +294,7 @@ const SkillChannelPage: React.FC = () => {
   }, [channels, nameQuery, typeFilter, t]);
 
   const openCreate = () => {
+    setDraftPublicId('');
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({ channel_type: 'platform', enabled: true });
@@ -196,6 +302,7 @@ const SkillChannelPage: React.FC = () => {
   };
 
   const openEdit = (item: SkillChannelItem) => {
+    setDraftPublicId('');
     setEditing(item);
     const cfg = item.channel_config || {};
     const flat = { ...cfg, ...(cfg.webhook || {}) };
@@ -206,6 +313,19 @@ const SkillChannelPage: React.FC = () => {
       ...Object.fromEntries((CONFIG_FIELDS[item.channel_type] || []).map((k) => [k, flat[k]])),
     });
     setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setDraftPublicId('');
+    setEditing(null);
+    setModalOpen(false);
+  };
+
+  const onTypeChange = (value: string) => {
+    if (editing) {
+      return;
+    }
+    setDraftPublicId(needsPublicLink(value) ? generatePublicId() : '');
   };
 
   const onSave = async () => {
@@ -224,36 +344,39 @@ const SkillChannelPage: React.FC = () => {
         channel_config = {
           connectionMode: 'webhook',
           webhook: {
-            token: values.token,
-            encodingAESKey: values.encodingAESKey,
-            aibotid: values.aibotid || '',
+            token: (values.token || '').trim(),
+            encodingAESKey: (values.encodingAESKey || '').trim(),
           },
         };
       }
       if (editing) {
         await updateSkillChannel(editing.id, {
-          name: values.name,
+          name: values.name || editing.name,
           channel_config,
         });
         if (typeof values.enabled === 'boolean' && values.enabled !== editing.enabled) {
           await setSkillChannelEnabled(editing.id, values.enabled);
         }
       } else {
-        const created = await createSkillChannel({
-          skill: Number(skillId),
-          channel_type: values.channel_type,
-          name: values.name || values.channel_type,
-          channel_config,
-          enabled: !!values.enabled,
-        });
+        const created = toChannelRecord(
+          await createSkillChannel({
+            skill: Number(skillId),
+            channel_type: values.channel_type,
+            name: values.name || values.channel_type,
+            channel_config,
+            enabled: !!values.enabled,
+            ...(draftPublicId ? { public_id: draftPublicId } : {}),
+          }),
+          values.channel_type
+        );
         if (values.enabled && created?.id) {
           await setSkillChannelEnabled(created.id, true);
         }
       }
       message.success(t('common.saveSuccess', '保存成功'));
-      setModalOpen(false);
       await load(false);
       notifyWebchatAppsChanged();
+      closeModal();
     } catch (e: any) {
       if (e?.errorFields) return;
       const detail = e?.response?.data?.name || e?.response?.data?.message || e?.message;
@@ -289,8 +412,33 @@ const SkillChannelPage: React.FC = () => {
     }
   };
 
-  const openWebChat = () => {
-    window.open(WEB_CHAT_PATH, '_blank', 'noopener,noreferrer');
+  const openWebChat = (channelId: number) => {
+    const token = rememberWebChatEntry(channelId);
+    window.open(`${WEB_CHAT_PATH}?entry=${token}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyEmbeddedLink = async (channelRef: number | string) => {
+    if (!skillId || !channelRef) {
+      return;
+    }
+    try {
+      await copyText(skillEmbeddedChatUrl(skillId, channelRef));
+      message.success(t('common.copySuccess', '复制成功'));
+    } catch {
+      message.error(t('common.copyFailed', '复制失败'));
+    }
+  };
+
+  const copyCallbackUrl = async (url: string) => {
+    if (!url) {
+      return;
+    }
+    try {
+      await copyText(url);
+      message.success(t('common.copySuccess', '复制成功'));
+    } catch {
+      message.error(t('common.copyFailed', '复制失败'));
+    }
   };
 
   const columns = useMemo(
@@ -322,6 +470,11 @@ const SkillChannelPage: React.FC = () => {
                 {item.channel_type === 'web_chat' ? (
                   <div className="truncate text-xs text-[var(--color-text-3)]">
                     {t('skill.channel.webChatEntry', 'Web 对话入口')}
+                  </div>
+                ) : null}
+                {item.channel_type === 'embedded_chat' ? (
+                  <div className="truncate text-xs text-[var(--color-text-3)]">
+                    {t('skill.channel.embeddedEntry', '嵌入式对话入口')}
                   </div>
                 ) : null}
               </div>
@@ -386,7 +539,7 @@ const SkillChannelPage: React.FC = () => {
       {
         title: t('common.action', '操作'),
         key: 'action',
-        width: 180,
+        width: 160,
         render: (_: unknown, item: TableItem) => {
           if (item.isSkeleton) {
             return (
@@ -399,17 +552,12 @@ const SkillChannelPage: React.FC = () => {
           return (
             <Space size="small">
               {item.channel_type === 'web_chat' ? (
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<ExportOutlined className="text-xs" />}
-                  onClick={openWebChat}
-                >
+                <Button type="link" size="small" onClick={() => openWebChat(item.id)}>
                   {t('skill.channel.openChat', '对话')}
                 </Button>
               ) : null}
               <Button type="link" size="small" onClick={() => openEdit(item)}>
-                {t('common.setting', '设置')}
+                {t('common.edit', '编辑')}
               </Button>
               <Popconfirm
                 title={t('common.delete', '删除')}
@@ -582,9 +730,9 @@ const SkillChannelPage: React.FC = () => {
         title={editing ? t('common.edit', '编辑') : t('skill.channel.add', '添加渠道')}
         subTitle={editing ? channelTypeLabel(t, editing.channel_type) : undefined}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={closeModal}
         footer={[
-          <Button key="cancel" onClick={() => setModalOpen(false)}>
+          <Button key="cancel" onClick={closeModal}>
             {t('common.cancel', '取消')}
           </Button>,
           <Button key="submit" type="primary" loading={saving} onClick={onSave}>
@@ -597,32 +745,94 @@ const SkillChannelPage: React.FC = () => {
         <Form form={form} layout="vertical" className="pt-2">
           <Form.Item
             name="channel_type"
-            label={t('skill.channel.type')}
+            label={t('skill.channel.type', '渠道类型')}
             rules={[{ required: true, message: t('common.required', '此项必填') }]}
           >
             <Select
               disabled={!!editing}
+              virtual={false}
+              onChange={onTypeChange}
+              optionRender={(option) => (
+                <div className="flex items-center gap-2">
+                  <ChannelTypeIcon channelType={String(option.value)} />
+                  <span>{channelTypeLabel(t, String(option.value))}</span>
+                </div>
+              )}
               options={CHANNEL_OPTIONS.map((o) => ({
                 value: o.value,
-                label: (
-                  <div className="flex items-center gap-2">
-                    <ChannelTypeIcon channelType={o.value} />
-                    <span>{channelTypeLabel(t, o.value)}</span>
-                  </div>
-                ),
+                label: channelTypeLabel(t, o.value),
               }))}
             />
           </Form.Item>
-          <Form.Item name="name" label={t('skill.channel.name')}>
+          <Form.Item name="name" label={t('skill.channel.name', '名称')}>
             <Input placeholder={t('skill.channel.namePlaceholder', '选填，便于识别不同入口')} />
           </Form.Item>
           <Form.Item
             name="enabled"
-            label={t('skill.channel.enabled')}
+            label={t('skill.channel.enabled', '启用')}
             valuePropName="checked"
           >
             <Switch />
           </Form.Item>
+          {activeType && IM_CALLBACK_TYPES.has(activeType) ? (
+            <Form.Item
+              label={t('skill.channel.callbackUrl', '回调地址')}
+              extra={t(
+                'skill.channel.callbackUrlHint',
+                '复制此地址到企微 / 钉钉 / 飞书 / 公众号后台。请先点确定保存，再让对方校验该 URL。'
+              )}
+            >
+              <Space.Compact className="w-full">
+                <Input
+                  readOnly
+                  value={callbackUrl}
+                  placeholder={t('skill.channel.callbackUrlSaveHint', '选择渠道类型后自动生成')}
+                />
+                <Button
+                  icon={<CopyOutlined />}
+                  aria-label={t('common.copy', '复制')}
+                  disabled={!callbackUrl}
+                  onClick={() => void copyCallbackUrl(callbackUrl)}
+                />
+              </Space.Compact>
+            </Form.Item>
+          ) : null}
+          {activeType === 'embedded_chat' ? (
+            <div className="mb-4 rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2.5 text-xs leading-5 text-[var(--color-text-3)]">
+              <p className="mb-2">
+                {t(
+                  'skill.channel.embeddedApiInfo',
+                  '提供可通过 WebChat 嵌入网页的对话接口。选择类型后即可复制下方调用地址，请先点确定保存再对接。'
+                )}
+              </p>
+              {embeddedUrl ? (
+                <div className="relative mb-2">
+                  <Input.TextArea
+                    readOnly
+                    value={embeddedUrl}
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    className="pr-10 font-mono text-xs"
+                  />
+                  <Button
+                    type="text"
+                    icon={<CopyOutlined />}
+                    size="small"
+                    className="absolute top-1 right-1"
+                    aria-label={t('common.copy', '复制')}
+                    onClick={() => void copyEmbeddedLink(publicRef || editing?.id || '')}
+                  />
+                </div>
+              ) : null}
+              <span>{t('skill.channel.moreDetails', '如何对接请查看')}</span>
+              <Link
+                href={skillApiDocsHref(skillId)}
+                target="_blank"
+                className="text-[var(--color-primary)] hover:underline"
+              >
+                {t('skill.channel.viewApiDocs', '接入文档 →')}
+              </Link>
+            </div>
+          ) : null}
           {configFields.map((field) => (
             <React.Fragment key={field}>
               <Form.Item

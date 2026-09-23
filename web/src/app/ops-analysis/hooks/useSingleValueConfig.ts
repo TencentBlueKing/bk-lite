@@ -10,7 +10,11 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { processDataSourceParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
-import { buildTreeData } from '@/app/ops-analysis/(pages)/view/topology/utils/dataTreeUtils';
+import {
+  buildSchemaFieldTree,
+  buildTreeData,
+  mergeFieldTrees,
+} from '@/app/ops-analysis/(pages)/view/topology/utils/dataTreeUtils';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
 import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
 
@@ -26,6 +30,8 @@ interface UseSingleValueConfigProps {
   ) => Promise<any>;
   /** 面板是否打开 */
   open?: boolean;
+  /** 配置预览或字段刷新已经拿到的样本。有值时优先于本钩子自己取到的样本。 */
+  previewRawData?: unknown;
 }
 
 export function useSingleValueConfig({
@@ -35,9 +41,11 @@ export function useSingleValueConfig({
   dataSourceId,
   getSourceDataByApiId,
   open = true,
+  previewRawData = null,
 }: UseSingleValueConfigProps) {
   const { t } = useTranslation();
   const [singleValueTreeData, setSingleValueTreeData] = useState<any[]>([]);
+  const [fetchedSample, setFetchedSample] = useState<unknown>(null);
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [loadingSingleValueData, setLoadingSingleValueData] = useState(false);
   const [thresholdColors, setThresholdColors] =
@@ -159,6 +167,22 @@ export function useSingleValueConfig({
     setThresholdColors((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const sampleForTree = previewRawData ?? fetchedSample;
+
+  useEffect(() => {
+    const schema = selectedDataSource?.field_schema;
+    if (sampleForTree != null) {
+      setSingleValueTreeData(
+        mergeFieldTrees(
+          buildSchemaFieldTree(schema),
+          buildTreeData(sampleForTree, schema),
+        ),
+      );
+      return;
+    }
+    setSingleValueTreeData(buildSchemaFieldTree(schema));
+  }, [sampleForTree, selectedDataSource]);
+
   const fetchSingleValueDataFields = useCallback(async () => {
     const resolvedId = dataSourceId ?? selectedDataSource?.id;
     if (!resolvedId || !selectedDataSource) return;
@@ -185,8 +209,7 @@ export function useSingleValueConfig({
       }
 
       const { data } = await getSourceDataByApiId(resolvedId, requestParams);
-      const tree = buildTreeData(data, selectedDataSource.field_schema);
-      setSingleValueTreeData(tree);
+      setFetchedSample(data);
     } catch (error) {
       console.error('Failed to fetch data fields:', error);
       message.error(t('dashboard.fetchDataFieldsFailed'));
@@ -223,6 +246,7 @@ export function useSingleValueConfig({
   );
 
   const resetSingleValueConfig = useCallback(() => {
+    setFetchedSample(null);
     setSingleValueTreeData([]);
     setSelectedFields([]);
     setLoadingSingleValueData(false);

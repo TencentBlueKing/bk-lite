@@ -45,7 +45,7 @@ def test_log_search_structured_defaults_time_when_omitted():
         out = log_search_structured.invoke({"keyword": "timeout"}, config=cfg())
     assert out["success"] is True
     query_data = rpc_cls.return_value.search_structured.call_args.kwargs["query_data"]
-    assert query_data["keyword"] == "timeout"
+    assert query_data["keywords"] == ["timeout"]
     assert len(query_data["time_range"]) == 2
 
 
@@ -63,7 +63,7 @@ def test_log_search_structured_maps_to_rpc():
         )
     assert out["success"] is True
     query_data = rpc_cls.return_value.search_structured.call_args.kwargs["query_data"]
-    assert query_data["keyword"] == "error"
+    assert query_data["keywords"] == ["error"]
     assert query_data["time_range"][0].startswith("2026-09-11")
 
 

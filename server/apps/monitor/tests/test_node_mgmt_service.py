@@ -294,6 +294,40 @@ class TestGetConfigContent:
         assert "child" in out
         assert isinstance(out["child"]["content"], dict)
 
+    def test_child_toml_redacts_snmp_community(self, mocker):
+        cfg = self._mk_config(is_child=True, file_type="toml")
+        node = mocker.patch("apps.monitor.services.node_mgmt.NodeMgmt")
+        node.return_value.get_child_configs_by_ids.return_value = [
+            {"id": cfg.id, "content": '[[inputs.snmp]]\ncommunity = "lab-readonly-42"\n'}
+        ]
+        out = SVC.get_config_content([cfg.id])
+        content = out["child"]["content"]
+
+        def _communities(value):
+            found = []
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if str(key).lower() == "community":
+                        found.append(item)
+                    found.extend(_communities(item))
+            elif isinstance(value, list):
+                for item in value:
+                    found.extend(_communities(item))
+            return found
+
+        values = _communities(content)
+        assert values
+        assert all(item == "***" for item in values)
+        assert "lab-readonly-42" not in str(content)
+
+    def test_restore_redacted_community_from_existing_child(self):
+        from apps.monitor.services.node_mgmt import _restore_config_secrets
+
+        old = {"inputs": {"snmp": [{"community": "lab-readonly-42", "agent": "udp://1.1.1.1:161"}]}}
+        new = {"inputs": {"snmp": [{"community": "***", "agent": "udp://1.1.1.1:161"}]}}
+        restored = _restore_config_secrets(new, old)
+        assert restored["inputs"]["snmp"][0]["community"] == "lab-readonly-42"
+
     def test_base_yaml_config(self, mocker):
         cfg = self._mk_config(is_child=False, file_type="yaml")
         node = mocker.patch("apps.monitor.services.node_mgmt.NodeMgmt")

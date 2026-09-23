@@ -126,6 +126,56 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei WLAN AC射频信道干扰率过高",
+      "alert_name": "无线控制器${resource_name} 射频信道干扰率过高",
+      "description": "监控华为 WLAN AC 所管射频的信道干扰率。持续偏高且终端数量并不大时，通常表示同频或非 Wi-Fi 能量占用工作信道，可能导致吞吐下降与漫游变差。",
+      "metric_name": "wlan_radio_interference",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Huawei WLAN AC射频误包率过高",
+      "alert_name": "无线控制器${resource_name} 射频误包率过高",
+      "description": "监控华为 WLAN AC 所管射频的误包率。持续偏高且终端数量并不大时，通常表示工作信道射频质量或重传压力，可能导致吞吐下降与漫游变差。255 为无效值，采集已丢弃，不会按 255% 告警。",
+      "metric_name": "wlan_radio_per",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 20,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 10,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 5,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

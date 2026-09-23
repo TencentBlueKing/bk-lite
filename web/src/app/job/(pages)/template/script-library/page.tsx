@@ -10,10 +10,20 @@ import {
   Input,
   Switch,
   Table,
+  Upload,
+  Modal,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  ExportOutlined,
+  ImportOutlined,
+} from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
+import ImportFileModalShell from '@/components/import-file-modal-shell';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
@@ -50,13 +60,17 @@ const ScriptLibraryPage = () => {
     createScript,
     updateScript,
     deleteScript,
+    exportScripts,
+    importScripts,
   } = useJobApi();
   const router = useRouter();
 
   const [form] = Form.useForm();
   const [paramForm] = Form.useForm();
+  const [importForm] = Form.useForm();
   const [data, setData] = useState<Script[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
   const [pagination, setPagination] = useState({
     current: 1,
@@ -68,6 +82,10 @@ const ScriptLibraryPage = () => {
   const [modalType, setModalType] = useState<'add' | 'edit' | 'view'>('add');
   const [editingScript, setEditingScript] = useState<Script | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importConfirmLoading, setImportConfirmLoading] = useState(false);
 
   // Script editor state
   const [scriptLang, setScriptLang] = useState<ScriptType>('shell');
@@ -286,6 +304,76 @@ const ScriptLibraryPage = () => {
       // validation or API error
     } finally {
       setConfirmLoading(false);
+    }
+  };
+
+  const handleExportScripts = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning(t('job.selectScriptsToExport'));
+      return;
+    }
+    try {
+      const ids = selectedRowKeys.map((key) => Number(key));
+      const blob = await exportScripts(ids);
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'script-pack.zip');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success(t('job.exportScriptsSuccess'));
+    } catch {
+      message.error(t('job.exportScriptsFailed'));
+    }
+  };
+
+  const openImportModal = () => {
+    importForm.resetFields();
+    setImportFile(null);
+    setImportModalOpen(true);
+  };
+
+  const handleImportScripts = async () => {
+    try {
+      const values = await importForm.validateFields();
+      if (!importFile) {
+        message.warning(t('job.pleaseUploadFile'));
+        return;
+      }
+      setImportConfirmLoading(true);
+      const result = await importScripts(importFile, values.team || []);
+      setImportModalOpen(false);
+      setSelectedRowKeys([]);
+      const summary = t('job.importScriptsResult')
+        .replace('{{created}}', String(result.created.length))
+        .replace('{{skipped}}', String(result.skipped.length))
+        .replace('{{failed}}', String(result.failed.length));
+      const detailLines = [
+        ...result.skipped.map((item) => `${item.name}: ${item.reason}`),
+        ...result.failed.map((item) => `${item.name}: ${item.reason}`),
+      ];
+      Modal.info({
+        title: t('job.importScriptsSuccess'),
+        content: (
+          <div className="space-y-2">
+            <div>{summary}</div>
+            {detailLines.length > 0 && (
+              <ul className="m-0 pl-4 text-[var(--color-text-3)]">
+                {detailLines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ),
+      });
+      fetchData();
+    } catch {
+      // validation or API error
+    } finally {
+      setImportConfirmLoading(false);
     }
   };
 
@@ -518,6 +606,12 @@ const ScriptLibraryPage = () => {
             selectWidth={300}
           />
           <div className="flex gap-2">
+            <Button icon={<ExportOutlined />} onClick={handleExportScripts}>
+              {t('job.batchExportScripts')}
+            </Button>
+            <Button icon={<ImportOutlined />} onClick={openImportModal}>
+              {t('job.batchImportScripts')}
+            </Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -537,6 +631,10 @@ const ScriptLibraryPage = () => {
             rowKey="id"
             pagination={pagination}
             onChange={handleTableChange}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys(keys),
+            }}
           />
         </div>
       </div>
@@ -681,6 +779,55 @@ const ScriptLibraryPage = () => {
           )}
         </div>
       </OperateModal>
+
+      <ImportFileModalShell
+        title={t('job.importScriptsTitle')}
+        open={importModalOpen}
+        width={600}
+        confirmLoading={importConfirmLoading}
+        confirmText={t('job.confirmImport')}
+        cancelText={t('job.cancel')}
+        confirmDisabled={!importFile}
+        onConfirm={handleImportScripts}
+        onCancel={() => setImportModalOpen(false)}
+        primaryFirst={false}
+        uploadProps={{
+          accept: '.zip',
+          maxCount: 1,
+          fileList: importFile
+            ? [{ uid: '-1', name: importFile.name, status: 'done' as const }]
+            : [],
+          beforeUpload: (file) => {
+            if (!file.name.toLowerCase().endsWith('.zip')) {
+              message.error(t('job.onlyZipAllowed'));
+              return Upload.LIST_IGNORE;
+            }
+            setImportFile(file);
+            return false;
+          },
+          onRemove: () => {
+            setImportFile(null);
+          },
+          uploadText: t('job.dragUploadText'),
+          uploadHint: (
+            <>
+              <div>{t('job.importScriptsHint')}</div>
+              <div>{t('job.importScriptsLimitHint')}</div>
+            </>
+          ),
+        }}
+        afterUploadPanel={
+          <Form form={importForm} layout="vertical" colon={false} className="mt-4">
+            <Form.Item
+              name="team"
+              label={t('job.organization')}
+              rules={[{ required: true, message: t('job.organizationRequired') }]}
+            >
+              <GroupTreeSelect multiple placeholder={t('job.organizationPlaceholder')} />
+            </Form.Item>
+          </Form>
+        }
+      />
     </div>
   );
 };

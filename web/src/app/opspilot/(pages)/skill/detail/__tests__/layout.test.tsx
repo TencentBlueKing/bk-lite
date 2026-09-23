@@ -89,9 +89,16 @@ describe('SkillSettingsLayout', () => {
 
     const settingsLink = settingsMenu.closest('a');
     const channelLink = channelMenu.closest('a');
+    const historyMenu = screen.getByText('历史');
+    const historyLink = historyMenu.closest('a');
     expect(settingsLink?.getAttribute('href')).toContain('/opspilot/skill/detail/settings?id=48');
     expect(channelLink?.getAttribute('href')).toContain('/opspilot/skill/detail/channel?id=48');
+    expect(historyLink?.getAttribute('href')).toContain('/opspilot/skill/detail/history?id=48');
     expect(screen.getByTestId('icon-settings-fill')).toBeTruthy();
+    expect(screen.getByTestId('icon-talk-line')).toBeTruthy();
+
+    const menuTexts = screen.getAllByText(/设置|发布|历史/).map((node) => node.textContent);
+    expect(menuTexts.indexOf('发布')).toBeLessThan(menuTexts.indexOf('历史'));
 
     expect(screen.getByTestId('workbench-content')).toBeTruthy();
 

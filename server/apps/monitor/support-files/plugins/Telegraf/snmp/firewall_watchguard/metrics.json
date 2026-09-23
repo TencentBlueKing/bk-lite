@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_watchguard",
   "plugin": "Firewall WatchGuard SNMP",
-  "plugin_desc": "WatchGuard-specific SNMP collection template for Fireware firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects WATCHGUARD-SYSTEM-STATISTICS-MIB private OIDs for device health (CPU utilization) and firewall-specific state (current active connections). Sourced from LibreNMS Fireware support and the WATCHGUARD-SYSTEM-STATISTICS-MIB. Supported brands/models — WatchGuard Firebox firewalls (Fireware OS).",
+  "plugin_desc": "WatchGuard Firebox SNMP collection template for Fireware OS devices whose sysObjectID is 1.3.6.1.4.1.3097.1.4 or 1.3.6.1.4.1.3097.1.5. Standard IF-MIB interface metrics are included via the shared IF-MIB table. Device health uses WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCpuUtil5 (0.01% units, converted to percent) and UCD-SNMP-MIB memory (memTotalReal / memTotalFree in kB, converted to bytes; used and usage derived as total-free). Firewall-specific state is current active connections (wgSystemCurrActiveConns). Deprecated unused wgSystemCpuUtil is not collected. VPN tunnel tables are not collected. Supported brands/models — WatchGuard Firebox firewalls (Fireware OS).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_watchguard'}) by (instance_id)",
   "name": "Firewall",
@@ -16,6 +16,7 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
+    "device_memory_usage",
     "firewall_active_connections",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
@@ -37,7 +38,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "device_cpu_usage{instance_type='firewall', __$labels__} / 100",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -45,7 +46,59 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the overall CPU utilization of the WatchGuard firewall (WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCpuUtil). Sustained high CPU usage may indicate heavy traffic inspection load or an attack."
+      "description": "This metric reports the overall CPU utilization of the WatchGuard Firebox (WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCpuUtil5). The device reports 0.01% units, so the query divides by 100 to yield a 0-100 percent. Sustained high CPU usage may indicate heavy traffic inspection load or an attack."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='firewall', __$labels__}*1024",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total real memory of the WatchGuard Firebox (UCD-SNMP-MIB memTotalReal, reported in kB and converted to bytes)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='firewall', __$labels__}*1024",
+      "display_name": "Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the free real memory of the WatchGuard Firebox (UCD-SNMP-MIB memTotalFree, reported in kB and converted to bytes)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_used",
+      "query": "(device_memory_total{instance_type='firewall', __$labels__} - device_memory_free{instance_type='firewall', __$labels__})*1024",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the used real memory of the WatchGuard Firebox, derived as total real memory minus free real memory (in bytes)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "100 * (device_memory_total{instance_type='firewall', __$labels__} - device_memory_free{instance_type='firewall', __$labels__}) / device_memory_total{instance_type='firewall', __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the real memory utilization of the WatchGuard Firebox, derived as (total - free) / total * 100. High memory pressure can degrade connection handling performance."
     },
     {
       "metric_group": "Firewall",

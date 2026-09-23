@@ -4,6 +4,7 @@ import BaseInfo from './baseInfo';
 import EventTable from '@/app/alarm/components/eventTable';
 import ActionTimeline from './actionTimeline';
 import AlarmAction from './alarmAction';
+import { canManuallyTriggerAlertAction } from '@/app/alarm/utils/alertActionAccess';
 import Icon from '@/components/icon';
 import DeclareIncident from './declareIncident';
 import RelatedAlertsPanel from './relatedAlertsPanel';
@@ -684,7 +685,10 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
           )}
           {activeTab === 'actionRecords' && (
             <div className="min-h-0 flex-1 overflow-auto">
-              <ActionTimeline alertId={formData.alert_id || ''} />
+              <ActionTimeline
+                alertId={formData.alert_id || ''}
+                allowRerun={!readonly && canManuallyTriggerAlertAction(formData.status)}
+              />
             </div>
           )}
         </div>

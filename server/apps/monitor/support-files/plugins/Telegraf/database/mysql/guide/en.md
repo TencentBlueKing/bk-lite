@@ -12,10 +12,20 @@ This capability uses Telegraf `inputs.mysql` to connect directly to one MySQL ho
 
 ## Setup Steps
 
-1. From the actual collector node, validate the target address, account, and basic status-query permission.
-2. Enter the username, password, host, actual port, and interval (default `60` seconds).
-3. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
-4. Save the configuration and wait for at least one collection interval.
+1. Have the DBA create a dedicated account. Replace `<monitor_user>`, `<password>`, and `<collector_host>` with site values. Limit the host to the collector node; do not use `%`, and do not put the password in command history:
+
+```sql
+CREATE USER '<monitor_user>'@'<collector_host>' IDENTIFIED BY '<password>';
+GRANT PROCESS, REPLICATION CLIENT ON *.* TO '<monitor_user>'@'<collector_host>';
+GRANT SELECT ON performance_schema.* TO '<monitor_user>'@'<collector_host>';
+```
+
+`PROCESS` covers the process list and InnoDB status. `REPLICATION CLIENT` covers replication status and binary logs. `SELECT` on `performance_schema` covers table-wait statistics. Do not grant `SELECT` on business schemas. If an InnoDB metric is denied on `information_schema.innodb_metrics`, grant `SELECT` on that table only.
+
+2. From the actual collector node, validate the target address, account, and basic status-query permission.
+3. Enter the username, password, host, actual port, and interval (default `60` seconds).
+4. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
+5. Save the configuration and wait for at least one collection interval.
 
 ## Pre-checks
 

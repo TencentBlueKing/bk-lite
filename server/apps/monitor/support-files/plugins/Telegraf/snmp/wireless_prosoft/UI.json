@@ -13,6 +13,14 @@
       "label": "IP",
       "type": "input",
       "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.agents[0]",
+        "to_form": {
+          "regex": "://([^:]+):"
+        }
+      },
       "label_en": "IP"
     },
     {
@@ -20,7 +28,14 @@
       "label": "端口",
       "type": "inputNumber",
       "required": true,
+      "editable": false,
       "default_value": 161,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.agents[0]",
+        "to_form": {
+          "regex": ":(\\d+)$"
+        }
+      },
       "label_en": "Port"
     },
     {
@@ -28,6 +43,7 @@
       "label": "版本",
       "type": "select",
       "required": true,
+      "editable": false,
       "default_value": 2,
       "options": [
         {
@@ -41,6 +57,9 @@
           "label_en": "v3"
         }
       ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.version"
+      },
       "label_en": "Version"
     },
     {
@@ -49,6 +68,10 @@
       "type": "input",
       "required": true,
       "default_value": "public",
+      "transform_on_edit": {
+        "origin_path": "child.content.config.community",
+        "to_api": {}
+      },
       "label_en": "Community",
       "dependency": {
         "field": "version",
@@ -60,6 +83,10 @@
       "label": "名称",
       "type": "input",
       "required": true,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.sec_name",
+        "to_api": {}
+      },
       "label_en": "Name",
       "dependency": {
         "field": "version",
@@ -89,6 +116,10 @@
           "label_en": "authPriv"
         }
       ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.sec_level",
+        "to_api": {}
+      },
       "label_en": "Level",
       "dependency": {
         "field": "version",
@@ -101,6 +132,10 @@
       "type": "input",
       "required": false,
       "default_value": "SHA",
+      "transform_on_edit": {
+        "origin_path": "child.content.config.auth_protocol",
+        "to_api": {}
+      },
       "label_en": "Auth Protocol",
       "dependency": {
         "field": [
@@ -162,6 +197,10 @@
       "type": "input",
       "required": false,
       "default_value": "AES",
+      "transform_on_edit": {
+        "origin_path": "child.content.config.priv_protocol",
+        "to_api": {}
+      },
       "label_en": "Privacy Protocol",
       "dependency": {
         "field": [
@@ -217,6 +256,15 @@
       "type": "inputNumber",
       "required": true,
       "default_value": 10,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.timeout",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
       "label_en": "Timeout"
     },
     {
@@ -225,6 +273,15 @@
       "type": "inputNumber",
       "required": true,
       "default_value": 60,
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
       "label_en": "Interval"
     }
   ],
@@ -257,5 +314,14 @@
       "required": true,
       "label_en": "Group"
     }
-  ]
+  ],
+  "extra_edit_fields": {
+    "agents": {
+      "origin_path": "child.content.config.agents",
+      "to_api": {
+        "template": "udp://{{ip}}:{{port}}",
+        "array": true
+      }
+    }
+  }
 }

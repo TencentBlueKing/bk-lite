@@ -2,6 +2,7 @@ import {
   captionFromOption,
   captureEchartsFromDom,
   captureEchartsFromDoms,
+  captureRechartsFromDoms,
 } from '@/components/chart-snapshot';
 
 import type {
@@ -46,6 +47,7 @@ const DEFAULT_TOOLKIT: PageContextToolkit = {
   captureEchartsFromDoms,
   captureEchartsFromDom,
   captionFromOption,
+  captureRechartsFromDoms,
 };
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {

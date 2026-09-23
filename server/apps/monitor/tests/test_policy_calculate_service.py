@@ -3,11 +3,7 @@
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.tasks.utils.policy_calculate import (
-    vm_to_dataframe,
-    _format_value_with_unit,
-    calculate_alerts,
-)
+from apps.monitor.tasks.utils.policy_calculate import _format_value_with_unit, calculate_alerts, vm_to_dataframe
 
 pytestmark = pytest.mark.unit
 
@@ -27,6 +23,22 @@ def test_vm_to_dataframe_default_instance_id_col():
 def test_vm_to_dataframe_with_instance_id_keys():
     df = vm_to_dataframe(_vm_rows(), instance_id_keys=["instance_id", "device"])
     assert list(df["instance_id"]) == [("h1", "eth0"), ("h2", "eth1")]
+
+
+def test_vm_to_dataframe_empty_result_does_not_raise():
+    df = vm_to_dataframe([], instance_id_keys=["instance_id"])
+    assert df.empty
+    assert list(df["instance_id"]) == []
+
+
+def test_vm_to_dataframe_unlabeled_series_does_not_raise():
+    df = vm_to_dataframe(
+        [{"metric": {}, "values": [[1, "190"], [2, "191"]]}],
+        instance_id_keys=["instance_id"],
+    )
+    assert len(df) == 1
+    assert df.iloc[0]["instance_id"] == ()
+    assert df.iloc[0]["values"][-1][1] == "191"
 
 
 def test_format_value_none_returns_na():
@@ -215,9 +227,7 @@ def test_calculate_alerts_without_recovery_threshold_matches_old_behavior():
         ]
     )
     thresholds = [{"method": ">", "value": 80, "level": "error"}]
-    alerts, infos, holds = calculate_alerts(
-        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2
-    )
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
     assert alerts == []
     assert holds == []
     assert len(infos) == 1
@@ -259,9 +269,7 @@ def test_calculate_alerts_renders_overlay_template_variables():
         "overlay_baseline_map": {"('h1',)": 80.0},
         "instances_map": {"('h1',)": "主机1"},
     }
-    alerts, _, _ = calculate_alerts(
-        "$value $current_value $baseline_value", df, thresholds, ctx, n=2
-    )
+    alerts, _, _ = calculate_alerts("$value $current_value $baseline_value", df, thresholds, ctx, n=2)
     assert "50.00%" in alerts[0]["content"]
     assert "120.00MB" in alerts[0]["content"]
     assert "80.00MB" in alerts[0]["content"]
@@ -274,9 +282,7 @@ def test_timeleft_huge_finite_hours_from_near_zero_slope_does_not_trigger():
         ]
     )
     thresholds = [{"method": "<", "value": 2, "level": "warning"}]
-    alerts, infos, holds = calculate_alerts(
-        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}
-    )
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]})
     assert alerts == []
     assert holds == []
     assert len(infos) == 1
@@ -289,9 +295,7 @@ def test_timeleft_zero_hours_when_target_below_water_triggers():
         ]
     )
     thresholds = [{"method": "<", "value": 2, "level": "warning"}]
-    alerts, infos, holds = calculate_alerts(
-        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}
-    )
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]})
     assert infos == []
     assert holds == []
     assert len(alerts) == 1
@@ -305,9 +309,7 @@ def test_calculate_alerts_trigger_count_with_offset_style_points():
         ]
     )
     thresholds = [{"method": ">", "value": 50, "level": "warning"}]
-    alerts, infos, holds = calculate_alerts(
-        "x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2
-    )
+    alerts, infos, holds = calculate_alerts("x", df, thresholds, {"instance_id_keys": ["instance_id"]}, n=2)
     assert alerts == []
     assert holds == []
     assert len(infos) == 1

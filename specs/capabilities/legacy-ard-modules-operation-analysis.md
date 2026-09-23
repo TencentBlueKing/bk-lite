@@ -71,7 +71,7 @@
 | eventTimeline | widgets/comEventTimeline.tsx | 事件时间线 |
 | cardList | widgets/comCardList.tsx | 普通 DataSource 驱动的记录卡片列表；消费 `array<object>` 或 `{items}`，经 `valueConfig.cardList` 映射固定槽位 |
 | radar | widgets/comRadar.tsx | 雷达图 |
-| room3D | widgets/room3D/index.tsx | 3D 机房大屏组件：消费 CMDB NATS `get_room3d_layout`，渲染 row/col 网格、U 占用、机柜类型、设备摘要与图例；设备告警摘要驱动侧栏/tooltip 与内部红光晕 |
+| room3D | widgets/room3D/index.tsx | 3D 机房 Screen-only 场景组件：经运营分析 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`，渲染 row/col 网格、U 占用、可配机柜顶两行、设备摘要与类型图例；设备告警摘要驱动侧栏/tooltip 与内部红光晕 |
 | networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
 | multiValue | widgets/comMultiValue.tsx | 多值 |
 | text | ops-analysis-widgets/text-panel | 文本面板 |
@@ -107,7 +107,9 @@
 - `[operation_analysis#20260701-014]` 补录开放导入导出 API Token 认证、组织解析、权限矩阵与实例/组织过滤。
 
 ## 2026-07-09 Code-ARD 校准
-- `[operation_analysis#20260709-001]` 3D 机房大屏组件 `room3D` 已注册到 `widgetRegistry`（此前 spec 未覆盖）：消费 CMDB NATS `get_room3d_layout` 返回的机房布局数据（含 `rack_type_name` 可读类型名），渲染 row/col 网格、机柜 U 占用、设备摘要与图例。
+- `[operation_analysis#20260921-002]` `room3D` 配置增加机柜顶两行显示：选项为位置码 / 机柜名称 / 机柜类型 / 机柜状态；默认位置码 + 类型；第二行可空、两行不可都空、允许重复；只改机柜顶贴图，图例仍按 `rack_type_name`。NATS 增补 `rack_state` / `rack_state_name`。
+- `[operation_analysis#20260921-001]` `room3D` 从数据组件改为 Screen-only 自取数场景组件：capability `{ selfFetch, surfaces: ['screen'], shareSupported }`；配置只钉可选默认机房；查看/分享组件内切换且不写回；运营分析包装 CMDB NATS `get_room_list` / `get_room3d_layout`；用户侧内置数据源「CMDB 3D机房布局」「CMDB 机房列表」下架。
+- `[operation_analysis#20260709-001]` 3D 机房大屏组件 `room3D` 已注册到 `widgetRegistry`（此前 spec 未覆盖）：消费 CMDB NATS `get_room3d_layout` 返回的机房布局数据（含 `rack_type_name` 可读类型名），渲染 row/col 网格、机柜 U 占用、设备摘要与图例。后续于 `20260921-001` 改为场景组件自取数。
 - `[operation_analysis#20260709-002]` `Room3DRack` 数据模型扩展 `rack_type_name?: string | null` 字段：区分 `rack_type` 枚举 id 与可读名称，作为机柜顶部贴图第二行文本（位置 + 类型名双行排版）与图例 label 渲染源（`web/src/app/ops-analysis/components/widgets/room3D/room3DData.ts:17` 定义、`:270-275` 校验、`:292` 返回；`room3DMeshes.ts:128` `createRackTopTexture(label, category?)` 双行排版；`index.tsx:114-125` 图例按 `rack_type_name` 去重）。机柜体颜色统一硬编码 `#82878b`（`room3DMeshes.ts:958`），移除 `RACK_COLOR_MAP` / `getRackVisualMeta`。
 - `[operation_analysis#20260709-003]` `OpsAnalysisWidgetSurface` 收紧为 `'dashboard' | 'screen'`：移除 `'topology'` 表面（`utils/chartTypeSurface.ts:1`），并同步移除 `ROOM3D_CELL_GAP` import（`room3DMeshes.ts:7-9` 原 import 列表）、`room3DScene.ts:22-27` 导出块中的 `ROOM3D_CELL_GAP` re-export，以及 `getRackDoorOpenRotation` 函数（原位于 `room3DScene.ts` 顶部 export 块附近，本轮已整体删除）。
 - `[operation_analysis#20260904-001]` `room3D` 消费设备告警摘要字段，侧栏/机柜 tooltip 展示条数与最高级别；`active_alarm_count > 0` 时设备内部统一红光晕。契约见 `specs/changes/ops-analysis-room3d-device-alarms/spec.md`。
@@ -204,6 +206,11 @@
 ## 2026-09-11 屏显高度链收口
 
 - `[operation_analysis#20260911-001]` 屏显大屏/网络拓扑/架构依赖的壳层高度链由控制台 S1 收口，运营分析画布组件不另叠 `100vh`。证据：`web/src/app/layout.tsx`、`specs/changes/console-iframe-screen-height/spec.md`。
+
+## 2026-09-22 图表按角色选列
+
+- `[operation_analysis#20260922-001]` 折线、柱状、饼图、多值、雷达数组、事件时间线按各自角色选列；排行榜、单值、仪表盘、通信关系、卡片列表共用字段名单、一次刷新和问号。未保存映射的旧组件仍按原形状认列。证据：`web/src/app/ops-analysis/utils/chartDataTransform.ts`、`web/src/app/ops-analysis/components/widgetConfig/utils/submitConfig.ts`、`specs/changes/ops-analysis-chart-field-roles/spec.md`。
+- `[operation_analysis#20260922-002]` 卡片列表字段名单改为字段定义并上样本列名，槽位和校验不变。证据：`web/src/app/ops-analysis/components/widgetConfig/utils/cardListSettingsModel.ts`。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

@@ -6,7 +6,11 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.cmdb.utils import call_cmdb_kwargs, call_cmdb_params, normalize_query_list, wrap_error
 
 
-@tool(description="按模型分页查询 CMDB 实例。query_list 为字段过滤条件。返回 inst_uuid 与已联动的 monitor_id；查监控不要把 inst_uuid/_id 当 instance_ids。")
+@tool(
+    description="按模型分页查询 CMDB 实例。query_list 为字段过滤条件。"
+    "model_id 用用户点名的对象模型（如 nginx/mysql）；点名中间件时禁止默认 host，不确定先 cmdb_list_models。"
+    "返回 inst_uuid 与已联动的 monitor_id；查监控不要把 inst_uuid/_id 当 instance_ids。"
+)
 def cmdb_search_instances(
     model_id: str,
     query_list: Optional[List[Dict[str, Any]]] = None,
@@ -17,7 +21,13 @@ def cmdb_search_instances(
 ) -> Dict[str, Any]:
     if not model_id:
         return wrap_error("model_id is required")
-    return call_cmdb_params(
+    declared = ""
+    if isinstance(config, dict):
+        declared = str((config.get("configurable") or {}).get("declared_cmdb_model") or "").strip()
+    model_norm = str(model_id).strip()
+    if declared and model_norm.casefold() in {"host", "主机"} and declared.casefold() != "host":
+        return wrap_error(f"用户已点名 {declared}，cmdb_search_instances 的 model_id 必须用 {declared}，禁止默认 host。" "请改用正确模型后重试；不确定可先 cmdb_list_models。")
+    result = call_cmdb_params(
         "list_instances_for_llm",
         config,
         model_id=model_id,
@@ -27,6 +37,12 @@ def cmdb_search_instances(
         order=order or "",
         format=True,
     )
+    if isinstance(result, dict) and result.get("success") is not False:
+        hint = "查监控须用返回的 monitor_id（放 instance_ids），禁止把 inst_uuid/_id 当 instance_ids。"
+        if declared:
+            hint = f"请核对结果实例类型是否为 {declared}；" + hint
+        result = {**result, "_next_step_hint": hint}
+    return result
 
 
 @tool(description="按 UUID 获取一条 CMDB 实例。返回含 inst_uuid 与 monitor_id；查监控须用 monitor_id，不要把 inst_uuid 当 instance_ids。")

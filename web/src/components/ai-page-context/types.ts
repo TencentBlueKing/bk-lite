@@ -36,6 +36,10 @@ export interface PageContextToolkit {
   ) => Promise<ChartSnapshot[]>;
   captureEchartsFromDom: (limit?: number) => Promise<ChartSnapshot[]>;
   captionFromOption: (option: Record<string, unknown> | null | undefined) => string;
+  captureRechartsFromDoms: (
+    roots: HTMLElement[],
+    limit?: number,
+  ) => Promise<ChartSnapshot[]>;
 }
 
 export type AiContextProvider = (

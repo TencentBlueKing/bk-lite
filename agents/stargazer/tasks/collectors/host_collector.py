@@ -326,6 +326,21 @@ def _append_gauge(lines: List[str], name: str, labels: str, value: Any, timestam
     lines.append(f"{name}{{{labels}}} {value} {timestamp}")
 
 
+def _append_gauge_if_present(
+    lines: List[str],
+    name: str,
+    labels: str,
+    data: Dict[str, Any],
+    *keys: str,
+    timestamp: int,
+    help_text: str = "",
+) -> None:
+    value = _metric_value(data, *keys, default=None)
+    if value is None:
+        return
+    _append_gauge(lines, name, labels, value, timestamp, help_text)
+
+
 def parse_metrics_to_prometheus(
     data: Dict[str, Any],
     instance_id: str,
@@ -341,40 +356,66 @@ def parse_metrics_to_prometheus(
 
     if "cpu" in data:
         cpu = data["cpu"]
-        _append_gauge(lines, "host_cpu_usage_percent", base_labels, cpu.get("usage_percent", 0), timestamp, "CPU usage percentage")
-        _append_gauge(lines, "cpu_usage_total", base_labels, cpu.get("usage_percent", 0), timestamp, "CPU usage percentage")
-        _append_gauge(lines, "cpu_usage_user_total", base_labels, cpu.get("usage_user_percent", 0), timestamp, "CPU user usage percentage")
-        _append_gauge(lines, "cpu_usage_system_total", base_labels, cpu.get("usage_system_percent", 0), timestamp, "CPU system usage percentage")
-        _append_gauge(lines, "cpu_usage_iowait_total", base_labels, cpu.get("usage_iowait_percent", 0), timestamp, "CPU iowait usage percentage")
-        _append_gauge(lines, "cpu_usage_irq_total", base_labels, cpu.get("usage_irq_percent", 0), timestamp, "CPU irq usage percentage")
-        _append_gauge(lines, "cpu_usage_steal_total", base_labels, cpu.get("usage_steal_percent", 0), timestamp, "CPU steal usage percentage")
+        _append_gauge_if_present(
+            lines, "host_cpu_usage_percent", base_labels, cpu, "usage_percent", timestamp=timestamp, help_text="CPU usage percentage"
+        )
+        _append_gauge_if_present(lines, "cpu_usage_total", base_labels, cpu, "usage_percent", timestamp=timestamp, help_text="CPU usage percentage")
+        _append_gauge_if_present(
+            lines, "cpu_usage_user_total", base_labels, cpu, "usage_user_percent", timestamp=timestamp, help_text="CPU user usage percentage"
+        )
+        _append_gauge_if_present(
+            lines, "cpu_usage_system_total", base_labels, cpu, "usage_system_percent", timestamp=timestamp, help_text="CPU system usage percentage"
+        )
+        _append_gauge_if_present(
+            lines, "cpu_usage_iowait_total", base_labels, cpu, "usage_iowait_percent", timestamp=timestamp, help_text="CPU iowait usage percentage"
+        )
+        _append_gauge_if_present(
+            lines, "cpu_usage_irq_total", base_labels, cpu, "usage_irq_percent", timestamp=timestamp, help_text="CPU irq usage percentage"
+        )
+        _append_gauge_if_present(
+            lines, "cpu_usage_steal_total", base_labels, cpu, "usage_steal_percent", timestamp=timestamp, help_text="CPU steal usage percentage"
+        )
         _append_gauge(lines, "host_cpu_core_count", base_labels, cpu.get("core_count", 0), timestamp, "CPU core count")
-        _append_gauge(lines, "host_cpu_load_1m", base_labels, cpu.get("load_1m", 0), timestamp, "CPU load 1 minute")
-        _append_gauge(lines, "host_cpu_load_5m", base_labels, cpu.get("load_5m", 0), timestamp, "CPU load 5 minutes")
-        _append_gauge(lines, "host_cpu_load_15m", base_labels, cpu.get("load_15m", 0), timestamp, "CPU load 15 minutes")
-        _append_gauge(lines, "system_load1", base_labels, cpu.get("load_1m", 0), timestamp, "System load 1 minute")
-        _append_gauge(lines, "system_load5", base_labels, cpu.get("load_5m", 0), timestamp, "System load 5 minutes")
-        _append_gauge(lines, "system_load15", base_labels, cpu.get("load_15m", 0), timestamp, "System load 15 minutes")
+        _append_gauge_if_present(lines, "host_cpu_load_1m", base_labels, cpu, "load_1m", timestamp=timestamp, help_text="CPU load 1 minute")
+        _append_gauge_if_present(lines, "host_cpu_load_5m", base_labels, cpu, "load_5m", timestamp=timestamp, help_text="CPU load 5 minutes")
+        _append_gauge_if_present(lines, "host_cpu_load_15m", base_labels, cpu, "load_15m", timestamp=timestamp, help_text="CPU load 15 minutes")
+        _append_gauge_if_present(lines, "system_load1", base_labels, cpu, "load_1m", timestamp=timestamp, help_text="System load 1 minute")
+        _append_gauge_if_present(lines, "system_load5", base_labels, cpu, "load_5m", timestamp=timestamp, help_text="System load 5 minutes")
+        _append_gauge_if_present(lines, "system_load15", base_labels, cpu, "load_15m", timestamp=timestamp, help_text="System load 15 minutes")
 
     if "mem" in data:
         mem = data["mem"]
-        for key in ["total_bytes", "used_bytes", "available_bytes", "swap_total_bytes", "swap_used_bytes"]:
-            metric_name = f"host_mem_{key}"
-            _append_gauge(lines, metric_name, base_labels, mem.get(key, 0), timestamp, f"Memory {key}")
-        total_bytes = float(mem.get("total_bytes", 0) or 0)
-        used_bytes = float(mem.get("used_bytes", 0) or 0)
-        used_percent = round((used_bytes / total_bytes) * 100, 2) if total_bytes > 0 else 0
+        _append_gauge_if_present(lines, "host_mem_total_bytes", base_labels, mem, "total_bytes", timestamp=timestamp, help_text="Memory total_bytes")
+        _append_gauge_if_present(lines, "host_mem_used_bytes", base_labels, mem, "used_bytes", timestamp=timestamp, help_text="Memory used_bytes")
+        _append_gauge_if_present(
+            lines, "host_mem_available_bytes", base_labels, mem, "available_bytes", timestamp=timestamp, help_text="Memory available_bytes"
+        )
+        _append_gauge_if_present(
+            lines, "host_mem_swap_total_bytes", base_labels, mem, "swap_total_bytes", timestamp=timestamp, help_text="Memory swap_total_bytes"
+        )
+        _append_gauge_if_present(
+            lines, "host_mem_swap_used_bytes", base_labels, mem, "swap_used_bytes", timestamp=timestamp, help_text="Memory swap_used_bytes"
+        )
+        total_bytes = _metric_value(mem, "total_bytes", default=None)
+        available_bytes = _metric_value(mem, "available_bytes", default=None)
+        used_percent = mem.get("used_percent")
+        if used_percent is None and total_bytes and available_bytes is not None:
+            used_percent = round(((float(total_bytes) - float(available_bytes)) / float(total_bytes)) * 100, 2)
+        if used_percent is not None:
+            _append_gauge(lines, "host_mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
+            _append_gauge(lines, "mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
+        _append_gauge_if_present(lines, "mem_total", base_labels, mem, "total_bytes", timestamp=timestamp, help_text="Memory total bytes")
+        _append_gauge_if_present(lines, "mem_available", base_labels, mem, "available_bytes", timestamp=timestamp, help_text="Memory available bytes")
         swap_total = float(mem.get("swap_total_bytes", 0) or 0)
         swap_used = float(mem.get("swap_used_bytes", 0) or 0)
-        swap_free = mem.get("swap_free_bytes", max(swap_total - swap_used, 0))
-        _append_gauge(lines, "host_mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
-        _append_gauge(lines, "mem_total", base_labels, mem.get("total_bytes", 0), timestamp, "Memory total bytes")
-        _append_gauge(lines, "mem_available", base_labels, mem.get("available_bytes", 0), timestamp, "Memory available bytes")
-        _append_gauge(lines, "mem_used_percent", base_labels, used_percent, timestamp, "Memory used percent")
-        _append_gauge(lines, "mem_swap_free", base_labels, swap_free, timestamp, "Swap free bytes")
-        _append_gauge(lines, "mem_cached", base_labels, mem.get("cached_bytes", 0), timestamp, "Cached memory bytes")
-        _append_gauge(lines, "mem_shared", base_labels, mem.get("shared_bytes", 0), timestamp, "Shared memory bytes")
-        _append_gauge(lines, "mem_buffered", base_labels, mem.get("buffered_bytes", 0), timestamp, "Buffered memory bytes")
+        swap_free = _metric_value(mem, "swap_free_bytes", default=None)
+        if swap_free is None and (swap_total or swap_used):
+            swap_free = max(swap_total - swap_used, 0)
+        if swap_free is not None:
+            _append_gauge(lines, "mem_swap_free", base_labels, swap_free, timestamp, "Swap free bytes")
+        _append_gauge_if_present(lines, "mem_cached", base_labels, mem, "cached_bytes", timestamp=timestamp, help_text="Cached memory bytes")
+        _append_gauge_if_present(lines, "mem_shared", base_labels, mem, "shared_bytes", timestamp=timestamp, help_text="Shared memory bytes")
+        _append_gauge_if_present(lines, "mem_buffered", base_labels, mem, "buffered_bytes", timestamp=timestamp, help_text="Buffered memory bytes")
 
     if "disk" in data:
         disks = data["disk"]
@@ -400,8 +441,14 @@ def parse_metrics_to_prometheus(
                 _append_gauge(lines, "disk_total", disk_labels, total, timestamp, "Disk total bytes")
                 _append_gauge(lines, "disk_free", disk_labels, free, timestamp, "Disk free bytes")
                 _append_gauge(lines, "disk_used_percent", disk_labels, used_percent, timestamp, "Disk used percent")
-                _append_gauge(
-                    lines, "disk_inodes_used_percent", disk_labels, disk.get("inodes_used_percent", 0), timestamp, "Disk inode used percent"
+                _append_gauge_if_present(
+                    lines,
+                    "disk_inodes_used_percent",
+                    disk_labels,
+                    disk,
+                    "inodes_used_percent",
+                    timestamp=timestamp,
+                    help_text="Disk inode used percent",
                 )
 
     if "net" in data:
@@ -439,21 +486,42 @@ def parse_metrics_to_prometheus(
             _append_gauge(lines, "diskio_writes_total", diskio_labels, diskio.get("writes", 0), timestamp, "Disk writes counter")
             _append_gauge(lines, "diskio_read_bytes_total", diskio_labels, diskio.get("read_bytes", 0), timestamp, "Disk read bytes counter")
             _append_gauge(lines, "diskio_write_bytes_total", diskio_labels, diskio.get("write_bytes", 0), timestamp, "Disk write bytes counter")
-            _append_gauge(lines, "diskio_io_time_ms", diskio_labels, diskio.get("io_time_ms", 0), timestamp, "Disk IO time ms")
-            _append_gauge(lines, "disk_read_latency", diskio_labels, diskio.get("read_time_ms", 0), timestamp, "Disk read time ms")
-            _append_gauge(lines, "disk_write_latency", diskio_labels, diskio.get("write_time_ms", 0), timestamp, "Disk write time ms")
+            _append_gauge_if_present(
+                lines, "diskio_io_time_ms", diskio_labels, diskio, "io_time_ms", timestamp=timestamp, help_text="Disk IO time ms"
+            )
+            _append_gauge_if_present(
+                lines, "diskio_io_util", diskio_labels, diskio, "io_util_percent", timestamp=timestamp, help_text="Disk IO utilization percent"
+            )
+            _append_gauge_if_present(
+                lines, "diskio_read_time_ms", diskio_labels, diskio, "read_time_ms", timestamp=timestamp, help_text="Disk read time ms counter"
+            )
+            _append_gauge_if_present(
+                lines, "diskio_write_time_ms", diskio_labels, diskio, "write_time_ms", timestamp=timestamp, help_text="Disk write time ms counter"
+            )
+            _append_gauge_if_present(
+                lines, "disk_read_latency", diskio_labels, diskio, "read_latency_ms", timestamp=timestamp, help_text="Disk read latency ms"
+            )
+            _append_gauge_if_present(
+                lines, "disk_write_latency", diskio_labels, diskio, "write_latency_ms", timestamp=timestamp, help_text="Disk write latency ms"
+            )
 
     if "processes" in data and isinstance(data["processes"], dict):
         processes = data["processes"]
         for key in ("running", "blocked", "zombies", "sleeping"):
-            _append_gauge(lines, f"processes_{key}", base_labels, processes.get(key, 0), timestamp, f"Processes {key}")
+            _append_gauge_if_present(lines, f"processes_{key}", base_labels, processes, key, timestamp=timestamp, help_text=f"Processes {key}")
 
     if "system" in data and isinstance(data["system"], dict):
         system = data["system"]
         _append_gauge(lines, "system_uptime", base_labels, system.get("uptime_seconds", 0), timestamp, "System uptime seconds")
-        _append_gauge(lines, "system_load1", base_labels, system.get("load1", system.get("load_1m", 0)), timestamp, "System load 1 minute")
-        _append_gauge(lines, "system_load5", base_labels, system.get("load5", system.get("load_5m", 0)), timestamp, "System load 5 minutes")
-        _append_gauge(lines, "system_load15", base_labels, system.get("load15", system.get("load_15m", 0)), timestamp, "System load 15 minutes")
+        _append_gauge_if_present(
+            lines, "system_load1", base_labels, system, "load1", "load_1m", timestamp=timestamp, help_text="System load 1 minute"
+        )
+        _append_gauge_if_present(
+            lines, "system_load5", base_labels, system, "load5", "load_5m", timestamp=timestamp, help_text="System load 5 minutes"
+        )
+        _append_gauge_if_present(
+            lines, "system_load15", base_labels, system, "load15", "load_15m", timestamp=timestamp, help_text="System load 15 minutes"
+        )
 
     return "\n".join(lines) + "\n"
 

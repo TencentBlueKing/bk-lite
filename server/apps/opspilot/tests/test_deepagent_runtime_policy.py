@@ -821,6 +821,9 @@ async def test_planner_catalog_prepends_monitor_capability_hint():
     assert "禁止猜测或递增数字" in prompt
     assert "禁止截断后按台循环" in prompt
     assert "request_user_choice" in prompt
+    assert "已声明" in prompt
+    assert "空列表不要当最终结论或换 ID 重试，必须 request_user_choice" not in prompt
+    assert "已声明则把空列表当该类型下无匹配" in prompt
     assert "禁止根据名称形态" in prompt
     assert "K8s Pod" in prompt
     assert "list_object_metrics 与 query_metric_data 必须同一步" in prompt
@@ -862,6 +865,303 @@ async def test_planner_catalog_prepends_cmdb_monitor_linkage_hint():
     assert "不要再截断主机名去猜 monitor_obj_id" in prompt
     assert "纳管多少台" in prompt
     assert "查不到再查" in prompt
+
+
+def test_is_alerts_center_query_splits_monitor_policy_alerts():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import is_alerts_center_query
+
+    assert is_alerts_center_query("现在还有没有没关的告警啊？") is True
+    assert is_alerts_center_query("web-1 那边是不是还在告警") is True
+    assert is_alerts_center_query("local 这台有没有告警挂着") is True
+    assert is_alerts_center_query("把最近那些告警大致说一下") is True
+    assert is_alerts_center_query("先别分析太深，就告诉我有没有未关闭告警") is True
+    assert is_alerts_center_query("有没有 Nginx 相关的告警") is True
+    assert is_alerts_center_query("有没有活跃的监控告警") is False
+    assert is_alerts_center_query("监控告警 new 状态有几条") is False
+    assert is_alerts_center_query("监控侧活跃告警跟告警中心是不是一回事") is False
+    assert is_alerts_center_query("检查主机 boxxxxx 的CPU使用率") is False
+    assert is_alerts_center_query("定位 Pod 告警") is False
+
+
+def test_rewrite_generic_alert_query_replaces_monitor_active_alerts(caplog):
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        rewrite_generic_alert_query_to_alerts_center,
+    )
+
+    caplog.set_level(logging.INFO, logger="opspilot")
+    plan = ToolExecutionPlan(
+        goal="查未关闭告警",
+        steps=[ToolExecutionStep(objective="列活跃告警", tools=["monitor_list_active_alerts"])],
+    )
+    fixed = rewrite_generic_alert_query_to_alerts_center(
+        plan,
+        {"alerts_list_alerts", "monitor_list_active_alerts"},
+        user_message="现在还有没有没关的告警啊？",
+    )
+    assert [step.tools for step in fixed.steps] == [["alerts_list_alerts"]]
+    records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == "DeepAgent 规划硬校验：口语告警改走告警中心 tool=%s"]
+    assert len(records) == 1
+    assert records[0].args == ("alerts_list_alerts",)
+    assert "alerts_list_alerts" in records[0].getMessage()
+    assert "现在还有没有没关的告警啊？" not in records[0].getMessage()
+
+
+def test_extract_declared_cmdb_model_from_user_message():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import extract_declared_cmdb_model
+
+    assert extract_declared_cmdb_model("CMDB 里 10.10.41.149 那台 nginx，先查出监控 ID") == "nginx"
+    assert extract_declared_cmdb_model("查 mysql 实例的策略告警") == "mysql"
+    assert extract_declared_cmdb_model("主机 local 磁盘快满了") is None
+    assert extract_declared_cmdb_model("纳管多少台主机") is None
+
+
+def test_rewrite_cmdb_search_locks_declared_model_and_host_replan_objectives(caplog):
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, rewrite_cmdb_search_for_declared_model
+
+    caplog.set_level(logging.INFO, logger="opspilot")
+    plan = ToolExecutionPlan(
+        goal="查 nginx 监控告警",
+        steps=[
+            ToolExecutionStep(objective="根据 IP 在 CMDB 中检索实例", tools=["cmdb_search_instances"]),
+            ToolExecutionStep(objective="获取监控 ID", tools=["cmdb_get_monitor_ids"]),
+            ToolExecutionStep(objective="获取 Host/Server 的 monitor_obj_id", tools=["monitor_list_objects"]),
+        ],
+    )
+    fixed = rewrite_cmdb_search_for_declared_model(
+        plan,
+        {"cmdb_search_instances", "cmdb_get_monitor_ids", "monitor_list_objects"},
+        user_message="CMDB 里 10.10.41.149 那台 nginx，看监控侧策略告警",
+    )
+    assert "model_id=nginx" in fixed.steps[0].objective
+    assert "禁止默认 host" in fixed.steps[0].objective
+    assert "nginx" in fixed.steps[2].objective
+    assert "Host/Server" not in fixed.steps[2].objective or "禁止" in fixed.steps[2].objective
+    assert any("规划硬校验：CMDB 模型锁定" in rec.getMessage() for rec in caplog.records)
+
+
+def test_rewrite_cmdb_search_noop_when_model_not_declared():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, rewrite_cmdb_search_for_declared_model
+
+    plan = ToolExecutionPlan(
+        goal="查主机",
+        steps=[ToolExecutionStep(objective="检索实例", tools=["cmdb_search_instances"])],
+    )
+    fixed = rewrite_cmdb_search_for_declared_model(
+        plan,
+        {"cmdb_search_instances"},
+        user_message="10.10.41.149 这台机器的监控告警",
+    )
+    assert fixed.steps[0].objective == "检索实例"
+
+
+def test_rewrite_generic_alert_query_drops_type_ask_for_host_alert():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        rewrite_generic_alert_query_to_alerts_center,
+    )
+
+    plan = ToolExecutionPlan(
+        goal="查主机告警",
+        steps=[
+            ToolExecutionStep(objective="列对象类型", tools=["monitor_list_objects"]),
+            ToolExecutionStep(objective="问类型", tools=["request_user_choice"]),
+            ToolExecutionStep(objective="列实例", tools=["monitor_list_object_instances"]),
+        ],
+    )
+    fixed = rewrite_generic_alert_query_to_alerts_center(
+        plan,
+        {"alerts_list_alerts", "monitor_list_objects", "request_user_choice", "monitor_list_object_instances"},
+        user_message="web-1 那边是不是还在告警",
+    )
+    assert [step.tools for step in fixed.steps] == [["alerts_list_alerts"]]
+
+
+def test_rewrite_generic_alert_query_keeps_monitor_when_user_says_monitor_alert():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        rewrite_generic_alert_query_to_alerts_center,
+    )
+
+    plan = ToolExecutionPlan(
+        goal="查监控告警",
+        steps=[ToolExecutionStep(objective="列监控活跃告警", tools=["monitor_list_active_alerts"])],
+    )
+    fixed = rewrite_generic_alert_query_to_alerts_center(
+        plan,
+        {"alerts_list_alerts", "monitor_list_active_alerts"},
+        user_message="有没有活跃的监控告警",
+    )
+    assert [step.tools for step in fixed.steps] == [["monitor_list_active_alerts"]]
+
+
+@pytest.mark.asyncio
+async def test_planner_rewrites_open_alerts_to_alerts_center():
+    tools = [
+        _tool("monitor_list_active_alerts", "【主机告警】查询当前活跃告警"),
+        _tool("alerts_list_alerts", "查询告警中心"),
+        _tool("monitor_list_objects", "列对象"),
+        _tool("request_user_choice", "问用户"),
+    ]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content='{"goal":"查告警","steps":[{"objective":"列活跃告警","tools":["monitor_list_active_alerts"]}]}')
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("现在还有没有没关的告警啊？", tools)
+    assert plan.steps[0].tools == ["alerts_list_alerts"]
+    assert "monitor_list_active_alerts" not in {name for step in plan.steps for name in step.tools}
+
+
+@pytest.mark.asyncio
+async def test_planner_catalog_prepends_alerts_monitor_split_hint():
+    tools = [
+        _tool("alerts_list_alerts", "查询告警中心"),
+        _tool("monitor_list_active_alerts", "查询监控活跃告警"),
+        _tool("monitor_list_objects", "列对象"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(content='{"goal":"查告警","steps":[{"objective":"列告警","tools":["alerts_list_alerts"]}]}')
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("现在还有没有没关的告警啊？", tools)
+    assert plan.steps[0].tools == ["alerts_list_alerts"]
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "告警分流" in prompt
+    assert "alerts_list_alerts" in prompt
+    assert "禁止规划 monitor_list_active_alerts" in prompt
+
+
+@pytest.mark.parametrize(
+    ("message", "declared"),
+    [
+        ("主机fusion-collector-default 的 CPU", True),
+        ("主机 not-a-real-host-xyz 的 CPU", True),
+        ("查一下 Host web-1 的内存", True),
+        ("Pod nginx-0 的 CPU", True),
+        ("fusion-collector-default 的 CPU", False),
+        ("目前纳管多少台主机了", False),
+        ("主机数量", False),
+        ("", False),
+    ],
+)
+def test_user_declared_monitor_object_type(message, declared):
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import user_declared_monitor_object_type
+
+    assert user_declared_monitor_object_type(message) is declared
+
+
+def test_drop_type_choice_when_declared_strips_monitor_type_ask(caplog):
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, drop_type_choice_when_declared
+
+    caplog.set_level(logging.INFO, logger="opspilot")
+
+    plan = ToolExecutionPlan(
+        goal="查CPU",
+        steps=[
+            ToolExecutionStep(objective="列出对象类型", tools=["monitor_list_objects"]),
+            ToolExecutionStep(objective="让用户确认属于哪种监控对象类型", tools=["request_user_choice"]),
+            ToolExecutionStep(objective="按确认类型列实例", tools=["monitor_list_object_instances"]),
+            ToolExecutionStep(
+                objective="列 CPU 指标并查时序",
+                tools=["monitor_list_object_metrics", "monitor_query_metric_data"],
+            ),
+        ],
+    )
+    mixed = ToolExecutionPlan(
+        goal="查CPU",
+        steps=[
+            ToolExecutionStep(objective="列类型并确认", tools=["monitor_list_objects", "request_user_choice"]),
+            ToolExecutionStep(objective="列实例", tools=["monitor_list_object_instances"]),
+        ],
+    )
+    k8s = ToolExecutionPlan(
+        goal="查重启",
+        steps=[
+            ToolExecutionStep(objective="选集群", tools=["request_user_choice"]),
+            ToolExecutionStep(objective="列事件", tools=["list_kubernetes_events"]),
+        ],
+    )
+
+    stripped = drop_type_choice_when_declared(plan, "主机fusion-collector-default 的 CPU")
+    assert [step.tools for step in stripped.steps] == [
+        ["monitor_list_objects"],
+        ["monitor_list_object_instances"],
+        ["monitor_list_object_metrics", "monitor_query_metric_data"],
+    ]
+    records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == "DeepAgent 规划硬校验：已声明对象类型，去掉类型询问"]
+    assert len(records) == 1
+    assert records[0].args in ((), None)
+    assert "fusion-collector-default" not in records[0].getMessage()
+
+    mixed_stripped = drop_type_choice_when_declared(mixed, "主机 not-a-real-host-xyz 的 CPU")
+    assert [step.tools for step in mixed_stripped.steps] == [
+        ["monitor_list_objects"],
+        ["monitor_list_object_instances"],
+    ]
+
+    undeclared = drop_type_choice_when_declared(plan, "fusion-collector-default 的 CPU")
+    assert [step.tools for step in undeclared.steps] == [step.tools for step in plan.steps]
+
+    inventory = drop_type_choice_when_declared(plan, "目前纳管多少台主机了")
+    assert [step.tools for step in inventory.steps] == [step.tools for step in plan.steps]
+
+    k8s_kept = drop_type_choice_when_declared(k8s, "Pod fusion-collector-default 为什么重启")
+    assert [step.tools for step in k8s_kept.steps] == [
+        ["request_user_choice"],
+        ["list_kubernetes_events"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_planner_strips_type_choice_when_user_declared_host():
+    tools = [
+        _tool("monitor_list_objects"),
+        _tool("monitor_list_object_instances"),
+        _tool("monitor_list_object_metrics"),
+        _tool("monitor_query_metric_data"),
+        _tool("request_user_choice"),
+    ]
+    raw_plan = {
+        "goal": "查主机 CPU",
+        "steps": [
+            {"objective": "列出对象类型", "tools": ["monitor_list_objects"]},
+            {"objective": "让用户确认属于哪种监控对象类型", "tools": ["request_user_choice"]},
+            {"objective": "按确认类型列实例", "tools": ["monitor_list_object_instances"]},
+            {
+                "objective": "列 CPU 指标并查时序",
+                "tools": ["monitor_list_object_metrics", "monitor_query_metric_data"],
+            },
+        ],
+    }
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content=json.dumps(raw_plan, ensure_ascii=False))
+
+    declared = await ToolExecutionPlanner(FakeLLM()).plan("主机fusion-collector-default 的 CPU", tools)
+    assert [step.tools for step in declared.steps] == [
+        ["monitor_list_objects"],
+        ["monitor_list_object_instances"],
+        ["monitor_list_object_metrics", "monitor_query_metric_data"],
+    ]
+
+    undeclared = await ToolExecutionPlanner(FakeLLM()).plan("fusion-collector-default 的 CPU", tools)
+    assert [step.tools for step in undeclared.steps] == [
+        ["monitor_list_objects"],
+        ["request_user_choice"],
+        ["monitor_list_object_instances"],
+        ["monitor_list_object_metrics", "monitor_query_metric_data"],
+    ]
 
 
 def test_parse_tool_execution_plan_payload_accepts_markdown_and_step_list():

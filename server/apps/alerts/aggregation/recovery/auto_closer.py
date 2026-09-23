@@ -26,7 +26,10 @@ class AutoCloser:
 
     @staticmethod
     def _close_alert(alert: Alert):
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
+
         alert.status = AlertStatus.AUTO_CLOSE
         Alert.stamp_closed_at(alert)
         alert.save(update_fields=["status", "updated_at", "closed_at"])
+        dispatch_alert_lifecycle([alert.alert_id], "closed")
         logger.info("[AlertRecovery] 自动关闭告警: %s", alert.alert_id)

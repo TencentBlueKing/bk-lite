@@ -7,6 +7,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.system_mgmt.utils.i18n import system_mgmt_request_message
 
 
 def normalize_group_id_set(group_list):
@@ -177,13 +178,13 @@ class GroupFilterMixin:
         """
         current_team = self._parse_current_team_cookie(request)
         if not current_team:
-            raise PermissionDenied("无权访问该团队数据")
+            raise PermissionDenied(system_mgmt_request_message(request, "error.no_permission_access_team"))
         if not GroupUtils.active_queryset(id=current_team).exists():
-            raise PermissionDenied("current_team 对应组织已归档或不存在")
+            raise PermissionDenied(system_mgmt_request_message(request, "error.current_team_archived_or_missing"))
         if not getattr(request.user, "is_superuser", False):
             user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
             if current_team not in user_group_ids:
-                raise PermissionDenied("无权访问该团队数据")
+                raise PermissionDenied(system_mgmt_request_message(request, "error.no_permission_access_team"))
         return current_team
 
     def _get_child_group_ids(self, parent_id, group_model):

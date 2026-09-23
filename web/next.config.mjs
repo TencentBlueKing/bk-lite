@@ -51,6 +51,18 @@ const nextConfig = withBundleAnalyzer({
   },
   outputFileTracingRoot: workspaceRoot,
   turbopack: turbopackRoot ? { root: turbopackRoot } : undefined,
+  async headers() {
+    return [
+      {
+        source: '/rum/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, HEAD, OPTIONS' },
+          { key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' },
+        ],
+      },
+    ];
+  },
   experimental: {
     externalDir: true,
     // 16.0.x 稳定版仅允许 Dev 缓存；ForBuild 需 canary / ≥16.3 才可显式开启

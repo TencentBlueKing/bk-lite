@@ -217,7 +217,7 @@ wxc openapi list                                # 确认已写入
 ### 步骤 4：验证生效
 
 ```bash
-TOKEN=<个人或系统令牌>       # 在「平台设置 → 密钥」页生成；系统令牌另需 acting 头
+TOKEN=<个人或系统令牌>       # 在「平台管理 → API 令牌」页生成；系统令牌另需 acting 头
 BASE=https://<平台地址>:<端口>
 
 # 目录里应出现该服务，kind=external
@@ -327,7 +327,7 @@ def gateway_identity_middleware(request):
 | --- | --- |
 | 入口 | `https://<平台地址>/openapi/v1/<服务名>/<上游路径>` |
 | 凭据 | `Authorization: Bearer <个人令牌 / 系统令牌 / 登录态 JWT>`，**不接受 Cookie** |
-| 令牌获取 | 「平台设置 → 密钥」生成。个人令牌绑定「用户 × 组织」；系统令牌（`bksys_`）不绑定用户/组织，调用时必须带 `X-Bklite-Acting-User` / `X-Bklite-Acting-Team`。明文仅展示一次 |
+| 令牌获取 | 「平台管理 → API 令牌」生成。个人令牌绑定「用户 × 组织」；系统令牌（`bksys_`）不绑定用户/组织，调用时必须带 `X-Bklite-Acting-User` / `X-Bklite-Acting-Team`。明文仅展示一次 |
 | 内省 | `GET /openapi/v1/_me` 返回自身身份、授权组织、可用服务清单；系统令牌下主体为 acting 用户，并带 `credential_type=system_token` 与 `caller_system` |
 | 目录 | `GET /openapi/v1/_docs` 返回接口目录（内部端点含 schema，外部服务给 `doc_url`） |
 
@@ -383,7 +383,7 @@ def gateway_identity_middleware(request):
    - **Scope 只约束 OpenAPI 网关**（invoke 名单 + 个人钥匙的 `_auth` 前缀）；OpsPilot 渠道等非网关入口不消费名单，需要收窄那些入口时用独立令牌并依赖渠道自身权限。过期与吊销在所有入口生效。
 2. **系统集成必须使用系统令牌**，为每个集成方单独收窄 Scope。**禁止把超管或员工个人令牌配给 worker**。
 3. **超管直通仅作用于人的权限位层**（JWT 与名单内的内部端点）。钥匙名单外即使超管也 `403 SCOPE_DENIED`。`required_roles` 对 JWT / 个人令牌超管仍放行；系统 Token 在评估角色前即拒绝。
-4. **令牌泄漏的止损**：删除或禁用该令牌（平台设置 → 密钥）即时失效（存在秒级缓存延迟）；应用访问日志可按 user / token_id / token_name / path / `caller=<system_id>` 追溯调用记录。
+4. **令牌泄漏的止损**：删除或禁用该令牌（平台管理 → API 令牌）即时失效（存在秒级缓存延迟）；应用访问日志可按 user / token_id / token_name / path / `caller=<system_id>` 追溯调用记录。
 5. **`X-On-Behalf-Of` 已 deprecated**：仅个人令牌场景网关继续回显该头供审计，不参与鉴权。系统集成不要再依赖它。
 6. **限流键口径**（限流机制本身未实现，属已知边界）：一旦对外部服务启用 `rate_limit`，系统 Token 按 `system_id` 分桶，不按 acting user；个人令牌 / JWT 按凭据绑定用户。
 

@@ -36,7 +36,9 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
+  processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
 import {
   clearComponentParamSwitch,
   findComponentSwitchParams,
@@ -71,6 +73,8 @@ import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
 } from './widgetConfig/utils/columnProbing';
+import { buildRoleFieldOptions, dropRoleValueMissingFrom } from './widgetConfig/utils/chartFieldOptions';
+import { ChartRoleFieldsSection, buildChartRoleFields, chartRoleValuePaths } from './widgetConfig/sections/chartRoleFieldsSection';
 import {
   buildDisplayColumnFieldOptions,
   resolveDatasourceChartTypes,
@@ -99,6 +103,8 @@ import {
 import WidgetConfigPreview from './widgetConfig/widgetConfigPreview';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
 import { RelatedTopologyAssetField } from './widgetConfig/sections/relatedTopologyAssetField';
+import { Room3DRoomField } from './widgetConfig/sections/room3DRoomField';
+import { Room3DRackTopFields } from './widgetConfig/sections/room3DRackTopFields';
 import { getDefaultScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
@@ -150,6 +156,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [previewDataFetchSignature, setPreviewDataFetchSignature] = useState<string | null>(null);
   const [previewReloadVersion, setPreviewReloadVersion] = useState(0);
   const [previewRawData, setPreviewRawData] = useState<unknown>(null);
+  const [suppliedPreviewRawData, setSuppliedPreviewRawData] = useState<unknown>(undefined);
+  const [suppliedPreviewVersion, setSuppliedPreviewVersion] = useState(0);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [loadingRoleFields, setLoadingRoleFields] = useState(false);
   const { getSourceDataByApiId } = useDataSourceApi();
   const configRequestIdRef = useRef(0);
   const resolvedParamOptionsRef = useRef(new Map<string, InputOption[]>());
@@ -242,6 +252,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     isTableLike: isTableLikeChartType,
     isNetworkStatusTopology,
     isRelatedTopology,
+    isRoom3D,
     isSceneWidget,
     showValueFormat,
   } = getWidgetChartTypeFlags(
@@ -265,6 +276,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     getSourceDataByApiId,
     builtinNamespaceId: effectiveNamespaceId,
     open,
+    previewRawData,
   });
 
   const nextConfigRequestId = useCallback(() => {
@@ -294,6 +306,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         setWidgetParamOverrides([]);
         tableConfig.resetTableConfig();
         singleValueConfig.resetSingleValueConfig();
+        setPreviewRawData(null);
+        setLoadingRoleFields(false);
 
         form.setFieldsValue(
           buildSceneWidgetSelectorResetValues(sceneWidgetType, surface),
@@ -308,6 +322,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       setWidgetParamOverrides([]);
       tableConfig.resetTableConfig();
       singleValueConfig.resetSingleValueConfig();
+      setPreviewRawData(null);
+      setLoadingRoleFields(false);
 
       // 加载完整数据源（brief 模式不含 params）
       const fullItem = normalizeDatasourceItemParams(
@@ -386,25 +402,127 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     ],
   );
 
-  const topNLabelFieldOptions = useMemo(
-    () =>
-      availableFields.map((field) => ({
-        label: field.title ? `${field.key} (${field.title})` : field.key,
-        value: field.key,
-      })),
-    [availableFields],
+  const roleFieldOptions = useMemo(
+    () => buildRoleFieldOptions(availableFields, previewRawData),
+    [availableFields, previewRawData],
+  );
+  const radarIndicators = Form.useWatch(['radar', 'indicators'], form);
+  const chartRoleFields = useMemo(
+    () => buildChartRoleFields(
+      chartType,
+      t,
+      !(Array.isArray(radarIndicators) ? radarIndicators : []).some(
+        (item) => String(item?.key || '').trim(),
+      ),
+    ),
+    [chartType, radarIndicators, t],
   );
 
-  const topNValueFieldOptions = useMemo(
-    () =>
-      availableFields
-        .filter((field) => field.value_type === 'number')
-        .map((field) => ({
-          label: field.title ? `${field.key} (${field.title})` : field.key,
-          value: field.key,
-        })),
-    [availableFields],
-  );
+  useEffect(() => {
+    if (previewRawData == null) {
+      return;
+    }
+    if (chartType === 'single' || chartType === 'gauge') {
+      const leaves: string[] = [];
+      const walk = (nodes: Array<{ key?: string; children?: typeof nodes }>) => {
+        nodes.forEach((node) => {
+          if (node.children?.length) {
+            walk(node.children);
+            return;
+          }
+          if (node.key) {
+            leaves.push(String(node.key));
+          }
+        });
+      };
+      walk(singleValueConfig.singleValueTreeData || []);
+      if (leaves.length === 0) {
+        return;
+      }
+      const schemaKeys = (selectedDataSource?.field_schema || [])
+        .map((field) => String(field.key || '').trim())
+        .filter(Boolean);
+      const leafSet = new Set([...leaves, ...schemaKeys]);
+      const current = form.getFieldValue('selectedFields');
+      if (!Array.isArray(current)) {
+        return;
+      }
+      const next = current.filter(
+        (key): key is string => typeof key === 'string' && leafSet.has(key),
+      );
+      if (next.length !== current.length) {
+        form.setFieldValue('selectedFields', next);
+        singleValueConfig.setSelectedFields(next);
+      }
+      return;
+    }
+    const allowed = new Set(roleFieldOptions.map((option) => option.value));
+    chartRoleValuePaths(chartType).forEach((path) => {
+      const current = form.getFieldValue(path);
+      if (typeof current !== 'string') {
+        return;
+      }
+      const next = dropRoleValueMissingFrom(current, allowed);
+      if (next !== current.trim()) {
+        form.setFieldValue(path, next);
+      }
+    });
+  }, [
+    chartType,
+    form,
+    previewRawData,
+    selectedDataSource,
+    singleValueConfig.selectedFields,
+    singleValueConfig.setSelectedFields,
+    singleValueConfig.singleValueTreeData,
+    roleFieldOptions,
+  ]);
+
+  const fetchRoleFields = useCallback(async () => {
+    const resolvedId = canonicalSelectedDataSource?.id;
+    if (!resolvedId || !canonicalSelectedDataSource) return;
+
+    setLoadingRoleFields(true);
+    try {
+      const formValues = form.getFieldsValue();
+      const userParams = formValues?.params || {};
+      const requestParams = processDataSourceParams({
+        sourceParams: canonicalSelectedDataSource.params,
+        userParams,
+        resolutionContext: {
+          referenceNow: Date.now(),
+          timezone: getDateRangeTimezone(),
+        },
+      });
+
+      if (
+        effectiveNamespaceId !== undefined &&
+        Array.isArray(canonicalSelectedDataSource.namespaces) &&
+        canonicalSelectedDataSource.namespaces.length > 0
+      ) {
+        requestParams.namespace_id = effectiveNamespaceId;
+      }
+
+      const { data } = await getSourceDataByApiId(resolvedId, requestParams);
+      setPreviewRawData(data);
+      if (previewOpen) {
+        setSuppliedPreviewRawData(data);
+        setSuppliedPreviewVersion((version) => version + 1);
+      }
+    } catch (error) {
+      console.error('Failed to fetch data fields:', error);
+      message.error(t('dashboard.fetchDataFieldsFailed'));
+    } finally {
+      setLoadingRoleFields(false);
+    }
+  }, [
+    canonicalSelectedDataSource,
+    effectiveNamespaceId,
+    form,
+    getSourceDataByApiId,
+    previewOpen,
+    t,
+  ]);
 
   const displayColumnOptions = useMemo(
     () =>
@@ -726,6 +844,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setPreviewDataFetchSignature(null);
     setPreviewReloadVersion(0);
     setPreviewRawData(null);
+    setPreviewLoading(false);
+    setLoadingRoleFields(false);
     networkTopologyConfig.resetInstanceOptions();
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
@@ -1015,7 +1135,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       message.warning(t('dashboard.configPreviewNeedDataSource'));
       return;
     }
-    setPreviewRawData(null);
+    setPreviewLoading(true);
     setPreviewSnapshotConfig(draft);
     setPreviewSnapshotDataSource(effectiveDataSource);
     setPreviewSnapshotFilterDefinitions(previewFilterDefinitions);
@@ -1078,6 +1198,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         if (submitResult.error === 'cardListLeadingFieldRequired') {
           message.error(t('dashboard.cardListLeadingFieldRequired'));
+          return;
+        }
+        if (submitResult.error === 'chartRoleFieldsRequired') {
+          message.error(t('dashboard.chartRoleFieldsRequired'));
+          return;
+        }
+        if (submitResult.error === 'chartRoleFieldPairRequired') {
+          message.error(t('dashboard.chartRoleFieldPairRequired'));
           return;
         }
         if (submitResult.error === 'relatedTopologyModelIdRequired') {
@@ -1167,7 +1295,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               surface={surface}
               reloadVersion={previewReloadVersion}
               rawData={previewRawData}
-              onRawData={setPreviewRawData}
+              suppliedRawData={suppliedPreviewRawData}
+              suppliedRawDataVersion={suppliedPreviewVersion}
+              loading={previewLoading}
+              onRawData={(data) => {
+                setPreviewRawData(data);
+                setPreviewLoading(false);
+              }}
               liveName={watchedFormValues?.name}
               liveDescription={watchedFormValues?.description}
               onRefresh={handlePreview}
@@ -1218,6 +1352,21 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             </ConfigSectionTitle>
             <RelatedTopologyAssetField open={open} enabled={isRelatedTopology} />
           </section>
+        ) : isRoom3D ? (
+          <>
+            <section>
+              <ConfigSectionTitle>
+                {t('dashboard.dataConfigSection', '数据配置')}
+              </ConfigSectionTitle>
+              <Room3DRoomField open={open} enabled={isRoom3D} />
+            </section>
+            <section>
+              <ConfigSectionTitle>
+                {t('dashboard.room3DRackTopSection')}
+              </ConfigSectionTitle>
+              <Room3DRackTopFields />
+            </section>
+          </>
         ) : isSceneWidget ? null : (
           <WidgetDatasourceChartTypeFields
             t={t}
@@ -1302,11 +1451,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 selectedDataSource={selectedDataSource}
                 singleValueTreeData={singleValueConfig.singleValueTreeData}
                 selectedFields={singleValueConfig.selectedFields}
-                loadingSingleValueData={singleValueConfig.loadingSingleValueData}
+                loadingSingleValueData={loadingRoleFields}
                 thresholdColors={singleValueConfig.thresholdColors}
-                onFetchSingleValueDataFields={
-                  singleValueConfig.fetchSingleValueDataFields
-                }
+                onFetchSingleValueDataFields={fetchRoleFields}
                 onSingleValueFieldChange={
                   singleValueConfig.handleSingleValueFieldChange
                 }
@@ -1326,11 +1473,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 selectedDataSource={selectedDataSource}
                 singleValueTreeData={singleValueConfig.singleValueTreeData}
                 selectedFields={singleValueConfig.selectedFields}
-                loadingSingleValueData={singleValueConfig.loadingSingleValueData}
+                loadingSingleValueData={loadingRoleFields}
                 thresholdColors={singleValueConfig.thresholdColors}
-                onFetchSingleValueDataFields={
-                  singleValueConfig.fetchSingleValueDataFields
-                }
+                onFetchSingleValueDataFields={fetchRoleFields}
                 onSingleValueFieldChange={
                   singleValueConfig.handleSingleValueFieldChange
                 }
@@ -1346,8 +1491,21 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 t={t}
                 sectionTitle=""
                 selectedDataSource={selectedDataSource}
-                fieldOptions={topNLabelFieldOptions}
-                valueFieldOptions={topNValueFieldOptions}
+                fieldOptions={roleFieldOptions}
+                valueFieldOptions={roleFieldOptions}
+                loadingFields={loadingRoleFields}
+                onRefreshFields={fetchRoleFields}
+              />
+            )}
+
+            {chartRoleFields.length > 0 && (
+              <ChartRoleFieldsSection
+                t={t}
+                selectedDataSource={selectedDataSource}
+                options={roleFieldOptions}
+                roles={chartRoleFields}
+                loadingFields={loadingRoleFields}
+                onRefreshFields={fetchRoleFields}
               />
             )}
 
@@ -1403,8 +1561,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 t={t}
                 sectionTitle=""
                 selectedDataSource={selectedDataSource}
-                topNLabelFieldOptions={topNLabelFieldOptions}
-                topNValueFieldOptions={topNValueFieldOptions}
+                topNLabelFieldOptions={roleFieldOptions}
+                topNValueFieldOptions={roleFieldOptions}
+                loadingFields={loadingRoleFields}
+                onRefreshFields={fetchRoleFields}
               />
             )}
 
@@ -1413,6 +1573,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 key={resolveCardListSettingsRemountKey(widgetItem)}
                 t={t}
                 availableFields={availableFields}
+                previewRawData={previewRawData}
+                loadingFields={loadingRoleFields}
+                onRefreshFields={fetchRoleFields}
               />
             )}
           </WidgetDatasourceChartTypeFields>

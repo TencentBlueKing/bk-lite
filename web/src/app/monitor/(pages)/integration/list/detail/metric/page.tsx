@@ -1,4 +1,5 @@
 'use client';
+import './register-metric-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import {

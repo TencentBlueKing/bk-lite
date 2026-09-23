@@ -1,4 +1,5 @@
 'use client';
+import './register-search-pilot';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Card, Segmented } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
@@ -26,6 +27,7 @@ import {
 import { attachGapIntervals } from '@/app/monitor/utils/gapIntervals';
 import dayjs from 'dayjs';
 import QueryPanel from './queryPanel';
+import { publishSearchSnapshot } from './search.pilot';
 import {
   buildSearchQueryParams,
   getMetricsMapKey,
@@ -58,6 +60,15 @@ const SearchView: React.FC = () => {
   const searchAbortControllerRef = useRef<AbortController | null>(null);
   const searchRequestIdRef = useRef<number>(0);
   const lastSearchPayloadRef = useRef<SearchPayload | null>(null);
+
+  useEffect(() => {
+    const payload = queryPanelRef.current?.getSearchPayload() || lastSearchPayloadRef.current;
+    publishSearchSnapshot({
+      payload,
+      charts: chartItems,
+    });
+    return () => publishSearchSnapshot(null);
+  }, [chartItems, timeValues]);
 
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);

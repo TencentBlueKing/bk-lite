@@ -78,7 +78,7 @@ const PortalConsolePreview: React.FC<PortalConsolePreviewProps> = ({
   }), [watermarkText, portalName, username, displayName, today, t]);
   const previewTitleTemplate = t('system.settings.portal.previewTitle') as string;
   const previewDescriptionTemplate = t('system.settings.portal.previewDescription') as string;
-  const previewTitle = (previewTitleTemplate || '欢迎使用{portalName}控制台').replace('{portalName}', portalName);
+  const previewTitle = previewTitleTemplate.replace('{portalName}', portalName);
   const previewDescription = (previewDescriptionTemplate || '').replace('{portalName}', portalName);
   const previewApps = displayApps.slice(0, 6);
   const portalInitials = useMemo(() => getInitials(portalName), [portalName]);
@@ -139,7 +139,7 @@ const PortalConsolePreview: React.FC<PortalConsolePreviewProps> = ({
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="max-w-36 truncate text-[10px] font-bold text-(--color-text-1)">{portalName}</span>
                     <span className="inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-lg border border-(--color-portal-preview-border-strong) bg-(--color-bg-1) px-2.5 text-[9px] font-semibold leading-none text-(--color-text-2) shadow-[0_3px_8px_var(--color-portal-card-shadow)]">
-                      控制台
+                      {t('system.settings.portal.previewConsole')}
                       <span className="ml-1 text-[8px]">▼</span>
                     </span>
                   </div>

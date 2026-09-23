@@ -1,12 +1,10 @@
 import pytest
-from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.base.models import UserAPISecret
-from apps.base.tests.factories import UserAPISecretFactory, UserFactory
+from apps.base.tests.factories import UserAPISecretFactory
 from apps.system_mgmt.models import OperationLog
-
 
 BASE_URL = "/api/v1/base/user_api_secret/"
 
@@ -74,9 +72,7 @@ class TestUserAPISecretList:
 @pytest.mark.django_db
 class TestUserAPISecretCreate:
     def test_create_success(self, api_client_with_team, user_with_permissions):
-        response = api_client_with_team.post(
-            BASE_URL, data={"name": "first", "scope": {"mode": "all"}}, format="json"
-        )
+        response = api_client_with_team.post(BASE_URL, data={"name": "first", "scope": {"mode": "all"}}, format="json")
         assert response.status_code == status.HTTP_201_CREATED
         assert "api_secret" in response.data
         assert "api_secret_preview" not in response.data
@@ -87,9 +83,7 @@ class TestUserAPISecretCreate:
         assert stored.api_secret == UserAPISecret.hash_api_secret(response.data["api_secret"])
 
     def test_second_create_allowed_for_same_team(self, api_client_with_team, user_with_permissions, user_api_secret):
-        response = api_client_with_team.post(
-            BASE_URL, data={"name": "second", "scope": {"mode": "all"}}, format="json"
-        )
+        response = api_client_with_team.post(BASE_URL, data={"name": "second", "scope": {"mode": "all"}}, format="json")
         assert response.status_code == status.HTTP_201_CREATED
         assert "api_secret" in response.data
         assert (
@@ -226,14 +220,12 @@ def _assert_secret_log_has_no_secret(log, secret=None):
 @pytest.mark.django_db
 class TestUserAPISecretOperationLog:
     def test_create_writes_operation_log_without_secret(self, api_client_with_team, user_with_permissions):
-        response = api_client_with_team.post(
-            BASE_URL, data={"name": "job-script", "scope": {"mode": "all"}}, format="json"
-        )
+        response = api_client_with_team.post(BASE_URL, data={"name": "job-script", "scope": {"mode": "all"}}, format="json")
         assert response.status_code == status.HTTP_201_CREATED
         log = OperationLog.objects.get(target_type="user_api_secret", action_type="create")
         assert log.username == user_with_permissions.username
         assert log.app == "system-manager"
-        assert log.summary == "创建个人密钥: job-script"
+        assert log.summary == "创建个人令牌: job-script"
         assert log.target_id == str(response.data["id"])
         assert log.detail == {"kind": "personal", "name": "job-script", "team": 1}
         _assert_secret_log_has_no_secret(log, response.data["api_secret"])
@@ -245,9 +237,7 @@ class TestUserAPISecretOperationLog:
         assert not OperationLog.objects.filter(target_type="user_api_secret").exists()
 
     def test_create_rejects_duplicate_name_in_same_team(self, api_client_with_team, user_api_secret):
-        response = api_client_with_team.post(
-            BASE_URL, data={"name": user_api_secret.name, "scope": {"mode": "all"}}, format="json"
-        )
+        response = api_client_with_team.post(BASE_URL, data={"name": user_api_secret.name, "scope": {"mode": "all"}}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "name" in response.data
 
@@ -256,7 +246,7 @@ class TestUserAPISecretOperationLog:
         response = api_client_with_team.patch(url, data={"name": "debug"}, format="json")
         assert response.status_code == status.HTTP_200_OK
         log = OperationLog.objects.get(target_type="user_api_secret", action_type="update")
-        assert log.summary == "更新个人密钥: debug"
+        assert log.summary == "更新个人令牌: debug"
         assert log.detail == {"kind": "personal", "name": "debug", "team": 1}
         _assert_secret_log_has_no_secret(log, user_api_secret.api_secret)
 
@@ -265,7 +255,7 @@ class TestUserAPISecretOperationLog:
         response = api_client_with_team.delete(url)
         assert response.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT)
         log = OperationLog.objects.get(target_type="user_api_secret", action_type="delete")
-        assert log.summary == f"删除个人密钥: {user_api_secret.name}"
+        assert log.summary == f"删除个人令牌: {user_api_secret.name}"
         assert log.target_id == str(user_api_secret.pk)
         assert log.detail == {"kind": "personal", "name": user_api_secret.name, "team": 1}
 

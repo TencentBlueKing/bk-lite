@@ -1,23 +1,23 @@
 "use client";
 import React, { useMemo } from 'react';
-import { Button, Input, Form, Spin, Popconfirm } from 'antd';
+import { Button, Form, Popconfirm } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import GroupTreeSelect from '@/components/group-tree-select';
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
 import PermissionWrapper from "@/components/permission";
 import PermissionRule from '@/app/system-manager/components/application/permissionRule';
+import SearchActionBar from '@/components/search-action-bar';
 import type { DataItem } from '@/app/system-manager/types/permission';
 import {
   useDataList,
   useModuleConfig,
   useDataModal
 } from '@/app/system-manager/hooks/useDataManagement';
-
-const { Search } = Input;
 
 const DataManagement: React.FC = () => {
   const { t } = useTranslation();
@@ -156,28 +156,27 @@ const DataManagement: React.FC = () => {
   ], [t, handleGroupChange, currentGroupId, supportedModules, dataForm]);
 
   return (
-    <div className="w-full bg-[var(--color-bg)] rounded-md h-full p-4">
-      <div className="flex justify-end mb-4">
-        <Search
-          allowClear
-          enterButton
-          className='w-60 mr-[8px]'
-          onSearch={handleSearch}
-          placeholder={`${t('common.search')}`}
-        />
-        <PermissionWrapper requiredPermissions={['Add']}>
-          <Button
-            type="primary"
-            onClick={() => showDataModal()}
-            icon={<PlusOutlined />}
-          >
-            {t('common.add')}
-          </Button>
-        </PermissionWrapper>
-      </div>
-      <Spin spinning={loading}>
+    <div className="flex h-full min-h-0 w-full flex-col rounded-md bg-[var(--color-bg)] p-4">
+      <SearchActionBar
+        searchProps={{
+          placeholder: `${t('common.search')}`,
+          onSearch: handleSearch,
+        }}
+        actions={(
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button
+              type="primary"
+              onClick={() => showDataModal()}
+              icon={<PlusOutlined />}
+            >
+              {t('common.new')}
+            </Button>
+          </PermissionWrapper>
+        )}
+      />
+      <SystemManagerFillTable>
         <CustomTable
-          scroll={{ y: 'calc(100vh - 365px)' }}
+          loading={loading}
           columns={columns}
           dataSource={dataList}
           rowKey={(record) => record.id}
@@ -185,10 +184,11 @@ const DataManagement: React.FC = () => {
             current: currentPage,
             pageSize: pageSize,
             total: total,
+            showSizeChanger: true,
             onChange: handleTableChange,
           }}
         />
-      </Spin>
+      </SystemManagerFillTable>
       <OperateModal
         width={800}
         title={isEditing ? t('common.edit') : t('common.add')}

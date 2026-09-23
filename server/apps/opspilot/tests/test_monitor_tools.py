@@ -76,6 +76,7 @@ def test_monitor_tool_descriptions_guide_host_metric_queries():
     objects = tools["monitor_list_objects"].description
     assert "request_user_choice" in objects
     assert "猜" in objects
+    assert "已声明" in objects
 
     metrics = tools["monitor_list_object_metrics"].description
     assert "第3步" in metrics
@@ -306,6 +307,8 @@ def test_monitor_list_objects_choice_hint_uses_real_type_names(mocker):
     assert "Redis" in hint
     assert "single_select" in hint
     assert "text" in hint.lower() or "不要用 text" in hint
+    assert "已明确" in hint or "已声明" in hint
+    assert "不要 request_user_choice" in hint
     assert result["data"][0]["id"] == "12"
 
 
@@ -384,7 +387,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
         (
             5,
             {
-                "monitor_obj_id": "host",
+                "monitor_obj_id": "12",
                 "limit": 20,
                 "instance_ids": ["host-1"],
                 "level": "critical",
@@ -393,7 +396,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
             "query_latest_active_alerts",
             {
                 "query_data": {
-                    "monitor_obj_id": "host",
+                    "monitor_obj_id": "12",
                     "limit": 20,
                     "instance_ids": ["host-1"],
                     "level": "critical",
@@ -641,7 +644,10 @@ def test_monitor_list_object_instances_unmatched_keyword_is_terminal(mocker):
     assert result["keyword"] == "not-a-host"
     assert "不要把空列表当成最终结论" in result["message"]
     assert "request_user_choice" in result["message"]
+    assert "已声明" in result["message"]
     assert "request_user_choice" in result["_next_step_hint"]
+    assert "已声明" in result["_next_step_hint"] or "不要再问" in result["_next_step_hint"]
+    assert "必须立即" not in result["_next_step_hint"]
     assert "id-mismatch-sz-app-01" in result["available_names"]
     rpc.monitor_object_instances.assert_called_once()
 
@@ -696,7 +702,10 @@ def test_monitor_list_object_instances_coerces_non_list_payload(mocker):
     assert result["data"] == []
     assert "没有实例" in result["message"]
     assert "request_user_choice" in result["message"]
+    assert "已声明" in result["message"]
     assert "request_user_choice" in result["_next_step_hint"]
+    assert "已声明" in result["_next_step_hint"] or "不要再问" in result["_next_step_hint"]
+    assert "必须立即" not in result["_next_step_hint"]
     assert "禁止猜测" in result["message"] or "猜测其他 ID" in result["message"]
 
 
@@ -969,3 +978,31 @@ def test_builtin_monitor_tool_descriptor_shape():
     sub_names = {tool["name"] for tool in descriptor["tools"]}
     assert "CONSTRUCTOR_PARAMS" not in sub_names
     assert sub_names == {tool.name for tool in _monitor_tools()}
+
+
+def test_monitor_list_active_alerts_rejects_non_digit_monitor_obj_id(mocker):
+    """CMDB monitor_id / 实例标识不得塞进 monitor_obj_id，避免 Field 'id' expected a number。"""
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.alerts import monitor_list_active_alerts
+
+    rpc = mocker.Mock()
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    for bad in ("MTVmOTFiYTM5ODZk", "1_10.10.41.149_80", "host", "nginx"):
+        out = monitor_list_active_alerts.invoke(
+            {"monitor_obj_id": bad, "instance_ids": ["1_10.10.41.149_80"]},
+            config=_runtime_config(),
+        )
+        assert out["success"] is False, bad
+        assert "必须是监控对象类型的数字 id" in out["error"], bad
+        assert "instance_ids" in out["error"], bad
+
+    rpc.query_latest_active_alerts.assert_not_called()
+
+    rpc.query_latest_active_alerts.return_value = {"result": True, "data": []}
+    ok = monitor_list_active_alerts.invoke(
+        {"monitor_obj_id": "12", "instance_ids": ["1_10.10.41.149_80"]},
+        config=_runtime_config(),
+    )
+    assert ok["success"] is True
+    rpc.query_latest_active_alerts.assert_called_once()

@@ -6,7 +6,14 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, to_monitor_epoch_ms, wrap_error
 
 
-@tool(description=("【主机告警】查询BK-Lite当前活跃告警。" "可按monitor_obj_id/instance_ids/级别过滤；instance_ids须用监控instance_id、实例名或IP，禁止CMDB的inst_uuid/_id。"))
+@tool(
+    description=(
+        "【监控策略告警】查询监控扫描产生的主机/实例活跃告警（MonitorAlert），不是告警中心工单。"
+        "仅当用户点名监控告警/策略告警/new 状态时使用；口语「没关的告警/某台还在告」应改用 alerts_list_alerts。"
+        "monitor_obj_id 只能是 monitor_list_objects 返回的数字对象类型 id；"
+        "instance_ids 须用监控 instance_id（含 CMDB monitor_id、1_IP_端口）、实例名或 IP，禁止把实例标识填进 monitor_obj_id，禁止 CMDB 的 inst_uuid/_id。"
+    )
+)
 def monitor_list_active_alerts(
     config: RunnableConfig = None,
     monitor_obj_id: Optional[str] = None,
@@ -15,6 +22,13 @@ def monitor_list_active_alerts(
     level: Optional[Any] = None,
     alert_type: Optional[Any] = None,
 ) -> Dict[str, Any]:
+    if monitor_obj_id not in (None, ""):
+        obj_id = str(monitor_obj_id).strip()
+        if not obj_id.isdigit():
+            return wrap_error(
+                "monitor_obj_id 必须是监控对象类型的数字 id（来自 monitor_list_objects 的 id）；"
+                "CMDB 返回的 monitor_id、实例名、IP 或形如 1_IP_端口 的标识请放 instance_ids，不要填 monitor_obj_id。"
+            )
     query_data = {
         "monitor_obj_id": monitor_obj_id,
         "limit": limit,

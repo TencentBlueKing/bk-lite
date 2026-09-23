@@ -370,6 +370,17 @@ def _delete_monitor_policy_record(policy: MonitorPolicy, operator: str):
     return policy_id
 
 
+def _has_instance_count_actor(user_info: Optional[dict]) -> bool:
+    """实例计数兼容切片：仅在报文带可解析用户和组织时进入授权聚合。"""
+    if not isinstance(user_info, dict):
+        return False
+    user = _normalize_permission_user(user_info.get("user"), domain=user_info.get("domain"))
+    username = getattr(user, "username", None)
+    if not isinstance(username, str) or not username.strip():
+        return False
+    return user_info.get("team") not in (None, "")
+
+
 def _require_authenticated_actor(user_info: Optional[dict]):
     """写接口身份闸：必须携带可解析的已认证身份才允许写库。
 
@@ -750,14 +761,30 @@ def monitor_objects(*args, **kwargs):
 
 @nats_client.register
 def monitor_object_instance_count(*args, **kwargs):
-    """统计全部监控对象实例数量（不过滤权限）"""
+    """统计监控对象实例数量。
+
+    兼容切片：携带可解析身份时按授权实例聚合；无身份的旧调用方保持全局未删除计数。
+    许可管理全局规模走独立 subject license_monitor_instance_count。
+    """
     logger.info(
         "=== monitor_object_instance_count called , args=%s, kwargs=%s===",
         args,
         kwargs,
     )
-    queryset = MonitorInstance.objects.filter(is_deleted=False).values("monitor_object__name").annotate(instance_count=Count("id"))
-    data = {item["monitor_object__name"]: item["instance_count"] for item in queryset}
+    user_info = kwargs.get("user_info")
+    queryset = MonitorInstance.objects.filter(is_deleted=False)
+    if _has_instance_count_actor(user_info):
+        _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+        if error:
+            return error
+        authorized, error = _get_authorized_monitor_instances(user_info, scope_ids)
+        if error:
+            return error
+        queryset = queryset.filter(id__in=list(authorized.keys()))
+    data = {
+        item["monitor_object__name"]: item["instance_count"]
+        for item in queryset.values("monitor_object__name").annotate(instance_count=Count("id"))
+    }
     return {"result": True, "data": data, "message": ""}
 
 
@@ -2305,7 +2332,7 @@ def _get_nats_accessible_policy_queryset(user_info):
     return queryset.filter(id__in=authorized_ids), None
 
 
-def _get_nats_accessible_instance_queryset(user_info):
+def _get_nats_accessible_instance_queryset(user_info, instance_ids=None):
     permissions, scope_ids, is_superuser, error = _get_nats_permission_context(
         user_info,
         PermissionConstants.INSTANCE_MODULE,
@@ -2321,6 +2348,8 @@ def _get_nats_accessible_instance_queryset(user_info):
         .prefetch_related("monitorinstanceorganization_set")
         .distinct()
     )
+    if instance_ids is not None:
+        queryset = queryset.filter(id__in=list(instance_ids))
     if is_superuser:
         return queryset, None
 
@@ -2453,9 +2482,19 @@ MONITOR_INSTANCE_ALERT_RANKING_MOST = "most_alerts"
 MONITOR_INSTANCE_ALERT_RANKING_LEAST = "least_policy_alerts"
 
 
+def _coerce_policy_organization_id(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _policy_covered_instance_ids(policy_qs, instance_qs):
     instance_ids = set(instance_qs.values_list("id", flat=True))
     covered = set()
+    org_policies = []
+    org_ids = set()
+    object_ids = set()
     for policy in policy_qs.filter(enable=True).only("id", "monitor_object_id", "source"):
         source = policy.source if isinstance(policy.source, dict) else {}
         source_type = source.get("type")
@@ -2464,15 +2503,27 @@ def _policy_covered_instance_ids(policy_qs, instance_qs):
             covered.update(value for value in source_values if value in instance_ids)
             continue
         if source_type == "organization":
-            covered.update(
-                MonitorInstanceOrganization.objects.filter(
-                    monitor_instance__monitor_object_id=policy.monitor_object_id,
-                    monitor_instance_id__in=instance_ids,
-                    organization__in=source_values,
-                ).values_list("monitor_instance_id", flat=True)
-            )
+            org_policies.append((policy.monitor_object_id, source_values))
+            org_ids.update(source_values)
+            object_ids.add(policy.monitor_object_id)
             continue
         covered.update(instance_qs.filter(monitor_object_id=policy.monitor_object_id).values_list("id", flat=True))
+
+    if org_policies and instance_ids and org_ids:
+        memberships = MonitorInstanceOrganization.objects.filter(
+            monitor_instance__monitor_object_id__in=object_ids,
+            monitor_instance_id__in=instance_ids,
+            organization__in=org_ids,
+        ).values_list("monitor_instance_id", "organization", "monitor_instance__monitor_object_id")
+        by_object_org = {}
+        for instance_id, organization, object_id in memberships:
+            by_object_org.setdefault((object_id, organization), set()).add(instance_id)
+        for object_id, source_values in org_policies:
+            for organization in source_values:
+                covered.update(by_object_org.get((object_id, organization), ()))
+                coerced = _coerce_policy_organization_id(organization)
+                if coerced is not None and coerced != organization:
+                    covered.update(by_object_org.get((object_id, coerced), ()))
     return covered
 
 

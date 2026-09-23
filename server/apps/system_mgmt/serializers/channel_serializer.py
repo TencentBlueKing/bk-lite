@@ -3,6 +3,7 @@ from rest_framework import serializers
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import Channel, ChannelChoices
+from apps.system_mgmt.utils.i18n import localized_channel_description
 
 try:
     from apps.system_mgmt.enterprise import nats_notifications
@@ -24,6 +25,13 @@ class ChannelSerializer(UsernameSerializer):
     class Meta:
         model = Channel
         fields = "__all__"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        locale = getattr(getattr(request, "user", None), "locale", None)
+        data["description"] = localized_channel_description(data.get("description"), locale)
+        return data
 
     def validate_team(self, value):
         if isinstance(value, (int, str)):

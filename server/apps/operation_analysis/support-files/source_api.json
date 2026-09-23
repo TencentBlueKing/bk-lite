@@ -81,7 +81,8 @@
       "line",
       "bar",
       "pie",
-      "single"
+      "single",
+      "topN"
     ],
     "params": [
       {
@@ -284,6 +285,7 @@
               {"label": "出流量", "value": "net_out"},
               {"label": "磁盘IO使用率", "value": "disk_io"},
               {"label": "磁盘写入延迟", "value": "disk_write_latency"},
+              {"label": "磁盘读取延迟", "value": "disk_read_latency"},
               {"label": "磁盘读速率", "value": "disk_read_rate"},
               {"label": "磁盘写速率", "value": "disk_write_rate"},
               {"label": "阻塞进程", "value": "processes_blocked"},
@@ -611,40 +613,6 @@
     ]
 },
 {
-    "name": "CMDB 3D机房布局",
-    "desc": "查询指定 CMDB 机房的 3D 机柜布局数据",
-    "rest_api": "cmdb/get_room3d_layout",
-    "tag": [
-        "cmdb"
-    ],
-    "chart_type": [
-        "room3D"
-    ],
-    "params": [
-        {
-            "name": "server_room_id",
-            "type": "string",
-            "value": "",
-            "alias_name": "机房ID",
-            "filterType": "params",
-            "inputConfig": {
-                "control": "select",
-                "componentSwitch": true,
-                "optionsSource": {
-                    "type": "dynamic",
-                    "sourceRef": {
-                        "type": "rest_api",
-                        "value": "cmdb/get_room_list"
-                    },
-                    "valueField": "inst_uuid",
-                    "labelField": "inst_name"
-                }
-            }
-        }
-    ],
-    "field_schema": []
-},
-{
     "name": "云资源成本汇总",
     "desc": "按筛选条件汇总计费时段内总费用、计费实例数、日均费用和环比",
     "rest_api": "cmdb/get_cloud_resource_cost_summary",
@@ -772,18 +740,6 @@
         {"key": "total_cost_incurred", "title": "已发生费用(元)", "value_type": "string", "description": "所选计费时段内该账单的费用合计"},
         {"key": "unit_price", "title": "日均费用(元/天)", "value_type": "string", "description": "已发生费用除以所选时段的日历天数；未选择时段时按账单日志跨度计算"}
     ]
-},
-{
-        "key": "CMDB 机房列表::cmdb/get_room_list",
-"name": "CMDB 机房列表（选项）",
-    "desc": "机房列表，供参数动态选项使用，本身不直接出图",
-    "rest_api": "cmdb/get_room_list",
-    "tag": [
-        "cmdb"
-    ],
-    "chart_type": [],
-    "params": [],
-    "field_schema": []
 },
 {
     "key": "CMDB 实例监控ID映射::cmdb/get_monitor_ids_by_inst_uuids",

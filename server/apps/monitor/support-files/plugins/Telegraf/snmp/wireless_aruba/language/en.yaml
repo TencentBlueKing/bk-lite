@@ -1,0 +1,50 @@
+Wireless Aruba SNMP:
+  name: Aruba AOS (Telegraf)
+  desc: SNMP monitoring template for Aruba AOS wireless controllers. It reports CPU
+    utilization, memory utilization, internal temperature, AP count, and associated
+    station count (IANA PEN 14823).
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the Aruba AOS wireless controller since
+        the last restart, derived from sysUpTime. Monitoring uptime helps administrators
+        understand device stability and identify unexpected reboots.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: CPU utilization of the Aruba AOS wireless controller (WLSX-SYSTEMEXT-MIB
+        wlsxSysExtCpuUsedPercent), reported directly as a 0-100 percentage. Sustained
+        high CPU usage can indicate heavy AP or station management load affecting roaming
+        and management responsiveness.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Memory utilization of the Aruba AOS wireless controller (WLSX-SYSTEMEXT-MIB
+        wlsxSysExtMemoryUsedPercent), reported directly as a 0-100 percentage. High
+        memory pressure can cause the controller to drop station associations or delay
+        AP joins.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Internal temperature of the Aruba AOS wireless controller in degrees Celsius
+        (WLSX-SYSTEMEXT-MIB wlsxSysExtInternalTemparature; MIB spelling Temparature).
+        Abnormally high values may indicate cooling failure or excessive ambient heat.
+    wireless_ap_count:
+      name: Access Point Count
+      desc: Total number of access points on this Aruba AOS wireless controller
+        (WLSX-SWITCH-MIB wlsxSwitchTotalNumAccessPoints). A sudden drop can indicate
+        AP connectivity loss or a controller failover.
+    wireless_station_count:
+      name: Associated Station Count
+      desc: Number of wireless stations currently associated through this Aruba AOS
+        wireless controller (WLSX-SWITCH-MIB wlsxSwitchTotalNumStationsAssociated).
+        Rapid growth can correlate with CPU and memory pressure on the controller.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Wireless: Wireless

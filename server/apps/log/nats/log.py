@@ -40,6 +40,7 @@ def _normalize_bounded_int(value, field_name: str, default, max_value: int):
 
 def _normalize_query_time_range(time_range):
     start_time, end_time = parse_rfc3339_range_utc(time_range)
+    VictoriaLogsConstants.ensure_query_window_span(start_time, end_time)
     return format_rfc3339_utc(start_time), format_rfc3339_utc(end_time)
 
 
@@ -672,13 +673,24 @@ def count_successful_logins_by_host(hosts, time_range, user_info=None, **kwargs)
 
 
 def _llm_keyword_to_query(keyword: str) -> str:
-    keyword = str(keyword or "").strip()
-    if not keyword:
-        return "*"
-    pattern = f".*{LogGroupQueryBuilder._escape_regex_value(keyword)}.*"
+    return _llm_keywords_to_query([keyword] if str(keyword or "").strip() else [])
+
+
+def _llm_keywords_to_query(keywords: list[str] | tuple[str, ...]) -> str:
+    parts: list[str] = []
     field = LogGroupQueryBuilder._encode_logsql_field("message")
-    encoded = LogGroupQueryBuilder._encode_logsql_string(pattern)
-    return f"{field}:re({encoded})"
+    for keyword in keywords:
+        text = str(keyword or "").strip()
+        if not text:
+            continue
+        pattern = f".*{LogGroupQueryBuilder._escape_regex_value(text)}.*"
+        encoded = LogGroupQueryBuilder._encode_logsql_string(pattern)
+        parts.append(f"{field}:re({encoded})")
+    if not parts:
+        return "*"
+    if len(parts) == 1:
+        return parts[0]
+    return "(" + " OR ".join(parts) + ")"
 
 
 def _llm_accessible_log_groups(user_info, requested_group_ids=None):
@@ -735,8 +747,13 @@ def log_search_structured(query_data=None, user_info=None, **kwargs):
     query_data = query_data or kwargs.get("query_data") or {}
     user_info = user_info or kwargs.get("user_info")
     raw_query = str(query_data.get("query") or "").strip()
-    keyword = str(query_data.get("keyword") or "").strip()
-    query = raw_query or _llm_keyword_to_query(keyword)
+    raw_keywords = query_data.get("keywords")
+    if isinstance(raw_keywords, (list, tuple)):
+        keywords = [str(term).strip() for term in raw_keywords if str(term).strip()]
+    else:
+        keyword = str(query_data.get("keyword") or "").strip()
+        keywords = [keyword] if keyword else []
+    query = raw_query or _llm_keywords_to_query(keywords)
     return _llm_execute_log_search(
         query,
         query_data.get("time_range"),
@@ -744,4 +761,3 @@ def log_search_structured(query_data=None, user_info=None, **kwargs):
         user_info,
         query_data.get("log_group_ids"),
     )
-

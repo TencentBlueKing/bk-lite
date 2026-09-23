@@ -4,8 +4,6 @@ import time
 import uuid
 
 from django.db import transaction
-from django.db.models import Q
-from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -182,6 +180,26 @@ class MonitorObjectService:
             else:
                 conf_info["status"] = "unavailable"
 
+        MonitorObjectService._attach_operating_system(items)
+
+    @staticmethod
+    def _attach_operating_system(items: list) -> None:
+        """Fill linux/windows from the bound Node so Host dashboards can hide Linux-only cards."""
+        node_ids = [item.get("node_id") for item in items if item.get("node_id")]
+        os_map = {}
+        if node_ids:
+            from apps.node_mgmt.models import Node
+
+            os_map = {
+                str(node_id): str(os_value or "").strip().lower()
+                for node_id, os_value in Node.objects.filter(id__in=node_ids).values_list("id", "operating_system")
+                if str(os_value or "").strip().lower() in {"linux", "windows"}
+            }
+        for item in items:
+            if item.get("operating_system") in {"linux", "windows"}:
+                continue
+            item["operating_system"] = os_map.get(str(item.get("node_id") or ""), "")
+
     @staticmethod
     def get_monitor_instance(
         monitor_object_id,
@@ -203,6 +221,10 @@ class MonitorObjectService:
 
         ordering_key, order_dir = parse_ordering_params(ordering, order)
 
+        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
+        if not monitor_obj:
+            raise BaseAppException("Monitor object does not exist")
+
         qs = qs.filter(
             monitor_object_id=monitor_object_id,
             is_deleted=False,
@@ -214,15 +236,9 @@ class MonitorObjectService:
             qs = qs.filter(id__in=list(instance_ids))
         elif instance_id:
             qs = qs.filter(id=instance_id)
-        if name:
-            # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
-            qs = qs.annotate(_asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")).filter(
-                Q(name__icontains=name) | Q(ip__icontains=name) | Q(_asset_ip_fact__icontains=name)
-            )
+        from apps.monitor.services.monitor_instance import InstanceSearch
 
-        monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
-        if not monitor_obj:
-            raise BaseAppException("Monitor object does not exist")
+        qs = InstanceSearch.apply_keyword_search(qs, monitor_obj, name)
         monitor_objs = MonitorObject.objects.all().values(*MonitorObjConstants.OBJ_KEYS)
         obj_metric_map = {i["name"]: i for i in monitor_objs}
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
@@ -230,8 +246,6 @@ class MonitorObjectService:
             raise BaseAppException("Monitor object default metric does not exist")
 
         # Process 主机 / asset.ip / Enum 指标过滤在 list 与 search 共用同一套规则。
-        from apps.monitor.services.monitor_instance import InstanceSearch
-
         qs = InstanceSearch.apply_process_instance_filters(
             qs,
             monitor_obj.name,

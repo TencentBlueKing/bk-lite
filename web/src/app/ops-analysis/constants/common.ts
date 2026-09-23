@@ -19,7 +19,6 @@ export const getChartTypeList = (): ChartTypeItem[] => {
     { label: 'dataSource.cardList', value: 'cardList' },
     { label: 'dataSource.nodeGraph', value: 'nodeGraph' },
     { label: 'dataSource.topologyMap', value: 'topologyMap' },
-    { label: 'dataSource.room3D', value: 'room3D' },
   ];
 };
 

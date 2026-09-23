@@ -1,3 +1,4 @@
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from apps.opspilot.enum import SkillChannelChoices
@@ -22,11 +23,13 @@ def _mask_config(config: dict) -> dict:
 class SkillChannelSerializer(serializers.ModelSerializer):
     callback_path = serializers.SerializerMethodField()
     channel_config = serializers.SerializerMethodField()
+    public_id = serializers.UUIDField(required=False, allow_null=True)
 
     class Meta:
         model = SkillChannel
         fields = [
             "id",
+            "public_id",
             "skill",
             "name",
             "channel_type",
@@ -40,7 +43,8 @@ class SkillChannelSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "usage_team", "created_at", "updated_at", "callback_path"]
 
     def get_callback_path(self, instance: SkillChannel) -> str:
-        return f"/api/v1/opspilot/skill_channel/{instance.id}/{instance.channel_type}/"
+        ref = instance.public_id or instance.id
+        return f"/api/v1/opspilot/skill_channel/{ref}/{instance.channel_type}/"
 
     def get_channel_config(self, instance: SkillChannel):
         return _mask_config(instance.channel_config or {})
@@ -77,7 +81,13 @@ class SkillChannelSerializer(serializers.ModelSerializer):
             raw_config = {}
         validated_data["channel_config"] = raw_config
         validated_data["usage_team"] = copy_usage_team_for_channel(skill)
-        return super().create(validated_data)
+        if not validated_data.get("public_id"):
+            validated_data.pop("public_id", None)
+        try:
+            with transaction.atomic():
+                return super().create(validated_data)
+        except IntegrityError as exc:
+            raise serializers.ValidationError("渠道保存冲突，请重试") from exc
 
     def update(self, instance, validated_data):
         raw_config = self.initial_data.get("channel_config")
@@ -98,4 +108,5 @@ class SkillChannelSerializer(serializers.ModelSerializer):
             validated_data["channel_config"] = merged
         # usage_team 只读：由 Skill 同步权威源维护
         validated_data.pop("usage_team", None)
+        validated_data.pop("public_id", None)
         return super().update(instance, validated_data)

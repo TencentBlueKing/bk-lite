@@ -1,0 +1,80 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_juniper_firewall"
+        config_type = "juniper_firewall"
+        brand = "juniper"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- SPU CPU：jnxJsSPUMonitoringCPUUsage，直接百分比，表列禁止 .0 ----
+    # 表 jnxJsSPUMonitoringObjectsTable 1.3.6.1.4.1.2636.3.39.1.12.1.1
+    # 列 OID 1.3.6.1.4.1.2636.3.39.1.12.1.1.1.4。按 SPU 多行。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.39.1.12.1.1.1.4"
+        name = "usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.39.1.12.1.1.1.11"
+        name = "node_descr"
+        is_tag = true
+    # ---- SPU 内存：jnxJsSPUMonitoringMemoryUsage，直接百分比，表列禁止 .0 ----
+    # 列 OID 1.3.6.1.4.1.2636.3.39.1.12.1.1.1.5。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.39.1.12.1.1.1.5"
+        name = "usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.39.1.12.1.1.1.11"
+        name = "node_descr"
+        is_tag = true
+    # ---- SPU 流会话：当前 / 容量，表列禁止 .0；不展开 NAT/IDP 全表 ----
+    # jnxJsSPUMonitoringCurrentFlowSession ...1.1.1.6 → firewall_active_sessions
+    # jnxJsSPUMonitoringMaxFlowSession ...1.1.1.7 → firewall_max_sessions
+    # 可选 tag jnxJsSPUMonitoringNodeDescr ...1.1.1.11
+    [[inputs.snmp.table]]
+        name = "firewall"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.39.1.12.1.1.1.6"
+        name = "active_sessions"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.39.1.12.1.1.1.7"
+        name = "max_sessions"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2636.3.39.1.12.1.1.1.11"
+        name = "node_descr"
+        is_tag = true

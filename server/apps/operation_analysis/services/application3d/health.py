@@ -15,8 +15,9 @@ def aggregate_application_health(alerts: Iterable[dict[str, Any]]) -> dict[str, 
 
     `alert_type` and `level` are orthogonal: no_data alerts still contribute
     their MonitorAlert.level to severityCounts / highestSeverity.
-    Incomplete mapping/permission paths must not call this — return unavailable instead.
-    Empty systems (no system_contains_application edges) use no_application_health.
+    Actor-scoped empty collections are normal/0. Zero readable monitors on a
+    system that still has visible hosts uses unavailable_health, not this helper.
+    Empty systems (no visible child applications) use no_application_health.
     Child apps with zero legitimate hosts use no_host_health.
     """
     severity_counts = empty_severity_counts()
@@ -87,3 +88,13 @@ def no_application_health() -> dict[str, Any]:
 def no_host_health() -> dict[str, Any]:
     """System has child applications but zero legitimate application_run_host peers."""
     return _unknown_health("no_host")
+
+
+def unmonitored_health() -> dict[str, Any]:
+    """Visible host with empty/missing monitor_id. Host-node reason only."""
+    return _unknown_health("unmonitored")
+
+
+def monitor_unreadable_health() -> dict[str, Any]:
+    """Visible host whose monitor instance the actor cannot read. Host-node reason only."""
+    return _unknown_health("monitor_unreadable")

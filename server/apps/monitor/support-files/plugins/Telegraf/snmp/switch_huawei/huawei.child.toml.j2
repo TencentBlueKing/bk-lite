@@ -24,6 +24,15 @@
         collect_type = "snmp_huawei"
         config_type = "huawei"
         brand = "huawei"
+    # ---- sysObjectID model dictionary (display names). Interfaces use built-in IF-MIB; no IF expansion. ----
+    # Identity only; this template does not collect extra private metrics.
+    # CE/dcswitch family 1.3.6.1.4.1.2011.2.239
+    #   ...239.58  CE16804 · ...239.59  CE16808 · ...239.60  CE16816
+    #   ...239.120 CE16800-X4 · ...239.121 CE16800-X8 · ...239.122 CE16800-X16
+    # S8700 family 1.3.6.1.4.1.2011.2.383
+    #   ...383.3 S8704 · ...383.1 S8706 · ...383.2 S8710
+    # S16700 family 1.3.6.1.4.1.2011.2.409
+    #   ...409.1 S16704 · ...409.2 S16708
     # ---- System ----
     [[inputs.snmp.field]]
         oid = "1.3.6.1.2.1.1.3.0"

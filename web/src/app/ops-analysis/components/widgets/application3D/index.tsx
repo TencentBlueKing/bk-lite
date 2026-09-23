@@ -21,6 +21,7 @@ import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTyp
 import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import type { Application3DSceneController } from './application3DScene';
 import Application3DDetail from './application3DDetail';
+import { bindApplication3DTranslate } from './application3DLayout';
 import {
   paginateApplication3DWallItems,
   resolveApplication3DWallLayoutCount,
@@ -175,7 +176,7 @@ export default function Application3D({
       const controller = createApplication3DScene(mountNode, {
         interactive: !editMode,
         active: runtimeActive,
-        translate: (id, defaultMessage) => translateRef.current(id, defaultMessage),
+        translate: bindApplication3DTranslate(translateRef),
         onSelect: (item) => {
           if (editMode) return;
           if (detailOpenRef.current) return;
@@ -806,7 +807,9 @@ export default function Application3D({
         const badgeModifier = state === 'alarming' ? 'alarming' : state === 'normal' ? 'normal' : 'unknown';
         const isAlarming = state === 'alarming';
         const isNormal = state === 'normal';
-        const alarmCount = formatArchitectureHostAlarmCount(architectureHost.node.health?.activeAlarmCount);
+        const alarmCount = formatArchitectureHostAlarmCount(
+          isAlarming ? architectureHost.node.health?.activeAlarmCount : isNormal ? 0 : null,
+        );
         const severityLabel = formatArchitectureHostSeverity(architectureHost.node.health?.highestSeverity?.label);
         const dismissHostOverlay = (event: { stopPropagation: () => void }) => {
           event.stopPropagation();
@@ -854,7 +857,7 @@ export default function Application3D({
             <div className="app3d-arch-host-chip__body">
               <div className="app3d-arch-host-chip__metric">
                 <div className={`app3d-arch-host-chip__metric-val app3d-arch-host-chip__metric-val--${badgeModifier}`}>
-                  {isAlarming ? alarmCount : isNormal ? '0' : '-'}
+                  {alarmCount}
                 </div>
                 <div className="app3d-arch-host-chip__metric-lbl">
                   {t('dashboard.application3DHostAlarmCount', '条数')}
@@ -892,11 +895,11 @@ export default function Application3D({
                   >
                     {isAlarming
                       ? severityLabel
-                      : formatArchitectureHostState(state, t)}
+                      : formatArchitectureHostState(state, t, architectureHost.node.health?.reason)}
                   </span>
                   {isAlarming && (
                     <span className="sr-only">
-                      {t('dashboard.application3DHostStatus', '状态')}: {formatArchitectureHostState(state, t)}
+                      {t('dashboard.application3DHostStatus', '状态')}: {formatArchitectureHostState(state, t, architectureHost.node.health?.reason)}
                     </span>
                   )}
                   {!isAlarming && (

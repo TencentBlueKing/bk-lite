@@ -15,8 +15,8 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
-      "guide_short": "建议使用只读监控账号并授予 pg_monitor 角色，用于读取 pg_stat_* 视图。",
-      "guide_short_en": "Use a read-only monitoring account with the pg_monitor role to read the required pg_stat_* views.",
+      "guide_short": "建议使用只读监控账号。PostgreSQL 10 及以上授予 pg_read_all_stats，用于读取 pg_stat_database 和 pg_stat_bgwriter。",
+      "guide_short_en": "Use a read-only monitoring account. On PostgreSQL 10 and later, grant pg_read_all_stats to read pg_stat_database and pg_stat_bgwriter.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"

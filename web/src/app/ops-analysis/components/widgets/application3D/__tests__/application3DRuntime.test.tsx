@@ -327,7 +327,28 @@ describe('application3D application detail', () => {
       } as never);
     });
     const unknownMetricVal = document.querySelector('.app3d-arch-host-chip__metric-val');
-    expect(unknownMetricVal?.textContent).toBe('-');
+    expect(unknownMetricVal?.textContent).toBe('--');
+
+    act(() => {
+      mocks.sceneCallbacks?.onArchitectureHostSelect?.({
+        node: {
+          id: 'host-bare',
+          name: 'web-bare',
+          kind: 'host',
+          health: {
+            state: 'unknown',
+            reason: 'unmonitored',
+            activeAlarmCount: null,
+            highestSeverity: null,
+          },
+        },
+        overlay: { left: 48, top: 12 },
+      } as never);
+    });
+    expect(document.querySelector('.app3d-arch-host-chip')?.textContent).toContain(
+      'application3DHostUnmonitored',
+    );
+    expect(document.querySelector('.app3d-arch-host-chip__metric-val')?.textContent).toBe('--');
 
     act(() => {
       mocks.sceneCallbacks?.onArchitectureHostSelect?.(null);

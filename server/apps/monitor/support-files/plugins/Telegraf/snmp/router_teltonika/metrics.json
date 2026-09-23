@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_teltonika",
   "plugin": "Router Teltonika SNMP",
-  "plugin_desc": "Teltonika 工业蜂窝路由器专用 SNMP 采集模板（RutOS 基于 Linux + net-snmp，HOST-RESOURCES / UCD-SNMP-MIB，企业号 48690）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 RutOS 经标准 net-snmp 暴露的设备健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad，每核 0-100%，取整机均值）、物理内存（总量 + 空闲，KB，已用由 总量 − 空闲 推导，用量按 100×（总量−空闲）/总量 推导）。Teltonika RUT 系列蜂窝路由器为无风扇紧凑型工业设计且未以标量形式暴露温度/电源传感器，故温度/风扇/电源为 N/A。适用品牌型号——Teltonika RUT / TRB / RUTX 工业 4G/5G 蜂窝路由器（RutOS，企业号 48690）。",
+  "plugin_desc": "Teltonika industrial cellular router SNMP collection (enterprise PEN 48690). Private increment: whole-device CPU utilization (cpuUsage, 0-100 percent, scalar GET with instance .0) as the headline device_cpu_usage, with HOST-RESOURCES hrProcessorLoad kept as a per-core fallback; UCD-SNMP memory (memTotalReal / memAvailReal, KB, used = total − free); and modem temperature (mTemperature, integer tenths of a degree Celsius, converted to °C at collection). Fan and power-supply health stay N/A on this fanless compact design. Interface traffic comes from the built-in IF-MIB table. Applicable brands/models — Teltonika RUT / TRB / RUTX industrial 4G/5G cellular routers (RutOS, PEN 48690).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_teltonika'}) by (instance_id)",
   "name": "Router",
@@ -15,114 +15,93 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage"
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
     {
-      "metric_group": "Router",
+      "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "avg(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id) or avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilisation of the Teltonika cellular router (HOST-RESOURCES hrProcessorLoad, averaged across cores)."
+      "description": "CPU utilization of the Teltonika cellular router as a 0-100 percentage. The private cpuUsage scalar is the preferred headline; HOST-RESOURCES hrProcessorLoad is kept as a per-core fallback when the enterprise scalar is absent. Sustained high CPU usage can indicate control-plane overload or abnormal traffic."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
-    },
-    {
-      "metric_group": "Router",
+      "metric_group": "Memory",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_total",
-      "display_name": "内存总量",
+      "display_name": "Memory Total",
       "query": "device_memory_total{instance_type='router', __$labels__}*1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total physical memory of the Teltonika cellular router in bytes (UCD memTotalReal, KB*1024)."
+      "description": "Total physical memory of the Teltonika cellular router in bytes (UCD memTotalReal, KB×1024)."
     },
     {
-      "metric_group": "Router",
+      "metric_group": "Memory",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_free",
-      "display_name": "内存空闲",
+      "display_name": "Memory Free",
       "query": "device_memory_free{instance_type='router', __$labels__}*1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Available physical memory of the Teltonika cellular router in bytes (UCD memAvailReal, KB*1024)."
+      "description": "Available physical memory of the Teltonika cellular router in bytes (UCD memAvailReal, KB×1024)."
     },
     {
-      "metric_group": "Router",
+      "metric_group": "Memory",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_used",
-      "display_name": "内存已用",
+      "display_name": "Memory Used",
       "query": "(device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__})*1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Used physical memory of the Teltonika cellular router in bytes (memTotalReal - memAvailReal, KB*1024)."
+      "description": "Used physical memory of the Teltonika cellular router in bytes (memTotalReal − memAvailReal, KB×1024)."
     },
     {
-      "metric_group": "Router",
+      "metric_group": "Memory",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_usage",
-      "display_name": "内存使用率",
+      "display_name": "Memory Utilization",
       "query": "100 * (device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__}) / device_memory_total{instance_type='router', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the Teltonika cellular router, derived as 100*(total-free)/total."
+      "description": "Memory utilization of the Teltonika cellular router, derived as 100×(total−free)/total."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "mIndex",
+          "description": "Modem index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Modem temperature of the Teltonika cellular router in degrees Celsius. mTemperature reports tenths of a degree and is divided by 10 at collection so stored values, dashboards and alerts are already in °C. High values can indicate enclosure heat buildup or modem thermal stress."
     },
     {
       "metric_group": "Base",

@@ -123,7 +123,10 @@ def test_cmdb_search_instances_maps_to_list_instances():
             {"model_id": "host", "query_list": [{"field": "ip_addr", "type": "str=", "value": "1.1.1.1"}]},
             config=cfg(),
         )
-    assert out == {"success": True, "data": {"count": 1, "items": [{"inst_uuid": "u1"}]}}
+    assert out["success"] is True
+    assert out["data"] == {"count": 1, "items": [{"inst_uuid": "u1"}]}
+    assert "monitor_id" in out["_next_step_hint"]
+    assert "instance_ids" in out["_next_step_hint"]
     params = rpc_cls.return_value.list_instances_for_llm.call_args.kwargs["params"]
     assert params["protocol_version"] == "2"
     assert params["model_id"] == "host"
@@ -136,6 +139,36 @@ def test_cmdb_search_instances_requires_model_id():
     out = inst.cmdb_search_instances.invoke({"model_id": ""}, config=cfg())
     assert out["success"] is False
     assert "model_id is required" in out["error"]
+
+
+def test_cmdb_search_instances_rejects_host_when_declared_model():
+    """用户点名中间件时，runtime 已注入 declared_cmdb_model，禁止再默认 host。"""
+    with patch("apps.opspilot.metis.llm.tools.cmdb.utils.CMDB") as rpc_cls:
+        out = inst.cmdb_search_instances.invoke(
+            {"model_id": "host", "query_list": [{"field": "ip_addr", "type": "str=", "value": "10.10.41.149"}]},
+            config={"configurable": {**cfg()["configurable"], "declared_cmdb_model": "nginx"}},
+        )
+    assert out["success"] is False
+    assert "nginx" in out["error"]
+    assert "禁止默认 host" in out["error"]
+    rpc_cls.return_value.list_instances_for_llm.assert_not_called()
+
+
+def test_cmdb_search_instances_adds_next_step_hint_with_declared_model():
+    with patch("apps.opspilot.metis.llm.tools.cmdb.utils.CMDB") as rpc_cls:
+        rpc_cls.return_value.list_instances_for_llm.return_value = {
+            "count": 1,
+            "items": [{"inst_uuid": "u1", "monitor_id": "1_10.10.41.149_80"}],
+        }
+        out = inst.cmdb_search_instances.invoke(
+            {"model_id": "nginx"},
+            config={"configurable": {**cfg()["configurable"], "declared_cmdb_model": "nginx"}},
+        )
+    assert out["success"] is True
+    hint = out["_next_step_hint"]
+    assert "nginx" in hint
+    assert "monitor_id" in hint
+    assert "instance_ids" in hint
 
 
 def test_cmdb_get_monitor_ids_requires_inst_uuids():

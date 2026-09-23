@@ -1,8 +1,6 @@
 /* Launcher is a transparent logo; do not paint the old 40px primary disc. */
 
-html {
-  --bk-webchat-dock-width: 0px;
-}
+/* 强制 Turbopack HMR 识别更新: 2026-09-22-v3 */
 
 #webchat-root button[aria-label='打开对话'] {
   width: auto !important;
@@ -40,3 +38,33 @@ html {
   height: 72px;
   background: transparent;
 }
+
+/* ==========================================================================
+   方案 A：AI 与抽屉双栏并排 (协同工作) & Modal 模态层级治理
+   ========================================================================== */
+
+/* 1. WebChat 作为全局 AI 助手，保持原生 z-[1200] 层级高于 Modal/Drawer 遮罩 (1000)。
+   确保在任何弹窗或抽屉打开的状态下唤起 WebChat 时，对话内容清晰可见、操作不受遮罩拦截。 */
+
+/* 2. 右侧滑出抽屉（Drawer）自适应避让 WebChat Dock：
+   - 将抽屉定位盒的右边缘锚定在 WebChat 左边界（right: var(--bk-webchat-dock-width, 0px)）；
+   - 不加生命周期类名门控，抽屉在打开、展开中、关闭离场的整个生命周期始终保持相同参考系，杜绝位置跳变；
+   - 配合 overflow: hidden，抽屉在滑入/滑出时以 WebChat 左边缘为界自然进出裁切，绝不横穿 WebChat 露到屏幕最右侧；
+   - 不强行覆盖 transition，保留 Ant Design 原生 enter-start / enter-active 补间逻辑，消除左右偏移与抖动；
+   - 面板设置 max-width: 100%，自适应左侧可用视口宽度；
+   - WebChat 关闭时（0px），与 Ant Design 原生 inset: 0 表现完全一致且无 100vw 过约束。 */
+.ant-drawer.ant-drawer-right {
+  right: var(--bk-webchat-dock-width, 0px) !important;
+  overflow: hidden !important;
+}
+
+.ant-drawer.ant-drawer-right .ant-drawer-content-wrapper {
+  max-width: 100% !important;
+}
+
+/* 3. 当 WebChat Dock 处于展开状态时，Modal 居中视口避让右侧侧栏，使弹窗居中在左侧主工作区 */
+html[style*="--bk-webchat-dock-width:"]:not([style*="--bk-webchat-dock-width: 0px"]) .ant-modal-wrap {
+  right: var(--bk-webchat-dock-width) !important;
+  width: calc(100vw - var(--bk-webchat-dock-width)) !important;
+}
+

@@ -8,7 +8,7 @@ import types
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import NetworkWhiteList
+from apps.system_mgmt.models import NetworkWhiteList, OperationLog
 from apps.system_mgmt.viewset.network_white_list_viewset import NetworkWhiteListViewSet
 
 factory = APIRequestFactory()
@@ -42,6 +42,8 @@ def test_create_normalizes_and_invalidates_cache(mocker):
     assert response.data["network"] == "10.11.73.15/32"
     assert response.data["created_by"] == "nwl-admin"
     inval.assert_called_once()
+    log = OperationLog.objects.get(app="system-manager", action_type="create")
+    assert log.summary == "新增网络白名单: 10.11.73.15/32"
 
 
 @pytest.mark.django_db
@@ -110,6 +112,8 @@ def test_partial_update_invalidates_cache(mocker):
 
     assert response.status_code == 200
     inval.assert_called_once()
+    log = OperationLog.objects.get(app="system-manager", action_type="update")
+    assert log.summary == "编辑网络白名单: 10.11.73.0/24"
 
 
 @pytest.mark.django_db
@@ -125,3 +129,5 @@ def test_destroy_invalidates_cache_and_deletes(mocker):
     assert response.status_code == 204
     inval.assert_called_once()
     assert not NetworkWhiteList.objects.filter(id=obj.id).exists()
+    log = OperationLog.objects.get(app="system-manager", action_type="delete")
+    assert log.summary == "删除网络白名单: 10.11.73.0/24"

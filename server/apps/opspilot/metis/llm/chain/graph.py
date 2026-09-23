@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -27,7 +28,24 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY, BasicLLMRequest, BasicLLMResponse
+from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
+from apps.opspilot.metis.llm.chain.entity import (
+    HIDDEN_STEP_TEXT_EVENT_NAME,
+    HIDE_PLANNED_STEP_TEXT_KEY,
+    STREAM_KEEPALIVE_EVENT_NAME,
+    BasicLLMRequest,
+    BasicLLMResponse,
+)
+from apps.opspilot.metis.llm.chain.nested_stream import (
+    NODE_FINISHED_EVENT,
+    OWNED_EVENT_QUEUE_KEY,
+    PLANNED_TOOL_STEPS_KEY,
+    activate_planned_tool_steps,
+    bind_owned_event_queue,
+    current_planned_step_index,
+    lookup_planned_tool_step,
+    reset_planned_tool_steps,
+)
 from apps.opspilot.metis.llm.chain.report_renderers import find_unclosed_phantom_tool_call_start, strip_phantom_tool_calls
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
     classify_llm_error,
@@ -36,7 +54,7 @@ from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
     summarize_llm_endpoint,
 )
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+from apps.opspilot.utils.execution_interrupt import InterruptWatch, is_interrupt_requested_async
 
 # deepagents 引擎内置工具（规划/虚拟文件系统/子代理）。这些是 agent 的内部
 # 机制，默认不在 AG-UI/A2UI 流中展示，避免污染前端的工具调用视图。
@@ -61,21 +79,27 @@ def _hide_planned_step_text(request: BasicLLMRequest) -> bool:
     return bool(extra.get(HIDE_PLANNED_STEP_TEXT_KEY))
 
 
-# 纯文本轮开播条件（仅 show_think=True 时启用；与模型无关，不按厂商硬编码）：
+# 纯文本轮开播条件（与 show_think、模型名无关）：
 # 1) 连续多个正文 stream chunk 且未见 tool_call，或
 # 2) 缓冲正文已明显长于典型「先旁白再调工具」短句（兼容 Minimax 等单大片输出）。
-# 短旁白（通常 < 该阈值）继续缓冲，等 tool_call 到达后丢弃。
-# show_think=False 时禁止开播：DeepSeek V4 等会在 tool_call 前输出大段分析旁白，
-# 超过字符阈值就会泄漏到正文；改为整轮缓冲，有工具则丢弃，无工具再于 end 发出。
+# 短旁白继续缓冲，等 tool_call 到达后丢弃。
+# 已开播后才出现 tool_call：发 assistant_text_retract，由前端撤掉这段旁白。
 _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS = 2
 _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS = 96
 # 单次推送过长时拆成多条 TEXT_MESSAGE_CONTENT，避免「一整段一个 delta」。
 _AGUI_LIVE_DELTA_CHARS = 64
 # 低于 Next/undici body 空闲超时（约 300s），避免 RUN_STARTED 后长时间无 chunk 被掐流。
 SSE_KEEPALIVE_INTERVAL_SECONDS = 15.0
-STREAM_KEEPALIVE_EVENT_NAME = "stream_keepalive"
+# 节点已返回后，最多再等这么久收尾随事件，然后主动关掉图流。
+AGUI_STREAM_TAIL_SECONDS = 3.0
+AGUI_RUN_DEADLINE_CODE = "AGUI_RUN_DEADLINE"
+_AGUI_LINGERING_TASK_LIMIT = 8
 # 与浏览器步骤队列使用相同的单请求容量边界，满载时由 await put 反压生产者。
 SSE_OUTPUT_QUEUE_MAXSIZE = 100
+# SSE 主循环中断检查间隔；测试可 monkeypatch 此常量。
+INTERRUPT_WATCH_INTERVAL_SECONDS = float(os.getenv("INTERRUPT_WATCH_INTERVAL_SECONDS", "1.0"))
+# 自有队列事件入队到出队超过该毫秒则打 DEBUG，不含 payload。
+OWNED_EVENT_LATENCY_DEBUG_MS = 500.0
 
 
 def _split_text_deltas(text: str, max_chars: int = _AGUI_LIVE_DELTA_CHARS) -> list[str]:
@@ -100,6 +124,18 @@ def encode_stream_keepalive(encoder: EventEncoder, phase: str) -> str:
     )
 
 
+def encode_hidden_step_text(encoder: EventEncoder, delta: str) -> str:
+    """步内被丢掉的模型正文改走 CUSTOM，刷新长连接，不进 TEXT_MESSAGE_*。"""
+    return encoder.encode(
+        CustomEvent(
+            type=EventType.CUSTOM,
+            name=HIDDEN_STEP_TEXT_EVENT_NAME,
+            value={"delta": delta},
+            timestamp=int(time.time() * 1000),
+        )
+    )
+
+
 def iter_stream_keepalive_frames(encoder: EventEncoder, phase: str):
     """注释帧刷新中间代理；CUSTOM 帧给前端/DevTools。"""
     yield ": keepalive\n\n"
@@ -113,6 +149,44 @@ async def iter_sse_keepalive_until(task: asyncio.Task, encoder: EventEncoder, ph
         if not done:
             for frame in iter_stream_keepalive_frames(encoder, phase):
                 yield frame
+
+
+async def iter_sse_frames_with_idle_keepalive(
+    frames: AsyncGenerator[str, None],
+    encoder: EventEncoder,
+    phase: str = "waiting_model",
+) -> AsyncGenerator[str, None]:
+    """源生成器长时间不产出 SSE 帧时仍写保活。
+
+    分步执行会吞掉步内模型 token；此时上游事件仍在流动，_merge_async_streams
+    不会发 keepalive，但 HTTP 连接已无字节。Next/undici 约 300s 空闲会
+    UND_ERR_BODY_TIMEOUT（表现为工具完成后卡住，最后 network error）。
+    """
+    iterator = frames.__aiter__()
+    pending = asyncio.ensure_future(iterator.__anext__())
+    try:
+        while True:
+            done, _pending = await asyncio.wait({pending}, timeout=SSE_KEEPALIVE_INTERVAL_SECONDS)
+            if not done:
+                for frame in iter_stream_keepalive_frames(encoder, phase):
+                    yield frame
+                continue
+            try:
+                frame = pending.result()
+            except StopAsyncIteration:
+                break
+            yield frame
+            pending = asyncio.ensure_future(iterator.__anext__())
+    finally:
+        if not pending.done():
+            pending.cancel()
+            try:
+                await pending
+            except (asyncio.CancelledError, StopAsyncIteration):
+                pass
+        closer = getattr(frames, "aclose", None)
+        if closer is not None:
+            await closer()
 
 
 def _record_emitted_text_signatures(encoded_events: list[str], signatures: set[str]) -> str:
@@ -201,10 +275,46 @@ def _mask_sensitive_data(data: Any) -> Any:
         return data
 
 
-async def _merge_async_streams(
+def agui_run_deadline_seconds() -> float:
+    """整轮 SSE 硬上限。显式 AGUI_RUN_DEADLINE_SECONDS 优先，否则取两倍 LLM 超时。"""
+    explicit = os.getenv("AGUI_RUN_DEADLINE_SECONDS")
+    if explicit:
+        try:
+            return max(float(explicit), 30.0)
+        except (TypeError, ValueError):
+            pass
+    raw = os.getenv("LLM_INVOKE_TIMEOUT", "300")
+    try:
+        base = float(raw)
+    except (TypeError, ValueError):
+        base = 300.0
+    return max(base * 2, 180.0)
+
+
+def log_lingering_agui_tasks(thread_id: str, *, reason: str) -> None:
+    """收尾被强制打断时记下仍未结束的协程名和栈帧，不记录 payload。"""
+    current = asyncio.current_task()
+    lingering = [task for task in asyncio.all_tasks() if task is not current and not task.done()]
+    summaries: list[str] = []
+    for task in lingering[:_AGUI_LINGERING_TASK_LIMIT]:
+        coro = task.get_coro()
+        name = getattr(coro, "__qualname__", "") or getattr(coro, "__name__", "") or type(coro).__name__
+        frames = [frame.f_code.co_name for frame in task.get_stack(limit=4)]
+        summaries.append(f"{name}:{','.join(frames)}")
+    logger.warning(
+        "event=agui_stream_forced_close thread_id=%s reason=%s lingering_task_count=%s lingering=%s",
+        thread_id,
+        reason,
+        len(lingering),
+        "; ".join(summaries) or "-",
+    )
+
+
+async def _merge_async_streams(  # noqa: C901
     langgraph_stream,
     event_queue: asyncio.Queue,
     stop_event: asyncio.Event,
+    owned_queue: asyncio.Queue | None = None,
 ) -> AsyncGenerator[Any, None]:
     """
     合并 LangGraph 消息流和浏览器事件队列，实现真正的实时流式输出
@@ -253,13 +363,42 @@ async def _merge_async_streams(
                 logger.exception(f"Browser event consumer error: {e}")
                 break
 
-    # 启动两个并发消费者
     langgraph_task = asyncio.create_task(langgraph_consumer())
     browser_task = asyncio.create_task(browser_event_consumer())
+    owned_task: asyncio.Task | None = None
+    if owned_queue is not None:
+
+        async def owned_event_consumer():
+            while not stop_event.is_set():
+                try:
+                    event = await asyncio.wait_for(owned_queue.get(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    continue
+                except Exception:
+                    logger.exception("owned event consumer error")
+                    break
+                if isinstance(event, dict):
+                    enqueued_at = event.pop("_enqueued_at", None)
+                    if isinstance(enqueued_at, (int, float)):
+                        lag_ms = (time.monotonic() - float(enqueued_at)) * 1000
+                        if lag_ms >= OWNED_EVENT_LATENCY_DEBUG_MS:
+                            logger.debug(
+                                "event=owned_queue_lag lag_ms=%.0f name=%s event_type=%s",
+                                lag_ms,
+                                event.get("name") or "-",
+                                event.get("event") or "-",
+                            )
+                    if event.get("event") == NODE_FINISHED_EVENT:
+                        await output_queue.put(("node_finished", None))
+                        continue
+                await output_queue.put(("owned", event))
+
+        owned_task = asyncio.create_task(owned_event_consumer())
 
     langgraph_done = False
     langgraph_error: Optional[BaseException] = None
     idle_seconds = 0.0
+    tick_seconds = 0.0
     queue_wait_seconds = 0.1
 
     try:
@@ -280,6 +419,10 @@ async def _merge_async_streams(
                     continue
                 elif event_type == "langgraph":
                     yield ("langgraph", data)
+                elif event_type == "owned":
+                    yield ("owned", data)
+                elif event_type == "node_finished":
+                    yield ("node_finished", None)
                 elif event_type == "browser":
                     yield ("browser", data)
 
@@ -288,6 +431,10 @@ async def _merge_async_streams(
                 if langgraph_done and output_queue.empty():
                     break
                 idle_seconds += queue_wait_seconds
+                tick_seconds += queue_wait_seconds
+                if owned_queue is not None and tick_seconds >= 0.5:
+                    tick_seconds = 0.0
+                    yield ("tick", None)
                 if idle_seconds >= SSE_KEEPALIVE_INTERVAL_SECONDS:
                     idle_seconds = 0.0
                     yield ("keepalive", "waiting_model")
@@ -299,7 +446,9 @@ async def _merge_async_streams(
     finally:
         # 父流结束后统一收口所有子任务，避免断连时继续等待 LangGraph 自然结束。
         stop_event.set()
-        child_tasks = (langgraph_task, browser_task)
+        child_tasks = [langgraph_task, browser_task]
+        if owned_task is not None:
+            child_tasks.append(owned_task)
         cancelled_by_cleanup = set()
         for child_task in child_tasks:
             if not child_task.done():
@@ -800,15 +949,16 @@ class BasicGraph(ABC):
             tool_call_id = tool_chunk.get("id")
             if tool_call_id and tool_call_id not in current_tool_calls:
                 tool_name = tool_chunk.get("name", "unknown")
-                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True}
+                step_index = self._planned_step_index_from_event(None, tool_call_id)
+                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True, "step_index": step_index}
                 events.append(
                     encoder.encode(
-                        ToolCallStartEvent(
-                            type=EventType.TOOL_CALL_START,
+                        self._tool_call_start_event(
                             tool_call_id=tool_call_id,
                             tool_call_name=tool_name,
                             parent_message_id=current_message_id,
-                            timestamp=int(time.time() * 1000),
+                            step_index=step_index,
+                            source="chunk",
                         )
                     )
                 )
@@ -832,34 +982,50 @@ class BasicGraph(ABC):
         tool_input = event_data.get("input", {})
         run_id_from_event = event.get("run_id", "")
         normalized_tool_input = self._normalize_tool_match_payload(tool_input)
+        step_index = self._planned_step_index_from_event(event, "")
+
+        def _same_step(tinfo: Dict) -> bool:
+            # 有步骤号时只认领同一步的待执行卡，避免跨步吞掉 START。
+            if step_index is None:
+                return True
+            pending_step = tinfo.get("step_index")
+            return pending_step is None or pending_step == step_index
 
         # 查找已存在的相同工具名的未结束调用
         existing_tool_call_id = None
         for tid, tinfo in current_tool_calls.items():
-            if tinfo.get("name") == tool_name and not tinfo.get("ended") and not tinfo.get("tool_started"):
+            if tinfo.get("name") == tool_name and not tinfo.get("ended") and not tinfo.get("tool_started") and _same_step(tinfo):
                 existing_tool_call_id = tid
                 tinfo["tool_started"] = True
                 tinfo["run_id"] = run_id_from_event
+                if step_index is not None:
+                    tinfo["step_index"] = step_index
                 break
 
         # LangGraph 实际工具事件名可能是 RunnableCallable 等包装名，而模型 tool_call 名仍是 execute。
         # 此时按参数匹配，把实际执行结果绑定回模型声明的工具调用，避免前端看到“未收到结果事件”。
         if not existing_tool_call_id and normalized_tool_input:
             for tid, tinfo in current_tool_calls.items():
-                if tinfo.get("ended") or tinfo.get("tool_started"):
+                if tinfo.get("ended") or tinfo.get("tool_started") or not _same_step(tinfo):
                     continue
                 if self._normalize_tool_match_payload(tinfo.get("args")) == normalized_tool_input:
                     existing_tool_call_id = tid
                     tinfo["tool_started"] = True
                     tinfo["run_id"] = run_id_from_event
+                    if step_index is not None:
+                        tinfo["step_index"] = step_index
                     break
 
         if not existing_tool_call_id:
-            pending_tool_call_ids = [tid for tid, tinfo in current_tool_calls.items() if not tinfo.get("ended") and not tinfo.get("tool_started")]
+            pending_tool_call_ids = [
+                tid for tid, tinfo in current_tool_calls.items() if not tinfo.get("ended") and not tinfo.get("tool_started") and _same_step(tinfo)
+            ]
             if len(pending_tool_call_ids) == 1:
                 existing_tool_call_id = pending_tool_call_ids[0]
                 current_tool_calls[existing_tool_call_id]["tool_started"] = True
                 current_tool_calls[existing_tool_call_id]["run_id"] = run_id_from_event
+                if step_index is not None:
+                    current_tool_calls[existing_tool_call_id]["step_index"] = step_index
 
         if existing_tool_call_id:
             if tool_input:
@@ -882,15 +1048,17 @@ class BasicGraph(ABC):
                 "started": True,
                 "tool_started": True,
                 "run_id": run_id_from_event,
+                "from_runtime": True,
+                "step_index": step_index,
             }
             events.append(
                 encoder.encode(
-                    ToolCallStartEvent(
-                        type=EventType.TOOL_CALL_START,
+                    self._tool_call_start_event(
                         tool_call_id=tool_call_id,
                         tool_call_name=tool_name,
                         parent_message_id=current_message_id,
-                        timestamp=int(time.time() * 1000),
+                        step_index=step_index,
+                        source="runtime",
                     )
                 )
             )
@@ -908,6 +1076,72 @@ class BasicGraph(ABC):
                     )
                 )
         return events
+
+    @staticmethod
+    def _planned_step_index_from_event(
+        event: Dict[str, Any] | None,
+        tool_call_id: str = "",
+        *,
+        allow_holder: bool = True,
+    ) -> int | None:
+        metadata = (event or {}).get("metadata") or {}
+        stamped = metadata.get("opspilot_step_index")
+        if isinstance(stamped, int) and not isinstance(stamped, bool) and stamped >= 1:
+            return stamped
+        looked_up = lookup_planned_tool_step(tool_call_id)
+        if looked_up is not None:
+            return looked_up
+        if allow_holder:
+            return current_planned_step_index()
+        return None
+
+    def _tool_call_start_event(
+        self,
+        *,
+        tool_call_id: str,
+        tool_call_name: str,
+        parent_message_id: Optional[str],
+        step_index: int | None,
+        source: str = "unknown",
+    ) -> ToolCallStartEvent:
+        logger.debug(
+            "event=agui_tool_call_start source=%s tool_name=%s step_index=%s",
+            source,
+            tool_call_name,
+            step_index if step_index is not None else "-",
+        )
+        raw_event = {"step_index": step_index} if isinstance(step_index, int) and step_index >= 1 else None
+        return ToolCallStartEvent(
+            type=EventType.TOOL_CALL_START,
+            tool_call_id=tool_call_id,
+            tool_call_name=tool_call_name,
+            parent_message_id=parent_message_id,
+            timestamp=int(time.time() * 1000),
+            raw_event=raw_event,
+        )
+
+    def _claim_runtime_tool_call(
+        self,
+        current_tool_calls: Dict[str, Dict],
+        tool_name: str,
+        model_tool_call_id: str,
+        step_index: int | None = None,
+    ) -> str | None:
+        """chain_end 的模型 id 对上已发出的运行时卡片，避免同一调用再开一张。"""
+        matches = [
+            (runtime_id, info)
+            for runtime_id, info in current_tool_calls.items()
+            if info.get("from_runtime") and not info.get("model_bound") and info.get("name") == tool_name
+        ]
+        if step_index is not None:
+            matches = [(runtime_id, info) for runtime_id, info in matches if info.get("step_index") == step_index]
+        if not matches:
+            return None
+        runtime_id, info = matches[0]
+        info["model_bound"] = True
+        info["display_id"] = runtime_id
+        current_tool_calls[model_tool_call_id] = info
+        return runtime_id
 
     @staticmethod
     def _normalize_tool_match_payload(value: Any) -> str:
@@ -1031,19 +1265,26 @@ class BasicGraph(ABC):
         if _is_hidden_builtin_tool(tool_name):
             return []
 
+        step_index = self._planned_step_index_from_event(None, tool_call_id, allow_holder=False)
+        if self._claim_runtime_tool_call(current_tool_calls, tool_name, tool_call_id, step_index):
+            return []
+        # 无步骤号时仍按同名认领运行时卡，避免 chain_end 再开一张重复卡
+        if step_index is None and self._claim_runtime_tool_call(current_tool_calls, tool_name, tool_call_id, None):
+            return []
         current_tool_calls[tool_call_id] = {
             "name": tool_name,
             "started": True,
             "tool_started": True,
+            "step_index": step_index,
         }
         events = [
             encoder.encode(
-                ToolCallStartEvent(
-                    type=EventType.TOOL_CALL_START,
+                self._tool_call_start_event(
                     tool_call_id=tool_call_id,
                     tool_call_name=tool_name,
                     parent_message_id=None,
-                    timestamp=int(time.time() * 1000),
+                    step_index=step_index,
+                    source="chain_end",
                 )
             )
         ]
@@ -1109,12 +1350,13 @@ class BasicGraph(ABC):
             if tool_info.get("result_sent"):
                 continue
 
+            display_id = str(tool_info.get("display_id") or tool_call_id)
             if not tool_info.get("ended"):
                 events.append(
                     encoder.encode(
                         ToolCallEndEvent(
                             type=EventType.TOOL_CALL_END,
-                            tool_call_id=tool_call_id,
+                            tool_call_id=display_id,
                             timestamp=int(time.time() * 1000),
                         )
                     )
@@ -1126,7 +1368,7 @@ class BasicGraph(ABC):
                     ToolCallResultEvent(
                         type=EventType.TOOL_CALL_RESULT,
                         message_id=f"result_{uuid.uuid4()}",
-                        tool_call_id=tool_call_id,
+                        tool_call_id=display_id,
                         content=str(getattr(message, "content", "") or ""),
                         role="tool",
                         timestamp=int(time.time() * 1000),
@@ -1307,15 +1549,22 @@ class BasicGraph(ABC):
                 continue
 
             if tool_call_id not in current_tool_calls:
-                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True, "args": tool_args}
+                step_index = self._planned_step_index_from_event(None, tool_call_id, allow_holder=False)
+                if self._claim_runtime_tool_call(current_tool_calls, tool_name, tool_call_id, step_index):
+                    current_tool_calls[tool_call_id]["args"] = tool_args
+                    continue
+                if step_index is None and self._claim_runtime_tool_call(current_tool_calls, tool_name, tool_call_id, None):
+                    current_tool_calls[tool_call_id]["args"] = tool_args
+                    continue
+                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True, "args": tool_args, "step_index": step_index}
                 events.append(
                     encoder.encode(
-                        ToolCallStartEvent(
-                            type=EventType.TOOL_CALL_START,
+                        self._tool_call_start_event(
                             tool_call_id=tool_call_id,
                             tool_call_name=tool_name,
                             parent_message_id=current_message_id,
-                            timestamp=int(time.time() * 1000),
+                            step_index=step_index,
+                            source="model_end",
                         )
                     )
                 )
@@ -1335,7 +1584,20 @@ class BasicGraph(ABC):
                 current_tool_calls[tool_call_id]["args"] = tool_args
         return events
 
-    async def agui_stream(  # noqa: C901
+    async def agui_stream(
+        self,
+        request: BasicLLMRequest,
+        token_usage_accumulator: Optional[TokenUsageAccumulator] = None,
+    ) -> AsyncGenerator[str, None]:
+        """使用 agui 协议以 SSE 格式流式输出事件。"""
+        encoder = EventEncoder()
+        async for frame in iter_sse_frames_with_idle_keepalive(
+            self._agui_stream_events(request, token_usage_accumulator),
+            encoder,
+        ):
+            yield frame
+
+    async def _agui_stream_events(  # noqa: C901
         self,
         request: BasicLLMRequest,
         token_usage_accumulator: Optional[TokenUsageAccumulator] = None,
@@ -1393,10 +1655,21 @@ class BasicGraph(ABC):
             token_usage_accumulator = None
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
+        owned_queue: asyncio.Queue = asyncio.Queue()
+        previous_owned_queue = bind_owned_event_queue(owned_queue)
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
         browser_custom_event_callback = create_browser_custom_event_callback(browser_event_queue, encoder)
         stop_event = asyncio.Event()
+        run_started = monotonic_ms()
 
+        planned_tool_steps: Dict[str, int] = {}
+        planned_tool_steps_token = activate_planned_tool_steps(planned_tool_steps)
+        interrupt_watch = InterruptWatch(
+            execution_id,
+            interval_seconds=INTERRUPT_WATCH_INTERVAL_SECONDS,
+            checker=is_interrupt_requested_async,
+        )
+        await interrupt_watch.start()
         try:
             # 发送 RUN_STARTED 事件
             yield encoder.encode(
@@ -1410,10 +1683,14 @@ class BasicGraph(ABC):
             for frame in iter_stream_keepalive_frames(encoder, "started"):
                 yield frame
 
-            compile_task = asyncio.ensure_future(self.compile_graph(request))
-            async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
-                yield keepalive
-            graph = compile_task.result()
+            compile_started = monotonic_ms()
+            try:
+                compile_task = asyncio.ensure_future(self.compile_graph(request))
+                async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
+                    yield keepalive
+                graph = compile_task.result()
+            finally:
+                log_stage_timing("compile_graph", elapsed_ms(compile_started), thread_id=thread_id)
             if graph is None:
                 raise RuntimeError("Failed to compile graph: graph is None")
 
@@ -1427,6 +1704,8 @@ class BasicGraph(ABC):
                     "browser_step_callback": browser_step_callback,
                     "browser_custom_event_callback": browser_custom_event_callback,
                     "token_usage_accumulator": token_usage_accumulator,
+                    OWNED_EVENT_QUEUE_KEY: owned_queue,
+                    PLANNED_TOOL_STEPS_KEY: planned_tool_steps,
                 },
             }
 
@@ -1436,12 +1715,63 @@ class BasicGraph(ABC):
                 version="v2",
             )
 
-            async for stream_type, stream_data in _merge_async_streams(langgraph_stream, browser_event_queue, stop_event):
+            node_finished_at: float | None = None
+            deadline_ms = agui_run_deadline_seconds() * 1000
+            async for stream_type, stream_data in _merge_async_streams(
+                langgraph_stream,
+                browser_event_queue,
+                stop_event,
+                owned_queue,
+            ):
+                if elapsed_ms(run_started) >= deadline_ms:
+                    log_lingering_agui_tasks(thread_id, reason="deadline")
+                    yield encoder.encode(
+                        RunErrorEvent(
+                            type=EventType.RUN_ERROR,
+                            message="本次对话超过时间上限，已停止。请重试。",
+                            code=AGUI_RUN_DEADLINE_CODE,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                    return
+                if stream_type == "node_finished":
+                    node_finished_at = monotonic_ms()
+                    continue
+                if stream_type == "tick":
+                    if interrupt_watch.is_interrupted():
+                        yield encoder.encode(
+                            RunErrorEvent(
+                                type=EventType.RUN_ERROR,
+                                message="执行已中断",
+                                code="INTERRUPTED",
+                                timestamp=int(time.time() * 1000),
+                            )
+                        )
+                        return
+                    if node_finished_at is not None and elapsed_ms(node_finished_at) >= AGUI_STREAM_TAIL_SECONDS * 1000:
+                        log_lingering_agui_tasks(thread_id, reason="tail")
+                        break
+                    continue
+                if node_finished_at is not None and elapsed_ms(node_finished_at) >= AGUI_STREAM_TAIL_SECONDS * 1000:
+                    log_lingering_agui_tasks(thread_id, reason="tail")
+                    break
+                if stream_type == "owned":
+                    stream_type = "langgraph"
                 if stream_type == "keepalive":
+                    if interrupt_watch.is_interrupted():
+                        yield encoder.encode(
+                            RunErrorEvent(
+                                type=EventType.RUN_ERROR,
+                                message="执行已中断",
+                                code="INTERRUPTED",
+                                timestamp=int(time.time() * 1000),
+                            )
+                        )
+                        return
                     for frame in iter_stream_keepalive_frames(encoder, str(stream_data or "waiting_model")):
                         yield frame
                     continue
-                if execution_id and await is_interrupt_requested_async(execution_id):
+                if interrupt_watch.is_interrupted():
                     yield encoder.encode(
                         RunErrorEvent(
                             type=EventType.RUN_ERROR,
@@ -1516,15 +1846,15 @@ class BasicGraph(ABC):
                     elif text_piece:
                         pending_turn_text += text_piece
                         turn_plain_text_chunks += 1
-                        # show_think=False：禁止提前开播，等 chat_model_end 再裁定（防长旁白泄漏）。
-                        should_go_live = (
-                            (not _hide_planned_step_text(request))
-                            and show_think
-                            and (
-                                turn_text_live
-                                or turn_plain_text_chunks >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS
-                                or len(pending_turn_text) >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS
-                            )
+                        hide_step_text = _hide_planned_step_text(request)
+                        if hide_step_text:
+                            # 不进气泡，但必须有 data 帧，否则工具结束后模型仍在吐字时 HTTP 空闲断连。
+                            yield encode_hidden_step_text(encoder, text_piece)
+                        # 短旁白继续缓冲；连续 chunk 或足够长再开播。之后若出现 tool_call 则撤回。
+                        should_go_live = (not hide_step_text) and (
+                            turn_text_live
+                            or turn_plain_text_chunks >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS
+                            or len(pending_turn_text) >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS
                         )
                         if should_go_live and pending_turn_text:
                             live_events, current_message_id, message_started = self._emit_live_text_delta(
@@ -1566,13 +1896,16 @@ class BasicGraph(ABC):
                                 event.get("run_id"),
                             )
                     leftover_strip = text_strip_buffers.pop(pending_turn_strip_key, "")
-                    if leftover_strip:
-                        pending_turn_text += strip_phantom_tool_calls(leftover_strip)
+                    leftover_text = strip_phantom_tool_calls(leftover_strip) if leftover_strip else ""
+                    if leftover_text:
+                        pending_turn_text += leftover_text
 
                     output = event_data.get("output")
                     end_tool_calls = getattr(output, "tool_calls", None) or []
                     turn_has_tools = bool(end_tool_calls) or turn_saw_tool_call_chunks
                     hide_step_text = _hide_planned_step_text(request)
+                    if hide_step_text and leftover_text and not turn_has_tools:
+                        yield encode_hidden_step_text(encoder, leftover_text)
                     # 有工具：丢弃本轮旁白缓冲，只补工具事件。
                     # 已实时推送：冲掉剩余缓冲并结束消息，禁止再整段重发。
                     # 未实时推送的短纯文本：chat_model_end 一次性发出。
@@ -1810,7 +2143,11 @@ class BasicGraph(ABC):
                 )
             )
         finally:
+            await interrupt_watch.aclose()
+            bind_owned_event_queue(previous_owned_queue)
+            reset_planned_tool_steps(planned_tool_steps_token)
             stop_event.set()
+            log_stage_timing("agui_run", elapsed_ms(run_started), thread_id=thread_id)
 
     async def _handle_tool_calls(
         self,
@@ -1837,12 +2174,12 @@ class BasicGraph(ABC):
 
                 # 发送 TOOL_CALL_START
                 yield encoder.encode(
-                    ToolCallStartEvent(
-                        type=EventType.TOOL_CALL_START,
+                    self._tool_call_start_event(
                         tool_call_id=tool_call_id,
                         tool_call_name=tool_name,
                         parent_message_id=parent_message_id,
-                        timestamp=int(time.time() * 1000),
+                        step_index=self._planned_step_index_from_event(None, tool_call_id, allow_holder=False),
+                        source="legacy",
                     )
                 )
 

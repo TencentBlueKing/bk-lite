@@ -2,13 +2,13 @@ import datetime
 import json
 import uuid
 
-import nats_client
 from django.db import transaction
+
+import nats_client
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotConversationHistory, BotWorkFlow, EmbedProvider, LLMModel, LLMSkill, OCRProvider, RerankProvider, SkillTools
 from apps.opspilot.models.bot_mgmt import BotWebChatSession
 from apps.opspilot.utils.bot_utils import get_user_info
-from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.system_mgmt.models import User as SystemMgmtUser
 
 
@@ -195,9 +195,7 @@ def get_guest_provider(group_id):
         default_llm_model = _grant_provider_team_access(LLMModel, "GPT-4o", group_id)
         rerank_model = _grant_provider_team_access(RerankProvider, "bce-reranker-base_v1", group_id)
         embed_model_1 = _grant_provider_team_access(EmbedProvider, "bce-embedding-base_v1", group_id)
-        embed_model_2 = _grant_provider_team_access(
-            EmbedProvider, "FastEmbed(BAAI/bge-small-zh-v1.5)", group_id
-        )
+        embed_model_2 = _grant_provider_team_access(EmbedProvider, "FastEmbed(BAAI/bge-small-zh-v1.5)", group_id)
         paddle_ocr = _grant_provider_team_access(OCRProvider, "PaddleOCR", group_id)
         azure_ocr = _grant_provider_team_access(OCRProvider, "AzureOCR", group_id)
         olm_ocr = _grant_provider_team_access(OCRProvider, "OlmOCR", group_id)
@@ -257,6 +255,14 @@ def consume_bot_event(kwargs):
         logger.exception(f"对话历史保存失败: {e}, 传入参数如下：{kwargs}")
         return {"result": False, "message": str(e)}
     return {"result": True}
+
+
+def create_chat_flow_engine(*args, **kwargs):
+    # 显著启动成本：factory 会拖入 AgentNode → python-docx/reportlab。
+    # AppConfig.ready() 导入本模块只为注册 NATS handler，migrate 不得加载该链。
+    from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine as _factory
+
+    return _factory(*args, **kwargs)
 
 
 @nats_client.register

@@ -484,12 +484,12 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
     api.getAlerts.mockImplementation(async (query: { status_group?: string }) => (
       query.status_group === 'active'
         ? [{
-            ...alert,
-            handlers: [7],
-            events: [event, reassigned],
-            event_count: 2,
-            last_event_at: reassigned.occurred_at,
-          }]
+          ...alert,
+          handlers: [7],
+          events: [event, reassigned],
+          event_count: 2,
+          last_event_at: reassigned.occurred_at,
+        }]
         : []
     ));
     const user = userEvent.setup();

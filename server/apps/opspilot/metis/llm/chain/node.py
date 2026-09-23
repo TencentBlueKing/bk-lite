@@ -21,6 +21,7 @@ from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_exception_info
+from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
 from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
     DeepAgentAssemblyMixin,
@@ -31,6 +32,7 @@ from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F40
     _build_lightweight_system_prompt,
     _build_planned_execution_runtime_middleware,
     _build_planned_execution_tool_visibility,
+    _catalog_has_business_tools,
     _plan_is_skills_only,
     _planned_step_already_answered,
     _planned_tool_step_guidance,
@@ -85,6 +87,15 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_get_request_payload,
     merge_openai_payload_system_messages,
 )
+from apps.opspilot.metis.llm.chain.nested_stream import (
+    bind_planned_step_index,
+    clear_planned_step_holder,
+    enable_nested_token_streaming,
+    isolated_child_callback_context,
+    nested_agent_callbacks,
+    publish_node_finished,
+    remember_planned_tool_steps,
+)
 from apps.opspilot.metis.llm.chain.prepare_llm_context import prepare_messages_for_llm
 from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
     SkillSandboxMixin,
@@ -119,6 +130,29 @@ try:
 except ImportError:
     PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
+
+MISSING_PARAMS_NUDGE_LOG = "event=deepagent_missing_params_nudge objective=%s error_type=%s failed_stage=%s thread_id=%s"
+MISSING_PARAMS_ABORT_LOG = "event=deepagent_missing_params_abort objective=%s error_type=%s failed_stage=%s thread_id=%s"
+_MISSING_PARAMS_ERROR_TYPE = "MissingToolParams"
+_MISSING_PARAMS_FAILED_STAGE = "missing_params"
+_LOG_FIELD_MAX_LEN = 120
+
+
+def _bounded_log_field(value, max_len: int = _LOG_FIELD_MAX_LEN) -> str:
+    """规划器/用户侧字段只记有界单行，CR/LF 压成空格，空值记为 -。"""
+    text = " ".join(str(value or "").replace("\r", " ").replace("\n", " ").split())
+    if not text:
+        return "-"
+    return text if len(text) <= max_len else text[:max_len]
+
+
+def _missing_params_log_args(objective, thread_id) -> tuple[str, str, str, str]:
+    return (
+        _bounded_log_field(objective),
+        _MISSING_PARAMS_ERROR_TYPE,
+        _MISSING_PARAMS_FAILED_STAGE,
+        _bounded_log_field(thread_id, max_len=80),
+    )
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
@@ -2084,8 +2118,9 @@ class ToolsNodes(
         if kb_tool is not None:
             tools.append(kb_tool)
 
-        # 澄清选择卡必须给模型；K8s 修复报告仍由后端状态机派发，不向模型暴露。
-        if not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
+        # 澄清卡只在本轮已有业务工具时注入；空目录寒暄走轻量直答。
+        # K8s 修复报告仍由后端状态机派发，不向模型暴露。
+        if self._catalog_has_business_tools(tools) and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
             tools.append(self._build_choice_tool())
         return tools
 
@@ -2254,6 +2289,7 @@ class ToolsNodes(
             endpoint.get("model") or "-",
             endpoint.get("api_base") or "-",
         )
+        reply_started = monotonic_ms()
         try:
             # Qwen 等网关要求：仅允许一条 system，且必须在 messages[0]。
             # 图前置节点已写入 SystemMessage，再前置 light_system 会变成
@@ -2261,11 +2297,19 @@ class ToolsNodes(
             light_messages = normalize_messages_for_llm([SystemMessage(content=light_system), *list(original_messages or [])])
             light_messages = await self._prepare_messages_for_llm(light_messages, graph_request)
             response: AIMessage | None = None
-            astream = getattr(llm, "astream", None)
+            # 规划器用 isolated 客户端 + callbacks=[]，避免被 graph.astream_events 跟踪。
+            # 轻量直答若带着父 config 做 astream，思考模型会在节点返回后让父流空转
+            # 1–3 分钟（opspilot.log thread 1789981753551：直答 2.7s，agui_run 116s）。
+            reply_llm = llm
+            if graph_request is not None:
+                reply_llm = self.get_llm_client(graph_request, isolated=True)
+            invoke_config = dict(config or {})
+            invoke_config["callbacks"] = []
+            astream = getattr(reply_llm, "astream", None)
             if callable(astream):
-                response = await self._astream_lightweight_reply(astream, light_messages, config)
+                response = await self._astream_lightweight_reply(astream, light_messages, invoke_config)
             else:
-                response = await llm.ainvoke(light_messages, config=config)
+                response = await reply_llm.ainvoke(light_messages, config=invoke_config)
                 if not isinstance(response, AIMessage):
                     response = AIMessage(content=str(getattr(response, "content", "") or ""))
             if not str(getattr(response, "content", "") or "").strip():
@@ -2291,6 +2335,11 @@ class ToolsNodes(
             )
             raise
         finally:
+            log_stage_timing(
+                "lightweight_reply",
+                elapsed_ms(reply_started),
+                thread_id=getattr(graph_request, "thread_id", None),
+            )
             if sandbox_dir:
                 self._cleanup_sandbox(sandbox_dir)
 
@@ -2320,6 +2369,7 @@ class ToolsNodes(
             """DeepAgent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
             # 惰性导入：避免 apps.opspilot.metis.llm.agent.__init__ → deep_agent → node 循环依赖
             from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+                DECLARED_CMDB_MODEL_KEY,
                 MISSING_PARAMS_CHOICE_HINT,
                 TOOL_FAILURE_AUTHZ,
                 TOOL_FAILURE_CONFIG,
@@ -2332,6 +2382,7 @@ class ToolsNodes(
                 classify_tool_failure_kind,
                 drop_alternative_inventory_followups,
                 drop_k8s_followup_steps_after_unresolved_target,
+                extract_declared_cmdb_model,
                 extract_llm_upstream_request_id,
                 is_context_size_error,
                 is_llm_upstream_error,
@@ -2359,6 +2410,7 @@ class ToolsNodes(
             from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
+            missing_params_thread_id = getattr(graph_request, "thread_id", None)
 
             # 创建系统提示
             final_system_prompt = TemplateLoader.render_template(
@@ -2367,15 +2419,18 @@ class ToolsNodes(
             )
 
             llm = self.get_llm_client(graph_request)
+            enable_nested_token_streaming(llm)
+            nested_callbacks = nested_agent_callbacks(config)
             if getattr(graph_request, "max_model_calls", 0) == 1:
                 prepared = await self._prepare_messages_for_llm(
                     normalize_messages_for_llm([SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])]),
                     graph_request,
                 )
-                response = await llm.ainvoke(
-                    prepared,
-                    config=config,
-                )
+                with isolated_child_callback_context():
+                    response = await llm.ainvoke(
+                        prepared,
+                        config={**config, "callbacks": nested_callbacks},
+                    )
                 return {"messages": [response]}
             tools = self._collect_deepagent_tools(graph_request)
             registered_tools = list(tools)
@@ -2424,6 +2479,7 @@ class ToolsNodes(
                 deep_config = {
                     **config,
                     "recursion_limit": 100,
+                    "callbacks": nested_callbacks,
                     "configurable": {
                         **config.get("configurable", {}),
                         "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
@@ -2436,7 +2492,8 @@ class ToolsNodes(
                         graph_request,
                         tools=registered_tools,
                     )
-                    result = await deep_agent.ainvoke({"messages": deep_input_messages}, config=deep_config)
+                    with isolated_child_callback_context():
+                        result = await deep_agent.ainvoke({"messages": deep_input_messages}, config=deep_config)
                 except Exception as _await_exc:
                     if is_llm_upstream_error(_await_exc):
                         return _llm_upstream_failure_result(_await_exc, failed_stage="legacy_deepagent")
@@ -2446,7 +2503,11 @@ class ToolsNodes(
                             original_messages + [HumanMessage(content=err_prompt)],
                             graph_request,
                         )
-                        fallback_response = await llm.ainvoke(fallback_messages, config=config)
+                        with isolated_child_callback_context():
+                            fallback_response = await llm.ainvoke(
+                                fallback_messages,
+                                config={**config, "callbacks": nested_callbacks},
+                            )
                         fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                         if not fallback_text:
                             fallback_text = tool_graph_failure_plain_text(_await_exc)
@@ -2515,6 +2576,7 @@ class ToolsNodes(
                     skill_packages=skill_packages,
                     config=config,
                     agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                    thread_id=missing_params_thread_id,
                 )
             except Exception as planning_exc:
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
@@ -2654,10 +2716,12 @@ class ToolsNodes(
             deep_config = {
                 **config,
                 "recursion_limit": 100,
+                "callbacks": nested_callbacks,
                 "configurable": {
                     **config.get("configurable", {}),
                     "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
                     "report_package_context": matched_packages[0] if matched_packages else {},
+                    DECLARED_CMDB_MODEL_KEY: extract_declared_cmdb_model(planning_question) or "",
                 },
             }
 
@@ -2669,18 +2733,61 @@ class ToolsNodes(
                     additional_kwargs={"opspilot_planned_execution": True},
                 )
 
-            def _step_failure(messages: List[BaseMessage]) -> str:
-                for message in reversed(messages):
+            def _step_failure(messages: List[BaseMessage]) -> tuple[str, bool]:
+                # 只看每个工具最后一次结果：当轮改参自纠成功后，不再因更早的失败触发重规划。
+                last_by_name: Dict[str, ToolMessage] = {}
+                for message in messages:
                     if not isinstance(message, ToolMessage):
                         continue
+                    tool_name = str(getattr(message, "name", "") or "未知工具")
+                    last_by_name[tool_name] = message
+                for tool_name, message in last_by_name.items():
                     status = str(getattr(message, "status", "") or "").lower()
                     content = message.content
-                    # 技能脚本失败带 [OPSPILOT_SKILL_RESULT]，不算 is_tool_result_failure，
-                    # 但仍按与业务工具同一套分型收口凭据/配置/实现异常。
-                    if is_non_replanable_tool_failure(content, status) or is_tool_result_failure(content, status):
-                        tool_name = str(getattr(message, "name", "") or "未知工具")
-                        return f"工具 {tool_name} 执行失败: {str(content)[:800]}"
-                return ""
+                    unrecoverable = is_non_replanable_tool_failure(content, status)
+                    if unrecoverable or is_tool_result_failure(content, status):
+                        return f"工具 {tool_name} 执行失败: {str(content)[:800]}", unrecoverable
+                return "", False
+
+            def _tools_invoked_in_step(messages: List[BaseMessage]) -> list[str]:
+                names: list[str] = []
+                for message in messages:
+                    if not isinstance(message, ToolMessage):
+                        continue
+                    name = str(getattr(message, "name", "") or "").strip()
+                    if name and name not in names:
+                        names.append(name)
+                return names
+
+            def _step_end_payload(
+                *,
+                step_index: int,
+                total_steps: int,
+                objective: str,
+                planned_tools: list,
+                step_messages: List[BaseMessage] | None = None,
+                status: str | None = None,
+                error: str | None = None,
+            ) -> dict:
+                invoked = _tools_invoked_in_step(step_messages or [])
+                payload: dict = {
+                    "phase": "end",
+                    "step_index": step_index,
+                    "total_steps": total_steps,
+                    "objective": objective,
+                    "tools": list(planned_tools),
+                    "tools_invoked": invoked,
+                }
+                if status:
+                    payload["status"] = status
+                if error:
+                    payload["error"] = error
+                failed_like = bool(status) and (
+                    status == "failed" or str(status).startswith("failed_") or status in {"missing_params", "target_unresolved"}
+                )
+                if not invoked and not failed_like:
+                    payload["outcome"] = "reused_prior_result"
+                return payload
 
             def _without_substitute_plan_text(messages: List[BaseMessage]) -> List[BaseMessage]:
                 return [message for message in messages if not is_substitute_plan_message(message)]
@@ -2729,13 +2836,14 @@ class ToolsNodes(
                     output_messages=collected_output_messages,
                 )
 
+            completed_steps: List[CompletedExecutionStep] = []
+            replan_count = 0
+            summary_ran = False
+            run_started = monotonic_ms()
             try:
-                completed_steps: List[CompletedExecutionStep] = []
                 pending_steps = list(plan.steps)
                 agent_state: Dict[str, Any] = {"messages": without_system_messages(original_messages)}
-                replan_count = 0
                 total_steps = len(plan.steps)
-                summary_ran = False
                 require_formatted_report = False
                 self._set_hide_planned_step_text(graph_request, True)
 
@@ -2797,6 +2905,7 @@ class ToolsNodes(
                             skill_packages=skill_packages,
                             config=config,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
+                            thread_id=missing_params_thread_id,
                         )
                         _ensure_skill_runtime_for_plan(replacement)
                         pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
@@ -2808,15 +2917,15 @@ class ToolsNodes(
                         )
                         await _emit_step_boundary(
                             "planned_execution_step",
-                            {
-                                "phase": "end",
-                                "step_index": step_index,
-                                "total_steps": total_steps,
-                                "objective": step.objective,
-                                "tools": list(step.tools),
-                                "status": "failed",
-                                "error": failure_text[:800],
-                            },
+                            _step_end_payload(
+                                step_index=step_index,
+                                total_steps=total_steps,
+                                objective=step.objective,
+                                planned_tools=list(step.tools),
+                                step_messages=extra_messages or [],
+                                status="failed",
+                                error=failure_text[:800],
+                            ),
                         )
                         total_steps = len(completed_steps) + len(pending_steps)
                         await _emit_planned_execution_status(
@@ -2858,15 +2967,15 @@ class ToolsNodes(
                         )
                         await _emit_step_boundary(
                             "planned_execution_step",
-                            {
-                                "phase": "end",
-                                "step_index": step_index,
-                                "total_steps": total_steps,
-                                "objective": step.objective,
-                                "tools": list(step.tools),
-                                "status": _non_replanable_status(failure_text),
-                                "error": failure_text[:800],
-                            },
+                            _step_end_payload(
+                                step_index=step_index,
+                                total_steps=total_steps,
+                                objective=step.objective,
+                                planned_tools=list(step.tools),
+                                step_messages=extra_messages or [],
+                                status=_non_replanable_status(failure_text),
+                                error=failure_text[:800],
+                            ),
                         )
                         agent_state = _compact_agent_state_with_summaries(overflow=False)
                         pending_steps.clear()
@@ -2879,10 +2988,21 @@ class ToolsNodes(
                                 graph_request,
                                 tools=active_tools,
                             )
-                            step_result = await deep_agent.ainvoke(
-                                step_payload,
-                                config=deep_config,
-                            )
+                            step_started = monotonic_ms()
+                            try:
+                                with bind_planned_step_index(step_index, config), isolated_child_callback_context():
+                                    step_result = await deep_agent.ainvoke(
+                                        step_payload,
+                                        config=deep_config,
+                                    )
+                            finally:
+                                log_stage_timing(
+                                    "plan_step",
+                                    elapsed_ms(step_started),
+                                    thread_id=missing_params_thread_id,
+                                    step_index=step_index,
+                                    tool_count=len(step.tools or []),
+                                )
                         except Exception as step_exc:
                             failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
                             if is_llm_upstream_error(step_exc):
@@ -2901,21 +3021,24 @@ class ToolsNodes(
                                 )
                                 await _emit_step_boundary(
                                     "planned_execution_step",
-                                    {
-                                        "phase": "end",
-                                        "step_index": step_index,
-                                        "total_steps": total_steps,
-                                        "objective": step.objective,
-                                        "tools": list(step.tools),
-                                        "status": "skipped_context_overflow",
-                                    },
+                                    _step_end_payload(
+                                        step_index=step_index,
+                                        total_steps=total_steps,
+                                        objective=step.objective,
+                                        planned_tools=list(step.tools),
+                                        step_messages=[],
+                                        status="skipped_context_overflow",
+                                    ),
                                 )
                                 agent_state = _compact_agent_state_with_summaries(overflow=True)
                                 step_finished = True
                                 break
                             if is_missing_tool_params_failure(failure):
                                 if missing_params_nudged:
-                                    logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划: %s", failure[:400])
+                                    logger.warning(
+                                        MISSING_PARAMS_ABORT_LOG,
+                                        *_missing_params_log_args(step.objective, missing_params_thread_id),
+                                    )
                                     completed_steps.append(
                                         CompletedExecutionStep(
                                             objective=step.objective,
@@ -2924,20 +3047,23 @@ class ToolsNodes(
                                     )
                                     await _emit_step_boundary(
                                         "planned_execution_step",
-                                        {
-                                            "phase": "end",
-                                            "step_index": step_index,
-                                            "total_steps": total_steps,
-                                            "objective": step.objective,
-                                            "tools": list(step.tools),
-                                            "status": "missing_params",
-                                        },
+                                        _step_end_payload(
+                                            step_index=step_index,
+                                            total_steps=total_steps,
+                                            objective=step.objective,
+                                            planned_tools=list(step.tools),
+                                            step_messages=[],
+                                            status="missing_params",
+                                        ),
                                     )
                                     agent_state = _compact_agent_state_with_summaries(overflow=False)
                                     step_finished = True
                                     break
                                 missing_params_nudged = True
-                                logger.debug("DeepAgent 步骤因缺参改为向用户澄清: %s", failure[:400])
+                                logger.debug(
+                                    MISSING_PARAMS_NUDGE_LOG,
+                                    *_missing_params_log_args(step.objective, missing_params_thread_id),
+                                )
                                 step_payload = {
                                     **agent_state,
                                     "messages": list(agent_state.get("messages") or []) + [_internal_message(MISSING_PARAMS_CHOICE_HINT)],
@@ -2953,9 +3079,13 @@ class ToolsNodes(
 
                         result_messages = list(step_result.get("messages") or [])
                         step_messages = result_messages[len(step_payload["messages"]) :]
+                        remember_planned_tool_steps(config, step_index, step_messages)
                         if step_has_unasked_missing_params(step_messages):
                             if missing_params_nudged:
-                                logger.warning("DeepAgent 步骤缺参后仍未向用户澄清，收口且不重规划")
+                                logger.warning(
+                                    MISSING_PARAMS_ABORT_LOG,
+                                    *_missing_params_log_args(step.objective, missing_params_thread_id),
+                                )
                                 _collect_output_messages(_without_substitute_plan_text(step_messages))
                                 completed_steps.append(
                                     CompletedExecutionStep(
@@ -2965,20 +3095,23 @@ class ToolsNodes(
                                 )
                                 await _emit_step_boundary(
                                     "planned_execution_step",
-                                    {
-                                        "phase": "end",
-                                        "step_index": step_index,
-                                        "total_steps": total_steps,
-                                        "objective": step.objective,
-                                        "tools": list(step.tools),
-                                        "status": "missing_params",
-                                    },
+                                    _step_end_payload(
+                                        step_index=step_index,
+                                        total_steps=total_steps,
+                                        objective=step.objective,
+                                        planned_tools=list(step.tools),
+                                        step_messages=step_messages,
+                                        status="missing_params",
+                                    ),
                                 )
                                 agent_state = _compact_agent_state_with_summaries(overflow=False)
                                 step_finished = True
                                 break
                             missing_params_nudged = True
-                            logger.debug("DeepAgent 步骤因缺参改为向用户澄清")
+                            logger.debug(
+                                MISSING_PARAMS_NUDGE_LOG,
+                                *_missing_params_log_args(step.objective, missing_params_thread_id),
+                            )
                             agent_state = step_result
                             step_payload = {
                                 **agent_state,
@@ -3016,19 +3149,19 @@ class ToolsNodes(
                             agent_state = _compact_agent_state_with_summaries(overflow=False)
                             await _emit_step_boundary(
                                 "planned_execution_step",
-                                {
-                                    "phase": "end",
-                                    "step_index": step_index,
-                                    "total_steps": total_steps,
-                                    "objective": step.objective,
-                                    "tools": list(step.tools),
-                                    "status": f"limited_{limit_kind}",
-                                },
+                                _step_end_payload(
+                                    step_index=step_index,
+                                    total_steps=total_steps,
+                                    objective=step.objective,
+                                    planned_tools=list(step.tools),
+                                    step_messages=step_messages,
+                                    status=f"limited_{limit_kind}",
+                                ),
                             )
                             step_finished = True
                             break
 
-                        failure = _step_failure(step_messages)
+                        failure, unrecoverable_failure = _step_failure(step_messages)
                         agent_state = step_result
                         if k8s_target_lookup_exhausted_from_messages(step_messages):
                             _collect_output_messages(step_messages)
@@ -3048,14 +3181,14 @@ class ToolsNodes(
                             agent_state = _compact_agent_state_with_summaries(overflow=False)
                             await _emit_step_boundary(
                                 "planned_execution_step",
-                                {
-                                    "phase": "end",
-                                    "step_index": step_index,
-                                    "total_steps": total_steps,
-                                    "objective": step.objective,
-                                    "tools": list(step.tools),
-                                    "status": "target_unresolved",
-                                },
+                                _step_end_payload(
+                                    step_index=step_index,
+                                    total_steps=total_steps,
+                                    objective=step.objective,
+                                    planned_tools=list(step.tools),
+                                    step_messages=step_messages,
+                                    status="target_unresolved",
+                                ),
                             )
                             step_finished = True
                             break
@@ -3074,19 +3207,19 @@ class ToolsNodes(
                                 )
                                 await _emit_step_boundary(
                                     "planned_execution_step",
-                                    {
-                                        "phase": "end",
-                                        "step_index": step_index,
-                                        "total_steps": total_steps,
-                                        "objective": step.objective,
-                                        "tools": list(step.tools),
-                                        "status": "skipped_context_overflow",
-                                    },
+                                    _step_end_payload(
+                                        step_index=step_index,
+                                        total_steps=total_steps,
+                                        objective=step.objective,
+                                        planned_tools=list(step.tools),
+                                        step_messages=step_messages,
+                                        status="skipped_context_overflow",
+                                    ),
                                 )
                                 agent_state = _compact_agent_state_with_summaries(overflow=True)
                                 step_finished = True
                                 break
-                            if is_non_replanable_tool_failure(failure):
+                            if unrecoverable_failure or is_non_replanable_tool_failure(failure):
                                 await _abort_unrecoverable_step(failure, extra_messages=step_messages)
                                 break
                             if replan_count >= 2:
@@ -3119,13 +3252,13 @@ class ToolsNodes(
                         agent_state = _compact_agent_state_with_summaries(overflow=False)
                         await _emit_step_boundary(
                             "planned_execution_step",
-                            {
-                                "phase": "end",
-                                "step_index": step_index,
-                                "total_steps": total_steps,
-                                "objective": step.objective,
-                                "tools": list(step.tools),
-                            },
+                            _step_end_payload(
+                                step_index=step_index,
+                                total_steps=total_steps,
+                                objective=step.objective,
+                                planned_tools=list(step.tools),
+                                step_messages=step_messages,
+                            ),
                         )
                         step_finished = True
 
@@ -3133,6 +3266,7 @@ class ToolsNodes(
                         continue
 
                 active_tools.clear()
+                clear_planned_step_holder(config)
                 visibility_middleware.include_always_visible = False
                 limit_middleware.enforce_limits = False
                 self._set_hide_planned_step_text(graph_request, False)
@@ -3182,10 +3316,20 @@ class ToolsNodes(
                         list(final_payload.get("messages") or []),
                         graph_request,
                     )
-                    result = await deep_agent.ainvoke(
-                        final_payload,
-                        config=deep_config,
-                    )
+                    summary_started = monotonic_ms()
+                    try:
+                        with isolated_child_callback_context():
+                            result = await deep_agent.ainvoke(
+                                final_payload,
+                                config=deep_config,
+                            )
+                    finally:
+                        log_stage_timing(
+                            "planned_summary",
+                            elapsed_ms(summary_started),
+                            thread_id=missing_params_thread_id,
+                            summary_ran=1,
+                        )
                     final_messages = list(result.get("messages") or [])
                     _collect_output_messages(final_messages[len(final_payload["messages"]) :])
             except Exception as _await_exc:
@@ -3206,7 +3350,11 @@ class ToolsNodes(
                         original_messages + [HumanMessage(content=err_prompt)],
                         graph_request,
                     )
-                    fallback_response = await llm.ainvoke(fallback_messages, config=config)
+                    with isolated_child_callback_context():
+                        fallback_response = await llm.ainvoke(
+                            fallback_messages,
+                            config={**config, "callbacks": nested_callbacks},
+                        )
                     fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                     if not fallback_text:
                         fallback_text = tool_graph_failure_plain_text(_await_exc)
@@ -3221,6 +3369,14 @@ class ToolsNodes(
                 # 才会被赋值,setup 阶段抛错时这个变量不存在,直接 finally 会 NameError。
                 if sandbox_dir:
                     self._cleanup_sandbox(sandbox_dir)
+                log_stage_timing(
+                    "planned_run",
+                    elapsed_ms(run_started),
+                    thread_id=missing_params_thread_id,
+                    step_count=len(completed_steps),
+                    replan_count=replan_count,
+                    summary_ran=1 if summary_ran else 0,
+                )
 
             # 分步执行路径已单独累积对外消息；其余路径仍从最终 state 截取新增消息。
             final_messages = result.get("messages", [])
@@ -3279,5 +3435,12 @@ class ToolsNodes(
             # 这样可以实时发送：工具调用 -> 工具结果 -> 最终响应
             return {"messages": new_messages}
 
-        graph_builder.add_node(deep_wrapper_name, deep_wrapper_node)
+        _deep_impl = deep_wrapper_node
+
+        async def _signaled_deep_wrapper(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
+            result = await _deep_impl(state, config)
+            publish_node_finished(config)
+            return result
+
+        graph_builder.add_node(deep_wrapper_name, _signaled_deep_wrapper)
         return deep_wrapper_name

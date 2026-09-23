@@ -32,6 +32,31 @@ function getDisplayTitle(key: string, fieldSchema?: ResponseFieldDefinition[]): 
  * @param fieldSchema 可选，数据源定义的字段描述
  * @returns 树形节点数组
  */
+export const buildSchemaFieldTree = (
+  fieldSchema?: ResponseFieldDefinition[],
+): TreeNode[] =>
+  (fieldSchema || []).flatMap((field) => {
+    const key = String(field.key || '').trim();
+    if (!key) {
+      return [];
+    }
+    return [{
+      title: getDisplayTitle(key, fieldSchema),
+      key,
+      value: key,
+      isLeaf: true,
+    }];
+  });
+
+export const mergeFieldTrees = (
+  schemaTree: TreeNode[],
+  sampleTree: TreeNode[],
+): TreeNode[] => {
+  const sampleKeys = new Set(sampleTree.map((node) => String(node.key)));
+  const schemaOnly = schemaTree.filter((node) => !sampleKeys.has(String(node.key)));
+  return [...schemaOnly, ...sampleTree];
+};
+
 export const buildTreeData = (obj: unknown, fieldSchema?: ResponseFieldDefinition[]): TreeNode[] => {
   if (typeof obj !== 'object' || obj === null) {
     return [];

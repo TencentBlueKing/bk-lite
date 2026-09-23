@@ -321,6 +321,7 @@ def test_share_and_normal_no_data_critical_uses_same_alarming_health(monkeypatch
         hosts_by_app={APP_A: [{"inst_uuid": "host-1", "monitor_id": "monitor-1"}]},
         policies={1: SimpleNamespace(id=1)},
         complete_apps={APP_A},
+        authorized_monitor_ids={"monitor-1"},
     )
     grouped = [{"monitor_instance_id": "monitor-1", "alert_type": "no_data", "level": "critical", "count": 1}]
     monkeypatch.setattr(
@@ -375,3 +376,47 @@ def test_share_and_normal_no_data_critical_uses_same_alarming_health(monkeypatch
         assert health["noDataAlarmCount"] == 1
         assert health["severityCounts"]["critical"] == 1
         assert health["reason"] != "unavailable"
+
+
+def test_share_wall_keeps_same_host_coverage_as_query_service(monkeypatch):
+    applications = [{"inst_uuid": APP_A, "inst_name": "settlement", "model_id": "system"}]
+    scope = _ApplicationScope(
+        applications=applications,
+        hosts_by_app={
+            APP_A: [
+                {"inst_uuid": "host-07", "monitor_id": "monitor-1"},
+                {"inst_uuid": "host-08", "monitor_id": ""},
+            ]
+        },
+        policies={1: SimpleNamespace(id=1)},
+        complete_apps={APP_A},
+        authorized_monitor_ids={"monitor-1"},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_grouped_alert_counts_by_monitor",
+        classmethod(lambda cls, scoped, monitor_ids: []),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_filter_definition",
+        classmethod(lambda cls: ([], set())),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_applications",
+        classmethod(lambda cls, request: applications),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_build_scope",
+        classmethod(lambda cls, request, apps: scope),
+    )
+    request = SimpleNamespace(
+        user=SimpleNamespace(username="sharer-alice", is_superuser=False),
+        COOKIES={"current_team": "42", "include_children": "0"},
+        data={},
+    )
+    item = Application3DQueryService.wall(request)["items"][0]
+    assert item["hostCoverage"] == {"monitored": 1, "total": 2}
+    assert item["health"]["state"] == "normal"

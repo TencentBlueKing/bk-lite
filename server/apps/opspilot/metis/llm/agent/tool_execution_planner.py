@@ -11,6 +11,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_timing, monotonic_ms
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
     MISSING_PARAMS_CHOICE_HINT,
@@ -60,17 +61,18 @@ class ToolPlanningError(RuntimeError):
 _MONITOR_LIST_METRICS_TOOL = "monitor_list_object_metrics"
 _MONITOR_QUERY_TOOL = "monitor_query_metric_data"
 _MONITOR_CATALOG_HINT = (
-    "能力导读：目录含 monitor_* 时，可查 BK-Lite 已纳管主机/实例的 CPU使用率、内存、磁盘与告警。"
+    "能力导读：目录含 monitor_* 时，可查 BK-Lite 已纳管主机/实例的 CPU使用率、内存、磁盘，以及监控策略扫描出的活跃告警。"
     "用户问「主机名或IP xxx的CPU」必须规划对应 monitor_* 步骤，典型顺序："
     "monitor_list_objects→monitor_list_object_instances→monitor_list_object_metrics→monitor_query_metric_data；"
     "list_object_metrics 与 query_metric_data 必须同一步，先按用户词 keyword 筛选 name/display_name 再查时序；"
     "metric 只能用 list_object_metrics 返回的 name，禁止猜测 cpu.util/system.cpu.util，列表非空禁止让用户手填指标名；"
     "用户只给名称、未说明是主机/Pod/中间件时：先 monitor_list_objects，再规划 request_user_choice；"
+    "用户已声明主机/Pod/中间件时不要规划 request_user_choice，直接用对应对象 id 列实例；"
     "request_user_choice 必须用 single_select，options 放入 list_objects 返回的全部对象 name，禁止纯文本列出类型；"
     "禁止根据名称形态（如 -default、collector）猜测 K8s Pod 或 Host；"
     "monitor_obj_id 只能用用户已确认类型在 list_objects 中的 id，禁止猜测或递增数字；"
     "list_object_instances 每个 monitor_obj_id 只调一次，keyword 用完整主机名/IP/用户原词，"
-    "禁止截断后按台循环；空列表不要当最终结论或换 ID 重试，必须 request_user_choice 问对象类型；"
+    "禁止截断后按台循环；空列表禁止换 ID 重试；用户未声明类型时 request_user_choice 问对象类型，已声明则把空列表当该类型下无匹配；"
     "instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用实例名或 IP 代替；"
     "query_metric_data 空矩阵是有效结论，禁止换 ID/IP/维度/时间窗/指标名重试；"
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
@@ -82,8 +84,48 @@ _CMDB_MONITOR_LINK_HINT = (
     "禁止把 cmdb_search_instances / cmdb_get_instance 返回的 inst_uuid、_id 或数字 inst_id 传入 monitor_* 的 instance_ids。"
     "已联动时用 CMDB 实例的 monitor_id，或先调 cmdb_get_monitor_ids 后直接查监控，不要再截断主机名去猜 monitor_obj_id；"
     "未联动则用 monitor_list_object_instances 按完整主机名或 IP 取监控 instance_id，每个 obj_id 只列一次。"
+    "用户点名 nginx/mysql/redis 等中间件时，cmdb_search_instances 的 model_id 必须用该模型名，禁止默认 host；"
+    "monitor_list_active_alerts 的 monitor_obj_id 只能是 monitor_list_objects 返回的数字对象类型 id，"
+    "CMDB monitor_id / 1_IP_端口 等实例标识只能放 instance_ids。"
     "问「纳管多少台/主机数量/主机清单」时只规划 CMDB 检索；"
     "不要把 monitor_list_objects / monitor_list_object_instances 写成查不到再查的下一步。"
+)
+
+# 告警中心工单与监控策略告警不是同一套；口语「没关的告警」必须走 alerts_*。
+_ALERTS_LIST_TOOL = "alerts_list_alerts"
+_MONITOR_ACTIVE_ALERT_TOOLS = frozenset(
+    {
+        "monitor_list_active_alerts",
+        "monitor_query_alert_segments",
+    }
+)
+_ALERT_TYPE_ASK_TOOLS = frozenset(
+    {
+        "monitor_list_objects",
+        "request_user_choice",
+        "monitor_list_object_instances",
+    }
+)
+_ALERTS_CENTER_QUERY_RE = re.compile(
+    r"没关|未关闭|未分派|告警单|还在告|告警挂着|挂着的告警|"
+    r"人工没处理|未处理的|还有没有.{0,12}告警|有没有没关|"
+    r"最近那些告警|告警中心|有没有.{0,24}告警|哪些告警|"
+    r"告警标题|告警级别|告警列表|告警都分派|未关闭告警|"
+    r"(?:这台|那边).{0,12}告警|"
+    r"open alerts?|unassigned|not closed",
+    re.I,
+)
+_MONITOR_POLICY_ALERT_RE = re.compile(
+    r"监控告警|监控侧|策略告警|策略扫描|MonitorAlert|" r"new\s*状态|活跃的监控告警|monitor.?alert",
+    re.I,
+)
+_ALERTS_MONITOR_SPLIT_HINT = (
+    "告警分流：alerts_* 查统一告警中心工单（未关闭/未分派/告警单/某台还在告）；"
+    "monitor_list_active_alerts 只查监控策略扫描出的活跃告警，不是告警中心。"
+    "用户未点名「监控告警/策略告警」时，禁止规划 monitor_list_active_alerts，"
+    "禁止为查告警先 monitor_list_objects + request_user_choice；"
+    "直接 alerts_list_alerts，主机名/IP/标题放 keyword。"
+    "只有用户明确问监控侧/策略扫描/new 状态的监控告警时才用 monitor_list_active_alerts。"
 )
 
 # 告警 RCA：缺 namespace 时必须先反查；禁止用扫全集群当反查。取证链由智能体 prompt 决定。
@@ -787,6 +829,125 @@ def enforce_k8s_namespace_lookup_first(
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
 
 
+_REQUEST_USER_CHOICE = "request_user_choice"
+_MONITOR_INSTANCE_LOOKUP_TOOLS = frozenset(
+    {
+        "monitor_list_objects",
+        "monitor_list_object_instances",
+    }
+)
+_HOST_INVENTORY_QUESTION_RE = re.compile(r"纳管|多少台|主机数量|主机清单|资产清单")
+_DECLARED_MONITOR_OBJECT_TYPE_RE = re.compile(
+    r"主机|Host\b|SangforSCPHost|CNwareHost|\bPods?\b|\bNodes?\b|节点|集群|Cluster\b|"
+    r"中间件|Redis\b|MySQL\b|Mysql\b|Nginx\b|Elasticsearch\b|\bK8s\b|Kubernetes\b",
+    re.I,
+)
+
+# 用户点名的 CMDB 模型（中间件等）；规划/工具须锁定，禁止默认 host。
+_CMDB_DECLARED_MODEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bnginx\b", re.I), "nginx"),
+    (re.compile(r"\bmysql\b", re.I), "mysql"),
+    (re.compile(r"\bredis\b", re.I), "redis"),
+    (re.compile(r"\belasticsearch\b|\bes\b", re.I), "elasticsearch"),
+    (re.compile(r"\bmongodb\b", re.I), "mongodb"),
+    (re.compile(r"\bkafka\b", re.I), "kafka"),
+    (re.compile(r"\brabbitmq\b", re.I), "rabbitmq"),
+)
+_CMDB_SEARCH_TOOLS = frozenset(
+    {
+        "cmdb_search_instances",
+        "cmdb_fulltext_search",
+        "cmdb_fulltext_search_by_model",
+    }
+)
+_HOST_DEFAULT_OBJECTIVE_RE = re.compile(r"Host\s*/\s*Server|主机对象|默认\s*host|\bhost\b\s*模型", re.I)
+DECLARED_CMDB_MODEL_KEY = "declared_cmdb_model"
+
+
+def user_declared_monitor_object_type(user_message: str) -> bool:
+    """用户是否已点名监控对象类型（主机/Pod/中间件等），资产清点问句不算。"""
+    text = str(user_message or "")
+    if not text.strip() or _HOST_INVENTORY_QUESTION_RE.search(text):
+        return False
+    return bool(_DECLARED_MONITOR_OBJECT_TYPE_RE.search(text)) or extract_declared_cmdb_model(text) is not None
+
+
+def extract_declared_cmdb_model(user_message: str) -> str | None:
+    """用户是否点名了具体 CMDB/监控中间件模型（如 nginx），资产清点问句不算。"""
+    text = str(user_message or "")
+    if not text.strip() or _HOST_INVENTORY_QUESTION_RE.search(text):
+        return None
+    for pattern, model_id in _CMDB_DECLARED_MODEL_PATTERNS:
+        if pattern.search(text):
+            return model_id
+    return None
+
+
+def rewrite_cmdb_search_for_declared_model(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    user_message: str = "",
+) -> ToolExecutionPlan:
+    """点名中间件时锁定 CMDB model_id，并改写重规划里写死的 Host/Server 目标。"""
+    model = extract_declared_cmdb_model(user_message)
+    if not model:
+        return plan
+    if not available_names.intersection(_CMDB_SEARCH_TOOLS) and not any(
+        str(tool or "").startswith("monitor_") for step in plan.steps for tool in (step.tools or [])
+    ):
+        return plan
+
+    lock_tag = f"model_id={model}"
+    cleaned: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        tools = list(step.tools or [])
+        objective = str(step.objective or "")
+        if tools and set(tools) & _CMDB_SEARCH_TOOLS:
+            if lock_tag in objective:
+                cleaned.append(step)
+                continue
+            new_objective = f"用 CMDB 模型 {lock_tag} 检索（用户已点名 {model}，禁止默认 host）：{objective}"
+            cleaned.append(step.model_copy(update={"objective": new_objective}))
+            changed = True
+            continue
+        if tools and any(str(tool).startswith("monitor_") for tool in tools) and _HOST_DEFAULT_OBJECTIVE_RE.search(objective):
+            new_objective = f"按用户点名的 {model} 对象继续查询（禁止默认 Host/host）：{objective}"
+            cleaned.append(step.model_copy(update={"objective": new_objective}))
+            changed = True
+            continue
+        cleaned.append(step)
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：CMDB 模型锁定 model=%s", model)
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
+def drop_type_choice_when_declared(plan: ToolExecutionPlan, user_message: str) -> ToolExecutionPlan:
+    """已声明监控对象类型时，去掉计划里的类型询问步，避免再弹 request_user_choice。"""
+    if not user_declared_monitor_object_type(user_message):
+        return plan
+    planned = {tool for step in plan.steps for tool in (step.tools or [])}
+    if planned.isdisjoint(_MONITOR_INSTANCE_LOOKUP_TOOLS):
+        return plan
+    cleaned: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        tools = [name for name in (step.tools or []) if name != _REQUEST_USER_CHOICE]
+        if not tools:
+            changed = True
+            continue
+        if tools != list(step.tools or []):
+            changed = True
+            cleaned.append(step.model_copy(update={"tools": tools}))
+        else:
+            cleaned.append(step)
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：已声明对象类型，去掉类型询问")
+    return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
 def drop_cluster_scan_tools_for_known_pod_diagnose(plan: ToolExecutionPlan) -> ToolExecutionPlan:
     """已知 Pod 走 diagnose 时去掉全集群扫描和整份 describe，避免撑爆上下文。"""
     planned = {tool for step in plan.steps for tool in (step.tools or [])}
@@ -908,6 +1069,56 @@ def rewrite_high_restart_to_recent_for_time_sort(
         _K8S_RECENTLY_RESTARTED_TOOL,
     )
     return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
+
+
+def is_alerts_center_query(user_message: str) -> bool:
+    text = user_message or ""
+    if _MONITOR_POLICY_ALERT_RE.search(text):
+        return False
+    return bool(_ALERTS_CENTER_QUERY_RE.search(text))
+
+
+def rewrite_generic_alert_query_to_alerts_center(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    user_message: str = "",
+) -> ToolExecutionPlan:
+    """口语未关闭/某台还在告时，把监控活跃告警和类型询问改成告警中心列表。"""
+    if _ALERTS_LIST_TOOL not in available_names:
+        return plan
+    if not is_alerts_center_query(user_message):
+        return plan
+
+    kept: list[ToolExecutionStep] = []
+    changed = False
+    for step in plan.steps:
+        new_tools: list[str] = []
+        for tool in step.tools or []:
+            if tool in _MONITOR_ACTIVE_ALERT_TOOLS:
+                changed = True
+                if _ALERTS_LIST_TOOL not in new_tools:
+                    new_tools.append(_ALERTS_LIST_TOOL)
+                continue
+            if tool in _ALERT_TYPE_ASK_TOOLS:
+                changed = True
+                continue
+            if tool not in new_tools:
+                new_tools.append(tool)
+        if new_tools:
+            if new_tools != list(step.tools or []):
+                kept.append(step.model_copy(update={"tools": new_tools}))
+            else:
+                kept.append(step)
+        else:
+            changed = True
+
+    if not any(tool.startswith("alerts_") for step in kept for tool in (step.tools or [])):
+        kept.insert(0, ToolExecutionStep(objective="查询告警中心", tools=[_ALERTS_LIST_TOOL]))
+        changed = True
+    if not changed:
+        return plan
+    logger.info("DeepAgent 规划硬校验：口语告警改走告警中心 tool=%s", _ALERTS_LIST_TOOL)
+    return ToolExecutionPlan(goal=plan.goal, steps=kept)
 
 
 def enforce_list_metrics_with_query(
@@ -1378,6 +1589,7 @@ class ToolExecutionPlanner:
         has_restart_evidence = False
         has_restart_time_sort = False
         has_attachment = False
+        has_alerts = False
         used = 0
         skill_block = self._skill_catalog(skill_packages)
         if skill_block:
@@ -1392,6 +1604,8 @@ class ToolExecutionPlanner:
                 has_monitor = True
             if name.startswith("cmdb_"):
                 has_cmdb = True
+            if name.startswith("alerts_"):
+                has_alerts = True
             if name in _K8S_NAMESPACE_LOOKUP_TOOLS:
                 has_k8s_lookup = True
             if name == _K8S_KNOWN_POD_DIAGNOSE_TOOL:
@@ -1419,6 +1633,8 @@ class ToolExecutionPlanner:
             hints.append(_MONITOR_CATALOG_HINT)
         if has_monitor and has_cmdb:
             hints.append(_CMDB_MONITOR_LINK_HINT)
+        if has_monitor and has_alerts:
+            hints.append(_ALERTS_MONITOR_SPLIT_HINT)
         if has_k8s_lookup:
             hints.append(_K8S_NAMESPACE_LOOKUP_HINT)
         if has_restart_evidence and is_pod_restart_reason_query(user_message, agent_system_prompt):
@@ -1488,6 +1704,9 @@ class ToolExecutionPlanner:
         )
         plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
         plan = enforce_list_metrics_with_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
+        plan = rewrite_generic_alert_query_to_alerts_center(plan, available_names, user_message=user_message)
+        plan = rewrite_cmdb_search_for_declared_model(plan, available_names, user_message=user_message)
+        plan = drop_type_choice_when_declared(plan, user_message)
         plan = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
         plan = collapse_known_pod_restart_to_evidence_tool(
             plan,
@@ -1519,10 +1738,14 @@ class ToolExecutionPlanner:
             "只列出必须调用工具的执行步骤，并从目录选择精确工具名；"
             "纯分析或最终总结不要列为步骤，系统会在工具执行后单独完成。"
             "规划须对齐「助手任务说明」中的目标；目录「能力导读」只约束工具前置条件，不改写任务目标。"
-            "若用户要查某主机/实例的 CPU、内存、磁盘或告警，且目录含 monitor_*，"
+            "若用户要查某主机/实例的 CPU、内存或磁盘，且目录含 monitor_*，"
             "必须规划对应 monitor_* 步骤，禁止返回空 steps。"
+            "若用户问未关闭/未分派/告警单/某台还在告，且未点名监控告警，目录含 alerts_* 时只规划 alerts_*，"
+            "禁止用 monitor_list_active_alerts 或先问对象类型。"
             "若用户只问纳管规模、主机数量或资产清单，且目录含 cmdb_*，只规划 CMDB 检索，"
             "不要再规划 monitor_* 作为查不到再查的下一步。"
+            "若用户点名 nginx/mysql/redis 等中间件且规划 cmdb_search_instances，"
+            "步骤目标须写明 model_id 用该模型，禁止默认 host。"
             "禁止把尚未发生的兜底（查不到再换数据源）写成后续步骤；只规划现在必须执行的步骤。"
             "若目录含 generate_attachment_file，且任务是生成报告/月报/文档/Markdown/.md 文件，"
             "必须规划 generate_attachment_file 步骤，禁止空 steps 后在对话里直接输出全文。"
@@ -1584,7 +1807,12 @@ class ToolExecutionPlanner:
         skill_packages: Sequence[Any] = (),
         config: dict[str, Any] | None = None,
         agent_system_prompt: str = "",
+        thread_id: str | None = None,
     ) -> ToolExecutionPlan:
+        started = monotonic_ms()
+        model_call_ms = 0
+        retry_count = 0
+        logged = False
         completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "无"
         failure_text = failure.strip() or "无"
         packages = [item for item in (skill_packages or []) if isinstance(item, dict)]
@@ -1608,36 +1836,64 @@ class ToolExecutionPlanner:
             len(list(tools or [])),
             len(packages),
         )
-        response = await self._ainvoke_plan(primary_messages, config=config)
-        raw_text = _message_text(response)
         try:
-            payload = parse_tool_execution_plan_payload(raw_text)
-        except ToolPlanningError as first_error:
-            preview = " ".join(raw_text.split())[:500]
-            logger.warning("DeepAgent 规划输出无法解析为 JSON 对象: raw=%s", preview)
-            # 部分网关/模型会把有效 user 内容误判为空，改用单条合并消息再试一次。
-            if not _looks_like_empty_message_reply(raw_text) and "{" not in raw_text and "[" not in raw_text:
-                # 非空消息闲聊且无 JSON 痕迹：仍重试一次（更严格）
-                pass
-            retry_messages = [HumanMessage(content=(f"{system_prompt}\n\n" "上一次回复无效（未给出 JSON 计划）。请重新规划。" "只输出一个 JSON 对象，不要解释。\n\n" f"{task_prompt}"))]
-            logger.warning(
-                "DeepAgent 规划将重试一次（合并 system+user）: reason=%s",
-                "empty_message_reply" if _looks_like_empty_message_reply(raw_text) else "non_json_reply",
-            )
-            retry_response = await self._ainvoke_plan(retry_messages, config=config)
-            raw_text = _message_text(retry_response)
+            model_started = monotonic_ms()
+            response = await self._ainvoke_plan(primary_messages, config=config)
+            model_call_ms += elapsed_ms(model_started)
+            raw_text = _message_text(response)
             try:
                 payload = parse_tool_execution_plan_payload(raw_text)
-            except ToolPlanningError:
+            except ToolPlanningError as first_error:
+                preview = " ".join(raw_text.split())[:500]
+                logger.warning("DeepAgent 规划输出无法解析为 JSON 对象: raw=%s", preview)
+                # 部分网关/模型会把有效 user 内容误判为空，改用单条合并消息再试一次。
+                if not _looks_like_empty_message_reply(raw_text) and "{" not in raw_text and "[" not in raw_text:
+                    # 非空消息闲聊且无 JSON 痕迹：仍重试一次（更严格）
+                    pass
+                retry_messages = [
+                    HumanMessage(content=(f"{system_prompt}\n\n" "上一次回复无效（未给出 JSON 计划）。请重新规划。" "只输出一个 JSON 对象，不要解释。\n\n" f"{task_prompt}"))
+                ]
                 logger.warning(
-                    "DeepAgent 规划重试仍无法解析: raw=%s",
-                    " ".join(raw_text.split())[:500],
+                    "DeepAgent 规划将重试一次（合并 system+user）: reason=%s",
+                    "empty_message_reply" if _looks_like_empty_message_reply(raw_text) else "non_json_reply",
                 )
-                raise first_error from None
-        return self._normalize(
-            payload,
-            tools,
-            packages,
-            user_message=user_message,
-            agent_system_prompt=agent_system_prompt,
-        )
+                retry_count = 1
+                model_started = monotonic_ms()
+                retry_response = await self._ainvoke_plan(retry_messages, config=config)
+                model_call_ms += elapsed_ms(model_started)
+                raw_text = _message_text(retry_response)
+                try:
+                    payload = parse_tool_execution_plan_payload(raw_text)
+                except ToolPlanningError:
+                    logger.warning(
+                        "DeepAgent 规划重试仍无法解析: raw=%s",
+                        " ".join(raw_text.split())[:500],
+                    )
+                    raise first_error from None
+            plan = self._normalize(
+                payload,
+                tools,
+                packages,
+                user_message=user_message,
+                agent_system_prompt=agent_system_prompt,
+            )
+            log_stage_timing(
+                "planning",
+                elapsed_ms(started),
+                thread_id=thread_id,
+                step_count=len(plan.steps),
+                retry_count=retry_count,
+                model_call_ms=model_call_ms,
+            )
+            logged = True
+            return plan
+        finally:
+            if not logged:
+                log_stage_timing(
+                    "planning",
+                    elapsed_ms(started),
+                    thread_id=thread_id,
+                    step_count=0,
+                    retry_count=retry_count,
+                    model_call_ms=model_call_ms,
+                )

@@ -1,4 +1,5 @@
 'use client';
+import './register-strategy-detail-pilot';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { Spin, Button, Form, Input, message, Modal, Steps } from 'antd';
 import useApiClient from '@/utils/request';
@@ -103,13 +104,19 @@ import {
   createMetricRow,
   DEFAULT_FORMULA_EXPRESSION,
   DEFAULT_FORMULA_RESULT_NAME,
+  findCatalogMetric,
   getMetricExpressionModeForRows,
   MetricExpressionMode,
+  resolveHydratedMetricFields,
   resolveMetricExpressionUnits,
   toMetricExpressionStateFromQueryCondition,
   resolveQueryConditionMetricIds,
   resolveTemplateQueryCondition
 } from './formulaExpressionUtils';
+import {
+  buildStrategyDetailContext,
+  publishStrategyDetailSnapshot,
+} from './strategyDetail.pilot';
 const defaultGroup = ['instance_id'];
 
 const StrategyOperation = () => {
@@ -283,6 +290,10 @@ const StrategyOperation = () => {
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [enableAlerts, setEnableAlerts] = useState<string[]>(['threshold']);
   const initialMetricPluginIdRef = useRef<string | number | undefined>(undefined);
+  const initMetricDataRef = useRef<MetricItem[]>([]);
+  const pendingMetricLookupRef = useRef(new Set<string>());
+  const storedMetricNameByIdRef = useRef(new Map<string, string>());
+  initMetricDataRef.current = initMetricData;
   const effectiveCalculationUnit = resolveEffectiveCalculationUnit({
     isFormulaMode: metricExpressionMode === 'formula',
     unit: calculationUnit,
@@ -311,6 +322,54 @@ const StrategyOperation = () => {
     calculationUnit: thresholdBaseUnit,
     unitList
   });
+  const watchedName = Form.useWatch('name', form);
+  const watchedAlertName = Form.useWatch('alert_name', form);
+  const watchedNoticeUsers = Form.useWatch('notice_users', form);
+  const watchedHandlers = Form.useWatch('handlers', form);
+  const watchedNoticeTypeIds = Form.useWatch('notice_type_ids', form);
+  const watchedSchedule = Form.useWatch('schedule', form);
+
+  useEffect(() => {
+    const metricLabel = metrics.find((item) => item.name === metric)?.display_name || metric || '';
+    publishStrategyDetailSnapshot(buildStrategyDetailContext({
+      name: watchedName || watchedAlertName || detailName,
+      objectName: monitorName || currentMonitorObject?.display_name || currentMonitorObject?.name,
+      source,
+      schedule: watchedSchedule,
+      scheduleUnit: unit,
+      period,
+      periodUnit,
+      expression: metricExpressionMode === 'formula' ? formulaExpression : metricLabel,
+      thresholds: threshold,
+      noticeChannelTypes: watchedNoticeTypeIds,
+      noticeUsers: watchedNoticeUsers,
+      handlers: watchedHandlers,
+      userList: noticeUserList,
+      channels: channelList,
+    }));
+    return () => publishStrategyDetailSnapshot(null);
+  }, [
+    watchedName,
+    watchedAlertName,
+    watchedNoticeUsers,
+    watchedHandlers,
+    watchedNoticeTypeIds,
+    watchedSchedule,
+    detailName,
+    monitorName,
+    currentMonitorObject,
+    source,
+    unit,
+    period,
+    periodUnit,
+    metricExpressionMode,
+    formulaExpression,
+    metric,
+    metrics,
+    threshold,
+    noticeUserList,
+    channelList,
+  ]);
   const functionDelayQueries = useMemo(
     () =>
       collectMetricQueryTexts({
@@ -809,33 +868,88 @@ const StrategyOperation = () => {
     }
   };
 
+  const lookupStoredMetrics = (ids: Array<number | null | undefined>) => {
+    const missing = [
+      ...new Set(
+        ids.filter((id): id is number => id != null && id !== 0 && Number.isFinite(id))
+      )
+    ].filter((id) => !pendingMetricLookupRef.current.has(String(id)));
+    if (!missing.length || monitorObjId == null || monitorObjId === '') return;
+    missing.forEach((id) => pendingMetricLookupRef.current.add(String(id)));
+    void getMonitorMetrics({
+      monitor_object_id: monitorObjId,
+      id_in: missing.join(','),
+      page: 1,
+      page_size: missing.length
+    })
+      .then((page) => {
+        const byId = new Map(
+          (page.items || []).map((item) => [String(item.id), item])
+        );
+        byId.forEach((item, id) => {
+          const name = String(item.name || '').trim();
+          if (name) storedMetricNameByIdRef.current.set(id, name);
+        });
+        setMetricRows((current) =>
+          current.map((row) => {
+            if (row.metricName || row.metricId == null) return row;
+            const stored = byId.get(String(row.metricId));
+            const name = String(stored?.name || '').trim();
+            if (!name) return row;
+            const matched = findCatalogMetric(
+              initMetricDataRef.current,
+              null,
+              name
+            );
+            if (matched) {
+              return { ...row, metricId: matched.id, metricName: matched.name };
+            }
+            return { ...row, metricName: name };
+          })
+        );
+      })
+      .catch(() => {
+        missing.forEach((id) => pendingMetricLookupRef.current.delete(String(id)));
+      });
+  };
+
   const processMetricData = (data: StrategyFields) => {
     const rawQuery = resolveTemplateQueryCondition(data);
     const query_condition = resolveQueryConditionMetricIds(
       rawQuery as Parameters<typeof resolveQueryConditionMetricIds>[0],
       initMetricData
     ) || rawQuery;
-    if (query_condition?.type === 'metric' && initMetricData.length > 0) {
-      const metricName = String(query_condition?.metric_name || data.metric_name || '').trim();
-      const _metrics = initMetricData.find(
-        (item) =>
-          (query_condition?.metric_id != null &&
-            String(item.id) === String(query_condition.metric_id)) ||
-          (!!metricName && item.name === metricName)
+    if (query_condition?.type === 'metric') {
+      const rememberedName =
+        query_condition?.metric_id != null
+          ? storedMetricNameByIdRef.current.get(String(query_condition.metric_id))
+          : undefined;
+      const metricName = String(
+        query_condition?.metric_name || data.metric_name || rememberedName || ''
+      ).trim();
+      const hydrated = resolveHydratedMetricFields(
+        initMetricData,
+        query_condition?.metric_id,
+        metricName
       );
-      if (_metrics) {
-        setMetric(_metrics?.name || '');
+      const _metrics = findCatalogMetric(
+        initMetricData,
+        hydrated.metricId,
+        hydrated.metricName
+      );
+      if (_metrics || hydrated.metricName) {
+        setMetric(hydrated.metricName || _metrics?.name || '');
         setConditions(query_condition?.filter || []);
         const fixedList =
           getGroupIds(monitorName as string)?.list || defaultGroup;
         const loadedGroupBy = resolveLoadedGroupBy(data.group_by, [
           ...fixedList,
-          ...getMetricDimensionNames(_metrics.dimensions),
+          ...getMetricDimensionNames(_metrics?.dimensions),
         ]);
         setMetricRows([
           createMetricRow(0, {
-            metricId: _metrics.id,
-            metricName: _metrics.name,
+            metricId: hydrated.metricId,
+            metricName: hydrated.metricName,
             filters: query_condition?.filter || [],
             groupAlgorithm: data.group_algorithm || 'avg',
             groupBy: loadedGroupBy
@@ -859,18 +973,45 @@ const StrategyOperation = () => {
             return item;
           })
         );
+      } else if (hydrated.metricId) {
+        const fixedList =
+          getGroupIds(monitorName as string)?.list || defaultGroup;
+        setMetric(null);
+        setConditions(query_condition?.filter || []);
+        setMetricRows([
+          createMetricRow(0, {
+            metricId: hydrated.metricId,
+            filters: query_condition?.filter || [],
+            groupAlgorithm: data.group_algorithm || 'avg',
+            groupBy: resolveLoadedGroupBy(data.group_by, fixedList)
+          })
+        ]);
+        setMetricExpressionMode('metric');
+        lookupStoredMetrics([hydrated.metricId]);
       }
-    } else if (query_condition?.type === 'formula' && initMetricData.length > 0) {
+    } else if (query_condition?.type === 'formula') {
       const restoredState = toMetricExpressionStateFromQueryCondition(
         query_condition
       );
       const rows = restoredState.rows.map((row) => {
-        const target = initMetricData.find((item) => row.metricId != null && String(item.id) === String(row.metricId));
+        const rememberedName =
+          row.metricId != null
+            ? storedMetricNameByIdRef.current.get(String(row.metricId))
+            : undefined;
+        const hydrated = resolveHydratedMetricFields(
+          initMetricData,
+          row.metricId,
+          row.metricName || rememberedName
+        );
         return {
           ...row,
-          metricName: target?.name || row.metricName
+          metricId: hydrated.metricId,
+          metricName: hydrated.metricName
         };
       });
+      lookupStoredMetrics(
+        rows.filter((row) => !row.metricName).map((row) => row.metricId)
+      );
       setMetricRows(rows);
       setMetricExpressionMode('formula');
       setCalculationUnit(

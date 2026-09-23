@@ -26,6 +26,7 @@ from apps.mlops.utils.group_scope import (
     validate_requested_teams,
 )
 from apps.mlops.utils.i18n import serializer_message
+from apps.mlops.utils.serving_port import ServingPortValidationMixin
 
 
 class TimeSeriesPredictDatasetSerializer(AuthSerializer):
@@ -204,7 +205,7 @@ class TimeSeriesPredictTrainDataSerializer(AuthSerializer):
         return representation
 
 
-class TimeSeriesPredictServingSerializer(AuthSerializer):
+class TimeSeriesPredictServingSerializer(ServingPortValidationMixin, AuthSerializer):
     """时间序列预测服务序列化器"""
 
     permission_key = "serving.timeseries_predict_serving"

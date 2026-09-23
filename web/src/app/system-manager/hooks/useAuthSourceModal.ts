@@ -102,7 +102,7 @@ export function useAuthSourceModal({
       dynamicForm.resetFields();
     } catch (error) {
       console.error('Failed to save auth source:', error);
-      message.error(editingSource ? t('common.updateFailed') : t('common.createFailed'));
+      message.error(editingSource ? t('common.updateFailed') : t('system.common.createFailed'));
     } finally {
       setModalLoading(false);
     }
@@ -141,8 +141,8 @@ export function useAuthSourceModal({
 
   const handleDeleteAuthSource = useCallback(async (source: AuthSource) => {
     Modal.confirm({
-      title: t('common.deleteTitle'),
-      content: t('common.deleteContent'),
+      title: t('common.delete'),
+      content: t('common.deleteConfirm'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
       onOk: async () => {

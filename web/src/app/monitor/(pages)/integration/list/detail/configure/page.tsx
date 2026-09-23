@@ -1,4 +1,5 @@
 'use client';
+import './register-configure-pilot';
 import React, { useMemo } from 'react';
 import { Alert, Button, Spin } from 'antd';
 import AutomaticConfiguration from './automatic';

@@ -45,6 +45,8 @@
     "settings": "Settings",
     "addNew": "Add New",
     "new": "New",
+    "owner": "Owner",
+    "team": "Team",
     "justNow": "Just now",
     "secondsAgo": "{count}s ago",
     "minutesAgo": "{count}m ago",
@@ -105,6 +107,7 @@
     "trainFailed": "Failed to train",
     "noResult": "No Results",
     "noData": "No Data",
+    "loading": "Loading...",
     "unassigned": "Unassigned",
     "currentOrganization": "Current org",
     "catalogScope": "Catalog scope",
@@ -528,6 +531,11 @@
     "apm_integration": "App Integration",
     "service_red": "Service Metrics",
     "trace_explore": "Traces",
-    "alert_center": "Alert Policies"
+    "alert_center": "Alert Policies",
+    "rum_experience": "Experience",
+    "rum_quality": "Quality",
+    "rum_alerting": "Events",
+    "rum_integration": "Integration",
+    "rum_governance": "Data Governance"
   }
 }
