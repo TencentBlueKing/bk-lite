@@ -34,7 +34,6 @@ import RumIconAction from '@/app/rum/components/rum-icon-action';
 import RumRangeSegmented from '@/app/rum/components/rum-range-segmented';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
 import SessionTrendChart from '@/app/rum/sessions/ui/session-trend-chart';
-import SavedViewsBar, { type ViewPreset } from '@/app/rum/components/saved-views-bar';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import RumPageError from '@/app/rum/components/rum-page-error';
 import { degradationReason } from '@/app/rum/lib/degradation';
@@ -52,24 +51,6 @@ import { parseRumPageSize, RUM_DEFAULT_PAGE_SIZE } from '@/app/rum/lib/table-pag
 import { useTranslation } from '@/utils/i18n';
 
 type SortKey = 'impact' | 'start' | 'errors' | 'duration';
-
-const SESSION_PRESETS: ViewPreset[] = [
-  {
-    nameKey: 'rum.savedViews.presetSessionsErrorOnly',
-    fallback: '仅错误会话',
-    context: { hasError: '1' },
-  },
-  {
-    nameKey: 'rum.savedViews.presetSessionsCheckout',
-    fallback: '结账页错误',
-    context: { route: '/checkout', hasError: '1' },
-  },
-  {
-    nameKey: 'rum.savedViews.presetSessionsMobile',
-    fallback: '移动端',
-    context: { device: 'mobile' },
-  },
-];
 
 function durationMs(s: RumSessionRow): number {
   const start = Date.parse(s.startTime);
@@ -177,7 +158,9 @@ export default function RumSessionsPage() {
     page && page.summary.total > 0 ? formatDurationMs(page.summary.medianDurationMs) : '—';
   const degrade = degradationReason(page);
   const chrome = resolveRumPageState({
-    pending: pending && page === null,
+    // Refetch (range / filter change) must also enter loading chrome; otherwise
+    // stale rows stay on screen with no feedback while the network is in flight.
+    pending,
     error: !pending && page === null ? t('rum.sessions.loadFailed', '会话列表加载失败') : null,
     itemCount: sessions.length,
     page,
@@ -308,6 +291,7 @@ export default function RumSessionsPage() {
                 block
                 size="small"
                 value={range}
+                loading={pending}
                 onChange={setRange}
               />
             </RumFilterBlock>
@@ -342,7 +326,7 @@ export default function RumSessionsPage() {
         }
         mainTitle={t('rum.sessions.detailTitle', '会话明细')}
         mainExtra={
-          page ? (
+          page && !pending ? (
             <>
               <span className="tabular-nums text-[var(--color-text-2)]">
                 {t('rum.sessions.kpi.total', '全部会话')} {total}
@@ -408,7 +392,6 @@ export default function RumSessionsPage() {
                     void load();
                   }}
                 />
-                <SavedViewsBar screen="sessions" presets={SESSION_PRESETS} />
                 <ExportButton
                   rows={(page?.sessions || []) as unknown as Record<string, unknown>[]}
                   filename="rum-sessions"
@@ -418,7 +401,9 @@ export default function RumSessionsPage() {
               </div>
 
               {!pending && sessions.length === 0 ? (
-                <Empty description={t('rum.sessions.empty', '没有匹配的会话')} />
+                <div className="flex min-h-0 flex-1 items-center justify-center">
+                  <Empty description={t('rum.sessions.empty', '没有匹配的会话')} />
+                </div>
               ) : sessions.length > 0 ? (
                 <div className="min-h-0 min-w-0 flex-1">
                   <CustomTable<RumSessionRow>

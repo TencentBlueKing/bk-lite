@@ -18,7 +18,6 @@ import {
 } from '@/app/rum/components/rum-dual-workbench';
 import RumRangeSegmented from '@/app/rum/components/rum-range-segmented';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
-import SavedViewsBar, { type ViewPreset } from '@/app/rum/components/saved-views-bar';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import { cwvTone, formatMs, toneSemanticPalette, toneTextClass, type CwvTone } from '@/app/rum/lib/cwv';
 import SemanticBadge from '@/components/semantic-badge';
@@ -34,24 +33,6 @@ import { useTranslation } from '@/utils/i18n';
 
 type SortKey = 'impact' | 'views' | 'lcp' | 'inp' | 'cls';
 type Mode = 'route' | 'release';
-
-const VIEW_PRESETS: ViewPreset[] = [
-  {
-    nameKey: 'rum.savedViews.presetViewsRecent',
-    fallback: '近 1 小时',
-    context: { range: '1h' },
-  },
-  {
-    nameKey: 'rum.savedViews.presetViewsAutomated',
-    fallback: '自动化流量',
-    context: { traffic: 'automated' },
-  },
-  {
-    nameKey: 'rum.savedViews.presetViewsRelease',
-    fallback: '按版本',
-    context: { mode: 'release' },
-  },
-];
 
 function sortRows(rows: RumViewAggregateRow[], key: SortKey): RumViewAggregateRow[] {
   const field: Record<SortKey, (r: RumViewAggregateRow) => number> = {
@@ -339,7 +320,7 @@ export default function RumViewsPage() {
               />
             </RumFilterBlock>
             <RumFilterBlock title={t('rum.common.timeWindow', '时间')}>
-              <RumRangeSegmented block size="small" value={range} onChange={setRange} />
+              <RumRangeSegmented block size="small" value={range} loading={pending} onChange={setRange} />
             </RumFilterBlock>
             <RumFilterBlock title={t('rum.applications.application', '应用')}>
               <Select
@@ -429,29 +410,30 @@ export default function RumViewsPage() {
                 value={routeQuery}
                 onChange={(e) => setRouteQuery(e.target.value)}
               />
-              <SavedViewsBar screen="views" presets={VIEW_PRESETS} />
               <ExportButton
                 rows={sorted as unknown as Record<string, unknown>[]}
                 filename="rum-views"
               />
             </div>
 
-            {pending && !page ? (
+            {pending ? (
               <RumTableSkeleton
                 size="middle"
                 columns={rumSkeletonColumns(mode === 'release' ? releaseColumns : routeColumns)}
               />
-            ) : !pending && sorted.length === 0 ? (
-              <Empty
-                description={
-                  <div>
-                    <p className="m-0 text-sm font-semibold">{t('rum.views.empty', '没有视图样本')}</p>
-                    <p className="mt-1 text-xs text-[var(--color-text-3)]">
-                      {t('rum.views.emptyHint', '选择应用与时间范围后再试。')}
-                    </p>
-                  </div>
-                }
-              />
+            ) : sorted.length === 0 ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <Empty
+                  description={
+                    <div>
+                      <p className="m-0 text-sm font-semibold">{t('rum.views.empty', '没有视图样本')}</p>
+                      <p className="mt-1 text-xs text-[var(--color-text-3)]">
+                        {t('rum.views.emptyHint', '选择应用与时间范围后再试。')}
+                      </p>
+                    </div>
+                  }
+                />
+              </div>
             ) : sorted.length > 0 ? (
               <div className="min-h-0 min-w-0 flex-1">
                 <CustomTable<RumViewAggregateRow>
