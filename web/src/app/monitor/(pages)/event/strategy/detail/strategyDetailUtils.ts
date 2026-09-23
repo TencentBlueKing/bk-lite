@@ -78,23 +78,84 @@ export const isVacantThresholdUnit = (
   unit: string | null | undefined
 ): boolean => !unit || INVALID_THRESHOLD_UNIT_IDS.has(unit);
 
+/** 从策略 query_condition 抽出 metric_id（metric / formula）。 */
+export const extractMetricIdsFromQueryCondition = (
+  queryCondition:
+    | {
+        type?: string;
+        metric_id?: number | null;
+        queries?: Array<{ metric_id?: number | null }>;
+      }
+    | null
+    | undefined
+): number[] => {
+  if (!queryCondition || typeof queryCondition !== 'object') return [];
+  if (queryCondition.type === 'formula' && Array.isArray(queryCondition.queries)) {
+    const ids = queryCondition.queries
+      .map((q) => q?.metric_id)
+      .filter((id): id is number => id != null && Number.isFinite(Number(id)) && Number(id) !== 0)
+      .map((id) => Number(id));
+    return [...new Set(ids)];
+  }
+  if (queryCondition.type === 'metric' || queryCondition.metric_id != null) {
+    const id = queryCondition.metric_id;
+    if (id != null && Number.isFinite(Number(id)) && Number(id) !== 0) {
+      return [Number(id)];
+    }
+  }
+  return [];
+};
+
+/** 指标上的 monitor_plugin 反查插件：仅当唯一且落在 pluginList 内才返回。 */
+export const resolvePluginIdFromMetricPlugins = (
+  pluginList: SegmentedItem[],
+  metrics: Array<{ monitor_plugin?: string | number | null }>
+): string | number | undefined => {
+  if (!pluginList.length || !metrics.length) return undefined;
+  const pluginIds = [
+    ...new Set(
+      metrics
+        .map((m) => m?.monitor_plugin)
+        .filter((id) => id != null && id !== '')
+        .map((id) => String(id))
+    ),
+  ];
+  if (pluginIds.length !== 1) return undefined;
+  const matched = pluginList.find((item) => String(item.value) === pluginIds[0]);
+  return matched?.value;
+};
+
 export const resolveInitialMetricPluginId = ({
   type,
   pluginList,
   policyCollectType,
   policyDetailReady = false,
+  metricResolvedPluginId,
 }: {
   type: string;
   pluginList: SegmentedItem[];
   policyCollectType?: string | number | null;
   policyDetailReady?: boolean;
+  /** 由 metric→plugin 反查得到的唯一插件，可覆盖空/无效 collect_type */
+  metricResolvedPluginId?: string | number | null;
 }): string | number | undefined => {
   if (!pluginList.length) return undefined;
+  const pickMetricFallback = () => {
+    if (metricResolvedPluginId == null || metricResolvedPluginId === '') {
+      return undefined;
+    }
+    return pluginList.find(
+      (item) => String(item.value) === String(metricResolvedPluginId)
+    )?.value;
+  };
   if (!['add', 'builtIn'].includes(type)) {
     if (policyCollectType == null || policyCollectType === '') {
       // 详情未到时 collect_type 一定为空，不能猜第一个插件；多插件对象也不猜。
       if (policyDetailReady && pluginList.length === 1) {
         return pluginList[0]?.value;
+      }
+      if (policyDetailReady) {
+        return pickMetricFallback();
       }
       return undefined;
     }
@@ -102,6 +163,8 @@ export const resolveInitialMetricPluginId = ({
       (item) => String(item.value) === String(policyCollectType)
     );
     if (matched) return matched.value;
+    // 无效/过期 collect_type：禁止落到列表第一个，优先用 metric 反查。
+    return pickMetricFallback();
   }
   return pluginList[0]?.value;
 };
@@ -109,15 +172,30 @@ export const resolveInitialMetricPluginId = ({
 /** 编辑回填表单里的采集插件：空值且对象只有一个插件时补上，避免再存成空串。 */
 export const resolveEditFormCollectType = (
   policyCollectType: string | number | null | undefined,
-  pluginList: SegmentedItem[]
+  pluginList: SegmentedItem[],
+  metricResolvedPluginId?: string | number | null
 ): string | number => {
+  const pickMetricFallback = () => {
+    if (metricResolvedPluginId == null || metricResolvedPluginId === '') {
+      return '';
+    }
+    const matched = pluginList.find(
+      (item) => String(item.value) === String(metricResolvedPluginId)
+    );
+    return matched ? matched.value : '';
+  };
   if (policyCollectType != null && policyCollectType !== '') {
-    return +policyCollectType;
+    const matched = pluginList.find(
+      (item) => String(item.value) === String(policyCollectType)
+    );
+    if (matched) return +matched.value;
+    const fromMetric = pickMetricFallback();
+    return fromMetric === '' ? '' : fromMetric;
   }
   if (pluginList.length === 1) {
     return pluginList[0].value;
   }
-  return '';
+  return pickMetricFallback();
 };
 
 /** 编辑态何时跑指标回填：目录已到，或策略详情已到（可按 id 补名称）。 */
