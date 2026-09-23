@@ -5,17 +5,37 @@ from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django_minio_backend import MinioBackend
 
 from apps.mlops.models.external_resource_cleanup import ExternalResourceCleanupIntent
 from apps.mlops.utils import mlflow_service
+from apps.mlops.utils.webhook_client import WebhookClient
 
 CLAIM_LEASE = timedelta(minutes=5)
 MAX_ATTEMPTS = 10
+ABSENT_RESOURCE_CODES = {"RESOURCE_DOES_NOT_EXIST", "NoSuchKey", "NoSuchObject", "NoSuchBucket"}
 
 
-def _cleanup_key(resource_type: str, payload: dict) -> str:
-    canonical_target = "\x00".join([resource_type, payload["experiment_name"], payload["model_name"]])
+def _cleanup_key(resource_type: str, *targets: str) -> str:
+    canonical_target = "\x00".join([resource_type, *targets])
     return hashlib.sha256(canonical_target.encode("utf-8")).hexdigest()
+
+
+def _create_cleanup_intent(
+    resource_type: str,
+    payload: dict,
+    *targets: str,
+    using: str = "default",
+) -> ExternalResourceCleanupIntent:
+    if any(not target for target in targets):
+        raise ValueError("cleanup target must be non-empty")
+    intent, _ = ExternalResourceCleanupIntent.objects.using(using).get_or_create(
+        idempotency_key=_cleanup_key(resource_type, *targets),
+        defaults={"resource_type": resource_type, "payload": payload},
+    )
+    if intent.resource_type != resource_type or intent.payload != payload:
+        raise ValueError("cleanup idempotency key is bound to another target")
+    return intent
 
 
 def create_mlflow_cleanup_intent(
@@ -26,15 +46,45 @@ def create_mlflow_cleanup_intent(
 ) -> ExternalResourceCleanupIntent:
     if not experiment_name or not model_name:
         raise ValueError("MLflow cleanup target must be non-empty")
-    payload = {"experiment_name": experiment_name, "model_name": model_name}
-    resource_type = ExternalResourceCleanupIntent.ResourceType.MLFLOW_EXPERIMENT_MODEL
-    intent, _ = ExternalResourceCleanupIntent.objects.using(using).get_or_create(
-        idempotency_key=_cleanup_key(resource_type, payload),
-        defaults={"resource_type": resource_type, "payload": payload},
+    return _create_cleanup_intent(
+        ExternalResourceCleanupIntent.ResourceType.MLFLOW_EXPERIMENT_MODEL,
+        {"experiment_name": experiment_name, "model_name": model_name},
+        experiment_name,
+        model_name,
+        using=using,
     )
-    if intent.resource_type != resource_type or intent.payload != payload:
-        raise ValueError("cleanup idempotency key is bound to another target")
-    return intent
+
+
+def create_minio_cleanup_intent(
+    bucket: str,
+    path: str,
+    *,
+    using: str = "default",
+) -> ExternalResourceCleanupIntent:
+    if not bucket or not path:
+        raise ValueError("MinIO cleanup target must be non-empty")
+    return _create_cleanup_intent(
+        ExternalResourceCleanupIntent.ResourceType.MINIO_OBJECT,
+        {"bucket": bucket, "path": path},
+        bucket,
+        path,
+        using=using,
+    )
+
+
+def create_container_cleanup_intent(
+    container_id: str,
+    *,
+    using: str = "default",
+) -> ExternalResourceCleanupIntent:
+    if not container_id:
+        raise ValueError("container cleanup target must be non-empty")
+    return _create_cleanup_intent(
+        ExternalResourceCleanupIntent.ResourceType.WEBHOOK_CONTAINER,
+        {"container_id": container_id},
+        container_id,
+        using=using,
+    )
 
 
 def _due_filter(now):
@@ -109,16 +159,45 @@ def release_cleanup_claim(
     return updated == 1
 
 
+def _required_payload_str(intent: ExternalResourceCleanupIntent, field: str) -> str:
+    value = intent.payload.get(field)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"invalid {intent.resource_type} cleanup target")
+    return value
+
+
 def _mlflow_target(intent: ExternalResourceCleanupIntent) -> tuple[str, str]:
     if intent.resource_type != ExternalResourceCleanupIntent.ResourceType.MLFLOW_EXPERIMENT_MODEL:
         raise ValueError("unsupported external cleanup resource type")
-    experiment_name = intent.payload.get("experiment_name")
-    model_name = intent.payload.get("model_name")
-    if not isinstance(experiment_name, str) or not experiment_name:
-        raise ValueError("invalid MLflow experiment cleanup target")
-    if not isinstance(model_name, str) or not model_name:
-        raise ValueError("invalid MLflow model cleanup target")
-    return experiment_name, model_name
+    return _required_payload_str(intent, "experiment_name"), _required_payload_str(intent, "model_name")
+
+
+def _is_absent_resource(error: Exception) -> bool:
+    code = getattr(error, "code", None)
+    if code in ABSENT_RESOURCE_CODES:
+        return True
+    message = str(error).lower()
+    return "not found" in message or "does not exist" in message or "nosuchkey" in message
+
+
+def _execute_cleanup(intent: ExternalResourceCleanupIntent) -> None:
+    resource_type = intent.resource_type
+    if resource_type == ExternalResourceCleanupIntent.ResourceType.MLFLOW_EXPERIMENT_MODEL:
+        experiment_name, model_name = _mlflow_target(intent)
+        mlflow_service.delete_experiment_and_model(
+            experiment_name=experiment_name,
+            model_name=model_name,
+        )
+        return
+    if resource_type == ExternalResourceCleanupIntent.ResourceType.MINIO_OBJECT:
+        bucket = _required_payload_str(intent, "bucket")
+        path = _required_payload_str(intent, "path")
+        MinioBackend(bucket_name=bucket).delete(path)
+        return
+    if resource_type == ExternalResourceCleanupIntent.ResourceType.WEBHOOK_CONTAINER:
+        WebhookClient.remove(_required_payload_str(intent, "container_id"))
+        return
+    raise ValueError("unsupported external cleanup resource type")
 
 
 def process_cleanup_intent(
@@ -142,49 +221,48 @@ def process_cleanup_intent(
         return {"result": False, "reason": "stale cleanup claim"}
 
     try:
-        experiment_name, model_name = _mlflow_target(intent)
-        mlflow_service.delete_experiment_and_model(
-            experiment_name=experiment_name,
-            model_name=model_name,
-        )
+        _execute_cleanup(intent)
     except Exception as error:
-        with transaction.atomic(using=using):
-            current = (
-                ExternalResourceCleanupIntent.objects.using(using)
-                .select_for_update()
-                .filter(
-                    pk=intent_id,
-                    status=ExternalResourceCleanupIntent.Status.PROCESSING,
-                    claim_token=claim_token,
-                    claim_expires_at__gt=timezone.now(),
+        if not _is_absent_resource(error):
+            with transaction.atomic(using=using):
+                current = (
+                    ExternalResourceCleanupIntent.objects.using(using)
+                    .select_for_update()
+                    .filter(
+                        pk=intent_id,
+                        status=ExternalResourceCleanupIntent.Status.PROCESSING,
+                        claim_token=claim_token,
+                        claim_expires_at__gt=timezone.now(),
+                    )
+                    .first()
                 )
-                .first()
-            )
-            if current is not None:
-                current.attempts += 1
-                current.status = (
-                    ExternalResourceCleanupIntent.Status.FAILED if current.attempts >= MAX_ATTEMPTS else ExternalResourceCleanupIntent.Status.PENDING
-                )
-                current.next_retry_at = (
-                    None
-                    if current.status == ExternalResourceCleanupIntent.Status.FAILED
-                    else timezone.now() + timedelta(seconds=min(3600, 30 * (2 ** min(current.attempts - 1, 7))))
-                )
-                current.claim_token = ""
-                current.claim_expires_at = None
-                current.last_error = type(error).__name__
-                current.save(
-                    update_fields=[
-                        "attempts",
-                        "status",
-                        "next_retry_at",
-                        "claim_token",
-                        "claim_expires_at",
-                        "last_error",
-                        "updated_at",
-                    ]
-                )
-        raise
+                if current is not None:
+                    current.attempts += 1
+                    current.status = (
+                        ExternalResourceCleanupIntent.Status.FAILED
+                        if current.attempts >= MAX_ATTEMPTS
+                        else ExternalResourceCleanupIntent.Status.PENDING
+                    )
+                    current.next_retry_at = (
+                        None
+                        if current.status == ExternalResourceCleanupIntent.Status.FAILED
+                        else timezone.now() + timedelta(seconds=min(3600, 30 * (2 ** min(current.attempts - 1, 7))))
+                    )
+                    current.claim_token = ""
+                    current.claim_expires_at = None
+                    current.last_error = type(error).__name__
+                    current.save(
+                        update_fields=[
+                            "attempts",
+                            "status",
+                            "next_retry_at",
+                            "claim_token",
+                            "claim_expires_at",
+                            "last_error",
+                            "updated_at",
+                        ]
+                    )
+            raise
 
     updated = (
         ExternalResourceCleanupIntent.objects.using(using)
