@@ -628,3 +628,145 @@ class SourceSyncService:
             source.pk, total, created, updated, skipped,
         )
         return {"created": created, "updated": updated, "skipped": skipped, "total": total}
+
+    @classmethod
+    def resync_empty_linux_packages(
+        cls,
+        source_id=None,
+        limit=100,
+        dry_run=False,
+        after_id=0,
+    ) -> dict:
+        """有界补齐 packages 为空列表的存量 Linux 公告，不拉全量建档。"""
+        from collections import defaultdict
+
+        from apps.patch_mgmt.models import LinuxPatchDetail
+        from apps.patch_mgmt.services.linux_repo_sync import fetch_advisories
+
+        try:
+            bounded_limit = int(limit)
+            cursor = int(after_id)
+        except (TypeError, ValueError) as exc:
+            raise SourceSyncError("limit 与 after_id 必须是整数") from exc
+        if not 1 <= bounded_limit <= 1000:
+            raise SourceSyncError("limit 必须在 1 到 1000 之间")
+        if cursor < 0:
+            raise SourceSyncError("after_id 不能小于 0")
+
+        requested_source = None
+        if source_id is not None:
+            try:
+                requested_source = PatchSource.objects.get(pk=int(source_id))
+            except (TypeError, ValueError, PatchSource.DoesNotExist) as exc:
+                raise SourceSyncError("Linux 补丁源不存在") from exc
+            if not requested_source.is_linux_source:
+                raise SourceSyncError("source_id 必须是 Linux 补丁源")
+
+        queryset = (
+            LinuxPatchDetail.objects.filter(packages=[])
+            .select_related("patch")
+            .prefetch_related("patch__sources")
+            .filter(patch__os_type=OSType.LINUX, pk__gt=cursor)
+            .order_by("pk")
+        )
+        if requested_source is not None:
+            queryset = queryset.filter(patch__sources=requested_source)
+        details = list(queryset[:bounded_limit])
+
+        grouped: dict[int, list] = defaultdict(list)
+        sources_by_id: dict[int, PatchSource] = {}
+        items: list[dict] = []
+        filled = skipped = failed = 0
+
+        def append_item(detail, source, status: str, error: str = "") -> None:
+            item = {
+                "patch_id": int(detail.pk),
+                "source_id": int(source.pk) if source is not None else None,
+                "status": status,
+            }
+            if error:
+                item["error"] = error
+            items.append(item)
+
+        for detail in details:
+            assigned = requested_source
+            if assigned is None:
+                linux_sources = [source for source in detail.patch.sources.all() if source.is_linux_source]
+                assigned = min(linux_sources, key=lambda source: source.pk) if linux_sources else None
+            if assigned is None:
+                failed += 1
+                append_item(detail, None, "failed", "missing_linux_source")
+                continue
+            grouped[assigned.pk].append(detail)
+            sources_by_id[assigned.pk] = assigned
+
+        for current_source_id, batch in grouped.items():
+            source = sources_by_id[current_source_id]
+            try:
+                advisories = fetch_advisories(source)
+            except Exception as exc:  # noqa: BLE001 - 单源失败不得中断其他源
+                logger.warning(
+                    "SourceSyncService.resync_empty_linux_packages: source unavailable source_id=%s error_type=%s",
+                    source.pk,
+                    type(exc).__name__,
+                )
+                for detail in batch:
+                    failed += 1
+                    append_item(detail, source, "failed", type(exc).__name__)
+                continue
+
+            by_advisory_id = {advisory.advisory_id: advisory for advisory in advisories}
+            for detail in batch:
+                advisory = by_advisory_id.get(detail.patch.title)
+                if advisory is None:
+                    failed += 1
+                    append_item(detail, source, "failed", "advisory_not_found")
+                    continue
+                try:
+                    defaults = _linux_detail_defaults(advisory, source)
+                    if dry_run:
+                        filled += 1
+                        append_item(detail, source, "filled")
+                        continue
+                    with transaction.atomic():
+                        locked = (
+                            LinuxPatchDetail.objects.select_for_update()
+                            .select_related("patch")
+                            .get(pk=detail.pk)
+                        )
+                        if locked.packages:
+                            skipped += 1
+                            append_item(detail, source, "skipped")
+                            continue
+                        for field, value in defaults.items():
+                            setattr(locked, field, value)
+                        locked.save(update_fields=[*defaults.keys()])
+                    filled += 1
+                    append_item(detail, source, "filled")
+                except Exception as exc:  # noqa: BLE001 - 单条失败继续本批
+                    logger.warning(
+                        "SourceSyncService.resync_empty_linux_packages: item failed patch_id=%s source_id=%s error_type=%s",
+                        detail.pk,
+                        source.pk,
+                        type(exc).__name__,
+                    )
+                    failed += 1
+                    append_item(detail, source, "failed", type(exc).__name__)
+
+        result = {
+            "scanned": len(details),
+            "filled": filled,
+            "skipped": skipped,
+            "failed": failed,
+            "dry_run": bool(dry_run),
+            "items": items,
+        }
+        logger.info(
+            "SourceSyncService.resync_empty_linux_packages: scanned=%s filled=%s skipped=%s failed=%s dry_run=%s",
+            result["scanned"],
+            result["filled"],
+            result["skipped"],
+            result["failed"],
+            result["dry_run"],
+        )
+        return result
