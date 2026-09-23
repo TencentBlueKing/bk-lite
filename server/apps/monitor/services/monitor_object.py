@@ -180,6 +180,26 @@ class MonitorObjectService:
             else:
                 conf_info["status"] = "unavailable"
 
+        MonitorObjectService._attach_operating_system(items)
+
+    @staticmethod
+    def _attach_operating_system(items: list) -> None:
+        """Fill linux/windows from the bound Node so Host dashboards can hide Linux-only cards."""
+        node_ids = [item.get("node_id") for item in items if item.get("node_id")]
+        os_map = {}
+        if node_ids:
+            from apps.node_mgmt.models import Node
+
+            os_map = {
+                str(node_id): str(os_value or "").strip().lower()
+                for node_id, os_value in Node.objects.filter(id__in=node_ids).values_list("id", "operating_system")
+                if str(os_value or "").strip().lower() in {"linux", "windows"}
+            }
+        for item in items:
+            if item.get("operating_system") in {"linux", "windows"}:
+                continue
+            item["operating_system"] = os_map.get(str(item.get("node_id") or ""), "")
+
     @staticmethod
     def get_monitor_instance(
         monitor_object_id,

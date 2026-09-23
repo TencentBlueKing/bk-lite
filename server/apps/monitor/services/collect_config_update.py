@@ -421,6 +421,14 @@ class CollectConfigUpdateService:
             context["ip"] = instance.ip
         if not context.get("instance_type"):
             context["instance_type"] = getattr(instance.monitor_object, "name", "") or ""
+        if not context.get("node_id"):
+            context["node_id"] = getattr(instance, "node_id", None) or payload.get("node_id") or ""
+        if not str(context.get("operating_system") or "").strip():
+            from apps.monitor.utils.plugin_controller import resolve_operating_system
+
+            resolved_os = resolve_operating_system(context)
+            if resolved_os:
+                context["operating_system"] = resolved_os
         try:
             from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_plugin
             from apps.monitor.utils.snmp_interface_template import has_interface_collection

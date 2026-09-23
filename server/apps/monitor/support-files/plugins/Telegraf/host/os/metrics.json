@@ -246,6 +246,9 @@
       "display_name": "CPU IOWait Rate",
       "data_type": "Number",
       "unit": "percent",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -298,6 +301,9 @@
       "display_name": "CPU Steal Rate",
       "data_type": "Number",
       "unit": "percent",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -311,6 +317,9 @@
       "display_name": "1 Minute Average Load",
       "data_type": "Number",
       "unit": "none",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -324,6 +333,9 @@
       "display_name": "5 Minute Average Load",
       "data_type": "Number",
       "unit": "none",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -337,6 +349,9 @@
       "display_name": "15 Minute Average Load",
       "data_type": "Number",
       "unit": "none",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -359,7 +374,7 @@
     {
       "metric_group": "Disk IO",
       "name": "diskio_io_util",
-      "query": "rate(diskio_io_time{instance_type=\"os\", __$labels__}[5m]) / 10",
+      "query": "label_replace(clamp_max(clamp_min(100 - win_logicaldisk_idle_percent{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, 0), 100), \"name\", \"$1\", \"instance\", \"(.*)\") or ((rate(diskio_io_time{instance_type=\"os\", __$labels__}[5m]) / 10) unless on(instance_id, name) label_replace(win_logicaldisk_idle_percent{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\"))",
       "display_name": "Disk I/O Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -413,7 +428,7 @@
     {
       "metric_group": "Disk IO",
       "name": "disk_write_latency",
-      "query": "rate(diskio_write_time{instance_type=\"os\", __$labels__}[5m]) / rate(diskio_writes{instance_type=\"os\", __$labels__}[5m])",
+      "query": "label_replace(win_logicaldisk_write_latency_ms{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\") or ((rate(diskio_write_time{instance_type=\"os\", __$labels__}[5m]) / rate(diskio_writes{instance_type=\"os\", __$labels__}[5m])) unless on(instance_id, name) label_replace(win_logicaldisk_write_latency_ms{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\"))",
       "display_name": "Disk Write Latency",
       "data_type": "Number",
       "unit": "ms",
@@ -467,7 +482,7 @@
     {
       "metric_group": "Disk IO",
       "name": "disk_read_latency",
-      "query": "rate(diskio_read_time{instance_type=\"os\", __$labels__}[5m]) / rate(diskio_reads{instance_type=\"os\", __$labels__}[5m])",
+      "query": "label_replace(win_logicaldisk_read_latency_ms{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\") or ((rate(diskio_read_time{instance_type=\"os\", __$labels__}[5m]) / rate(diskio_reads{instance_type=\"os\", __$labels__}[5m])) unless on(instance_id, name) label_replace(win_logicaldisk_read_latency_ms{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\"))",
       "display_name": "Disk Read Latency",
       "data_type": "Number",
       "unit": "ms",
@@ -567,6 +582,9 @@
       "display_name": "Inode Usage",
       "data_type": "Number",
       "unit": "percent",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [
         {
           "name": "device",
@@ -606,6 +624,9 @@
       "display_name": "Blocked Process",
       "data_type": "Number",
       "unit": "counts",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -619,6 +640,9 @@
       "display_name": "Zombie Process",
       "data_type": "Number",
       "unit": "counts",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -632,6 +656,9 @@
       "display_name": "Sleeping Process",
       "data_type": "Number",
       "unit": "counts",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -697,6 +724,9 @@
       "display_name": "Cached Memory",
       "data_type": "Number",
       "unit": "bytes",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -710,6 +740,9 @@
       "display_name": "Shared Memory",
       "data_type": "Number",
       "unit": "bytes",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -723,6 +756,9 @@
       "display_name": "Buffered Memory",
       "data_type": "Number",
       "unit": "bytes",
+      "view_config": {
+        "os": ["linux"]
+      },
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"

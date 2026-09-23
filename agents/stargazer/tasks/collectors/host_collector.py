@@ -493,10 +493,16 @@ def parse_metrics_to_prometheus(
                 lines, "diskio_io_util", diskio_labels, diskio, "io_util_percent", timestamp=timestamp, help_text="Disk IO utilization percent"
             )
             _append_gauge_if_present(
-                lines, "disk_read_latency", diskio_labels, diskio, "read_time_ms", timestamp=timestamp, help_text="Disk read time ms"
+                lines, "diskio_read_time_ms", diskio_labels, diskio, "read_time_ms", timestamp=timestamp, help_text="Disk read time ms counter"
             )
             _append_gauge_if_present(
-                lines, "disk_write_latency", diskio_labels, diskio, "write_time_ms", timestamp=timestamp, help_text="Disk write time ms"
+                lines, "diskio_write_time_ms", diskio_labels, diskio, "write_time_ms", timestamp=timestamp, help_text="Disk write time ms counter"
+            )
+            _append_gauge_if_present(
+                lines, "disk_read_latency", diskio_labels, diskio, "read_latency_ms", timestamp=timestamp, help_text="Disk read latency ms"
+            )
+            _append_gauge_if_present(
+                lines, "disk_write_latency", diskio_labels, diskio, "write_latency_ms", timestamp=timestamp, help_text="Disk write latency ms"
             )
 
     if "processes" in data and isinstance(data["processes"], dict):
