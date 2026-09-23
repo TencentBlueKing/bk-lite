@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.handlers.registry import get_handler
 from apps.alerts.action.overrides import validate_manual_param_overrides
-from apps.alerts.constants.constants import LogAction, LogTargetType
+from apps.alerts.constants.constants import AlertStatus, LogAction, LogTargetType
 from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRuleSerializer
@@ -240,6 +240,9 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         if not rule.is_active:
             return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if alert.status not in AlertStatus.ACTIVATE_STATUS:
+            return Response({"detail": "告警已结束，不能再执行处理动作"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             param_overrides = validate_manual_param_overrides(

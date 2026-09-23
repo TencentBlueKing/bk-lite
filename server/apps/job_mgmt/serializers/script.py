@@ -156,3 +156,27 @@ class ScriptBatchDeleteSerializer(serializers.Serializer):
     """脚本批量删除序列化器"""
 
     ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="要删除的脚本ID列表")
+
+
+class ScriptExportSerializer(serializers.Serializer):
+    """脚本批量导出序列化器"""
+
+    ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="要导出的脚本ID列表")
+
+
+class ScriptImportSerializer(serializers.Serializer):
+    """脚本批量导入序列化器"""
+
+    file = serializers.FileField(help_text="脚本库 ZIP 文件")
+    team = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="目标组织ID列表")
+
+    def validate_file(self, value):
+        name = (getattr(value, "name", "") or "").lower()
+        if not name.endswith(".zip"):
+            raise serializers.ValidationError("仅支持 .zip 格式的文件")
+        return value
+
+    def validate_team(self, value):
+        if not value:
+            raise serializers.ValidationError("组织不能为空")
+        return value

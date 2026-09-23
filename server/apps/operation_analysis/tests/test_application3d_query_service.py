@@ -1563,15 +1563,6 @@ def _patch_system_host_graph(
         lambda system_ids: {SYSTEM_A: app_ids},
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {
-            "group_ids": [],
-            "group_parents": {},
-            "application_ids": app_ids,
-            "application_parents": {app_id: SYSTEM_A for app_id in app_ids},
-        },
-    )
-    monkeypatch.setattr(
         Application3DQueryService,
         "_visible_model_instances",
         classmethod(lambda cls, request, model_id, inst_uuids: list(child_apps) if model_id == "application" else []),
@@ -2038,10 +2029,6 @@ def test_architecture_empty_system_is_root_without_fake_children(monkeypatch):
         lambda system_ids: {SYSTEM_A: []},
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {"group_ids": [], "group_parents": {}, "application_ids": [], "application_parents": {}},
-    )
-    monkeypatch.setattr(
         "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
         lambda app_ids: (_ for _ in ()).throw(AssertionError("empty systems must not project application_run_host")),
     )
@@ -2095,15 +2082,6 @@ def test_architecture_omits_invisible_apps_and_hosts(monkeypatch):
         lambda system_ids: {SYSTEM_A: [APP_A, APP_B]},
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {
-            "group_ids": [],
-            "group_parents": {},
-            "application_ids": [APP_A, APP_B],
-            "application_parents": {APP_A: SYSTEM_A, APP_B: SYSTEM_A},
-        },
-    )
-    monkeypatch.setattr(
         Application3DQueryService,
         "_visible_model_instances",
         classmethod(lambda cls, request, model_id, inst_uuids: [_application(APP_A, "visible")] if model_id == "application" else []),
@@ -2133,53 +2111,6 @@ def test_architecture_omits_invisible_apps_and_hosts(monkeypatch):
     assert "host-hidden" not in ids
     assert result["nodes"][0]["health"]["reason"] != "unavailable"
     assert result["nodes"][0]["health"]["state"] == "normal"
-
-
-def test_architecture_draws_visible_biz_groups(monkeypatch):
-    systems = [_system(SYSTEM_A, "union")]
-    monkeypatch.setattr(
-        Application3DQueryService,
-        "_visible_application",
-        classmethod(lambda cls, request, application_id: systems[0]),
-    )
-    _patch_system_host_graph(
-        monkeypatch,
-        child_apps=[_application(APP_A, "门户")],
-        hosts_by_app={APP_A: ["host-1"]},
-        visible_hosts=[{"inst_uuid": "host-1", "inst_name": "web-1", "monitor_id": "m1"}],
-    )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.application3d.query_service.service_tree_membership",
-        lambda system_id: {
-            "group_ids": ["g1"],
-            "group_parents": {"g1": SYSTEM_A},
-            "application_ids": [APP_A],
-            "application_parents": {APP_A: "g1"},
-        },
-    )
-    monkeypatch.setattr(
-        Application3DQueryService,
-        "_visible_model_instances",
-        classmethod(
-            lambda cls, request, model_id, inst_uuids: (
-                [_application(APP_A, "门户")]
-                if model_id == "application"
-                else [{"inst_uuid": "g1", "inst_name": "生产", "model_id": "biz_group"}]
-                if model_id == "biz_group"
-                else []
-            )
-        ),
-    )
-    _stub_empty_alert_qs(monkeypatch)
-
-    result = Application3DQueryService.architecture(_request(), SYSTEM_A)
-
-    assert [node["kind"] for node in result["nodes"]] == ["system", "biz_group", "application", "host"]
-    assert {(edge["sourceId"], edge["targetId"], edge["relation"]) for edge in result["edges"]} == {
-        (SYSTEM_A, "g1", "system_contains_biz_group"),
-        ("g1", APP_A, "biz_group_contains_application"),
-        (APP_A, "host-1", "application_run_host"),
-    }
 
 
 def test_architecture_marks_unmonitored_and_unreadable_hosts_without_failing_system(monkeypatch):

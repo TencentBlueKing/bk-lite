@@ -20,6 +20,8 @@ import NotificationStatusTooltip from './notificationStatusTooltip';
 import type { ColumnItem } from '@/types/index';
 import {
   ALARM_TABLE_ACTION_COLUMN_KEY,
+  DEFAULT_ALARM_TABLE_FIELD_KEYS,
+  getAlarmDetailTriggerCellProps,
   getAlarmTableChoosableColumns,
   readAlarmDisplayFieldKeys,
   resolveAlarmTableColumns,
@@ -47,6 +49,18 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
     () => (typeof window === 'undefined' ? null : readAlarmDisplayFieldKeys(window.localStorage))
   );
 
+  const onOpenDetail = (
+    row: AlarmTableDataItem,
+    defaultTab: string = 'baseInfo',
+  ) => {
+    detailRef.current?.showModal({
+      title: row.title,
+      form: row,
+      type: '',
+      defaultTab,
+    });
+  };
+
   const columns: ColumnsType<AlarmTableDataItem> = [
     {
       title: t('alarms.level'),
@@ -54,6 +68,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       key: 'level',
       width: 90,
       fixed: 'left',
+      onCell: (record) => getAlarmDetailTriggerCellProps(record, 'level', onOpenDetail),
       render: (_: any, { level }: AlarmTableDataItem) => {
         const target = levelList.find(
           (item) => item.level_id === Number(level),
@@ -97,12 +112,14 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       dataIndex: 'title',
       key: 'title',
       width: 280,
+      onCell: (record) => getAlarmDetailTriggerCellProps(record, 'title', onOpenDetail),
     },
     {
       title: t('alarms.alertContent'),
       dataIndex: 'content',
       key: 'content',
       width: 250,
+      onCell: (record) => getAlarmDetailTriggerCellProps(record, 'content', onOpenDetail),
     },
     {
       title: t('alarms.incidentName'),
@@ -115,10 +132,9 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       dataIndex: 'event_count',
       key: 'event_count',
       width: 100,
+      onCell: (record) => getAlarmDetailTriggerCellProps(record, 'event_count', onOpenDetail),
       render: (_: any, record: AlarmTableDataItem) => (
-        <Button type="link" onClick={() => onOpenDetail(record, 'event')}>
-          <span className="text-blue-500">{record.event_count}</span>
-        </Button>
+        <span className="text-[var(--color-primary)]">{record.event_count}</span>
       ),
     },
     {
@@ -126,6 +142,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       dataIndex: 'status',
       key: 'status',
       width: 100,
+      onCell: (record) => getAlarmDetailTriggerCellProps(record, 'status', onOpenDetail),
       render: (_: any, { status }: AlarmTableDataItem) => (
         <span>{STATE_MAP[status as keyof typeof STATE_MAP] || '--'}</span>
       ),
@@ -196,21 +213,9 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
     },
   ];
 
-  const onOpenDetail = (
-    row: AlarmTableDataItem,
-    defaultTab: string = 'baseInfo',
-  ) => {
-    detailRef.current?.showModal({
-      title: row.title,
-      form: row,
-      type: '',
-      defaultTab,
-    });
-  };
-
   const choosableFields = getAlarmTableChoosableColumns(columns) as ColumnItem[];
   const resolvedDisplayFieldKeys =
-    displayFieldKeys ?? choosableFields.map((column) => String(column.key));
+    displayFieldKeys ?? [...DEFAULT_ALARM_TABLE_FIELD_KEYS];
   const currentColumns = resolveAlarmTableColumns(columns, displayFieldKeys);
 
   const onSelectFields = (fields: string[]) => {

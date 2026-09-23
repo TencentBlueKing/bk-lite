@@ -122,11 +122,11 @@ async function copyText(value: string) {
   }
 }
 
-type GenerationIssue = {
+interface GenerationIssue {
   alertType: 'warning' | 'error';
   title: string;
   description: string;
-};
+}
 
 function requestGenerationIssue(error: unknown, t: Translate): GenerationIssue {
   const handled = error instanceof HandledRequestError ? error : null;

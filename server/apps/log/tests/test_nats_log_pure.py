@@ -11,6 +11,18 @@ RFC3339_TIME_RANGE = (
     "2026-08-03T04:17:25.000Z",
     "2026-08-03T05:17:25.000Z",
 )
+SEVEN_DAY_TIME_RANGE = (
+    "2026-04-01T00:00:00.000Z",
+    "2026-04-08T00:00:00.000Z",
+)
+THIRTY_DAY_TIME_RANGE = (
+    "2026-04-01T00:00:00.000Z",
+    "2026-05-01T00:00:00.000Z",
+)
+OVERSIZED_TIME_RANGE = (
+    "2026-01-01T00:00:00.000Z",
+    "2026-02-02T00:00:00.000Z",
+)
 
 # ----------------------- _normalize_positive_int -----------------------
 
@@ -425,6 +437,44 @@ def test_log_query_rejects_invalid_time_range_without_vm_query(
     assert result["data"] == []
     assert "time range" in result["message"]
     victoria_logs.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("endpoint", ["search", "hits"])
+def test_log_query_rejects_oversized_time_range_without_vm_query(mocker, endpoint):
+    mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
+    victoria_logs = mocker.patch.object(nats_log, "VictoriaMetricsAPI")
+
+    if endpoint == "search":
+        result = nats_log.log_search("q", OVERSIZED_TIME_RANGE)
+    else:
+        result = nats_log.log_hits("q", OVERSIZED_TIME_RANGE, "host")
+
+    assert result["result"] is False
+    assert result["data"] == []
+    assert result["message"]
+    victoria_logs.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("endpoint", ["search", "hits"])
+@pytest.mark.parametrize("time_range", [SEVEN_DAY_TIME_RANGE, THIRTY_DAY_TIME_RANGE])
+def test_log_query_accepts_seven_and_thirty_day_range(mocker, endpoint, time_range):
+    mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
+    vm = mocker.patch.object(nats_log, "VictoriaMetricsAPI").return_value
+    vm.query.return_value = []
+    vm.hits.return_value = {"hits": []}
+
+    if endpoint == "search":
+        result = nats_log.log_search("q", time_range)
+    else:
+        result = nats_log.log_hits("q", time_range, "host")
+
+    assert result["result"] is True
+    if endpoint == "search":
+        vm.query.assert_called_once()
+    else:
+        vm.hits.assert_called_once()
 
 
 @pytest.mark.parametrize("user_info", [None, {}, {"user": "incomplete"}])

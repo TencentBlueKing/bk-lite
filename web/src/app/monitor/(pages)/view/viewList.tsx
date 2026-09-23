@@ -34,6 +34,7 @@ import {
   getDerivativeObjectNames
 } from '@/app/monitor/utils/monitorObject';
 import { findByMonitorId, sameMonitorId } from '@/app/monitor/utils/monitorIds';
+import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 import {
   DEFAULT_VIEW_FIXED_FIELD_KEYS,
   resolveViewColumns
@@ -973,8 +974,10 @@ const ViewList: React.FC<ViewListProps> = ({
           )}
           <Input
             allowClear
-            className={`w-[240px] ${showTopFilterBar ? 'ml-2' : ''}`}
-            placeholder={t('common.searchPlaceHolder')}
+            className={`w-[360px] ${showTopFilterBar ? 'ml-2' : ''}`}
+            placeholder={t(
+              getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId))
+            )}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             onPressEnter={onRefresh}
