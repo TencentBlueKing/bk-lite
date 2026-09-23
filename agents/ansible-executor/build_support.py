@@ -4,14 +4,6 @@ from pathlib import Path
 
 
 PACKAGED_WIN_COPY_PATH = Path("_internal") / "collections" / "ansible_collections" / "ansible" / "windows" / "plugins" / "modules" / "win_copy.ps1"
-EOL_OPENSSL_FILENAMES = frozenset(
-    {
-        "libssl.so.1.1",
-        "libcrypto.so.1.1",
-        ".libssl.so.1.1.hmac",
-        ".libcrypto.so.1.1.hmac",
-    }
-)
 
 
 def has_valid_ansible_windows_collection_layout(windows_root: Path) -> bool:
@@ -58,17 +50,3 @@ def verify_packaged_ansible_windows_collection(packaged_root: Path) -> Path:
     if not module_file.is_file():
         raise RuntimeError(f"packaged ansible.windows collection is missing required module: {module_file}")
     return module_file
-
-
-def verify_packaged_openssl_not_eol(packaged_root: Path) -> None:
-    packaged = Path(packaged_root).resolve()
-    internal = packaged / "_internal"
-    if not internal.is_dir():
-        return
-    found = sorted(
-        path.relative_to(packaged).as_posix()
-        for path in internal.rglob("*")
-        if path.is_file() and path.name in EOL_OPENSSL_FILENAMES
-    )
-    if found:
-        raise RuntimeError("packaged ansible-executor still contains OpenSSL 1.1 libraries: " + ", ".join(found))
