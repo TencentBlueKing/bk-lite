@@ -13,7 +13,7 @@ class RedfishCollectionError(ValueError):
 
 
 class PhyscialServerRedfishInfo:
-    """只读 Redfish 整机基础信息采集器。"""
+    """只读 Redfish 整机基础信息与可选子资源清单采集器。"""
 
     MAX_RESPONSE_BYTES = 1024 * 1024
     MAX_COLLECTION_PAGES = 32
@@ -159,14 +159,14 @@ class PhyscialServerRedfishInfo:
             return None
         try:
             return await self._get_collection_members(client, link)
-        except RedfishCollectionError as exc:
+        except (RedfishCollectionError, httpx.HTTPError) as exc:
             self._log_child_skip(exc)
             return None
 
     async def _read_resource(self, client, link):
         try:
             return await self._get_json(client, link)
-        except RedfishCollectionError as exc:
+        except (RedfishCollectionError, httpx.HTTPError) as exc:
             self._log_child_skip(exc)
             return None
 

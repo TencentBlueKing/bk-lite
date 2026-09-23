@@ -501,3 +501,133 @@ async def test_redfish_protocol_collects_storage_drives_array():
     assert result["result"]["disk"][0]["disk_name"] == "Disk.Bay.0"
     assert "/redfish/v1/Systems/1/Storage/1/Drives" not in requested
     assert requested.count("/redfish/v1/Chassis/1/Drives/1") == 1
+
+
+async def test_redfish_child_collection_failure_keeps_server_identity():
+    def handler(request):
+        if request.url.path == "/redfish/v1/":
+            return _response(request, {"Systems": {"@odata.id": "/redfish/v1/Systems"}})
+        if request.url.path == "/redfish/v1/Systems":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1":
+            return _response(
+                request,
+                {
+                    "SerialNumber": "SERVER-SN-8",
+                    "Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"},
+                    "Storage": {"@odata.id": "https://attacker.invalid/redfish/v1/Systems/1/Storage"},
+                },
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Memory/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1/Memory/1":
+            return httpx.Response(500, json={"error": "boom"}, request=request)
+        raise AssertionError(request.url.path)
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert result["result"]["physcial_server"][0]["serial_number"] == "SERVER-SN-8"
+    assert "memory" not in result["result"]
+    assert "disk" not in result["result"]
+
+
+async def test_redfish_invalid_child_member_is_skipped():
+    def handler(request):
+        if request.url.path == "/redfish/v1/":
+            return _response(request, {"Systems": {"@odata.id": "/redfish/v1/Systems"}})
+        if request.url.path == "/redfish/v1/Systems":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1":
+            return _response(
+                request,
+                {"Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"}},
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory":
+            return _response(
+                request,
+                {
+                    "Members": [
+                        {"@odata.id": "https://attacker.invalid/redfish/v1/Systems/1/Memory/bad"},
+                        {"@odata.id": "/redfish/v1/Systems/1/Memory/1"},
+                    ]
+                },
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory/1":
+            return _response(request, {"DeviceLocator": "DIMM_A1", "CapacityMiB": 32768})
+        raise AssertionError(request.url.path)
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert [item["mem_locator"] for item in result["result"]["memory"]] == ["DIMM_A1"]
+
+
+async def test_redfish_child_transport_error_keeps_server_identity(monkeypatch):
+    secret_sentinel = "BMC_SECRET_MUST_NOT_LEAK"
+    log_calls = []
+
+    def handler(request):
+        if request.url.path == "/redfish/v1/":
+            return _response(request, {"Systems": {"@odata.id": "/redfish/v1/Systems"}})
+        if request.url.path == "/redfish/v1/Systems":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1":
+            return _response(
+                request,
+                {
+                    "SerialNumber": "SERVER-SN-8",
+                    "Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"},
+                },
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory":
+            raise httpx.ConnectError(
+                f"certificate verify failed {secret_sentinel}",
+                request=request,
+            )
+        raise AssertionError(request.url.path)
+
+    def capture_warning(template, *args, **kwargs):
+        log_calls.append((template, args, kwargs))
+
+    monkeypatch.setattr(redfish_info.logger, "warning", capture_warning)
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": secret_sentinel,
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert result["result"]["physcial_server"][0]["serial_number"] == "SERVER-SN-8"
+    assert "memory" not in result["result"]
+    assert len(log_calls) == 1
+    template, args, kwargs = log_calls[0]
+    assert template.startswith("event=physical_server_redfish_child_skipped")
+    assert secret_sentinel not in template % args
