@@ -34,10 +34,20 @@ import {
 } from './searchChartPresentation';
 import {
   buildSearchQueryParams,
+  expandSearchCards,
   getMetricsMapKey,
   resolveMetricSelection
 } from './searchQueryLogic';
 import { parseSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
+
+const SEARCH_LAYOUT_STORAGE_KEY = 'bk-lite.monitor.search.layoutMode';
+const SEARCH_DEFAULT_REFRESH_MS = 60_000;
+
+const readStoredLayoutMode = (): 'single' | 'double' | null => {
+  if (typeof window === 'undefined') return null;
+  const stored = window.localStorage.getItem(SEARCH_LAYOUT_STORAGE_KEY);
+  return stored === 'single' || stored === 'double' ? stored : null;
+};
 
 const SearchView: React.FC = () => {
   const { post } = useApiClient();
@@ -61,7 +71,7 @@ const SearchView: React.FC = () => {
   const [presentationByGroupId, setPresentationByGroupId] = useState<
     Record<string, SearchChartPresentation>
   >({});
-  const [frequence, setFrequence] = useState<number>(0);
+  const [frequence, setFrequence] = useState<number>(SEARCH_DEFAULT_REFRESH_MS);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const searchAbortControllerRef = useRef<AbortController | null>(null);
   const searchRequestIdRef = useRef<number>(0);
@@ -75,6 +85,11 @@ const SearchView: React.FC = () => {
     });
     return () => publishSearchSnapshot(null);
   }, [chartItems, timeValues]);
+
+  useEffect(() => {
+    const stored = readStoredLayoutMode();
+    if (stored) setLayoutMode(stored);
+  }, []);
 
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -118,58 +133,69 @@ const SearchView: React.FC = () => {
     payload: SearchPayload
   ) => {
     const validGroups = payload.queryGroups.filter(
-      (g) => g.metric && g.instanceIds.length > 0
+      (g) => g.instanceIds.length > 0
     );
-    if (!validGroups?.length) return;
+    const cards = expandSearchCards(validGroups);
+    if (!cards.length) return;
     setPresentationByGroupId((prev) =>
-      seedSearchChartPresentation(prev, payload.queryGroups)
+      seedSearchChartPresentation(
+        prev,
+        cards.map((card) => ({
+          id: card.cardId,
+          viewMode: card.group.viewMode,
+          tableKind: card.group.tableKind
+        }))
+      )
     );
     searchAbortControllerRef.current?.abort();
     const abortController = new AbortController();
     searchAbortControllerRef.current = abortController;
     const currentRequestId = ++searchRequestIdRef.current;
-    const initialChartItems: ChartItem[] = validGroups.map((group) => {
-      const dataKey = getMetricsMapKey(group.object, group.plugin);
+    const initialChartItems: ChartItem[] = cards.map((card) => {
+      const dataKey = getMetricsMapKey(card.group.object, card.group.plugin);
       const metrics = payload.metricsMap[dataKey] || [];
-      const metricItem = resolveMetricSelection(metrics, group.metric);
-      const objectItem = payload.objectsMap[String(group.object)];
+      const metricItem = resolveMetricSelection(metrics, card.metricId);
+      const objectItem = payload.objectsMap[String(card.group.object)];
       return {
-        groupId: group.id,
-        groupName: group.name,
+        cardId: card.cardId,
+        groupId: card.group.id,
+        groupName: card.group.name,
         metric: metricItem,
         data: [],
         unit: '',
         loading: true,
         duration: 0,
         objectName: objectItem?.display_name || '',
-        aggregation: group.aggregation || 'AVG'
+        aggregation: card.group.aggregation || 'AVG'
       };
     });
     if (type !== 'timer') {
       setChartItems(initialChartItems);
     }
-    const requests = validGroups.map(async (group, index) => {
+    const requests = cards.map(async (card) => {
       const startTime = Date.now();
+      const patchCard = (updates: Partial<ChartItem>) => {
+        setChartItems((prev) =>
+          prev.map((item) =>
+            item.cardId === card.cardId ? { ...item, ...updates } : item
+          )
+        );
+      };
       try {
-        const dataKey = getMetricsMapKey(group.object, group.plugin);
+        const dataKey = getMetricsMapKey(card.group.object, card.group.plugin);
         const metrics = payload.metricsMap[dataKey] || [];
         const instances = payload.instancesMap[dataKey] || [];
         const params = buildSearchQueryParams({
-          group,
+          group: card.group,
           metrics,
           instances,
-          timeRange: _timeRange
+          timeRange: _timeRange,
+          metricId: card.metricId
         });
         // 实例列表尚未对齐时 selectedInstances 可能为空；勿发受控查询以免触发 instance_ids 校验刷屏。
         if (!Array.isArray(params.instance_ids) || params.instance_ids.length === 0) {
           if (currentRequestId !== searchRequestIdRef.current) return;
-          setChartItems((prev) =>
-            prev.map((item, i) =>
-              i === index
-                ? { ...item, data: [], loading: false, duration: Date.now() - startTime }
-                : item
-            )
-          );
+          patchCard({ data: [], loading: false, duration: Date.now() - startTime });
           return;
         }
         const responseData = await post(
@@ -182,10 +208,10 @@ const SearchView: React.FC = () => {
         if (currentRequestId !== searchRequestIdRef.current) return;
         const data = responseData.data?.result || [];
         const displayUnit = responseData.data?.unit || '';
+        const targetMetric = resolveMetricSelection(metrics, card.metricId);
         const list = instances
-          .filter((item) => group.instanceIds.includes(item.instance_id))
+          .filter((item) => card.group.instanceIds.includes(item.instance_id))
           .map((item) => {
-            const targetMetric = resolveMetricSelection(metrics, group.metric);
             return {
               instance_id_values: item.instance_id_values,
               instance_name: item.instance_name,
@@ -200,25 +226,15 @@ const SearchView: React.FC = () => {
           renderChart(data, list),
           responseData.data?.gaps || []
         );
-        const duration = Date.now() - startTime;
-        setChartItems((prev) =>
-          prev.map((item, i) => {
-            if (i === index) {
-              item.data = chartData;
-              item.unit = displayUnit;
-              item.loading = false;
-              item.duration = duration;
-            }
-            return item;
-          })
-        );
+        patchCard({
+          data: chartData,
+          unit: displayUnit,
+          loading: false,
+          duration: Date.now() - startTime
+        });
       } catch {
-        const duration = Date.now() - startTime;
-        setChartItems((prev) =>
-          prev.map((item, i) =>
-            i === index ? { ...item, loading: false, duration } : item
-          )
-        );
+        if (currentRequestId !== searchRequestIdRef.current) return;
+        patchCard({ loading: false, duration: Date.now() - startTime });
       }
     });
     await Promise.all(requests);
@@ -251,10 +267,11 @@ const SearchView: React.FC = () => {
   };
 
   const updatePresentation = (
+    cardId: string,
     groupId: string,
     next: SearchChartPresentation
   ) => {
-    setPresentationByGroupId((prev) => ({ ...prev, [groupId]: next }));
+    setPresentationByGroupId((prev) => ({ ...prev, [cardId]: next }));
     queryPanelRef.current?.updateGroupPresentation(groupId, {
       viewMode: next.view,
       tableKind: next.tableKind
@@ -262,11 +279,11 @@ const SearchView: React.FC = () => {
   };
 
   const applyPresentationToAll = (source: SearchChartPresentation) => {
-    const groupIds = chartItems.map((item) => item.groupId);
+    const cardIds = chartItems.map((item) => item.cardId || item.groupId);
     setPresentationByGroupId((prev) =>
-      applySearchPresentationToAll(prev, groupIds, source)
+      applySearchPresentationToAll(prev, cardIds, source)
     );
-    groupIds.forEach((groupId) => {
+    [...new Set(chartItems.map((item) => item.groupId))].forEach((groupId) => {
       queryPanelRef.current?.updateGroupPresentation(groupId, {
         viewMode: source.view,
         tableKind: source.tableKind
@@ -288,13 +305,18 @@ const SearchView: React.FC = () => {
           <div className="flex items-center gap-4">
             <TimeSelector
               defaultValue={timeDefaultValue}
+              frequenceValue={frequence}
               onChange={onTimeChange}
               onFrequenceChange={onFrequenceChange}
               onRefresh={onRefresh}
             />
             <Segmented
               value={layoutMode}
-              onChange={(value) => setLayoutMode(value as 'single' | 'double')}
+              onChange={(value) => {
+                const next = value as 'single' | 'double';
+                setLayoutMode(next);
+                window.localStorage.setItem(SEARCH_LAYOUT_STORAGE_KEY, next);
+              }}
               options={[
                 {
                   value: 'single',
@@ -320,20 +342,24 @@ const SearchView: React.FC = () => {
             >
               {chartItems.map((item) => (
                 <SearchResultCard
-                  key={item.groupId}
+                  key={item.cardId || item.groupId}
                   item={item}
                   layoutMode={layoutMode}
                   presentation={
-                    presentationByGroupId[item.groupId] ||
+                    presentationByGroupId[item.cardId || item.groupId] ||
                     emptySearchChartPresentation()
                   }
                   showApplyAll={chartItems.length > 1}
                   onPresentationChange={(next) =>
-                    updatePresentation(item.groupId, next)
+                    updatePresentation(
+                      item.cardId || item.groupId,
+                      item.groupId,
+                      next
+                    )
                   }
                   onApplyAll={() =>
                     applyPresentationToAll(
-                      presentationByGroupId[item.groupId] ||
+                      presentationByGroupId[item.cardId || item.groupId] ||
                         emptySearchChartPresentation()
                     )
                   }

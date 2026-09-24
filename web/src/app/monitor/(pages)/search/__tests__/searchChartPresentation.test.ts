@@ -16,6 +16,7 @@ import {
   toCsv,
   toneForExtreme,
   toggleEmphasizedSeries,
+  emptySearchChartPresentation,
   writeSavedChartPresentation
 } from '../searchChartPresentation';
 
@@ -104,11 +105,14 @@ describe('search chart presentation', () => {
       tableKind: 'samples',
       emphasizedKeys: null
     });
-    expect(readSavedChartPresentation({ view_mode: 'grid' }).view).toBe('line');
+    expect(readSavedChartPresentation({ view_mode: 'grid' }).view).toBe('combo');
   });
 
-  it('保存时折线和未选手动表形态不写入，加载旧查询仍是折线', () => {
-    expect(writeSavedChartPresentation('line', null)).toEqual({});
+  it('未写读法时默认图表，选了折线会单独记下来', () => {
+    expect(emptySearchChartPresentation().view).toBe('combo');
+    expect(writeSavedChartPresentation('line', null)).toEqual({
+      view_mode: 'line'
+    });
     expect(writeSavedChartPresentation('combo', 'compare')).toEqual({
       view_mode: 'combo',
       table_kind: 'compare'
@@ -157,7 +161,7 @@ describe('search chart presentation', () => {
         conditions: []
       }
     ]);
-    expect(legacy.viewMode).toBe('line');
+    expect(legacy.viewMode).toBe('combo');
     expect(legacy.tableKind).toBeNull();
   });
 

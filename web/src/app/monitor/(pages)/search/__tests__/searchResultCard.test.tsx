@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChartItem } from '@/app/monitor/types/search';
 import SearchResultCard from '../searchResultCard';
-import { emptySearchChartPresentation } from '../searchChartPresentation';
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({ t: (id: string) => id })
@@ -94,7 +93,7 @@ describe('搜索结果卡片读法', () => {
       <SearchResultCard
         item={item}
         layoutMode="single"
-        presentation={emptySearchChartPresentation()}
+        presentation={{ view: 'line', tableKind: null, emphasizedKeys: null }}
         showApplyAll
         onPresentationChange={onPresentationChange}
         onApplyAll={vi.fn()}

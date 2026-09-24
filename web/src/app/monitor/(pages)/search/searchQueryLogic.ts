@@ -61,6 +61,43 @@ export const normalizeMonitorEntityId = (
 export const resolveInitialPlugin = (plugins: PluginItem[]): React.Key | null =>
   plugins.length === 1 ? plugins[0].id : null;
 
+/** 单选历史值和多选数组都收成去重后的指标 ID。空值得到空数组。 */
+export const listSelectedMetricIds = (metric: unknown): React.Key[] => {
+  const values = Array.isArray(metric) ? metric : [metric];
+  const ids: React.Key[] = [];
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const normalized = normalizeMonitorEntityId(value);
+    if (normalized === null) continue;
+    if (ids.some((id) => String(id) === String(normalized))) continue;
+    ids.push(normalized);
+  }
+  return ids;
+};
+
+/** 读已保存条件：数字 ID（单个或数组）变成多选；非数字字符串仍是旧指标名。 */
+export const readSavedMetricSelection = (
+  metric: unknown,
+  legacyName?: string | null
+): { metric: React.Key[]; legacyMetricName: string | null } => {
+  if (typeof metric === 'string' && metric.trim() && !/^\d+$/.test(metric.trim())) {
+    return {
+      metric: [],
+      legacyMetricName: legacyName || metric.trim()
+    };
+  }
+  return {
+    metric: listSelectedMetricIds(metric),
+    legacyMetricName: legacyName || null
+  };
+};
+
+/** 保存时始终写成 ID 数组，旧的单个 ID 在加载时再兼容。 */
+export const writeSavedMetricIds = (metric: unknown): React.Key[] | null => {
+  const ids = listSelectedMetricIds(metric);
+  return ids.length ? ids : null;
+};
+
 export const isSameMetricIdentity = (
   metric: MetricItem,
   selectedMetric: React.Key | null | undefined
@@ -98,6 +135,40 @@ export const resolveMetricDimensionLabels = (
     .filter(Boolean);
 };
 
+/** 多指标共用的筛选标签：只保留每个已选指标都声明了的维度。 */
+export const intersectMetricDimensionLabels = (
+  metrics: Array<MetricItem | null | undefined>
+): string[] => {
+  const lists = metrics
+    .filter((metric): metric is MetricItem => Boolean(metric))
+    .map((metric) => resolveMetricDimensionLabels(metric));
+  if (!lists.length) return [];
+  const [first, ...rest] = lists;
+  return first.filter((label) => rest.every((list) => list.includes(label)));
+};
+
+export interface SearchMetricCard {
+  cardId: string;
+  group: QueryGroup;
+  metricId: React.Key;
+}
+
+/** 一组查询里选了几个指标，就拆成几张结果卡，每张卡对应一次单指标查询。 */
+export const expandSearchCards = (groups: QueryGroup[]): SearchMetricCard[] => {
+  const cards: SearchMetricCard[] = [];
+  for (const group of groups) {
+    if (!group.instanceIds.length) continue;
+    for (const metricId of listSelectedMetricIds(group.metric)) {
+      cards.push({
+        cardId: `${group.id}:${String(metricId)}`,
+        group,
+        metricId
+      });
+    }
+  }
+  return cards;
+};
+
 /** 从 query_by_instance 结果中提取指定维度标签的可选值。 */
 export const extractDimensionLabelValues = (
   series: Array<{ metric?: Record<string, string> }> | null | undefined,
@@ -120,33 +191,44 @@ interface BuildSearchQueryParamsArgs {
   metrics: MetricItem[];
   instances: InstanceItem[];
   timeRange: TimeValuesProps;
+  metricId?: React.Key | null;
 }
 
 export const buildSearchQueryParams = ({
   group,
   metrics,
   instances,
-  timeRange
+  timeRange,
+  metricId
 }: BuildSearchQueryParamsArgs): SearchParams => {
-  const metricItem = resolveMetricSelection(metrics, group.metric);
+  const selectedIds = listSelectedMetricIds(group.metric);
+  const metricItem = resolveMetricSelection(
+    metrics,
+    metricId ?? selectedIds[0] ?? null
+  );
   const selectedInstances = instances.filter((item) =>
     group.instanceIds.includes(item.instance_id)
   );
+  const filters = group.conditions
+    .filter(
+      (condition) =>
+        condition.label && condition.condition && condition.value
+    )
+    .map((condition) => ({
+      label: String(condition.label),
+      operator: String(condition.condition),
+      value: condition.value
+    }));
+  const declaredLabels = new Set(resolveMetricDimensionLabels(metricItem));
   const params: SearchParams = {
     monitor_object_id: group.object,
     metric_id: metricItem?.id,
     instance_ids: selectedInstances.map((item) => item.instance_id),
     aggregation: group.aggregation || 'AVG',
-    filters: group.conditions
-      .filter(
-        (condition) =>
-          condition.label && condition.condition && condition.value
-      )
-      .map((condition) => ({
-        label: String(condition.label),
-        operator: String(condition.condition),
-        value: condition.value
-      })),
+    filters:
+      selectedIds.length > 1
+        ? filters.filter((item) => declaredLabels.has(item.label))
+        : filters,
     source_unit: metricItem?.unit || ''
   };
   const recentTimeRange = getRecentTimeRange(timeRange);

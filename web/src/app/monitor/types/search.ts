@@ -67,7 +67,7 @@ export interface QueryGroup {
   object: React.Key;
   plugin: React.Key | null;
   instanceIds: string[];
-  metric: React.Key | null;
+  metric: React.Key | React.Key[] | null;
   legacyMetricName?: string | null;
   aggregation: string;
   conditions: ConditionItem[];
@@ -103,6 +103,7 @@ export interface QueryPanelProps {
 }
 
 export interface ChartItem {
+  cardId?: string;
   groupId: string;
   groupName: string;
   metric: MetricItem | null;
@@ -126,7 +127,7 @@ export interface QueryGroupData {
   object: React.Key;
   plugin?: React.Key | null;
   instance_ids: string[];
-  metric: React.Key | null;
+  metric: React.Key | React.Key[] | null;
   legacy_metric_name?: string | null;
   aggregation: string;
   conditions: ConditionItemData[];

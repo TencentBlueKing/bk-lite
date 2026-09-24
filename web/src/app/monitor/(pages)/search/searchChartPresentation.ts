@@ -53,13 +53,13 @@ export const toCsv = (headers: string[], rows: string[][]): string => {
 };
 
 export const emptySearchChartPresentation = (): SearchChartPresentation => ({
-  view: 'line',
+  view: 'combo',
   tableKind: null,
   emphasizedKeys: null
 });
 
 export const parseSearchChartView = (value: unknown): SearchChartView =>
-  value === 'combo' || value === 'table' ? 'combo' : 'line';
+  value === 'line' ? 'line' : 'combo';
 
 export const parseSearchTableKind = (value: unknown): SearchTableKind | null =>
   SEARCH_TABLE_KINDS.includes(value as SearchTableKind)
@@ -89,7 +89,7 @@ export const writeSavedChartPresentation = (
 ): { view_mode?: SearchChartView; table_kind?: SearchTableKind } => {
   const fields: { view_mode?: SearchChartView; table_kind?: SearchTableKind } =
     {};
-  if (view && view !== 'line') fields.view_mode = view;
+  if (view === 'line' || view === 'combo') fields.view_mode = view;
   if (tableKind) fields.table_kind = tableKind;
   return fields;
 };

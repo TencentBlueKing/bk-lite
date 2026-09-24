@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { DownloadOutlined } from '@ant-design/icons';
-import { Button, Card, Dropdown, Segmented, Table } from 'antd';
+import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Button, Card, Dropdown, Segmented, Table, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Dayjs } from 'dayjs';
 import LineChart from '@/app/monitor/components/charts/lineChart';
@@ -617,9 +617,16 @@ const SearchResultCard: React.FC<SearchResultCardProps> = ({
               ]}
             />
             {showApplyAll && (
-              <Button type="link" size="small" className="h-auto px-0" onClick={onApplyAll}>
-                {t('monitor.search.applyAll')}
-              </Button>
+              <Tooltip title={t('monitor.search.applyAllTip')}>
+                <Button
+                  type="text"
+                  size="small"
+                  className="h-auto px-1 text-[var(--color-text-3)]"
+                  icon={<CopyOutlined />}
+                  aria-label={t('monitor.search.applyAll')}
+                  onClick={onApplyAll}
+                />
+              </Tooltip>
             )}
           </div>
         </div>
