@@ -62,8 +62,6 @@
 
 [[processors.starlark]]
     namepass = ["device_temperature"]
-    [processors.starlark.tagpass]
-        brand = ["teltonika"]
     source = '''
 def apply(metric):
     value = metric.fields.get("celsius")
@@ -72,3 +70,5 @@ def apply(metric):
     metric.fields["celsius"] = float(value) / 10.0
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["teltonika"]
