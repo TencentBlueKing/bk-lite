@@ -13,6 +13,7 @@ import {
   resolveArchitectureCameraPose,
 } from '../application3DArchitecture';
 import { resolveApplication3DWallCamera } from '../application3DLayout';
+import { WALL_PAGE_FADE_MOTION } from '../application3DMotion';
 import {
   expandArchitectureCabinetWorldBox,
   overlayScreenRect,
@@ -743,6 +744,161 @@ describe('application3D architecture scene', () => {
       expect(slotOf(item.id).y).toBeCloseTo(topLeftSlots[index].y, 5);
     });
     // Remaining 19 slots of the 24-grid stay empty (no card roots beyond the 5).
+    controller.dispose();
+  });
+
+  const reducedMotionMedia = () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('prefers-reduced-motion'),
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() { return false; },
+      onchange: null,
+    }));
+  };
+
+  it('cuts to the next page without a slide offset', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(6), { playIntro: false });
+    flushFrames();
+    const homeX = wallGroup()?.children[0]?.position.x ?? 0;
+
+    controller.reconcile(makeWallItems(6, 'page2'), {
+      playIntro: false,
+      pageDirection: 'next',
+      pageEffect: 'cut',
+    });
+    const nextCard = wallGroup()?.children[0];
+    expect(nextCard?.position.x).toBeCloseTo(homeX, 3);
+    expect(wallGroup()?.children).toHaveLength(6);
+    controller.dispose();
+  });
+
+  it('dims the wall between the outgoing page and the incoming page', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    const first = makeWallItems(4, 'old');
+    const next = makeWallItems(4, 'new');
+    controller.reconcile(first, { playIntro: false });
+    flushFrames();
+
+    controller.reconcile(next, {
+      playIntro: false,
+      pageDirection: 'next',
+      pageEffect: 'fade',
+    });
+    const sideOpacity = (id: string) => {
+      const root = wallGroup()?.children.find((child) => child.userData.applicationId === id);
+      const mesh = root?.children.find((child) => child instanceof THREE.Mesh) as THREE.Mesh | undefined;
+      return (mesh?.material as THREE.Material | undefined)?.opacity ?? -1;
+    };
+    const advance = (ms: number) => {
+      let left = ms;
+      while (left > 0) {
+        const step = Math.min(20, left);
+        flushFrames(step);
+        left -= step;
+      }
+    };
+
+    advance(80);
+    expect(wallGroup()?.children).toHaveLength(8);
+    expect(sideOpacity(first[0].id)).toBeGreaterThan(0.35);
+    expect(sideOpacity(next[0].id)).toBeLessThan(0.02);
+
+    advance(WALL_PAGE_FADE_MOTION.incomingDelayMs + 120 - 80);
+    expect(wallGroup()?.children).toHaveLength(8);
+    expect(sideOpacity(first[0].id)).toBeLessThan(0.2);
+    expect(sideOpacity(next[0].id)).toBeGreaterThan(0);
+    expect(sideOpacity(next[0].id)).toBeLessThan(0.25);
+
+    advance(WALL_PAGE_FADE_MOTION.durationMs);
+    expect(wallGroup()?.children).toHaveLength(4);
+    expect(wallGroup()?.children.every((child) => String(child.userData.applicationId).startsWith('new-'))).toBe(true);
+    expect(sideOpacity(next[0].id)).toBeGreaterThan(0.45);
+    controller.dispose();
+  });
+
+  it('turns incoming cards in from the side on flip', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(6), { playIntro: false });
+    flushFrames();
+
+    controller.reconcile(makeWallItems(6, 'flip'), {
+      playIntro: false,
+      pageDirection: 'next',
+      pageEffect: 'flip',
+    });
+    const card = wallGroup()?.children[0];
+    expect(Math.abs(card?.rotation.y ?? 0)).toBeCloseTo(Math.PI / 2, 2);
+    for (let step = 0; step < 30; step += 1) flushFrames(20);
+    expect(card?.rotation.y ?? 1).toBeCloseTo(0, 2);
+    controller.dispose();
+  });
+
+  it('still plays slide when the browser prefers reduced motion', () => {
+    reducedMotionMedia();
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(6), { playIntro: false });
+    flushFrames();
+    const homeX = wallGroup()?.children[0]?.position.x ?? 0;
+
+    controller.reconcile(makeWallItems(6, 'page2'), {
+      playIntro: false,
+      pageDirection: 'next',
+      pageEffect: 'slide',
+    });
+    expect(wallGroup()?.children[0]?.position.x).toBeGreaterThan(homeX);
+    controller.dispose();
+  });
+
+  it('eases the camera onto the target page tier during a page turn', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(8), { playIntro: false, layoutCount: 8 });
+    flushFrames();
+    const startZ = captured.camera?.position.z ?? 0;
+    const aspect = captured.camera?.aspect ?? 1;
+    const fov = captured.camera?.fov ?? 34;
+    const target = resolveApplication3DWallCamera(24, aspect, fov);
+
+    controller.reconcile(makeWallItems(24), {
+      playIntro: false,
+      pageDirection: 'next',
+      pageEffect: 'slide',
+      layoutCount: 24,
+    });
+    flushFrames(16);
+    const midZ = captured.camera?.position.z ?? 0;
+    const midScale = wallGroup()?.children[0]?.scale.x ?? 0;
+    expect(midZ).toBeGreaterThan(startZ);
+    expect(midZ).toBeLessThan(target.z);
+
+    for (let step = 0; step < 30; step += 1) flushFrames(20);
+    expect(captured.camera?.position.z).toBeCloseTo(target.z, 2);
+    const settledScale = wallGroup()?.children[0]?.scale.x ?? 0;
+    expect(midScale).toBeGreaterThan(settledScale);
     controller.dispose();
   });
 });
