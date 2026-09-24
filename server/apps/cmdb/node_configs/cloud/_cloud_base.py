@@ -57,6 +57,9 @@ class CloudAkSkNodeParamsMixin:
             "accessKey": "${" + _ak + "}",
             "accessSecret": "${" + _sk + "}",
         }
+        for field in ("port", "scheme", "verify_tls"):
+            if field in self.credential:
+                credential_data[field] = self.credential[field]
         region = self._region_id()
         if region:
             credential_data["region"] = region
@@ -70,10 +73,10 @@ class CloudAkSkNodeParamsMixin:
         # 兼容平台 API 表单（username/password）与云 AK/SK 表单；采集器同样接受两套键名
         return {
             f"PASSWORD_access_key_{self._instance_id}": (
-                self.credential.get("accessKey") or self.credential.get("access_key") or self.credential.get("username") or ""
+                self.credential.get("username") or self.credential.get("accessKey") or self.credential.get("access_key") or ""
             ),
             f"PASSWORD_access_secret_{self._instance_id}": (
-                self.credential.get("accessSecret") or self.credential.get("access_secret") or self.credential.get("password") or ""
+                self.credential.get("password") or self.credential.get("accessSecret") or self.credential.get("access_secret") or ""
             ),
         }
 

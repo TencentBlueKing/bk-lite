@@ -19,6 +19,7 @@ import socket
 import ssl
 from urllib.parse import urlsplit
 
+from common.platform_connection import PLATFORM_CONNECTION_MODELS
 from core.collection.contracts import PreflightResult, PreflightStatus
 from core.collection.enums import FailureStage
 from core.collection.runtime import CollectionRequest, _run_log_identity
@@ -292,6 +293,10 @@ class AsyncProtocolPreflight:
             use_tls = parsed.scheme == "https"
             raw_port = request.params.get("port")
             port = parsed.port
+            if request.params.get("model_id") in PLATFORM_CONNECTION_MODELS and raw_port not in (None, ""):
+                port = int(raw_port)
+                if not 1 <= port <= 65535:
+                    raise ValueError("port must be between 1 and 65535")
             if port is None and not has_explicit_endpoint and raw_port not in (None, ""):
                 port = int(raw_port)
                 if not 1 <= port <= 65535:

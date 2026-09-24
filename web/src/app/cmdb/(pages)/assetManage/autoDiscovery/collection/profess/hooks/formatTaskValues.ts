@@ -109,7 +109,7 @@ export const withTaskCredentialSource = (
   raw: CredentialPoolItem,
   built: CredentialPoolItem,
 ): CredentialPoolItem => {
-  const result = { ...built, credential_source: raw.credential_source || 'inline' };
+  const result = { ...(raw.credential_id ? { credential_id: raw.credential_id } : {}), ...built, credential_source: raw.credential_source || 'inline' };
   if (result.credential_source === 'vault') {
     Object.keys(result).forEach((field) => {
       if (isVaultAuthField(field, raw)) delete result[field];
@@ -130,7 +130,7 @@ export const buildCredentialPool = (
   return rawItems
     .filter((item) => item && typeof item === 'object')
     .map((item, index) => {
-      const normalized = { ...normalizeItem(item, index) };
+      const normalized: CredentialPoolItem = { ...(item.credential_id ? { credential_id: item.credential_id } : {}), ...normalizeItem(item, index) };
       const source = item.credential_source || 'inline';
       normalized.credential_source = source;
       if (source === 'vault') {

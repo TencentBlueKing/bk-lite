@@ -136,7 +136,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
           ? t('Collection.platformApiTask.tenantId', '租户 ID') : t('Collection.platformApiTask.userDomainName', '用户域名称'))));
       }
     }
-    const invalidField = validatePlatformApiCredential(credential);
+    const invalidField = validatePlatformApiCredential(credential, modelId);
     if (!invalidField) {
       return Promise.resolve();
     }
@@ -173,6 +173,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
               vaultCategory={modelItem.credential_category}
               vaultTypeKeys={modelItem.credential_type_keys}
               credentialShape="platform_api"
+              showPort={modelId !== 'azure'}
               editMode={Boolean(editId)}
               maxCount={1}
               allowAdd={false}
