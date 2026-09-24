@@ -968,14 +968,14 @@ function AlertTabContent({ alert: a }: { alert: EnrichedAlert }) {
         </Descriptions.Item>
       </Descriptions>
 
-      {/* 关闭告警按钮(对齐 monitor) */}
+      {/* 关闭(对齐 monitor：文字链，不用大按钮) */}
       <div style={{ marginTop: 12 }}>
         <Button
-          type="primary"
-          danger
+          type="link"
+          className="p-0"
           disabled={a.state !== 'new'}
         >
-          关闭告警
+          关闭
         </Button>
       </div>
 

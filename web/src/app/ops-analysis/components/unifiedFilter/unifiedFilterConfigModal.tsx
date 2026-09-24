@@ -19,6 +19,7 @@ import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInput
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { normalizeInputConfig, isOrganizationControl, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { retainFilterValueInOptions } from '@/app/ops-analysis/utils/optionBackedFilterValue';
 import {
   coerceValueForMultiple,
   isMultipleSelectInputConfig,
@@ -680,6 +681,15 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
               inputConfig={inputConfig}
               fallback={fallbackInput}
               value={controlValue}
+              onOptionsResolved={(options) => {
+                const next = retainFilterValueInOptions(value ?? null, options);
+                const unchanged = Array.isArray(next) && Array.isArray(value)
+                  ? next.length === value.length && next.every((item, index) => item === value[index])
+                  : (next ?? null) === (value ?? null);
+                if (!unchanged) {
+                  handleFieldChange(record.id, 'defaultValue', next);
+                }
+              }}
               onChange={(nextValue) => {
                 if (isMultiple) {
                   if (Array.isArray(nextValue)) {

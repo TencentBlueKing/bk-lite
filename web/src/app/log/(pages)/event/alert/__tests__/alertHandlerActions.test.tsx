@@ -61,17 +61,25 @@ const renderActions = (record: Partial<TableDataItem>) =>
   );
 
 describe('日志告警处理人按钮', () => {
-  it('空处理人的活跃告警展示认领、分派，不展示转派', () => {
+  it('空处理人的活跃告警展示认领、分派和关闭，不展示转派', () => {
     renderActions({ handlers: [] });
     expect(screen.getByRole('button', { name: /^认\s*领$/ })).not.toBeNull();
     expect(screen.getByRole('button', { name: /^分\s*派$/ })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^关\s*闭$/ })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /^转\s*派$/ })).toBeNull();
   });
 
-  it('当前处理人的活跃告警展示转派，不展示认领和分派', () => {
+  it('当前处理人的活跃告警展示转派和关闭，不展示认领和分派', () => {
     renderActions({ handlers: [7], handlers_display: ['Bob(bob)'] });
     expect(screen.getByRole('button', { name: /^转\s*派$/ })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /^关\s*闭$/ })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /^认\s*领$/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^分\s*派$/ })).toBeNull();
+  });
+
+  it('不是当前处理人时不展示关闭', () => {
+    renderActions({ handlers: [8], handlers_display: ['Alice(alice)'] });
+    expect(screen.queryByRole('button', { name: /^关\s*闭$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^转\s*派$/ })).toBeNull();
   });
 });

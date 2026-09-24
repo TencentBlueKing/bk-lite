@@ -54,25 +54,61 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
     # ---- DCN CPU (DCN-MIB switchCpuUsage, 直接利用率%, 标量, PEN 6339) ----
-    # 待现网核验：标量 OID 1.3.6.1.4.1.6339.100.1.11.10.0（switchInfo.10，snmprec=5%）。device_cpu_usage avg() by instance_id（单值）。
-    # 标量用 table(measurement)+field 命名（避免顶层 field 变 snmp_usage）。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.6339.100.1.11.10"
-        name = "usage"
+    # 顶层 field GET 必须带实例 .0；禁止 table.field（标量 GET-NEXT 会走到空子树，指标静默为空）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.11.10.0"
+        name = "device_cpu_usage"
     # ---- DCN system memory (DCN-MIB switchMemorySize/switchMemoryBusy, 字节, 标量) ----
-    # 待现网核验：total=switchMemorySize 1.3.6.1.4.1.6339.100.1.11.6.0（switchInfo.6，snmprec 268435456 bytes）
-    #            used=switchMemoryBusy 1.3.6.1.4.1.6339.100.1.11.7.0（switchInfo.7，snmprec 218152960 bytes）。
-    # 已是字节，不做 *1024；利用率在共享盘按 used/total 计算。
+    # 顶层 field GET 必须带实例 .0。已是字节，不做 *1024；利用率在共享盘按 used/total 计算。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.11.6.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.11.7.0"
+        name = "device_memory_used"
+    # ---- DCN 温度 (DCN-MIB switchTemperature, 直接 ℃, 标量) ----
+    # 顶层 field GET 必须带实例 .0；禁止 table.field。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.11.9.0"
+        name = "device_temperature_celsius"
+    # ---- DCN fans (DCN-MIB sysFanTable) ----
+    # sysFanStatus …12.1.3：abnormal(1)/normal(0)。原生正常态=0，下方 processors.enum 归一(0→1，其余→2)。
+    # sysFanSpeed …12.1.4：none(0)/low(1)/medium-low(2)/medium(3)/medium-high(4)/high(5)，档位枚举不是 RPM。
     [[inputs.snmp.table]]
-        name = "device_memory"
+        name = "device_fan"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.6339.100.1.11.6"
-        name = "total"
+        oid = "1.3.6.1.4.1.6339.100.1.12.1.3"
+        name = "state"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.6339.100.1.11.7"
-        name = "used"
-# ---- 温度/风扇/电源：DCN-MIB switchInfo 系统表仅含 CPU 与内存标量，无温度/风扇/电源 sensor → 本插件 N/A 不采。----
+        oid = "1.3.6.1.4.1.6339.100.1.12.1.4"
+        name = "speed"
+    # ---- DCN power supplies (DCN-MIB sysPowerStateTable) ----
+    # sysPowerStatus …7.1.5：normal(0)/abnormal(1)/na(2)。原生正常态=0，下方 processors.enum 归一(0→1，其余→2)。
+    # sysPowerState …7.1.2：sysPowerInstalled(1)/sysPowerNotInstalled(0)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.7.1.5"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.7.1.2"
+        name = "present"
+# ---- 风扇/电源状态归一：原生 0=normal → 统一 1=normal/2=abnormal（偏离 1 即异常）。na(2) 走 default=2。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1

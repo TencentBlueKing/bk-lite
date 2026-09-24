@@ -14,8 +14,10 @@
             export WORKFLOW_INTERRUPT_CACHE_TTL=7200  # 2 小时
 """
 
+import asyncio
 import os
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any, Dict, Optional
 
 from asgiref.sync import sync_to_async
@@ -26,6 +28,10 @@ from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
 INTERRUPT_CACHE_TTL = int(os.getenv("WORKFLOW_INTERRUPT_CACHE_TTL", "3600"))
 INTERRUPT_CACHE_PREFIX = "workflow_interrupt"
+# SSE 主循环读标志，后台按该间隔轮询；避免每帧 await 查库拖垮事件吞吐。
+INTERRUPT_WATCH_INTERVAL_SECONDS = float(os.getenv("INTERRUPT_WATCH_INTERVAL_SECONDS", "1.0"))
+
+InterruptChecker = Callable[[str], Awaitable[bool]]
 
 
 def _check_interrupt_in_database(execution_id: str) -> bool:
@@ -161,3 +167,66 @@ def clear_interrupt_request(execution_id: str) -> None:
         return
     cache.delete(_get_interrupt_cache_key(execution_id))
     logger.info("Execution interrupt request cleared: execution_id=%s", execution_id)
+
+
+class InterruptWatch:
+    """按时间轮询中断标志，供 SSE 主循环非阻塞读取。
+
+    启动时立即查一次；之后按 ``interval_seconds`` 后台轮询。
+    ``is_interrupted()`` 只读内存 Event，不触发缓存/数据库访问。
+    """
+
+    def __init__(
+        self,
+        execution_id: str | None,
+        *,
+        interval_seconds: float = INTERRUPT_WATCH_INTERVAL_SECONDS,
+        checker: InterruptChecker | None = None,
+    ) -> None:
+        self._execution_id = str(execution_id or "").strip()
+        self._interval = max(float(interval_seconds), 0.05)
+        self._checker: InterruptChecker = checker or is_interrupt_requested_async
+        self._flag = asyncio.Event()
+        self._task: asyncio.Task | None = None
+        self.check_count = 0
+
+    def is_interrupted(self) -> bool:
+        return self._flag.is_set()
+
+    async def start(self) -> None:
+        if not self._execution_id or self._task is not None:
+            return
+        if await self._poll_once():
+            return
+        self._task = asyncio.create_task(self._loop(), name=f"interrupt-watch:{self._execution_id}")
+
+    async def aclose(self) -> None:
+        task = self._task
+        self._task = None
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    async def _poll_once(self) -> bool:
+        self.check_count += 1
+        try:
+            if await self._checker(self._execution_id):
+                self._flag.set()
+                return True
+        except Exception:
+            logger.warning(
+                "InterruptWatch poll failed: execution_id=%s",
+                self._execution_id,
+                exc_info=True,
+            )
+        return False
+
+    async def _loop(self) -> None:
+        while not self._flag.is_set():
+            await asyncio.sleep(self._interval)
+            if await self._poll_once():
+                return

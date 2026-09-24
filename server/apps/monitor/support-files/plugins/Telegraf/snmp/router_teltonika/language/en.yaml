@@ -26,12 +26,12 @@ monitor_object_metric:
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+        memTotalReal scalar, reported in KB and converted to bytes).
     device_memory_free:
       name: Free Memory
       desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+        router (UCD-SNMP-MIB memAvailReal scalar, reported in KB and converted to
+        bytes). Persistently low free memory can indicate rising memory pressure.
     device_memory_used:
       name: Used Memory
       desc: This metric reports the amount of used physical memory in bytes on the
@@ -40,13 +40,13 @@ monitor_object_metric:
     device_cpu_usage:
       name: CPU Usage
       desc: This metric reports CPU utilization of the Teltonika cellular router as
-        a 0-100 percentage. The private cpuUsage scalar is the preferred headline;
-        HOST-RESOURCES hrProcessorLoad is kept as a per-core fallback. Sustained high
-        usage indicates control-plane overload or abnormal traffic.
+        a 0-100 percentage from the private cpuUsage scalar. Sustained high usage
+        indicates control-plane overload or abnormal traffic.
     device_memory_usage:
       name: Memory Usage
       desc: This metric reports memory utilization of the Teltonika cellular router,
-        derived as 100*(total-free)/total from UCD-SNMP memTotalReal and memAvailReal.
+        derived as 100*(total-free)/total from the UCD-SNMP memTotalReal and memAvailReal
+        scalars.
         Sustained high usage may indicate memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)

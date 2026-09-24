@@ -383,6 +383,7 @@ test('history replay keeps THINKING text on metadata, not in the answer bubble',
 test('planned execution CUSTOM events stay out of chat bubbles', () => {
   // 实时流（Chat.applyCustomEvent）与历史回放共用同一份静默清单
   assert.equal(isSilentCustomEvent('stream_keepalive'), true);
+  assert.equal(isSilentCustomEvent('planned_step_hidden_text'), true);
   assert.equal(isSilentCustomEvent('planned_execution_status'), true);
   assert.equal(isSilentCustomEvent('planned_execution_step'), true);
   assert.equal(isSilentCustomEvent('wiki_citations'), true);
@@ -408,6 +409,48 @@ test('planned execution CUSTOM events stay out of chat bubbles', () => {
     },
   ]);
   assert.equal(planned[0].content, '现在是下午两点');
+});
+
+test('history replay restores tool call args for webchat display', () => {
+  const replayed = mapPlatformMessages([
+    {
+      id: 21,
+      conversation_role: 'bot',
+      conversation_content: JSON.stringify([
+        { type: 'RUN_STARTED' },
+        { type: 'TOOL_CALL_START', toolCallId: 'tc-1', toolCallName: 'cmdb_search_instances' },
+        {
+          type: 'TOOL_CALL_ARGS',
+          toolCallId: 'tc-1',
+          delta: '{"model_id":"host","query_list":[{"field":"inst_name","value":"fusion-collector-default"}]}',
+        },
+        { type: 'TOOL_CALL_END', toolCallId: 'tc-1' },
+        {
+          type: 'TOOL_CALL_RESULT',
+          toolCallId: 'tc-1',
+          content: '{"success":true,"data":{"count":0,"items":[]}}',
+        },
+        { type: 'TEXT_MESSAGE_CONTENT', delta: '未查到这台主机' },
+        { type: 'RUN_FINISHED' },
+      ]),
+    },
+  ]);
+  assert.equal(replayed[0].content, '未查到这台主机');
+  assert.deepEqual(replayed[0].metadata?.contentChunks, [
+    {
+      type: 'toolCalls',
+      toolCalls: [
+        {
+          id: 'tc-1',
+          name: 'cmdb_search_instances',
+          args: '{"model_id":"host","query_list":[{"field":"inst_name","value":"fusion-collector-default"}]}',
+          result: '{"success":true,"data":{"count":0,"items":[]}}',
+          status: 'completed',
+        },
+      ],
+    },
+    { type: 'text', content: '未查到这台主机' },
+  ]);
 });
 
 test('removes a history session and clears current when it was selected', () => {

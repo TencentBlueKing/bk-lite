@@ -1150,11 +1150,18 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
     @HasPermission("policies-Operate")
     def close(self, request, *args, **kwargs):
         alert = self.get_object()
-        closed = self.alert_service.close(
-            alert,
-            actor=request.user.username,
-            occurred_at=timezone.now(),
-        )
+        try:
+            closed = self.alert_service.close(
+                alert,
+                actor=request.user.username,
+                actor_user=request.user,
+                occurred_at=timezone.now(),
+            )
+        except AlertHandlerConflict as exc:
+            return Response(
+                {"code": "handler_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(self.alert_service.serialize(closed))
 
     @action(methods=("post",), detail=True)

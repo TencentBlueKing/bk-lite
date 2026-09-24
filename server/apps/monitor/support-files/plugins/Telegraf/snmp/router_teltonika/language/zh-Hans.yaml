@@ -18,20 +18,19 @@ monitor_object_metric:
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
     device_memory_total:
       name: 内存总量
-      desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。
+      desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal 标量，原始单位 KB，已换算为字节）。
     device_memory_free:
       name: 空闲内存
-      desc: 该指标报告路由器当前空闲的物理内存字节数（UCD-SNMP-MIB memAvailReal，原始单位 KB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
+      desc: 该指标报告路由器当前空闲的物理内存字节数（UCD-SNMP-MIB memAvailReal 标量，原始单位 KB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
     device_memory_used:
       name: 已用内存
       desc: 该指标报告路由器当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 Teltonika 蜂窝路由器 CPU 使用率（0-100%）。优先使用私有 cpuUsage 标量，HOST-RESOURCES
-        hrProcessorLoad 作为每核回退。持续偏高说明控制平面过载或异常流量。
+      desc: 该指标报告 Teltonika 蜂窝路由器 CPU 使用率（0-100%），来自私有 cpuUsage 标量。持续偏高说明控制平面过载或异常流量。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 Teltonika 蜂窝路由器内存使用率，由 UCD-SNMP memTotalReal 与 memAvailReal 按 100×（总量−空闲）/总量
+      desc: 该指标报告 Teltonika 蜂窝路由器内存使用率，由 UCD-SNMP memTotalReal 与 memAvailReal 标量按 100×（总量−空闲）/总量
         推导。持续偏高可能由内存压力或泄漏导致。
     interface_ifHCInOctets:
       name: 接口接收流量速率(HC)

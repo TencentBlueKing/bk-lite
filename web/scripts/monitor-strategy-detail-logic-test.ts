@@ -23,6 +23,10 @@ import {
   resolveFormulaResultUnit,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
+  resolveEditFormCollectType,
+  shouldHydrateMetricOnEdit,
+  extractMetricIdsFromQueryCondition,
+  resolvePluginIdFromMetricPlugins,
   resolveMetricDisplayUnit,
   resolvePreviewChartUnit,
   resolveThresholdUnit,
@@ -41,6 +45,16 @@ import {
   shouldAnnotatePerSecond,
   formatUnitLabelWithRateSuffix,
   resolveCompareFieldsForSave,
+  compareOffsetHoursConflict,
+  compareSpanConflict,
+  compareSpanIssue,
+  compareResultFamily,
+  clearThresholdNumbers,
+  partitionTimeleftPreviewSeries,
+  formatDryRunDimensionLabel,
+  compareBaselineFamily,
+  resolveLoadedCompareOffset,
+  resolveForecastTargetUnit,
   resolveRecoveryThresholdForSave,
   resolveNoDataPeriodsForSave,
   resolvePolicyResultUnit,
@@ -51,6 +65,8 @@ import {
   formatDryRunNumber,
   formatDryRunThreshold,
   DRY_RUN_VERDICT_I18N,
+  completedThresholds,
+  isFilledThresholdValue,
   timeleftRequiresLowSideThresholds,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
@@ -88,7 +104,102 @@ assert.equal(resolveInitialMetricPluginId({
   type: 'edit',
   pluginList: plugins,
   policyCollectType: 99,
-}), 1);
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: 99,
+  metricResolvedPluginId: 2,
+}), 2);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: '',
+  policyDetailReady: true,
+  metricResolvedPluginId: 2,
+}), 2);
+assert.deepEqual(
+  extractMetricIdsFromQueryCondition({ type: 'metric', metric_id: 17 }),
+  [17]
+);
+assert.deepEqual(
+  extractMetricIdsFromQueryCondition({
+    type: 'formula',
+    queries: [{ metric_id: 17 }, { metric_id: 17 }, { metric_id: 8 }],
+  }),
+  [17, 8]
+);
+assert.equal(
+  resolvePluginIdFromMetricPlugins(plugins, [
+    { monitor_plugin: 2 },
+    { monitor_plugin: 2 },
+  ]),
+  2
+);
+assert.equal(
+  resolvePluginIdFromMetricPlugins(plugins, [
+    { monitor_plugin: 1 },
+    { monitor_plugin: 2 },
+  ]),
+  undefined
+);
+assert.equal(resolveEditFormCollectType(99, plugins), '');
+assert.equal(resolveEditFormCollectType(99, plugins, 3), 3);
+assert.equal(resolveEditFormCollectType('', plugins, 2), 2);
+
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: '',
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: [{ label: 'BifrostPull', value: 452 }],
+  policyCollectType: '',
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: [{ label: 'BifrostPull', value: 452 }],
+  policyCollectType: '',
+  policyDetailReady: true,
+}), 452);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: plugins,
+  policyCollectType: '',
+  policyDetailReady: true,
+}), undefined);
+assert.equal(resolveInitialMetricPluginId({
+  type: 'edit',
+  pluginList: [{ label: 'BifrostPull', value: 452 }],
+  policyCollectType: null,
+  policyDetailReady: true,
+}), 452);
+
+assert.equal(resolveEditFormCollectType('', [{ label: 'BifrostPull', value: 452 }]), 452);
+assert.equal(resolveEditFormCollectType('452', plugins), 452);
+assert.equal(resolveEditFormCollectType('', plugins), '');
+
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'add',
+  initMetricCount: 0,
+  policyId: 17,
+}), false);
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'edit',
+  initMetricCount: 0,
+  policyId: undefined,
+}), false);
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'edit',
+  initMetricCount: 0,
+  policyId: 17,
+}), true);
+assert.equal(shouldHydrateMetricOnEdit({
+  type: 'edit',
+  initMetricCount: 3,
+  policyId: undefined,
+}), true);
 
 const unitList: UnitListItem[] = [
   {
@@ -715,6 +826,41 @@ assert.match(
 );
 assert.match(
   strategyDetailSource,
+  /policyDetailReady: formData\?\.id != null/,
+  '编辑态空 collect_type 必须等详情 id 就绪后再决定是否回退插件'
+);
+assert.match(
+  strategyDetailSource,
+  /extractMetricIdsFromQueryCondition/,
+  '多插件空/无效 collect_type 须能从 query_condition 抽 metric_id'
+);
+assert.match(
+  strategyDetailSource,
+  /resolvePluginIdFromMetricPlugins/,
+  'metric→plugin 反查必须接到编辑回填路径'
+);
+assert.match(
+  strategyDetailSource,
+  /metricResolvedPluginId/,
+  '反查结果须进入 resolveInitialMetricPluginId / 表单回填'
+);
+assert.match(
+  strategyDetailSource,
+  /formData\?\.collect_type, formData\?\.id, monitorObjId/,
+  '插件目录加载必须在策略 id 到达后重跑，避免空 collect_type 错过回退'
+);
+assert.match(
+  strategyDetailSource,
+  /shouldHydrateMetricOnEdit/,
+  '编辑回填不得只等指标目录，详情 id 到达后也要按 metric_id 补名称'
+);
+assert.match(
+  strategyDetailSource,
+  /resolveEditFormCollectType\(collect_type, pluginList, metricResolvedPluginId\)/,
+  '编辑回填空 collect_type 且单插件时写入表单，避免再次存成空串'
+);
+assert.match(
+  strategyDetailSource,
   /setUnit\(schedule\?\.type \|\| 'min'\)/,
   '频率单位缺失时回退 min，避免空单位导致输入框不可用'
 );
@@ -903,16 +1049,54 @@ assert.equal(
 assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5 }), [
   'absolute',
   'previous_window',
-  'offset_1h',
-  'offset_24h',
-  'offset_7d',
-  'offset_30d',
-  'baseline_4w',
+  'offset_hours',
+  'offset_days',
+  'baseline_days',
+  'baseline_weeks',
   'timeleft',
 ]);
-assert.ok(!getEnabledCompareModes({ periodType: 'hour', periodValue: 1 }).includes('offset_1h'));
-assert.ok(!getEnabledCompareModes({ periodType: 'day', periodValue: 1 }).includes('offset_24h'));
-assert.ok(getEnabledCompareModes({ periodType: 'min', periodValue: 60 }).every((mode) => mode !== 'offset_1h'));
+assert.ok(getEnabledCompareModes({ periodType: 'hour', periodValue: 1 }).includes('offset_hours'));
+assert.ok(getEnabledCompareModes({ periodType: 'day', periodValue: 7 }).includes('offset_days'));
+assert.ok(compareOffsetHoursConflict(1, 'hour', 1));
+assert.ok(!compareOffsetHoursConflict(3, 'hour', 1));
+assert.ok(compareSpanConflict('offset_days', 1, 'day', 1));
+assert.ok(!compareSpanConflict('offset_days', 7, 'day', 1));
+assert.ok(compareSpanConflict('baseline_weeks', 4, 'day', 7));
+assert.ok(!compareSpanConflict('baseline_weeks', 4, 'day', 1));
+assert.ok(compareSpanConflict('baseline_days', 7, 'day', 1));
+assert.ok(compareSpanConflict('baseline_days', 7, 'day', 7));
+assert.ok(!compareSpanConflict('baseline_days', 7, 'hour', 1));
+assert.equal(compareBaselineFamily('baseline_days'), 'yoy');
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_1h' }), {
+  mode: 'offset_hours',
+  amount: 1,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_24h' }), {
+  mode: 'offset_hours',
+  amount: 24,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_7d' }), {
+  mode: 'offset_days',
+  amount: 7,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'offset_30d' }), {
+  mode: 'offset_days',
+  amount: 30,
+});
+assert.deepEqual(resolveLoadedCompareOffset({ mode: 'baseline_4w' }), {
+  mode: 'baseline_weeks',
+  amount: 4,
+});
+assert.deepEqual(
+  resolveLoadedCompareOffset({ mode: 'baseline_days', days: 7 }),
+  { mode: 'baseline_days', amount: 7 }
+);
+assert.equal(compareBaselineFamily('previous_window'), 'previous_window');
+assert.equal(compareBaselineFamily('offset_hours'), 'yoy');
+assert.equal(compareBaselineFamily('offset_days'), 'yoy');
+assert.equal(compareBaselineFamily('baseline_weeks'), 'yoy');
+assert.equal(compareBaselineFamily('timeleft'), 'timeleft');
+assert.equal(compareBaselineFamily('absolute'), 'absolute');
 assert.deepEqual(getEnabledCompareModes({ periodType: 'min', periodValue: 5, algorithm: 'count_if_over_time' }), [
   'absolute',
 ]);
@@ -929,6 +1113,26 @@ assert.ok(
 assert.ok(
   !timeleftRequiresLowSideThresholds('timeleft', [{ method: '>' }])
 );
+assert.equal(isFilledThresholdValue(null), false);
+assert.equal(isFilledThresholdValue(''), false);
+assert.equal(isFilledThresholdValue(0), true);
+assert.deepEqual(
+  completedThresholds([
+    { level: 'critical', method: '<', value: 2 },
+    { level: 'error', method: '>', value: null },
+    { level: 'warning', method: '>', value: undefined }
+  ]).map((item) => item.level),
+  ['critical']
+);
+assert.ok(
+  timeleftRequiresLowSideThresholds(
+    'timeleft',
+    completedThresholds([
+      { method: '<', value: 1 },
+      { method: '>', value: null }
+    ])
+  )
+);
 
 assert.deepEqual(
   resolveCompareFieldsForSave({
@@ -941,7 +1145,11 @@ assert.deepEqual(
     compare_value_kind: '',
     count_predicate: {},
     forecast_target: null,
+    forecast_target_unit: '',
     forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
   }
 );
 assert.deepEqual(
@@ -955,7 +1163,87 @@ assert.deepEqual(
     compare_value_kind: 'percent',
     count_predicate: {},
     forecast_target: null,
+    forecast_target_unit: '',
     forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'offset_hours',
+    compareValueKind: 'percent',
+    compareOffsetHours: 3,
+  }),
+  {
+    compare_mode: 'offset_hours',
+    compare_value_kind: 'percent',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: 3,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'offset_days',
+    compareValueKind: 'percent',
+    compareOffsetHours: 30,
+  }),
+  {
+    compare_mode: 'offset_days',
+    compare_value_kind: 'percent',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: 30,
+    compare_baseline_weeks: null,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'baseline_weeks',
+    compareValueKind: 'delta',
+    compareOffsetHours: 4,
+  }),
+  {
+    compare_mode: 'baseline_weeks',
+    compare_value_kind: 'delta',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: 4,
+  }
+);
+assert.deepEqual(
+  resolveCompareFieldsForSave({
+    isTrap: false,
+    compareMode: 'baseline_days',
+    compareValueKind: 'delta',
+    compareOffsetHours: 7,
+  }),
+  {
+    compare_mode: 'baseline_days',
+    compare_value_kind: 'delta',
+    count_predicate: {},
+    forecast_target: null,
+    forecast_target_unit: '',
+    forecast_lookback: {},
+    compare_offset_hours: null,
+    compare_offset_days: 7,
+    compare_baseline_weeks: null,
   }
 );
 assert.deepEqual(
@@ -964,6 +1252,7 @@ assert.deepEqual(
     compareMode: 'timeleft',
     compareValueKind: 'hours',
     forecastTarget: 90,
+    forecastTargetUnit: 'gibibytes',
     forecastLookback: { type: 'hour', value: 4 },
   }),
   {
@@ -971,8 +1260,39 @@ assert.deepEqual(
     compare_value_kind: 'hours',
     count_predicate: {},
     forecast_target: 90,
+    forecast_target_unit: 'gibibytes',
     forecast_lookback: { type: 'hour', value: 4 },
+    compare_offset_hours: null,
+    compare_offset_days: null,
+    compare_baseline_weeks: null,
   }
+);
+assert.equal(
+  resolveForecastTargetUnit({
+    isFormulaMode: false,
+    metricUnit: 'bytes',
+    forecastTargetUnit: 'kibibytes',
+    unitOptions: crossSystemUnitList.filter((item) => item.system === 'bytes'),
+  }),
+  'kibibytes'
+);
+assert.equal(
+  resolveForecastTargetUnit({
+    isFormulaMode: false,
+    metricUnit: 'bytes',
+    forecastTargetUnit: 'percent',
+    unitOptions: crossSystemUnitList.filter((item) => item.system === 'bytes'),
+  }),
+  'bytes'
+);
+assert.equal(
+  resolveForecastTargetUnit({
+    isFormulaMode: true,
+    metricUnit: 'bytes',
+    forecastTargetUnit: 'gibibytes',
+    unitOptions: crossSystemUnitList.filter((item) => item.system === 'bytes'),
+  }),
+  ''
 );
 
 assert.deepEqual(
@@ -1115,20 +1435,11 @@ assert.deepEqual(
   }
 );
 
-const offset1hOption = getCompareModeSelectOptions({
+const offsetHoursOption = getCompareModeSelectOptions({
   periodType: 'hour',
   periodValue: 1,
-}).find((item) => item.value === 'offset_1h');
-assert.equal(offset1hOption?.disabled, true);
-assert.equal(
-  offset1hOption?.reasonKey,
-  'monitor.events.compareModeDisabledPeriod'
-);
-assert.ok(
-  getCompareModeSelectOptions({ periodType: 'hour', periodValue: 1 }).some(
-    (item) => item.value === 'offset_1h'
-  )
-);
+}).find((item) => item.value === 'offset_hours');
+assert.equal(offsetHoursOption?.disabled, false);
 
 const countIfCompare = getCompareModeSelectOptions({
   algorithm: 'count_if_over_time',
@@ -1138,11 +1449,11 @@ assert.equal(
   false
 );
 assert.equal(
-  countIfCompare.find((item) => item.value === 'offset_1h')?.disabled,
+  countIfCompare.find((item) => item.value === 'offset_hours')?.disabled,
   true
 );
 assert.equal(
-  countIfCompare.find((item) => item.value === 'offset_1h')?.reasonKey,
+  countIfCompare.find((item) => item.value === 'offset_hours')?.reasonKey,
   'monitor.events.compareModeDisabledCountIf'
 );
 
@@ -1209,6 +1520,144 @@ assert.equal(
     thresholdValue: 50,
   }),
   '这条策略在判断：CPU 使用率的P95，比 1 小时前高出 50%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU 使用率',
+    algorithmLabel: 'P95',
+    algorithm: 'p95_over_time',
+    compareMode: 'offset_hours',
+    compareValueKind: 'percent',
+    compareOffsetHours: 3,
+    thresholdMethod: '>',
+    thresholdValue: 50,
+  }),
+  '这条策略在判断：CPU 使用率的P95，比 3 小时前高出 50%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: 'CPU 使用率',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'offset_days',
+    compareValueKind: 'percent',
+    compareOffsetHours: 30,
+    thresholdMethod: '>',
+    thresholdValue: 20,
+  }),
+  '这条策略在判断：CPU 使用率的平均，比 30 天前高出 20%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘用量',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'baseline_weeks',
+    compareValueKind: 'percent',
+    compareOffsetHours: 4,
+    thresholdMethod: '>',
+    thresholdValue: 10,
+  }),
+  '这条策略在判断：磁盘用量的平均，比 近 4 周同窗均值高出 10%。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘用量',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'baseline_days',
+    compareValueKind: 'delta',
+    compareOffsetHours: 7,
+    thresholdMethod: '>',
+    thresholdValue: 5,
+  }),
+  '这条策略在判断：磁盘用量的平均，比 近 7 天同窗均值高出 5。'
+);
+assert.equal(
+  buildPolicyRestatement({
+    t,
+    metricLabel: '磁盘使用率',
+    algorithmLabel: '平均',
+    algorithm: 'avg_over_time',
+    compareMode: 'baseline_days',
+    compareValueKind: 'delta',
+    compareOffsetHours: 3,
+    thresholdMethod: '>',
+    thresholdValue: 5,
+    thresholdUnitLabel: '%',
+  }),
+  '这条策略在判断：磁盘使用率的平均，比 近 3 天同窗均值高出 5 个百分点。'
+);
+assert.equal(
+  compareSpanIssue({
+    mode: 'baseline_weeks',
+    amount: 1,
+    t,
+  }),
+  '周数至少为 2'
+);
+assert.equal(
+  compareSpanIssue({
+    mode: 'baseline_days',
+    amount: 3,
+    periodType: 'day',
+    periodValue: 1,
+    t,
+  }),
+  '对照窗不能等于汇聚周期'
+);
+assert.equal(
+  compareSpanIssue({
+    mode: 'baseline_weeks',
+    amount: 4,
+    periodType: 'min',
+    periodValue: 5,
+    t,
+  }),
+  null
+);
+assert.equal(compareResultFamily('timeleft', 'hours'), 'hours');
+assert.equal(compareResultFamily('baseline_days', 'percent'), 'percent');
+assert.equal(compareResultFamily('baseline_days', 'delta'), 'metric');
+assert.deepEqual(
+  clearThresholdNumbers([
+    { level: 'critical', method: '>', value: 5 },
+    { level: 'error', method: '>', value: 3 },
+  ]),
+  [
+    { level: 'critical', method: '>', value: null },
+    { level: 'error', method: '>', value: null },
+  ]
+);
+assert.equal(
+  partitionTimeleftPreviewSeries(
+    [{ values: [[1, '40']] }, { values: [[1, '3700000']] }],
+    [5, 3]
+  ).omitted,
+  1
+);
+assert.equal(
+  partitionTimeleftPreviewSeries(
+    [{ values: [[1, '40']] }, { values: [[1, '3700000']] }],
+    [5, 3]
+  ).kept.length,
+  1
+);
+assert.equal(
+  formatDryRunDimensionLabel(
+    "('host', 'vda1', '/etc/hostname', 'ext4')",
+    [
+      { name: 'instance_id', description: 'Instance' },
+      { name: 'device', description: '磁盘设备' },
+      { name: 'path', description: '挂载路径' },
+      { name: 'fstype', description: '文件系统类型' },
+    ]
+  ),
+  '磁盘设备: vda1-挂载路径: /etc/hostname-文件系统类型: ext4'
 );
 assert.equal(
   buildPolicyRestatement({

@@ -1,4 +1,5 @@
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
 
 export interface RadarIndicatorConfig {
   key: string;
@@ -9,6 +10,8 @@ export interface RadarConfig {
   min?: number;
   max?: number;
   indicators?: RadarIndicatorConfig[];
+  arrayNameField?: string;
+  arrayValueField?: string;
 }
 
 export interface RadarDataPoint {
@@ -64,6 +67,29 @@ const parseObjectMode = (
     .filter((item): item is RadarDataPoint => item !== null);
 };
 
+const parseMappedArrayMode = (
+  rawData: unknown[],
+  nameField: string,
+  valueField: string,
+): RadarDataPoint[] => {
+  return rawData
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const label = String(nameField ? (record[nameField] ?? '') : '').trim();
+      const numberValue = coerceTopNNumericValue(
+        valueField ? record[valueField] : undefined,
+      );
+      if (!label || numberValue === null) {
+        return null;
+      }
+      return { label, value: numberValue };
+    })
+    .filter((item): item is RadarDataPoint => item !== null);
+};
+
 const parseNameValueArrayMode = (rawData: unknown[]): RadarDataPoint[] => {
   return rawData
     .map((item) => {
@@ -107,7 +133,12 @@ export const resolveRadarSeriesData = (
   }
 
   if (Array.isArray(rawData)) {
-    points = parseNameValueArrayMode(rawData);
+    const nameField = radarConfig?.arrayNameField?.trim() || '';
+    const valueField = radarConfig?.arrayValueField?.trim() || '';
+    points =
+      nameField || valueField
+        ? parseMappedArrayMode(rawData, nameField, valueField)
+        : parseNameValueArrayMode(rawData);
   } else if (rawData && typeof rawData === 'object') {
     const explicitIndicators = (radarConfig?.indicators || []).filter(
       (item) => String(item.key || '').trim().length > 0,

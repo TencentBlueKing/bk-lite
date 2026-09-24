@@ -1,5 +1,6 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 import type { CardListAccentStyle } from '@/app/ops-analysis/utils/cardList';
+import { collectSampleFieldKeys } from './chartFieldOptions';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export type CardListFormState = NonNullable<WidgetConfigFormValues['cardList']>;
@@ -30,8 +31,9 @@ const trimField = (value?: string) => {
 
 export const buildCardListFieldOptions = (
   fields: ResponseFieldDefinition[],
-): CardListFieldOption[] =>
-  fields.map((field) => {
+  sample?: unknown,
+): CardListFieldOption[] => {
+  const schemaOptions = fields.map((field) => {
     const key = field.key;
     const title = field.title?.trim() || '';
     const label = title && title !== key ? `${key} (${title})` : key;
@@ -43,6 +45,18 @@ export const buildCardListFieldOptions = (
       searchText: `${key} ${title}`.toLowerCase(),
     };
   });
+  const seen = new Set(schemaOptions.map((option) => option.value));
+  const sampleOptions = collectSampleFieldKeys(sample)
+    .filter((key) => !seen.has(key))
+    .map((key) => ({
+      value: key,
+      label: key,
+      previewLabel: key,
+      key,
+      searchText: key.toLowerCase(),
+    }));
+  return [...schemaOptions, ...sampleOptions];
+};
 
 export const resolveCardListFieldLabel = (
   fieldKey: string | undefined,

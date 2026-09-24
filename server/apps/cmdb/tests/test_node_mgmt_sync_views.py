@@ -530,6 +530,73 @@ def test_non_superuser_display_is_rebuilt_from_fixed_schema_and_validates_scalar
     assert "organization" not in serialized
 
 
+def test_non_superuser_display_keeps_allowlisted_collect_diagnosis():
+    payload = {
+        "display_source": "collect",
+        "display_schema": "host_collect_v2",
+        "message": {"all": 0},
+        "summary": {"all": 0},
+        "detail": {
+            "collect_diagnoses": [
+                {
+                    "cloud_region_id": 7,
+                    "task_id": 2,
+                    "decision": "empty_raw",
+                    "child_status": "failed",
+                    "reason_code": "COLLECT_CHILD_FAILED",
+                    "raw_host": 0,
+                    "raw_process": 0,
+                    "collect_success": 0,
+                    "collect_failed": 0,
+                    "message": "password=sentinel-secret-9f3a",
+                },
+                {"decision": "drop-me", "message": "sentinel-secret-9f3a"},
+            ]
+        },
+        "run": {
+            "id": 9,
+            "run_type": "collect",
+            "status": "failed",
+            "reason_code": "COLLECT_CHILD_FAILED",
+            "detail": {
+                "collect_diagnoses": [
+                    {
+                        "cloud_region_id": 7,
+                        "task_id": 2,
+                        "decision": "empty_raw",
+                        "child_status": "failed",
+                        "reason_code": "COLLECT_CHILD_FAILED\nsecret",
+                        "raw_host": 0,
+                        "raw_process": 0,
+                    }
+                ]
+            },
+        },
+        "task": {"id": 1, "is_builtin": True, "auto_sync_enabled": True, "auto_collect_enabled": True},
+    }
+    with patch.object(NodeMgmtSyncService, "get_display_payload", return_value=payload):
+        response = _call("display", "GET", _user("auto_collection-View"))
+
+    data = json.loads(response.content)["data"]
+    assert data["detail"]["collect_diagnoses"][0] == {
+        "cloud_region_id": 7,
+        "task_id": 2,
+        "decision": "empty_raw",
+        "child_status": "failed",
+        "reason_code": "COLLECT_CHILD_FAILED",
+        "raw_host": 0,
+        "raw_process": 0,
+        "collect_success": 0,
+        "collect_failed": 0,
+    }
+    assert data["detail"]["collect_diagnoses"][1]["decision"] == "unclassified"
+    assert data["run"]["detail"]["collect_diagnoses"][0]["decision"] == "empty_raw"
+    assert data["run"]["detail"]["collect_diagnoses"][0]["reason_code"] == ""
+    assert data["run"]["error_message"] == ""
+    assert data["run"]["status"] == "failed"
+    assert "sentinel-secret-9f3a" not in json.dumps(data)
+
+
 def test_non_superuser_latest_run_non_dict_payload_returns_fixed_empty_schema():
     with patch.object(NodeMgmtSyncService, "get_latest_run_payload", return_value="10.0.0.1"):
         response = _call("latest_run", "GET", _user("auto_collection-View"))

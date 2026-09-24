@@ -1,5 +1,9 @@
 import type { ChatState, Message, PlatformContract, WebChatConfig } from './types';
-import { assembleAguiHistoryParts, assembleAguiHistoryText } from './aguiHistoryText';
+import {
+  assembleAguiHistoryParts,
+  assembleAguiHistoryText,
+  type HistoryContentChunk,
+} from './aguiHistoryText';
 
 const TEMPLATE_TOKEN = /\{(\w+)\}/g;
 
@@ -216,6 +220,12 @@ function extractMessageText(content: unknown): string {
   return content == null ? '' : String(content);
 }
 
+function hasToolCallChunks(chunks: HistoryContentChunk[] | undefined): boolean {
+  return Boolean(
+    chunks?.some((chunk) => chunk.type === 'toolCalls' && chunk.toolCalls.length > 0)
+  );
+}
+
 export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] {
   return rows
     .map((item, index) => {
@@ -230,18 +240,28 @@ export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] 
       const parts = assembleAguiHistoryParts(rawContent);
       const text = parts ? parts.text : extractMessageText(rawContent);
       const thinking = parts?.thinking?.trim() || '';
+      const contentChunks = hasToolCallChunks(parts?.contentChunks)
+        ? parts?.contentChunks
+        : undefined;
+      const metadata = {
+        ...(thinking ? { thinking, isThinking: false } : {}),
+        ...(contentChunks ? { contentChunks } : {}),
+      };
       return {
         id: String(item.id ?? `history_${index}`),
         type: 'text' as const,
         content: text,
         sender: role,
         timestamp,
-        ...(thinking
-          ? { metadata: { thinking, isThinking: false } }
-          : {}),
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       };
     })
-    .filter((item) => String(item.content).trim() !== '' || Boolean(item.metadata?.thinking));
+    .filter(
+      (item) =>
+        String(item.content).trim() !== '' ||
+        Boolean(item.metadata?.thinking) ||
+        hasToolCallChunks(item.metadata?.contentChunks as HistoryContentChunk[] | undefined)
+    );
 }
 
 export function lastSessionStorageKey(prefix: string, userId: string, teamId: string): string {

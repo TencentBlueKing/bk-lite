@@ -8,10 +8,14 @@ import {
 import type { AGUIEvent } from './agui';
 import type { ToolCall } from './contentChunks';
 import {
+  appendToolCallArgs,
   appendToolCallChunk,
+  dropTrailingTextChunks,
+  getContentChunks,
   mapMessageChunks,
   patchToolCall,
   syncSessionChunks,
+  textFromChunks,
   upsertTextChunk,
 } from './contentChunks';
 import {
@@ -37,6 +41,7 @@ export interface AGUIEventDispatcher {
   (event: AGUIEvent): void;
   flushPendingText(): void;
   cancelPendingText(): void;
+  retractLiveText(): void;
 }
 
 /** Show the extra typing bubble only while waiting for the first bot message. */
@@ -170,6 +175,19 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     );
   };
 
+  const retractLiveText = () => {
+    textBatcher.cancel();
+    streamingSegmentContent = '';
+    const messageId = currentMessageIdRef.current;
+    const session = sessionManagerRef.current?.getSession();
+    const current = session?.messages.find((message) => message.id === messageId);
+    const nextChunks = dropTrailingTextChunks(current ? getContentChunks(current) : []);
+    const rebuilt = textFromChunks(nextChunks);
+    streamingContentRef.current = rebuilt;
+    setMessages((prev) => mapMessageChunks(prev, messageId, () => nextChunks, rebuilt));
+    syncSessionChunks(session, messageId, () => nextChunks, rebuilt);
+  };
+
   const dispatch = (event: AGUIEvent) => {
     switch (event.type) {
       case 'RUN_STARTED':
@@ -289,9 +307,16 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       }
 
       case 'TOOL_CALL_ARGS': {
-        applyToolPatch(event.toolCallId || '', {
-          args: event.delta,
-        });
+        textBatcher.flush();
+        const messageId = currentMessageIdRef.current;
+        const toolCallId = event.toolCallId || '';
+        const delta = event.delta || '';
+        setMessages((prev) =>
+          mapMessageChunks(prev, messageId, (chunks) => appendToolCallArgs(chunks, toolCallId, delta))
+        );
+        syncSessionChunks(sessionManagerRef.current?.getSession(), messageId, (chunks) =>
+          appendToolCallArgs(chunks, toolCallId, delta)
+        );
         break;
       }
 
@@ -320,5 +345,6 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
 
   dispatch.flushPendingText = flushAndPersistPendingText;
   dispatch.cancelPendingText = () => textBatcher.cancel();
+  dispatch.retractLiveText = retractLiveText;
   return dispatch;
 }

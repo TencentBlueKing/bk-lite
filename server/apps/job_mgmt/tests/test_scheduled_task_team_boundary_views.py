@@ -193,9 +193,7 @@ class TestScheduledTaskExecutionBoundary:
 
         with patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"), patch(
             "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
-        ), patch(
-            "apps.job_mgmt.services.script_execution_runner.Executor"
-        ) as executor:
+        ), patch("apps.job_mgmt.services.script_execution_runner.Executor") as executor:
             tasks.execute_script_task(execution.id)
 
         execution.refresh_from_db()
@@ -269,6 +267,6 @@ class TestScheduledTaskExecutionBoundary:
             response = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": False}, format="json")
 
         assert response.status_code == 200
-        assert "重试" in response.data["message"]
+        assert "重试" in response.data["message"] or "retry" in response.data["message"]
         task.refresh_from_db()
         assert task.is_enabled is False

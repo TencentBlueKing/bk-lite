@@ -186,12 +186,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     config?.descriptionField,
   );
   const baselineRawValue = extractComparableValue(baselineData, selectedField);
-  const numericValue =
-    rawValue !== null
-      ? typeof rawValue === 'string'
-        ? parseFloat(rawValue)
-        : rawValue
-      : null;
+  const numericValue = toComparableNumber(rawValue);
   const baselineNumericValue = toComparableNumber(baselineRawValue);
   const changePercent = config?.compare
     ? getChangePercent(toComparableNumber(rawValue), baselineNumericValue)

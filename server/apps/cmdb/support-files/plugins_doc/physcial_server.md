@@ -113,5 +113,19 @@ Redfish 是服务器 BMC 提供的标准 REST API。本方式通过 HTTPS Basic 
 | model | ComputerSystem.Model | 产品型号 |
 | brand | ComputerSystem.Manufacturer | 厂商 |
 | asset_code | ComputerSystem.AssetTag | 资产标签 |
+| cpu_vendor | 第一颗 CPU Processor.Manufacturer | CPU 厂商 |
+| cpu_model | 第一颗 CPU Processor.Model | CPU 型号 |
+| cpu_cores | CPU Processor.TotalCores 之和 | CPU 物理核心数，入库字段 `cpu_core` |
+| cpu_threads | CPU Processor.TotalThreads 之和 | CPU 线程数 |
+| cpu_arch | 第一颗 CPU InstructionSet | CPU 架构 |
+| board_vendor | SystemBoard Assembly.Vendor | 主板厂商 |
+| board_model | SystemBoard Assembly.Model | 主板型号 |
+| board_serial | SystemBoard Assembly.SerialNumber | 主板序列号 |
 
-> 当前 Redfish MVP 只写入 `physcial_server` 主实例，不创建内存、磁盘、网卡、GPU 等子实例。华为 iBMC 等设备只要正确实现上述标准 Redfish 资源即可接入；厂商 OEM 扩展不作为首版依赖。
+**关联子项（以包含/关联挂在物理服务器下）**
+- `memory`：`mem_locator`、`mem_part_number`、`mem_type`、`mem_size`（整数 GB）、`mem_sn`
+- `disk`：`disk_vendor`、`disk`（整数 GB）、`disk_type`、`disk_sn`
+- `nic`：`nic_mac`、`nic_vendor`、`nic_model`、`nic_type`
+- `gpu`：`gpu_name`、`gpu_type`、`gpu_desc`
+
+> 补充说明：子实例挂在 BMC IP；`nic_iface` 和 `nic_pci_addr` 留空；没有 SystemBoard 时不写主板字段；标准资源没有的字段留空；缺少的子实例不会自动删除；不采集 OEM 和 EthernetInterfaces。

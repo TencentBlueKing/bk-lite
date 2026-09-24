@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 
 import httpx
@@ -349,3 +350,316 @@ async def test_redfish_protocol_rejects_oversized_response():
         "result": {"cmdb_collect_error": "Redfish response exceeds size limit"},
         "success": False,
     }
+
+
+async def test_redfish_protocol_collects_standard_child_inventory():
+    requested = []
+
+    def handler(request):
+        requested.append(request.url.path)
+        payloads = {
+            "/redfish/v1/": {"Systems": {"@odata.id": "/redfish/v1/Systems"}},
+            "/redfish/v1/Systems": {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+            "/redfish/v1/Systems/1": {
+                "Manufacturer": "Huawei",
+                "Model": "2288H V5",
+                "SerialNumber": "SERVER-SN-8",
+                "Processors": {"@odata.id": "/redfish/v1/Systems/1/Processors"},
+                "Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"},
+                "Storage": {"@odata.id": "/redfish/v1/Systems/1/Storage"},
+                "Links": {"Chassis": [{"@odata.id": "/redfish/v1/Chassis/1"}]},
+            },
+            "/redfish/v1/Systems/1/Processors": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Processors/1"}]},
+            "/redfish/v1/Systems/1/Processors/1": {
+                "Manufacturer": "Intel",
+                "Model": "Xeon",
+                "TotalCores": 8,
+                "TotalThreads": 16,
+                "InstructionSet": "x86-64",
+            },
+            "/redfish/v1/Systems/1/Memory": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Memory/1"}]},
+            "/redfish/v1/Systems/1/Memory/1": {
+                "DeviceLocator": "DIMM_A1",
+                "CapacityMiB": 32768,
+                "SerialNumber": "MEM-1",
+            },
+            "/redfish/v1/Systems/1/Storage": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Storage/1"}]},
+            "/redfish/v1/Systems/1/Storage/1": {"Drives": {"@odata.id": "/redfish/v1/Systems/1/Storage/1/Drives"}},
+            "/redfish/v1/Systems/1/Storage/1/Drives": {
+                "Members": [
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                ]
+            },
+            "/redfish/v1/Chassis/1/Drives/1": {
+                "Id": "Disk.Bay.0",
+                "Manufacturer": "Samsung",
+                "MediaType": "SSD",
+                "CapacityBytes": 480 * 1024**3,
+            },
+            "/redfish/v1/Chassis/1": {
+                "Assembly": {"@odata.id": "/redfish/v1/Chassis/1/Assembly"},
+                "NetworkAdapters": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters"},
+            },
+            "/redfish/v1/Chassis/1/Assembly": {
+                "Assemblies": [
+                    {
+                        "PhysicalContext": "SystemBoard",
+                        "Vendor": "Huawei",
+                        "Model": "BC11",
+                        "SerialNumber": "BOARD-SN",
+                    }
+                ]
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters": {"Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1"}]},
+            "/redfish/v1/Chassis/1/NetworkAdapters/1": {
+                "Manufacturer": "Broadcom",
+                "Model": "BCM5720",
+                "NetworkDeviceFunctions": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions"},
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions": {
+                "Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions/1"}]
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions/1": {
+                "NetDevFuncType": "Ethernet",
+                "Ethernet": {"MACAddress": "AA:BB:CC:DD:EE:FF"},
+            },
+        }
+        if request.url.path not in payloads:
+            raise AssertionError(request.url.path)
+        return _response(request, payloads[request.url.path])
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "port": 443,
+            "username": "Administrator",
+            "password": "secret",
+            "model_id": "physcial_server",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    server = result["result"]["physcial_server"][0]
+    assert server["cpu_cores"] == 8
+    assert server["cpu_arch"] == "x86_64"
+    assert server["board_serial"] == "BOARD-SN"
+    assert result["result"]["memory"][0]["mem_locator"] == "DIMM_A1"
+    assert result["result"]["disk"][0]["disk_name"] == "Disk.Bay.0"
+    assert result["result"]["nic"][0]["nic_mac"] == "aa:bb:cc:dd:ee:ff"
+    assert "EthernetInterfaces" not in "".join(requested)
+    assert requested.count("/redfish/v1/Chassis/1/Drives/1") == 1
+
+
+async def test_redfish_protocol_collects_storage_drives_array():
+    requested = []
+
+    def handler(request):
+        requested.append(request.url.path)
+        payloads = {
+            "/redfish/v1/": {"Systems": {"@odata.id": "/redfish/v1/Systems"}},
+            "/redfish/v1/Systems": {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+            "/redfish/v1/Systems/1": {
+                "Manufacturer": "Huawei",
+                "Storage": {"@odata.id": "/redfish/v1/Systems/1/Storage"},
+            },
+            "/redfish/v1/Systems/1/Storage": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Storage/1"}]},
+            "/redfish/v1/Systems/1/Storage/1": {
+                "Drives": [
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                    {"@odata.id": "/redfish/v1/Chassis/1/Drives/1"},
+                ]
+            },
+            "/redfish/v1/Chassis/1/Drives/1": {
+                "Id": "Disk.Bay.0",
+                "Manufacturer": "Samsung",
+                "MediaType": "SSD",
+            },
+        }
+        if request.url.path not in payloads:
+            raise AssertionError(request.url.path)
+        return _response(request, payloads[request.url.path])
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "port": 443,
+            "username": "Administrator",
+            "password": "secret",
+            "model_id": "physcial_server",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert result["result"]["disk"][0]["disk_name"] == "Disk.Bay.0"
+    assert "/redfish/v1/Systems/1/Storage/1/Drives" not in requested
+    assert requested.count("/redfish/v1/Chassis/1/Drives/1") == 1
+
+
+async def test_redfish_child_collection_failure_keeps_server_identity():
+    def handler(request):
+        if request.url.path == "/redfish/v1/":
+            return _response(request, {"Systems": {"@odata.id": "/redfish/v1/Systems"}})
+        if request.url.path == "/redfish/v1/Systems":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1":
+            return _response(
+                request,
+                {
+                    "SerialNumber": "SERVER-SN-8",
+                    "Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"},
+                    "Storage": {"@odata.id": "https://attacker.invalid/redfish/v1/Systems/1/Storage"},
+                },
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Memory/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1/Memory/1":
+            return httpx.Response(500, json={"error": "boom"}, request=request)
+        raise AssertionError(request.url.path)
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert result["result"]["physcial_server"][0]["serial_number"] == "SERVER-SN-8"
+    assert "memory" not in result["result"]
+    assert "disk" not in result["result"]
+
+
+async def test_redfish_invalid_child_member_is_skipped():
+    def handler(request):
+        if request.url.path == "/redfish/v1/":
+            return _response(request, {"Systems": {"@odata.id": "/redfish/v1/Systems"}})
+        if request.url.path == "/redfish/v1/Systems":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1":
+            return _response(
+                request,
+                {"Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"}},
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory":
+            return _response(
+                request,
+                {
+                    "Members": [
+                        {"@odata.id": "https://attacker.invalid/redfish/v1/Systems/1/Memory/bad"},
+                        {"@odata.id": "/redfish/v1/Systems/1/Memory/1"},
+                    ]
+                },
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory/1":
+            return _response(request, {"DeviceLocator": "DIMM_A1", "CapacityMiB": 32768})
+        raise AssertionError(request.url.path)
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert [item["mem_locator"] for item in result["result"]["memory"]] == ["DIMM_A1"]
+
+
+async def test_redfish_child_transport_error_keeps_server_identity(monkeypatch):
+    secret_sentinel = "BMC_SECRET_MUST_NOT_LEAK"
+    log_calls = []
+
+    def handler(request):
+        if request.url.path == "/redfish/v1/":
+            return _response(request, {"Systems": {"@odata.id": "/redfish/v1/Systems"}})
+        if request.url.path == "/redfish/v1/Systems":
+            return _response(request, {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]})
+        if request.url.path == "/redfish/v1/Systems/1":
+            return _response(
+                request,
+                {
+                    "SerialNumber": "SERVER-SN-8",
+                    "Memory": {"@odata.id": "/redfish/v1/Systems/1/Memory"},
+                },
+            )
+        if request.url.path == "/redfish/v1/Systems/1/Memory":
+            raise httpx.ConnectError(
+                f"certificate verify failed {secret_sentinel}",
+                request=request,
+            )
+        raise AssertionError(request.url.path)
+
+    def capture_warning(template, *args, **kwargs):
+        log_calls.append((template, args, kwargs))
+
+    monkeypatch.setattr(redfish_info.logger, "warning", capture_warning)
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": secret_sentinel,
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert result["result"]["physcial_server"][0]["serial_number"] == "SERVER-SN-8"
+    assert "memory" not in result["result"]
+    assert len(log_calls) == 1
+    template, args, kwargs = log_calls[0]
+    assert template.startswith("event=physical_server_redfish_child_skipped")
+    assert secret_sentinel not in template % args
+
+
+async def test_redfish_child_member_fetches_use_bounded_concurrency():
+    collector = PhyscialServerRedfishInfo(
+        {
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(lambda request: _response(request, {})),
+    )
+    in_flight = 0
+    peak = 0
+
+    async def delayed_get_json(client, link):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.02)
+        in_flight -= 1
+        path = link["@odata.id"] if isinstance(link, dict) else str(link)
+        return {"Id": path.rsplit("/", 1)[-1]}
+
+    collector._get_json = delayed_get_json
+    links = [{"@odata.id": f"/redfish/v1/Systems/1/Memory/{index}"} for index in range(12)]
+
+    resources = await collector._read_linked_resources(None, links)
+
+    assert [item["Id"] for item in resources] == [str(index) for index in range(12)]
+    assert peak > 1
+    assert peak <= PhyscialServerRedfishInfo.CHILD_CONCURRENCY

@@ -1,0 +1,50 @@
+Switch Raisecom SNMP:
+  name: Raisecom (Telegraf)
+  desc: SNMP monitoring template for Raisecom ISCOM/Gazelle switches. It reports
+    CPU utilization, memory total/free/utilization, and chassis temperature.
+    Fan and power-supply health are not supported. Distinct from Access Raisecom
+    SNMP.
+monitor_object:
+  Switch: Switch
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the one-minute total CPU busy percentage of the
+        Raisecom ISCOM/Gazelle switch (raisecomTotalCPUUtilization, index oneMin)
+        as a percent. Sustained high CPU usage can indicate control-plane overload,
+        forwarding instability, or attack traffic.
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total size in bytes of the Raisecom ISCOM/Gazelle
+        switch system memory (raisecomMemoryTotal). Together with available memory
+        it determines overall memory utilization.
+    device_memory_free:
+      name: Memory Free
+      desc: This metric reports the number of available bytes in the Raisecom
+        ISCOM/Gazelle switch system memory (raisecomMemoryAvailable). A persistently
+        low free value indicates memory pressure.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports overall memory utilization of the Raisecom
+        ISCOM/Gazelle switch, computed as (total - free) / total * 100. High
+        memory usage may indicate leaks, oversized MAC/ARP tables, or insufficient
+        capacity.
+    device_temperature_celsius:
+      name: Chassis Temperature
+      desc: This metric reports the chassis temperature of the Raisecom ISCOM/Gazelle
+        switch (raisecomTemperatureValue) in degrees Celsius. Abnormally high
+        temperatures may indicate cooling failure or excessive ambient heat.
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Base: Base

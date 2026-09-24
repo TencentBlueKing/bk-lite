@@ -208,7 +208,11 @@ class QuickExecuteSerializer(serializers.Serializer):
         params = attrs.get("params", [])
         if params:
             has_script_template = bool(attrs.get("script_id"))
-            ScriptParamsService.validate_params_format(params, require_is_modified=has_script_template)
+            ScriptParamsService.validate_params_format(
+                params,
+                require_is_modified=has_script_template,
+                request=self.context.get("request"),
+            )
 
         # 临时输入模式：入库前规范化换行符（CRLF/CR → LF；bat/powershell 保留原样）。
         # script_id / playbook_id 模式不直接处理 script_content，下游 ExecutionService

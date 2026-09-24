@@ -946,7 +946,7 @@ const CollectorReleaseImportModal = ({
       destroyOnHidden
       footer={
         finished ? (
-          <div className="flex w-full items-center justify-between gap-3">
+          <div className="flex w-full items-center justify-between gap-2 [&_button]:!mr-0">
             <Button onClick={handleClose}>{t('common.close')}</Button>
             {(items || []).some((item) => item.applied?.ok) ? (
               staleCount > 0 ? (
@@ -975,17 +975,24 @@ const CollectorReleaseImportModal = ({
             ) : null}
           </div>
         ) : (
-          <>
+          // 统一 flex 底栏：避免 PermissionWrapper 的 span 打断 .ant-btn+.ant-btn
+          // 间距，并抵消 node-manager 全局 footer button:nth-child(2) 的 margin。
+          <div className="flex w-full items-center justify-end gap-2 [&_button]:!mr-0">
             <Button onClick={handleClose}>{t('common.cancel')}</Button>
             {items ? (
-              <Button onClick={reset}>{t('node-manager.packetManage.reselect')}</Button>
+              <Button onClick={reset}>
+                {t('node-manager.packetManage.reselect')}
+              </Button>
             ) : null}
             {!items ? (
               <Button type="primary" loading={loading} onClick={handlePreview}>
                 {t('node-manager.packetManage.preview')}
               </Button>
             ) : (
-              <PermissionWrapper requiredPermissions={['AddPacket']}>
+              <PermissionWrapper
+                className="inline-flex"
+                requiredPermissions={['AddPacket']}
+              >
                 <Button
                   type="primary"
                   loading={loading}
@@ -1000,7 +1007,7 @@ const CollectorReleaseImportModal = ({
                 </Button>
               </PermissionWrapper>
             )}
-          </>
+          </div>
         )
       }
     >

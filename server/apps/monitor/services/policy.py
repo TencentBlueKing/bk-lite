@@ -39,8 +39,12 @@ POLICY_RECIPE_SYNC_FIELDS = (
     "threshold_unit",
     "compare_mode",
     "compare_value_kind",
+    "compare_offset_hours",
+    "compare_offset_days",
+    "compare_baseline_weeks",
     "count_predicate",
     "forecast_target",
+    "forecast_target_unit",
     "forecast_lookback",
     "recovery_threshold",
 )
@@ -500,10 +504,14 @@ class PolicyService:
                     portable["metric_name"] = metric_name
         portable.setdefault("compare_mode", "absolute")
         portable.setdefault("compare_value_kind", "")
+        portable.setdefault("compare_offset_hours", None)
+        portable.setdefault("compare_offset_days", None)
+        portable.setdefault("compare_baseline_weeks", None)
         portable.setdefault("count_predicate", {})
         portable.setdefault("forecast_lookback", {})
         portable.setdefault("recovery_threshold", {})
         portable.setdefault("forecast_target", None)
+        portable.setdefault("forecast_target_unit", "")
         portable["schedule"] = PolicyService._default_duration(portable.get("schedule"))
         portable["period"] = PolicyService._default_duration(portable.get("period"))
         PolicyService._ensure_query_condition(portable, plugin=plugin)
@@ -663,8 +671,12 @@ class PolicyService:
             "threshold_unit": (config.get("threshold_unit") or config.get("calculation_unit") or default_calculation_unit or ""),
             "compare_mode": config.get("compare_mode") or "absolute",
             "compare_value_kind": config.get("compare_value_kind") or "",
+            "compare_offset_hours": config.get("compare_offset_hours"),
+            "compare_offset_days": config.get("compare_offset_days"),
+            "compare_baseline_weeks": config.get("compare_baseline_weeks"),
             "count_predicate": copy.deepcopy(config.get("count_predicate") or {}),
             "forecast_target": forecast_target,
+            "forecast_target_unit": config.get("forecast_target_unit") or "",
             "forecast_lookback": copy.deepcopy(config.get("forecast_lookback") or {}),
             "recovery_threshold": copy.deepcopy(config.get("recovery_threshold") or {}),
         }

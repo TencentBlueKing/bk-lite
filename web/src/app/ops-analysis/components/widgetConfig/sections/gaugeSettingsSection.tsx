@@ -1,6 +1,8 @@
 import React from 'react';
-import { QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Form, Input, InputNumber, Radio, Select, Tooltip, TreeSelect } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Form, Input, InputNumber, Radio, Select, Tooltip, TreeSelect } from 'antd';
+import { ConfigGroupTitle } from '../configTitles';
+import { RefreshFieldsButton } from './chartRoleLabel';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
@@ -96,6 +98,19 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
         </div>
       ) : null}
 
+      <ConfigGroupTitle
+        actions={(
+          <RefreshFieldsButton
+            label={t('dashboard.refreshFields')}
+            loading={loadingSingleValueData}
+            disabled={!selectedDataSource}
+            onClick={onFetchSingleValueDataFields}
+          />
+        )}
+      >
+        {t('dashboard.dataFields')}
+      </ConfigGroupTitle>
+
       <Form.Item
         label={
           <span>
@@ -123,42 +138,30 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           },
         ]}
       >
-        <div className="flex items-center gap-2">
-          <TreeSelect
-            value={selectedFields[0]}
-            treeData={buildFieldOptions(singleValueTreeData)}
-            treeDefaultExpandAll
-            allowClear
-            showSearch
-            treeNodeFilterProp="searchText"
-            placeholder={
-              !selectedDataSource
-                ? t('topology.nodeConfig.selectDataSourceFirst')
-                : loadingSingleValueData
-                  ? t('topology.nodeConfig.fetchingDataFields')
-                  : singleValueTreeData.length === 0
-                    ? t('topology.nodeConfig.clickRefreshToGetFields')
-                    : t('topology.nodeConfig.selectDisplayField')
-            }
-            disabled={fieldSelectorDisabled}
-            onChange={(value) =>
-              handleFieldSelect(value as string | undefined)
-            }
-            className={`flex-1 ${fieldSelectorClassName}`}
-            popupClassName={fieldPopupClassName}
-            dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
-          />
-          <Button
-            type="text"
-            icon={<ReloadOutlined aria-hidden />}
-            onClick={onFetchSingleValueDataFields}
-            loading={loadingSingleValueData}
-            disabled={!selectedDataSource}
-            title={t('topology.nodeConfig.refreshDataFields')}
-            aria-label={t('topology.nodeConfig.refreshDataFields')}
-            className="shrink-0 text-(--color-text-3) hover:text-(--color-primary)"
-          />
-        </div>
+        <TreeSelect
+          value={selectedFields[0]}
+          treeData={buildFieldOptions(singleValueTreeData)}
+          treeDefaultExpandAll
+          allowClear
+          showSearch
+          treeNodeFilterProp="searchText"
+          placeholder={
+            !selectedDataSource
+              ? t('topology.nodeConfig.selectDataSourceFirst')
+              : loadingSingleValueData
+                ? t('topology.nodeConfig.fetchingDataFields')
+                : singleValueTreeData.length === 0
+                  ? t('topology.nodeConfig.clickRefreshToGetFields')
+                  : t('topology.nodeConfig.selectDisplayField')
+          }
+          disabled={fieldSelectorDisabled}
+          onChange={(value) =>
+            handleFieldSelect(value as string | undefined)
+          }
+          className={`w-full ${fieldSelectorClassName}`}
+          popupClassName={fieldPopupClassName}
+          dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+        />
       </Form.Item>
 
         <Form.Item

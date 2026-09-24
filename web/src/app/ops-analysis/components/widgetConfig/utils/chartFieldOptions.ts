@@ -1,5 +1,4 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
-import { unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 
 export interface WidgetFieldSelectOption {
   label: string;
@@ -20,7 +19,45 @@ const formatFieldOptionLabel = (key: string, title?: string) => {
   return `${normalizedKey} (${normalizedTitle})`;
 };
 
-export const buildTopNFieldSelectOptions = (
+const collectSampleRows = (sample: unknown): unknown[] => {
+  if (Array.isArray(sample)) {
+    return sample;
+  }
+  if (!isPlainRecord(sample)) {
+    return [];
+  }
+  if (Array.isArray(sample.items)) {
+    return sample.items;
+  }
+  if (Array.isArray(sample.data)) {
+    return sample.data;
+  }
+  const values = Object.values(sample);
+  if (values.length > 0 && values.every(Array.isArray)) {
+    return values.flat();
+  }
+  return [];
+};
+
+export const collectSampleFieldKeys = (sample: unknown): string[] => {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  collectSampleRows(sample).forEach((row) => {
+    if (!isPlainRecord(row)) {
+      return;
+    }
+    Object.keys(row).forEach((key) => {
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      keys.push(key);
+    });
+  });
+  return keys;
+};
+
+export const buildRoleFieldOptions = (
   schemaFields: ResponseFieldDefinition[] = [],
   previewRawData?: unknown,
 ): WidgetFieldSelectOption[] => {
@@ -41,14 +78,20 @@ export const buildTopNFieldSelectOptions = (
     appendOption(field.key, field.title);
   });
 
-  unwrapTopNData(previewRawData).forEach((row) => {
-    if (!isPlainRecord(row)) {
-      return;
-    }
-    Object.keys(row).forEach((key) => {
-      appendOption(key);
-    });
+  collectSampleFieldKeys(previewRawData).forEach((key) => {
+    appendOption(key);
   });
 
   return Array.from(optionMap.values());
+};
+
+export const dropRoleValueMissingFrom = (
+  value: string | undefined,
+  allowed: ReadonlySet<string>,
+): string | undefined => {
+  const trimmed = value?.trim();
+  if (!trimmed || !allowed.has(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
 };

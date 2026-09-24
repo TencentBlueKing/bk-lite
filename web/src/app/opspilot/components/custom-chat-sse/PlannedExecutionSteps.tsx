@@ -24,6 +24,7 @@ interface PlannedExecutionStepsProps {
 
 const statusLabel = (status: PlannedExecutionStepData['status'], isStreaming: boolean) => {
   if (status === 'failed') return '失败';
+  if (status === 'skipped') return '已跳过';
   if (status === 'running' && isStreaming) return '执行中';
   if (status === 'done') return '已完成';
   return '执行中';
@@ -71,7 +72,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
           next.add(step.step_index);
           changed = true;
         }
-        if (!shouldOpen && next.has(step.step_index) && (step.status === 'done' || step.status === 'failed')) {
+        if (!shouldOpen && next.has(step.step_index) && (step.status === 'done' || step.status === 'failed' || step.status === 'skipped')) {
           next.delete(step.step_index);
           changed = true;
         }
@@ -84,8 +85,9 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
 
   const toolById = new Map(toolCalls.map((tool) => [tool.id, tool]));
   const totalSteps = Math.max(steps[steps.length - 1]?.total_steps || 0, steps.length);
-  const doneCount = steps.filter((step) => step.status === 'done' || step.status === 'failed').length;
+  const doneCount = steps.filter((step) => step.status === 'done' || step.status === 'failed' || step.status === 'skipped').length;
   const failedCount = steps.filter((step) => step.status === 'failed').length;
+  const skippedCount = steps.filter((step) => step.status === 'skipped').length;
   const running = steps.find((step) => step.status === 'running');
 
   const toggleStep = (stepIndex: number) => {
@@ -102,8 +104,8 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
 
   const summaryText = isStreaming
     ? `步骤 ${running?.step_index ?? doneCount}/${totalSteps}`
-    : failedCount > 0
-      ? `完成 ${doneCount} 步 · ${failedCount} 步失败`
+    : failedCount > 0 || skippedCount > 0
+      ? `完成 ${doneCount} 步${failedCount > 0 ? ` · ${failedCount} 步失败` : ''}${skippedCount > 0 ? ` · ${skippedCount} 步跳过` : ''}`
       : `已完成 ${doneCount} 步`;
 
   return (
@@ -132,6 +134,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
               .filter((tool): tool is PlannedStepToolCall => Boolean(tool));
             const isActive = step.status === 'running' && isStreaming;
             const isFailed = step.status === 'failed';
+            const isSkipped = step.status === 'skipped';
 
             return (
               <div key={step.step_index} className="rounded">
@@ -178,7 +181,15 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                       />
                     ) : (
                       <div className="px-2 py-0.5 text-[11px] text-[var(--color-text-4)]">
-                        {isActive ? '等待工具调用…' : '本步无工具调用'}
+                        {isActive
+                          ? '等待工具调用…'
+                          : isFailed
+                            ? (step.error || '本步未完成')
+                            : isSkipped
+                              ? '因上下文不足已跳过'
+                              : step.reusedPriorResult
+                                ? '复用上一步结果'
+                                : '本步无工具调用'}
                       </div>
                     )}
                   </div>

@@ -32,38 +32,14 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- HP ProCurve CPU utilization (HP-ICF hpSwitchCpuStat, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.11.2.14.11.5.1.9.6.1.0（已是 0-100%）。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.11.2.14.11.5.1.9.6.1"
-        name = "usage"
-    # ---- HP ProCurve system memory (HP-ICF hpLocalMem table, used + total, bytes, per management module) ----
-    # 待现网核验：used hpLocalMemAllocBytes 1.3.6.1.4.1.11.2.14.11.5.1.1.2.1.1.1.7；total hpLocalMemTotalBytes ...1.1.1.5。
-    # 利用率在共享盘按 used/total 计算（多模块走表自动按 index 区分，sum 聚合）。
+# @bk_include_ifmib_table
+    # ---- CPU：STATISTICS-MIB hpSwitchCpuStat 标量，顶层 field GET 必须带实例 .0；禁止 table.field+.0 ----
+    # 发现身份为 sysObjectID 前缀 1.3.6.1.4.1.11.2.3.7.11（ProCurve / ArubaOS-Switch）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.11.2.14.11.5.1.9.6.1.0"
+        name = "device_cpu_usage"
+    # ---- 内存：NETSWITCH-MIB hpLocalMem 表，used/total 字节；table.field 不得带 .0 ----
+    # hpLocalMemAllocBytes ...1.1.1.7；hpLocalMemTotalBytes ...1.1.1.5。利用率 used/total。
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]

@@ -1,12 +1,12 @@
 {
   "object_name": "Router",
   "instance_type": "router",
-  "collect_type": "snmp_yamaha",
+  "collect_type": "snmp_yamaha_router",
   "config_type": [
     "yamaha"
   ],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_yamaha_{{ip}}",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_yamaha_router_{{ip}}",
   "form_fields": [
     {
       "name": "ip",

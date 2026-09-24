@@ -102,3 +102,52 @@ def test_collect_result_persistence_failure_identifies_stage_and_preserves_error
     assert "status=ERROR" in summaries[0].getMessage()
     assert "failed_stage=result_persistence" in summaries[0].getMessage()
     assert "result_persisted=True" in summaries[0].getMessage()
+
+
+@pytest.mark.django_db
+def test_empty_raw_collect_logs_decision_and_keeps_error_contract(monkeypatch, caplog):
+    task = _create_protocol_task("diagnosability-empty-raw")
+
+    class EmptyProtocolCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            return {"password": "sentinel-secret-9f3a"}, {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "__raw_data__": [],
+            }
+
+    monkeypatch.setattr(collect_tasks, "ProtocolCollect", EmptyProtocolCollect)
+    caplog.set_level(logging.INFO, logger="cmdb")
+
+    collect_tasks.sync_collect_task(task.id, execution_id="execution-log-empty")
+
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.ERROR
+    assert task.collect_digest["decision"] == "empty_raw"
+    assert task.collect_digest["message"] == "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
+    assert task.collect_data["password"] == "sentinel-secret-9f3a"
+
+    summaries = [record for record in caplog.records if "event=collect_task_execution_finished" in record.getMessage()]
+    assert len(summaries) == 1
+    assert summaries[0].levelno == logging.WARNING
+    assert summaries[0].msg == (
+        "event=collect_task_execution_finished task_id=%s execution_id=%s "
+        "status=%s failed_stage=%s result_persisted=%s duration_ms=%.2f "
+        "decision=%s raw_host=%s raw_process=%s collect_success=%s collect_failed=%s"
+    )
+    rendered = summaries[0].getMessage()
+    assert f"task_id={task.id}" in rendered
+    assert "execution_id=execution-log-empty" in rendered
+    assert "status=ERROR" in rendered
+    assert "failed_stage=-" in rendered
+    assert "decision=empty_raw" in rendered
+    assert "raw_host=0" in rendered
+    assert "raw_process=0" in rendered
+    assert "sentinel-secret-9f3a" not in rendered
+    assert "sentinel-secret-9f3a" not in str(summaries[0].args)
+    assert "sentinel-secret-9f3a" not in caplog.text

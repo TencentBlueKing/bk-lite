@@ -19,10 +19,12 @@ from dataclasses import dataclass
 from typing import Optional
 
 import requests
+
 from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.utils.architecture import X86_64, repository_architecture
+from apps.patch_mgmt.utils.i18n import patch_message
 
 # (连接超时, 读取超时) —— 硬封顶，避免探测无限阻塞请求/worker。
 PROBE_CONNECT_TIMEOUT = 5
@@ -138,7 +140,13 @@ def probe_source(source: PatchSource) -> Optional[ProbeResult]:
         logger.info("probe_source: source_id=%s %s reachable=%s", source.pk, detail, reachable)
         return ProbeResult(reachable=reachable, status_code=resp.status_code, detail=detail)
     except requests.RequestException as exc:
-        detail = f"GET {target} 失败: {exc}"
+        detail = patch_message(
+            None,
+            "error.probe_get_failed",
+            "GET {target} failed: {detail}",
+            target=target,
+            detail=str(exc),
+        )
         logger.warning("probe_source: source_id=%s %s", source.pk, detail)
         return ProbeResult(reachable=False, status_code=None, detail=detail)
 

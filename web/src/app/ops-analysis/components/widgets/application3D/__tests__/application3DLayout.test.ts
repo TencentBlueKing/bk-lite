@@ -389,6 +389,29 @@ describe('application3D layout', () => {
     expect(layout.gapX / layout.cardWidth).toBeCloseTo(CARD_GAP / CARD_WORLD_WIDTH, 5);
   });
 
+  it('pulls the parked camera back when a ≤16 wall is wider than 4 columns', () => {
+    const viewportAspect = 1.84;
+    const layout = buildApplication3DLayout(15, viewportAspect);
+    const parkedDistance = fitApplication3DCameraDistance(viewportAspect);
+    const fitted = fitApplication3DCameraDistanceToWall(
+      layout.wallWidth,
+      layout.wallHeight,
+      viewportAspect,
+    );
+    expect(layout.columns).toBe(5);
+    expect(layout.rows).toBe(3);
+    expect(layout.cardWidth).toBe(CARD_WORLD_WIDTH);
+
+    const camera = resolveApplication3DWallCamera(15, viewportAspect);
+    expect(fitted).toBeGreaterThan(parkedDistance);
+    expect(camera.z).toBeCloseTo(fitted, 8);
+    expect(camera.y).toBeCloseTo(layout.wallHeight * WALL_CAMERA_HEIGHT_FACTOR, 8);
+
+    const twelve = resolveApplication3DWallCamera(12, viewportAspect);
+    expect(twelve.z).toBeCloseTo(parkedDistance, 8);
+    expect(resolveApplication3DWallCamera(16, viewportAspect).z).toBeCloseTo(parkedDistance, 8);
+  });
+
   it('keeps one card density and one parked camera for every ≤16 wall', () => {
     const viewportAspect = 1.84;
     const one = buildApplication3DLayout(1, viewportAspect);
@@ -467,52 +490,50 @@ describe('application3D layout', () => {
     expect(seventeenCam.y).toBeCloseTo(parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR, 8);
   });
 
-  it('pulls the camera back to the actual wall past 24 cards without shrinking them', () => {
+  it('keeps 17–36 on the 24-card camera and a 6-column grid', () => {
     const viewportAspect = 1.84;
     const twentyFour = buildApplication3DLayout(24, viewportAspect);
     const twentyFive = buildApplication3DLayout(25, viewportAspect);
+    const thirtyTwo = buildApplication3DLayout(32, viewportAspect);
+    const thirtySix = buildApplication3DLayout(36, viewportAspect);
+    expect(twentyFive.columns).toBeLessThanOrEqual(6);
+    expect(thirtyTwo.columns).toBe(6);
+    expect(thirtyTwo.columns).not.toBe(8);
+    expect(thirtySix.columns).toBe(6);
+    expect(thirtySix.rows).toBe(6);
+    expect(twentyFive.cardWidth).toBe(twentyFour.cardWidth);
+    expect(thirtySix.cardWidth).toBe(twentyFour.cardWidth);
+
+    const twentyFourCam = resolveApplication3DWallCamera(24, viewportAspect);
+    const twentyFiveCam = resolveApplication3DWallCamera(25, viewportAspect);
+    const thirtySixCam = resolveApplication3DWallCamera(36, viewportAspect);
+    expect(twentyFiveCam).toEqual(twentyFourCam);
+    expect(thirtySixCam).toEqual(twentyFourCam);
+  });
+
+  it('pulls the camera back to the actual wall past 36 cards without shrinking them', () => {
+    const viewportAspect = 1.84;
+    const twentyFour = buildApplication3DLayout(24, viewportAspect);
     const fortyEight = buildApplication3DLayout(48, viewportAspect);
     const eighty = buildApplication3DLayout(80, viewportAspect);
     const twoHundred = buildApplication3DLayout(200, viewportAspect);
-    expect(resolveApplication3DCardDensity(25)).toBe(0.82);
     expect(resolveApplication3DCardDensity(48)).toBe(0.82);
     expect(resolveApplication3DCardDensity(80)).toBe(0.82);
     expect(resolveApplication3DCardDensity(200)).toBe(0.82);
-    expect(twentyFive.cardWidth).toBe(twentyFour.cardWidth);
     expect(fortyEight.cardWidth).toBe(twentyFour.cardWidth);
     expect(eighty.cardWidth).toBe(twentyFour.cardWidth);
     expect(twoHundred.cardWidth).toBe(twentyFour.cardWidth);
 
-    const parked = parkedApplication3DWallSize();
-    const parkedDistance = fitApplication3DCameraDistance(viewportAspect);
     const twentyFourCam = resolveApplication3DWallCamera(24, viewportAspect);
-    const twentyFiveCam = resolveApplication3DWallCamera(25, viewportAspect);
     const fortyEightCam = resolveApplication3DWallCamera(48, viewportAspect);
     const eightyCam = resolveApplication3DWallCamera(80, viewportAspect);
-    const fitted25 = fitApplication3DCameraDistanceToWall(
-      twentyFive.wallWidth,
-      twentyFive.wallHeight,
-      viewportAspect,
-    );
     const fitted48 = fitApplication3DCameraDistanceToWall(
       fortyEight.wallWidth,
       fortyEight.wallHeight,
       viewportAspect,
     );
 
-    expect(twentyFiveCam.z).toBeGreaterThanOrEqual(twentyFourCam.z);
-    expect(twentyFiveCam.z).toBeCloseTo(Math.max(fitted25, twentyFourCam.z), 8);
-    expect(twentyFiveCam.z).not.toBeCloseTo(parkedDistance / 0.64, 4);
-    expect(twentyFiveCam.y).toBeCloseTo(
-      twentyFive.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
-      8,
-    );
-    expect(twentyFiveCam.y).not.toBeCloseTo(
-      parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
-      4,
-    );
-
-    expect(fortyEightCam.z).toBeGreaterThan(twentyFiveCam.z);
+    expect(fortyEightCam.z).toBeGreaterThan(twentyFourCam.z);
     expect(fortyEightCam.z).toBeCloseTo(fitted48, 8);
     expect(eightyCam.z).toBeGreaterThan(fortyEightCam.z);
     expect(fortyEightCam.y).toBeCloseTo(

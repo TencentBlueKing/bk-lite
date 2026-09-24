@@ -3,6 +3,7 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.utils.loader import LanguageLoader
 
 
 class CustomMenuGroup(MaintainerInfo, TimeInfo):
@@ -67,7 +68,11 @@ class CustomMenuGroup(MaintainerInfo, TimeInfo):
             existing_enabled = CustomMenuGroup.objects.filter(app=self.app, is_enabled=True).exclude(id=self.id)
 
             if existing_enabled.exists():
-                raise ValidationError(f"应用 {self.app} 已有启用的菜单组，每个应用只能启用一个菜单组")
+                template = LanguageLoader(app="system_mgmt", default_lang="en").get(
+                    "error.custom_menu_group_enabled_exists",
+                    "App {app} already has an enabled menu group. Only one menu group can be enabled per app.",
+                )
+                raise ValidationError(template.format(app=self.app))
 
     def save(self, *args, **kwargs):
         # 保存前执行校验

@@ -2,7 +2,7 @@ export const DEFAULT_TIMEOUT_MS = 60_000;
 export const SSE_TIMEOUT_MS = 300_000;
 export const PROXY_TIMEOUT_HEADER = 'x-bklite-proxy-timeout-ms';
 
-function acceptsEventStream(acceptHeader: string | null): boolean {
+export function acceptsEventStream(acceptHeader: string | null): boolean {
   return (acceptHeader || '').split(',').some((entry) => {
     const [mediaType, ...parameters] = entry.split(';');
     if (mediaType.trim().toLowerCase() !== 'text/event-stream') return false;

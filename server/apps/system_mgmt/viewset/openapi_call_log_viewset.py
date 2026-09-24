@@ -98,7 +98,8 @@ class OpenAPICallLogViewSet(LanguageViewSet):
 
         workbook = Workbook()
         sheet = workbook.active
-        sheet.title = "API调用日志"
+        sheet_title = self.loader.get("export.openapi_call_log_sheet", "API Call Log") if self.loader else "API Call Log"
+        sheet.title = str(sheet_title)[:31]
         sheet.append(EXPORT_HEADERS)
         header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         header_font = Font(color="FFFFFF", bold=True)
@@ -133,7 +134,8 @@ class OpenAPICallLogViewSet(LanguageViewSet):
         file_stream.seek(0)
         from datetime import datetime
 
-        filename = f"API调用日志_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename_base = self.loader.get("export.openapi_call_log_filename", "API_Call_Log") if self.loader else "API_Call_Log"
+        filename = f"{filename_base}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         response = HttpResponse(file_stream.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response

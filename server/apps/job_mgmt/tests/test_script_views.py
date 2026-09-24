@@ -47,7 +47,7 @@ class TestScriptCrud:
         DangerousRule.objects.create(name="no-rm", pattern="rm -rf", level=DangerousLevel.FORBIDDEN, is_enabled=True, team=[])
         resp = su_client.post(URL, {"name": "bad", "content": "rm -rf /", "script_type": "shell", "team": [1]}, format="json")
         assert resp.status_code == 400
-        assert "高危命令" in resp.data["error"]
+        assert "高危命令" in resp.data["error"] or "high-risk" in resp.data["error"]
 
     def test_list_and_retrieve(self, su_client):
         s = Script.objects.create(name="s1", content="echo", script_type="shell", team=[1])
@@ -166,7 +166,8 @@ class TestScriptCrud:
         s = Script.objects.create(name="exp", content="echo", script_type="shell", team=[1])
         resp = su_client.post(f"{URL}export/", {"ids": [s.id, 999999]}, format="json")
         assert resp.status_code == 400
-        assert "无权" in str(resp.data) or "不存在" in str(resp.data)
+        error_text = str(resp.data)
+        assert "无权" in error_text or "不存在" in error_text or "cannot be exported" in error_text or "do not exist" in error_text
 
     def test_import_creates_skips_and_reports(self, su_client):
         import io

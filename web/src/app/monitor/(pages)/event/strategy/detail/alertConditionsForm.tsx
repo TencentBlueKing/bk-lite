@@ -1,19 +1,30 @@
-import React, { useMemo } from 'react';
-import { Form, Select, InputNumber, Tooltip, Space } from 'antd';
+import React, { useEffect, useMemo } from 'react';
+import { Form, Select, InputNumber, Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ThresholdField } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
 import { useCommon } from '@/app/monitor/context/common';
+import { getMonitorUnitSelectLabel } from '@/app/monitor/components/monitor-shared/unit-label';
 import { COMPARISON_METHOD } from '@/app/monitor/constants/event';
 import { useMethodList } from '@/app/monitor/hooks/event';
 import {
+  COMPARE_BASELINE_YOY,
   COMPARE_MODE_ABSOLUTE,
+  COMPARE_MODE_BASELINE_DAYS,
+  COMPARE_MODE_BASELINE_WEEKS,
+  COMPARE_MODE_OFFSET_DAYS,
+  COMPARE_MODE_OFFSET_HOURS,
+  COMPARE_MODE_PREVIOUS_WINDOW,
   COMPARE_MODE_TIMELEFT,
+  compareBaselineFamily,
+  compareSpanIssue,
+  compareSpanSpec,
   COUNT_IF_ALGORITHM,
   DEFAULT_FORECAST_LOOKBACK,
   FORECAST_LOOKBACK_OPTIONS,
   buildPolicyRestatement,
+  completedThresholds,
   defaultCompareValueKind,
   formatUnitLabelWithRateSuffix,
   getAllowedRecoveryMethods,
@@ -23,6 +34,7 @@ import {
   getMetricThresholdEnumState,
   getThresholdUnitOptions,
   isVacantThresholdUnit,
+  resolveForecastTargetUnit,
   resolveMetricDisplayUnit,
   shouldShowThresholdUnitSelector,
   timeleftRequiresLowSideThresholds
@@ -30,11 +42,12 @@ import {
 import ThresholdList from './thresholdList';
 import AlertDurationFields, {
   STRATEGY_CONDITION_LABEL_CLASS,
-  STRATEGY_CONDITION_LABEL_WIDTH
+  STRATEGY_CONDITION_LABEL_WIDTH,
+  strategyConditionLabelWithTip
 } from './alertDurationFields';
 
 const { Option } = Select;
-const COMPARE_KIND_SELECT_WIDTH = 108;
+type YoyMethod = 'hour' | 'day' | 'day_mean' | 'week_mean';
 
 interface AlertConditionsFormProps {
   enableAlerts: string[];
@@ -54,8 +67,10 @@ interface AlertConditionsFormProps {
   periodUnit: string;
   compareMode: string;
   compareValueKind: string;
+  compareOffsetHours?: number | null;
   algorithm?: string | null;
   forecastTarget?: number | null;
+  forecastTargetUnit?: string | null;
   forecastLookback?: { type: string; value: number };
   onEnableAlertsChange: (val: string[]) => void;
   onThresholdChange: (value: ThresholdField[]) => void;
@@ -68,7 +83,9 @@ interface AlertConditionsFormProps {
   onNoDataAlertNameChange: (val: string) => void;
   onCompareModeChange: (val: string) => void;
   onCompareValueKindChange: (val: string) => void;
+  onCompareOffsetHoursChange?: (val: number | null) => void;
   onForecastTargetChange?: (val: number | null) => void;
+  onForecastTargetUnitChange?: (val: string) => void;
   onForecastLookbackChange?: (val: { type: string; value: number }) => void;
   recoveryThreshold?: { method?: string; value?: number | null };
   onRecoveryThresholdChange?: (val: {
@@ -99,8 +116,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   periodUnit,
   compareMode,
   compareValueKind,
+  compareOffsetHours,
   algorithm,
   forecastTarget,
+  forecastTargetUnit,
   forecastLookback,
   recoveryThreshold,
   metricLabel,
@@ -114,7 +133,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   onNoDataAlertNameChange,
   onCompareModeChange,
   onCompareValueKindChange,
+  onCompareOffsetHoursChange,
   onForecastTargetChange,
+  onForecastTargetUnitChange,
   onForecastLookbackChange,
   onRecoveryThresholdChange,
   onCountPredicateChange,
@@ -157,20 +178,21 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     unitList
   });
 
-  // 验证阈值：仅在展示单位选择器时要求 thresholdUnit
+  // 三个级别都展示，但只校验填了数值的行。空行忽略，至少一行即可提交。
   const validateThreshold = async () => {
+    const filled = completedThresholds(threshold);
+    if (!filled.length) {
+      return Promise.reject(new Error(t('monitor.events.thresholdRequired')));
+    }
     if (
-      threshold.length &&
-      (threshold.some((item) => {
-        return !item.method;
-      }) ||
-        (showUnitSelector && !thresholdUnit))
+      filled.some((item) => !item.method) ||
+      (showUnitSelector && !thresholdUnit)
     ) {
       return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
     if (
       compareMode === COMPARE_MODE_TIMELEFT &&
-      !timeleftRequiresLowSideThresholds(compareMode, threshold)
+      !timeleftRequiresLowSideThresholds(compareMode, filled)
     ) {
       return Promise.reject(
         new Error(t('monitor.events.timeleftThresholdValidate'))
@@ -211,20 +233,14 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     previous_window: t('monitor.events.compareModePreviousWindow'),
     offset_1h: t('monitor.events.compareModeOffset1h'),
     offset_24h: t('monitor.events.compareModeOffset24h'),
+    offset_hours: t('monitor.events.compareModeOffsetHours', '小时前同窗'),
+    offset_days: t('monitor.events.compareModeOffsetDays', '天前同窗'),
+    baseline_days: t('monitor.events.compareYoyDayMean', '近 N 天均值'),
+    baseline_weeks: t('monitor.events.compareModeBaselineWeeks', '周同窗均值'),
     offset_7d: t('monitor.events.compareModeOffset7d'),
     offset_30d: t('monitor.events.compareModeOffset30d'),
     baseline_4w: t('monitor.events.compareModeBaseline4w'),
     timeleft: t('monitor.events.compareModeTimeleft')
-  };
-  const compareModeTips: Record<string, string> = {
-    absolute: t('monitor.events.compareModeAbsoluteTip'),
-    previous_window: t('monitor.events.compareModePreviousWindowTip'),
-    offset_1h: t('monitor.events.compareModeOffset1hTip'),
-    offset_24h: t('monitor.events.compareModeOffset24hTip'),
-    offset_7d: t('monitor.events.compareModeOffset7dTip'),
-    offset_30d: t('monitor.events.compareModeOffset30dTip'),
-    baseline_4w: t('monitor.events.compareModeBaseline4wTip'),
-    timeleft: t('monitor.events.compareModeTimeleftTip')
   };
   const compareKindLabels: Record<string, string> = {
     delta: t('monitor.events.compareValueKindDelta'),
@@ -238,18 +254,50 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     ratio: t('monitor.events.compareValueKindRatioTip'),
     hours: t('monitor.events.compareValueKindHoursTip')
   };
+  const forecastUnitOptions = useMemo(() => {
+    if (isFormulaMode || isEnumMetric) return [];
+    return getThresholdUnitOptions({
+      unitList,
+      metricUnit,
+      isEnumMetric: false
+    });
+  }, [isFormulaMode, isEnumMetric, unitList, metricUnit]);
+  const resolvedForecastTargetUnit = useMemo(
+    () =>
+      resolveForecastTargetUnit({
+        isFormulaMode,
+        metricUnit,
+        forecastTargetUnit,
+        unitOptions: forecastUnitOptions
+      }),
+    [isFormulaMode, metricUnit, forecastTargetUnit, forecastUnitOptions]
+  );
   const forecastTargetUnitLabel = useMemo(() => {
     // 容量线是源指标量纲（例如磁盘 B），不是剩余时间 hours。
-    if (!metricUnit || isVacantThresholdUnit(metricUnit)) {
+    const unitId = resolvedForecastTargetUnit || metricUnit;
+    if (!unitId || isVacantThresholdUnit(unitId)) {
       return '';
     }
-    const matched = unitList.find((item) => item.unit_id === metricUnit);
+    const matched = unitList.find((item) => item.unit_id === unitId);
+    if (matched && (unitId === 'percent' || unitId === 'percentunit')) {
+      return getMonitorUnitSelectLabel(matched);
+    }
     return (
-      resolveMetricDisplayUnit(metricUnit, unitList) ||
+      resolveMetricDisplayUnit(unitId, unitList) ||
       matched?.unit_name ||
       ''
     );
-  }, [metricUnit, unitList]);
+  }, [resolvedForecastTargetUnit, metricUnit, unitList]);
+
+  useEffect(() => {
+    if (!forecastTargetUnit || !onForecastTargetUnitChange) return;
+    if (forecastTargetUnit === resolvedForecastTargetUnit) return;
+    onForecastTargetUnitChange(resolvedForecastTargetUnit);
+  }, [
+    forecastTargetUnit,
+    resolvedForecastTargetUnit,
+    onForecastTargetUnitChange
+  ]);
   const recoveryThresholdUnitLabel = useMemo(() => {
     if (!thresholdUnit || isVacantThresholdUnit(thresholdUnit)) {
       return formatUnitLabelWithRateSuffix('', thresholdUnit, algorithm);
@@ -263,6 +311,21 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       algorithm
     );
   }, [thresholdUnit, unitList, algorithm]);
+  const resolvedCompareKind = compareKindOptions.includes(compareValueKind)
+    ? compareValueKind
+    : defaultCompareValueKind(compareMode);
+  const thresholdUnitFixed =
+    resolvedCompareKind === 'percent' ||
+    resolvedCompareKind === 'ratio' ||
+    resolvedCompareKind === 'hours';
+  const thresholdValueUnitLabel =
+    resolvedCompareKind === 'percent'
+      ? '%'
+      : resolvedCompareKind === 'ratio'
+        ? ''
+        : resolvedCompareKind === 'hours'
+          ? t('monitor.events.compareValueKindHours')
+          : recoveryThresholdUnitLabel;
   const restatement = useMemo(() => {
     const primary = threshold.find((item) => item.method && item.value != null) ||
       threshold[0];
@@ -277,11 +340,12 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       thresholdMethod: primary?.method,
       thresholdValue:
         typeof primary?.value === 'number' ? primary.value : null,
-      thresholdUnitLabel: recoveryThresholdUnitLabel,
+      thresholdUnitLabel: thresholdValueUnitLabel,
       countPredicateMethod: countPredicate?.method,
       countPredicateValue:
         typeof countPredicate?.value === 'number' ? countPredicate.value : null,
-      forecastTarget
+      forecastTarget,
+      compareOffsetHours
     });
   }, [
     t,
@@ -292,24 +356,117 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     compareValueKind,
     compareModeLabels,
     threshold,
-    recoveryThresholdUnitLabel,
+    thresholdValueUnitLabel,
     countPredicate,
-    forecastTarget
+    forecastTarget,
+    compareOffsetHours
   ]);
 
   const handleCompareModeChange = (val: string) => {
     onCompareModeChange(val);
-    if (val === COMPARE_MODE_ABSOLUTE) {
-      onCompareValueKindChange('');
+  };
+  const yoyMethod: YoyMethod =
+    compareMode === COMPARE_MODE_OFFSET_DAYS
+      ? 'day'
+      : compareMode === COMPARE_MODE_BASELINE_DAYS
+        ? 'day_mean'
+        : compareMode === COMPARE_MODE_BASELINE_WEEKS
+          ? 'week_mean'
+          : 'hour';
+  const yoyModeForMethod = (method: YoyMethod) =>
+    method === 'day'
+      ? COMPARE_MODE_OFFSET_DAYS
+      : method === 'day_mean'
+        ? COMPARE_MODE_BASELINE_DAYS
+        : method === 'week_mean'
+          ? COMPARE_MODE_BASELINE_WEEKS
+          : COMPARE_MODE_OFFSET_HOURS;
+  const handleFamilyChange = (family: string) => {
+    if (family === COMPARE_BASELINE_YOY) {
+      if (compareBaselineFamily(compareMode) !== COMPARE_BASELINE_YOY) {
+        handleCompareModeChange(COMPARE_MODE_OFFSET_HOURS);
+      }
       return;
     }
-    const kinds = getCompareValueKinds(val);
-    if (!kinds.includes(compareValueKind)) {
-      onCompareValueKindChange(defaultCompareValueKind(val));
+    handleCompareModeChange(family);
+  };
+  const handleYoyMethodChange = (method: YoyMethod) => {
+    const mode = yoyModeForMethod(method);
+    const spec = compareSpanSpec(mode);
+    handleCompareModeChange(mode);
+    if (
+      spec &&
+      (compareOffsetHours == null ||
+        compareOffsetHours < spec.min ||
+        compareOffsetHours > spec.max)
+    ) {
+      onCompareOffsetHoursChange?.(spec.fallback);
     }
   };
+  const compareFamily = compareBaselineFamily(compareMode);
+  const optionByMode = Object.fromEntries(
+    compareModeOptions.map((item) => [item.value, item])
+  );
+  const yoyDisabled = [
+    COMPARE_MODE_OFFSET_HOURS,
+    COMPARE_MODE_OFFSET_DAYS,
+    COMPARE_MODE_BASELINE_DAYS,
+    COMPARE_MODE_BASELINE_WEEKS
+  ].every((mode) => optionByMode[mode]?.disabled);
+  const familyOptions: Array<{
+    value: string;
+    disabled: boolean;
+    reasonKey?: string;
+  }> = [
+    { value: COMPARE_MODE_ABSOLUTE, disabled: false },
+    {
+      value: COMPARE_MODE_PREVIOUS_WINDOW,
+      disabled: !!optionByMode[COMPARE_MODE_PREVIOUS_WINDOW]?.disabled,
+      reasonKey: optionByMode[COMPARE_MODE_PREVIOUS_WINDOW]?.reasonKey
+    },
+    {
+      value: COMPARE_BASELINE_YOY,
+      disabled: yoyDisabled,
+      reasonKey: optionByMode[COMPARE_MODE_OFFSET_HOURS]?.reasonKey
+    },
+    {
+      value: COMPARE_MODE_TIMELEFT,
+      disabled: !!optionByMode[COMPARE_MODE_TIMELEFT]?.disabled,
+      reasonKey: optionByMode[COMPARE_MODE_TIMELEFT]?.reasonKey
+    }
+  ];
+  const familyLabels: Record<string, string> = {
+    [COMPARE_MODE_ABSOLUTE]: t('monitor.events.compareModeAbsolute'),
+    [COMPARE_MODE_PREVIOUS_WINDOW]: t('monitor.events.compareModeMom', '环比'),
+    [COMPARE_BASELINE_YOY]: t('monitor.events.compareModeYoy', '同比'),
+    [COMPARE_MODE_TIMELEFT]: t('monitor.events.compareModeTimeleft')
+  };
+  const familyTips: Record<string, string> = {
+    [COMPARE_MODE_ABSOLUTE]: t('monitor.events.compareModeAbsoluteTip'),
+    [COMPARE_MODE_PREVIOUS_WINDOW]: t(
+      'monitor.events.compareModeMomTip',
+      '和上一个同样长度的汇聚周期比较。'
+    ),
+    [COMPARE_BASELINE_YOY]: t(
+      'monitor.events.compareModeYoyTip',
+      '和更早的同一段窗口比较。可以指定 N 小时前、N 天前，或近若干天、若干周的平均值。'
+    ),
+    [COMPARE_MODE_TIMELEFT]: t('monitor.events.compareModeTimeleftTip')
+  };
+  const spanSpec = compareSpanSpec(compareMode);
+  const spanIssue = compareSpanIssue({
+    mode: compareMode,
+    amount: compareOffsetHours,
+    periodType: periodUnit,
+    periodValue: period,
+    t
+  });
+  const showCompareKind =
+    compareMode !== COMPARE_MODE_ABSOLUTE &&
+    compareMode !== COMPARE_MODE_TIMELEFT &&
+    compareKindOptions.length > 0;
 
-  const renderCompareOption = (item: {
+  const renderFamilyOption = (item: {
     value: string;
     disabled: boolean;
     reasonKey?: string;
@@ -318,22 +475,48 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       key={item.value}
       value={item.value}
       disabled={item.disabled}
-      label={compareModeLabels[item.value] || item.value}
+      label={familyLabels[item.value] || item.value}
     >
       <Tooltip
-        overlayInnerStyle={{ whiteSpace: 'pre-line' }}
+        styles={{ body: { whiteSpace: 'pre-line' } }}
         placement="right"
         title={
           item.disabled && item.reasonKey
             ? t(item.reasonKey)
-            : compareModeTips[item.value]
+            : familyTips[item.value]
         }
       >
         <span className="flex w-full min-w-0 items-center">
-          {compareModeLabels[item.value] || item.value}
+          {familyLabels[item.value] || item.value}
         </span>
       </Tooltip>
     </Option>
+  );
+  const renderCompareKindSelect = () => (
+    <Select
+      value={resolvedCompareKind}
+      onChange={onCompareValueKindChange}
+      aria-label={t('monitor.events.compareValueKind')}
+      style={{ width: '100%' }}
+    >
+      {compareKindOptions.map((kind) => (
+        <Option
+          key={kind}
+          value={kind}
+          label={compareKindLabels[kind] || kind}
+        >
+          <Tooltip
+            styles={{ body: { whiteSpace: 'pre-line' } }}
+            placement="right"
+            title={compareKindTips[kind]}
+          >
+            <span className="flex w-full min-w-0 items-center">
+              {compareKindLabels[kind] || kind}
+            </span>
+          </Tooltip>
+        </Option>
+      ))}
+    </Select>
   );
 
   // 是否显示无数据告警名称（选择了非"不触发"的选项时显示）
@@ -359,6 +542,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           isTrap(getFieldValue) ? null : (
             <>
               {!isEnumMetric && (
+                <>
                 <Form.Item
                   required
                   label={
@@ -367,52 +551,96 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     </span>
                   }
                 >
-                  <Space.Compact block>
-                    <Select
-                      value={compareMode}
-                      onChange={handleCompareModeChange}
-                      style={{
-                        width:
-                          compareKindOptions.length > 0
-                            ? `calc(100% - ${COMPARE_KIND_SELECT_WIDTH}px)`
-                            : '100%'
-                      }}
-                    >
-                      {compareModeOptions.map(renderCompareOption)}
-                    </Select>
-                    {compareKindOptions.length > 0 ? (
-                      <Select
-                        value={
-                          compareKindOptions.includes(compareValueKind)
-                            ? compareValueKind
-                            : defaultCompareValueKind(compareMode)
-                        }
-                        onChange={onCompareValueKindChange}
-                        aria-label={t('monitor.events.compareValueKind')}
-                        popupMatchSelectWidth={false}
-                        style={{ width: COMPARE_KIND_SELECT_WIDTH }}
-                      >
-                        {compareKindOptions.map((kind) => (
-                          <Option
-                            key={kind}
-                            value={kind}
-                            label={compareKindLabels[kind] || kind}
-                          >
-                            <Tooltip
-                              overlayInnerStyle={{ whiteSpace: 'pre-line' }}
-                              placement="right"
-                              title={compareKindTips[kind]}
-                            >
-                              <span className="flex w-full min-w-0 items-center">
-                                {compareKindLabels[kind] || kind}
-                              </span>
-                            </Tooltip>
-                          </Option>
-                        ))}
-                      </Select>
-                    ) : null}
-                  </Space.Compact>
+                  <Select
+                    value={compareFamily}
+                    onChange={handleFamilyChange}
+                    style={{ width: '100%' }}
+                  >
+                    {familyOptions.map(renderFamilyOption)}
+                  </Select>
                 </Form.Item>
+                {compareFamily === COMPARE_BASELINE_YOY && spanSpec ? (
+                  <>
+                    <Form.Item
+                      required
+                      label={
+                        <span className={STRATEGY_CONDITION_LABEL_CLASS}>
+                          {t('monitor.events.compareYoyMethod', '对照方式')}
+                        </span>
+                      }
+                    >
+                      <Select
+                        value={yoyMethod}
+                        onChange={handleYoyMethodChange}
+                        style={{ width: '100%' }}
+                      >
+                        <Option value="hour">
+                          {t('monitor.events.compareYoyHour', 'N 小时前')}
+                        </Option>
+                        <Option value="day">
+                          {t('monitor.events.compareYoyDay', 'N 天前')}
+                        </Option>
+                        <Option value="day_mean">
+                          {t('monitor.events.compareYoyDayMean', '近 N 天均值')}
+                        </Option>
+                        <Option value="week_mean">
+                          {t('monitor.events.compareYoyWeekMean', '近 N 周均值')}
+                        </Option>
+                      </Select>
+                    </Form.Item>
+                    <Form.Item
+                      required
+                      label={
+                        <span className={STRATEGY_CONDITION_LABEL_CLASS}>
+                          {t(
+                            yoyMethod === 'hour'
+                              ? 'monitor.events.compareOffsetCountHour'
+                              : yoyMethod === 'week_mean'
+                                ? 'monitor.events.compareOffsetCountWeek'
+                                : 'monitor.events.compareOffsetCountDay',
+                            yoyMethod === 'hour'
+                              ? '小时数'
+                              : yoyMethod === 'week_mean'
+                                ? '周数'
+                                : '天数'
+                          )}
+                        </span>
+                      }
+                    >
+                      <InputNumber
+                        min={1}
+                        max={spanSpec.max}
+                        precision={0}
+                        value={compareOffsetHours ?? undefined}
+                        style={{ width: '100%' }}
+                        onChange={(val) => {
+                          if (val == null || !Number.isFinite(val)) {
+                            onCompareOffsetHoursChange?.(null);
+                            return;
+                          }
+                          onCompareOffsetHoursChange?.(Math.trunc(val));
+                        }}
+                      />
+                      {spanIssue ? (
+                          <div className="mt-1 text-xs text-[var(--color-text-3)]">
+                            {spanIssue}
+                          </div>
+                      ) : null}
+                    </Form.Item>
+                  </>
+                ) : null}
+                {showCompareKind ? (
+                  <Form.Item
+                    required
+                    label={strategyConditionLabelWithTip(
+                      t('monitor.events.compareValueKind'),
+                      t('monitor.events.compareValueKindTip')
+                    )}
+                  >
+                    {renderCompareKindSelect()}
+                  </Form.Item>
+                ) : null}
+                </>
               )}
               {compareMode === COMPARE_MODE_TIMELEFT && !isEnumMetric && (
                 <>
@@ -432,7 +660,27 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                       placeholder={t('common.inputTip')}
                       addonAfter={
                         <span className="inline-flex items-center gap-1">
-                          {forecastTargetUnitLabel ? (
+                          {forecastUnitOptions.length > 1 ? (
+                            <Select
+                              size="small"
+                              popupMatchSelectWidth={false}
+                              className="min-w-[5.5rem]"
+                              aria-label={t('common.unit')}
+                              value={resolvedForecastTargetUnit || undefined}
+                              options={forecastUnitOptions.map((option) => ({
+                                value: option.unit_id,
+                                label:
+                                  option.unit_id === 'percent' ||
+                                  option.unit_id === 'percentunit'
+                                    ? getMonitorUnitSelectLabel(option)
+                                    : option.display_unit ||
+                                      getMonitorUnitSelectLabel(option)
+                              }))}
+                              onChange={(value) =>
+                                onForecastTargetUnitChange?.(value)
+                              }
+                            />
+                          ) : forecastTargetUnitLabel ? (
                             <span>{forecastTargetUnitLabel}</span>
                           ) : null}
                           <Tooltip
@@ -450,11 +698,10 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     />
                   </Form.Item>
                   <Form.Item
-                    label={
-                      <span className={STRATEGY_CONDITION_LABEL_CLASS}>
-                        {t('monitor.events.forecastLookback')}
-                      </span>
-                    }
+                    label={strategyConditionLabelWithTip(
+                      t('monitor.events.forecastLookback'),
+                      t('monitor.events.forecastLookbackTitle')
+                    )}
                   >
                     <Select
                       className="w-full"
@@ -499,11 +746,11 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   unitOptions={filteredUnitOptions}
                   isEnumMetric={isEnumMetric}
                   enumOptions={enumOptions}
-                  showUnitSelector={showUnitSelector}
+                  showUnitSelector={showUnitSelector && !thresholdUnitFixed}
                   allowedMethods={
                     isEnumMetric ? undefined : allowedThresholdMethods
                   }
-                  unitAddonLabel={recoveryThresholdUnitLabel}
+                  unitAddonLabel={thresholdValueUnitLabel}
                 />
               </Form.Item>
               <p
@@ -516,7 +763,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 recoveryThreshold={recoveryThreshold}
                 onRecoveryThresholdChange={onRecoveryThresholdChange}
                 allowedRecoveryMethods={allowedRecoveryMethods}
-                recoveryThresholdUnitLabel={recoveryThresholdUnitLabel}
+                recoveryThresholdUnitLabel={thresholdValueUnitLabel}
                 noDataAlert={noDataAlert}
                 nodataUnit={nodataUnit}
                 noDataRecovery={noDataRecovery}

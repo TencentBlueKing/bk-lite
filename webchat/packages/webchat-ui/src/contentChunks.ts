@@ -16,6 +16,21 @@ export function getContentChunks(message: Message): ContentChunk[] {
   return (message.metadata?.contentChunks as ContentChunk[]) || [];
 }
 
+export function dropTrailingTextChunks(chunks: ContentChunk[]): ContentChunk[] {
+  const next = [...chunks];
+  while (next.length > 0 && next[next.length - 1].type === 'text') {
+    next.pop();
+  }
+  return next;
+}
+
+export function textFromChunks(chunks: ContentChunk[]): string {
+  return chunks
+    .filter((chunk): chunk is TextChunk => chunk.type === 'text')
+    .map((chunk) => chunk.content)
+    .join('');
+}
+
 /** Update or append the trailing text chunk. */
 export function upsertTextChunk(chunks: ContentChunk[], text: string): ContentChunk[] {
   const lastChunk = chunks[chunks.length - 1];
@@ -55,6 +70,28 @@ export function patchToolCall(
       ...chunk,
       toolCalls: chunk.toolCalls.map((tool) =>
         tool.id === toolCallId ? { ...tool, ...patch } : tool
+      ),
+    };
+  });
+}
+
+/** Append a TOOL_CALL_ARGS delta onto the matching tool call. */
+export function appendToolCallArgs(
+  chunks: ContentChunk[],
+  toolCallId: string,
+  delta: string
+): ContentChunk[] {
+  if (!toolCallId || !delta) {
+    return chunks;
+  }
+  return chunks.map((chunk) => {
+    if (chunk.type !== 'toolCalls') {
+      return chunk;
+    }
+    return {
+      ...chunk,
+      toolCalls: chunk.toolCalls.map((tool) =>
+        tool.id === toolCallId ? { ...tool, args: `${tool.args || ''}${delta}` } : tool
       ),
     };
   });

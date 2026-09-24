@@ -146,6 +146,42 @@ export const WidgetDatasourceChartTypeFields: React.FC<
       />
     </Form.Item>
 
+    <Form.Item
+      label={t('dashboard.chartTypeLabel')}
+      name="chartType"
+      rules={[{ required: true, message: t('common.selectTip') }]}
+      initialValue={chartTypes[0]?.value}
+      className="!mb-5"
+    >
+      <Radio.Group
+        value={chartType}
+        onChange={onChartTypeChange}
+        className="flex flex-wrap gap-2"
+      >
+        {chartTypes.map((item: ChartTypeItem) => {
+          const isSelected = chartType === item.value;
+          return (
+            <Radio.Button
+              key={item.value}
+              value={item.value}
+              className={`${CHART_TYPE_CHIP} ${
+                isSelected
+                  ? '!border-(--color-primary) !bg-(--color-primary-bg-active) !text-(--color-primary)'
+                  : '!border-transparent !bg-(--color-fill-2) !text-(--color-text-2) hover:!text-(--color-text-1)'
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5 leading-none">
+                <span className="flex h-3.5 w-3.5 items-center justify-center text-[13px] leading-none">
+                  {getChartTypeIcon(item.value)}
+                </span>
+                <span className="text-xs leading-none">{t(item.label)}</span>
+              </span>
+            </Radio.Button>
+          );
+        })}
+      </Radio.Group>
+    </Form.Item>
+
     {hasQueryParams ? (
       <div className="mb-6">
         <ConfigGroupTitle>
@@ -189,42 +225,6 @@ export const WidgetDatasourceChartTypeFields: React.FC<
         />
       </div>
     ) : null}
-
-    <Form.Item
-      label={t('dashboard.chartTypeLabel')}
-      name="chartType"
-      rules={[{ required: true, message: t('common.selectTip') }]}
-      initialValue={chartTypes[0]?.value}
-      className="!mb-5"
-    >
-      <Radio.Group
-        value={chartType}
-        onChange={onChartTypeChange}
-        className="flex flex-wrap gap-2"
-      >
-        {chartTypes.map((item: ChartTypeItem) => {
-          const isSelected = chartType === item.value;
-          return (
-            <Radio.Button
-              key={item.value}
-              value={item.value}
-              className={`${CHART_TYPE_CHIP} ${
-                isSelected
-                  ? '!border-(--color-primary) !bg-(--color-primary-bg-active) !text-(--color-primary)'
-                  : '!border-transparent !bg-(--color-fill-2) !text-(--color-text-2) hover:!text-(--color-text-1)'
-              }`}
-            >
-              <span className="inline-flex items-center gap-1.5 leading-none">
-                <span className="flex h-3.5 w-3.5 items-center justify-center text-[13px] leading-none">
-                  {getChartTypeIcon(item.value)}
-                </span>
-                <span className="text-xs leading-none">{t(item.label)}</span>
-              </span>
-            </Radio.Button>
-          );
-        })}
-      </Radio.Group>
-    </Form.Item>
 
     {children}
   </section>

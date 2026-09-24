@@ -9,6 +9,8 @@ test('eventTimeline submit keeps sort order only', () => {
       chartType: 'eventTimeline',
       eventTimeline: {
         sortOrder: 'asc',
+        timeField: 'time',
+        titleField: 'title',
       },
       gaugeMin: 1,
       gaugeMax: 99,
@@ -28,6 +30,8 @@ test('eventTimeline submit keeps sort order only', () => {
   assert.equal(result.error, undefined);
   assert.deepEqual(result.config?.eventTimeline, {
     sortOrder: 'asc',
+    timeField: 'time',
+    titleField: 'title',
   });
   assert.equal('gaugeMin' in (result.config || {}), false);
   assert.equal('gaugeMax' in (result.config || {}), false);

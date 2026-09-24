@@ -676,6 +676,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
   { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' },
   { match: /brocade/i, label: 'Brocade', icon: 'mm-brocade_brocade' },
+  { match: /snmp_nokia_router|router nokia|timos|\bsros\b|\b7705\b/i, label: 'Nokia', icon: 'mm-nokia_nokia' },
   { match: /\bnokia\b|omniswitch/i, label: 'Nokia', icon: 'mm-nokia_nokia' },
   { match: /alcatel|sr.?linux|srlinux|timos|\b7750\b|\b7450\b|\b7950\b/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
   { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
@@ -698,6 +699,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /genua/i, label: 'Genua', icon: 'mm-genua_genua' },
   { match: /kerio/i, label: 'Kerio', icon: 'mm-kerio_kerio' },
   { match: /sangfor|深信服/i, label: 'Sangfor', icon: 'mm-sangfor_sangfor' },
+  { match: /topsec|天融信/i, label: 'Topsec', icon: 'mm-topsec_topsec' },
   { match: /zorp/i, label: 'Zorp', icon: 'mm-zorp_zorp' },
   { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
   { match: /hillstone|stoneos/i, label: 'Hillstone', icon: 'mm-hillstone_hillstone' },
@@ -724,6 +726,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /fortiadc|fad\b/i, label: 'FortiADC', icon: 'mm-fortiadc_fortiadc' },
   { match: /alteon|radware/i, label: 'Radware Alteon', icon: 'mm-alteon_alteon' },
   { match: /kemp|loadmaster/i, label: 'Kemp LoadMaster', icon: 'mm-kemp_kemp' },
+  { match: /array networks|clickarray|loadbalance array/i, label: 'Array Networks', icon: 'mm-array_array' },
   { match: /vyatta|vyos/i, label: 'Vyatta', icon: 'mm-vyatta_vyatta' },
   { match: /\bnec\b|univerge|\bix[0-9]{3,4}\b/i, label: 'NEC', icon: 'mm-nec_nec' },
   { match: /draytek|vigor/i, label: 'DrayTek', icon: 'mm-draytek_draytek' },
@@ -809,7 +812,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },
   { match: /\bzte\b|zxr10/i, label: 'ZTE', icon: 'mm-zte_zte' },
   { match: /omniswitch|alcatel.?os|\baos\b/i, label: 'Alcatel OmniSwitch', icon: 'mm-omniswitch_omniswitch' },
-  { match: /yamaha|\bswx\b/i, label: 'Yamaha', icon: 'mm-yamaha_yamaha' },
+  { match: /yamaha|\brtx\d|\bnvr\d|\bfwx\d|\bvrx\b|\bswx\b/i, label: 'Yamaha', icon: 'mm-yamaha_yamaha' },
   { match: /arista|\beos\b|dcs-/i, label: 'Arista', icon: 'mm-arista_arista' },
   { match: /mellanox|nvidia|spectrum|onyx|mlnx|\bsn[0-9]{4}\b/i, label: 'Mellanox', icon: 'mm-mellanox_mellanox' },
   { match: /allied|awplus|aw\+|at-/i, label: 'Allied Telesis', icon: 'mm-alliedtelesis_alliedtelesis' },
@@ -914,7 +917,10 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /exalt|ex-i|exaltcom/i, label: 'Exalt', icon: 'mm-exalt_exalt' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
-  { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
+  { match: /exinda|gfi\s*exos/i, label: 'Exinda / GFI ExOS', icon: 'mm-exinda_exinda' },
+  { match: /bluecoat|blue\s*coat|symantec\s*edge|edge\s*swg|proxysg|broadcom\s*proxy/i, label: 'Blue Coat / Symantec Edge SWG / Broadcom ProxySG', icon: 'mm-bluecoat_bluecoat' },
+  { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' },
+  { match: /riverbed|steelhead/i, label: 'Riverbed SteelHead' }
 ];
 
 // 失败降级:window undefined / __ENTERPRISE_BRANDS 缺失 → 返回 [],等价走纯 CE BRANDS。

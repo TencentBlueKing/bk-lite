@@ -387,7 +387,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
         (
             5,
             {
-                "monitor_obj_id": "host",
+                "monitor_obj_id": "12",
                 "limit": 20,
                 "instance_ids": ["host-1"],
                 "level": "critical",
@@ -396,7 +396,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
             "query_latest_active_alerts",
             {
                 "query_data": {
-                    "monitor_obj_id": "host",
+                    "monitor_obj_id": "12",
                     "limit": 20,
                     "instance_ids": ["host-1"],
                     "level": "critical",
@@ -978,3 +978,31 @@ def test_builtin_monitor_tool_descriptor_shape():
     sub_names = {tool["name"] for tool in descriptor["tools"]}
     assert "CONSTRUCTOR_PARAMS" not in sub_names
     assert sub_names == {tool.name for tool in _monitor_tools()}
+
+
+def test_monitor_list_active_alerts_rejects_non_digit_monitor_obj_id(mocker):
+    """CMDB monitor_id / 实例标识不得塞进 monitor_obj_id，避免 Field 'id' expected a number。"""
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.alerts import monitor_list_active_alerts
+
+    rpc = mocker.Mock()
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    for bad in ("MTVmOTFiYTM5ODZk", "1_10.10.41.149_80", "host", "nginx"):
+        out = monitor_list_active_alerts.invoke(
+            {"monitor_obj_id": bad, "instance_ids": ["1_10.10.41.149_80"]},
+            config=_runtime_config(),
+        )
+        assert out["success"] is False, bad
+        assert "必须是监控对象类型的数字 id" in out["error"], bad
+        assert "instance_ids" in out["error"], bad
+
+    rpc.query_latest_active_alerts.assert_not_called()
+
+    rpc.query_latest_active_alerts.return_value = {"result": True, "data": []}
+    ok = monitor_list_active_alerts.invoke(
+        {"monitor_obj_id": "12", "instance_ids": ["1_10.10.41.149_80"]},
+        config=_runtime_config(),
+    )
+    assert ok["success"] is True
+    rpc.query_latest_active_alerts.assert_called_once()

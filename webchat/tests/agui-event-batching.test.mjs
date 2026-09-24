@@ -157,7 +157,8 @@ test('text after a tool starts a new chunk without repeating the prior segment',
   harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
   harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'before' });
   harness.dispatch({ type: 'TOOL_CALL_START', toolCallId: 'tool-1', toolCallName: 'search' });
-  harness.dispatch({ type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '{"q":"x"}' });
+  harness.dispatch({ type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '{"q":' });
+  harness.dispatch({ type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '"x"}' });
   harness.dispatch({ type: 'TOOL_CALL_END', toolCallId: 'tool-1' });
   harness.dispatch({ type: 'TOOL_CALL_RESULT', toolCallId: 'tool-1', content: 'found' });
   harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'after' });
@@ -304,6 +305,18 @@ test('answer tokens keep thinking text but stop the typing placeholder', () => {
   assert.equal(harness.messages[0].metadata.thinking, 'plan the answer');
   assert.equal(harness.messages[0].metadata.isThinking, false);
   assert.equal(shouldShowTypingPlaceholder(harness.isLoading, harness.isThinking, harness.messages), false);
+});
+
+test('retractLiveText drops narration that streamed before a tool call', () => {
+  const harness = createHarness({ batching: false });
+  harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+  harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: '先分析一下再查告警' });
+  harness.dispatch.retractLiveText();
+
+  assert.equal(harness.messages[0].content, '');
+  assert.deepEqual(harness.messages[0].metadata.contentChunks, []);
+  assert.equal(harness.session.messages[0].content, '');
+  assert.deepEqual(harness.session.messages[0].metadata.contentChunks, []);
 });
 
 test('typing placeholder only shows while waiting for the first bot message', () => {

@@ -40,6 +40,7 @@ state = applyPlannedExecutionStep(state, {
   objective: '获取集群现状',
 });
 assert.equal(state.steps[0].status, 'done');
+assert.ok(!state.steps[0].reusedPriorResult);
 assert.equal(state.currentStepIndex, null);
 
 state = applyPlannedExecutionStep(state, {
@@ -63,7 +64,7 @@ const orphan = attachToolCallToCurrentStep(createPlannedExecutionState(), 'tool-
 assert.equal(orphan.steps.length, 0);
 assert.equal(orphan.currentStepIndex, null);
 
-// 步骤已 end 后晚到的工具挂到最近一步
+// 只有一步且已 end 时，没带步骤号的晚到工具仍挂到这一步
 let lateState = createPlannedExecutionState();
 lateState = applyPlannedExecutionStep(lateState, {
   phase: 'start',
@@ -81,6 +82,55 @@ lateState = applyPlannedExecutionStep(lateState, {
 assert.equal(lateState.currentStepIndex, null);
 lateState = attachToolCallToCurrentStep(lateState, 'tool-late');
 assert.deepEqual(lateState.steps[0].toolCallIds, ['tool-late']);
+
+// 多步都结束后，带步骤号的工具回到原步骤；没带步骤号的不再堆到最后一步
+let misbucket = createPlannedExecutionState();
+for (const index of [1, 2, 3, 4]) {
+  misbucket = applyPlannedExecutionStep(misbucket, {
+    phase: 'start',
+    step_index: index,
+    total_steps: 4,
+    objective: `步骤${index}`,
+  });
+  misbucket = applyPlannedExecutionStep(misbucket, {
+    phase: 'end',
+    step_index: index,
+    total_steps: 4,
+    objective: `步骤${index}`,
+  });
+}
+assert.equal(misbucket.currentStepIndex, null);
+misbucket = attachToolCallToCurrentStep(misbucket, 'cmdb-search', 1);
+misbucket = attachToolCallToCurrentStep(misbucket, 'monitor-alerts', 4);
+misbucket = attachToolCallToCurrentStep(misbucket, 'unstamped');
+assert.deepEqual(misbucket.steps[0].toolCallIds, ['cmdb-search']);
+assert.deepEqual(misbucket.steps[1].toolCallIds, []);
+assert.deepEqual(misbucket.steps[3].toolCallIds, ['monitor-alerts']);
+assert.equal(misbucket.steps.some((step) => step.toolCallIds.includes('unstamped')), false);
+
+// 未盖章时挂到仍 running 的步，而不是堆到最后结束步
+let runningAttach = createPlannedExecutionState();
+runningAttach = applyPlannedExecutionStep(runningAttach, {
+  phase: 'start',
+  step_index: 1,
+  total_steps: 2,
+  objective: '查资产',
+});
+runningAttach = applyPlannedExecutionStep(runningAttach, {
+  phase: 'end',
+  step_index: 1,
+  total_steps: 2,
+  objective: '查资产',
+});
+runningAttach = applyPlannedExecutionStep(runningAttach, {
+  phase: 'start',
+  step_index: 2,
+  total_steps: 2,
+  objective: '查告警',
+});
+runningAttach = attachToolCallToCurrentStep(runningAttach, 'alerts-tool');
+assert.deepEqual(runningAttach.steps[0].toolCallIds, []);
+assert.deepEqual(runningAttach.steps[1].toolCallIds, ['alerts-tool']);
 
 // 重规划后分母跟随最新 total_steps，不再钉死在首轮计划
 let replanState = createPlannedExecutionState();

@@ -1,13 +1,16 @@
 import asyncio
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
+from ag_ui.encoder import EventEncoder
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Overwrite
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, ChatHistory
 from apps.opspilot.metis.llm.chain.graph import BasicGraph
+from apps.opspilot.metis.llm.chain.nested_stream import make_owned_stream_context, remember_planned_tool_steps
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 
 
@@ -75,6 +78,104 @@ def _parse_sse_payloads(lines):
             continue
         payloads.append(json.loads(line[6:].strip()))
     return payloads
+
+
+def test_late_tool_events_keep_the_step_that_ran_them():
+    graph = _FakeBasicGraph([])
+    stream_ctx = make_owned_stream_context()
+    graph._owned_stream_context = stream_ctx
+    remember_planned_tool_steps(
+        {"configurable": {"planned_tool_steps": stream_ctx.planned_tool_steps}},
+        3,
+        [ToolMessage(content="alerts", tool_call_id="call-monitor", name="monitor_list_active_alerts")],
+    )
+    current: dict = {}
+    runtime_events = graph._handle_tool_start_event(
+        {
+            "name": "cmdb_search_instances",
+            "run_id": "run-cmdb",
+            "metadata": {"opspilot_step_index": 1},
+        },
+        {"input": {"ip": "10.10.41.149"}},
+        EventEncoder(),
+        None,
+        current,
+    )
+    runtime_start = _parse_sse_payloads(runtime_events)[0]
+    assert runtime_start["type"] == "TOOL_CALL_START"
+    assert runtime_start["rawEvent"]["step_index"] == 1
+
+    backfill, _, _ = graph._emit_tool_result_events_from_messages(
+        [
+            ToolMessage(content="instances", tool_call_id="call-cmdb", name="cmdb_search_instances"),
+            ToolMessage(content="alerts", tool_call_id="call-monitor", name="monitor_list_active_alerts"),
+        ],
+        EventEncoder(),
+        current,
+    )
+    payloads = _parse_sse_payloads(backfill)
+    starts = [item for item in payloads if item["type"] == "TOOL_CALL_START"]
+    assert [item["toolCallName"] for item in starts] == ["monitor_list_active_alerts"]
+    assert starts[0]["rawEvent"]["step_index"] == 3
+    results = [item for item in payloads if item["type"] == "TOOL_CALL_RESULT"]
+    assert results[0]["toolCallId"] == runtime_start["toolCallId"]
+    assert results[1]["toolCallId"] == "call-monitor"
+
+
+def test_two_graphs_do_not_share_planned_step_lookup():
+    graph_a = _FakeBasicGraph([])
+    graph_b = _FakeBasicGraph([])
+    ctx_a = make_owned_stream_context()
+    ctx_b = make_owned_stream_context()
+    graph_a._owned_stream_context = ctx_a
+    graph_b._owned_stream_context = ctx_b
+    remember_planned_tool_steps(
+        {"configurable": {"planned_tool_steps": ctx_a.planned_tool_steps}},
+        1,
+        [ToolMessage(content="a", tool_call_id="call-a", name="alerts_list_alerts")],
+    )
+    remember_planned_tool_steps(
+        {"configurable": {"planned_tool_steps": ctx_b.planned_tool_steps}},
+        8,
+        [ToolMessage(content="b", tool_call_id="call-b", name="cmdb_search_instances")],
+    )
+    ctx_a.step_holder["step_index"] = 1
+    ctx_b.step_holder["step_index"] = 8
+    assert graph_a._planned_step_index_from_event(None, "call-a", allow_holder=False) == 1
+    assert graph_b._planned_step_index_from_event(None, "call-b", allow_holder=False) == 8
+    assert graph_a._planned_step_index_from_event(None, "call-b", allow_holder=False) is None
+    assert graph_b._planned_step_index_from_event(None, "call-a", allow_holder=False) is None
+    assert graph_a._planned_step_index_from_event(None, "", allow_holder=True) == 1
+    assert graph_b._planned_step_index_from_event(None, "", allow_holder=True) == 8
+
+
+def test_tool_start_does_not_bind_pending_card_from_another_step():
+    graph = _FakeBasicGraph([])
+    current = {
+        "model-call-1": {
+            "name": "alerts_list_alerts",
+            "started": True,
+            "tool_started": False,
+            "step_index": 1,
+        }
+    }
+    events = graph._handle_tool_start_event(
+        {
+            "name": "alerts_list_alerts",
+            "run_id": "run-step-2",
+            "metadata": {"opspilot_step_index": 2},
+        },
+        {"input": {"keyword": "nginx"}},
+        EventEncoder(),
+        None,
+        current,
+    )
+    start = _parse_sse_payloads(events)[0]
+    assert start["type"] == "TOOL_CALL_START"
+    assert start["rawEvent"]["step_index"] == 2
+    assert start["toolCallId"] != "model-call-1"
+    assert current["model-call-1"]["tool_started"] is False
+    assert current[start["toolCallId"]]["from_runtime"] is True
 
 
 @pytest.fixture
@@ -177,8 +278,8 @@ def test_agui_stream_suppresses_narration_when_turn_has_tool_calls(monkeypatch):
     assert all("parameters were passed incorrectly" not in (d or "") for d in text_deltas)
 
 
-def test_agui_stream_show_think_false_suppresses_long_narration_before_tools(monkeypatch):
-    """show_think=False：长旁白即使超过开播阈值也不得进正文，等 tool 后整段丢弃。"""
+def test_agui_stream_show_think_false_retracts_long_narration_before_tools(monkeypatch):
+    """show_think=False：超阈值旁白会先开播，随后出现 tool_call 时撤回，不再整段补发。"""
 
     async def _never_interrupted(_execution_id):
         return False
@@ -244,13 +345,13 @@ def test_agui_stream_show_think_false_suppresses_long_narration_before_tools(mon
 
     payloads = asyncio.run(_collect_payloads())
     text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
-    assert text_deltas == []
+    assert "".join(text_deltas) == long_narration
     assert any(p.get("toolCallName") == "generate_attachment_file" for p in payloads if p["type"] == "TOOL_CALL_START")
-    assert all(p.get("name") != "assistant_text_retract" for p in payloads if p["type"] == "CUSTOM")
+    assert any(p.get("name") == "assistant_text_retract" for p in payloads if p["type"] == "CUSTOM")
 
 
-def test_agui_stream_show_think_false_still_emits_plain_answer_at_end(monkeypatch):
-    """show_think=False 的纯文本轮：不提前开播，chat_model_end 再发出全文。"""
+def test_agui_stream_show_think_false_streams_plain_answer(monkeypatch):
+    """show_think=False 的纯文本轮：多个正文 chunk 后实时开播，chat_model_end 不重复整段。"""
 
     async def _never_interrupted(_execution_id):
         return False
@@ -2082,3 +2183,158 @@ def test_agui_stream_hides_planned_step_text_but_keeps_tools(monkeypatch):
     tool_results = [p for p in payloads if p["type"] == "TOOL_CALL_RESULT"]
     assert len(tool_results) == 1
     assert tool_results[0]["content"] == '[{"name":"calico"}]'
+
+
+def _hidden_step_delta(payload):
+    value = payload.get("value")
+    if isinstance(value, dict):
+        return str(value.get("delta") or "")
+    return ""
+
+
+def test_agui_stream_emits_hidden_step_text_as_custom_not_text(monkeypatch):
+    """步内正文改走 CUSTOM，刷新长连接，且不进 TEXT_MESSAGE_*。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+    monkeypatch.setattr("apps.opspilot.metis.llm.chain.graph.SSE_KEEPALIVE_INTERVAL_SECONDS", 0.02)
+
+    class _SlowHiddenCompiled:
+        async def astream_events(self, *_args, **_kwargs):
+            for _ in range(6):
+                yield {
+                    "event": "on_chat_model_stream",
+                    "data": {
+                        "chunk": SimpleNamespace(
+                            content="hidden token ",
+                            tool_call_chunks=[],
+                            additional_kwargs={},
+                        )
+                    },
+                }
+            await asyncio.sleep(0.05)
+            yield {
+                "event": "on_chat_model_end",
+                "data": {"output": SimpleNamespace(content="hidden summary", tool_calls=[])},
+            }
+
+    class _SlowHiddenGraph(BasicGraph):
+        async def compile_graph(self, _request):
+            return _SlowHiddenCompiled()
+
+    request = BasicLLMRequest(
+        thread_id="thread-hide-keepalive",
+        extra_config={"show_think": False, "opspilot_hide_planned_step_text": True},
+    )
+
+    async def _collect():
+        return [line async for line in _SlowHiddenGraph().agui_stream(request)]
+
+    lines = asyncio.run(_collect())
+    payloads = _parse_sse_payloads(lines)
+    types = [p["type"] for p in payloads]
+    assert "TEXT_MESSAGE_CONTENT" not in types
+    hidden = [p for p in payloads if p.get("type") == "CUSTOM" and p.get("name") == "planned_step_hidden_text"]
+    assert hidden
+    assert "".join(_hidden_step_delta(p) for p in hidden) == "hidden token " * 6
+    assert any(p.get("type") == "CUSTOM" and p.get("name") == "stream_keepalive" for p in payloads)
+
+
+def test_agui_stream_interrupt_checks_not_per_event(monkeypatch):
+    """慢中断检查不得按 SSE 事件次数放大；吞吐不应被每帧查库拖垮。"""
+    checks = 0
+
+    async def _slow_never(_execution_id):
+        nonlocal checks
+        checks += 1
+        await asyncio.sleep(0.05)
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _slow_never,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.INTERRUPT_WATCH_INTERVAL_SECONDS",
+        30.0,
+    )
+
+    events = [
+        {
+            "event": "on_chat_model_stream",
+            "data": {
+                "chunk": SimpleNamespace(
+                    content=f"tok{i}",
+                    tool_call_chunks=[],
+                    additional_kwargs={},
+                )
+            },
+        }
+        for i in range(40)
+    ]
+    events.append(
+        {
+            "event": "on_chat_model_end",
+            "data": {"output": SimpleNamespace(content="tok" * 40, tool_calls=[])},
+        }
+    )
+    graph = _FakeBasicGraph(events)
+    request = BasicLLMRequest(
+        thread_id="thread-interrupt-budget",
+        extra_config={"execution_id": "exec-interrupt-budget", "show_think": False},
+    )
+
+    async def _collect():
+        t0 = time.perf_counter()
+        payloads = _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+        return payloads, time.perf_counter() - t0
+
+    payloads, elapsed = asyncio.run(_collect())
+    assert any(p.get("type") == "RUN_FINISHED" for p in payloads)
+    # 仅启动时查一次（interval=30s，短流不会再轮询）
+    assert checks == 1
+    # 若仍按事件查库：40+ 次 × 50ms ≈ 2s+；轮询后应远小于该量级
+    assert elapsed < 1.5
+
+
+def test_agui_stream_emits_interrupted_when_watch_already_set(monkeypatch):
+    async def _always(_execution_id):
+        return True
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _always,
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="should not appear",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            }
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-already-interrupted",
+        extra_config={"execution_id": "exec-already-interrupted"},
+    )
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    errors = [p for p in payloads if p.get("type") == "RUN_ERROR"]
+    assert errors
+    assert errors[0].get("code") == "INTERRUPTED"
+    assert not any(p.get("type") == "TEXT_MESSAGE_CONTENT" for p in payloads)

@@ -908,6 +908,54 @@ def test_rewrite_generic_alert_query_replaces_monitor_active_alerts(caplog):
     assert "现在还有没有没关的告警啊？" not in records[0].getMessage()
 
 
+def test_extract_declared_cmdb_model_from_user_message():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import extract_declared_cmdb_model
+
+    assert extract_declared_cmdb_model("CMDB 里 10.10.41.149 那台 nginx，先查出监控 ID") == "nginx"
+    assert extract_declared_cmdb_model("查 mysql 实例的策略告警") == "mysql"
+    assert extract_declared_cmdb_model("主机 local 磁盘快满了") is None
+    assert extract_declared_cmdb_model("纳管多少台主机") is None
+
+
+def test_rewrite_cmdb_search_locks_declared_model_and_host_replan_objectives(caplog):
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, rewrite_cmdb_search_for_declared_model
+
+    caplog.set_level(logging.INFO, logger="opspilot")
+    plan = ToolExecutionPlan(
+        goal="查 nginx 监控告警",
+        steps=[
+            ToolExecutionStep(objective="根据 IP 在 CMDB 中检索实例", tools=["cmdb_search_instances"]),
+            ToolExecutionStep(objective="获取监控 ID", tools=["cmdb_get_monitor_ids"]),
+            ToolExecutionStep(objective="获取 Host/Server 的 monitor_obj_id", tools=["monitor_list_objects"]),
+        ],
+    )
+    fixed = rewrite_cmdb_search_for_declared_model(
+        plan,
+        {"cmdb_search_instances", "cmdb_get_monitor_ids", "monitor_list_objects"},
+        user_message="CMDB 里 10.10.41.149 那台 nginx，看监控侧策略告警",
+    )
+    assert "model_id=nginx" in fixed.steps[0].objective
+    assert "禁止默认 host" in fixed.steps[0].objective
+    assert "nginx" in fixed.steps[2].objective
+    assert "Host/Server" not in fixed.steps[2].objective or "禁止" in fixed.steps[2].objective
+    assert any("规划硬校验：CMDB 模型锁定" in rec.getMessage() for rec in caplog.records)
+
+
+def test_rewrite_cmdb_search_noop_when_model_not_declared():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, rewrite_cmdb_search_for_declared_model
+
+    plan = ToolExecutionPlan(
+        goal="查主机",
+        steps=[ToolExecutionStep(objective="检索实例", tools=["cmdb_search_instances"])],
+    )
+    fixed = rewrite_cmdb_search_for_declared_model(
+        plan,
+        {"cmdb_search_instances"},
+        user_message="10.10.41.149 这台机器的监控告警",
+    )
+    assert fixed.steps[0].objective == "检索实例"
+
+
 def test_rewrite_generic_alert_query_drops_type_ask_for_host_alert():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import (
         ToolExecutionPlan,

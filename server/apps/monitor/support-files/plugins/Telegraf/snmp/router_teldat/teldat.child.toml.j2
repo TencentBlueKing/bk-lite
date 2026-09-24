@@ -24,7 +24,6 @@
         collect_type = "snmp_teldat"
         config_type = "teldat"
         brand = "teldat"
-    # ---- System ----
     [[inputs.snmp.field]]
         oid = "1.3.6.1.2.1.1.3.0"
         name = "uptime"
@@ -32,45 +31,24 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- Teldat CPU load (TELDAT-MIB, 私有企业号 2007, 直接 %, scalar) ----
-    # 待现网核验：整机 CPU 使用率标量 1.3.6.1.4.1.2007.4.1.2.1.2.1.1.3.0（设备直接以 0-100% 上报）。
-    # 标量用 table+field 命名 → device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2007.4.1.2.1.2.1.1.3"
-        name = "usage"
-    # ---- Teldat 内存 (总量 + 空闲, 字节；usage=(总量-空闲)/总量) ----
-    # 待现网核验：内存总量 .2007.4.1.2.1.1.27.0 / 空闲 .2007.4.1.2.1.1.28.0（bytes）。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2007.4.1.2.1.1.27"
-        name = "total"
+# @bk_include_ifmib_table
+    # Teldat CPU/内存标量：顶层 field GET 必须带实例 .0；table.field 禁止 .0。
+    # teldatCPUBusy5min 直接 0-100%；cache 内存总量/空闲为字节。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2007.4.1.2.1.2.1.1.3.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2007.4.1.2.1.2.1.1.2.0"
+        name = "device_cpu_usage_1min"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2007.4.1.2.1.2.1.1.1.0"
+        name = "device_cpu_usage_5sec"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2007.4.1.2.1.1.27.0"
+        name = "device_memory_total"
         conversion = "int"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2007.4.1.2.1.1.28"
-        name = "free"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2007.4.1.2.1.1.28.0"
+        name = "device_memory_free"
         conversion = "int"
-# ---- 温度/风扇/电源：Teldat 紧凑型企业路由器为无风扇固定配置设计，TELDAT-MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器 → 温度/风扇/电源 N/A 不采。CPU/内存/接口干净可采。----
+# ---- 温度/风扇/电源：Teldat 紧凑型企业路由器为无风扇固定配置设计，私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器 → 温度/风扇/电源 N/A 不采。CPU/内存/接口干净可采。----

@@ -120,6 +120,29 @@ describe('SkillChannelPage', () => {
     expect(screen.getByPlaceholderText('按名称筛选')).toBeTruthy();
   });
 
+  it('opens the clicked web chat channel in the new window', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('11111111-1111-4111-8111-111111111111');
+    render(<SkillChannelPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('网页在线咨询')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '对话' }));
+    expect(openSpy).toHaveBeenCalledWith(
+      '/opspilot/skill/chat?entry=11111111-1111-4111-8111-111111111111',
+      '_blank',
+      'noopener,noreferrer'
+    );
+    expect(localStorage.getItem('opspilot.webChatEntry')).toContain(
+      '"11111111-1111-4111-8111-111111111111":"3"'
+    );
+    expect(openSpy.mock.calls[0][0]).not.toContain('channel=');
+    openSpy.mockRestore();
+    localStorage.removeItem('opspilot.webChatEntry');
+  });
+
   it('keeps list actions to edit/delete, plus chat for web', async () => {
     render(<SkillChannelPage />);
 
@@ -185,7 +208,7 @@ describe('SkillChannelPage', () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue(expectedUrl)).toBeTruthy();
       expect(
-        screen.getByText('复制此地址到企微 / 钉钉 / 公众号后台。请先点确定保存，再让对方校验该 URL。')
+        screen.getByText('复制此地址到企微 / 钉钉 / 飞书 / 公众号后台。请先点确定保存，再让对方校验该 URL。')
       ).toBeTruthy();
     });
 

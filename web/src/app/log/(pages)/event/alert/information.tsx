@@ -275,7 +275,7 @@ const Information: React.FC<TableDataItem> = ({
       <div className="mt-4 flex justify-between">
         <AlertHandlerActions
           record={formData}
-          closeText={t('log.event.closeAlert')}
+          closeText={t('common.close')}
           requiredPermissions={['Operate', 'Detail']}
           onSuccess={onClose}
         />
