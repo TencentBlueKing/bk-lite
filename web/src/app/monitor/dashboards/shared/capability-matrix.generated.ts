@@ -1625,6 +1625,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
   ],
   "wanopt": [
     {
+      "collectType": "snmp_bluecoat",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_exinda",
       "capabilities": [
         "uptime",
