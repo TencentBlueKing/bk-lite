@@ -248,9 +248,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
-        "temperature",
-        "fan",
-        "psu",
         "traffic"
       ]
     },
@@ -861,6 +858,7 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "capabilities": [
         "uptime",
         "cpu",
+        "memory",
         "temperature",
         "traffic"
       ]
@@ -978,7 +976,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
-        "temperature",
         "traffic"
       ]
     },
@@ -1050,6 +1047,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_lancom",
       "capabilities": [
         "uptime",
+        "cpu",
+        "memory",
         "temperature",
         "traffic"
       ]
@@ -1479,6 +1478,9 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "temperature",
+        "fan",
+        "psu",
         "traffic"
       ]
     },
