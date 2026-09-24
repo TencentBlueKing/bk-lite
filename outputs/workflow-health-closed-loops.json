@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "passed": 2,
+    "failed": 0
+  },
+  "scenarios": [
+    {
+      "key": "health_docx_chain_linux_multi_v6",
+      "title": "Linux multi-host Word",
+      "status": "PASSED",
+      "execution_id": "c42c34cc-04c5-4e5d-9be6-c357e3ab2129",
+      "execution_status": "SUCCEEDED",
+      "evidence": {
+        "target_references": [
+          "manual:3",
+          "manual:32"
+        ],
+        "job_summary": {
+          "total": 2,
+          "failed": 0,
+          "succeeded": 2
+        },
+        "artifacts": [
+          {
+            "filename": "health-inspection-docx-20260924-085553.docx",
+            "format": "docx",
+            "size": 40448
+          }
+        ]
+      }
+    },
+    {
+      "key": "health_xlsx_chain_win_excel_v5",
+      "title": "Windows Excel",
+      "status": "PASSED",
+      "execution_id": "8d26cd68-1a74-4cae-ab72-95e726eecb9f",
+      "execution_status": "SUCCEEDED",
+      "evidence": {
+        "target_references": [
+          "manual:5"
+        ],
+        "job_summary": {
+          "total": 1,
+          "failed": 0,
+          "succeeded": 1
+        },
+        "artifacts": [
+          {
+            "filename": "health-inspection-xlsx-20260924-085446.xlsx",
+            "format": "xlsx",
+            "size": 9936
+          }
+        ]
+      }
+    }
+  ]
+}

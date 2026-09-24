@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "artifact": {
+      "type": "object",
+      "title": "生成文件",
+      "properties": {
+        "id": {"type": "string", "title": "文件标识"},
+        "filename": {"type": "string", "title": "文件名"},
+        "format": {"type": "string", "title": "格式"},
+        "size": {"type": "integer", "title": "大小"}
+      }
+    },
+    "field_warnings": {
+      "type": "array",
+      "title": "模板字段警告",
+      "items": {"type": "string"}
+    }
+  },
+  "required": ["artifact"]
+}

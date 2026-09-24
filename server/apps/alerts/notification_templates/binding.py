@@ -10,6 +10,7 @@ from apps.alerts.constants.constants import LevelType
 from apps.alerts.models.models import Level
 from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent, NotificationTemplateReference
 from apps.alerts.notification_templates.events import MAX_EVENT_ROWS, event_row, inspect_event_usage
+from apps.alerts.notification_templates.operation import is_managed_nats_channel
 from apps.alerts.notification_templates.renderer import build_alert_context, render_source
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids, get_authorized_group_ids
 from apps.system_mgmt.models.channel import Channel
@@ -237,8 +238,8 @@ def validate_assignment_template_bindings(notify_channels, config, request=None)
         if channel.get("channel_type") != trusted_channel.channel_type:
             errors.append({"locator": locator, "detail": "通知渠道类型与系统配置不一致"})
             continue
-        if trusted_channel.channel_type == "nats" and (trusted_channel.config or {}).get("source") != "opspilot":
-            errors.append({"locator": locator, "detail": "仅 OpsPilot 托管的 NATS 渠道支持通知模板"})
+        if trusted_channel.channel_type == "nats" and not is_managed_nats_channel(trusted_channel):
+            errors.append({"locator": locator, "detail": "仅平台托管的 NATS 渠道支持通知模板"})
             continue
         for scene, template_id in bindings.items():
             if scene != "default" and scene not in SCENES:

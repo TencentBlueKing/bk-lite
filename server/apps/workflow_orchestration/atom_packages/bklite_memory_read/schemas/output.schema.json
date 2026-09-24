@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {"type": "string", "title": "检索内容", "maxLength": 20000},
+    "memory_context": {"type": "string", "title": "记忆上下文", "maxLength": 100000},
+    "count": {"type": "integer", "title": "命中数量", "minimum": 0, "maximum": 20},
+    "source": {"type": "string", "title": "记忆引擎", "maxLength": 50}
+  },
+  "required": ["query", "memory_context", "count", "source"]
+}

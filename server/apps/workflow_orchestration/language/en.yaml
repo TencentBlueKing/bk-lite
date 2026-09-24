@@ -1,0 +1,22 @@
+choice:
+  execution_status:
+    QUEUED: "Queued"
+    RUNNING: "Running"
+    WAITING_APPROVAL: "Waiting for Approval"
+    TERMINATING: "Terminating"
+    SUCCEEDED: "Succeeded"
+    FAILED: "Failed"
+    TIMED_OUT: "Timed Out"
+    TERMINATED: "Terminated"
+message:
+  invalid_current_team: "Missing or invalid current_team"
+  waiting_items: "and {count} more"
+  report_link_invalid: "Invalid report download link"
+  report_expired: "Report has expired"
+  report_unavailable: "Report file is temporarily unavailable"
+  report_too_large: "Report file exceeds the download size limit"
+error:
+  workflow_deleted: "Workflow has been deleted and cannot start new executions"
+  workflow_publish_required: "Only published workflows can be executed"
+  workflow_disabled: "Workflow is disabled"
+  publish_required: "Publish the workflow first"

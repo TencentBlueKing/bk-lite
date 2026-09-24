@@ -23,6 +23,10 @@ class _FakeSystemMgmt:
         _FakeSystemMgmt.last["search_channel_list"] = channel_type
         return {"result": True, "data": [{"id": 9, "channel_type": channel_type}]}
 
+    def search_workflow_orchestration_nats_channels(self, teams=None, workflow_id=None, include_children=False, active_only=True):
+        _FakeSystemMgmt.last["search_workflow"] = (teams, workflow_id, include_children, active_only)
+        return {"result": True, "data": [{"id": 10, "channel_type": "nats"}]}
+
     def send_msg_with_channel(self, channel_id, title, content, receivers, append_receivers=True, channel_type=None):
         _FakeSystemMgmt.last["send"] = (channel_id, title, content, receivers, append_receivers, channel_type)
         return {"result": True}
@@ -42,6 +46,12 @@ def test_search_channel_list_转发并取data():
     out = SystemMgmtUtils.search_channel_list("email")
     assert _FakeSystemMgmt.last["search_channel_list"] == "email"
     assert out == [{"id": 9, "channel_type": "email"}]
+
+
+def test_search_workflow_orchestration_nats_channels_只查询已启用通道():
+    out = SystemMgmtUtils.search_workflow_orchestration_nats_channels(teams=[7], workflow_id=12, include_children=True)
+    assert _FakeSystemMgmt.last["search_workflow"] == ([7], 12, True, True)
+    assert out == [{"id": 10, "channel_type": "nats"}]
 
 
 @pytest.mark.parametrize("append_receivers", [True, False])

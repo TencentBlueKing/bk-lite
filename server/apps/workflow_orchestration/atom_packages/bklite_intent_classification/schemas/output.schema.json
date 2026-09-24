@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "intent": {"type": "string", "title": "命中意图", "maxLength": 80},
+    "text": {"type": "string", "title": "原始内容", "maxLength": 50000}
+  },
+  "required": ["intent", "text"]
+}

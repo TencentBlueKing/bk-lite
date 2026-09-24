@@ -1,0 +1,5 @@
+{
+  "script_content": {"ui:widget": "code", "ui:language": "sh", "ui:help": "一个节点只保存当前脚本类型的内容。与作业平台一致：可同时选择 Linux/Windows 目标；一次只下发当前脚本类型，不兼容主机按目标失败。"},
+  "execution_params": {"ui:help": "回车添加参数，也可从左侧拖入字段"},
+  "timeout_seconds": {"ui:help": "单次作业超时，默认 600 秒。"}
+}

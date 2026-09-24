@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class ServiceConfig:
     DEFAULT_ALLOWED_CALLBACK_SUBJECTS = [
         "job.ansible_task_callback",
+        "bklite.ansible_task_callback",
         "default_stargazer.host_remote.callback",
     ]
     DEFAULT_ALLOWED_STREAM_SUBJECTS = ["job.stream.>", "executor.stream.>", "bk.ans_exec.stream.>"]

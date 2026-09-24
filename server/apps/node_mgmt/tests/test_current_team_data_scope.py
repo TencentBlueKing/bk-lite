@@ -135,6 +135,33 @@ def test_node_service_superuser_scope_intersects_object_permission(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_execution_target_projection_adds_runtime_fields_without_changing_legacy_dto(monkeypatch):
+    region = _region("node-execution-target")
+    current_node = _node(region, "execution-target-current", 1)
+    monkeypatch.setattr(node_service, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(
+        node_service,
+        "get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+    permission_data = {
+        "username": "admin",
+        "domain": "domain.com",
+        "current_team": 1,
+        "include_children": False,
+        "is_superuser": True,
+    }
+
+    legacy = node_service.NodeService.get_authorized_nodes_by_ids([current_node.id], permission_data)
+    execution_targets = node_service.NodeService.get_authorized_execution_targets_by_ids([current_node.id], permission_data)
+
+    assert "operating_system" not in legacy[0]
+    assert execution_targets[0]["operating_system"] == current_node.operating_system
+    assert execution_targets[0]["cloud_region_id"] == current_node.cloud_region_id
+    assert isinstance(execution_targets[0]["active"], bool)
+
+
+@pytest.mark.django_db
 def test_authorize_node_ids_rejects_sibling_team_even_with_broad_operate_permission(
     monkeypatch,
 ):

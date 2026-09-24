@@ -9,8 +9,7 @@ import os
 
 os.environ.setdefault(
     "INSTALL_APPS",
-    "system_mgmt,alerts,console_mgmt,job_mgmt,log,"
-    "monitor,node_mgmt,operation_analysis,opspilot,cmdb,apm",
+    "system_mgmt,alerts,console_mgmt,job_mgmt,log," "monitor,node_mgmt,operation_analysis,opspilot,cmdb,apm,workflow_orchestration",
 )
 
 # Prevent django_minio_backend.apps.ready() from calling
@@ -30,5 +29,6 @@ def pytest_configure(config):
     """Patch call_command before django.setup() to skip MinIO initialization."""
     global _original_call_command
     import django.core.management as mgmt
+
     _original_call_command = mgmt.call_command
     mgmt.call_command = _noop_initialize_buckets

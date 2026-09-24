@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "model_id": {
+      "type": "integer",
+      "title": "分类模型",
+      "x-widget": "select",
+      "x-binding": "literal-only"
+    },
+    "text": {
+      "type": "string",
+      "title": "待分类内容",
+      "minLength": 1,
+      "maxLength": 50000,
+      "x-widget": "textarea"
+    },
+    "intents": {
+      "type": "array",
+      "title": "意图列表",
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 80},
+      "x-widget": "tags",
+      "x-binding": "literal-only",
+      "default": ["默认意图"]
+    },
+    "classification_rules": {
+      "type": "string",
+      "title": "补充分类规则",
+      "maxLength": 5000,
+      "x-widget": "textarea"
+    }
+  },
+  "required": ["model_id", "text", "intents"]
+}

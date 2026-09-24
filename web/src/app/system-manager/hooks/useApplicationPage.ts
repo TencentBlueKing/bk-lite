@@ -5,6 +5,13 @@ import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import { ClientData } from '@/types/index';
 import { useRoleApi } from '@/app/system-manager/api/application';
+import { resolveAppDescription, resolveAppDisplayName, resolveAppTag } from '@/utils/appDisplayName';
+
+interface ApplicationClientData extends ClientData {
+  source_display_name: string;
+  source_description: string;
+  tagList: string[];
+}
 
 export function useApplicationPage() {
   const { t } = useTranslation();
@@ -12,16 +19,25 @@ export function useApplicationPage() {
   const { getAll, loading, refresh } = useClientData();
   const { deleteApplication } = useRoleApi();
 
-  const [dataList, setDataList] = useState<ClientData[]>([]);
+  const [dataList, setDataList] = useState<ApplicationClientData[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
-  const [currentItem, setCurrentItem] = useState<ClientData | null>(null);
+  const [currentItem, setCurrentItem] = useState<ApplicationClientData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const processClientData = (data: ClientData[]) =>
+  const processClientData = (data: ClientData[]): ApplicationClientData[] =>
     data
       .filter((client) => client.name !== 'ops-console')
-      .map((item) => ({ ...item, icon: item.icon || item.name, is_build_in: item.is_build_in }));
+      .map((item) => ({
+        ...item,
+        source_display_name: item.display_name,
+        source_description: item.description,
+        display_name: resolveAppDisplayName(item, t),
+        description: resolveAppDescription(item, t),
+        tagList: (item.tags || []).map((tag) => resolveAppTag(String(tag), t)),
+        icon: item.icon || item.name,
+        is_build_in: item.is_build_in,
+      }));
 
   const refreshData = async () => {
     try {
@@ -58,7 +74,7 @@ export function useApplicationPage() {
     await loadItems(value);
   };
 
-  const handleCardClick = (item: any) => {
+  const handleCardClick = (item: ApplicationClientData) => {
     if (item.is_build_in) {
       router.push(`/system-manager/application/manage?id=${item.id}&clientId=${item.name}`);
     } else {
@@ -72,13 +88,13 @@ export function useApplicationPage() {
     setModalVisible(true);
   };
 
-  const handleEdit = (item: any) => {
+  const handleEdit = (item: ApplicationClientData) => {
     setCurrentItem(item);
     setIsEdit(true);
     setModalVisible(true);
   };
 
-  const handleDelete = (item: any) => {
+  const handleDelete = (item: ApplicationClientData) => {
     Modal.confirm({
       title: t('common.delConfirm'),
       content: t('common.delConfirmCxt'),

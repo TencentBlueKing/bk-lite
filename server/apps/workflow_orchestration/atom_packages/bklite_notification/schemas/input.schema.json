@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "notification_type": {
+      "type": "string", "title": "通知类型", "enum": ["EMAIL", "WECOM_BOT", "FEISHU_BOT", "DINGTALK_BOT", "CUSTOM_WEBHOOK"],
+      "x-enum-labels": {"EMAIL": "邮件", "WECOM_BOT": "企业微信机器人", "FEISHU_BOT": "飞书机器人", "DINGTALK_BOT": "钉钉机器人", "CUSTOM_WEBHOOK": "自定义 Webhook"},
+      "default": "EMAIL", "x-binding": "literal-only"
+    },
+    "channel_id": {"type": "integer", "title": "通知渠道", "x-binding": "literal-only"},
+    "recipients": {"type": "array", "title": "收件人", "items": {"type": "string"}, "maxItems": 100, "uniqueItems": true},
+    "title": {"type": "string", "title": "通知标题", "maxLength": 200},
+    "body": {"type": "string", "title": "通知内容", "maxLength": 10000},
+    "artifacts": {"type": "array", "title": "Office 附件", "items": {"type": "object"}, "maxItems": 10},
+    "report_artifact": {"type": "object", "title": "附件", "description": "可选。拖入上游文档生成的 artifact，通知中发送 24 小时下载链接，不发送真实附件。"}
+  },
+  "required": ["notification_type", "channel_id", "body"],
+  "additionalProperties": false
+}

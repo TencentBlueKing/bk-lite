@@ -23,7 +23,7 @@ from apps.alerts.notification_templates.events import (
     MAX_EVENT_ROWS,
     inspect_event_usage,
 )
-from apps.alerts.notification_templates.operation import ensure_alert_operation_template
+from apps.alerts.notification_templates.operation import ensure_alert_operation_template, is_managed_nats_channel
 from apps.alerts.notification_templates.renderer import TemplateValidationError, render_source
 from apps.alerts.serializers.notification_template import NotificationTemplateSerializer
 from apps.alerts.utils.permission_scope import (
@@ -226,8 +226,8 @@ class NotificationTemplateViewSet(ModelViewSet):
             raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
         if channel_type and channel.channel_type != channel_type:
             raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
-        if channel.channel_type == "nats" and (channel.config or {}).get("source") != "opspilot":
-            raise ValidationError({"channel_id": "仅 OpsPilot 托管的 NATS 渠道支持模板试发"})
+        if channel.channel_type == "nats" and not is_managed_nats_channel(channel):
+            raise ValidationError({"channel_id": "仅平台托管的 NATS 渠道支持模板试发"})
         return channel
 
     @staticmethod
