@@ -183,14 +183,14 @@ MODEL:
   memory: Server Memory
   nic: Server NIC
   gpu: GPU
+  storage_controller: Storage Controller
+  psu: Power Supply Unit
   influxdb: InfluxDB
   storage_pool: Storage Pool
   storage_disk: Storage Disk
   storage_volume: Storage Volume
   storage_eth_port: Storage Ethernet Port
   storage_fc_port: Storage FC Port
-  storage_controller: Storage Controller
-  psu: Server Power Supply
   hwcloud_evs: Huawei Cloud EVS
   hwcloud_obs: Huawei Cloud OBS
   hwcloud_vpc: Huawei Cloud VPC
@@ -1213,11 +1213,11 @@ ATTR:
     board_vendor: Board Vendor
     board_model: Board Model
     board_serial: Board Serial
-    power_state: Power State
-    health: Health
     asset_status: Asset Status
     rack_u_start: Start U
     u_size: U Size
+    power_state: Power State
+    health: Health
   hard_server:
     inst_name: Name
     organization: Organization

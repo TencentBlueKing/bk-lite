@@ -183,14 +183,14 @@ MODEL:
   memory: 服务器内存
   nic: 服务器网卡
   gpu: GPU
+  storage_controller: 阵列卡
+  psu: 电源模块
   influxdb: InfluxDB
   storage_pool: 存储池
   storage_disk: 存储磁盘
   storage_volume: 存储卷
   storage_eth_port: 存储以太口
   storage_fc_port: 存储FC口
-  storage_controller: 存储控制器
-  psu: 服务器电源
   hwcloud_evs: 华为云云硬盘
   hwcloud_obs: 华为云对象存储桶
   hwcloud_vpc: 华为云VPC
@@ -1208,11 +1208,11 @@ ATTR:
     board_vendor: 主板厂商
     board_model: 主板型号
     board_serial: 主板序列号
-    power_state: 电源状态
-    health: 健康状态
     asset_status: 资产状态
     rack_u_start: 起始U位
     u_size: 占用U数
+    power_state: 电源状态
+    health: 健康状态
   hard_server:
     inst_name: 实例名
     organization: 所属组织
