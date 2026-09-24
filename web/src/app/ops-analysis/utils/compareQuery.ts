@@ -26,6 +26,7 @@ interface BuildRequestParamsInput {
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
+  t?: (id: string, defaultMessage?: string) => string;
 }
 
 interface FetchCompareDataInput extends BuildRequestParamsInput {
@@ -111,6 +112,7 @@ export const buildCompareRequestParams = ({
   filterBindings,
   filterDefinitions,
   resolutionContext,
+  t,
 }: BuildRequestParamsInput): { currentParams: RequestParams; baselineParams: RequestParams | null } => {
   const currentParams = buildWidgetRequestParams({
     config,
@@ -120,6 +122,7 @@ export const buildCompareRequestParams = ({
     filterBindings,
     filterDefinitions,
     resolutionContext,
+    t,
   });
 
   if (!config?.compare) {
@@ -235,8 +238,7 @@ export const validateGaugeData = (
     return { isValid: true };
   }
 
-  const failMessage =
-    '数据结构不符：仪表盘期望 number，或包含数值字段的对象/数组（可通过“展示字段”指定）';
+  const failMessage = 'dashboard.gaugeStructureMismatch';
 
   const hasNumericValue = (value: unknown) => {
     if (typeof value === 'number') return Number.isFinite(value);

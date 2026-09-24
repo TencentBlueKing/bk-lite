@@ -1035,6 +1035,54 @@ def test_get_source_data_rejects_unassociated_namespace(authenticated_user, monk
     assert payload["message"] == "数据源未关联所选命名空间"
 
 
+@pytest.mark.parametrize(
+    ("code", "expected_status", "zh_message"),
+    [
+        ("invalid_namespace_param", status.HTTP_400_BAD_REQUEST, "命名空间参数无效"),
+        ("datasource_namespace_unlinked", status.HTTP_400_BAD_REQUEST, "数据源未关联命名空间"),
+        ("datasource_namespace_not_selected", status.HTTP_400_BAD_REQUEST, "数据源未关联所选命名空间"),
+        ("namespace_unavailable", status.HTTP_500_INTERNAL_SERVER_ERROR, "未找到可用命名空间"),
+        ("namespace_server_missing", status.HTTP_500_INTERNAL_SERVER_ERROR, "命名空间未配置连接信息"),
+        ("module_not_found", status.HTTP_500_INTERNAL_SERVER_ERROR, "数据源配置异常"),
+    ],
+)
+def test_classify_runtime_exception_uses_code_not_message_text(code, expected_status, zh_message):
+    from django.utils import translation
+
+    from apps.operation_analysis.common.get_nats_source_data import NatsSourceError
+
+    error = NatsSourceError(code, namespace_name="命名空间参数无效")
+    with translation.override("zh-Hans"):
+        http_status, message = datasource_view._classify_runtime_exception(error)
+    assert http_status == expected_status
+    assert message == zh_message
+
+    with translation.override("en"):
+        en_status, en_message = datasource_view._classify_runtime_exception(error)
+    assert en_status == expected_status
+    assert en_message != zh_message
+    assert code not in en_message
+
+
+def test_classify_runtime_exception_ignores_legacy_chinese_runtime_text():
+    http_status, message = datasource_view._classify_runtime_exception(RuntimeError("未找到可用的命名空间"))
+    assert http_status == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert message == "数据查询失败"
+
+    http_status, message = datasource_view._classify_runtime_exception(RuntimeError("命名空间 demo 未配置服务器连接"))
+    assert http_status == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert message == "数据查询失败"
+
+
+def test_classify_runtime_exception_keeps_password_decryption_message():
+    from apps.operation_analysis.models.datasource_models import NamespacePasswordDecryptionError
+
+    error = NamespacePasswordDecryptionError("命名空间密码解密失败，请重新录入密码")
+    http_status, message = datasource_view._classify_runtime_exception(error)
+    assert http_status == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert message == "命名空间密码解密失败，请重新录入密码"
+
+
 # --- Tests for issue #3394: NameSpaceModelViewSet.partial_update permission enforcement ---
 
 

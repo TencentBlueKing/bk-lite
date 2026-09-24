@@ -59,6 +59,7 @@ const SortableOptionRow: React.FC<SortableOptionRowProps> = ({
   onRemove,
   showRemove,
 }) => {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id });
 
@@ -75,13 +76,13 @@ const SortableOptionRow: React.FC<SortableOptionRowProps> = ({
         className="mr-[4px] cursor-grab text-[var(--color-text-3)]"
       />
       <Input
-        placeholder={option.value ? undefined : '请输入选项ID'}
+        placeholder={option.value ? undefined : t('dashboard.filterOptionIdPlaceholder')}
         className="mr-[10px] w-2/5"
         value={option.value}
         onChange={(e) => onChange(id, 'value', e.target.value)}
       />
       <Input
-        placeholder={option.label ? undefined : '请输入选项名称'}
+        placeholder={option.label ? undefined : t('dashboard.filterOptionNamePlaceholder')}
         className="mr-[10px] w-2/5"
         value={option.label}
         onChange={(e) => onChange(id, 'label', e.target.value)}

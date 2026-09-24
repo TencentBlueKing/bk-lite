@@ -36,7 +36,11 @@ interface FilterFieldOption {
 }
 
 interface TableSettingsSectionProps {
-  t: (key: string) => string;
+  t: (
+    key: string,
+    defaultMessage?: string,
+    values?: Record<string, string | number>,
+  ) => string;
   displayColumns: DisplayColumnRow[];
   displayColumnOptions: FilterFieldOption[];
   actions: DashboardActionConfig[];
@@ -326,10 +330,11 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           extra={
             invalidConfiguredFieldKeys.length > 0 ? (
               <Tooltip
-                title={(
-                  t('dashboard.invalidConfiguredFieldsTip') ||
-                  '部分已配置字段不在当前可用字段集合中，可能不可用：{{fields}}'
-                ).replace('{{fields}}', invalidConfiguredFieldKeys.join('、'))}
+                title={t(
+                  'dashboard.invalidConfiguredFieldsTip',
+                  '部分已配置字段不在当前可用字段集合中，可能不可用：{fields}',
+                  { fields: invalidConfiguredFieldKeys.join('、') },
+                )}
               >
                 <ExclamationCircleOutlined className="text-[14px] text-[var(--color-warning)]" />
               </Tooltip>

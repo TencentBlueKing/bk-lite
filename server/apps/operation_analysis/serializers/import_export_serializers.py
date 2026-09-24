@@ -2,6 +2,7 @@
 from rest_framework import serializers
 
 from apps.operation_analysis.constants.import_export import CANVAS_TYPES, CONFIG_TYPES, ConflictAction, ObjectType, ScopeType
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class ExportRequestSerializer(serializers.Serializer):
@@ -26,7 +27,7 @@ class ExportRequestSerializer(serializers.Serializer):
         elif object_type in [t.value for t in CONFIG_TYPES]:
             attrs["scope"] = ScopeType.CONFIG.value
         else:
-            raise serializers.ValidationError("object_type不支持导出")
+            raise serializers.ValidationError(oa_message("messages.object_type_not_exportable", "object_type不支持导出"))
 
         return attrs
 
@@ -43,7 +44,7 @@ class ImportPrecheckRequestSerializer(serializers.Serializer):
 
     def validate_yaml_content(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("YAML内容不能为空")
+            raise serializers.ValidationError(oa_message("messages.yaml_empty", "YAML内容不能为空"))
         return value
 
 
@@ -85,7 +86,7 @@ class ImportSubmitRequestSerializer(serializers.Serializer):
 
     def validate_yaml_content(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("YAML内容不能为空")
+            raise serializers.ValidationError(oa_message("messages.yaml_empty", "YAML内容不能为空"))
         return value
 
 

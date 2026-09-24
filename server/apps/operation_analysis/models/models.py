@@ -14,6 +14,7 @@ from django.db.models import JSONField
 from apps.core.models.group_info import Groups
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.operation_analysis.services.user_messages import oa_message
 
 _NETWORK_TOPOLOGY_STATUS_DRAFT = "draft"
 _NETWORK_TOPOLOGY_STATUS_PUBLISHED = "published"
@@ -255,14 +256,14 @@ class NetworkTopology(MaintainerInfo, TimeInfo, Groups):
         caller provided something other than a http(s) URL.
         """
         if not isinstance(raw, str):
-            raise ValidationError({"base_url": ["base_url 必须是字符串"]})
+            raise ValidationError({"base_url": [oa_message("messages.base_url_must_be_string", "base_url 必须是字符串")]})
         candidate = raw.strip()
         if not candidate:
-            raise ValidationError({"base_url": ["base_url 不能为空"]})
+            raise ValidationError({"base_url": [oa_message("messages.base_url_required", "base_url 不能为空")]})
         if "://" not in candidate:
-            raise ValidationError({"base_url": ["base_url 必须以 http:// 或 https:// 开头"]})
+            raise ValidationError({"base_url": [oa_message("messages.base_url_scheme", "base_url 必须以 http:// 或 https:// 开头")]})
         if not (candidate.startswith("http://") or candidate.startswith("https://")):
-            raise ValidationError({"base_url": ["base_url 必须以 http:// 或 https:// 开头"]})
+            raise ValidationError({"base_url": [oa_message("messages.base_url_scheme", "base_url 必须以 http:// 或 https:// 开头")]})
         return NetworkTopology._BASE_URL_TRIM_RE.sub("", candidate)
 
     # ------------------------------------------------------------------ #

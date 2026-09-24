@@ -14,7 +14,16 @@ import {
 const HORIZONTAL_GAP = RELATED_TOPOLOGY_VISUAL.columnGap;
 const MIN_VERTICAL_GAP = RELATED_TOPOLOGY_VISUAL.rowGap;
 const NODE_VERTICAL_GAP = RELATED_TOPOLOGY_VISUAL.rowGap;
-const ASSOCIATION_TYPE_NAME: Record<string, string> = {
+const ASSOCIATION_TYPE_KEY: Record<string, string> = {
+  belong: 'dashboard.associationType.belong',
+  group: 'dashboard.associationType.group',
+  run: 'dashboard.associationType.run',
+  install_on: 'dashboard.associationType.install_on',
+  contains: 'dashboard.associationType.contains',
+  connect: 'dashboard.associationType.connect',
+};
+
+const ASSOCIATION_TYPE_FALLBACK: Record<string, string> = {
   belong: '属于',
   group: '组成',
   run: '运行于',
@@ -23,16 +32,24 @@ const ASSOCIATION_TYPE_NAME: Record<string, string> = {
   connect: '关联',
 };
 
+type AssociationLabelTranslate = (id: string, defaultMessage?: string) => string;
+
 export function resolveAssociationLabel(
   asstName?: string | null,
   asstId?: string | null,
+  t?: AssociationLabelTranslate,
 ): string {
   const named = String(asstName || '').trim();
   if (named) {
     return named;
   }
   const id = String(asstId || '').trim();
-  return ASSOCIATION_TYPE_NAME[id] || id;
+  const fallback = ASSOCIATION_TYPE_FALLBACK[id];
+  if (!fallback) {
+    return id;
+  }
+  const key = ASSOCIATION_TYPE_KEY[id];
+  return t && key ? t(key, fallback) : fallback;
 }
 
 export function formatAlertBadgeText(
@@ -143,6 +160,7 @@ export function isEmptyRelatedTopology(
 
 export function buildRelatedTopologyGraph(
   payload: RelatedTopologyResponse,
+  t?: AssociationLabelTranslate,
 ): RelatedTopologyGraphModel {
   const centerId = String(payload.center_inst_uuid || '');
   const nodes = new Map<string, RelatedTopologyGraphNode>();
@@ -198,7 +216,7 @@ export function buildRelatedTopologyGraph(
         id: edgeId,
         source: direction === -1 ? parentId : id,
         target: direction === -1 ? id : parentId,
-        label: resolveAssociationLabel(treeNode.asst_name, treeNode.asst_id),
+        label: resolveAssociationLabel(treeNode.asst_name, treeNode.asst_id, t),
       });
     }
     (treeNode.children || []).forEach((child) =>

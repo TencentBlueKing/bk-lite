@@ -1,25 +1,13 @@
 import re
 import smtplib
 
-from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportExecutionSnapshot,
-    DashboardReportPdfArtifact,
-)
-from apps.operation_analysis.services.dashboard_report_renderer import (
-    DashboardRenderError,
-)
-from apps.operation_analysis.services.delivery_channel_service import (
-    DashboardReportChannelError,
-    DashboardReportDeliveryChannelService,
-)
-from apps.operation_analysis.services.execution_service import (
-    DashboardReportExecutionService,
-)
-from apps.operation_analysis.services.report_render_service import (
-    DashboardReportRenderService,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportExecutionSnapshot, DashboardReportPdfArtifact
+from apps.operation_analysis.services.canvas_report.base import canvas_type_label
+from apps.operation_analysis.services.dashboard_report_renderer import DashboardRenderError
+from apps.operation_analysis.services.delivery_channel_service import DashboardReportChannelError, DashboardReportDeliveryChannelService
+from apps.operation_analysis.services.execution_service import DashboardReportExecutionService
+from apps.operation_analysis.services.report_render_service import DashboardReportRenderService
+from apps.operation_analysis.services.user_messages import oa_message, override_for_creator
 
 
 class DashboardReportDeliveryError(RuntimeError):
@@ -44,10 +32,7 @@ def classify_smtp_failure_message(message: str) -> str:
         )
     ):
         return "smtp_result_unknown"
-    if any(
-        token in lower
-        for token in ("timed out", "timeout", "time out")
-    ):
+    if any(token in lower for token in ("timed out", "timeout", "time out")):
         return "smtp_timeout"
     if any(
         token in lower
@@ -96,11 +81,7 @@ class DashboardReportDeliveryService:
         execution: DashboardReportExecution,
         snapshot: DashboardReportExecutionSnapshot,
     ) -> None:
-        if (
-            execution.delivery_outcome
-            == DashboardReportExecution.DeliveryOutcome.DELIVERED
-            or execution.delivered_at is not None
-        ):
+        if execution.delivery_outcome == DashboardReportExecution.DeliveryOutcome.DELIVERED or execution.delivered_at is not None:
             DashboardReportExecutionService.mark_delivery_outcome(
                 execution,
                 DashboardReportExecution.DeliveryOutcome.DELIVERED,
@@ -113,17 +94,11 @@ class DashboardReportDeliveryService:
 
         artifact = cls._resolve_artifact(execution)
         try:
-            resolved_channel = DashboardReportDeliveryChannelService.resolve(
-                execution, snapshot
-            )
+            resolved_channel = DashboardReportDeliveryChannelService.resolve(execution, snapshot)
         except DashboardReportChannelError as exc:
-            raise DashboardReportDeliveryError(
-                str(exc), error_code=exc.error_code
-            ) from exc
+            raise DashboardReportDeliveryError(str(exc), error_code=exc.error_code) from exc
         try:
-            pdf_path = DashboardReportRenderService.resolve_artifact_path(
-                artifact
-            )
+            pdf_path = DashboardReportRenderService.resolve_artifact_path(artifact)
         except DashboardRenderError as exc:
             # 产物不可用 → 交给 Classifier 走 render resume
             raise DashboardReportDeliveryError(
@@ -157,17 +132,17 @@ class DashboardReportDeliveryService:
             OSError,
         ) as exc:
             raise DashboardReportDeliveryError(
-                "SMTP 连接失败",
+                oa_message("messages.smtp_connection_failed", "SMTP 连接失败"),
                 error_code="smtp_connection_failed",
             ) from exc
         except smtplib.SMTPAuthenticationError as exc:
             raise DashboardReportDeliveryError(
-                "SMTP 认证失败",
+                oa_message("messages.smtp_auth_failed", "SMTP 认证失败"),
                 error_code="smtp_permanent",
             ) from exc
         except smtplib.SMTPException as exc:
             raise DashboardReportDeliveryError(
-                "SMTP 发送失败",
+                oa_message("messages.smtp_send_failed", "SMTP 发送失败"),
                 error_code=classify_smtp_failure_message(str(exc)),
             ) from exc
 
@@ -177,7 +152,7 @@ class DashboardReportDeliveryService:
                 DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN,
             )
             raise DashboardReportDeliveryError(
-                "SMTP 提交结果未知",
+                oa_message("messages.smtp_result_unknown", "SMTP 提交结果未知"),
                 error_code="smtp_result_unknown",
             )
         if result.get("result"):
@@ -191,7 +166,7 @@ class DashboardReportDeliveryService:
             )
             return
 
-        message = result.get("message") or "邮件发送失败"
+        message = result.get("message") or oa_message("messages.email_send_failed", "邮件发送失败")
         code = classify_smtp_failure_message(str(message))
         if code == "smtp_result_unknown":
             DashboardReportExecutionService.mark_delivery_outcome(
@@ -211,7 +186,7 @@ class DashboardReportDeliveryService:
             return execution.pdf_artifact
         except DashboardReportPdfArtifact.DoesNotExist as exc:
             raise DashboardReportDeliveryError(
-                "PDF 产物不存在",
+                oa_message("messages.pdf_artifact_missing", "PDF 产物不存在"),
                 error_code="pdf_generate_failed",
             ) from exc
 
@@ -221,10 +196,8 @@ class DashboardReportDeliveryService:
         execution: DashboardReportExecution,
     ) -> bool:
         return (
-            execution.trigger_type
-            == DashboardReportExecution.TriggerType.SCHEDULED
-            or snapshot.trigger_type
-            == DashboardReportExecution.TriggerType.SCHEDULED
+            execution.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED
+            or snapshot.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED
         )
 
     @classmethod
@@ -244,13 +217,12 @@ class DashboardReportDeliveryService:
         snapshot: DashboardReportExecutionSnapshot,
         execution: DashboardReportExecution,
     ) -> str:
-        name = snapshot.subscription_name or "报告"
-        if cls._is_scheduled(snapshot, execution):
-            plan = snapshot.scheduled_local_time or cls._plan_time_display(
-                snapshot
-            )
-            return f"[BK-Lite] {name} - {plan}"
-        return f"[BK-Lite] {name} - 手动测试"
+        with override_for_creator(execution.creator, execution.creator_domain):
+            name = snapshot.subscription_name or oa_message("messages.email_report_fallback", "报告")
+            if cls._is_scheduled(snapshot, execution):
+                plan = snapshot.scheduled_local_time or cls._plan_time_display(snapshot)
+                return oa_message("messages.email_title_scheduled", "[BK-Lite] {name} - {plan}", name=name, plan=plan)
+            return oa_message("messages.email_title_manual", "[BK-Lite] {name} - 手动测试", name=name)
 
     @classmethod
     def _build_html(
@@ -262,27 +234,23 @@ class DashboardReportDeliveryService:
         canvas_name = (
             render_snapshot.dashboard_name
             if render_snapshot
-            else str(
-                snapshot.resource_id
-                if snapshot.resource_id is not None
-                else snapshot.dashboard_id
-            )
+            else str(snapshot.resource_id if snapshot.resource_id is not None else snapshot.dashboard_id)
         )
-        canvas_label = (
-            getattr(render_snapshot, "resource_display_label", None)
-            if render_snapshot
-            else None
-        ) or getattr(snapshot, "resource_display_label", None) or "仪表盘"
+        canvas_label = (getattr(render_snapshot, "resource_display_label", None) if render_snapshot else None) or getattr(
+            snapshot, "resource_display_label", None
+        )
         safe_name = re.sub(r"[<>&]", "", canvas_name)
         safe_sub = re.sub(r"[<>&]", "", snapshot.subscription_name or "")
-        parts = [
-            f"<p>{canvas_label}：{safe_name}</p>",
-            f"<p>订阅名称：{safe_sub}</p>",
-        ]
-        if cls._is_scheduled(snapshot, execution):
-            plan = cls._plan_time_display(snapshot)
-            parts.append(f"<p>报告计划时间：{plan}</p>")
-        else:
-            parts.append("<p>本次为手动测试发送，无计划周期。</p>")
-        parts.append("<p>由 BK-Lite 自动生成，请查阅附件。</p>")
+        with override_for_creator(execution.creator, execution.creator_domain):
+            label = canvas_type_label(getattr(snapshot, "resource_type", None)) or canvas_label or oa_message("messages.email_canvas_fallback", "仪表盘")
+            parts = [
+                "<p>" + oa_message("messages.email_canvas_line", "{label}：{name}", label=label, name=safe_name) + "</p>",
+                "<p>" + oa_message("messages.email_subscription_line", "订阅名称：{name}", name=safe_sub) + "</p>",
+            ]
+            if cls._is_scheduled(snapshot, execution):
+                plan = cls._plan_time_display(snapshot)
+                parts.append("<p>" + oa_message("messages.email_plan_line", "报告计划时间：{plan}", plan=plan) + "</p>")
+            else:
+                parts.append("<p>" + oa_message("messages.email_manual_line", "本次为手动测试发送，无计划周期。") + "</p>")
+            parts.append("<p>" + oa_message("messages.email_footer", "由 BK-Lite 自动生成，请查阅附件。") + "</p>")
         return "".join(parts)

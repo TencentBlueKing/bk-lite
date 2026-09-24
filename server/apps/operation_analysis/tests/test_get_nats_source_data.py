@@ -8,7 +8,16 @@ import types
 import pytest
 from rest_framework.exceptions import ValidationError
 
-from apps.operation_analysis.common.get_nats_source_data import GetNatsData
+from apps.operation_analysis.common.get_nats_source_data import (
+    NATS_SOURCE_DATASOURCE_NOT_SELECTED,
+    NATS_SOURCE_DATASOURCE_UNLINKED,
+    NATS_SOURCE_INVALID_NAMESPACE_PARAM,
+    NATS_SOURCE_MODULE_NOT_FOUND,
+    NATS_SOURCE_NAMESPACE_SERVER_MISSING,
+    NATS_SOURCE_NAMESPACE_UNAVAILABLE,
+    GetNatsData,
+    NatsSourceError,
+)
 
 
 def _make_request(current_team_cookie=None, api_team=None, username="testuser", locale="en", group_tree=None):
@@ -403,3 +412,75 @@ class TestLocalRpcOverlayHandlers:
         )
         assert obj.get_data() == {"ok": True}
         assert "init" in captured
+
+
+def _bare_client(namespace_list, params=None, path="query", namespace="monitor"):
+    obj = GetNatsData.__new__(GetNatsData)
+    obj.path = path
+    obj.params = {} if params is None else dict(params)
+    obj.namespace = namespace
+    obj.namespace_list = namespace_list
+    obj.namespace_server_map = {item.id: f"nats://{item.domain}:4222" for item in namespace_list if ":" not in item.domain}
+    return obj
+
+
+class TestNatsSourceErrorCodes:
+    def test_invalid_namespace_param(self):
+        obj = _bare_client([_Namespace()], params={"namespace_id": "bad"})
+        with pytest.raises(NatsSourceError) as error:
+            obj._get_target_namespace()
+        assert error.value.code == NATS_SOURCE_INVALID_NAMESPACE_PARAM
+        assert "命名空间" not in str(error.value)
+
+    def test_datasource_unlinked_and_not_selected(self):
+        empty = _bare_client([], params={"namespace_id": 3})
+        with pytest.raises(NatsSourceError) as error:
+            empty._get_target_namespace()
+        assert error.value.code == NATS_SOURCE_DATASOURCE_UNLINKED
+
+        other = _bare_client([_Namespace()], params={"namespace_id": 3})
+        with pytest.raises(NatsSourceError) as error:
+            other._get_target_namespace()
+        assert error.value.code == NATS_SOURCE_DATASOURCE_NOT_SELECTED
+
+    def test_namespace_unavailable(self):
+        obj = _bare_client([])
+        with pytest.raises(NatsSourceError) as error:
+            obj.get_data()
+        assert error.value.code == NATS_SOURCE_NAMESPACE_UNAVAILABLE
+
+    def test_namespace_server_missing_keeps_name_off_match_key(self, caplog):
+        namespace = _Namespace()
+        obj = _bare_client([namespace])
+        obj.namespace_server_map = {}
+        with caplog.at_level("WARNING", logger="operation_analysis"):
+            with pytest.raises(NatsSourceError) as error:
+                obj.get_data()
+        assert error.value.code == NATS_SOURCE_NAMESPACE_SERVER_MISSING
+        assert error.value.details["namespace_name"] == "custom"
+        assert "未配置服务器连接" not in str(error.value)
+        assert any("namespace=custom" in message and "namespace_id=1" in message for message in caplog.messages)
+
+    def test_module_not_found_keeps_path_on_details(self):
+        namespace = _Namespace()
+
+        class ClientWithoutFunc:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+        class MissingFunc(GetNatsData):
+            @property
+            def default_nats_client(self):
+                return ClientWithoutFunc
+
+        obj = MissingFunc.__new__(MissingFunc)
+        obj.path = "missing_func"
+        obj.params = {}
+        obj.namespace = "monitor"
+        obj.namespace_list = [namespace]
+        obj.namespace_server_map = {1: "nats://nats.example.com:4222"}
+        with pytest.raises(NatsSourceError) as error:
+            obj.get_data()
+        assert error.value.code == NATS_SOURCE_MODULE_NOT_FOUND
+        assert error.value.details["path"] == "missing_func"
+        assert "Module not found func" not in str(error.value)

@@ -8,6 +8,7 @@ from apps.operation_analysis.models.subscription_models import (
     DashboardReportRenderSnapshot,
     DashboardReportSubscription,
 )
+from apps.operation_analysis.services.dashboard_report_renderer import DashboardRenderError
 from apps.operation_analysis.services.execution_orchestrator import (
     DeliveryStep,
     ExecutionOrchestrator,
@@ -18,25 +19,16 @@ from apps.operation_analysis.services.execution_orchestrator import (
     RenderStep,
     SnapshotStep,
 )
-from apps.operation_analysis.services.execution_service import (
-    DashboardReportExecutionService,
-)
-from apps.operation_analysis.services.dashboard_report_renderer import (
-    DashboardRenderError,
-)
-from apps.operation_analysis.services.report_render_service import (
-    DashboardReportRenderService,
-)
+from apps.operation_analysis.services.execution_service import DashboardReportExecutionService
+from apps.operation_analysis.services.report_render_service import DashboardReportRenderService
 from apps.system_mgmt.models import Channel
-
 
 pytestmark = pytest.mark.django_db
 
 
 def set_dashboard_view_permission(monkeypatch, allowed):
     monkeypatch.setattr(
-        "apps.operation_analysis.views.view."
-        "DashboardModelViewSet.get_has_permission",
+        "apps.operation_analysis.views.view." "DashboardModelViewSet.get_has_permission",
         lambda self, user, dashboard, team_id, **kwargs: allowed,
     )
 
@@ -114,7 +106,7 @@ def test_orchestrator_marks_unavailable_renderer_failed(
         snapshot,
         render_snapshot,
     ):
-        raise DashboardRenderError("Chromium 不可用")
+        raise DashboardRenderError()
 
     monkeypatch.setattr(
         DashboardReportRenderService,
@@ -179,9 +171,7 @@ def test_orchestrator_creates_render_snapshot_from_dashboard(
     ]
     execution.dashboard.filters = [{"field": "environment"}]
     execution.dashboard.other = {"title": "运营总览"}
-    execution.dashboard.save(
-        update_fields=["view_sets", "filters", "other", "updated_at"]
-    )
+    execution.dashboard.save(update_fields=["view_sets", "filters", "other", "updated_at"])
     set_dashboard_view_permission(monkeypatch, True)
 
     monkeypatch.setattr(
@@ -197,9 +187,7 @@ def test_orchestrator_creates_render_snapshot_from_dashboard(
 
     ExecutionOrchestrator.execute(execution.id)
 
-    snapshot = DashboardReportRenderSnapshot.objects.get(
-        execution=execution
-    )
+    snapshot = DashboardReportRenderSnapshot.objects.get(execution=execution)
     assert snapshot.dashboard_id == execution.dashboard_id
     assert snapshot.dashboard_name == execution.dashboard.name
     assert snapshot.dashboard_updated_at == execution.dashboard.updated_at
@@ -404,9 +392,7 @@ def test_render_snapshot_isolated_from_later_dashboard_changes(
 ):
     execution.dashboard.filters = [{"field": "environment"}]
     execution.dashboard.other = {"title": "原始标题"}
-    execution.dashboard.save(
-        update_fields=["filters", "other", "updated_at"]
-    )
+    execution.dashboard.save(update_fields=["filters", "other", "updated_at"])
     set_dashboard_view_permission(monkeypatch, True)
     stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
@@ -416,9 +402,7 @@ def test_render_snapshot_isolated_from_later_dashboard_changes(
     execution.dashboard.name = "修改后的仪表盘"
     execution.dashboard.filters = [{"field": "region"}]
     execution.dashboard.other = {"title": "修改后的标题"}
-    execution.dashboard.save(
-        update_fields=["name", "filters", "other", "updated_at"]
-    )
+    execution.dashboard.save(update_fields=["name", "filters", "other", "updated_at"])
     render_snapshot.refresh_from_db()
 
     assert render_snapshot.dashboard_name == "编排测试仪表盘"
@@ -481,9 +465,7 @@ def test_render_snapshot_cannot_be_updated(execution, monkeypatch):
     with pytest.raises(ValidationError, match="Render Snapshot 创建后不可修改"):
         render_snapshot.save()
     with pytest.raises(ValidationError, match="Render Snapshot 创建后不可修改"):
-        DashboardReportRenderSnapshot.objects.filter(
-            pk=render_snapshot.pk
-        ).update(dashboard_name="不允许修改")
+        DashboardReportRenderSnapshot.objects.filter(pk=render_snapshot.pk).update(dashboard_name="不允许修改")
     with pytest.raises(ValidationError, match="Render Snapshot 创建后不可修改"):
         DashboardReportRenderSnapshot.objects.bulk_update(
             [render_snapshot],
@@ -497,8 +479,7 @@ def test_render_snapshot_failure_marks_execution_failed(
 ):
     set_dashboard_view_permission(monkeypatch, True)
     monkeypatch.setattr(
-        "apps.operation_analysis.services.execution_orchestrator."
-        "DashboardReportRenderSnapshotService.create",
+        "apps.operation_analysis.services.execution_orchestrator." "DashboardReportRenderSnapshotService.create",
         lambda current: (_ for _ in ()).throw(RuntimeError("database error")),
     )
     render_calls = []
@@ -526,8 +507,7 @@ def test_render_snapshot_value_error_is_permanent_terminal(
 ):
     set_dashboard_view_permission(monkeypatch, True)
     monkeypatch.setattr(
-        "apps.operation_analysis.services.execution_orchestrator."
-        "DashboardReportRenderSnapshotService.create",
+        "apps.operation_analysis.services.execution_orchestrator." "DashboardReportRenderSnapshotService.create",
         lambda current: (_ for _ in ()).throw(ValueError("Dashboard 不存在")),
     )
     result = ExecutionOrchestrator.execute(execution.id)
@@ -550,9 +530,7 @@ def test_render_snapshot_operational_error_can_retry(
         calls["n"] += 1
         if calls["n"] == 1:
             raise OperationalError("db busy")
-        from apps.operation_analysis.models.subscription_models import (
-            DashboardReportRenderSnapshot,
-        )
+        from apps.operation_analysis.models.subscription_models import DashboardReportRenderSnapshot
 
         return DashboardReportRenderSnapshot.objects.create(
             execution=current,
@@ -566,8 +544,7 @@ def test_render_snapshot_operational_error_can_retry(
         )
 
     monkeypatch.setattr(
-        "apps.operation_analysis.services.execution_orchestrator."
-        "DashboardReportRenderSnapshotService.create",
+        "apps.operation_analysis.services.execution_orchestrator." "DashboardReportRenderSnapshotService.create",
         flaky_create,
     )
     stub_render_and_delivery(monkeypatch)
@@ -598,9 +575,7 @@ def test_render_snapshot_keeps_datasource_identity_without_runtime_config(
     stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
 
-    render_snapshot = DashboardReportRenderSnapshot.objects.get(
-        execution=execution
-    )
+    render_snapshot = DashboardReportRenderSnapshot.objects.get(execution=execution)
     assert render_snapshot.widget_manifest == [
         {
             "widget_id": "widget-ds",

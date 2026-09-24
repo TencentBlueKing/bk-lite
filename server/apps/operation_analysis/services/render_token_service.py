@@ -10,18 +10,18 @@ import jwt
 from django.db import transaction
 from django.utils import timezone
 
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportRenderToken,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportRenderToken
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.system_mgmt.models import User as SystemUser
-
 
 DEFAULT_RENDER_TOKEN_TTL_SECONDS = 600
 
 
 class DashboardReportRenderTokenError(RuntimeError):
-    safe_message = "Render Token 无效或已失效"
+    def __init__(self, message: str | None = None):
+        resolved = message or oa_message("messages.render_token_invalid", "Render Token 无效或已失效")
+        self.safe_message = resolved
+        super().__init__(resolved)
 
 
 @dataclass(frozen=True)
@@ -50,13 +50,9 @@ class DashboardReportRenderTokenService:
         try:
             value = int(raw_value)
         except ValueError as exc:
-            raise DashboardReportRenderTokenError(
-                "Render Token TTL 配置无效"
-            ) from exc
+            raise DashboardReportRenderTokenError(oa_message("messages.render_token_ttl_invalid", "Render Token TTL 配置无效")) from exc
         if value <= 0:
-            raise DashboardReportRenderTokenError(
-                "Render Token TTL 配置无效"
-            )
+            raise DashboardReportRenderTokenError(oa_message("messages.render_token_ttl_invalid", "Render Token TTL 配置无效"))
         return value
 
     @classmethod
@@ -68,27 +64,14 @@ class DashboardReportRenderTokenService:
         attempt_no: int | None = None,
     ) -> IssuedRenderToken:
         if execution.status != DashboardReportExecution.Status.RUNNING:
-            raise DashboardReportRenderTokenError(
-                "仅 running Execution 可签发 Render Token"
-            )
+            raise DashboardReportRenderTokenError(oa_message("messages.render_token_running_only", "仅 running Execution 可签发 Render Token"))
         if not hasattr(execution, "render_snapshot"):
-            raise DashboardReportRenderTokenError("Render Snapshot 不存在")
+            raise DashboardReportRenderTokenError(oa_message("messages.render_snapshot_missing", "Render Snapshot 不存在"))
 
-        resolved_attempt = (
-            attempt_no
-            if attempt_no is not None
-            else max(1, int(execution.attempt_count or 1))
-        )
+        resolved_attempt = attempt_no if attempt_no is not None else max(1, int(execution.attempt_count or 1))
         plaintext = secrets.token_urlsafe(32)
-        expires_at = timezone.now() + timedelta(
-            seconds=cls._ttl_seconds()
-        )
-        existing = (
-            DashboardReportRenderToken.objects.select_for_update()
-            .filter(execution=execution)
-            .first()
-        )
-        now = timezone.now()
+        expires_at = timezone.now() + timedelta(seconds=cls._ttl_seconds())
+        existing = DashboardReportRenderToken.objects.select_for_update().filter(execution=execution).first()
         if existing is not None:
             # 新 attempt：旧明文因 hash 变更失效；同 Execution 同时仅一个有效 Token
             existing.token_hash = cls._hash(plaintext)
@@ -128,12 +111,10 @@ class DashboardReportRenderTokenService:
     ) -> bool:
         """显式废止当前 Token（不签发新凭据）。"""
         now = timezone.now()
-        updated = (
-            DashboardReportRenderToken.objects.filter(
-                execution=execution,
-                revoked_at__isnull=True,
-            ).update(revoked_at=now)
-        )
+        updated = DashboardReportRenderToken.objects.filter(
+            execution=execution,
+            revoked_at__isnull=True,
+        ).update(revoked_at=now)
         return updated == 1
 
     @classmethod
@@ -150,12 +131,7 @@ class DashboardReportRenderTokenService:
             .first()
         )
         now = timezone.now()
-        if (
-            record is None
-            or record.consumed_at is not None
-            or record.revoked_at is not None
-            or record.expires_at <= now
-        ):
+        if record is None or record.consumed_at is not None or record.revoked_at is not None or record.expires_at <= now:
             raise DashboardReportRenderTokenError
 
         execution = record.execution
@@ -175,9 +151,7 @@ class DashboardReportRenderTokenService:
 
         secret_key = os.getenv("SECRET_KEY")
         if not secret_key:
-            raise DashboardReportRenderTokenError(
-                "无法建立 Render 会话"
-            )
+            raise DashboardReportRenderTokenError(oa_message("messages.render_session_failed", "无法建立 Render 会话"))
         record.consumed_at = now
         record.save(update_fields=["consumed_at"])
         session_token = jwt.encode(

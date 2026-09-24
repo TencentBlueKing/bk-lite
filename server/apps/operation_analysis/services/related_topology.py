@@ -2,6 +2,7 @@ from typing import Any
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.common.get_nats_source_data import build_nats_user_info
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.rpc.cmdb import CMDB
 from apps.rpc.monitor import Monitor
 
@@ -12,17 +13,18 @@ _NATS_TO_HTTP_CODE = {
 }
 
 _NATS_MESSAGES = {
-    "invalid_request": "inst_uuid 不合法",
-    "not_found": "实例不存在",
-    "permission_denied": "无权限查看该实例",
-    "source_failure": "关联拓扑查询失败",
+    "invalid_request": ("messages.related_topology_invalid", "inst_uuid 不合法"),
+    "not_found": ("messages.related_topology_not_found", "实例不存在"),
+    "permission_denied": ("messages.related_topology_denied", "无权限查看该实例"),
+    "source_failure": ("messages.related_topology_query_failed", "关联拓扑查询失败"),
 }
 
 
 class RelatedTopologyError(Exception):
     def __init__(self, code: str, message: str | None = None):
         self.code = code
-        self.message = message or _NATS_MESSAGES.get(code, _NATS_MESSAGES["source_failure"])
+        key, default = _NATS_MESSAGES.get(code, _NATS_MESSAGES["source_failure"])
+        self.message = message or oa_message(key, default)
         super().__init__(self.message)
 
 

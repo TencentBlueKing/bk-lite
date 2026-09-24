@@ -206,11 +206,11 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[#5b8cff]" />
                   <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-(--color-text-3)">
-                    组件库
+                    {t('topology.componentLibrary')}
                   </div>
                 </div>
                 <div className="mt-1 pl-3.5 text-[11px] leading-4 text-(--color-text-3)">
-                  拖拽组件到右侧画布
+                  {t('topology.dragHint')}
                 </div>
               </div>
               <div className="space-y-2">

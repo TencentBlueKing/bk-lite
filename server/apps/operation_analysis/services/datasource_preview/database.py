@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, text
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, PreviewResult
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
+from apps.operation_analysis.services.user_messages import oa_message
 
 SELECT_RE = re.compile(r"^\s*select\b", re.IGNORECASE)
 LIMIT_RE = re.compile(r"\blimit\s+\d+\s*$", re.IGNORECASE)
@@ -16,17 +17,17 @@ IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 def ensure_select_sql(sql: str) -> str:
     cleaned = (sql or "").strip()
     if not cleaned:
-        raise ConnectorError("SQL 不能为空", code="db_sql_required", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_db_sql_required", "SQL 不能为空"), code="db_sql_required", status_code=400)
     if ";" in cleaned:
-        raise ConnectorError("SQL 预览不支持多语句", code="db_sql_multi_statement", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_db_sql_multi", "SQL 预览不支持多语句"), code="db_sql_multi_statement", status_code=400)
     if not SELECT_RE.match(cleaned):
-        raise ConnectorError("SQL 预览仅支持 SELECT", code="db_sql_not_select", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_db_sql_select_only", "SQL 预览仅支持 SELECT"), code="db_sql_not_select", status_code=400)
     return cleaned
 
 
 def quote_identifier(identifier: str, source_type: str) -> str:
     if not IDENTIFIER_RE.match(identifier or ""):
-        raise ConnectorError("表名格式不合法", code="db_table_invalid", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_db_table_invalid", "表名格式不合法"), code="db_table_invalid", status_code=400)
     if source_type == "postgresql":
         return f'"{identifier}"'
     return f"`{identifier}`"
@@ -42,7 +43,7 @@ def build_preview_sql(query_config: dict[str, Any], limit: int, source_type: str
 
     table = query_config.get("table")
     if not table:
-        raise ConnectorError("请选择表或填写 SELECT 查询", code="db_query_required", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_db_query_required", "请选择表或填写 SELECT 查询"), code="db_query_required", status_code=400)
     return f"SELECT * FROM {quote_identifier(str(table), source_type)} LIMIT {safe_limit}"
 
 
@@ -65,7 +66,7 @@ def build_database_url(source_type: str, connection_config: dict[str, Any]) -> s
     port = connection_config.get("port")
     database = connection_config.get("database")
     if not all([username, password, host, port, database]):
-        raise ConnectorError("数据库连接信息不完整", code="db_config_incomplete", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_db_config_incomplete", "数据库连接信息不完整"), code="db_config_incomplete", status_code=400)
 
     encoded_username = quote_plus(str(username))
     encoded_password = quote_plus(str(password))
@@ -75,7 +76,7 @@ def build_database_url(source_type: str, connection_config: dict[str, Any]) -> s
         return f"mysql+pymysql://{encoded_username}:{encoded_password}@{host}:{port}/{encoded_database}?charset=utf8mb4"
     if source_type == "postgresql":
         return f"postgresql+psycopg2://{encoded_username}:{encoded_password}@{host}:{port}/{encoded_database}"
-    raise ConnectorError("数据库类型不支持", code="db_type_not_supported", status_code=400)
+    raise ConnectorError(oa_message("messages.preview_db_type_unsupported", "数据库类型不支持"), code="db_type_not_supported", status_code=400)
 
 
 class DatabaseConnectorExecutor(BaseConnectorExecutor):
@@ -103,7 +104,7 @@ class DatabaseConnectorExecutor(BaseConnectorExecutor):
                 exc_info=True,
             )
             raise ConnectorError(
-                "数据库连接失败，请检查地址、账号和网络后重试",
+                oa_message("messages.preview_db_connection_failed", "数据库连接失败，请检查地址、账号和网络后重试"),
                 code="db_connection_failed",
                 status_code=502,
             ) from exc
@@ -133,7 +134,7 @@ class DatabaseConnectorExecutor(BaseConnectorExecutor):
                 exc_info=True,
             )
             raise ConnectorError(
-                "数据库查询失败，请检查 SQL 或连接配置后重试",
+                oa_message("messages.preview_db_query_failed", "数据库查询失败，请检查 SQL 或连接配置后重试"),
                 code="db_preview_failed",
                 status_code=502,
             ) from exc

@@ -1,7 +1,10 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { ScreenViewSets } from '@/app/ops-analysis/types/screen';
-import { copyScreenWidget } from '@/app/ops-analysis/utils/widgetCopy';
+import {
+  copyScreenWidget,
+  type CopyMessage,
+} from '@/app/ops-analysis/utils/widgetCopy';
 
 export const createScreenCopyItemHandler = ({
   getDraftViewSets,
@@ -9,18 +12,21 @@ export const createScreenCopyItemHandler = ({
   setSelectedItemId,
   rebuildFilters,
   createId = uuidv4,
+  t,
 }: {
   getDraftViewSets: () => ScreenViewSets;
   setDraftViewSets: Dispatch<SetStateAction<ScreenViewSets>>;
   setSelectedItemId: Dispatch<SetStateAction<string | null>>;
   rebuildFilters: (viewSets: ScreenViewSets) => ScreenViewSets;
   createId?: () => string;
+  t?: CopyMessage;
 }) => {
   return (itemId: string) => {
     const copiedItemId = createId();
     const tryCopy = (current: ScreenViewSets) => {
       const copied = copyScreenWidget(current, itemId, {
         createId: () => copiedItemId,
+        t,
       });
       if (!copied) {
         return null;

@@ -242,7 +242,7 @@ const OpsAnalysisDataSourceParamsConfig: React.FC<
             labelCol={{ span: isVeryLongText ? 24 : 5 }}
             wrapperCol={{ span: isVeryLongText ? 24 : 18 }}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
-            rules={[{ required: param.required, message: `请配置${labelText}` }]}
+            rules={[{ required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) }]}
           >
             {renderParamInput(param)}
           </Form.Item>

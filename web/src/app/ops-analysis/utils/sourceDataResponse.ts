@@ -3,7 +3,12 @@ export interface SourceDataResult {
   warnings: string[];
 }
 
-export function parseSourceDataResponse(payload: unknown): SourceDataResult {
+export type SourceDataMessage = (id: string, defaultMessage?: string) => string;
+
+export function parseSourceDataResponse(
+  payload: unknown,
+  t?: SourceDataMessage,
+): SourceDataResult {
   if (
     payload &&
     typeof payload === "object" &&
@@ -19,5 +24,9 @@ export function parseSourceDataResponse(payload: unknown): SourceDataResult {
       return { data: obj.data, warnings: obj.warnings };
     }
   }
-  throw new Error("统一取数响应格式无效");
+  throw new Error(
+    t
+      ? t("dashboard.invalidSourceDataResponse", "统一取数响应格式无效")
+      : "统一取数响应格式无效",
+  );
 }

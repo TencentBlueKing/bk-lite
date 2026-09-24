@@ -615,7 +615,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
                 )}
                 {shouldShowClock && (
                   <div className="screen-canvas-clock">
-                    {formatScreenClock(currentTime)}
+                    {formatScreenClock(currentTime, t)}
                   </div>
                 )}
               </div>

@@ -12,6 +12,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.operation_analysis.services.network_topology.canvas_config import parse_weops_inst_id
 from apps.operation_analysis.services.network_topology.runtime import _node_ref_from_view_set
+from apps.operation_analysis.services.user_messages import oa_message
 
 _FORBIDDEN_BODY_KEYS = frozenset(
     {
@@ -41,16 +42,20 @@ _METRIC_REF_KEYS = frozenset({"metric_field", "result_table_id"})
 class ShareNetworkTopologyRuntimeDenied(PermissionDenied):
     """请求的 node/link 不属于分享画布 view_sets。"""
 
-    default_detail = "无权访问当前网络拓扑运行态"
     default_code = "share_nt_runtime_denied"
+
+    def __init__(self, detail=None, code=None):
+        if detail is None:
+            detail = oa_message("messages.nt_share_runtime_denied", "无权访问当前网络拓扑运行态")
+        super().__init__(detail, code)
 
 
 def reject_forbidden_topology_body_keys(data: Any) -> None:
     if not isinstance(data, dict):
-        raise ValidationError({"detail": "请求体必须是对象"})
+        raise ValidationError({"detail": oa_message("messages.request_body_must_be_object", "请求体必须是对象")})
     hit = _FORBIDDEN_BODY_KEYS.intersection(data.keys())
     if hit:
-        raise ValidationError({"detail": f"禁止在分享请求中指定: {', '.join(sorted(hit))}"})
+        raise ValidationError({"detail": oa_message("messages.share_forbidden_fields", "禁止在分享请求中指定: {fields}", fields=", ".join(sorted(hit)))})
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -152,23 +157,23 @@ def _stored_metric_query_semantics(metric: dict[str, Any]) -> dict[str, Any]:
 
 def _validate_node_ref_shape(node_ref: Any) -> dict[str, Any]:
     if not isinstance(node_ref, dict) or not node_ref:
-        raise ValidationError({"node_ref": ["node_ref 必填且必须是对象"]})
+        raise ValidationError({"node_ref": [oa_message("messages.nt_node_ref_object", "node_ref 必填且必须是对象")]})
     unknown = set(node_ref.keys()) - _NODE_REF_KEYS
     if unknown:
-        raise ValidationError({"node_ref": [f"包含未声明字段: {', '.join(sorted(unknown))}"]})
+        raise ValidationError({"node_ref": [oa_message("messages.nt_undeclared_fields", "包含未声明字段: {fields}", fields=", ".join(sorted(unknown)))]})
     if "bk_obj_id" not in node_ref or "bk_inst_id" not in node_ref:
-        raise ValidationError({"node_ref": ["缺少 bk_obj_id / bk_inst_id"]})
+        raise ValidationError({"node_ref": [oa_message("messages.nt_node_ref_identity_required", "缺少 bk_obj_id / bk_inst_id")]})
     return node_ref
 
 
 def _validate_metric_ref_shape(metric_ref: Any) -> dict[str, Any]:
     if not isinstance(metric_ref, dict) or not metric_ref:
-        raise ValidationError({"metric_ref": ["metric_ref 必填且必须是对象"]})
+        raise ValidationError({"metric_ref": [oa_message("messages.nt_metric_ref_object", "metric_ref 必填且必须是对象")]})
     unknown = set(metric_ref.keys()) - _METRIC_REF_KEYS
     if unknown:
-        raise ValidationError({"metric_ref": [f"包含未声明字段: {', '.join(sorted(unknown))}"]})
+        raise ValidationError({"metric_ref": [oa_message("messages.nt_undeclared_fields", "包含未声明字段: {fields}", fields=", ".join(sorted(unknown)))]})
     if not metric_ref.get("metric_field") or not metric_ref.get("result_table_id"):
-        raise ValidationError({"metric_ref": ["metric_field / result_table_id 必填"]})
+        raise ValidationError({"metric_ref": [oa_message("messages.nt_metric_ref_fields_required", "metric_field / result_table_id 必填")]})
     return metric_ref
 
 
@@ -179,25 +184,25 @@ def validate_share_metric_values(*, view_sets: Any, items: Any) -> list[dict[str
     一律取自 view_sets 已存 metric，忽略客户端覆盖，防止分享边界内扩大 WeOps 查询面。
     """
     if not isinstance(items, list):
-        raise ValidationError({"items": ["items 必须是数组"]})
+        raise ValidationError({"items": [oa_message("messages.items_must_be_array", "items 必须是数组")]})
 
     normalized: list[dict[str, Any]] = []
     for index, raw in enumerate(items):
         if not isinstance(raw, dict):
-            raise ValidationError({"items": [f"items[{index}] 必须是对象"]})
+            raise ValidationError({"items": [oa_message("messages.nt_item_object", "items[{index}] 必须是对象", index=index)]})
         request_id = raw.get("request_id")
         if not isinstance(request_id, str) or not request_id.strip():
-            raise ValidationError({"items": [f"items[{index}].request_id 必填"]})
+            raise ValidationError({"items": [oa_message("messages.nt_item_request_id", "items[{index}].request_id 必填", index=index)]})
 
         node_ref = _validate_node_ref_shape(raw.get("node_ref"))
         metric_ref = _validate_metric_ref_shape(raw.get("metric_ref"))
 
         node = _find_node_by_ref(view_sets, node_ref)
         if node is None:
-            raise ShareNetworkTopologyRuntimeDenied("node_ref 不属于当前分享画布")
+            raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_node_ref", "node_ref 不属于当前分享画布"))
         stored_metric = _find_stored_metric(node, metric_ref)
         if stored_metric is None:
-            raise ShareNetworkTopologyRuntimeDenied("metric_ref 不属于当前分享画布节点")
+            raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_metric_ref", "metric_ref 不属于当前分享画布节点"))
 
         item: dict[str, Any] = {
             "request_id": request_id.strip(),
@@ -239,23 +244,23 @@ def validate_share_link_runtime(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """校验 link_runtime，返回 (canonical_link, canonical_endpoint_nodes)。"""
     if not isinstance(link_payload, dict) or not link_payload:
-        raise ValidationError({"link": ["link 必须是对象"]})
+        raise ValidationError({"link": [oa_message("messages.link_must_be_object", "link 必须是对象")]})
     if nodes_payload is not None and not isinstance(nodes_payload, list):
-        raise ValidationError({"nodes": ["nodes 必须是数组"]})
+        raise ValidationError({"nodes": [oa_message("messages.nodes_must_be_array", "nodes 必须是数组")]})
 
     link_id = link_payload.get("id")
     if not isinstance(link_id, str) or not link_id.strip():
-        raise ValidationError({"link": ["link.id 必填"]})
+        raise ValidationError({"link": [oa_message("messages.nt_link_id_required", "link.id 必填")]})
 
     stored = next((item for item in _view_sets_links(view_sets) if item.get("id") == link_id), None)
     if stored is None:
-        raise ShareNetworkTopologyRuntimeDenied("link 不属于当前分享画布")
+        raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_link", "link 不属于当前分享画布"))
 
     if link_payload.get("source_node_id") != stored.get("source_node_id") or link_payload.get("target_node_id") != stored.get("target_node_id"):
-        raise ShareNetworkTopologyRuntimeDenied("link 端点与分享画布不一致")
+        raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_link_endpoints", "link 端点与分享画布不一致"))
 
     if _port_pairs_fingerprint(link_payload) != _port_pairs_fingerprint(stored):
-        raise ShareNetworkTopologyRuntimeDenied("link 端口对与分享画布不一致")
+        raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_link_ports", "link 端口对与分享画布不一致"))
 
     nodes_by_id = {node.get("id"): node for node in _view_sets_nodes(view_sets)}
     endpoint_ids = {stored.get("source_node_id"), stored.get("target_node_id")}
@@ -266,15 +271,15 @@ def validate_share_link_runtime(
     else:
         for index, node in enumerate(nodes_payload):
             if not isinstance(node, dict):
-                raise ValidationError({"nodes": [f"nodes[{index}] 必须是对象"]})
+                raise ValidationError({"nodes": [oa_message("messages.nt_nodes_item_object", "nodes[{index}] 必须是对象", index=index)]})
             node_id = node.get("id")
             if node_id not in nodes_by_id:
-                raise ShareNetworkTopologyRuntimeDenied("nodes 不属于当前分享画布")
+                raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_nodes", "nodes 不属于当前分享画布"))
             if node_id not in endpoint_ids:
-                raise ShareNetworkTopologyRuntimeDenied("nodes 超出当前 link 端点")
+                raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_nodes_endpoints", "nodes 超出当前 link 端点"))
             stored_node = nodes_by_id[node_id]
             if _normalize_node_ref(_node_ref_from_view_set(node)) != _normalize_node_ref(_node_ref_from_view_set(stored_node)):
-                raise ShareNetworkTopologyRuntimeDenied("node_ref 与分享画布不一致")
+                raise ShareNetworkTopologyRuntimeDenied(oa_message("messages.nt_share_node_mismatch", "node_ref 与分享画布不一致"))
 
     canonical_nodes = [nodes_by_id[node_id] for node_id in endpoint_ids if node_id in nodes_by_id]
     return stored, canonical_nodes

@@ -12,6 +12,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.serializers.directory_serializers import DirectoryChainVisibilityMixin
+from apps.operation_analysis.services.user_messages import oa_message
 
 COPY_ATTEMPT_LIMIT = 1000
 BUILTIN_TARGET_DIRECTORY_ERROR = "不能复制到内置目录"
@@ -38,8 +39,8 @@ def copy_name_suffix(language: str | None) -> str:
     normalized = (language or "en").replace("_", "-")
     with translation.override(normalized):
         translated = gettext("copy")
-    if normalized.lower().startswith("zh") and translated == "copy":
-        return "副本"
+        if normalized.lower().startswith("zh") and translated == "copy":
+            return oa_message("messages.copy_suffix", "副本")
     return translated or "copy"
 
 
@@ -58,7 +59,7 @@ def allocate_copy_name(model, source_name: str, language: str | None, reserved: 
             continue
         if not model.objects.filter(name=candidate).exists():
             return candidate
-    raise ValidationError(NAME_EXHAUSTED_ERROR)
+    raise ValidationError(oa_message("messages.copy_name_exhausted", NAME_EXHAUSTED_ERROR))
 
 
 def copy_canvas(*, viewset, request, source):
@@ -101,7 +102,7 @@ def copy_canvas(*, viewset, request, source):
                 raise
             last_error = error
 
-    raise ValidationError(NAME_EXHAUSTED_ERROR) from last_error
+    raise ValidationError(oa_message("messages.copy_name_exhausted", NAME_EXHAUSTED_ERROR)) from last_error
 
 
 def _build_copy_payload(source, *, directory, groups) -> dict:
@@ -138,11 +139,11 @@ def _clear_network_topology_runtime_cache(instance) -> None:
 def _resolve_target_directory(data) -> Directory:
     raw_directory = None if data is None else data.get("directory")
     if raw_directory in (None, ""):
-        raise ValidationError({"directory": ["该字段是必填项。"]})
+        raise ValidationError({"directory": [oa_message("messages.field_required_period", "该字段是必填项。")]})
     try:
         return Directory.objects.get(pk=raw_directory)
     except (Directory.DoesNotExist, TypeError, ValueError) as error:
-        raise ValidationError({"directory": ["目标目录不存在"]}) from error
+        raise ValidationError({"directory": [oa_message("messages.copy_directory_missing", "目标目录不存在")]}) from error
 
 
 def _actor_maintainer_fields(request) -> dict:
@@ -157,14 +158,14 @@ def _actor_maintainer_fields(request) -> dict:
 
 def _ensure_source_visible(viewset, request, source) -> None:
     if not _is_groups_visible(viewset, request, source):
-        raise PermissionDenied(SOURCE_NOT_VISIBLE_ERROR)
+        raise PermissionDenied(oa_message("messages.copy_source_invisible", SOURCE_NOT_VISIBLE_ERROR))
 
 
 def _ensure_target_directory(viewset, request, directory: Directory) -> None:
     if directory.is_build_in:
-        raise ValidationError({"directory": [BUILTIN_TARGET_DIRECTORY_ERROR]})
+        raise ValidationError({"directory": [oa_message("messages.copy_builtin_directory", BUILTIN_TARGET_DIRECTORY_ERROR)]})
     if not _is_groups_visible(viewset, request, directory):
-        raise PermissionDenied(TARGET_DIRECTORY_NOT_VISIBLE_ERROR)
+        raise PermissionDenied(oa_message("messages.copy_target_invisible", TARGET_DIRECTORY_NOT_VISIBLE_ERROR))
 
 
 def _is_groups_visible(viewset, request, instance) -> bool:

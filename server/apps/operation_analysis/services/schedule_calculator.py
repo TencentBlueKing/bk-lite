@@ -7,8 +7,11 @@ scheduled_local_time 仅用于展示/审计，不参与调度计算。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta
+from datetime import timezone as dt_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from apps.operation_analysis.services.user_messages import oa_message
 
 # 与 datetime.weekday() 一致：周一=0 … 周日=6
 WEEKDAY_MONDAY = 0
@@ -36,21 +39,17 @@ class ScheduleSpec:
 
     def validate(self) -> None:
         if self.schedule_type not in VALID_SCHEDULE_TYPES:
-            raise ValueError(f"不支持的周期类型: {self.schedule_type}")
+            raise ValueError(oa_message("messages.schedule_type_unsupported", "不支持的周期类型: {schedule_type}", schedule_type=self.schedule_type))
         if not (0 <= self.hour <= 23):
-            raise ValueError("schedule_hour 必须在 0–23")
+            raise ValueError(oa_message("messages.schedule_hour_range", "schedule_hour 必须在 0–23"))
         if not (0 <= self.minute <= 59):
-            raise ValueError("schedule_minute 必须在 0–59")
+            raise ValueError(oa_message("messages.schedule_minute_range", "schedule_minute 必须在 0–59"))
         if self.schedule_type == SCHEDULE_TYPE_WEEKLY:
-            if self.weekday is None or not (
-                WEEKDAY_MONDAY <= self.weekday <= WEEKDAY_SUNDAY
-            ):
-                raise ValueError("weekly 必须指定 weekday（0=周一 … 6=周日）")
+            if self.weekday is None or not (WEEKDAY_MONDAY <= self.weekday <= WEEKDAY_SUNDAY):
+                raise ValueError(oa_message("messages.schedule_weekday_required", "weekly 必须指定 weekday（0=周一 … 6=周日）"))
         if self.schedule_type == SCHEDULE_TYPE_MONTHLY:
-            if self.day_of_month is None or not (
-                1 <= self.day_of_month <= 31
-            ):
-                raise ValueError("monthly 必须指定 day_of_month（1–31）")
+            if self.day_of_month is None or not (1 <= self.day_of_month <= 31):
+                raise ValueError(oa_message("messages.schedule_day_required", "monthly 必须指定 day_of_month（1–31）"))
 
 
 @dataclass(frozen=True)
@@ -68,12 +67,12 @@ class NextRun:
 
 def validate_iana_timezone(timezone_name: str) -> str:
     if not isinstance(timezone_name, str) or not timezone_name.strip():
-        raise ValueError("timezone 必须是有效的 IANA 时区")
+        raise ValueError(oa_message("messages.timezone_must_be_iana", "timezone 必须是有效的 IANA 时区"))
     candidate = timezone_name.strip()
     try:
         ZoneInfo(candidate)
     except (ZoneInfoNotFoundError, ValueError, KeyError) as exc:
-        raise ValueError(f"无效的 IANA 时区: {candidate}") from exc
+        raise ValueError(oa_message("messages.timezone_iana_invalid", "无效的 IANA 时区: {timezone}", timezone=candidate)) from exc
     return candidate
 
 
@@ -111,9 +110,7 @@ def _resolve_local_wall_time(
     通过 UTC 逐分钟探测真实墙钟，避免 zoneinfo 对不存在本地时间的虚假 round-trip。
     """
     target_date = date(year, month, day)
-    day_start_utc = datetime(
-        year, month, day, 0, 0, tzinfo=tz, fold=0
-    ).astimezone(dt_timezone.utc)
+    day_start_utc = datetime(year, month, day, 0, 0, tzinfo=tz, fold=0).astimezone(dt_timezone.utc)
 
     first_at_or_after: datetime | None = None
     exact_first: datetime | None = None
@@ -129,10 +126,7 @@ def _resolve_local_wall_time(
         if (wall.hour, wall.minute) == (hour, minute) and exact_first is None:
             exact_first = wall
             break
-        if (
-            first_at_or_after is None
-            and (wall.hour, wall.minute) >= (hour, minute)
-        ):
+        if first_at_or_after is None and (wall.hour, wall.minute) >= (hour, minute):
             first_at_or_after = wall
 
     if exact_first is not None:
@@ -140,10 +134,7 @@ def _resolve_local_wall_time(
     if first_at_or_after is not None:
         return first_at_or_after
 
-    raise ValueError(
-        f"无法解析本地时间 {year:04d}-{month:02d}-{day:02d} "
-        f"{hour:02d}:{minute:02d} ({tz})"
-    )
+    raise ValueError(f"无法解析本地时间 {year:04d}-{month:02d}-{day:02d} " f"{hour:02d}:{minute:02d} ({tz})")
 
 
 def _format_scheduled_local_time(local_aware: datetime) -> str:
@@ -245,9 +236,7 @@ def latest_run_at_or_before(
     now_local = now_utc.astimezone(tz)
 
     def _try(year: int, month: int, day: int) -> NextRun | None:
-        local_aware = _resolve_local_wall_time(
-            year, month, day, spec.hour, spec.minute, tz
-        )
+        local_aware = _resolve_local_wall_time(year, month, day, spec.hour, spec.minute, tz)
         if local_aware.astimezone(dt_timezone.utc) <= now_utc:
             return _build_next_run(local_aware, tz_name)
         return None

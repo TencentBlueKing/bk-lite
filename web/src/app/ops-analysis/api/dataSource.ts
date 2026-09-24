@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import { useTranslation } from '@/utils/i18n';
 import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
 import {
   parseSourceDataResponse,
@@ -26,6 +27,7 @@ export const withRuntimeSourceDataErrorSuppression = (
 export const useDataSourceApi = () => {
   const { get, post, put, del, patch } = useApiClient();
   const sharedAccess = useSharedDataSourceQuery();
+  const { t } = useTranslation();
 
   const normalizeDataSourceResponse = useCallback((response: any) => {
     if (Array.isArray(response)) {
@@ -120,8 +122,8 @@ export const useDataSourceApi = () => {
         params,
         requestConfig,
       );
-    return parseSourceDataResponse(raw);
-  }, [post, sharedAccess]);
+    return parseSourceDataResponse(raw, t);
+  }, [post, sharedAccess, t]);
 
   const testDataSourceConnectionConfig = useCallback(async (data: any) => {
     return post('/operation_analysis/api/data_source/test_connection/', data);

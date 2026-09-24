@@ -10,6 +10,8 @@ import copy
 import json
 from typing import Any
 
+from apps.operation_analysis.services.user_messages import oa_message
+
 LEGACY_STRING_LIST_TYPE = "stringList"
 WARNING_COMPONENT_SWITCH = "string_list_component_switch_conflict"
 WARNING_DUAL_ID = "string_list_dual_id_incompatible"
@@ -94,7 +96,10 @@ def normalize_string_list_input_config(entity: dict | None) -> tuple[dict, list[
         warnings.append(
             {
                 "code": WARNING_COMPONENT_SWITCH,
-                "message": "旧 stringList 与 componentSwitch 互斥；已保留列表传参（multiple: true）并关闭 componentSwitch",
+                "message": oa_message(
+                    "messages.string_list_component_switch",
+                    "旧 stringList 与 componentSwitch 互斥；已保留列表传参（multiple: true）并关闭 componentSwitch",
+                ),
             }
         )
 
@@ -198,7 +203,12 @@ def migrate_unified_filter_definitions(definitions: Any) -> tuple[list[dict], li
                     {
                         "code": WARNING_DUAL_ID,
                         "key": key,
-                        "message": (f"筛选项 {key} 同时存在 string 与 stringList，配置不兼容；" f"已以 stringList 侧为准合并为 {string_id}"),
+                        "message": oa_message(
+                            "messages.filter_dual_incompatible",
+                            "筛选项 {key} 同时存在 string 与 stringList，配置不兼容；已以 stringList 侧为准合并为 {string_id}",
+                            key=key,
+                            string_id=string_id,
+                        ),
                         "fields": ["control", "picker", "optionsSource"],
                     }
                 )
@@ -289,9 +299,19 @@ def collect_migration_warnings_for_document(
             key = param.get("name") or "unknown"
             input_config = param.get("inputConfig")
             if isinstance(input_config, dict) and input_config.get("componentSwitch"):
-                message = f"{object_name} 参数 '{key}' 为旧 stringList 且启用了 componentSwitch；" "导入后将保留列表传参（multiple）并关闭 componentSwitch"
+                message = oa_message(
+                    "messages.param_string_list_switch",
+                    "{object_name} 参数 '{key}' 为旧 stringList 且启用了 componentSwitch；导入后将保留列表传参（multiple）并关闭 componentSwitch",
+                    object_name=object_name,
+                    key=key,
+                )
             else:
-                message = f"{object_name} 参数 '{key}' 使用旧类型 stringList，导入后将规范为 string + multiple"
+                message = oa_message(
+                    "messages.param_string_list_normalize",
+                    "{object_name} 参数 '{key}' 使用旧类型 stringList，导入后将规范为 string + multiple",
+                    object_name=object_name,
+                    key=key,
+                )
             warnings.append(
                 {
                     "code": "OA_STRING_LIST_MIGRATION",
@@ -318,9 +338,19 @@ def collect_migration_warnings_for_document(
         filter_id = item.get("id") or key
         input_config = item.get("inputConfig")
         if isinstance(input_config, dict) and input_config.get("componentSwitch"):
-            message = f"画布 '{object_name}' 筛选项 '{filter_id}' 为旧 stringList " "且启用了 componentSwitch；导入后将保留 multiple 并关闭 componentSwitch"
+            message = oa_message(
+                "messages.canvas_filter_string_list_switch",
+                "画布 '{object_name}' 筛选项 '{filter_id}' 为旧 stringList 且启用了 componentSwitch；导入后将保留 multiple 并关闭 componentSwitch",
+                object_name=object_name,
+                filter_id=filter_id,
+            )
         else:
-            message = f"画布 '{object_name}' 筛选项 '{filter_id}' 使用旧类型 stringList，" "导入后将规范为 string + multiple / key__string"
+            message = oa_message(
+                "messages.canvas_filter_string_list_normalize",
+                "画布 '{object_name}' 筛选项 '{filter_id}' 使用旧类型 stringList，导入后将规范为 string + multiple / key__string",
+                object_name=object_name,
+                filter_id=filter_id,
+            )
         warnings.append(
             {
                 "code": "OA_STRING_LIST_MIGRATION",
@@ -339,7 +369,12 @@ def collect_migration_warnings_for_document(
             warnings.append(
                 {
                     "code": "OA_STRING_LIST_MIGRATION",
-                    "message": (f"画布 '{object_name}' 筛选项 key '{key}' 同时存在 string 与 stringList；" "导入后将以 stringList 侧为准合并为 key__string"),
+                    "message": oa_message(
+                        "messages.canvas_filter_dual",
+                        "画布 '{object_name}' 筛选项 key '{key}' 同时存在 string 与 stringList；导入后将以 stringList 侧为准合并为 key__string",
+                        object_name=object_name,
+                        key=key,
+                    ),
                     "object_key": object_key,
                     "field": f"filters.{key}",
                 }

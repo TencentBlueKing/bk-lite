@@ -55,10 +55,13 @@ from apps.operation_analysis.services.share_throttle import (
     DashboardShareInvalidTokenThrottle,
     DashboardSharePrepareThrottle,
 )
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet
 from apps.system_mgmt.nats.auth import build_user_authorization_context
 
-INVALID_SHARE_RESPONSE = {"detail": "分享链接无效或已失效"}
+
+def invalid_share_response():
+    return {"detail": oa_message("messages.share_invalid", "分享链接无效或已失效")}
 
 
 def _walk_data_source_ids(value):
@@ -249,8 +252,8 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             log_share_access(request, action="prepare", result="reject", reason="invalid_token")
             invalid_throttle = DashboardShareInvalidTokenThrottle()
             if not invalid_throttle.allow_request(request, self):
-                return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-            return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+                return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
         log_share_access(request, action="prepare", result="ok")
         response = Response({"state": state})
         response.set_cookie(
@@ -276,7 +279,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             )
         except ShareRateLimited:
             log_share_access(request, action="exchange", result="reject", reason="rate_limited")
-            return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid as exc:
             log_share_access(
                 request,
@@ -286,8 +289,8 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             )
             invalid_throttle = DashboardShareInvalidTokenThrottle()
             if not invalid_throttle.allow_request(request, self):
-                return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-            return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+                return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         log_share_access(
             request,
@@ -311,10 +314,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             principal = resolve_session(session_id=session_id, visitor=request.user)
         except ShareRateLimited:
             log_share_access(request, action="open", result="reject", reason="rate_limited")
-            return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid:
             log_share_access(request, action="open", result="reject", reason="invalid")
-            return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         log_share_access(request, action="open", principal=principal, visitor=request.user, result="ok")
         return Response(_serialize_shared_resource(principal, language=getattr(request.user, "locale", None)))
@@ -329,10 +332,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             principal = resolve_session(session_id=session_id, visitor=request.user)
         except ShareRateLimited:
             log_share_access(request, action="query", result="reject", reason="rate_limited")
-            return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid:
             log_share_access(request, action="query", result="reject", reason="invalid")
-            return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
             log_share_access(
@@ -343,7 +346,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 result="reject",
                 reason="resource_type_not_queryable",
             )
-            return Response({"detail": "当前画布不支持数据源查询"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": oa_message("messages.share_query_unsupported", "当前画布不支持数据源查询")}, status=status.HTTP_403_FORBIDDEN)
 
         if int(data_source_id) not in _canvas_data_source_ids(principal.resource):
             log_share_access(
@@ -354,7 +357,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 result="reject",
                 reason="datasource_not_declared",
             )
-            return Response({"detail": "无权访问当前数据源"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": oa_message("messages.datasource_access_denied", "无权访问当前数据源")}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             safe_params = filter_share_query_params(
@@ -371,7 +374,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 result="reject",
                 reason="undeclared_params",
             )
-            return Response({"detail": str(exc) or "存在未声明参数"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": str(exc) or oa_message("messages.undeclared_params_fallback", "存在未声明参数")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         factory = APIRequestFactory()
         delegated_request = factory.post("/", safe_params, format="json")
@@ -397,10 +403,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         try:
             principal = resolve_session(session_id=session_id, visitor=request.user)
         except ShareRateLimited:
-            return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid:
             log_share_access(request, action="data_sources", result="reject", reason="invalid")
-            return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
             return Response([])
@@ -453,10 +459,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             principal = resolve_session(session_id=session_id, visitor=request.user)
         except ShareRateLimited:
             log_share_access(request, action=action_name, result="reject", reason="rate_limited")
-            return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid:
             log_share_access(request, action=action_name, result="reject", reason="invalid")
-            return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         if principal.resource_type not in allowed_resource_types or not _view_sets_has_scene_widget(
             getattr(principal.resource, "view_sets", None),
@@ -504,7 +510,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             widget_type="application3D",
             allowed_resource_types=frozenset({"screen"}),
             undeclared_reason="application3d_not_declared",
-            undeclared_detail="分享大屏未声明 3D 应用组件",
+            undeclared_detail=oa_message("messages.share_app3d_undeclared", "分享大屏未声明 3D 应用组件"),
         )
 
     def _reject_undeclared_related_topology_inst(self, request, principal):
@@ -521,7 +527,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             result="reject",
             reason="related_topology_inst_not_declared",
         )
-        return Response({"detail": "分享画布未声明该关联拓扑实例"}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            {"detail": oa_message("messages.share_topology_instance_undeclared", "分享画布未声明该关联拓扑实例")},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     @action(
         detail=False,
@@ -602,7 +611,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             widget_type="relatedTopology",
             allowed_resource_types=frozenset({"dashboard", "screen"}),
             undeclared_reason="related_topology_not_declared",
-            undeclared_detail="分享画布未声明关联拓扑组件",
+            undeclared_detail=oa_message("messages.share_topology_widget_undeclared", "分享画布未声明关联拓扑组件"),
             extra_reject=self._reject_undeclared_related_topology_inst,
         )
 
@@ -615,7 +624,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             widget_type="room3D",
             allowed_resource_types=frozenset({"screen"}),
             undeclared_reason="room3d_not_declared",
-            undeclared_detail="分享大屏未声明 3D 机房组件",
+            undeclared_detail=oa_message("messages.share_room3d_undeclared", "分享大屏未声明 3D 机房组件"),
         )
 
     @action(
@@ -649,10 +658,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             principal = resolve_session(session_id=session_id, visitor=request.user)
         except ShareRateLimited:
             log_share_access(request, action=action_name, result="reject", reason="rate_limited")
-            return None, Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return None, Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except ShareLinkInvalid:
             log_share_access(request, action=action_name, result="reject", reason="invalid")
-            return None, Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+            return None, Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         if principal.resource_type != "networkTopology":
             log_share_access(
@@ -664,7 +673,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 reason="resource_type_mismatch",
             )
             return None, Response(
-                {"detail": "当前分享会话不是网络拓扑"},
+                {"detail": oa_message("messages.share_not_network_topology", "当前分享会话不是网络拓扑")},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return principal, None

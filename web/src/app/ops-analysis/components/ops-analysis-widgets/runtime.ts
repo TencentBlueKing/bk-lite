@@ -528,7 +528,7 @@ export class ChartDataTransformer {
       const transformedData = this.transformToLineBarData(rawData);
 
       if (!transformedData.categories || transformedData.categories.length === 0) {
-        return { isValid: false, message: errorMessage || '数据格式不匹配' };
+        return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
       }
 
       const hasValidData = transformedData.series
@@ -545,12 +545,12 @@ export class ChartDataTransformer {
           );
 
       if (!hasValidData) {
-        return { isValid: false, message: errorMessage || '数据格式不匹配' };
+        return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
       }
 
       return { isValid: true };
     } catch {
-      return { isValid: false, message: errorMessage || '数据格式不匹配' };
+      return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
     }
   }
 
@@ -563,7 +563,7 @@ export class ChartDataTransformer {
       const transformedData = this.transformToPieData(rawData);
 
       if (!transformedData || transformedData.length === 0) {
-        return { isValid: false, message: errorMessage || '数据格式不匹配' };
+        return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
       }
 
       const hasValidValues = transformedData.every(
@@ -575,12 +575,12 @@ export class ChartDataTransformer {
       );
 
       if (!hasValidValues) {
-        return { isValid: false, message: errorMessage || '数据格式不匹配' };
+        return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
       }
 
       return { isValid: true };
     } catch {
-      return { isValid: false, message: errorMessage || '数据格式不匹配' };
+      return { isValid: false, message: errorMessage || 'dashboard.dataFormatMismatch' };
     }
   }
 }

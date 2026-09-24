@@ -279,7 +279,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             tooltip={param.desc || undefined}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
             rules={[
-              { required: param.required, message: `请配置${labelText}` },
+              { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
             ]}
           >
             {renderParamInput(param)}

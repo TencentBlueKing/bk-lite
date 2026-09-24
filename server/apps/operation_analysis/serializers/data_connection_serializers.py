@@ -9,6 +9,7 @@ from apps.operation_analysis.services.data_connection.config_crypto import (
     redact_connection_config,
 )
 from apps.operation_analysis.services.data_connection.groups import find_groups_outside_connection, is_groups_subset, normalize_group_ids
+from apps.operation_analysis.services.user_messages import oa_message
 
 CONTROLLED_REST_HEADERS = {
     "connection",
@@ -27,10 +28,10 @@ def validate_rest_headers(headers):
     if headers is None:
         return {}
     if not isinstance(headers, dict):
-        raise serializers.ValidationError("headers 必须为对象")
+        raise serializers.ValidationError(oa_message("messages.headers_object", "headers 必须为对象"))
     controlled = sorted(str(name) for name in headers if str(name).strip().lower() in CONTROLLED_REST_HEADERS)
     if controlled:
-        raise serializers.ValidationError(f"不允许设置受控 Header: {', '.join(controlled)}")
+        raise serializers.ValidationError(oa_message("messages.controlled_header", "不允许设置受控 Header: {names}", names=", ".join(controlled)))
     return headers
 
 
@@ -50,18 +51,18 @@ def _summarize_endpoint(connection_type, config):
 
 def _validate_connection_config_shape(connection_type, config):
     if not isinstance(config, dict):
-        raise serializers.ValidationError("config 必须为对象")
+        raise serializers.ValidationError(oa_message("messages.config_object", "config 必须为对象"))
     if connection_type in {DataConnection.TYPE_MYSQL, DataConnection.TYPE_POSTGRESQL}:
         required = ("host", "port", "database", "username", "password")
         missing = [key for key in required if config.get(key) in (None, "")]
         if missing:
-            raise serializers.ValidationError(f"缺少连接字段: {', '.join(missing)}")
+            raise serializers.ValidationError(oa_message("messages.missing_connection_fields", "缺少连接字段: {names}", names=", ".join(missing)))
     elif connection_type == DataConnection.TYPE_REST_API:
         if not (config.get("base_url") or config.get("url")):
-            raise serializers.ValidationError("REST 连接必须提供 base_url")
+            raise serializers.ValidationError(oa_message("messages.rest_base_url_required", "REST 连接必须提供 base_url"))
         config["headers"] = validate_rest_headers(config.get("headers"))
     else:
-        raise serializers.ValidationError("connection_type 不支持")
+        raise serializers.ValidationError(oa_message("messages.connection_type_unsupported", "connection_type 不支持"))
     return config
 
 
@@ -99,16 +100,16 @@ class DataConnectionSerializer(BaseFormatTimeSerializer, AuthSerializer):
     def validate_connection_type(self, value):
         allowed = {choice[0] for choice in DataConnection.TYPE_CHOICES}
         if value not in allowed:
-            raise serializers.ValidationError("connection_type 不支持")
+            raise serializers.ValidationError(oa_message("messages.connection_type_unsupported", "connection_type 不支持"))
         if self.instance and self.instance.connection_type != value:
-            raise serializers.ValidationError("连接类型创建后不可修改")
+            raise serializers.ValidationError(oa_message("messages.connection_type_immutable", "连接类型创建后不可修改"))
         return value
 
     def validate_config(self, value):
         if value in (None, ""):
             value = {}
         if not isinstance(value, dict):
-            raise serializers.ValidationError("config 必须为对象")
+            raise serializers.ValidationError(oa_message("messages.config_object", "config 必须为对象"))
         if self.instance:
             value = merge_connection_config(self.instance.config or {}, value)
         return value
@@ -116,7 +117,7 @@ class DataConnectionSerializer(BaseFormatTimeSerializer, AuthSerializer):
     def validate_groups(self, value):
         groups = normalize_group_ids(value)
         if not groups:
-            raise serializers.ValidationError("groups 不能为空")
+            raise serializers.ValidationError(oa_message("messages.groups_empty", "groups 不能为空"))
         if self.instance:
             conflicting = []
             for datasource in self.instance.data_sources.all().only("id", "name", "groups"):
@@ -126,7 +127,7 @@ class DataConnectionSerializer(BaseFormatTimeSerializer, AuthSerializer):
             if conflicting:
                 raise serializers.ValidationError(
                     {
-                        "message": "缩小授权组织会导致引用数据源越界",
+                        "message": oa_message("messages.shrink_groups_out_of_range", "缩小授权组织会导致引用数据源越界"),
                         "conflicts": conflicting,
                     }
                 )
@@ -203,18 +204,20 @@ def validate_datasource_connection_binding(attrs, instance=None):
     if overrides in (None, ""):
         overrides = {}
     if not isinstance(overrides, dict):
-        raise serializers.ValidationError({"connection_overrides": "必须为对象"})
+        raise serializers.ValidationError({"connection_overrides": oa_message("messages.connection_overrides_object", "必须为对象")})
 
     if connection is None:
         attrs["connection_overrides"] = overrides or {}
         return attrs
 
     if connection.connection_type != source_type:
-        raise serializers.ValidationError({"connection": "数据连接类型必须与数据源类型一致"})
+        raise serializers.ValidationError({"connection": oa_message("messages.connection_type_mismatch", "数据连接类型必须与数据源类型一致")})
 
     if not is_groups_subset(groups, connection.groups):
         outside = find_groups_outside_connection(groups, connection.groups)
-        raise serializers.ValidationError({"groups": f"数据源组织必须是连接授权组织的子集，越界组织: {outside}"})
+        raise serializers.ValidationError(
+            {"groups": oa_message("messages.datasource_groups_subset", "数据源组织必须是连接授权组织的子集，越界组织: {outside}", outside=outside)}
+        )
 
     if source_type in {DataSourceAPIModel.SOURCE_TYPE_MYSQL, DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL}:
         allowed = {"database"}
@@ -222,12 +225,14 @@ def validate_datasource_connection_binding(attrs, instance=None):
         allowed = {"path", "method", "timeout"}
     unexpected = sorted(set(overrides.keys()) - allowed)
     if unexpected:
-        raise serializers.ValidationError({"connection_overrides": f"不允许覆盖字段: {', '.join(unexpected)}"})
+        raise serializers.ValidationError(
+            {"connection_overrides": oa_message("messages.connection_override_unexpected", "不允许覆盖字段: {names}", names=", ".join(unexpected))}
+        )
 
     if source_type == DataSourceAPIModel.SOURCE_TYPE_REST_API:
         path = overrides.get("path")
         if path not in (None, "") and (str(path).startswith("http://") or str(path).startswith("https://") or str(path).startswith("//")):
-            raise serializers.ValidationError({"connection_overrides": "path 必须为相对路径"})
+            raise serializers.ValidationError({"connection_overrides": oa_message("messages.connection_override_path", "path 必须为相对路径")})
 
     attrs["connection_overrides"] = overrides
     # 引用连接时禁止在 connection_config 中保留主机/凭据。

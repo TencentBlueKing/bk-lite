@@ -15,25 +15,31 @@ interface ValueMappingsConfigSectionProps {
   readonly?: boolean;
 }
 
-const TYPE_OPTIONS: { value: ValueMappingType; label: string }[] = [
-  { value: 'value', label: '精确值' },
-  { value: 'range', label: '数值区间' },
-  { value: 'regex', label: '正则' },
-  { value: 'special', label: '特殊值' },
+const typeOptions = (
+  t: ValueMappingsConfigSectionProps['t'],
+): { value: ValueMappingType; label: string }[] => [
+  { value: 'value', label: t('dashboard.valueMappingTypeValue', '精确值') },
+  { value: 'range', label: t('dashboard.valueMappingTypeRange', '数值区间') },
+  { value: 'regex', label: t('dashboard.valueMappingTypeRegex', '正则') },
+  { value: 'special', label: t('dashboard.valueMappingTypeSpecial', '特殊值') },
 ];
 
-const SPECIAL_OPTIONS: { value: SpecialMatch; label: string }[] = [
-  { value: 'null', label: '空(null)' },
-  { value: 'empty', label: '空字符串' },
-  { value: 'nan', label: '非数值(NaN)' },
-  { value: 'true', label: '真(true)' },
-  { value: 'false', label: '假(false)' },
+const specialOptions = (
+  t: ValueMappingsConfigSectionProps['t'],
+): { value: SpecialMatch; label: string }[] => [
+  { value: 'null', label: t('dashboard.valueMappingSpecialNull', '空(null)') },
+  { value: 'empty', label: t('dashboard.valueMappingSpecialEmpty', '空字符串') },
+  { value: 'nan', label: t('dashboard.valueMappingSpecialNan', '非数值(NaN)') },
+  { value: 'true', label: t('dashboard.valueMappingSpecialTrue', '真(true)') },
+  { value: 'false', label: t('dashboard.valueMappingSpecialFalse', '假(false)') },
 ];
 
 export const ValueMappingsConfigSection: React.FC<
   ValueMappingsConfigSectionProps
 > = ({ t, value, onChange, readonly = false }) => {
   const mappings = value || [];
+  const typeOptionList = typeOptions(t);
+  const specialOptionList = specialOptions(t);
 
   const emit = (next: ValueMapping[]) => {
     if (!readonly) onChange?.(next);
@@ -98,7 +104,7 @@ export const ValueMappingsConfigSection: React.FC<
                 match: type === 'special' ? 'null' : undefined,
               })
             }
-            options={TYPE_OPTIONS}
+              options={typeOptionList}
             size="small"
             className="!w-24 shrink-0"
             disabled={readonly}
@@ -148,7 +154,7 @@ export const ValueMappingsConfigSection: React.FC<
             <Select<SpecialMatch>
               value={m.match}
               onChange={(match) => updateAt(index, { match })}
-              options={SPECIAL_OPTIONS}
+                options={specialOptionList}
               size="small"
               className="!w-28 shrink-0"
               disabled={readonly}

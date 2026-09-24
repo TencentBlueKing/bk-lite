@@ -18,6 +18,7 @@ from apps.operation_analysis.services.datasource_preview.schema import infer_fie
 from apps.operation_analysis.services.excel_materialize.row_probe import read_excel_rows_for_materialize
 from apps.operation_analysis.services.transform.errors import TransformError
 from apps.operation_analysis.services.transform.executor import get_transform_executor
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class ExcelMaterializer:
@@ -50,11 +51,7 @@ class ExcelMaterializer:
         )
         if not claimed:
             slot.refresh_from_db()
-            code = (
-                "slot_in_progress"
-                if slot.status == ExcelMaterializationSlot.STATUS_PROCESSING
-                else "slot_not_pending"
-            )
+            code = "slot_in_progress" if slot.status == ExcelMaterializationSlot.STATUS_PROCESSING else "slot_not_pending"
             return {"ok": False, "code": code, "slot_id": slot_id}
         try:
             slot.refresh_from_db()
@@ -68,7 +65,7 @@ class ExcelMaterializer:
             if datasource.excel_candidate_slot_id != slot.id:
                 return {"ok": False, "code": "slot_stale", "slot_id": slot_id}
             if not slot.source_file:
-                raise ConnectorError("候选缺少原文件", code="excel_file_required", status_code=400)
+                raise ConnectorError(oa_message("messages.excel_candidate_missing_file", "候选缺少原文件"), code="excel_file_required", status_code=400)
             query_config = datasource.query_config if isinstance(datasource.query_config, dict) else {}
             sheet_name = query_config.get("sheet_name") or None
             with slot.source_file.open("rb") as file_obj:
@@ -146,11 +143,7 @@ class ExcelMaterializer:
         fields: list[dict[str, str]],
     ) -> None:
         with transaction.atomic():
-            locked = (
-                ExcelMaterializationSlot.objects.select_for_update()
-                .select_related("datasource")
-                .get(pk=slot.id)
-            )
+            locked = ExcelMaterializationSlot.objects.select_for_update().select_related("datasource").get(pk=slot.id)
             datasource = locked.datasource
             if datasource.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
                 return
@@ -236,9 +229,9 @@ def safe_materialize_error_summary(exc: BaseException) -> str:
     """面向用户的短摘要：可行动、不泄露凭据与堆栈。"""
     text = str(exc or "").lower()
     if any(token in text for token in ("accessdenied", "access denied", "invalidaccesskey", "signaturedoesnotmatch")):
-        return "文件保存失败：存储服务无权限，请检查配置后重试"
+        return oa_message("messages.excel_storage_denied", "文件保存失败：存储服务无权限，请检查配置后重试")
     if "nosuchbucket" in text or ("bucket" in text and "not exist" in text):
-        return "文件保存失败：存储空间未就绪，请联系管理员初始化后重试"
+        return oa_message("messages.excel_storage_bucket", "文件保存失败：存储空间未就绪，请联系管理员初始化后重试")
     if any(
         token in text
         for token in (
@@ -249,12 +242,12 @@ def safe_materialize_error_summary(exc: BaseException) -> str:
             "timeout",
         )
     ):
-        return "无法连接文件存储或转换服务，请确认相关服务已启动后重试"
+        return oa_message("messages.excel_storage_unreachable", "无法连接文件存储或转换服务，请确认相关服务已启动后重试")
     if any(token in text for token in ("transform_runner", "runner_unavailable", "unauthorized")):
-        return "Python 转换服务不可用，请确认转换服务已启动且认证配置正确"
+        return oa_message("messages.excel_transform_unavailable", "Python 转换服务不可用，请确认转换服务已启动且认证配置正确")
     if any(token in text for token in ("celery", "kombu", "broker")):
-        return "后台处理服务异常，请确认任务服务已启动后重试"
-    return "Excel 处理失败，请重新选择文件并保存；若持续失败请查看服务端日志"
+        return oa_message("messages.excel_worker_unavailable", "后台处理服务异常，请确认任务服务已启动后重试")
+    return oa_message("messages.excel_process_retry", "Excel 处理失败，请重新选择文件并保存；若持续失败请查看服务端日志")
 
 
 def load_slot_result_rows(slot: ExcelMaterializationSlot) -> list[dict[str, Any]]:
@@ -281,9 +274,7 @@ def _slot_has_source_file(slot: ExcelMaterializationSlot | None) -> bool:
 
 def excel_has_saved_source(datasource) -> bool:
     """Whether a recompute/retry can use an already stored original .xlsx."""
-    return _slot_has_source_file(datasource.excel_candidate_slot) or _slot_has_source_file(
-        datasource.excel_success_slot
-    )
+    return _slot_has_source_file(datasource.excel_candidate_slot) or _slot_has_source_file(datasource.excel_success_slot)
 
 
 def resolve_excel_runtime_status(datasource) -> str:

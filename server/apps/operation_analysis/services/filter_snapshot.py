@@ -13,6 +13,8 @@ from typing import Any
 
 from rest_framework.exceptions import ValidationError
 
+from apps.operation_analysis.services.user_messages import oa_message
+
 FILTER_SNAPSHOT_VERSION = 1
 
 VALUE_KIND_STATIC = "static"
@@ -56,7 +58,7 @@ def _definitions_by_id(dashboard_filters: Any) -> dict[str, dict]:
     if dashboard_filters is None:
         return {}
     if not isinstance(dashboard_filters, list):
-        raise ValidationError({"applied_filter_values": "仪表盘筛选定义格式无效"})
+        raise ValidationError({"applied_filter_values": oa_message("messages.filter_defs_invalid", "仪表盘筛选定义格式无效")})
     result: dict[str, dict] = {}
     for item in dashboard_filters:
         if not isinstance(item, dict):
@@ -71,34 +73,34 @@ def _definitions_by_id(dashboard_filters: Any) -> dict[str, dict]:
 def _classify_filter_value(value: Any) -> dict:
     if value is None or isinstance(value, (str, int, float)):
         if isinstance(value, bool):
-            raise FilterSnapshotError("筛选值类型不支持 boolean")
+            raise FilterSnapshotError(oa_message("messages.filter_boolean_unsupported", "筛选值类型不支持 boolean"))
         return {"value_kind": VALUE_KIND_STATIC, "value": value}
 
     if isinstance(value, list):
         items = []
         for item in value:
             if item is None or isinstance(item, bool) or not isinstance(item, (str, int, float)):
-                raise FilterSnapshotError("字符串列表筛选值只能包含字符串或数字")
+                raise FilterSnapshotError(oa_message("messages.filter_string_list", "字符串列表筛选值只能包含字符串或数字"))
             items.append(item)
         return {"value_kind": VALUE_KIND_STATIC, "value": items}
 
     if not isinstance(value, dict):
-        raise FilterSnapshotError("筛选值必须是标量、列表、对象或 null")
+        raise FilterSnapshotError(oa_message("messages.filter_value_shape", "筛选值必须是标量、列表、对象或 null"))
 
     if "rangeType" in value:
         range_type = value.get("rangeType")
         if range_type not in DATE_RANGE_TYPES:
-            raise FilterSnapshotError(f"未知 dateRange 类型: {range_type}")
+            raise FilterSnapshotError(oa_message("messages.filter_date_range_unknown", "未知 dateRange 类型: {range_type}", range_type=range_type))
         if range_type == "custom":
             start = value.get("startDate")
             end = value.get("endDate")
             if not _is_strict_date(start) or not _is_strict_date(end):
-                raise FilterSnapshotError("custom dateRange 需要合法 YYYY-MM-DD")
+                raise FilterSnapshotError(oa_message("messages.filter_date_range_custom", "custom dateRange 需要合法 YYYY-MM-DD"))
             if start > end:
-                raise FilterSnapshotError("custom dateRange startDate 不能晚于 endDate")
+                raise FilterSnapshotError(oa_message("messages.filter_date_range_order", "custom dateRange startDate 不能晚于 endDate"))
             extra_keys = set(value) - {"rangeType", "startDate", "endDate"}
             if extra_keys:
-                raise FilterSnapshotError("custom dateRange 含非法字段")
+                raise FilterSnapshotError(oa_message("messages.filter_date_range_extra", "custom dateRange 含非法字段"))
             return {
                 "value_kind": VALUE_KIND_STATIC,
                 "value": {
@@ -109,7 +111,7 @@ def _classify_filter_value(value: Any) -> dict:
             }
         extra_keys = set(value) - {"rangeType"}
         if extra_keys:
-            raise FilterSnapshotError("快捷 dateRange 不得含自定义字段")
+            raise FilterSnapshotError(oa_message("messages.filter_date_range_quick_extra", "快捷 dateRange 不得含自定义字段"))
         return {
             "value_kind": VALUE_KIND_DYNAMIC_DATE_RANGE,
             "date_range_type": range_type,
@@ -126,15 +128,15 @@ def _classify_filter_value(value: Any) -> dict:
         start = value.get("start")
         end = value.get("end")
         if not isinstance(start, str) or not isinstance(end, str):
-            raise FilterSnapshotError("自定义 timeRange 需要 ISO start/end")
+            raise FilterSnapshotError(oa_message("messages.filter_time_range_iso", "自定义 timeRange 需要 ISO start/end"))
         if not start or not end:
-            raise FilterSnapshotError("自定义 timeRange start/end 不能为空")
+            raise FilterSnapshotError(oa_message("messages.filter_time_range_empty", "自定义 timeRange start/end 不能为空"))
         return {
             "value_kind": VALUE_KIND_STATIC,
             "value": {"start": start, "end": end},
         }
 
-    raise FilterSnapshotError("无法识别的筛选值结构")
+    raise FilterSnapshotError(oa_message("messages.filter_value_unrecognized", "无法识别的筛选值结构"))
 
 
 def normalize_applied_filter_values(
@@ -147,14 +149,16 @@ def normalize_applied_filter_values(
     if applied is None:
         applied = {}
     if not isinstance(applied, dict):
-        raise ValidationError({"applied_filter_values": "已应用筛选必须是对象"})
+        raise ValidationError({"applied_filter_values": oa_message("messages.applied_filters_object", "已应用筛选必须是对象")})
 
     definitions = _definitions_by_id(dashboard_filters)
     entries: dict[str, dict] = {}
     for raw_id, raw_value in applied.items():
         filter_id = str(raw_id)
         if definitions and filter_id not in definitions:
-            raise ValidationError({"applied_filter_values": (f"筛选定义不存在: {filter_id}")})
+            raise ValidationError(
+                {"applied_filter_values": oa_message("messages.filter_definition_missing", "筛选定义不存在: {filter_id}", filter_id=filter_id)}
+            )
         try:
             entries[filter_id] = _classify_filter_value(raw_value)
         except FilterSnapshotError as exc:
@@ -168,11 +172,23 @@ def normalize_applied_filter_values(
                 is_custom_static = kind == VALUE_KIND_STATIC and isinstance(static_value, dict) and static_value.get("rangeType") == "custom"
                 if kind != VALUE_KIND_DYNAMIC_DATE_RANGE and not is_custom_static:
                     if not (kind == VALUE_KIND_STATIC and static_value is None):
-                        raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 dateRange 定义不匹配")})
+                        raise ValidationError(
+                            {
+                                "applied_filter_values": oa_message(
+                                    "messages.filter_date_range_mismatch", "筛选 {filter_id} 类型与 dateRange 定义不匹配", filter_id=filter_id
+                                )
+                            }
+                        )
             elif expected_type == "timeRange":
                 is_custom_static = kind == VALUE_KIND_STATIC and isinstance(static_value, dict) and "start" in static_value and "end" in static_value
                 if kind != VALUE_KIND_DYNAMIC_TIME_RANGE and not is_custom_static and not (kind == VALUE_KIND_STATIC and static_value is None):
-                    raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 timeRange 定义不匹配")})
+                    raise ValidationError(
+                        {
+                            "applied_filter_values": oa_message(
+                                "messages.filter_time_range_mismatch", "筛选 {filter_id} 类型与 timeRange 定义不匹配", filter_id=filter_id
+                            )
+                        }
+                    )
             elif expected_type in ("string", "stringList"):
                 # Legacy stringList is read-compat only: treat as string+multiple for shape.
                 definition = definitions[filter_id]
@@ -182,12 +198,26 @@ def normalize_applied_filter_values(
                 else:
                     is_multiple = isinstance(input_config, dict) and input_config.get("control") != "input" and bool(input_config.get("multiple"))
                 if kind != VALUE_KIND_STATIC:
-                    raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 string 定义不匹配")})
+                    raise ValidationError(
+                        {
+                            "applied_filter_values": oa_message(
+                                "messages.filter_string_mismatch", "筛选 {filter_id} 类型与 string 定义不匹配", filter_id=filter_id
+                            )
+                        }
+                    )
                 if is_multiple:
                     if static_value is not None and not isinstance(static_value, list):
-                        raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 开启多选时值必须是列表")})
+                        raise ValidationError(
+                            {"applied_filter_values": oa_message("messages.filter_multiple_list", "筛选 {filter_id} 开启多选时值必须是列表", filter_id=filter_id)}
+                        )
                 elif isinstance(static_value, (dict, list)):
-                    raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 string 定义不匹配")})
+                    raise ValidationError(
+                        {
+                            "applied_filter_values": oa_message(
+                                "messages.filter_string_mismatch", "筛选 {filter_id} 类型与 string 定义不匹配", filter_id=filter_id
+                            )
+                        }
+                    )
 
     moment = captured_at or datetime.now(dt_timezone.utc)
     return {
@@ -219,7 +249,7 @@ def load_filter_snapshot(subscription_config: dict | None) -> dict:
         }
 
     if "filter_values" in config and not isinstance(legacy, dict):
-        raise FilterSnapshotError("filter_values 必须是对象")
+        raise FilterSnapshotError(oa_message("messages.filter_values_object", "filter_values 必须是对象"))
 
     return {
         "version": FILTER_SNAPSHOT_VERSION,

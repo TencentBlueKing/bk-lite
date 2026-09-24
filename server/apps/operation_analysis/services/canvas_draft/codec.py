@@ -19,6 +19,7 @@ from apps.operation_analysis.services.canvas_draft.errors import DraftValidation
 from apps.operation_analysis.services.canvas_draft.validation import collect_datasource_refs, validate_projectable
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage, rewrite_canvas_view_sets_refs_for_storage
+from apps.operation_analysis.services.user_messages import oa_message
 
 _ITEM_MODELS = {
     ObjectType.DASHBOARD: DashboardItem,
@@ -87,18 +88,34 @@ def decode_yaml(
     try:
         document = yaml.safe_load(yaml_content)
     except yaml.YAMLError as exc:
-        raise DraftValidationFailed([{"code": "invalid_yaml", "message": f"YAML 无法解析: {exc}"}]) from exc
+        raise DraftValidationFailed(
+            [{"code": "invalid_yaml", "message": oa_message("messages.draft_yaml_parse", "YAML 无法解析: {detail}", detail=exc)}]
+        ) from exc
 
     if not isinstance(document, dict):
-        raise DraftValidationFailed([{"code": "invalid_yaml", "message": "YAML 必须是单画布对象"}])
+        raise DraftValidationFailed([{"code": "invalid_yaml", "message": oa_message("messages.draft_yaml_object", "YAML 必须是单画布对象")}])
 
     extra = PACKAGE_KEYS.intersection(document)
     if extra:
-        raise DraftValidationFailed([{"code": "package_document", "message": f"禁止携带整包字段: {', '.join(sorted(extra))}"}])
+        raise DraftValidationFailed(
+            [
+                {
+                    "code": "package_document",
+                    "message": oa_message("messages.draft_package_fields", "禁止携带整包字段: {names}", names=", ".join(sorted(extra))),
+                }
+            ]
+        )
 
     doc_type = document.get("type")
     if doc_type != object_type.value:
-        raise DraftValidationFailed([{"code": "type_mismatch", "message": f"type 必须为 {object_type.value}"}])
+        raise DraftValidationFailed(
+            [
+                {
+                    "code": "type_mismatch",
+                    "message": oa_message("messages.draft_type_mismatch", "type 必须为 {object_type}", object_type=object_type.value),
+                }
+            ]
+        )
 
     item_data = {key: value for key, value in document.items() if key != "type"}
     item_data.setdefault("key", ExportService.generate_business_key(canvas, object_type))
@@ -119,7 +136,9 @@ def decode_yaml(
         ref for ref in collect_datasource_refs(item.view_sets) if ref not in (None, "") and (ref not in datasource_key_to_id or _is_int_id(ref))
     ]
     if unresolved:
-        raise DraftValidationFailed([{"code": "unresolved_datasource", "message": "业务键无法解析为当前可见数据源"}])
+        raise DraftValidationFailed(
+            [{"code": "unresolved_datasource", "message": oa_message("messages.draft_unresolved_datasource", "业务键无法解析为当前可见数据源")}]
+        )
 
     view_sets = rewrite_canvas_view_sets_refs_for_storage(
         normalize_canvas_view_sets_for_storage(item.view_sets, object_type),
@@ -128,7 +147,9 @@ def decode_yaml(
     )
     leftover = [ref for ref in collect_datasource_refs(view_sets) if ref not in (None, "") and not _is_int_id(ref)]
     if leftover:
-        raise DraftValidationFailed([{"code": "unresolved_datasource", "message": "业务键无法解析为当前可见数据源"}])
+        raise DraftValidationFailed(
+            [{"code": "unresolved_datasource", "message": oa_message("messages.draft_unresolved_datasource", "业务键无法解析为当前可见数据源")}]
+        )
 
     validate_projectable(object_type, view_sets, filters=getattr(item, "filters", None))
 

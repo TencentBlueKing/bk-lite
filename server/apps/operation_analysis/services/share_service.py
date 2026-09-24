@@ -15,6 +15,7 @@ from apps.operation_analysis.services.network_status_topology_overlay import (
     overlay_datasource_ids_for_view_sets,
 )
 from apps.operation_analysis.services.share_token import InvalidShareToken, build_share_token, parse_share_token
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.system_mgmt.models.user import User
 
 SHARE_PREPARE_PREFIX = "dashboard_share_prepare:"
@@ -559,7 +560,7 @@ def _enforce_share_fixed_params(*, dashboard, data_source_id: int, safe: dict) -
         if forced.get(name) is _SHARE_FIXED_CONFLICT:
             frozen_request = _freeze_param_value(result.get(name))
             if name not in result or frozen_request not in allowed:
-                raise ShareQueryParamsDenied(f"参数 {name} 为固定值，不允许修改")
+                raise ShareQueryParamsDenied(oa_message("messages.share_fixed_param", "参数 {name} 为固定值，不允许修改", name=name))
             continue
         result[name] = forced[name]
     return result
@@ -572,16 +573,16 @@ def filter_share_query_params(*, dashboard, data_source_id: int, request_data: d
     allowed = allowed_share_query_keys(dashboard=dashboard, data_source_id=data_source_id)
     unknown = sorted(str(key) for key in request_data.keys() if key not in allowed)
     if unknown:
-        raise ShareQueryParamsDenied(f"存在未声明参数: {', '.join(unknown)}")
+        raise ShareQueryParamsDenied(oa_message("messages.undeclared_params", "存在未声明参数: {names}", names=", ".join(unknown)))
 
     safe = {key: value for key, value in request_data.items() if key in allowed}
     if "namespace_id" in safe:
         try:
             namespace_id = int(safe["namespace_id"])
         except (TypeError, ValueError) as exc:
-            raise ShareQueryParamsDenied("namespace_id 无效") from exc
+            raise ShareQueryParamsDenied(oa_message("messages.share_namespace_invalid", "namespace_id 无效")) from exc
         allowed_namespaces = allowed_share_namespace_ids(data_source_id=data_source_id)
         if not allowed_namespaces or namespace_id not in allowed_namespaces:
-            raise ShareQueryParamsDenied("namespace_id 不在允许范围")
+            raise ShareQueryParamsDenied(oa_message("messages.share_namespace_out_of_range", "namespace_id 不在允许范围"))
         safe["namespace_id"] = namespace_id
     return _enforce_share_fixed_params(dashboard=dashboard, data_source_id=data_source_id, safe=safe)

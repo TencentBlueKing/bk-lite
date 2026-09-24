@@ -7,13 +7,14 @@ from rest_framework.viewsets import ViewSet
 from apps.core.decorators.api_permission import HasPermission
 from apps.operation_analysis.services.canvas_draft.errors import DraftAccessDenied, DraftNotFound, DraftValidationFailed
 from apps.operation_analysis.services.canvas_draft.service import checkpoint, get_yaml, list_history, preview_yaml, restore, update_checkpoint_label
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 def _resource_id(pk) -> int:
     try:
         return int(pk)
     except (TypeError, ValueError) as exc:
-        raise ValidationError({"pk": ["资源 ID 必须是整数"]}) from exc
+        raise ValidationError({"pk": [oa_message("messages.draft_pk_integer", "资源 ID 必须是整数")]}) from exc
 
 
 def _payload_object(request) -> dict:
@@ -21,15 +22,15 @@ def _payload_object(request) -> dict:
     if payload is None:
         return {}
     if not isinstance(payload, dict):
-        raise ValidationError({"payload": ["payload 必须是对象"]})
+        raise ValidationError({"payload": [oa_message("messages.draft_payload_object", "payload 必须是对象")]})
     return payload
 
 
 def _translate(exc):
     if isinstance(exc, DraftAccessDenied):
-        raise PermissionDenied("无权读写该画布草稿") from exc
+        raise PermissionDenied(oa_message("messages.draft_access_denied", "无权读写该画布草稿")) from exc
     if isinstance(exc, DraftNotFound):
-        raise NotFound("画布不存在") from exc
+        raise NotFound(oa_message("messages.canvas_not_found", "画布不存在")) from exc
     raise exc
 
 
@@ -56,7 +57,7 @@ class CanvasDraftViewSet(ViewSet):
             return Response({"payload": data["payload"], "yaml": data["yaml"]})
         except DraftValidationFailed as exc:
             return Response(
-                {"detail": "草稿校验失败", "data": {"errors": exc.errors}},
+                {"detail": oa_message("messages.draft_validation_failed", "草稿校验失败"), "data": {"errors": exc.errors}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except (DraftAccessDenied, DraftNotFound) as exc:
@@ -75,7 +76,7 @@ class CanvasDraftViewSet(ViewSet):
             return Response({"id": data["id"], "payload": data["payload"]})
         except DraftValidationFailed as exc:
             return Response(
-                {"detail": "草稿校验失败", "data": {"errors": exc.errors}},
+                {"detail": oa_message("messages.draft_validation_failed", "草稿校验失败"), "data": {"errors": exc.errors}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except (DraftAccessDenied, DraftNotFound) as exc:
@@ -95,9 +96,9 @@ class CanvasDraftViewSet(ViewSet):
         try:
             checkpoint_id = int(checkpoint_id)
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"checkpoint_id": ["必须是整数"]}) from exc
+            raise ValidationError({"checkpoint_id": [oa_message("messages.draft_checkpoint_integer", "必须是整数")]}) from exc
         if "label" not in request.data:
-            raise ValidationError({"label": ["必须提供 label"]})
+            raise ValidationError({"label": [oa_message("messages.draft_label_required", "必须提供 label")]})
         try:
             data = update_checkpoint_label(
                 request,
@@ -109,7 +110,7 @@ class CanvasDraftViewSet(ViewSet):
             return Response(data)
         except DraftValidationFailed as exc:
             return Response(
-                {"detail": "草稿校验失败", "data": {"errors": exc.errors}},
+                {"detail": oa_message("messages.draft_validation_failed", "草稿校验失败"), "data": {"errors": exc.errors}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except (DraftAccessDenied, DraftNotFound) as exc:
@@ -122,7 +123,7 @@ class CanvasDraftViewSet(ViewSet):
         try:
             checkpoint_id = int(checkpoint_id)
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"checkpoint_id": ["必须是整数"]}) from exc
+            raise ValidationError({"checkpoint_id": [oa_message("messages.draft_checkpoint_integer", "必须是整数")]}) from exc
         try:
             data = restore(
                 request,

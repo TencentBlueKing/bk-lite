@@ -491,6 +491,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
 
   const copyComponent = (sectionId: string) => {
     const withCopy = copyReportSection(draftViewSets, sectionId, {
+      t,
       createId: createSectionId,
     });
     if (withCopy === draftViewSets) return;

@@ -44,10 +44,13 @@ const createActionId = () =>
 const getColumnActionKey = (column?: DisplayColumnRow | null) =>
   column?.key || column?.id || '';
 
-const createDefaultAction = (columnKey: string): LocalDashboardAction => ({
+const createDefaultAction = (
+  columnKey: string,
+  text: string,
+): LocalDashboardAction => ({
   id: createActionId(),
   columnKey,
-  text: '查看',
+  text,
   url: '',
   openMode: 'sameTab',
   params: [],
@@ -110,10 +113,10 @@ export const ActionInteractionModal: React.FC<ActionInteractionModalProps> = ({
           ...action,
           id: createActionId(),
         }))
-        : [createDefaultAction(columnActionKey)];
+        : [createDefaultAction(columnActionKey, t('dashboard.actionDefaultText'))];
     setLocalActions(nextActions);
     initialSnapshotRef.current = snapshotActions(nextActions);
-  }, [open, columnActionKey, columnActions]);
+  }, [open, columnActionKey, columnActions, t]);
 
   const handleCancel = () =>
     guardClose(snapshotActions(localActions) !== initialSnapshotRef.current, onCancel);
@@ -178,7 +181,10 @@ export const ActionInteractionModal: React.FC<ActionInteractionModalProps> = ({
 
   const handleAddAction = () => {
     if (!columnActionKey) return;
-    setLocalActions((prev) => [...prev, createDefaultAction(columnActionKey)]);
+    setLocalActions((prev) => [
+      ...prev,
+      createDefaultAction(columnActionKey, t('dashboard.actionDefaultText')),
+    ]);
   };
 
   const handleConfirm = () => {

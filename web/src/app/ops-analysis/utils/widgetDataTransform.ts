@@ -303,6 +303,8 @@ export const formatDataSourceParamValue = (
   return type === 'timeRange' ? timeRangeFormatter(value) : value;
 };
 
+type WidgetMessage = (id: string, defaultMessage?: string) => string;
+
 export const fetchWidgetData = async ({
   config,
   dataSource,
@@ -312,6 +314,7 @@ export const fetchWidgetData = async ({
   filterBindings,
   filterDefinitions,
   throwError = false,
+  t,
 }: {
   config: any;
   dataSource?: any;
@@ -320,7 +323,8 @@ export const fetchWidgetData = async ({
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
-    throwError?: boolean;
+  throwError?: boolean;
+  t?: WidgetMessage;
 }) => {
   if (!config?.dataSource) {
     return null;
@@ -334,6 +338,7 @@ export const fetchWidgetData = async ({
       unifiedFilterValues,
       filterBindings,
       filterDefinitions,
+      t,
     });
 
     const result = await getSourceDataByApiId(config.dataSource, finalRequestParams);
@@ -483,6 +488,7 @@ export const buildWidgetRequestParams = ({
   filterBindings,
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
+  t,
 }: {
   config: any;
   dataSource?: any;
@@ -491,6 +497,7 @@ export const buildWidgetRequestParams = ({
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
+  t?: WidgetMessage;
 }) => {
   const rawParams =
     Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
@@ -512,6 +519,7 @@ export const buildWidgetRequestParams = ({
     filterBindings,
     filterDefinitions,
     resolutionContext,
+    t,
   });
 
   return requestParams;
@@ -525,6 +533,7 @@ export const buildWidgetRequestSignatureParams = ({
   filterBindings,
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
+  t,
 }: {
   config: any;
   dataSource?: any;
@@ -533,6 +542,7 @@ export const buildWidgetRequestSignatureParams = ({
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
+  t?: WidgetMessage;
 }) => {
   const rawParams =
     Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
@@ -555,6 +565,7 @@ export const buildWidgetRequestSignatureParams = ({
     filterDefinitions,
     resolutionContext,
     timeRangeFormatter: formatTimeRangeForSignature,
+    t,
   });
 
   return requestParams;
@@ -569,6 +580,7 @@ export const processDataSourceParams = ({
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
   timeRangeFormatter = formatTimeRange,
+  t,
 }: {
   sourceParams: any;
   definitionParams?: ParamItem[];
@@ -578,6 +590,7 @@ export const processDataSourceParams = ({
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
   timeRangeFormatter?: (timeParams: any) => unknown;
+  t?: WidgetMessage;
 }) => {
 
   if (!sourceParams || !Array.isArray(sourceParams)) {
@@ -813,7 +826,11 @@ export const processDataSourceParams = ({
   });
 
   if (organizationNames.length > 1) {
-    throw new Error('同一请求不能声明多个组织控件参数');
+    throw new Error(
+      t
+        ? t('dashboard.multipleOrgParams', '同一请求不能声明多个组织控件参数')
+        : '同一请求不能声明多个组织控件参数',
+    );
   }
   if (organizationNames.length === 1) {
     processedParams[ORGANIZATION_PARAM_RUNTIME_KEY] = organizationNames[0];

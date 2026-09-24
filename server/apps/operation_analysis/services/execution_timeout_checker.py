@@ -4,18 +4,14 @@ import os
 from dataclasses import dataclass
 from datetime import timedelta
 
-from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-)
-from apps.operation_analysis.services.execution_service import (
-    DashboardReportExecutionService,
-)
-from apps.operation_analysis.services.resource_state import (
-    observe_resource_state,
-)
 from django.db.models import Q
 from django.utils import timezone
+
+from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution
+from apps.operation_analysis.services.execution_service import DashboardReportExecutionService
+from apps.operation_analysis.services.resource_state import observe_resource_state
+from apps.operation_analysis.services.user_messages import oa_message
 
 # 三次 Chromium 渲染每次最多 120 秒；额外一分钟留给 Snapshot、PDF 与投递。
 # 显式环境配置仍可按部署规模覆盖该默认值。
@@ -83,11 +79,7 @@ class ExecutionTimeoutChecker:
         anchor = execution.started_at or execution.created_at
         if anchor is None:
             return False
-        timeout = (
-            claim_timeout_seconds()
-            if execution.attempt_count == 0
-            else execution_timeout_seconds()
-        )
+        timeout = claim_timeout_seconds() if execution.attempt_count == 0 else execution_timeout_seconds()
         budget = timeout + execution_timeout_grace_seconds()
         return anchor <= now - timedelta(seconds=budget)
 
@@ -107,24 +99,14 @@ class ExecutionTimeoutChecker:
                 source="timeout_checker",
             )
             execution.refresh_from_db()
-            return (
-                "succeeded"
-                if execution.status
-                == DashboardReportExecution.Status.SUCCEEDED
-                else "skipped"
-            )
+            return "succeeded" if execution.status == DashboardReportExecution.Status.SUCCEEDED else "skipped"
         if resource.delivery_outcome == "smtp_unknown":
             DashboardReportExecutionService.reconcile_delivery_fact(
                 execution,
                 source="timeout_checker",
             )
             execution.refresh_from_db()
-            return (
-                "unknown"
-                if execution.status
-                == DashboardReportExecution.Status.UNKNOWN
-                else "skipped"
-            )
+            return "unknown" if execution.status == DashboardReportExecution.Status.UNKNOWN else "skipped"
 
         if execution.status != DashboardReportExecution.Status.RUNNING:
             return "skipped"
@@ -134,12 +116,10 @@ class ExecutionTimeoutChecker:
             DashboardReportExecution.Status.FAILED,
             failure_stage="schedule",
             error_code="execution_timeout",
-            error_message="Execution 总超时",
+            error_message=oa_message("messages.execution_timeout", "Execution 总超时"),
         )
         try:
-            from apps.operation_analysis.services.render_token_service import (
-                DashboardReportRenderTokenService,
-            )
+            from apps.operation_analysis.services.render_token_service import DashboardReportRenderTokenService
 
             DashboardReportRenderTokenService.revoke_current(execution)
         except Exception:
@@ -154,12 +134,8 @@ class ExecutionTimeoutChecker:
     def sweep(cls) -> TimeoutSweepStats:
         now = timezone.now()
         grace = execution_timeout_grace_seconds()
-        execution_cutoff = now - timedelta(
-            seconds=execution_timeout_seconds() + grace
-        )
-        claim_cutoff = now - timedelta(
-            seconds=claim_timeout_seconds() + grace
-        )
+        execution_cutoff = now - timedelta(seconds=execution_timeout_seconds() + grace)
+        claim_cutoff = now - timedelta(seconds=claim_timeout_seconds() + grace)
         # running 超时候选 + 投递事实与 status 不一致的修复候选
         candidates = list(
             DashboardReportExecution.objects.filter(
@@ -187,9 +163,7 @@ class ExecutionTimeoutChecker:
                     )
                 )
                 | Q(
-                    delivery_outcome=(
-                        DashboardReportExecution.DeliveryOutcome.DELIVERED
-                    ),
+                    delivery_outcome=(DashboardReportExecution.DeliveryOutcome.DELIVERED),
                     status__in={
                         DashboardReportExecution.Status.RUNNING,
                         DashboardReportExecution.Status.FAILED,
@@ -197,9 +171,7 @@ class ExecutionTimeoutChecker:
                     },
                 )
                 | Q(
-                    delivery_outcome=(
-                        DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN
-                    ),
+                    delivery_outcome=(DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN),
                     status__in={
                         DashboardReportExecution.Status.RUNNING,
                         DashboardReportExecution.Status.FAILED,

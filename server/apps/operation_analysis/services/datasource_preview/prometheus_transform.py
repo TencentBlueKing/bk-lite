@@ -1,5 +1,7 @@
 from typing import Any
 
+from apps.operation_analysis.services.user_messages import oa_message
+
 DEFAULT_MAX_SERIES = 20
 HARD_MAX_SERIES = 50
 
@@ -37,16 +39,21 @@ def _truncate_results(result: list, max_series: int) -> tuple[list, list[str] | 
     total = len(result)
     if total <= clamped:
         return result, None
-    return result[:clamped], [f"结果共 {total} 条序列，已截断为 {clamped} 条"]
+    return result[:clamped], [
+        oa_message(
+            "messages.prometheus_series_truncated",
+            "结果共 {total} 条序列，已截断为 {clamped} 条",
+            total=total,
+            clamped=clamped,
+        )
+    ]
 
 
 def _transform_values(values: list) -> list[dict]:
     return [{"name": ts, "value": v} for ts, v in values]
 
 
-def transform_range_result(
-    data: dict, max_series: int = DEFAULT_MAX_SERIES
-) -> tuple[Any, list[str] | None]:
+def transform_range_result(data: dict, max_series: int = DEFAULT_MAX_SERIES) -> tuple[Any, list[str] | None]:
     result = data.get("result", [])
     if not result:
         return [], None
@@ -64,9 +71,7 @@ def transform_range_result(
     return output, warnings
 
 
-def transform_instant_result(
-    data: dict, max_series: int = DEFAULT_MAX_SERIES
-) -> tuple[Any, list[str] | None]:
+def transform_instant_result(data: dict, max_series: int = DEFAULT_MAX_SERIES) -> tuple[Any, list[str] | None]:
     result = data.get("result", [])
     if not result:
         return [], None

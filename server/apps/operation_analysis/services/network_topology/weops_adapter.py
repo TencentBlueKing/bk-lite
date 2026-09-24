@@ -32,6 +32,7 @@ from typing import Any, Callable
 from urllib.parse import quote, urljoin
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.services.user_messages import oa_message
 
 # --------------------------------------------------------------------------- #
 # Errors                                                                       #
@@ -241,7 +242,11 @@ class WeOpsTopologyAdapter:
         except WeOpsTopologyAdapterError:
             raise
         except Exception as exc:  # pragma: no cover - defensive only
-            raise WeOpsTopologyAdapterError(f"WeOps 请求失败: {exc}", code="weops_unavailable", status_code=502) from exc
+            raise WeOpsTopologyAdapterError(
+                oa_message("messages.weops_request_failed_detail", "WeOps 请求失败: {detail}", detail=exc),
+                code="weops_unavailable",
+                status_code=502,
+            ) from exc
 
     # ------------------------------------------------------------------ #
     # Request plumbing                                                    #
@@ -283,7 +288,7 @@ class WeOpsTopologyAdapter:
                 )
         if last_error is not None:
             raise WeOpsTopologyAdapterError(
-                f"WeOps 请求失败: {last_error}",
+                oa_message("messages.weops_request_failed_detail", "WeOps 请求失败: {detail}", detail=last_error),
                 code="weops_unavailable",
                 status_code=502,
             ) from last_error
@@ -299,7 +304,7 @@ class WeOpsTopologyAdapter:
         # frontend always gets the same user-facing message.
         if status_code in (401, 403):
             raise WeOpsTopologyAdapterError(
-                "WeOps Token 已失效，请更新画布配置",
+                oa_message("messages.weops_token_invalid", "WeOps Token 已失效，请更新画布配置"),
                 code=WEOPS_TOKEN_INVALID,
                 status_code=status_code,
             )
@@ -312,11 +317,16 @@ class WeOpsTopologyAdapter:
             except Exception:
                 text = getattr(response, "text", "")
                 raise WeOpsTopologyAdapterError(
-                    f"WeOps HTTP {status_code}: {text or '请求失败'}",
+                    oa_message(
+                        "messages.weops_http_failed",
+                        "WeOps HTTP {status_code}: {detail}",
+                        status_code=status_code,
+                        detail=text or oa_message("messages.weops_request_failed", "请求失败"),
+                    ),
                     code="weops_request_failed",
                     status_code=status_code,
                 )
-            message = payload.get("message") or payload.get("detail") or "WeOps 返回错误"
+            message = payload.get("message") or payload.get("detail") or oa_message("messages.weops_returned_error", "WeOps 返回错误")
             raise WeOpsTopologyAdapterError(
                 str(message),
                 code="weops_request_failed",
@@ -327,7 +337,7 @@ class WeOpsTopologyAdapter:
             payload = response.json()  # noqa: F841 — read below for envelope checks
         except Exception as exc:
             raise WeOpsTopologyAdapterError(
-                f"WeOps 返回非 JSON 数据: {exc}",
+                oa_message("messages.weops_non_json", "WeOps 返回非 JSON 数据: {detail}", detail=exc),
                 code="weops_unavailable",
                 status_code=502,
             ) from exc
@@ -339,7 +349,7 @@ class WeOpsTopologyAdapter:
         # also surfaced instead of being silently swallowed.
         if isinstance(payload, dict) and payload.get("result") is False:
             raise WeOpsTopologyAdapterError(
-                str(payload.get("message") or "WeOps 返回 result=false"),
+                str(payload.get("message") or oa_message("messages.weops_result_false", "WeOps 返回 result=false")),
                 code="weops_request_failed",
                 status_code=status_code,
             )
@@ -353,7 +363,7 @@ class WeOpsTopologyAdapter:
             return WeOpsTopologyAdapter._unwrap_envelope(payload)
         except _EnvelopeBusinessError as exc:
             raise WeOpsTopologyAdapterError(
-                str(exc) or "WeOps 返回 result=false",
+                str(exc) or oa_message("messages.weops_result_false", "WeOps 返回 result=false"),
                 code="weops_request_failed",
                 status_code=status_code,
             ) from exc
@@ -371,7 +381,7 @@ class WeOpsTopologyAdapter:
             return payload
         result = payload.get("result")
         if result is False:
-            raise _EnvelopeBusinessError(str(payload.get("message") or "WeOps 返回 result=false"))
+            raise _EnvelopeBusinessError(str(payload.get("message") or oa_message("messages.weops_result_false", "WeOps 返回 result=false")))
         if result is True and "data" in payload:
             return WeOpsTopologyAdapter._unwrap_envelope(payload["data"])
         return payload

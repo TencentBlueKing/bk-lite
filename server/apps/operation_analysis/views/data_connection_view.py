@@ -20,6 +20,7 @@ from apps.operation_analysis.services.data_connection.config_crypto import (
     merge_connection_config,
 )
 from apps.operation_analysis.services.datasource_preview import ConnectorError, get_preview_executor
+from apps.operation_analysis.services.user_messages import oa_message
 from config.drf.pagination import CustomPageNumberPagination
 
 REFERENCE_SUMMARY_LIMIT = 50
@@ -72,7 +73,7 @@ class DataConnectionViewSet(AuthViewSet):
         instance = self.get_object()
         current_team = self._parse_current_team_cookie(request)
         if current_team not in (instance.groups or []):
-            return Response({"detail": "无权删除当前数据连接"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": oa_message("messages.connection_delete_denied", "无权删除当前数据连接")}, status=status.HTTP_403_FORBIDDEN)
         try:
             return super().destroy(request, *args, **kwargs)
         except ProtectedError:
@@ -80,7 +81,7 @@ class DataConnectionViewSet(AuthViewSet):
             refs = list(visible_refs.values("id", "name")[:REFERENCE_SUMMARY_LIMIT])
             return Response(
                 {
-                    "detail": "数据连接仍被数据源引用，无法删除",
+                    "detail": oa_message("messages.connection_in_use", "数据连接仍被数据源引用，无法删除"),
                     "data": {"references": refs, "reference_count": visible_refs.count()},
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -92,7 +93,7 @@ class DataConnectionViewSet(AuthViewSet):
         instance = self.get_object()
         current_team = self._parse_current_team_cookie(request)
         if current_team not in (instance.groups or []):
-            return Response({"detail": "无权查看当前数据连接"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": oa_message("messages.connection_view_denied", "无权查看当前数据连接")}, status=status.HTTP_403_FORBIDDEN)
         queryset = visible_connection_references(instance, current_team)[:REFERENCE_SUMMARY_LIMIT]
         return Response(DataConnectionReferenceSerializer(queryset, many=True).data)
 
@@ -122,10 +123,10 @@ class DataConnectionViewSet(AuthViewSet):
                 exc_info=True,
             )
             return Response(
-                {"result": False, "message": "测试连接失败"},
+                {"result": False, "message": oa_message("messages.connection_test_failed", "测试连接失败")},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
-        return Response({"result": True, "message": "连接成功"})
+        return Response({"result": True, "message": oa_message("messages.connection_ok", "连接成功")})
 
     @action(detail=False, methods=["post"], url_path="test_connection")
     @HasPermission("data_source-Edit")
@@ -143,13 +144,13 @@ class DataConnectionViewSet(AuthViewSet):
         instance = self.get_object()
         current_team = self._parse_current_team_cookie(request)
         if current_team not in (instance.groups or []):
-            return Response({"detail": "无权测试当前数据连接"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": oa_message("messages.connection_test_denied", "无权测试当前数据连接")}, status=status.HTTP_403_FORBIDDEN)
         if not instance.is_active:
-            return Response({"detail": "数据连接已停用"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": oa_message("messages.connection_disabled", "数据连接已停用")}, status=status.HTTP_400_BAD_REQUEST)
 
         requested_type = request.data.get("connection_type")
         if requested_type not in (None, instance.connection_type):
-            return Response({"detail": "连接类型创建后不可修改"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": oa_message("messages.connection_type_immutable", "连接类型创建后不可修改")}, status=status.HTTP_400_BAD_REQUEST)
 
         incoming_config = request.data.get("config")
         if incoming_config is None:
@@ -179,17 +180,17 @@ def extract_inline_connection(datasource, *, name=None, description=None, create
     name / description 由调用方传入；connection_config 可传入表单覆盖值（与库内敏感字段 merge）。
     """
     if datasource.connection_id:
-        raise ValueError("数据源已引用公共连接")
+        raise ValueError(oa_message("messages.datasource_already_linked", "数据源已引用公共连接"))
     if datasource.source_type not in {
         DataSourceAPIModel.SOURCE_TYPE_MYSQL,
         DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
         DataSourceAPIModel.SOURCE_TYPE_REST_API,
     }:
-        raise ValueError("仅 MySQL/PostgreSQL/REST 支持提取为数据连接")
+        raise ValueError(oa_message("messages.extract_connection_unsupported", "仅 MySQL/PostgreSQL/REST 支持提取为数据连接"))
 
     connection_name = (name or "").strip()
     if not connection_name:
-        raise ValueError("连接名称不能为空")
+        raise ValueError(oa_message("messages.connection_name_required", "连接名称不能为空"))
     connection_description = (description or "").strip() if isinstance(description, str) else ""
 
     if isinstance(connection_config, dict):

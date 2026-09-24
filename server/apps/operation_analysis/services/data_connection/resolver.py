@@ -1,9 +1,10 @@
-from urllib.parse import urljoin, urlparse
 from posixpath import normpath
+from urllib.parse import urljoin, urlparse
 
 from apps.operation_analysis.models.datasource_models import DataConnection, DataSourceAPIModel
 from apps.operation_analysis.services.data_connection.config_crypto import decrypt_connection_config
 from apps.operation_analysis.services.data_connection.groups import find_groups_outside_connection, is_groups_subset
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class ConnectionResolveError(Exception):
@@ -42,7 +43,7 @@ def _join_base_url(base_url, path):
     joined_host = urlparse(joined).netloc
     if base_host and joined_host and base_host != joined_host:
         raise ConnectionResolveError(
-            "REST 相对路径不得改变目标主机",
+            oa_message("messages.connection_rest_host_changed", "REST 相对路径不得改变目标主机"),
             code="rest_path_invalid",
             status_code=400,
         )
@@ -54,21 +55,21 @@ class ConnectionResolver:
 
     def resolve(self, datasource, *, current_team=None):
         if not isinstance(datasource, DataSourceAPIModel):
-            raise ConnectionResolveError("数据源无效", code="datasource_invalid", status_code=400)
+            raise ConnectionResolveError(oa_message("messages.connection_datasource_invalid", "数据源无效"), code="datasource_invalid", status_code=400)
 
         if not datasource.connection_id:
             return dict(datasource.connection_config or {})
 
         connection = datasource.connection
         if connection is None:
-            raise ConnectionResolveError("数据连接不存在", code="connection_missing", status_code=400)
+            raise ConnectionResolveError(oa_message("messages.connection_missing", "数据连接不存在"), code="connection_missing", status_code=400)
         if not connection.is_active:
-            raise ConnectionResolveError("数据连接已停用，请启用或更换连接", code="connection_inactive", status_code=400)
+            raise ConnectionResolveError(oa_message("messages.connection_inactive", "数据连接已停用，请启用或更换连接"), code="connection_inactive", status_code=400)
 
         if not is_groups_subset(datasource.groups, connection.groups):
             outside = find_groups_outside_connection(datasource.groups, connection.groups)
             raise ConnectionResolveError(
-                f"数据源组织超出连接授权范围: {outside}",
+                oa_message("messages.connection_groups_mismatch", "数据源组织超出连接授权范围: {outside}", outside=outside),
                 code="connection_groups_mismatch",
                 status_code=403,
             )
@@ -89,7 +90,9 @@ class ConnectionResolver:
                 except (TypeError, ValueError):
                     pass
             if not team_values.intersection(comparable):
-                raise ConnectionResolveError("无权使用当前数据连接", code="connection_org_denied", status_code=403)
+                raise ConnectionResolveError(
+                    oa_message("messages.connection_org_denied", "无权使用当前数据连接"), code="connection_org_denied", status_code=403
+                )
 
         decrypted = decrypt_connection_config(connection.config or {})
         overrides = datasource.connection_overrides if isinstance(datasource.connection_overrides, dict) else {}
@@ -112,7 +115,7 @@ class ConnectionResolver:
                 path = (datasource.connection_config or {}).get("path") or ""
             if not _is_safe_relative_path(path):
                 raise ConnectionResolveError(
-                    "REST 相对路径不允许使用绝对或跨源 URL",
+                    oa_message("messages.connection_rest_path_absolute", "REST 相对路径不允许使用绝对或跨源 URL"),
                     code="rest_path_invalid",
                     status_code=400,
                 )
@@ -127,7 +130,9 @@ class ConnectionResolver:
                 "headers": decrypted.get("headers") if isinstance(decrypted.get("headers"), dict) else {},
             }
 
-        raise ConnectionResolveError("连接类型不支持", code="connection_type_unsupported", status_code=400)
+        raise ConnectionResolveError(
+            oa_message("messages.connection_type_unsupported", "连接类型不支持"), code="connection_type_unsupported", status_code=400
+        )
 
 
 def resolve_datasource_connection(datasource, *, current_team=None):

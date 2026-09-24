@@ -542,7 +542,12 @@ const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeDat
 
   if (shouldSetDefaultText) {
     const currentText = node.getAttrByPath('label/text') as string;
-    if (!currentText || currentText === 'loading' || currentText === '无数据') {
+    if (
+      !currentText
+      || currentText === 'loading'
+      || currentText === '无数据'
+      || currentText === 'No data'
+    ) {
       displayText = hasName ? nodeConfig.name || '--' : '--';
     } else {
       displayText = currentText;

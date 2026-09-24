@@ -8,22 +8,15 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.open_base import login_exempt
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution
 from apps.operation_analysis.serializers.execution_serializers import (
     DashboardReportExecutionSerializer,
     DashboardReportExecutionSnapshotSerializer,
     DashboardReportRenderSnapshotSerializer,
 )
-from apps.operation_analysis.services.render_token_service import (
-    DashboardReportRenderTokenError,
-    DashboardReportRenderTokenService,
-)
-from apps.operation_analysis.services.render_scope_service import (
-    DashboardReportRenderScopeError,
-    DashboardReportRenderScopeService,
-)
+from apps.operation_analysis.services.render_scope_service import DashboardReportRenderScopeError, DashboardReportRenderScopeService
+from apps.operation_analysis.services.render_token_service import DashboardReportRenderTokenError, DashboardReportRenderTokenService
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class DashboardReportRenderPrincipalAuthentication(BaseAuthentication):
@@ -31,9 +24,7 @@ class DashboardReportRenderPrincipalAuthentication(BaseAuthentication):
 
     def authenticate(self, request):
         raw_request = request._request
-        claims = getattr(
-            raw_request, "dashboard_report_render_scope", None
-        )
+        claims = getattr(raw_request, "dashboard_report_render_scope", None)
         user = getattr(raw_request, "user", None)
         if claims is None or user is None or not user.is_authenticated:
             return None
@@ -99,27 +90,18 @@ class DashboardReportExecutionViewSet(
     def render_input(self, request, *args, **kwargs):
         execution = self.get_object()
         token_header = request.META.get("HTTP_AUTHORIZATION", "")
-        raw_token = (
-            token_header[7:].strip()
-            if token_header.startswith("Bearer ")
-            else ""
-        )
+        raw_token = token_header[7:].strip() if token_header.startswith("Bearer ") else ""
         try:
             DashboardReportRenderScopeService.authorize_request(
                 request,
                 raw_token,
             )
         except DashboardReportRenderScopeError as exc:
-            raise PermissionDenied("仅 Render Session 可读取渲染输入") from exc
-        if (
-            execution.creator != request.user.username
-            or execution.creator_domain != request.user.domain
-        ):
-            raise PermissionDenied("只能读取自己的报告渲染输入")
+            raise PermissionDenied(oa_message("messages.render_session_only", "仅 Render Session 可读取渲染输入")) from exc
+        if execution.creator != request.user.username or execution.creator_domain != request.user.domain:
+            raise PermissionDenied(oa_message("messages.render_input_owner_only", "只能读取自己的报告渲染输入"))
         if execution.status != DashboardReportExecution.Status.RUNNING:
-            raise ValidationError(
-                {"status": "仅 running Execution 可读取渲染输入"}
-            )
+            raise ValidationError({"status": oa_message("messages.render_input_running_only", "仅 running Execution 可读取渲染输入")})
         try:
             input_snapshot = execution.snapshot
             render_snapshot = execution.render_snapshot
@@ -127,23 +109,13 @@ class DashboardReportExecutionViewSet(
             DashboardReportExecution.snapshot.RelatedObjectDoesNotExist,
             DashboardReportExecution.render_snapshot.RelatedObjectDoesNotExist,
         ) as exc:
-            raise ValidationError(
-                {"snapshot": "Execution 渲染快照不完整"}
-            ) from exc
+            raise ValidationError({"snapshot": oa_message("messages.render_snapshot_incomplete", "Execution 渲染快照不完整")}) from exc
 
         return Response(
             {
                 "execution_id": execution.id,
-                "input_snapshot": (
-                    DashboardReportExecutionSnapshotSerializer(
-                        input_snapshot
-                    ).data
-                ),
-                "render_snapshot": (
-                    DashboardReportRenderSnapshotSerializer(
-                        render_snapshot
-                    ).data
-                ),
+                "input_snapshot": (DashboardReportExecutionSnapshotSerializer(input_snapshot).data),
+                "render_snapshot": (DashboardReportRenderSnapshotSerializer(render_snapshot).data),
             }
         )
 
@@ -156,7 +128,7 @@ class DashboardReportExecutionViewSet(
         plaintext = request.data.get("token")
         if not isinstance(plaintext, str) or not plaintext:
             return Response(
-                {"detail": "Render Token 无效或已失效"},
+                {"detail": oa_message("messages.render_token_invalid", "Render Token 无效或已失效")},
                 status=status.HTTP_403_FORBIDDEN,
             )
         try:
@@ -166,7 +138,7 @@ class DashboardReportExecutionViewSet(
             )
         except (DashboardReportRenderTokenError, ValueError):
             return Response(
-                {"detail": "Render Token 无效或已失效"},
+                {"detail": oa_message("messages.render_token_invalid", "Render Token 无效或已失效")},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return Response({"session_user": session_user})

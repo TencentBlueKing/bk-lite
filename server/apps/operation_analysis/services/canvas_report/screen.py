@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from apps.operation_analysis.models.models import Screen
+from apps.operation_analysis.services.canvas_report.base import canvas_type_label
 from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_SCREEN
 from apps.operation_analysis.services.named_option_datasources import expand_widget_manifest_with_named_option_datasources
 from apps.operation_analysis.services.network_status_topology_overlay import expand_widget_manifest_with_topology_overlay
@@ -78,7 +79,7 @@ class ScreenCanvasReportAdapter:
         return "screen"
 
     def resource_display_label(self) -> str:
-        return "大屏"
+        return canvas_type_label(self.resource_type) or "大屏"
 
     def can_view_resource(
         self,

@@ -230,7 +230,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
             style={{ width: '240px' }}
             options={[
               { value: '', label: t('topology.nodeConfig.customSuffix') },
-              ...getUnitCategories().map((cat) => ({
+              ...getUnitCategories(t).map((cat) => ({
                 label: cat.label,
                 options: cat.units.map((u) => ({
                   value: u.id,

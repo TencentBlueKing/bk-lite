@@ -303,6 +303,7 @@ export function useTableConfig({
             referenceNow: Date.now(),
             timezone: getDateRangeTimezone(),
           },
+          t,
         }),
       );
 
@@ -328,6 +329,7 @@ export function useTableConfig({
       filterBindings,
       filterDefinitions,
       builtinNamespaceId,
+      t,
     ],
   );
 

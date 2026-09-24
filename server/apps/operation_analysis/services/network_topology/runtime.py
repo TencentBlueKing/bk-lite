@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from django.utils import timezone
 
 from apps.operation_analysis.models.models import NODE_OUTER_COLOR_UNKNOWN  # noqa: F401 — kept for downstream re-use
+from apps.operation_analysis.services.user_messages import oa_message
 
 if TYPE_CHECKING:
     # Imported only for type hints; the runtime value is passed in via
@@ -489,7 +490,7 @@ class NetworkTopologyRuntimeService:
         metric_by_request_id: dict[str, dict[str, Any]],
         error: Exception,
     ) -> list[dict[str, Any]]:
-        message = str(error) or "WeOps 指标查询失败"
+        message = str(error) or oa_message("messages.weops_metric_query_failed", "WeOps 指标查询失败")
         return [
             {
                 "request_id": request_id,
@@ -627,7 +628,7 @@ class NetworkTopologyRuntimeService:
                 errors.append(
                     {
                         "code": metric.get("error_code") or "unknown",
-                        "message": metric.get("error_message") or "未知错误",
+                        "message": metric.get("error_message") or oa_message("messages.weops_unknown_error", "未知错误"),
                         "scope": "metric",
                         "metric_field": metric.get("metric_field") or "",
                     }

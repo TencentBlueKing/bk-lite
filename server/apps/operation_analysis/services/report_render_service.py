@@ -8,6 +8,10 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
@@ -15,17 +19,9 @@ from apps.operation_analysis.models.subscription_models import (
     DashboardReportPdfArtifact,
     DashboardReportRenderSnapshot,
 )
-from apps.operation_analysis.services.dashboard_report_renderer import (
-    DashboardChromiumRenderer,
-    DashboardRenderError,
-    DashboardRenderRequest,
-)
-from apps.operation_analysis.services.render_token_service import (
-    DashboardReportRenderTokenService,
-)
-from django.conf import settings
-from django.db import transaction
-from django.utils import timezone
+from apps.operation_analysis.services.dashboard_report_renderer import DashboardChromiumRenderer, DashboardRenderError, DashboardRenderRequest
+from apps.operation_analysis.services.render_token_service import DashboardReportRenderTokenService
+from apps.operation_analysis.services.user_messages import oa_message, override_for_creator
 
 
 class DashboardReportRenderService:
@@ -35,21 +31,14 @@ class DashboardReportRenderService:
         if configured:
             return Path(configured).expanduser().resolve()
         if not settings.DEBUG:
-            raise DashboardRenderError(
-                "生产环境必须配置共享 DASHBOARD_REPORT_ARTIFACT_ROOT"
-            )
-        return (
-            Path(tempfile.gettempdir())
-            / "bk-lite-dashboard-report-artifacts"
-        ).resolve()
+            raise DashboardRenderError(oa_message("messages.artifact_root_required", "生产环境必须配置共享 DASHBOARD_REPORT_ARTIFACT_ROOT"))
+        return (Path(tempfile.gettempdir()) / "bk-lite-dashboard-report-artifacts").resolve()
 
     @staticmethod
     def _web_base_url() -> str:
         value = os.getenv("DASHBOARD_REPORT_WEB_BASE_URL", "").rstrip("/")
         if not value:
-            raise DashboardRenderError(
-                "DASHBOARD_REPORT_WEB_BASE_URL 未配置"
-            )
+            raise DashboardRenderError(oa_message("messages.web_base_url_missing", "DASHBOARD_REPORT_WEB_BASE_URL 未配置"))
         return value
 
     @staticmethod
@@ -61,9 +50,9 @@ class DashboardReportRenderService:
         try:
             value = int(raw_value)
         except ValueError as exc:
-            raise DashboardRenderError("PDF 临时保留期配置无效") from exc
+            raise DashboardRenderError(oa_message("messages.pdf_retention_invalid", "PDF 临时保留期配置无效")) from exc
         if value <= 0:
-            raise DashboardRenderError("PDF 临时保留期配置无效")
+            raise DashboardRenderError(oa_message("messages.pdf_retention_invalid", "PDF 临时保留期配置无效"))
         return value
 
     @staticmethod
@@ -75,10 +64,8 @@ class DashboardReportRenderService:
         safe_name = re.sub(r'[\\/:*?"<>|]+', "_", dashboard_name).strip()
         base = safe_name or "dashboard"
         if (
-            execution.trigger_type
-            == DashboardReportExecution.TriggerType.SCHEDULED
-            or snapshot.trigger_type
-            == DashboardReportExecution.TriggerType.SCHEDULED
+            execution.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED
+            or snapshot.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED
         ):
             local = (snapshot.scheduled_local_time or "").strip()
             if local:
@@ -90,7 +77,9 @@ class DashboardReportRenderService:
             else:
                 time_part = "scheduled"
             return f"{base}_{time_part}.pdf"
-        return f"{base}_手动测试.pdf"
+        with override_for_creator(execution.creator, execution.creator_domain):
+            manual = oa_message("messages.pdf_filename_manual", "手动测试")
+        return f"{base}_{manual}.pdf"
 
     @classmethod
     def resolve_artifact_path(
@@ -98,11 +87,11 @@ class DashboardReportRenderService:
         artifact: DashboardReportPdfArtifact,
     ) -> Path:
         if artifact.expires_at <= timezone.now():
-            raise DashboardRenderError("PDF 临时产物已过期")
+            raise DashboardRenderError(oa_message("messages.pdf_artifact_expired", "PDF 临时产物已过期"))
         root = cls._artifact_root()
         path = (root / artifact.storage_reference).resolve()
         if root not in path.parents:
-            raise DashboardRenderError("PDF 临时存储引用无效")
+            raise DashboardRenderError(oa_message("messages.pdf_storage_invalid", "PDF 临时存储引用无效"))
         return path
 
     @staticmethod
@@ -124,12 +113,9 @@ class DashboardReportRenderService:
         if existing is not None:
             return existing
 
-        if (
-            snapshot.execution_id != execution.id
-            or render_snapshot.execution_id != execution.id
-        ):
+        if snapshot.execution_id != execution.id or render_snapshot.execution_id != execution.id:
             raise DashboardRenderError(
-                "Render Snapshot 与 Execution 不匹配",
+                oa_message("messages.render_snapshot_mismatch", "Render Snapshot 与 Execution 不匹配"),
                 error_code="render_snapshot_corrupt",
             )
 
@@ -138,13 +124,8 @@ class DashboardReportRenderService:
         storage_reference = f"execution-{execution.id}/report.pdf"
         final_path = artifact_root / storage_reference
         final_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = artifact_root / (
-            f".execution-{execution.id}-{uuid4().hex}.tmp.pdf"
-        )
-        render_url = (
-            f"{cls._web_base_url()}/ops-analysis/render/execution/"
-            f"{execution.id}"
-        )
+        temporary_path = artifact_root / (f".execution-{execution.id}-{uuid4().hex}.tmp.pdf")
+        render_url = f"{cls._web_base_url()}/ops-analysis/render/execution/" f"{execution.id}"
         viewport = {}
         if isinstance(render_snapshot.view_sets, dict):
             viewport = render_snapshot.view_sets.get("viewport") or {}
@@ -156,21 +137,9 @@ class DashboardReportRenderService:
                 execution,
                 attempt_no=execution.attempt_count or 1,
             ).plaintext,
-            resource_type=(
-                execution.resource_type
-                or render_snapshot.resource_type
-                or "dashboard"
-            ),
-            viewport_width=(
-                int(viewport["width"])
-                if viewport.get("width") is not None
-                else None
-            ),
-            viewport_height=(
-                int(viewport["height"])
-                if viewport.get("height") is not None
-                else None
-            ),
+            resource_type=(execution.resource_type or render_snapshot.resource_type or "dashboard"),
+            viewport_width=(int(viewport["width"]) if viewport.get("width") is not None else None),
+            viewport_height=(int(viewport["height"]) if viewport.get("height") is not None else None),
         )
 
         try:
@@ -189,14 +158,11 @@ class DashboardReportRenderService:
                     ),
                     size_bytes=size_bytes,
                     sha256=sha256,
-                    expires_at=timezone.now()
-                    + timedelta(seconds=cls._retention_seconds()),
+                    expires_at=timezone.now() + timedelta(seconds=cls._retention_seconds()),
                 )
         except Exception:
             temporary_path.unlink(missing_ok=True)
-            if not DashboardReportPdfArtifact.objects.filter(
-                execution=execution
-            ).exists():
+            if not DashboardReportPdfArtifact.objects.filter(execution=execution).exists():
                 final_path.unlink(missing_ok=True)
             raise
 

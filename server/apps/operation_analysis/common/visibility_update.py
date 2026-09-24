@@ -2,11 +2,13 @@ from django.db import transaction
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from apps.operation_analysis.services.user_messages import oa_message
+
 
 def _validate_groups_payload(data):
     groups = data.get("groups")
     if not isinstance(groups, list) or any(type(group_id) is not int or group_id <= 0 for group_id in groups):
-        raise ValidationError({"groups": ["必须是正整数 ID 数组"]})
+        raise ValidationError({"groups": [oa_message("messages.groups_positive_ids", "必须是正整数 ID 数组")]})
     return {"groups": groups}
 
 
