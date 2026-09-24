@@ -70,7 +70,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
             } catch (error) {
                 console.error('权限请求失败:', error);
                 Toast.show({
-                    content: '无法获取麦克风权限',
+                    content: t('chat.microphonePermissionDenied'),
                     icon: 'fail',
                     duration: 2000
                 });
@@ -134,7 +134,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
                 setRecordingCancelled(false);
             } else {
                 if (recordingDuration < 500) {
-                    Toast.show({ content: '说话时间太短', icon: 'fail' });
+                    Toast.show({ content: t('chat.speechTooShort'), icon: 'fail' });
                 } else {
                     // 检查 AI 是否正在运行
                     if (isAIRunning) {
@@ -152,7 +152,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
                             onVoiceSend(recognizedText.trim());
                             setRecognizedText('');
                         } else {
-                            Toast.show({ content: '未识别到内容,请重试', icon: 'fail' });
+                            Toast.show({ content: t('chat.speechNotRecognized'), icon: 'fail' });
                         }
                     }, 500);
                 }

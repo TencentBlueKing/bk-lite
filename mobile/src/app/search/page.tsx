@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Avatar, ErrorBlock, InfiniteScroll, List, SpinLoading } from 'antd-mobile';
+import { ErrorBlock, InfiniteScroll, List, SpinLoading } from 'antd-mobile';
 import { LeftOutline, FrownOutline, MessageOutline, SearchOutline } from 'antd-mobile-icons';
-import { mockChatMessages, ChatMessageRecord } from '@/constants/mockData';
 import Image from 'next/image';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -15,7 +14,6 @@ import {
 } from '@/api/bot';
 import { SessionItem } from '@/types/conversation';
 import { getAvatar } from '@/utils/avatar';
-import { withBasePath } from '@/utils/basePath';
 import { getAppTagColor, getAppTagLabel } from '@/constants/workbenchTags';
 import { buildConversationHref } from '@/utils/conversationRoute';
 import MobileSafeHeader from '@/components/mobile-safe-header';
@@ -27,29 +25,18 @@ import {
     MOBILE_SESSION_PAGE_SIZE,
     shouldShowSessionPagination,
 } from '@/utils/sessionPagination';
-import { useLocale } from '@/context/locale';
-import { useAuth } from '@/context/auth';
-import { formatAccountSearchTime } from '@/platform/preferences/dateTime';
 
-type SearchType = 'ConversationList' | 'WorkbenchPage' | 'ChatHistory';
+type SearchType = 'ConversationList' | 'WorkbenchPage';
 
 export default function SearchPage() {
     const { t } = useTranslation();
-    const { locale } = useLocale();
-    const { userInfo } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const searchType = (searchParams?.get('type') || 'ConversationList') as SearchType;
-    const botId = searchParams?.get('bot_id') || '';
-    const nodeId = searchParams?.get('node_id');
     const fallbackHref = useMemo(() => {
         if (searchType === 'WorkbenchPage') return '/workbench';
-        if (searchType !== 'ChatHistory' || !botId) return '/conversations';
-
-        const params = new URLSearchParams({ bot_id: botId });
-        if (nodeId) params.set('node_id', nodeId);
-        return `/workbench/detail?${params.toString()}`;
-    }, [botId, nodeId, searchType]);
+        return '/conversations';
+    }, [searchType]);
     const handleBack = useMobileBack({ fallbackHref });
 
     const [searchValue, setSearchValue] = useState('');
@@ -203,61 +190,13 @@ export default function SearchPage() {
                 (session) =>
                     (session.title || t('conversations.untitled')).toLowerCase().includes(needle)
             );
-        } else if (searchType === 'ChatHistory') {
-            // 搜索聊天记录
-            const filtered = mockChatMessages.filter((message) => message.chatId === botId)?.filter(
-                (message) =>
-                    message.content.toLowerCase().includes(needle)
-            );
-            // 按时间倒序排序（最新的在前面）
-            return filtered.sort((a, b) => b.timestamp - a.timestamp);
         }
 
         return [];
-    }, [keyword, searchType, botId, conversationSessions, t]);
+    }, [keyword, searchType, conversationSessions, t]);
 
     // 获取搜索结果
     const searchResults = searchType === 'WorkbenchPage' ? workbenchResults : getOtherSearchResults();
-
-    const renderChatMessageItem = (messageItem: ChatMessageRecord) => {
-        return (
-            <List.Item
-                key={messageItem.messageId}
-                arrowIcon={false}
-                prefix={
-                    <Avatar
-                        src={withBasePath(messageItem.chatAvatar)}
-                        style={{ '--size': '48px' }}
-                        className="ml-1 mr-1"
-                    />
-                }
-                description={
-                    <div className="mt-1">
-                        <span className="text-sm text-[var(--color-text-3)] line-clamp-1">
-                            {messageItem.content}
-                        </span>
-                    </div>
-                }
-                extra={
-                    <div className="flex flex-col items-end space-y-1">
-                        <span className="text-sm text-[var(--color-text-4)]">
-                            {formatMessageTime(messageItem.timestamp)}
-                        </span>
-                    </div>
-                }
-                onClick={nodeId ? () => router.push(buildConversationHref({
-                    botId: messageItem.chatId,
-                    nodeId,
-                })) : undefined}
-            >
-                <div className="flex items-center justify-between">
-                    <span className="text-base font-medium text-[var(--color-text-1)]">
-                        {messageItem.chatName}
-                    </span>
-                </div>
-            </List.Item>
-        );
-    };
 
     const renderConversationItem = (session: SessionItem) => (
         <List.Item
@@ -344,24 +283,12 @@ export default function SearchPage() {
         </button>
     );
 
-    // 格式化时间戳
-    const formatMessageTime = (timestamp: number) => {
-        return formatAccountSearchTime(
-            timestamp,
-            { locale, timezone: userInfo?.timezone || 'Asia/Shanghai' },
-            t('search.yesterday'),
-        );
-    };
-
-    // 获取占位符文本
     const getPlaceholder = () => {
         switch (searchType) {
             case 'ConversationList':
                 return t('search.searchConversation');
             case 'WorkbenchPage':
                 return t('search.searchApp');
-            case 'ChatHistory':
-                return t('search.searchChatHistory');
             default:
                 return t('search.enterKeyword');
         }
@@ -461,20 +388,6 @@ export default function SearchPage() {
                                         hasMore={hasMoreConversationSessions}
                                     />
                                 )}
-                            </List>
-                        ) : searchType === 'ChatHistory' ? (
-                            <List>
-                                <style
-                                    dangerouslySetInnerHTML={{
-                                        __html: `
-                                            .adm-list-item-content-extra {
-                                            position: absolute;
-                                            right: 5px;
-                                        }
-                                        `,
-                                    }}
-                                />
-                                {searchResults.map((item) => renderChatMessageItem(item as ChatMessageRecord))}
                             </List>
                         ) : (
                             searchResults.map((item) => renderWorkbenchItem(item as ChatApplicationItem))

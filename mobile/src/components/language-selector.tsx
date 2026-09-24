@@ -10,18 +10,18 @@ import { LanguageOption, LanguageSelectorProps } from '@/types/common';
 import { updateUserInfo as updateUserInfoApi } from '@/api/user';
 import styles from './language-selector.module.css';
 
-const languages: LanguageOption[] = [
+const languages = [
   {
     key: 'zh-Hans',
-    label: '简体中文',
+    labelKey: 'language.chinese',
     nativeLabel: '简体中文',
   },
   {
     key: 'en',
-    label: 'English',
+    labelKey: 'language.english',
     nativeLabel: 'English',
   },
-];
+] as const;
 
 export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
   const { t } = useTranslation();
@@ -30,8 +30,14 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
   const [visible, setVisible] = useState(false);
   const [updatingKey, setUpdatingKey] = useState<string | null>(null);
 
+  const localizedLanguages: LanguageOption[] = languages.map((language) => ({
+    key: language.key,
+    label: t(language.labelKey),
+    nativeLabel: language.nativeLabel,
+  }));
+
   const currentLanguage =
-    languages.find((lang) => lang.key === locale) || languages[0];
+    localizedLanguages.find((lang) => lang.key === locale) || localizedLanguages[0];
 
   const handleLanguageChange = async (language: LanguageOption) => {
     if (language.key === locale) return;
@@ -59,7 +65,7 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
       setVisible(false);
 
       Toast.show({
-        content: `${t('common.switchedToLanguage')}${language.label}`,
+        content: t('common.switchedToLanguage', undefined, { language: language.label }),
         icon: 'success',
         position: 'center',
       });
@@ -75,7 +81,7 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
     }
   };
 
-  const actions = languages.map((language) => ({
+  const actions = localizedLanguages.map((language) => ({
     key: language.key,
     text: (
       <div className="flex items-center justify-between w-full px-4 py-1">

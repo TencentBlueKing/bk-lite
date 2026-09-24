@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Image, Button } from 'antd-mobile';
+import { useTranslation } from '@/utils/i18n';
 
 // 卡片内容类型定义
 export type CardContentItem =
@@ -17,6 +18,7 @@ export interface InformationCardProps {
 }
 
 const InformationCardComponent: React.FC<InformationCardProps> = ({ content, onButtonClick }) => {
+    const { t } = useTranslation();
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const renderContentItem = (item: CardContentItem, index: number) => {
         switch (item.type) {
@@ -50,7 +52,7 @@ const InformationCardComponent: React.FC<InformationCardProps> = ({ content, onB
                     <div key={index} className="mb-3">
                         <Image
                             src={item.src}
-                            alt={item.alt || '图片'}
+                            alt={item.alt || t('chat.image')}
                             fit="contain"
                             style={{ maxWidth: '100%', borderRadius: '8px' }}
                         />
@@ -64,7 +66,7 @@ const InformationCardComponent: React.FC<InformationCardProps> = ({ content, onB
                             <Image
                                 key={idx}
                                 src={img.src}
-                                alt={img.alt || `图片${idx + 1}`}
+                                alt={img.alt || t('chat.imageAlt', undefined, { index: idx + 1 })}
                                 fit="cover"
                                 style={{ width: '100%', borderRadius: '8px', aspectRatio: '1' }}
                             />
@@ -96,7 +98,7 @@ const InformationCardComponent: React.FC<InformationCardProps> = ({ content, onB
                                     '--adm-font-size-9': '15px'
                                 } as React.CSSProperties}
                         >
-                            {isSubmitting ? '已提交' : item.text}
+                            {isSubmitting ? t('chat.formSubmitted') : item.text}
                         </Button>
                     </div>
                 );
