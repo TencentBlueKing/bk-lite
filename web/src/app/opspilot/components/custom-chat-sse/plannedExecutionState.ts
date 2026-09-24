@@ -3,7 +3,7 @@
  * 将工具调用挂到当前执行步骤，供对话 UI 按方案 A（步骤嵌套工具组）渲染。
  */
 
-export type PlannedStepStatus = 'running' | 'done' | 'failed';
+export type PlannedStepStatus = 'running' | 'done' | 'failed' | 'skipped';
 
 export interface PlannedExecutionStepEvent {
   phase: 'start' | 'end' | string;
@@ -11,8 +11,11 @@ export interface PlannedExecutionStepEvent {
   total_steps: number;
   objective: string;
   tools?: string[];
+  tools_invoked?: string[];
   /** 后端收口状态：failed_auth / failed_config / failed_permission / failed_internal 等 */
   status?: string;
+  /** reused_prior_result：本步未调工具，复用了上一步已有结果 */
+  outcome?: string;
   error?: string;
 }
 
@@ -22,6 +25,8 @@ export interface PlannedExecutionStepData {
   objective: string;
   status: PlannedStepStatus;
   toolCallIds: string[];
+  /** 本步是否未调工具但复用了已有结果 */
+  reusedPriorResult?: boolean;
   error?: string;
 }
 
@@ -49,7 +54,17 @@ const normalizeStepIndex = (value: unknown): number | null => {
 
 export const isFailedPlannedStepStatus = (status: unknown): boolean => {
   if (typeof status !== 'string' || !status) return false;
-  return status === 'failed' || status.startsWith('failed_');
+  return (
+    status === 'failed' ||
+    status.startsWith('failed_') ||
+    status === 'missing_params' ||
+    status === 'target_unresolved'
+  );
+};
+
+export const isSkippedPlannedStepStatus = (status: unknown): boolean => {
+  if (typeof status !== 'string' || !status) return false;
+  return status === 'skipped' || status === 'skipped_context_overflow';
 };
 
 /**
@@ -73,7 +88,8 @@ export const applyPlannedExecutionStep = (
   const objective = normalizeObjective(event.objective);
   const phase = typeof event.phase === 'string' ? event.phase : '';
   const endFailed = phase === 'end' && isFailedPlannedStepStatus(event.status);
-  const endStatus: PlannedStepStatus = endFailed ? 'failed' : 'done';
+  const endSkipped = phase === 'end' && isSkippedPlannedStepStatus(event.status);
+  const endStatus: PlannedStepStatus = endFailed ? 'failed' : endSkipped ? 'skipped' : 'done';
   const endError =
     endFailed && typeof event.error === 'string' && event.error.trim()
       ? event.error.trim()
@@ -91,11 +107,13 @@ export const applyPlannedExecutionStep = (
   };
 
   if (phase === 'end') {
+    const reused = event.outcome === 'reused_prior_result';
     if (existingIdx >= 0) {
       steps[existingIdx] = {
         ...steps[existingIdx],
         objective: objective || steps[existingIdx].objective,
         status: endStatus,
+        reusedPriorResult: reused || steps[existingIdx].reusedPriorResult,
         error: endError,
       };
     } else {
@@ -105,6 +123,7 @@ export const applyPlannedExecutionStep = (
         objective: objective || `步骤 ${stepIndex}`,
         status: endStatus,
         toolCallIds: [],
+        reusedPriorResult: reused,
         error: endError,
       });
       steps.sort((a, b) => a.step_index - b.step_index);
@@ -141,39 +160,83 @@ export const applyPlannedExecutionStep = (
   };
 };
 
+/** 从 TOOL_CALL_START.rawEvent 取出服务端盖上的步骤号。 */
+export const plannedStepIndexFromToolEvent = (
+  event: { rawEvent?: unknown; raw_event?: unknown } | null | undefined
+): number | null => {
+  if (!event || typeof event !== 'object') return null;
+  const raw = event.rawEvent ?? event.raw_event;
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as { step_index?: unknown; stepIndex?: unknown };
+  return normalizeStepIndex(record.step_index ?? record.stepIndex);
+};
+
 /**
- * 将工具调用挂到当前步骤。
- * 若步骤已 end（currentStepIndex 为空）但已有步骤，挂到最近一步，
- * 兼容 chain_end 补发 TOOL_CALL 晚于 planned_execution_step end 的时序。
+ * 将工具调用挂到步骤。
+ * 有服务端步骤号时挂到那一步，即使该步已经 end。
+ * 没有步骤号时挂当前步 / 仍 running 的步；仅剩一步且已结束时，晚到的工具仍挂到这一步。
  */
 export const attachToolCallToCurrentStep = (
   state: PlannedExecutionState,
-  toolCallId: string
+  toolCallId: string,
+  stepIndex?: number | null
 ): PlannedExecutionState => {
   if (!toolCallId) {
     return state;
   }
 
-  let targetIndex = state.currentStepIndex;
-  if (targetIndex == null && state.steps.length > 0) {
-    targetIndex = Math.max(...state.steps.map((step) => step.step_index));
+  const stamped = normalizeStepIndex(stepIndex);
+  let targetIndex = stamped ?? state.currentStepIndex;
+  if (targetIndex == null) {
+    const running = state.steps.find((step) => step.status === 'running');
+    if (running) {
+      targetIndex = running.step_index;
+    }
+  }
+  if (targetIndex == null && state.steps.length === 1) {
+    targetIndex = state.steps[0].step_index;
   }
   if (targetIndex == null) {
     return state;
   }
 
-  const steps = state.steps.map((step) => {
-    if (step.step_index !== targetIndex) {
-      return { ...step, toolCallIds: [...step.toolCallIds] };
+  const steps = state.steps.map((step) => ({
+    ...step,
+    toolCallIds: [...step.toolCallIds],
+  }));
+  const existingIdx = steps.findIndex((step) => step.step_index === targetIndex);
+  if (existingIdx < 0) {
+    if (stamped == null) {
+      return state;
     }
-    if (step.toolCallIds.includes(toolCallId)) {
-      return { ...step, toolCallIds: [...step.toolCallIds] };
-    }
-    return {
-      ...step,
-      toolCallIds: [...step.toolCallIds, toolCallId],
+    const totalSteps = steps.reduce((max, step) => Math.max(max, step.total_steps), stamped);
+    steps.push({
+      step_index: stamped,
+      total_steps: totalSteps,
+      objective: '',
+      status: 'running',
+      toolCallIds: [toolCallId],
+    });
+    steps.sort((a, b) => a.step_index - b.step_index);
+    return { ...state, steps };
+  }
+
+  if (!steps[existingIdx].toolCallIds.includes(toolCallId)) {
+    steps[existingIdx] = {
+      ...steps[existingIdx],
+      toolCallIds: [...steps[existingIdx].toolCallIds, toolCallId],
+      reusedPriorResult: false,
     };
-  });
+  }
+
+  if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+    console.debug('[planned-execution] attach tool', {
+      toolCallId,
+      stamped: stamped ?? null,
+      targetIndex,
+      stepCount: steps.length,
+    });
+  }
 
   return {
     ...state,
@@ -213,7 +276,7 @@ export const finalizePlannedExecutionSteps = (
   return {
     currentStepIndex: null,
     steps: state.steps.map((step) => {
-      if (step.status === 'done' || step.status === 'failed') {
+      if (step.status === 'done' || step.status === 'failed' || step.status === 'skipped') {
         return step;
       }
       return { ...step, status: 'done' as const };

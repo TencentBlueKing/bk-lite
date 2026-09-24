@@ -475,9 +475,9 @@ async def test_collection_service_logs_sanitized_call_chain_for_sampled_exceptio
 
     assert len(error_logs) == 1
     assert "event=plugin_exception" in error_logs[0]
-    assert "task_id=task-401" in error_logs[0]
+    assert "task_id=" not in error_logs[0]
     assert "plugin_ref=network.config" in error_logs[0]
-    assert "plugin_name=snmp_facts" in error_logs[0]
+    assert "plugin_name=" not in error_logs[0]
     assert "target=10.3.252.254" in error_logs[0]
     assert "error_type=RuntimeError" in error_logs[0]
     assert "get_executor_config_with_resolution_async" in error_logs[0]

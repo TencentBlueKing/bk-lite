@@ -17,7 +17,7 @@
         "id": "collection-branch",
         "label": "外部采集支线",
         "focus": ["dispatch", "external_runtime", "normalize"],
-        "note": "NodeMgmt、Stargazer 和 Job 返回结果后进入统一规范化阶段。"
+        "note": "JOB 主机发现：可信 host 快照提供执行 IP 和区域，任务模型决定脚本；配置下发后 one-shot/周期执行，结果按原插件与任务组织对账。"
       },
       {
         "id": "reliability",
@@ -38,7 +38,7 @@
   "nodes": [
     {"id": "model_rules", "lane": "admission", "col": 0, "width": 64, "type": "database", "label": "模型规则", "sublabel": "属性 / 约束"},
     {"id": "accept", "lane": "admission", "col": 2, "width": 142, "type": "security", "label": "准入资产写入请求", "sublabel": "鉴权 / UUID / 幂等键"},
-    {"id": "dispatch", "lane": "execution", "col": 2, "width": 144, "type": "backend", "label": "采集、扫描或直接写入", "sublabel": "Collect / Scan / Module Ingest"},
+    {"id": "dispatch", "lane": "execution", "col": 2, "width": 144, "type": "backend", "label": "采集、扫描或实例导入", "sublabel": "Collect / Scan / Transfer"},
     {"id": "external_runtime", "lane": "execution", "col": 4, "width": 112, "type": "external", "label": "外部执行", "sublabel": "NodeMgmt / Stargazer / Job"},
     {"id": "normalize", "lane": "normalization", "col": 2, "width": 142, "type": "messagebus", "label": "接收结果并规范化", "sublabel": "回调 / 身份归一 / 字段校验"},
     {"id": "write_fact", "lane": "commit", "col": 2, "width": 128, "type": "database", "label": "提交资产图事实", "sublabel": "模型 / 实例 / 关系"},
@@ -61,7 +61,7 @@
   ],
   "cards": [
     {"dot": "emerald", "title": "纵向主链", "items": ["所有来源进入同一鉴权、规范化和资产写入用例", "外部执行只是支线，不能拥有另一套写入规则"]},
-    {"dot": "rose", "title": "当前断点", "items": ["HTTP 创建/更新已有 Operation + Outbox", "NATS、批量与部分采集路径仍直接写图"]},
+    {"dot": "rose", "title": "当前断点", "items": ["HTTP 与异步导入已有 Operation + Outbox", "NATS、批量与部分采集路径仍直接写图"]},
     {"dot": "amber", "title": "容量关注", "items": ["任务分区、查询预算、批量上限和背压必须统一", "写图和下游投影分别设置并发与重试预算"]}
   ]
 }

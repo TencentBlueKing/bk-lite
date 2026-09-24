@@ -10,6 +10,7 @@ from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
+from apps.job_mgmt.utils.i18n import job_message
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
@@ -94,7 +95,12 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             return False
 
         forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-        error_msg = f"目标路径为高危路径，禁止分发: {', '.join(forbidden_rules)}"
+        error_msg = job_message(
+            None,
+            "error.dangerous_path_forbidden",
+            "Target path is high-risk and cannot be used for distribution: {rules}",
+            rules=", ".join(forbidden_rules),
+        )
         logger.warning(f"[{task_name}] {error_msg}")
         self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
         execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
@@ -119,7 +125,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         # 执行前检查是否已取消
         if execution_id and self.is_cancelled(execution_id):
             result["status"] = ExecutionStatus.CANCELLED
-            result["error_message"] = "任务已取消，跳过分发"
+            result["error_message"] = job_message(None, "error.cancelled_skip_distribute", "Task cancelled; distribution skipped")
             result["finished_at"] = timezone.now().isoformat()
             return result
 
@@ -135,7 +141,11 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                 # 每个文件分发前检查是否已取消
                 if execution_id and self.is_cancelled(execution_id):
                     result["status"] = ExecutionStatus.CANCELLED
-                    result["error_message"] = "任务已取消，跳过剩余文件分发"
+                    result["error_message"] = job_message(
+                        None,
+                        "error.cancelled_skip_remaining_files",
+                        "Task cancelled; remaining file distribution skipped",
+                    )
                     result["finished_at"] = timezone.now().isoformat()
                     return result
                 file_result = {"file_name": file_item.get("name", ""), "success": False, "error": ""}

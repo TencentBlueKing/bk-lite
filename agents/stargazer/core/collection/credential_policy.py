@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
 
-from core.collection.runtime import CollectionRequest
+from core.collection.runtime import CollectionRequest, _run_log_identity
 from core.logger import logger
 
 
@@ -119,14 +119,10 @@ class CredentialPolicy:
         for credential, credential_id in zip(credentials, credential_ids):
             failure = failures.get(credential_id)
             if failure and failure.next_retry_at > now:
-                public_credential_id, _version = parse_credential_state_identity(credential_id)
                 logger.debug(
-                    "⏸️ event=credential_cooldown_skipped task_id=%s target=%s "
-                    "credential_id=%s cooldown_level=%s next_retry_at=%s "
-                    "error_code=%s",
-                    request.task_id,
+                    "⏸️ event=credential_cooldown_skipped %s target=%s cooldown_level=%s next_retry_at=%s error_code=%s",
+                    _run_log_identity(request),
                     target,
-                    public_credential_id or "-",
                     failure.cooldown_level,
                     failure.next_retry_at,
                     failure.error_code,
@@ -189,12 +185,9 @@ class CredentialPolicy:
             ),
         )
         logger.debug(
-            "🧊 event=credential_frozen task_id=%s target=%s credential_id=%s "
-            "cooldown_level=%s consecutive_failures=%s next_retry_at=%s "
-            "error_code=%s",
-            request.task_id,
+            "🧊 event=credential_frozen %s target=%s cooldown_level=%s consecutive_failures=%s next_retry_at=%s error_code=%s",
+            _run_log_identity(request),
             target,
-            parse_credential_state_identity(credential_id)[0],
             level,
             consecutive,
             next_retry_at,

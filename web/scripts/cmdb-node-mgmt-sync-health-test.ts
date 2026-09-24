@@ -7,6 +7,7 @@ import {
   getNodeMgmtSyncDisplayEmptyStateKey,
   getNodeMgmtSyncEmptyStateKey,
   getNodeMgmtSyncRawCounts,
+  getCollectDecisionTextKey,
   getNodeMgmtSyncReasonTextKey,
   getNodeMgmtSyncRowKey,
   normalizeNodeMgmtSyncStatus,
@@ -173,7 +174,19 @@ const testRequestGuard = async () => {
     assert.ok(nodeMgmtSync.reason?.noValidNodes, `${locale}: 缺少无有效节点文案`);
     assert.ok(nodeMgmtSync.rawSummary, `${locale}: 缺少原始指标双口径文案`);
     assert.ok(nodeMgmtSync.table?.pid, `${locale}: 缺少 PID 列文案`);
+    assert.ok(nodeMgmtSync.decision?.emptyRaw, `${locale}: 缺少空指标决策文案`);
+    assert.ok(nodeMgmtSync.decision?.unclassified, `${locale}: 缺少未归类决策文案`);
+    assert.match(nodeMgmtSync.decision.emptyRaw, /\{region\}/);
+    assert.match(nodeMgmtSync.decision.emptyRaw, /\{task\}/);
   }
+  assert.equal(
+    getCollectDecisionTextKey('empty_raw'),
+    'Collection.nodeMgmtSync.decision.emptyRaw',
+  );
+  assert.equal(
+    getCollectDecisionTextKey('not-a-decision'),
+    'Collection.nodeMgmtSync.decision.unclassified',
+  );
 };
 
 testRequestGuard()

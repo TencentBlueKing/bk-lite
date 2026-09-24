@@ -267,6 +267,115 @@ def test_periodic_dispatch_scans_each_configured_database_alias(monkeypatch):
     ]
 
 
+def test_create_minio_cleanup_intent_is_idempotent():
+    cleanup_service = _cleanup_service()
+    intent_model = _intent_model()
+
+    first = cleanup_service.create_minio_cleanup_intent("munchkin-public", "releases/v1.zip")
+    second = cleanup_service.create_minio_cleanup_intent("munchkin-public", "releases/v1.zip")
+
+    assert first.pk == second.pk
+    assert intent_model.objects.count() == 1
+    assert first.resource_type == "minio_object"
+    assert first.payload == {"bucket": "munchkin-public", "path": "releases/v1.zip"}
+
+
+def test_create_container_cleanup_intent_is_idempotent():
+    cleanup_service = _cleanup_service()
+    intent_model = _intent_model()
+
+    first = cleanup_service.create_container_cleanup_intent("AnomalyDetection_Serving_9")
+    second = cleanup_service.create_container_cleanup_intent("AnomalyDetection_Serving_9")
+
+    assert first.pk == second.pk
+    assert intent_model.objects.count() == 1
+    assert first.resource_type == "webhook_container"
+    assert first.payload == {"container_id": "AnomalyDetection_Serving_9"}
+
+
+def test_process_minio_cleanup_not_found_completes(monkeypatch):
+    cleanup_service = _cleanup_service()
+    intent_model = _intent_model()
+    intent = cleanup_service.create_minio_cleanup_intent("munchkin-public", "gone.zip")
+    claim = cleanup_service.claim_cleanup_intent(intent.pk)
+    storage = Mock()
+    storage.delete.side_effect = FileNotFoundError("NoSuchKey: object does not exist")
+    monkeypatch.setattr(cleanup_service, "MinioBackend", lambda bucket_name: storage)
+
+    result = cleanup_service.process_cleanup_intent(intent.pk, claim)
+
+    assert result == {"result": True, "state": "completed"}
+    storage.delete.assert_called_once_with("gone.zip")
+    intent.refresh_from_db()
+    assert intent.status == intent_model.Status.COMPLETED
+
+
+def test_process_container_cleanup_not_found_completes(monkeypatch):
+    cleanup_service = _cleanup_service()
+    intent_model = _intent_model()
+    intent = cleanup_service.create_container_cleanup_intent("AnomalyDetection_Serving_9")
+    claim = cleanup_service.claim_cleanup_intent(intent.pk)
+    from apps.mlops.utils.webhook_client import WebhookError
+
+    monkeypatch.setattr(
+        cleanup_service.WebhookClient,
+        "remove",
+        staticmethod(Mock(side_effect=WebhookError("Container not found", code="RESOURCE_DOES_NOT_EXIST"))),
+    )
+
+    result = cleanup_service.process_cleanup_intent(intent.pk, claim)
+
+    assert result == {"result": True, "state": "completed"}
+    intent.refresh_from_db()
+    assert intent.status == intent_model.Status.COMPLETED
+
+
+def test_process_minio_cleanup_failure_records_backoff(monkeypatch):
+    cleanup_service = _cleanup_service()
+    intent_model = _intent_model()
+    intent = cleanup_service.create_minio_cleanup_intent("munchkin-public", "stuck.zip")
+    claim = cleanup_service.claim_cleanup_intent(intent.pk)
+    storage = Mock()
+    storage.delete.side_effect = RuntimeError("minio unavailable")
+    monkeypatch.setattr(cleanup_service, "MinioBackend", lambda bucket_name: storage)
+
+    with pytest.raises(RuntimeError, match="minio unavailable"):
+        cleanup_service.process_cleanup_intent(intent.pk, claim)
+
+    intent.refresh_from_db()
+    assert intent.status == intent_model.Status.PENDING
+    assert intent.attempts == 1
+    assert intent.next_retry_at > timezone.now()
+    assert intent.claim_token == ""
+
+
+def test_replay_command_resets_failed_intents_and_dispatches(monkeypatch):
+    cleanup_service = _cleanup_service()
+    cleanup_tasks = _cleanup_tasks()
+    intent_model = _intent_model()
+    intent = cleanup_service.create_mlflow_cleanup_intent("exp", "model")
+    intent_model.objects.filter(pk=intent.pk).update(
+        status=intent_model.Status.FAILED,
+        attempts=10,
+        claim_token="stale-claim",
+        claim_expires_at=timezone.now(),
+        next_retry_at=None,
+    )
+    apply_async = Mock()
+    monkeypatch.setattr(cleanup_tasks.cleanup_external_resource, "apply_async", apply_async)
+
+    from django.core.management import call_command
+
+    call_command("replay_external_resource_cleanup")
+
+    intent.refresh_from_db()
+    assert intent.status == intent_model.Status.PROCESSING
+    assert intent.attempts == 0
+    assert intent.claim_token != "stale-claim"
+    apply_async.assert_called_once()
+    assert apply_async.call_args.kwargs["kwargs"]["intent_id"] == intent.pk
+
+
 def test_periodic_dispatch_shares_global_budget_fairly_between_aliases(monkeypatch):
     cleanup_tasks = _cleanup_tasks()
     claim_due = Mock(side_effect=lambda limit, using="default": [(index, f"{using}-{index}") for index in range(limit)])

@@ -122,9 +122,14 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
 
     @HasPermission("api_secret_key-Add", "system-manager")
     def update(self, request, *args, **kwargs):
-        if not kwargs.get("partial"):
-            return JsonResponse({"result": False, "message": "API 令牌不支持修改"})
         loader = _get_loader(request)
+        if not kwargs.get("partial"):
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": loader.get("error.api_token_update_not_supported", "API tokens cannot be fully replaced"),
+                }
+            )
         _, error_response = _parse_current_team(request, loader)
         if error_response:
             return error_response

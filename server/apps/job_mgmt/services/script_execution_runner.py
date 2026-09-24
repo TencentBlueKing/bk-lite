@@ -19,6 +19,7 @@ from apps.job_mgmt.services.execution_stream_service import (
 )
 from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
 from apps.job_mgmt.services.shell_utils import build_heredoc_command, parse_shebang
+from apps.job_mgmt.utils.i18n import job_message
 from apps.rpc.executor import Executor
 from nats_client.clients import ensure_stream_sync
 
@@ -55,7 +56,12 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             return False
 
         forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-        error_msg = f"检测到高危命令，禁止执行: {', '.join(forbidden_rules)}"
+        error_msg = job_message(
+            None,
+            "error.dangerous_command_forbidden",
+            "Script contains high-risk commands and cannot be executed: {rules}",
+            rules=", ".join(forbidden_rules),
+        )
         logger.warning(f"[{self.task_name}] {error_msg}")
         self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
         execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
@@ -73,7 +79,11 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
     def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str) -> bool:
         if execution.target_source == TargetSource.MANUAL and self._contains_windows_manual_target(target_list):
             if not self._should_use_ansible(execution.target_source, target_list):
-                error_msg = "Windows 手动目标仅支持 Ansible/WinRM 执行，请将驱动切换为 Ansible"
+                error_msg = job_message(
+                    None,
+                    "error.windows_manual_ansible_only",
+                    "Windows manual targets only support Ansible/WinRM execution; switch the driver to Ansible",
+                )
                 logger.warning(f"[{self.task_name}] {error_msg}")
                 self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
                 execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
@@ -87,7 +97,12 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             logger.info(f"[{self.task_name}] Ansible 任务已提交，等待回调: execution_id={self.execution_id}")
             return True
         except Exception as e:
-            error_msg = f"Ansible 执行失败: {str(e)}"
+            error_msg = job_message(
+                None,
+                "error.ansible_execute_failed",
+                "Ansible execution failed: {detail}",
+                detail=str(e),
+            )
             logger.exception(f"[{self.task_name}] {error_msg}")
             self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
             execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
@@ -227,7 +242,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         # 执行前检查是否已取消
         if self.is_cancelled(execution_id):
             result["status"] = ExecutionStatus.CANCELLED
-            result["error_message"] = "任务已取消，跳过执行"
+            result["error_message"] = job_message(None, "error.cancelled_skip_execute", "Task cancelled; execution skipped")
             result["finished_at"] = timezone.now().isoformat()
             return result
 

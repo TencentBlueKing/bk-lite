@@ -76,7 +76,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='firewall', __$labels__} != 65535",
+      "query": "device_temperature_celsius{instance_type='firewall', collect_type='snmp_h3c_firewall', __$labels__} != 65535",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",

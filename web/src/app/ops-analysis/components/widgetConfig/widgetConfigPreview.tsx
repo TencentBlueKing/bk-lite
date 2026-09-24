@@ -39,6 +39,8 @@ interface WidgetConfigPreviewProps {
   surface?: OpsAnalysisWidgetSurface;
   reloadVersion: number;
   rawData: unknown;
+  suppliedRawData?: unknown;
+  suppliedRawDataVersion?: number;
   loading?: boolean;
   onRawData: (data: unknown) => void;
   liveName?: string;
@@ -69,6 +71,8 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   surface = 'dashboard',
   reloadVersion,
   rawData,
+  suppliedRawData,
+  suppliedRawDataVersion = 0,
   loading = false,
   onRawData,
   liveName,
@@ -270,6 +274,8 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                             builtinNamespaceId={builtinNamespaceId}
                             surface={surface}
                             reloadVersion={String(reloadVersion)}
+                            suppliedRawData={suppliedRawData}
+                            suppliedRawDataVersion={suppliedRawDataVersion}
                             runtimeActive
                             layoutEditable={
                               config.chartType === 'room3D' ||

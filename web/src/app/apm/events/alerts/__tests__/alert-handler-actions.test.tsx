@@ -106,7 +106,7 @@ describe('APM 告警写操作权限', () => {
     expect(screen.queryByRole('button', { name: '转派' })).toBeNull();
   });
 
-  it('当前处理人的活跃告警展示转派，不展示认领和分派', async () => {
+  it('当前处理人的活跃告警展示转派和关闭，不展示认领和分派', async () => {
     renderWithApmIntl(
       <AlertHandlerActions
         alert={{ ...alert, handlers: [7], handlers_display: ['Bob(bob)'] }}
@@ -119,6 +119,19 @@ describe('APM 告警写操作权限', () => {
     expect(screen.getByRole('button', { name: '关闭' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: '认领' })).toBeNull();
     expect(screen.queryByRole('button', { name: '分派' })).toBeNull();
+  });
+
+  it('不是当前处理人时不展示关闭', async () => {
+    renderWithApmIntl(
+      <AlertHandlerActions
+        alert={{ ...alert, handlers: [8], handlers_display: ['Alice(alice)'] }}
+        closeText="关闭"
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: '关闭' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '转派' })).toBeNull();
   });
 
   it('仅 events-View 时按钮不可点且不调用 claimAlert/assignAlert/closeAlert', async () => {

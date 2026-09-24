@@ -68,6 +68,14 @@ monitor_object_metric:
       name: Disk I/O Usage
       desc: Indicates the proportion of time a disk device is busy handling I/O operations. Sustained
         high values usually suggest disk I/O saturation.
+    disk_read_latency:
+      name: Disk Read Latency
+      desc: Average disk read latency. Windows WinRM uses AvgDiskSecPerRead in milliseconds; Linux SSH
+        derives it from cumulative read time / reads.
+    disk_write_latency:
+      name: Disk Write Latency
+      desc: Average disk write latency. Windows WinRM uses AvgDiskSecPerWrite in milliseconds; Linux SSH
+        derives it from cumulative write time / writes.
     diskio_writes_total:
       name: Disk Writes
       desc: Represents the cumulative number of write operations completed by the disk device, useful

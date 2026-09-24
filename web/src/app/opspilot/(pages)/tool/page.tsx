@@ -24,7 +24,6 @@ import Icon from '@/components/icon';
 import UnifiedOpsCard from '@/app/opspilot/components/unified-ops-card';
 import ListPageHeader from '@/components/list-page-header';
 import CardGridSkeleton from '@/components/card-grid-skeleton';
-import { formatRelativeTime, pickEntityTimestamp } from '@/utils/relativeTime';
 
 const ToolListPage: React.FC = () => {
   const { useForm } = Form;
@@ -575,7 +574,6 @@ const ToolListPage: React.FC = () => {
                 name={asset.name}
                 description={asset.description || ''}
                 icon="jinengpeixun"
-                updatedAt={formatRelativeTime(pickEntityTimestamp(asset), t) || undefined}
                 meta={[asset.category, asset.version].filter(Boolean) as string[]}
                 footer="none"
                 menuOverlay={deleteMenu}
@@ -661,7 +659,6 @@ const ToolListPage: React.FC = () => {
                   name={title}
                   description={tool.description || ''}
                   icon={tool.icon || 'gongjuji'}
-                  updatedAt={formatRelativeTime(pickEntityTimestamp(tool), t) || undefined}
                   meta={meta}
                   footer="none"
                   menuOverlay={menu}

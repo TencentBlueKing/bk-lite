@@ -42,6 +42,7 @@ class MonitorObjConstants:
                 "Router",
                 "Firewall",
                 "Loadbalance",
+                "Wanopt",
                 "Detection Device",
                 "Scanning Device",
                 "Cisco Meraki",
@@ -72,3 +73,23 @@ class MonitorObjConstants:
         {"name_list": ["Aliyun"], "type": "Aliyun Cloud"},
         {"name_list": ["JVM", "SNMP Trap"], "type": "Other"},
     ]
+
+
+def default_order_name_matches(obj_name, catalog_name):
+    """大小写不敏感匹配对象名与 DEFAULT_OBJ_ORDER 目录名。"""
+    if not isinstance(obj_name, str) or not isinstance(catalog_name, str):
+        return False
+    return obj_name.casefold() == catalog_name.casefold()
+
+
+def resolve_default_object_order(obj_name, type_id, catalog=None):
+    """按 DEFAULT_OBJ_ORDER 计算应赋 order；未命中返回 None。"""
+    items = catalog if catalog is not None else MonitorObjConstants.DEFAULT_OBJ_ORDER
+    for item in items:
+        if item.get("type") != type_id:
+            continue
+        for name_idx, name in enumerate(item.get("name_list", [])):
+            if default_order_name_matches(obj_name, name):
+                return name_idx
+    return None
+

@@ -145,7 +145,7 @@ const OpsAnalysisSingle: React.FC<OpsAnalysisSingleProps> = ({
   const selectedField = config?.selectedFields?.[0];
   const rawValue = extractComparableValue(rawData, selectedField);
   const baselineRawValue = extractComparableValue(baselineData, selectedField);
-  const numericValue = rawValue !== null ? (typeof rawValue === 'string' ? parseFloat(rawValue) : rawValue) : null;
+  const numericValue = toComparableNumber(rawValue);
   const baselineNumericValue = toComparableNumber(baselineRawValue);
   const changePercent = config?.compare ? getChangePercent(toComparableNumber(rawValue), baselineNumericValue) : null;
 

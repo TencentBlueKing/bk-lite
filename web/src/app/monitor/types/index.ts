@@ -192,6 +192,8 @@ export interface HexagonData {
   name: string;
   description: React.ReactNode | string;
   fill: string;
+  aiName?: string;
+  aiValue?: string;
 }
 
 export interface TimeValuesProps {
@@ -313,8 +315,9 @@ export interface MetricItem {
   query?: string;
   view_query?: string;
   view_config?: {
-    mode: 'top' | 'bottom' | 'limited';
+    mode?: 'top' | 'bottom' | 'limited';
     limit?: number;
+    os?: string[];
   };
   unit?: string;
   displayType?: string;

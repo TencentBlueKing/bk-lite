@@ -1,0 +1,186 @@
+[
+  {
+    "warmup": true,
+    "repeat": 0,
+    "rows": 10000,
+    "edges_exported": 30000,
+    "accept_seconds": 0.371750250000332,
+    "execute_seconds": 26.5859206250002,
+    "seconds": {
+      "entity_queries": 10.637367837997317,
+      "authorization": 7.662865541002702,
+      "relation_queries": 3.921151168000506,
+      "generate": 25.870355582999764,
+      "upload": 0.4493723749997116
+    },
+    "calls": {
+      "entity_queries": 280,
+      "authorization": 63,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 980833
+  },
+  {
+    "warmup": false,
+    "repeat": 1,
+    "rows": 10000,
+    "edges_exported": 30000,
+    "accept_seconds": 0.17458304099955058,
+    "execute_seconds": 21.046068874999946,
+    "seconds": {
+      "entity_queries": 7.7630613350015665,
+      "authorization": 7.1366030039998805,
+      "relation_queries": 3.129552749999675,
+      "generate": 20.214233541999874,
+      "upload": 0.27527420800015534
+    },
+    "calls": {
+      "entity_queries": 276,
+      "authorization": 63,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 980831
+  },
+  {
+    "warmup": false,
+    "repeat": 2,
+    "rows": 10000,
+    "edges_exported": 30000,
+    "accept_seconds": 0.0953266659998917,
+    "execute_seconds": 28.534338417000072,
+    "seconds": {
+      "entity_queries": 9.652733834004266,
+      "authorization": 7.32095829400032,
+      "relation_queries": 3.2626469159999942,
+      "generate": 27.555165374999888,
+      "upload": 0.6021130409999387
+    },
+    "calls": {
+      "entity_queries": 276,
+      "authorization": 63,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 980835
+  },
+  {
+    "warmup": false,
+    "repeat": 3,
+    "rows": 10000,
+    "edges_exported": 30000,
+    "accept_seconds": 0.10832137499983219,
+    "execute_seconds": 23.42533670800003,
+    "seconds": {
+      "entity_queries": 8.740485908994742,
+      "authorization": 7.704193293000117,
+      "relation_queries": 3.21301479100066,
+      "generate": 22.656617749999896,
+      "upload": 0.45359612499987634
+    },
+    "calls": {
+      "entity_queries": 276,
+      "authorization": 63,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 980834
+  },
+  {
+    "warmup": true,
+    "repeat": 0,
+    "rows": 10000,
+    "edges_exported": 90000,
+    "accept_seconds": 0.2041501660000904,
+    "execute_seconds": 32.47640108299993,
+    "seconds": {
+      "entity_queries": 11.262555135002913,
+      "authorization": 12.513325076000001,
+      "relation_queries": 5.770674458000485,
+      "generate": 31.93750004100002,
+      "upload": 0.2975037500000326
+    },
+    "calls": {
+      "entity_queries": 440,
+      "authorization": 103,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 1178061
+  },
+  {
+    "warmup": false,
+    "repeat": 1,
+    "rows": 10000,
+    "edges_exported": 90000,
+    "accept_seconds": 0.10393183299993325,
+    "execute_seconds": 33.74583395799982,
+    "seconds": {
+      "entity_queries": 11.25959373999558,
+      "authorization": 11.644372874000055,
+      "relation_queries": 7.046871249999185,
+      "generate": 33.298833207999905,
+      "upload": 0.27036429100053283
+    },
+    "calls": {
+      "entity_queries": 436,
+      "authorization": 103,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 1178061
+  },
+  {
+    "warmup": false,
+    "repeat": 2,
+    "rows": 10000,
+    "edges_exported": 90000,
+    "accept_seconds": 0.14418333399999028,
+    "execute_seconds": 31.980105208000168,
+    "seconds": {
+      "entity_queries": 10.894499084001382,
+      "authorization": 11.786139208002623,
+      "relation_queries": 5.892129832999672,
+      "generate": 31.25500412500014,
+      "upload": 0.537562749999779
+    },
+    "calls": {
+      "entity_queries": 436,
+      "authorization": 103,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 1178060
+  },
+  {
+    "warmup": false,
+    "repeat": 3,
+    "rows": 10000,
+    "edges_exported": 90000,
+    "accept_seconds": 0.18195712500028094,
+    "execute_seconds": 31.008026290999624,
+    "seconds": {
+      "entity_queries": 10.348439408000559,
+      "authorization": 11.015718590998858,
+      "relation_queries": 6.0418742920014665,
+      "generate": 30.375115708000067,
+      "upload": 0.40760170700013987
+    },
+    "calls": {
+      "entity_queries": 436,
+      "authorization": 103,
+      "relation_queries": 20,
+      "generate": 1,
+      "upload": 2
+    },
+    "xlsx_bytes": 1178061
+  }
+]

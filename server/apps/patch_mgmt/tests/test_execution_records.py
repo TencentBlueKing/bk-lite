@@ -17,14 +17,9 @@ from apps.patch_mgmt.models import (
     PatchBaseline,
     PatchTarget,
 )
+from apps.patch_mgmt.services.execution_record_service import build_record_status, build_risk_item_detail, build_risk_item_summaries
 from apps.patch_mgmt.services.governance_service import HostBusyError, create_remediation_task, create_retry_task
-from apps.patch_mgmt.services.execution_record_service import (
-    build_record_status,
-    build_risk_item_detail,
-    build_risk_item_summaries,
-)
 from apps.patch_mgmt.services.patch_execution_service import run_governance_host
-
 
 BASE_URL = "/api/v1/patch_mgmt"
 GOVERNANCE_URL = f"{BASE_URL}/api/governance/"
@@ -38,9 +33,7 @@ class TestExecutionRecordListApi:
             "apps.core.utils.viewset_utils.get_permission_rules",
             return_value={"team": [1], "instance": []},
         )
-        target = PatchTarget.objects.create(
-            name="主机A", ip="10.0.0.10", os_type=OSType.LINUX, team=[1]
-        )
+        target = PatchTarget.objects.create(name="主机A", ip="10.0.0.10", os_type=OSType.LINUX, team=[1])
         remediation = GovernanceTask.objects.create(
             name="治理 · 1台 · 1项",
             task_type=GovernanceTaskType.INSTALL,
@@ -89,9 +82,7 @@ class TestExecutionRecordListApi:
         assert all(row["task_type_display"] for row in rows)
         assert rows[1]["can_cancel"] is True
         governance_rows = (
-            governance_only.data.get("results", governance_only.data)
-            if isinstance(governance_only.data, dict)
-            else governance_only.data
+            governance_only.data.get("results", governance_only.data) if isinstance(governance_only.data, dict) else governance_only.data
         )
         assert [row["id"] for row in governance_rows] == [remediation.id]
 
@@ -101,25 +92,25 @@ class TestExecutionRecordListApi:
             return_value={"team": [1], "instance": []},
         )
         risk_id = "10:20:30"
-        PatchTarget.objects.create(
-            id=10, name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]
-        )
+        PatchTarget.objects.create(id=10, name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
         remediation = GovernanceTask.objects.create(
             name="治理 · host-a · 1项",
             task_type=GovernanceTaskType.INSTALL,
             status=GovernanceTaskStatus.COMPLETED,
             target_list=[10],
             patch_list=[20],
-            risk_snapshot=[{
-                "id": risk_id,
-                "host_id": 10,
-                "host_name": "host-a",
-                "host_ip": "10.0.0.1",
-                "patch_id": 20,
-                "patch_name": "openssl",
-                "baseline_id": 30,
-                "baseline_name": "Linux 基线",
-            }],
+            risk_snapshot=[
+                {
+                    "id": risk_id,
+                    "host_id": 10,
+                    "host_name": "host-a",
+                    "host_ip": "10.0.0.1",
+                    "patch_id": 20,
+                    "patch_name": "openssl",
+                    "baseline_id": 30,
+                    "baseline_name": "Linux 基线",
+                }
+            ],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
@@ -169,19 +160,21 @@ class TestExecutionRecordListApi:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["record_status"] == "completed"
         assert response.data["record_status_display"]
-        assert response.data["risk_items"] == [{
-            "id": risk_id,
-            "display_name": "host-a-openssl",
-            "host_id": 10,
-            "host_name": "host-a",
-            "host_ip": "10.0.0.1",
-            "patch_id": 20,
-            "patch_name": "openssl",
-            "status": "completed",
-            "status_display": response.data["risk_items"][0]["status_display"],
-            "status_color": "success",
-            "can_retry": False,
-        }]
+        assert response.data["risk_items"] == [
+            {
+                "id": risk_id,
+                "display_name": "host-a-openssl",
+                "host_id": 10,
+                "host_name": "host-a",
+                "host_ip": "10.0.0.1",
+                "patch_id": 20,
+                "patch_name": "openssl",
+                "status": "completed",
+                "status_display": response.data["risk_items"][0]["status_display"],
+                "status_color": "success",
+                "can_retry": False,
+            }
+        ]
         assert selected.status_code == status.HTTP_200_OK
         assert [step["key"] for step in selected.data["steps"]] == ["install", "reboot", "verify"]
         assert [step["attempts"][-1]["log"] for step in selected.data["steps"]] == [
@@ -199,13 +192,15 @@ class TestExecutionRecordListApi:
             status=GovernanceTaskStatus.FAILED,
             target_list=[10],
             patch_list=[20],
-            risk_snapshot=[{
-                "id": risk_id,
-                "host_id": 10,
-                "host_name": "host-a",
-                "patch_id": 20,
-                "patch_name": "KB6000008",
-            }],
+            risk_snapshot=[
+                {
+                    "id": risk_id,
+                    "host_id": 10,
+                    "host_name": "host-a",
+                    "patch_id": 20,
+                    "patch_name": "KB6000008",
+                }
+            ],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
@@ -235,7 +230,7 @@ class TestExecutionRecordListApi:
         summaries = build_risk_item_summaries(remediation)
 
         assert summaries[0]["status"] == "failed"
-        assert build_record_status(remediation) == ("failed", "失败", "error")
+        assert build_record_status(remediation) == ("failed", "Failed", "error")
 
     def test_later_manual_reboot_does_not_change_completed_install_record(self):
         """后续手动重启是新根记录，不并入旧安装记录。"""
@@ -246,13 +241,15 @@ class TestExecutionRecordListApi:
             status=GovernanceTaskStatus.COMPLETED,
             target_list=[10],
             patch_list=[20],
-            risk_snapshot=[{
-                "id": risk_id,
-                "host_id": 10,
-                "host_name": "host-a",
-                "patch_id": 20,
-                "patch_name": "KB6000009",
-            }],
+            risk_snapshot=[
+                {
+                    "id": risk_id,
+                    "host_id": 10,
+                    "host_name": "host-a",
+                    "patch_id": 20,
+                    "patch_name": "KB6000009",
+                }
+            ],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
@@ -268,10 +265,12 @@ class TestExecutionRecordListApi:
             source_record=remediation,
             target_list=[10],
             patch_list=[20],
-            risk_snapshot=[{
-                **remediation.risk_snapshot[0],
-                "source_record_id": remediation.id,
-            }],
+            risk_snapshot=[
+                {
+                    **remediation.risk_snapshot[0],
+                    "source_record_id": remediation.id,
+                }
+            ],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
@@ -284,7 +283,7 @@ class TestExecutionRecordListApi:
         summaries = build_risk_item_summaries(remediation)
 
         assert summaries[0]["status"] == "completed"
-        assert build_record_status(remediation) == ("completed", "已完成", "success")
+        assert build_record_status(remediation) == ("completed", "Completed", "success")
 
     def test_no_auto_reboot_install_completes_with_reboot_and_verify_skipped(self):
         risk_id = "10:20:30"
@@ -295,14 +294,16 @@ class TestExecutionRecordListApi:
             auto_reboot=False,
             target_list=[10],
             patch_list=[20],
-            risk_snapshot=[{
-                "id": risk_id,
-                "host_id": 10,
-                "host_name": "host-a",
-                "host_ip": "10.0.0.1",
-                "patch_id": 20,
-                "patch_name": "openssl",
-            }],
+            risk_snapshot=[
+                {
+                    "id": risk_id,
+                    "host_id": 10,
+                    "host_name": "host-a",
+                    "host_ip": "10.0.0.1",
+                    "patch_id": 20,
+                    "patch_name": "openssl",
+                }
+            ],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
@@ -315,14 +316,14 @@ class TestExecutionRecordListApi:
 
         detail = build_risk_item_detail(remediation, risk_id)
 
-        assert build_record_status(remediation) == ("completed", "已完成", "success")
+        assert build_record_status(remediation) == ("completed", "Completed", "success")
         assert [step["status"] for step in detail["steps"]] == [
             "completed",
             "skipped",
             "skipped",
         ]
-        assert "未设置" in detail["steps"][1]["reason"]
-        assert "未执行重启" in detail["steps"][2]["reason"]
+        assert "Automatic reboot after installation is not enabled" in detail["steps"][1]["reason"]
+        assert "reboot was not executed" in detail["steps"][2]["reason"].lower()
 
     def test_container_install_keeps_three_steps_with_reboot_skipped_reason(self):
         """容器节点仍展示三步，重启为有原因的已跳过，验证结果正常展示。"""
@@ -334,14 +335,16 @@ class TestExecutionRecordListApi:
             auto_reboot=True,
             target_list=[10],
             patch_list=[20],
-            risk_snapshot=[{
-                "id": risk_id,
-                "host_id": 10,
-                "host_name": "container-a",
-                "host_ip": "172.19.0.20",
-                "patch_id": 20,
-                "patch_name": "aide",
-            }],
+            risk_snapshot=[
+                {
+                    "id": risk_id,
+                    "host_id": 10,
+                    "host_name": "container-a",
+                    "host_ip": "172.19.0.20",
+                    "patch_id": 20,
+                    "patch_name": "aide",
+                }
+            ],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
@@ -360,13 +363,15 @@ class TestExecutionRecordListApi:
             parent_task=remediation,
             target_list=[10],
             patch_list=[20],
-            result_snapshot=[{
-                "risk_item_id": risk_id,
-                "host_id": 10,
-                "patch_id": 20,
-                "status": "completed",
-                "satisfied": True,
-            }],
+            result_snapshot=[
+                {
+                    "risk_item_id": risk_id,
+                    "host_id": 10,
+                    "patch_id": 20,
+                    "status": "completed",
+                    "satisfied": True,
+                }
+            ],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
@@ -379,11 +384,11 @@ class TestExecutionRecordListApi:
 
         detail = build_risk_item_detail(remediation, risk_id)
 
-        assert build_record_status(remediation) == ("completed", "已完成", "success")
+        assert build_record_status(remediation) == ("completed", "Completed", "success")
         assert [step["key"] for step in detail["steps"]] == ["install", "reboot", "verify"]
         assert [step["status"] for step in detail["steps"]] == ["completed", "skipped", "completed"]
-        assert "容器节点" in detail["steps"][1]["reason"]
-        assert "容器平台" in detail["steps"][1]["reason"]
+        assert "container node" in detail["steps"][1]["reason"]
+        assert "container platform" in detail["steps"][1]["reason"]
 
     def test_install_item_waits_for_verification_while_batch_peer_is_running(self):
         """单机安装完成不代表治理完成；自动验证创建前摘要应与详情同为等待中。"""
@@ -433,30 +438,20 @@ class TestExecutionRecordListApi:
             stage_color="processing",
         )
 
-        summaries = {
-            item["id"]: item for item in build_risk_item_summaries(remediation)
-        }
+        summaries = {item["id"]: item for item in build_risk_item_summaries(remediation)}
         detail = build_risk_item_detail(remediation, completed_risk_id)
-        verify_step = next(
-            step
-            for step in detail["steps"]
-            if step["key"] == GovernanceTaskType.VERIFY
-        )
+        verify_step = next(step for step in detail["steps"] if step["key"] == GovernanceTaskType.VERIFY)
 
         assert summaries[completed_risk_id]["status"] == "waiting"
         assert detail["status"] == "waiting"
         assert verify_step["status"] == "waiting"
 
     def test_verification_result_is_not_changed_by_later_live_compliance(self):
-        target = PatchTarget.objects.create(
-            name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]
-        )
+        target = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
         patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
         baseline = PatchBaseline.objects.create(name="baseline", os_type=OSType.LINUX, team=[1])
         requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
-        binding = HostBaselineBinding.objects.create(
-            target=target, baseline=baseline, compliance_status="non_compliant"
-        )
+        binding = HostBaselineBinding.objects.create(target=target, baseline=baseline, compliance_status="non_compliant")
         live = HostComplianceSnapshot.objects.create(
             binding=binding,
             requirement=requirement,
@@ -470,16 +465,16 @@ class TestExecutionRecordListApi:
             status=GovernanceTaskStatus.COMPLETED,
             target_list=[target.id],
             patch_list=[patch.id],
-            risk_snapshot=[{
-                "id": risk_id,
-                "host_id": target.id,
-                "patch_id": patch.id,
-            }],
+            risk_snapshot=[
+                {
+                    "id": risk_id,
+                    "host_id": target.id,
+                    "patch_id": patch.id,
+                }
+            ],
             team=[1],
         )
-        GovernanceTaskHost.objects.create(
-            task=root, target_id=target.id, stage="completed"
-        )
+        GovernanceTaskHost.objects.create(task=root, target_id=target.id, stage="completed")
         verify = GovernanceTask.objects.create(
             name="自动验证",
             task_type=GovernanceTaskType.VERIFY,
@@ -488,30 +483,28 @@ class TestExecutionRecordListApi:
             target_list=[target.id],
             patch_list=[patch.id],
             risk_snapshot=root.risk_snapshot,
-            result_snapshot=[{
-                "risk_item_id": risk_id,
-                "host_id": target.id,
-                "patch_id": patch.id,
-                "status": "completed",
-                "satisfied": True,
-                "reason": "执行时已满足",
-                "evidence": {"version": "1.0"},
-                "evaluated_at": "2026-07-29T00:00:00+00:00",
-            }],
+            result_snapshot=[
+                {
+                    "risk_item_id": risk_id,
+                    "host_id": target.id,
+                    "patch_id": patch.id,
+                    "status": "completed",
+                    "satisfied": True,
+                    "reason": "执行时已满足",
+                    "evidence": {"version": "1.0"},
+                    "evaluated_at": "2026-07-29T00:00:00+00:00",
+                }
+            ],
             team=[1],
         )
-        GovernanceTaskHost.objects.create(
-            task=verify, target_id=target.id, stage="completed"
-        )
+        GovernanceTaskHost.objects.create(task=verify, target_id=target.id, stage="completed")
 
         assert live.satisfied is False
         assert build_risk_item_summaries(root)[0]["status"] == "completed"
 
 
 @pytest.mark.django_db
-def test_remediation_snapshot_preserves_exact_selected_host_patch_pairs(
-    request_factory, authenticated_user, mocker
-):
+def test_remediation_snapshot_preserves_exact_selected_host_patch_pairs(request_factory, authenticated_user, mocker):
     baseline = PatchBaseline.objects.create(name="Linux 基线", os_type=OSType.LINUX, team=[1])
     host_a = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
     host_b = PatchTarget.objects.create(name="host-b", ip="10.0.0.2", os_type=OSType.LINUX, team=[1])
@@ -577,18 +570,10 @@ def test_remediation_snapshot_preserves_exact_selected_host_patch_pairs(
 @pytest.mark.django_db
 def test_install_dispatches_only_patches_selected_for_current_host(mocker):
     host = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
-    baseline = PatchBaseline.objects.create(
-        name="baseline", os_type=OSType.LINUX, team=[1]
-    )
-    selected_patch = Patch.objects.create(
-        title="selected", os_type=OSType.LINUX, team=[1]
-    )
-    other_patch = Patch.objects.create(
-        title="other", os_type=OSType.LINUX, team=[1]
-    )
-    requirement = BaselineRequirement.objects.create(
-        baseline=baseline, patch=selected_patch
-    )
+    baseline = PatchBaseline.objects.create(name="baseline", os_type=OSType.LINUX, team=[1])
+    selected_patch = Patch.objects.create(title="selected", os_type=OSType.LINUX, team=[1])
+    other_patch = Patch.objects.create(title="other", os_type=OSType.LINUX, team=[1])
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=selected_patch)
     binding = HostBaselineBinding.objects.create(target=host, baseline=baseline)
     HostComplianceSnapshot.objects.create(
         binding=binding,
@@ -640,42 +625,34 @@ def test_baseline_assess_creates_one_hidden_parallel_task_for_all_bound_hosts(su
     assert baseline.name in task.name
     assert "2" in task.name
     assert task.target_list == [host_a.id, host_b.id]
-    assert task.risk_snapshot == [{
-        "baseline_id": baseline.id,
-        "baseline_name": "生产基线",
-        "baseline_updated_at": baseline.updated_at.isoformat(),
-        "requirements_signature": f"{requirement.id}:{patch.id}:{requirement.updated_at.isoformat()}",
-        "bindings_signature": f"{binding_a.id}:{host_a.id}|{binding_b.id}:{host_b.id}",
-        "requirement_ids": [requirement.id],
-        "patch_ids": [patch.id],
-        "targets": [
-            {"binding_id": binding_a.id, "target_id": host_a.id, "target_name": "host-a"},
-            {"binding_id": binding_b.id, "target_id": host_b.id, "target_name": "host-b"},
-        ],
-    }]
+    assert task.risk_snapshot == [
+        {
+            "baseline_id": baseline.id,
+            "baseline_name": "生产基线",
+            "baseline_updated_at": baseline.updated_at.isoformat(),
+            "requirements_signature": f"{requirement.id}:{patch.id}:{requirement.updated_at.isoformat()}",
+            "bindings_signature": f"{binding_a.id}:{host_a.id}|{binding_b.id}:{host_b.id}",
+            "requirement_ids": [requirement.id],
+            "patch_ids": [patch.id],
+            "targets": [
+                {"binding_id": binding_a.id, "target_id": host_a.id, "target_name": "host-a"},
+                {"binding_id": binding_b.id, "target_id": host_b.id, "target_name": "host-b"},
+            ],
+        }
+    ]
     assert set(task.host_results.values_list("target_id", flat=True)) == {host_a.id, host_b.id}
-    assert set(
-        HostBaselineBinding.objects.filter(pk__in=[binding_a.id, binding_b.id]).values_list(
-            "compliance_status", flat=True
-        )
-    ) == {"evaluating"}
+    assert set(HostBaselineBinding.objects.filter(pk__in=[binding_a.id, binding_b.id]).values_list("compliance_status", flat=True)) == {"evaluating"}
     trigger.assert_called_once_with(task.id)
 
 
 @pytest.mark.django_db
-def test_saving_unchanged_baseline_bindings_does_not_cancel_active_assessment(
-    su_client, mocker
-):
+def test_saving_unchanged_baseline_bindings_does_not_cancel_active_assessment(su_client, mocker):
     mocker.patch(
         "apps.core.utils.viewset_utils.get_permission_rules",
         return_value={"team": [1], "instance": []},
     )
-    baseline = PatchBaseline.objects.create(
-        name="生产基线", os_type=OSType.LINUX, team=[1]
-    )
-    target = PatchTarget.objects.create(
-        name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]
-    )
+    baseline = PatchBaseline.objects.create(name="生产基线", os_type=OSType.LINUX, team=[1])
+    target = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
     task = GovernanceTask.objects.create(
         name="评估 · 生产基线 · 1台",
@@ -710,12 +687,8 @@ def test_baseline_assess_returns_structured_conflict_on_atomic_host_race(su_clie
         "apps.core.utils.viewset_utils.get_permission_rules",
         return_value={"team": [1], "instance": []},
     )
-    baseline = PatchBaseline.objects.create(
-        name="生产基线", os_type=OSType.LINUX, team=[1]
-    )
-    target = PatchTarget.objects.create(
-        name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]
-    )
+    baseline = PatchBaseline.objects.create(name="生产基线", os_type=OSType.LINUX, team=[1])
+    target = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
     patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
     BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
@@ -771,12 +744,8 @@ def test_retry_creates_independent_root_record(request_factory, authenticated_us
 
 
 @pytest.mark.django_db
-def test_unmet_validation_retry_creates_new_independent_record(
-    request_factory, authenticated_user, mocker
-):
-    target = PatchTarget.objects.create(
-        name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]
-    )
+def test_unmet_validation_retry_creates_new_independent_record(request_factory, authenticated_user, mocker):
+    target = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
     patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
     baseline = PatchBaseline.objects.create(name="baseline", os_type=OSType.LINUX, team=[1])
     requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
@@ -798,12 +767,14 @@ def test_unmet_validation_retry_creates_new_independent_record(
         status=GovernanceTaskStatus.COMPLETED,
         target_list=[target.id],
         patch_list=[patch.id],
-        risk_snapshot=[{
-            "id": f"{target.id}:{patch.id}:{baseline.id}",
-            "host_id": target.id,
-            "host_name": target.name,
-            "patch_id": patch.id,
-        }],
+        risk_snapshot=[
+            {
+                "id": f"{target.id}:{patch.id}:{baseline.id}",
+                "host_id": target.id,
+                "host_name": target.name,
+                "patch_id": patch.id,
+            }
+        ],
         team=[1],
     )
     GovernanceTaskHost.objects.create(
@@ -821,16 +792,18 @@ def test_unmet_validation_retry_creates_new_independent_record(
         target_list=[target.id],
         patch_list=[patch.id],
         risk_snapshot=root.risk_snapshot,
-        result_snapshot=[{
-            "risk_item_id": f"{target.id}:{patch.id}:{baseline.id}",
-            "host_id": target.id,
-            "patch_id": patch.id,
-            "status": "completed",
-            "satisfied": False,
-            "reason": "安装后仍未满足",
-            "evidence": {},
-            "evaluated_at": "2026-07-23T00:00:00+00:00",
-        }],
+        result_snapshot=[
+            {
+                "risk_item_id": f"{target.id}:{patch.id}:{baseline.id}",
+                "host_id": target.id,
+                "patch_id": patch.id,
+                "status": "completed",
+                "satisfied": False,
+                "reason": "安装后仍未满足",
+                "evidence": {},
+                "evaluated_at": "2026-07-23T00:00:00+00:00",
+            }
+        ],
         team=[1],
     )
     GovernanceTaskHost.objects.create(

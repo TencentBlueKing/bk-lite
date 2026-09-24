@@ -10,6 +10,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 
 from apps.core.utils.team_utils import get_current_team
+from apps.job_mgmt.utils.i18n import job_message
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -65,7 +66,7 @@ class TeamResolveMixin:
             # 校验用户是否有权限访问该 team
             if not getattr(request.user, "is_superuser", False):
                 if current_team not in user_group_ids:
-                    return None, "无权访问该团队数据"
+                    return None, job_message(request, "error.team_access_denied", "You do not have access to this team data")
 
             return current_team, None
 

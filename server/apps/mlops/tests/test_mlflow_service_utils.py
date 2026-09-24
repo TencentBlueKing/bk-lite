@@ -72,6 +72,29 @@ def test_get_experiment_runs_returns_search_result(mocker):
     assert ms.get_experiment_runs("e1") is sentinel
     assert search.call_args.kwargs["experiment_ids"] == ["e1"]
     assert search.call_args.kwargs["order_by"] == ["start_time DESC"]
+    assert search.call_args.kwargs["max_results"] == 1000
+
+
+def test_get_experiment_runs_forwards_explicit_max_results(mocker):
+    mocker.patch("apps.mlops.utils.mlflow_service.mlflow.set_tracking_uri")
+    search = mocker.patch("apps.mlops.utils.mlflow_service.mlflow.search_runs", return_value=object())
+
+    ms.get_experiment_runs("e1", max_results=3)
+
+    assert search.call_args.kwargs["max_results"] == 3
+
+
+def test_run_belongs_to_experiment_does_not_scan_all_runs(mocker):
+    from mlflow.entities import LifecycleStage
+
+    run = SimpleNamespace(info=SimpleNamespace(experiment_id="e1", lifecycle_stage=LifecycleStage.ACTIVE))
+    client = SimpleNamespace(get_run=mocker.Mock(return_value=run))
+    search = mocker.patch("apps.mlops.utils.mlflow_service.mlflow.search_runs")
+    mocker.patch("apps.mlops.utils.mlflow_service.get_mlflow_client", return_value=client)
+
+    assert ms.run_belongs_to_experiment("e1", "r1") is True
+    search.assert_not_called()
+    client.get_run.assert_called_once_with("r1")
 
 
 def test_get_experiment_runs_reraises(mocker):

@@ -1,7 +1,8 @@
 Router Digi SNMP:
   name: Digi (Telegraf)
-  desc: SNMP monitoring template for Digi router. It reports CPU utilization, per-port
-    inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: SNMP monitoring template for Digi Connect/ConnectPort routers (DIGI-DEVICE-INFO).
+    It reports CPU utilization, memory total/free/used in bytes with derived usage,
+    and built-in IF-MIB interface traffic. Chassis temperature is not exposed.
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -22,29 +23,28 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      desc: This metric reports the total physical memory of the Digi Connect/ConnectPort
+        router (diTotalMemory, reported in bytes).
     device_memory_free:
       name: Free Memory
-      desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+      desc: This metric reports the free physical memory of the Digi Connect/ConnectPort
+        router (diFreeMemory, reported in bytes). Persistently low free memory can
+        indicate rising memory pressure.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+      desc: This metric reports the used physical memory of the Digi Connect/ConnectPort
+        router (diUsedMemory, reported in bytes). It helps gauge absolute memory consumption
+        and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports CPU utilization of the Digi Connect/ConnectPort router
+        (diCpuUtilization) as a 0-100 percentage. Sustained high usage indicates control-plane
+        overload, VPN/forwarding pressure, or abnormal traffic.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports memory utilization of the Digi Connect/ConnectPort
+        router, derived as used/total*100 from diUsedMemory and diTotalMemory. Sustained
+        high usage may indicate memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

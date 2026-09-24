@@ -80,7 +80,7 @@ def test_linux_rejects_cross_family_patch_before_package_absence_becomes_risk():
     result = evaluate_requirements([requirement], facts)[1]
 
     assert result.status == RequirementAssessmentStatus.NOT_APPLICABLE
-    assert "不适用于" in result.reason
+    assert "not applicable" in result.reason.lower()
 
 
 def test_linux_new_assessment_with_incomplete_patch_metadata_is_unknown():
@@ -98,7 +98,7 @@ def test_linux_new_assessment_with_incomplete_patch_metadata_is_unknown():
     result = evaluate_requirements([requirement], facts)[1]
 
     assert result.status == RequirementAssessmentStatus.UNKNOWN
-    assert "补丁元数据缺少" in result.reason
+    assert "metadata is missing" in result.reason.lower()
 
 
 def test_linux_universal_architecture_is_applicable():
@@ -161,4 +161,4 @@ def test_windows_currently_offered_revision_wins_over_same_installed_kb():
     result = evaluate_requirements([requirement], facts)
 
     assert result[1].status == RequirementAssessmentStatus.MISSING
-    assert result[1].reason == "KB4052623 适用但未安装"
+    assert result[1].reason == "KB4052623 is applicable but not installed"

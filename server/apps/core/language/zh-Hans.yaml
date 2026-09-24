@@ -22,6 +22,10 @@ error:
   user_id_empty: user_id 不能为空
   username_empty: 用户名不能为空
   otp_empty: 用户名或 OTP 验证码不能为空
+  api_token_update_not_supported: API 令牌不支持修改
+  invalid_current_team: current_team cookie 无效
+  no_permission_access_team: 无权访问该团队数据
+  code_empty: 验证码不能为空
 
 # 内置应用展示名（Console 卡片 / 左上角应用列表）
 app_name:

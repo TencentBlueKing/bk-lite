@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, InputNumber, Select, Space, Switch } from 'antd';
+import { Form, Input, InputNumber, Select, Space, Switch, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { StrategyFields } from '@/app/monitor/types/event';
@@ -50,6 +51,15 @@ interface AlertDurationFieldsProps {
 
 const fieldLabel = (text: string) => (
   <span className={STRATEGY_CONDITION_LABEL_CLASS}>{text}</span>
+);
+
+export const strategyConditionLabelWithTip = (text: string, tip: string) => (
+  <span className="inline-flex w-[100px] items-center justify-end gap-1 whitespace-nowrap">
+    <span>{text}</span>
+    <Tooltip title={tip} overlayInnerStyle={{ whiteSpace: 'pre-line' }}>
+      <QuestionCircleOutlined className="text-[var(--color-text-3)]" />
+    </Tooltip>
+  </span>
 );
 
 const AlertDurationFields: React.FC<AlertDurationFieldsProps> = (props) => {
@@ -131,8 +141,23 @@ const NoDataDetailFields: React.FC<AlertDurationFieldsProps> = ({
   const { t } = useTranslation();
   return (
     <>
+      <Form.Item<StrategyFields>
+        name="no_data_alert_name"
+        label={fieldLabel(t('monitor.events.alertName'))}
+        rules={[{ required: true, message: t('common.required') }]}
+      >
+        <Input
+          style={{ width: '100%' }}
+          value={noDataAlertName}
+          placeholder={t('monitor.events.noDataAlertName')}
+          onChange={(e) => onNoDataAlertNameChange(e.target.value)}
+        />
+      </Form.Item>
       <Form.Item
-        label={fieldLabel(t('monitor.events.noDataWindow'))}
+        label={strategyConditionLabelWithTip(
+          t('monitor.events.noDataWindow'),
+          t('monitor.events.noDataWindowTitle')
+        )}
         extra={
           functionDelayTip ? (
             <span className="text-[12px] text-[var(--color-text-3)]">
@@ -165,7 +190,12 @@ const NoDataDetailFields: React.FC<AlertDurationFieldsProps> = ({
           ))}
         </Select>
       </Form.Item>
-      <Form.Item label={fieldLabel(t('monitor.events.noDataRecoveryWindow'))}>
+      <Form.Item
+        label={strategyConditionLabelWithTip(
+          t('monitor.events.noDataRecoveryWindow'),
+          t('monitor.events.noDataRecoveryWindowTitle')
+        )}
+      >
         <InputNumber
           className={FIELD_NUMBER_CLASS}
           min={SCHEDULE_UNIT_MAP[`${noDataRecoveryUnit}Min`]}
@@ -174,18 +204,6 @@ const NoDataDetailFields: React.FC<AlertDurationFieldsProps> = ({
           precision={0}
           addonAfter={t('monitor.events.minutes')}
           onChange={onNoDataRecoveryChange}
-        />
-      </Form.Item>
-      <Form.Item<StrategyFields>
-        name="no_data_alert_name"
-        label={fieldLabel(t('monitor.events.noDataAlertName'))}
-        rules={[{ required: true, message: t('common.required') }]}
-      >
-        <Input
-          style={{ width: '100%' }}
-          value={noDataAlertName}
-          placeholder={t('monitor.events.noDataAlertName')}
-          onChange={(e) => onNoDataAlertNameChange(e.target.value)}
         />
       </Form.Item>
     </>

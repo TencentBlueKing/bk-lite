@@ -243,24 +243,44 @@ def test_query_latest_completed_round_prefers_strict_contract_for_same_round():
 
 
 def test_query_instance_ids_with_vm_data_batches_compatibility_probe():
-    collection = mock.MagicMock()
-    collection.query.return_value = {
-        "data": {
-            "result": [
-                {"metric": {"instance_id": "cmdb_11"}, "value": [300, "2"]},
-                {"metric": {"instance_id": "cmdb_13"}, "value": [300, "1"]},
-            ]
-        }
-    }
-
-    instance_ids = query_instance_ids_with_vm_data(
-        ["cmdb_11", "cmdb_12", "cmdb_13"],
-        collection=collection,
+    response = _ok_response(
+        [
+            {"metric": {"instance_id": "cmdb_11"}, "value": [300, "2"]},
+            {"metric": {"instance_id": "cmdb_13"}, "value": [300, "1"]},
+            {"metric": {"instance_id": "cmdb_other"}, "value": [300, "1"]},
+        ]
     )
+    with mock.patch("apps.cmdb.collection.query_vm.requests.post", return_value=response) as post:
+        instance_ids = query_instance_ids_with_vm_data(["cmdb_11", "cmdb_12", "cmdb_13", "cmdb_11", "", None])
 
     assert instance_ids == {"cmdb_11", "cmdb_13"}
-    assert collection.query.call_count == 1
-    assert "cmdb_11|cmdb_12|cmdb_13" in collection.query.call_args.args[0]
+    post.assert_called_once_with(
+        Collection().url,
+        data={"query": "count by (instance_id) (last_over_time({instance_id=~'^(cmdb_11|cmdb_12|cmdb_13)$'}[1h]))"},
+        timeout=10,
+    )
+
+
+def test_compat_probe_empty_ids_do_not_query_vm():
+    with mock.patch("apps.cmdb.collection.query_vm.requests.post") as post:
+        assert query_instance_ids_with_vm_data([]) == set()
+    post.assert_not_called()
+
+
+def test_compat_probe_without_samples_returns_no_instances():
+    with mock.patch("apps.cmdb.collection.query_vm.requests.post", return_value=_ok_response()):
+        assert query_instance_ids_with_vm_data(["cmdb_11"]) == set()
+
+
+def test_compat_probe_propagates_vm_failure_without_retry():
+    from requests import ConnectionError
+
+    error = ConnectionError("VM unavailable")
+    with mock.patch("apps.cmdb.collection.query_vm.requests.post", side_effect=error) as post:
+        with pytest.raises(ConnectionError) as caught:
+            query_instance_ids_with_vm_data(["cmdb_11"])
+    assert caught.value is error
+    assert post.call_count == 1
 
 
 @pytest.mark.parametrize(
@@ -272,6 +292,8 @@ def test_query_instance_ids_with_vm_data_batches_compatibility_probe():
         (CollectRunStatusType.SUCCESS, 200, 100, False, "sync_round"),
         (CollectRunStatusType.SUCCESS, 200, None, False, "sync_round"),
         (CollectRunStatusType.SUCCESS, None, None, True, "sync_compat"),
+        (CollectRunStatusType.NOT_START, None, None, True, "sync_compat"),
+        (CollectRunStatusType.NOT_START, None, None, False, "skip_idle"),
         (CollectRunStatusType.SUCCESS, None, None, False, "skip_idle"),
     ],
 )

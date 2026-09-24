@@ -54,11 +54,12 @@ describe('TopNSettingsSection field refresh', () => {
   it('shows refresh button and empty dropdowns without no-available-fields copy', () => {
     render(<Harness options={[]} />);
 
-    expect(screen.getByText('dashboard.refreshFields')).toBeTruthy();
+    expect(screen.getAllByText('dashboard.refreshFields')).toHaveLength(1);
     expect(screen.queryByText('topology.nodeConfig.noAvailableFields')).toBeNull();
-    expect(screen.queryByText('topology.nodeConfig.clickRefreshToGetFields')).toBeNull();
-    expect(screen.getByText('topology.nodeConfig.selectDisplayField')).toBeTruthy();
-    expect(screen.getByText('topology.nodeConfig.selectValueField')).toBeTruthy();
+    expect(screen.getAllByText('topology.nodeConfig.clickRefreshToGetFields').length).toBeGreaterThan(0);
+    expect(screen.getByText('topology.nodeConfig.displayField')).toBeTruthy();
+    expect(screen.getByText('topology.nodeConfig.valueField')).toBeTruthy();
+    expect(document.querySelectorAll('.cursor-help').length).toBeGreaterThan(0);
   });
 
   it('calls onRefreshFields when refresh is clicked', () => {

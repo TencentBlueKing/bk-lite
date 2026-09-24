@@ -23,6 +23,7 @@ from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki import decision_service
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+from apps.opspilot.services.wiki.material_build_queue_service import QUEUE_ITEM_TRIGGER
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
 
@@ -1077,6 +1078,58 @@ def _handle_material_deletion_generation(
         raise
 
 
+def _cancel_queue_items_for_material(kb_id, material_id) -> int:
+    closed = 0
+    items = (
+        BuildRecord.objects.select_for_update()
+        .filter(
+            knowledge_base_id=kb_id,
+            trigger=QUEUE_ITEM_TRIGGER,
+            stage="queued",
+            status="running",
+        )
+        .order_by("id")
+    )
+    for item in items:
+        if (item.inputs or {}).get("material_id") != material_id:
+            continue
+        item.stage = "cancelled"
+        item.status = "failed"
+        item.progress = 100
+        item.save(update_fields=["stage", "status", "progress", "updated_at"])
+        closed += 1
+    return closed
+
+
+def _delete_unpublished_material(material, operator=""):
+    knowledge_base = material.knowledge_base
+    material_id = material.pk
+    name = material.name
+    _cancel_queue_items_for_material(knowledge_base.pk, material_id)
+    material.delete()
+    record = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="material_delete",
+        operator=operator or "",
+        inputs={
+            "material_id": material_id,
+            "material_name": name,
+            "unpublished": True,
+        },
+        stage="done",
+        status="success",
+        progress=100,
+        counts={"new": 0, "updated": 0, "unchanged": 0, "pending_review": 0},
+        maintenance={"event": "material_delete", "unpublished": True},
+    )
+    logger.info(
+        "wiki unpublished material deleted knowledge_base=%s material=%s",
+        knowledge_base.pk,
+        material_id,
+    )
+    return record
+
+
 def handle_material_deletion(
     material,
     operator="",
@@ -1084,8 +1137,15 @@ def handle_material_deletion(
     classification_root_id=None,
     frozen_identity=None,
 ):
-    """Publish material deletion through a new generation only."""
+    """删除资料。从未作为页面来源的直接物理删除；已进入知识页的走 generation。"""
 
+    knowledge_base_id = material.knowledge_base_id
+    material_id = material.pk
+    with transaction.atomic():
+        knowledge_base = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
+        locked = Material.objects.select_for_update().get(pk=material_id, knowledge_base=knowledge_base)
+        if not PageEvidence.objects.filter(material_id=material_id).exists():
+            return _delete_unpublished_material(locked, operator=operator)
     return _handle_material_deletion_generation(
         material,
         operator=operator,

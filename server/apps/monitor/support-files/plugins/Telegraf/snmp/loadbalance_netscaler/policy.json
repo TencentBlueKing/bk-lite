@@ -30,7 +30,7 @@
     {
       "name": "NetScaler负载均衡内存使用率过高",
       "alert_name": "负载均衡${resource_name} 内存使用率过高",
-      "description": "监控 Citrix NetScaler 负载均衡的主机内存使用率（按 已用/总量 计算），当超过阈值时触发告警，便于及时发现内存压力导致连接处理性能下降的风险。",
+      "description": "监控 Citrix NetScaler 负载均衡的主机内存使用率（resMemUsage，直接百分比），当超过阈值时触发告警，便于及时发现内存压力导致连接处理性能下降的风险。",
       "metric_name": "device_memory_usage",
       "algorithm": "last_over_time",
       "threshold": [

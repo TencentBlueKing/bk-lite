@@ -2,7 +2,7 @@ import pytest
 
 from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.overrides import validate_manual_param_overrides
-from apps.alerts.action.payload import build_match_payload, build_rule_payload, resolve_field
+from apps.alerts.action.payload import build_match_payload, build_rule_payload, resolve_field, resolve_trigger_event_param
 from apps.alerts.action.resolver import resolve_params
 
 
@@ -42,6 +42,7 @@ def test_rule_payload_does_not_project_historical_source_fields_or_query_events(
     alert.events = MagicMock()
     p = build_rule_payload(alert, include_source_names=False)
     assert "source_id" not in p and "source_pk" not in p
+    assert not any(key.startswith("event.") for key in p)
     assert alert.events.mock_calls == []
 
 
@@ -57,6 +58,40 @@ def test_action_parameters_keep_first_event_source_id(script_params):
     params = resolve_params(build_match_payload(alert), [{"name": "origin", "from": "field", "value": "source_id"}], script_params)
 
     assert params == [{"name": "origin", "value": 7}]
+
+
+def test_match_payload_flattens_representative_event_without_raw_data():
+    from types import SimpleNamespace
+
+    alert = FakeAlert()
+    alert.events = SimpleNamespace(
+        first=lambda: SimpleNamespace(
+            source_id=7,
+            source=SimpleNamespace(name="Prometheus"),
+            event_id="EVENT-1",
+            title="cpu",
+            level="1",
+            tags={"alert": "CpuHigh"},
+            labels={},
+            enrichment={"cmdb": {"owner": "张三"}},
+            raw_data={"token": "secret-token-value"},
+            assignee=["alice"],
+            team=[1],
+            ingest_key="abc",
+        )
+    )
+
+    payload = build_match_payload(alert)
+
+    assert payload["source_id"] == 7
+    assert payload["event.event_id"] == "EVENT-1"
+    assert payload["event.source_name"] == "Prometheus"
+    assert payload["event.tags.alert"] == "CpuHigh"
+    assert payload["event.enrichment.cmdb.owner"] == "张三"
+    assert "event.raw_data" not in payload
+    assert not any("secret-token-value" in str(value) for value in payload.values())
+    assert "event.assignee" not in payload
+    assert "event.ingest_key" not in payload
 
 
 def test_payload_omits_source_id_when_no_events():
@@ -172,6 +207,21 @@ def test_resolve_params_reads_trigger_event_from_payload():
         [{"name": "event"}],
     )
     assert params == [{"name": "event", "value": "closed"}]
+
+
+def test_resolve_trigger_event_param_keeps_lifecycle_event():
+    execution = type("E", (), {"trigger_event": "closed"})()
+    alert = type("A", (), {"status": "unassigned"})()
+    assert resolve_trigger_event_param(execution, alert) == "closed"
+
+
+def test_resolve_trigger_event_param_maps_manual_from_alert_status():
+    execution = type("E", (), {"trigger_event": "manual"})()
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "unassigned"})()) == "created"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "pending"})()) == "assigned"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "processing"})()) == "acknowledged"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "resolved"})()) == "resolved"
+    assert resolve_trigger_event_param(execution, type("A", (), {"status": "closed"})()) == "closed"
 
 
 def test_validate_manual_overrides_only_allows_adjustable_const():

@@ -38,6 +38,8 @@ export const hasRenderableChartData = (
   data: unknown,
   config?: {
     selectedFields?: string[];
+    dimensionField?: string;
+    valueField?: string;
     nodeGraphIdentityMode?: NodeGraphIdentityMode;
     nodeGraphSourceField?: string;
     nodeGraphTargetField?: string;
@@ -57,7 +59,10 @@ export const hasRenderableChartData = (
     return parsed.ok && !isEmptyTopologyMapPayload(parsed.data);
   }
   if (chartType === 'pie') {
-    return ChartDataTransformer.transformToPieData(data).some(
+    return ChartDataTransformer.transformToPieData(data, {
+      dimensionField: config?.dimensionField,
+      valueField: config?.valueField,
+    }).some(
       (item) => Number.isFinite(item.value) && item.value > 0,
     );
   }
@@ -73,7 +78,10 @@ export const hasRenderableChartData = (
   }
   if (chartType === 'line' || chartType === 'bar') {
     return (
-      ChartDataTransformer.transformToLineBarData(data).categories.length > 0
+      ChartDataTransformer.transformToLineBarData(data, {
+        dimensionField: config?.dimensionField,
+        valueField: config?.valueField,
+      }).categories.length > 0
     );
   }
   if (chartType === 'table' || chartType === 'eventTable') {

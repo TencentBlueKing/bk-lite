@@ -23,7 +23,9 @@ export interface PlannedExecutionStepValue {
   total_steps: number;
   objective: string;
   tools?: string[];
+  tools_invoked?: string[];
   status?: string;
+  outcome?: string;
   error?: string;
 }
 

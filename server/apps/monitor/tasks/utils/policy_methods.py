@@ -2,7 +2,11 @@ import math
 import re
 from dataclasses import dataclass
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import (
+    BaseAppException,
+    ValidationAppException,
+)
+from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -117,9 +121,16 @@ COMPARE_MODE_ABSOLUTE = "absolute"
 COMPARE_MODE_PREVIOUS_WINDOW = "previous_window"
 COMPARE_MODE_OFFSET_1H = "offset_1h"
 COMPARE_MODE_OFFSET_24H = "offset_24h"
+COMPARE_MODE_OFFSET_HOURS = "offset_hours"
+COMPARE_MODE_OFFSET_DAYS = "offset_days"
+COMPARE_MODE_BASELINE_DAYS = "baseline_days"
 COMPARE_MODE_OFFSET_7D = "offset_7d"
 COMPARE_MODE_OFFSET_30D = "offset_30d"
+COMPARE_MODE_BASELINE_WEEKS = "baseline_weeks"
 COMPARE_MODE_BASELINE_4W = "baseline_4w"
+MAX_COMPARE_OFFSET_HOURS = 8760
+MAX_COMPARE_OFFSET_DAYS = 365
+MAX_COMPARE_BASELINE_WEEKS = 52
 COMPARE_MODE_TIMELEFT = "timeleft"
 
 COMPARE_MODES = {
@@ -127,8 +138,12 @@ COMPARE_MODES = {
     COMPARE_MODE_PREVIOUS_WINDOW,
     COMPARE_MODE_OFFSET_1H,
     COMPARE_MODE_OFFSET_24H,
+    COMPARE_MODE_OFFSET_HOURS,
+    COMPARE_MODE_OFFSET_DAYS,
+    COMPARE_MODE_BASELINE_DAYS,
     COMPARE_MODE_OFFSET_7D,
     COMPARE_MODE_OFFSET_30D,
+    COMPARE_MODE_BASELINE_WEEKS,
     COMPARE_MODE_BASELINE_4W,
     COMPARE_MODE_TIMELEFT,
 }
@@ -138,8 +153,12 @@ COMPARE_VALUE_KINDS_BY_MODE = {
     COMPARE_MODE_PREVIOUS_WINDOW: {"delta", "percent"},
     COMPARE_MODE_OFFSET_1H: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_24H: {"percent", "ratio"},
+    COMPARE_MODE_OFFSET_HOURS: {"percent", "ratio"},
+    COMPARE_MODE_OFFSET_DAYS: {"percent", "ratio"},
+    COMPARE_MODE_BASELINE_DAYS: {"delta", "percent"},
     COMPARE_MODE_OFFSET_7D: {"percent", "ratio"},
     COMPARE_MODE_OFFSET_30D: {"percent", "ratio"},
+    COMPARE_MODE_BASELINE_WEEKS: {"delta", "percent"},
     COMPARE_MODE_BASELINE_4W: {"delta", "percent"},
     COMPARE_MODE_TIMELEFT: {"hours"},
 }
@@ -157,9 +176,12 @@ COMPARE_OFFSET_SECONDS = {
 }
 HIGH_SIDE_METHODS = {">", ">="}
 LOW_SIDE_METHODS = {"<", "<="}
-OVERLAY_ROLE_LABEL = "compare_role"
-OVERLAY_ROLE_CURRENT = "current"
-OVERLAY_ROLE_BASELINE = "baseline"
+COMPARE_SPAN_CONFLICT_MESSAGE = "对照窗不能等于汇聚周期"
+SPAN_FIELD_LABELS = {
+    "compare_offset_hours": "对照小时数",
+    "compare_offset_days": "对照天数",
+    "compare_baseline_weeks": "对照周数",
+}
 
 
 @dataclass(frozen=True)
@@ -351,10 +373,23 @@ def _format_forecast_lookback(policy_like):
     return f"{lookback_value}h"
 
 
+def _forecast_target_in_metric_unit(policy_like, target):
+    """容量线按用户所选单位保存，查询里要和指标原始序列同一量纲。"""
+    source_unit = str(_policy_get(policy_like, "forecast_target_unit") or "").strip()
+    metric_unit = str(_policy_get(policy_like, "metric_unit") or "").strip()
+    if not source_unit or source_unit == metric_unit:
+        return target
+    if not metric_unit or not UnitConverter.is_convertible(source_unit, metric_unit):
+        raise BaseAppException("forecast_target_unit is not convertible to metric_unit")
+    converted = UnitConverter.convert_values([float(target)], source_unit, metric_unit)
+    return converted[0]
+
+
 def compile_timeleft_query(policy_like, base_query, step, group_by=None):
     target = _policy_get(policy_like, "forecast_target")
     if target is None or target == "":
         raise BaseAppException("forecast_target is required")
+    target = _forecast_target_in_metric_unit(policy_like, target)
     target_s = _format_promql_number(target)
     lookback = _format_forecast_lookback(policy_like)
     lookback_step = period_step(lookback)
@@ -376,11 +411,51 @@ def compile_timeleft_query(policy_like, base_query, step, group_by=None):
     )
 
 
-def _baseline_4w_expr(query):
-    return (
-        f"({query} offset 7d + {query} offset 14d + "
-        f"{query} offset 21d + {query} offset 28d) / 4"
+def _baseline_span_expr(query, count, stride_days):
+    terms = " + ".join(
+        f"{query} offset {index * stride_days}d" for index in range(1, count + 1)
     )
+    return f"({terms}) / {count}"
+
+
+def _baseline_days_expr(query, days):
+    return _baseline_span_expr(query, days, 1)
+
+
+def _baseline_weeks_expr(query, weeks):
+    return _baseline_span_expr(query, weeks, 7)
+
+
+def _baseline_4w_expr(query):
+    return _baseline_weeks_expr(query, 4)
+
+
+def span_value_message(label, raw, minimum, limit):
+    """对照数量不合法时返回和保存校验相同的中文；合法则返回 None。"""
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < minimum:
+        if minimum > 1:
+            return f"{label}至少为 {minimum}"
+        return f"{label}必须是正整数"
+    if raw > limit:
+        return f"{label}不能超过 {limit}"
+    return None
+
+
+def _positive_span(policy_like, field, maximum, minimum=1):
+    raw = _policy_get(policy_like, field)
+    label = SPAN_FIELD_LABELS.get(field, field)
+    if isinstance(raw, bool):
+        raise ValidationAppException(span_value_message(label, raw, minimum, maximum))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as err:
+        raise ValidationAppException(
+            span_value_message(label, None, minimum, maximum)
+        ) from err
+    message = span_value_message(label, value, minimum, maximum)
+    if message:
+        raise ValidationAppException(message)
+    return value
 
 
 def _window_range_selector(group_algorithm, metric_query, group_by, step):
@@ -466,9 +541,16 @@ def _compile_window_query(policy_like, base_query, step, group_by):
     return build_policy_query(algorithm, base_query, step, group_by, group_algorithm)
 
 
-def _compare_offset(mode, step):
+def _compare_offset(policy_like, step):
+    mode = _policy_get(policy_like, "compare_mode") or COMPARE_MODE_ABSOLUTE
     if mode == COMPARE_MODE_PREVIOUS_WINDOW:
         return step
+    if mode == COMPARE_MODE_OFFSET_HOURS:
+        hours = _positive_span(policy_like, "compare_offset_hours", MAX_COMPARE_OFFSET_HOURS)
+        return f"{hours}h"
+    if mode == COMPARE_MODE_OFFSET_DAYS:
+        days = _positive_span(policy_like, "compare_offset_days", MAX_COMPARE_OFFSET_DAYS)
+        return f"{days}d"
     offset = COMPARE_OFFSET_BY_MODE.get(mode)
     if not offset:
         raise BaseAppException(f"unsupported compare_mode: {mode}")
@@ -482,8 +564,31 @@ def apply_compare_mode(query, policy_like, step):
         return query
     if _policy_get(policy_like, "algorithm") == COUNT_IF_ALGORITHM:
         raise BaseAppException("count_if_over_time only allows absolute compare_mode")
-    if mode == COMPARE_MODE_BASELINE_4W:
-        baseline = _baseline_4w_expr(query)
+    if mode == COMPARE_MODE_BASELINE_DAYS:
+        days = _positive_span(
+            policy_like,
+            "compare_offset_days",
+            MAX_COMPARE_OFFSET_DAYS,
+            minimum=2,
+        )
+        baseline = _baseline_days_expr(query, days)
+        if kind == "delta":
+            return f"{query} - ({baseline})"
+        if kind == "percent":
+            return f"({query} - ({baseline})) / ({baseline}) * 100"
+        raise BaseAppException(f"unsupported compare_value_kind: {kind}")
+    if mode in (COMPARE_MODE_BASELINE_4W, COMPARE_MODE_BASELINE_WEEKS):
+        weeks = (
+            4
+            if mode == COMPARE_MODE_BASELINE_4W
+            else _positive_span(
+                policy_like,
+                "compare_baseline_weeks",
+                MAX_COMPARE_BASELINE_WEEKS,
+                minimum=2,
+            )
+        )
+        baseline = _baseline_weeks_expr(query, weeks)
         if kind == "delta":
             return f"{query} - ({baseline})"
         if kind == "percent":
@@ -491,7 +596,7 @@ def apply_compare_mode(query, policy_like, step):
         raise BaseAppException(f"unsupported compare_value_kind: {kind}")
     if mode == COMPARE_MODE_TIMELEFT:
         raise BaseAppException("timeleft must use compile_timeleft_query")
-    offset = _compare_offset(mode, step)
+    offset = _compare_offset(policy_like, step)
     baseline = f"{query} offset {offset}"
     if kind == "delta":
         return f"{query} - {baseline}"
@@ -517,7 +622,23 @@ def compile_baseline_query(policy_like, base_query, step, group_by=None):
         return query
     if mode == COMPARE_MODE_BASELINE_4W:
         return _baseline_4w_expr(query)
-    return f"{query} offset {_compare_offset(mode, step)}"
+    if mode == COMPARE_MODE_BASELINE_DAYS:
+        days = _positive_span(
+            policy_like,
+            "compare_offset_days",
+            MAX_COMPARE_OFFSET_DAYS,
+            minimum=2,
+        )
+        return _baseline_days_expr(query, days)
+    if mode == COMPARE_MODE_BASELINE_WEEKS:
+        weeks = _positive_span(
+            policy_like,
+            "compare_baseline_weeks",
+            MAX_COMPARE_BASELINE_WEEKS,
+            minimum=2,
+        )
+        return _baseline_weeks_expr(query, weeks)
+    return f"{query} offset {_compare_offset(policy_like, step)}"
 
 
 def compile_policy_query(policy_like, base_query, step, group_by=None):

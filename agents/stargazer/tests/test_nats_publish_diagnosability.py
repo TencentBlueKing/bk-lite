@@ -18,7 +18,8 @@ class _FailingNats:
 
 @pytest.mark.asyncio
 async def test_callback_publish_failure_has_one_error_owner_with_traceback(monkeypatch, caplog):
-    original_error = ConnectionError("nats unavailable")
+    sensitive = "callback-password-secret-sentinel"
+    original_error = ConnectionError(f"nats unavailable {sensitive}")
 
     async def get_failing_nats(_channel):
         return _FailingNats(original_error)
@@ -40,12 +41,16 @@ async def test_callback_publish_failure_has_one_error_owner_with_traceback(monke
     error_records = [record for record in caplog.records if record.levelno == logging.ERROR]
     assert len(error_records) == 1
     assert "event=callback_publish_failed" in error_records[0].getMessage()
-    assert "task_id=run-1" in error_records[0].getMessage()
+    assert "task_id=" not in error_records[0].getMessage()
     assert "subject=bklite.receive_config_file_result" in error_records[0].getMessage()
     assert "failed_stage=callback_publish" in error_records[0].getMessage()
     assert "error_type=ConnectionError" in error_records[0].getMessage()
     assert "must-not-be-logged" not in error_records[0].getMessage()
-    assert error_records[0].exc_info is not None
+    assert error_records[0].exc_info[2] is original_error.__traceback__.tb_next
+    assert error_records[0].args
+    rendered = logging.Formatter().format(error_records[0])
+    assert sensitive not in rendered and "must-not-be-logged" not in rendered
+    assert str(original_error) == f"nats unavailable {sensitive}"
 
 
 def test_credential_result_nats_helper_is_removed():

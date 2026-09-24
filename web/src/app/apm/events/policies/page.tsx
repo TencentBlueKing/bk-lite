@@ -7,9 +7,8 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
-  ReloadOutlined,
 } from '@ant-design/icons';
-import { Avatar, Button, message, Popconfirm, Space, Switch, Typography, type TableColumnsType } from 'antd';
+import { Avatar, Button, Input, message, Popconfirm, Space, Switch, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
@@ -17,7 +16,6 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import { formatDateTime } from '@/app/apm/components/metric-format';
 import type { ApmPolicy } from '@/app/apm/types';
-import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/app/apm/events/event-workspace.module.scss';
 
@@ -203,29 +201,20 @@ export default function ApmPolicyListPage() {
     >
       <ApmSurface>
         <div className="flex flex-col gap-4">
-        <SearchActionBar
-          spacing="flush"
-          className={styles.policyToolbar}
-          searchClassName="w-full sm:!w-80"
-          searchProps={{
-            placeholder: t('apm.policies.searchPlaceholder', '搜索策略、服务、环境或端点'),
-            value: keyword,
-            onChange: (event) => setKeyword(event.target.value),
-            onSearch: (value) => setKeyword(value.trim()),
-          }}
-          actions={(
-            <Space>
-              <Button icon={<ReloadOutlined />} onClick={load}>
-                {t('apm.common.refresh', '刷新')}
-              </Button>
-              <Link href="/apm/events/policies/new">
-                <Button type="primary" icon={<PlusOutlined />}>
-                  {t('apm.policies.new', '新建策略')}
-                </Button>
-              </Link>
-            </Space>
-          )}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Input
+            allowClear
+            className="w-full sm:w-80"
+            placeholder={t('apm.policies.searchPlaceholder', '搜索策略、服务、环境或端点')}
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+          />
+          <Link href="/apm/events/policies/new">
+            <Button type="primary" icon={<PlusOutlined />}>
+              {t('apm.policies.new', '新建策略')}
+            </Button>
+          </Link>
+        </div>
         {state === 'ready' ? (
           <ApmDataTable
             rowKey="id"

@@ -108,6 +108,9 @@ export interface RelationItem extends AssoFieldType {
 }
 
 export interface ExportModalProps {
+  canSubmit: boolean;
+  onSubmitStart?: () => void;
+  onSubmitted: (task: import('./transfer').TransferTask) => void;
   userList: any[];
   models: ModelItem[];
   assoTypes: AssoTypeItem[];

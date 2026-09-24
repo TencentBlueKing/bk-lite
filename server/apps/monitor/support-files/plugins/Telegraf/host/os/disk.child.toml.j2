@@ -19,9 +19,19 @@ def apply(metric):
     excludes = _parse_fstypes(disk_exclude_fstypes)
     if (includes and fstype not in includes) or fstype in excludes:
         return None
+    if operating_system == "windows":
+        if metric.fields.get("inodes_used_percent") != None:
+            metric.fields.pop("inodes_used_percent")
+        if metric.fields.get("inodes_free") != None:
+            metric.fields.pop("inodes_free")
+        if metric.fields.get("inodes_used") != None:
+            metric.fields.pop("inodes_used")
+        if metric.fields.get("inodes_total") != None:
+            metric.fields.pop("inodes_total")
     return metric
 '''
 
     [processors.starlark.constants]
         disk_include_fstypes = "{{ disk_include_fstypes | default('', true) | replace('\\', '\\\\') | replace('"', '\\"') }}"
         disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32,cdfs') | replace('\\', '\\\\') | replace('"', '\\"') }}"
+        operating_system = "{{ operating_system | default('', true) }}"

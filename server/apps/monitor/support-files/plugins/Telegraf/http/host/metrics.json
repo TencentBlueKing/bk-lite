@@ -662,7 +662,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU iowait usage percentage"
+      "description": "CPU iowait usage percentage",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "CPU",
@@ -688,7 +693,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU steal usage percentage"
+      "description": "CPU steal usage percentage",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "System",
@@ -701,7 +711,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "1-minute system load"
+      "description": "1-minute system load",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "System",
@@ -714,7 +729,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "5-minute system load"
+      "description": "5-minute system load",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "System",
@@ -727,7 +747,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "15-minute system load"
+      "description": "15-minute system load",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "System",
@@ -753,7 +778,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Cached memory in bytes"
+      "description": "Cached memory in bytes",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "Memory",
@@ -766,7 +796,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Shared memory in bytes"
+      "description": "Shared memory in bytes",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "Memory",
@@ -779,7 +814,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Buffered memory in bytes"
+      "description": "Buffered memory in bytes",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "Disk",
@@ -825,7 +865,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Disk inode usage percentage"
+      "description": "Disk inode usage percentage",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "Network",
@@ -981,6 +1026,40 @@
       "description": "Disk busy-time percentage. Linux SSH derives it from cumulative io_time_ms (rate/10). Windows WinRM uses formatted PercentDiskTime. Physical disks and LVM device-mapper volumes may both appear."
     },
     {
+      "metric_group": "Disk IO",
+      "name": "disk_read_latency",
+      "query": "disk_read_latency_gauge{instance_type=\"os\", __$labels__} or (rate(diskio_read_time_ms_gauge{instance_type=\"os\", __$labels__}[5m]) / rate(diskio_reads_total_gauge{instance_type=\"os\", __$labels__}[5m]))",
+      "display_name": "Disk Read Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "device"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average disk read latency. Windows WinRM uses AvgDiskSecPerRead in milliseconds. Linux SSH derives it from cumulative read_time_ms / reads."
+    },
+    {
+      "metric_group": "Disk IO",
+      "name": "disk_write_latency",
+      "query": "disk_write_latency_gauge{instance_type=\"os\", __$labels__} or (rate(diskio_write_time_ms_gauge{instance_type=\"os\", __$labels__}[5m]) / rate(diskio_writes_total_gauge{instance_type=\"os\", __$labels__}[5m]))",
+      "display_name": "Disk Write Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "device"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average disk write latency. Windows WinRM uses AvgDiskSecPerWrite in milliseconds. Linux SSH derives it from cumulative write_time_ms / writes."
+    },
+    {
       "metric_group": "Processes",
       "name": "processes_running",
       "query": "processes_running_gauge{instance_type=\"os\", __$labels__}",
@@ -1004,7 +1083,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Blocked process count"
+      "description": "Blocked process count",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "Processes",
@@ -1017,7 +1101,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Zombie process count"
+      "description": "Zombie process count",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     },
     {
       "metric_group": "Processes",
@@ -1030,7 +1119,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Sleeping process count"
+      "description": "Sleeping process count",
+      "view_config": {
+        "os": [
+          "linux"
+        ]
+      }
     }
   ]
 }

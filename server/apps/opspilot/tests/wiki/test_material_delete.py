@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 
@@ -21,6 +23,45 @@ def _page(kb, title="A"):
     page.current_version = v
     page.save(update_fields=["current_version"])
     return page
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deleting_pending_material_without_pages_skips_generation(caplog):
+    from apps.opspilot.models import BuildRecord, Material
+    from apps.opspilot.services.wiki.material_build_queue_service import QUEUE_ITEM_TRIGGER
+    from apps.opspilot.services.wiki.update_service import handle_material_deletion
+
+    kb = _kb()
+    mat = Material.objects.create(
+        knowledge_base=kb,
+        name="pending.docx",
+        material_type="file",
+        status="pending",
+        source_identity="pending-source",
+    )
+    material_id = mat.id
+    BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger=QUEUE_ITEM_TRIGGER,
+        operator="admin",
+        inputs={"material_id": material_id},
+        stage="queued",
+        status="running",
+    )
+
+    caplog.set_level(logging.INFO, logger="opspilot")
+    build = handle_material_deletion(mat, operator="admin")
+
+    assert not Material.objects.filter(id=material_id).exists()
+    assert build.status == "success"
+    assert build.trigger == "material_delete"
+    assert build.counts == {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 0}
+    assert build.maintenance.get("unpublished") is True
+    queued = BuildRecord.objects.get(knowledge_base=kb, trigger=QUEUE_ITEM_TRIGGER)
+    assert queued.stage == "cancelled"
+    records = [record for record in caplog.records if record.msg == "wiki unpublished material deleted knowledge_base=%s material=%s"]
+    assert records
+    assert records[0].args == (kb.id, material_id)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -376,6 +417,28 @@ class TestDeleteView:
         assert data["maintenance"]["event"] == "material_delete"
         assert page.status == "source_invalid"
         assert not CheckItem.objects.filter(knowledge_base=kb, status="open").exists()
+        assert not Material.objects.filter(id=material_id).exists()
+
+    def test_destroy_pending_material_without_pages_succeeds(self, api_client):
+        from apps.opspilot.models import Material
+
+        kb = _kb()
+        mat = Material.objects.create(
+            knowledge_base=kb,
+            name="pending.docx",
+            material_type="file",
+            status="pending",
+            source_identity="pending-source",
+        )
+        material_id = mat.id
+
+        response = api_client.delete(f"/api/v1/opspilot/wiki_mgmt/material/{material_id}/")
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["deleted"] is True
+        assert data["material_id"] == material_id
+        assert data["pending_review"] == 0
         assert not Material.objects.filter(id=material_id).exists()
 
 

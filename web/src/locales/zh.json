@@ -531,6 +531,11 @@
     "apm_integration": "应用接入",
     "service_red": "服务指标",
     "trace_explore": "调用链",
-    "alert_center": "告警策略"
+    "alert_center": "告警策略",
+    "rum_experience": "体验",
+    "rum_quality": "质量",
+    "rum_alerting": "事件",
+    "rum_integration": "集成",
+    "rum_governance": "数据治理"
   }
 }

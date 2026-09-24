@@ -1,0 +1,120 @@
+{
+  "zh": [
+    {
+      "title": "体验",
+      "icon": "yingyongtiyan",
+      "url": "/rum/sessions",
+      "name": "sessions",
+      "children": [
+        { "title": "会话", "icon": "contact", "url": "/rum/sessions", "name": "sessions" },
+        { "title": "视图与性能", "icon": "xingneng", "url": "/rum/views", "name": "views" },
+        { "title": "转化漏斗", "icon": "yidongtixingshezhi", "url": "/rum/funnels", "name": "funnels" },
+        { "url": "/rum/sessions/[sessionId]", "name": "session_detail", "isNotMenuItem": true },
+        { "url": "/rum/sessions/[sessionId]/replay", "name": "session_replay", "isNotMenuItem": true },
+        { "url": "/rum/funnels/[id]", "name": "funnel_detail", "isNotMenuItem": true }
+      ]
+    },
+    {
+      "title": "质量",
+      "icon": "zhiliangzhouxiaozheng",
+      "url": "/rum/errors",
+      "name": "errors",
+      "children": [
+        { "title": "错误追踪", "icon": "quexian", "url": "/rum/errors", "name": "errors" },
+        { "title": "部署追踪", "icon": "ziyuan1", "url": "/rum/releases", "name": "releases" },
+        { "url": "/rum/errors/detail", "name": "error_detail", "isNotMenuItem": true }
+      ]
+    },
+    {
+      "title": "事件",
+      "icon": "weiwangguanicon-defuben-",
+      "url": "/rum/alert-events",
+      "name": "monitors",
+      "children": [
+        { "title": "告警", "icon": "weiwangguanicon-defuben-", "url": "/rum/alert-events", "name": "alert_events" },
+        { "title": "策略", "icon": "mulu", "url": "/rum/monitors", "name": "monitors" }
+      ]
+    },
+    {
+      "title": "集成",
+      "icon": "zichan-quanbushebei",
+      "url": "/rum/applications",
+      "name": "applications",
+      "children": [
+        { "title": "应用", "icon": "yingyongguanli", "url": "/rum/applications", "name": "applications" },
+        { "title": "接入", "icon": "settings-fill", "url": "/rum/setup", "name": "applications" },
+        { "url": "/rum/setup/[name]", "name": "application_setup", "isNotMenuItem": true },
+        { "url": "/rum/applications/[name]", "name": "application_setup", "isNotMenuItem": true },
+        { "url": "/rum/applications/[name]/overview", "name": "application_overview", "isNotMenuItem": true }
+      ]
+    },
+    {
+      "title": "数据治理",
+      "icon": "shujuzhili",
+      "url": "/rum/compliance",
+      "name": "compliance",
+      "children": [
+        { "title": "合规删除", "icon": "jujue", "url": "/rum/compliance", "name": "compliance" }
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "Experience",
+      "icon": "yingyongtiyan",
+      "url": "/rum/sessions",
+      "name": "sessions",
+      "children": [
+        { "title": "Sessions", "icon": "contact", "url": "/rum/sessions", "name": "sessions" },
+        { "title": "Views & performance", "icon": "xingneng", "url": "/rum/views", "name": "views" },
+        { "title": "Funnels", "icon": "yidongtixingshezhi", "url": "/rum/funnels", "name": "funnels" },
+        { "url": "/rum/sessions/[sessionId]", "name": "session_detail", "isNotMenuItem": true },
+        { "url": "/rum/sessions/[sessionId]/replay", "name": "session_replay", "isNotMenuItem": true },
+        { "url": "/rum/funnels/[id]", "name": "funnel_detail", "isNotMenuItem": true }
+      ]
+    },
+    {
+      "title": "Quality",
+      "icon": "zhiliangzhouxiaozheng",
+      "url": "/rum/errors",
+      "name": "errors",
+      "children": [
+        { "title": "Errors", "icon": "quexian", "url": "/rum/errors", "name": "errors" },
+        { "title": "Releases", "icon": "ziyuan1", "url": "/rum/releases", "name": "releases" },
+        { "url": "/rum/errors/detail", "name": "error_detail", "isNotMenuItem": true }
+      ]
+    },
+    {
+      "title": "Events",
+      "icon": "weiwangguanicon-defuben-",
+      "url": "/rum/alert-events",
+      "name": "monitors",
+      "children": [
+        { "title": "Alerts", "icon": "weiwangguanicon-defuben-", "url": "/rum/alert-events", "name": "alert_events" },
+        { "title": "Policies", "icon": "mulu", "url": "/rum/monitors", "name": "monitors" }
+      ]
+    },
+    {
+      "title": "Integration",
+      "icon": "zichan-quanbushebei",
+      "url": "/rum/applications",
+      "name": "applications",
+      "children": [
+        { "title": "Applications", "icon": "yingyongguanli", "url": "/rum/applications", "name": "applications" },
+        { "title": "Setup", "icon": "settings-fill", "url": "/rum/setup", "name": "applications" },
+        { "url": "/rum/setup/[name]", "name": "application_setup", "isNotMenuItem": true },
+        { "url": "/rum/applications/[name]", "name": "application_setup", "isNotMenuItem": true },
+        { "url": "/rum/applications/[name]/overview", "name": "application_overview", "isNotMenuItem": true }
+      ]
+    },
+    {
+      "title": "Governance",
+      "icon": "shujuzhili",
+      "url": "/rum/compliance",
+      "name": "compliance",
+      "children": [
+        { "title": "Compliance erase", "icon": "jujue", "url": "/rum/compliance", "name": "compliance" }
+      ]
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 
 import json
 from collections.abc import AsyncIterator, Callable, Iterator
-from typing import Any, Optional
+from typing import Optional
 
 from django.http import StreamingHttpResponse
 
@@ -39,7 +39,12 @@ def make_sse_response(stream: Callable[[], AsyncIterator | Iterator], *, extra_h
 
 def make_sse_error_response(error_message: str) -> StreamingHttpResponse:
     async def error_generator():
-        error_data = {"result": False, "message": error_message, "error": True}
+        error_data = {
+            "type": "RUN_ERROR",
+            "message": error_message,
+            "result": False,
+            "error": True,
+        }
         yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
 

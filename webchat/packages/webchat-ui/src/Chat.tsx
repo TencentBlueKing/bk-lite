@@ -338,6 +338,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   const applyCustomEvent = (event: CustomProtocolEvent) => {
     onCustomEvent?.(event);
+    if (event.name === 'assistant_text_retract') {
+      handleAGUIEvent.retractLiveText();
+      return;
+    }
     if (event.name === 'llm_context_usage') {
       const usage = parseLlmContextUsage(event.value);
       if (usage) {

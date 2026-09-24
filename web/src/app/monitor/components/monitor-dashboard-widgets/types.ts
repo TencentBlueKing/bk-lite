@@ -44,8 +44,9 @@ export interface MetricItem {
   query?: string;
   view_query?: string;
   view_config?: {
-    mode: 'top' | 'bottom' | 'limited';
+    mode?: 'top' | 'bottom' | 'limited';
     limit?: number;
+    os?: string[];
   };
   seriesBudget?: {
     truncated: boolean;

@@ -477,6 +477,43 @@ class Import:
 
         return item, row_has_data, row_has_validation_errors
 
+    def iter_transfer_rows(self, stream, allowed_org_ids):
+        """有界异步导入解析；保留 Excel 行号，不记录或返回原始错误单元格。"""
+        maps = self._build_field_maps()
+        book = openpyxl.load_workbook(stream, read_only=True, data_only=False, keep_links=False)
+        try:
+            sheet = book.worksheets[0]
+            sheet.reset_dimensions()
+            keys = [cell.value for cell in sheet[3]]
+            for number, row in enumerate(sheet.iter_rows(min_row=4), 4):
+                if all(cell.value is None for cell in row):
+                    continue
+                item = {"model_id": self.model_id}
+                relations = {}
+                error = ""
+                for key, cell in zip(keys, row):
+                    if key == "字段标识(请勿编辑)" or cell.value is None:
+                        continue
+                    value = cell.value
+                    try:
+                        value = ast.literal_eval(value) if isinstance(value, str) else value
+                    except (ValueError, SyntaxError):
+                        pass
+                    if key in self.model_asso_map:
+                        if not isinstance(value, str):
+                            error = "关联值必须是逗号分隔的实例名"
+                        else:
+                            relations[key] = [name.strip() for name in value.split(",") if name.strip()]
+                        continue
+                    handled, invalid, _ = self._process_cell_value(key, value, number, maps, set(allowed_org_ids), item)
+                    if invalid:
+                        error = "字段类型或取值不合法，请检查模板要求"
+                    elif not handled:
+                        item[key] = value
+                yield number, item, relations, error
+        finally:
+            book.close()
+
     def format_excel_data(self, excel_meta: bytes, allowed_org_ids: list = None):
         """格式化excel数据。
 
@@ -632,9 +669,22 @@ class Import:
 
         return normalized_records
 
+    def _load_import_exist_items(self, inst_list):
+        """解析出行后再按唯一字段与实例名加载候选，避免导入前全表拉取。"""
+        from apps.cmdb.services.instance import InstanceManage
+
+        with GraphClient() as ag:
+            self.exist_items = InstanceManage._query_import_exist_items(
+                ag,
+                self.model_id,
+                inst_list,
+                self.get_check_attr_map(),
+            )
+
     def import_inst_list(self, file_stream: bytes):
         """将excel主机数据导入"""
         inst_list, _asso_key_map = self.format_excel_data(file_stream)
+        self._load_import_exist_items(inst_list)
         result = self.inst_list_save(inst_list)
         return result
 
@@ -642,6 +692,7 @@ class Import:
         """将excel主机数据导入"""
         inst_list, asso_key_map = self.format_excel_data(file_stream, allowed_org_ids=allowed_org_ids)
         self.inst_list = inst_list
+        self._load_import_exist_items(inst_list)
         # 执行导入（有错误的已在 format_excel_data 中被过滤）
         add_results, update_results = self.inst_list_update(inst_list)
 
@@ -708,6 +759,19 @@ class Import:
                 self.import_result_message["asso"]["error"] += 1
             self.import_result_message["asso"]["data"].append(data)
 
+    def _load_asso_name_map(self, graph, model_id, names):
+        from apps.cmdb.services.instance import InstanceManage
+
+        items = []
+        filtered_names = [name for name in names if name]
+        for chunk in InstanceManage._chunk_values(filtered_names):
+            rows = graph.query_entity_by_inst_names(chunk, model_id=model_id) or []
+            items.extend(row for row in rows if isinstance(row, dict))
+        if len(items) > InstanceManage.IMPORT_EXIST_CANDIDATE_LIMIT:
+            raise BaseAppException("导入关联候选超过 5000 条，请缩小本次导入范围后重试")
+        self.inst_name_id_map[model_id] = {item["inst_name"]: item["_id"] for item in items if item.get("inst_name") is not None}
+        self.inst_id_name_map[model_id] = {item["_id"]: item["inst_name"] for item in items if item.get("_id") is not None}
+
     def format_import_asso_data(self, asso_key_map):
         """
         格式化关联数据
@@ -720,27 +784,29 @@ class Import:
             i["model_asst_id"]: i["src_model_id"] if self.model_id != i["src_model_id"] else i["dst_model_id"] for i in self.model_asso_map.values()
         }
 
-        with GraphClient() as ag:
-            # 获取当前模型的实例名称与ID映射
-            exist_items, _ = ag.query_entity(
-                INSTANCE,
-                [{"field": "model_id", "type": "str=", "value": self.model_id}],
-            )
-            self.inst_name_id_map[self.model_id] = {item["inst_name"]: item["_id"] for item in exist_items}
-            self.inst_id_name_map[self.model_id] = {item["_id"]: item["inst_name"] for item in exist_items}
+        current_names = []
+        seen_current = set()
+        related_names = {}
+        related_seen = {}
+        for asso_key, inst_name_list in asso_key_map.items():
+            if not inst_name_list:
+                continue
+            src_model = model_asso_map[asso_key]
+            for inst_name, dst_names in inst_name_list.items():
+                if inst_name and inst_name not in seen_current:
+                    seen_current.add(inst_name)
+                    current_names.append(inst_name)
+                bucket = related_names.setdefault(src_model, [])
+                seen_related = related_seen.setdefault(src_model, set())
+                for dst_name in dst_names or []:
+                    if dst_name and dst_name not in seen_related:
+                        seen_related.add(dst_name)
+                        bucket.append(dst_name)
 
-            # 获取关联模型的实例名称与ID映射
-            for asso_key, inst_name_list in asso_key_map.items():
-                if not inst_name_list:
-                    continue
-                src_model = model_asso_map[asso_key]
-                exist_items, _ = ag.query_entity(
-                    INSTANCE,
-                    [{"field": "model_id", "type": "str=", "value": src_model}],
-                )
-                self.inst_name_id_map[src_model] = {item["inst_name"]: item["_id"] for item in exist_items}
-                # 反转实例名称与ID映射
-                self.inst_id_name_map[src_model] = {item["_id"]: item["inst_name"] for item in exist_items}
+        with GraphClient() as ag:
+            self._load_asso_name_map(ag, self.model_id, current_names)
+            for related_model, names in related_names.items():
+                self._load_asso_name_map(ag, related_model, names)
 
     def get_model_asso_map(self):
         """

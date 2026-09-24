@@ -91,8 +91,9 @@ export interface PlannedExecutionStepView {
   step_index: number;
   total_steps: number;
   objective: string;
-  status: 'running' | 'done' | 'failed';
+  status: 'running' | 'done' | 'failed' | 'skipped';
   toolCallIds: string[];
+  reusedPriorResult?: boolean;
   error?: string;
 }
 

@@ -3,13 +3,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildDashboardCaption,
   buildDashboardCurrentTime,
+  getContext,
   getTextContext,
+  isDashboardMetricsMode,
   isDecorativeDashboardChart,
   labelFromDashboardCard,
   readDashboardKpiReadings,
   readDashboardPageDataStamp,
   readDashboardRankPanels,
 } from '../dashboard.pilot';
+import type { PageContextToolkit } from '@/components/ai-page-context/types';
 
 describe('dashboard.pilot chart labeling', () => {
   afterEach(() => {
@@ -111,7 +114,7 @@ describe('dashboard.pilot page data stamp', () => {
     expect(stamp.timeRangeLabel).toBe('最近6小时');
     expect(stamp.kpiFingerprint).toBe('86.2%|79.1%');
     expect(stamp.kpiReadings).toEqual([]);
-    expect(buildDashboardCurrentTime(stamp)).toBe('最近6小时::86.2%|79.1%::正常::运行正常');
+    expect(buildDashboardCurrentTime(stamp)).toBe('dashboard::最近6小时::86.2%|79.1%::正常::运行正常');
   });
 
   it('reads labeled KPI values from stat cards', () => {
@@ -141,5 +144,43 @@ describe('dashboard.pilot page data stamp', () => {
     document.querySelector('.statValue')!.textContent = '86.0%';
     const stamp6h = readDashboardPageDataStamp();
     expect(buildDashboardCurrentTime(stamp15)).not.toBe(buildDashboardCurrentTime(stamp6h));
+  });
+});
+
+describe('dashboard.pilot display mode', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  const toolkit: PageContextToolkit = {
+    captureEchartsFromDoms: async () => [{ dataUrl: 'data:image/jpeg,x', caption: '不该出现' }],
+    captureEchartsFromDom: async () => [],
+    captionFromOption: () => '图表',
+    captureRechartsFromDoms: async () => [{ dataUrl: 'data:image/jpeg,y', caption: '也不该出现' }],
+  };
+
+  it('skips professional dashboard screenshots in metrics mode', async () => {
+    document.body.innerHTML = `
+      <div class="modeSegmented">
+        <div class="ant-segmented-item ant-segmented-item-selected">全量指标</div>
+      </div>
+      <div _echarts_instance_="panel" style="height:200px"></div>
+    `;
+    expect(isDashboardMetricsMode()).toBe(true);
+    const text = (getTextContext().sections || []).map((section) => section.content).join('\n');
+    expect(text).toContain('展示模式: 全量指标');
+    const full = await getContext(toolkit);
+    expect(full.images || []).toEqual([]);
+  });
+
+  it('keeps dashboard mode capture path when 监控仪表盘 is selected', async () => {
+    document.body.innerHTML = `
+      <div class="modeSegmented">
+        <div class="ant-segmented-item ant-segmented-item-selected">监控仪表盘</div>
+      </div>
+    `;
+    expect(isDashboardMetricsMode()).toBe(false);
+    const text = (getTextContext().sections || []).map((section) => section.content).join('\n');
+    expect(text).toContain('展示模式: 监控仪表盘');
   });
 });

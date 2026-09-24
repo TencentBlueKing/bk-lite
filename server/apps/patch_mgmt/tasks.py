@@ -98,6 +98,7 @@ def run_periodic_compliance_scan() -> None:
     """
     from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
     from apps.patch_mgmt.models import GovernanceTask, PatchTarget, ScanSetting
+    from apps.patch_mgmt.utils.i18n import patch_message
 
     setting = ScanSetting.get_singleton()
     if not setting.is_enabled:
@@ -110,7 +111,12 @@ def run_periodic_compliance_scan() -> None:
         return
 
     task = GovernanceTask.objects.create(
-        name=f"周期性合规评估 ({timezone.now().strftime('%Y-%m-%d %H:%M')})",
+        name=patch_message(
+            None,
+            "message.periodic_assessment_name",
+            "Periodic compliance assessment ({time})",
+            time=timezone.now().strftime("%Y-%m-%d %H:%M"),
+        ),
         task_type=GovernanceTaskType.ASSESS,
         execution_mode="now",
         status=GovernanceTaskStatus.PENDING,
@@ -365,6 +371,7 @@ def execute_governance_task(self, task_id: int) -> None:
     from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
     from apps.patch_mgmt.services.governance_convergence import reconcile_stale_history
     from apps.patch_mgmt.services.patch_execution_service import _finalize_task_status
+    from apps.patch_mgmt.utils.i18n import patch_message
 
     try:
         task = GovernanceTask.objects.get(pk=task_id)
@@ -430,7 +437,7 @@ def execute_governance_task(self, task_id: int) -> None:
                 stage="failed",
                 stage_color="error",
                 failed_stage="dispatch",
-                reason="目标不存在或已删除",
+                reason=patch_message(None, "error.target_missing", "The target does not exist or has been deleted"),
                 can_retry=False,
                 updated_at=timezone.now(),
             )
@@ -455,7 +462,12 @@ def execute_governance_task(self, task_id: int) -> None:
                 stage="failed",
                 stage_color="error",
                 failed_stage="dispatch",
-                reason=f"主机子任务投递失败: {exc}",
+                reason=patch_message(
+                    None,
+                    "error.host_dispatch_failed",
+                    "Failed to dispatch the host subtask: {detail}",
+                    detail=exc,
+                ),
                 can_retry=True,
                 updated_at=timezone.now(),
             )
@@ -470,6 +482,7 @@ def execute_governance_host(task_id: int, target_id: int) -> None:
     from apps.patch_mgmt.constants import GovernanceTaskStatus
     from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
     from apps.patch_mgmt.services.patch_execution_service import finalize_governance_task, handle_host_execution_timeout, run_governance_host
+    from apps.patch_mgmt.utils.i18n import patch_message
 
     try:
         task = GovernanceTask.objects.get(pk=task_id)
@@ -488,7 +501,11 @@ def execute_governance_host(task_id: int, target_id: int) -> None:
                 stage_color="error",
                 failed_stage="dispatch",
                 error_code="execution_window_expired",
-                reason="执行窗口已结束，主机任务未在窗口内开始",
+                reason=patch_message(
+                    None,
+                    "error.execution_window_expired",
+                    "The execution window ended before the host task started",
+                ),
                 can_retry=True,
                 updated_at=timezone.now(),
             )
@@ -560,6 +577,7 @@ def watch_governance_timeouts() -> None:
     from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
     from apps.patch_mgmt.services.patch_execution_service import _finalize_task_status
     from apps.patch_mgmt.services.windows_package import expire_stale_windows_package_uploads
+    from apps.patch_mgmt.utils.i18n import patch_message
 
     now = timezone.now()
     changed_task_ids: set[int] = set()
@@ -624,7 +642,13 @@ def watch_governance_timeouts() -> None:
             if host.stage not in {"scanning", "installing", "rebooting"}:
                 continue
             task_type = host.task.task_type
-            host.timeout_reason = f"{host.task.get_task_type_display()}阶段超过时限"
+            task_type_label = patch_message(None, f"status.task_type.{task_type}", host.task.get_task_type_display())
+            host.timeout_reason = patch_message(
+                None,
+                "error.stage_timeout",
+                "{task_type} stage exceeded the time limit",
+                task_type=task_type_label,
+            )
             host.reason = host.timeout_reason
             if task_type in (GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT):
                 host.stage = "reconciling"
@@ -699,7 +723,11 @@ def ingest_patch_source(source_id: int, keys: list) -> dict:
         source = PatchSource.objects.get(pk=source_id)
     except PatchSource.DoesNotExist:
         logger.error("[ingest_patch_source] 补丁源不存在: source_id=%s", source_id)
-        return {"error": "补丁源不存在"}
+        from apps.patch_mgmt.utils.i18n import patch_message
+
+        return {
+            "error": patch_message(None, "error.source_not_found", "Patch source not found"),
+        }
 
     try:
         try:
@@ -709,7 +737,16 @@ def ingest_patch_source(source_id: int, keys: list) -> dict:
             return {"error": str(exc)}
         except Exception as exc:  # noqa: BLE001
             logger.warning("[ingest_patch_source] 同步入库异常: source_id=%s", source_id, exc_info=True)
-            return {"error": f"同步入库异常: {exc}"}
+            from apps.patch_mgmt.utils.i18n import patch_message
+
+            return {
+                "error": patch_message(
+                    None,
+                    "error.ingest_exception",
+                    "Ingestion failed: {detail}",
+                    detail=str(exc),
+                ),
+            }
     finally:
         PatchSource.objects.filter(pk=source_id).update(sync_in_progress=False)
 
@@ -754,7 +791,9 @@ def _recycle_expired_reboot_recovering_leases(now) -> None:
     GovernanceTaskHost.objects.filter(
         stage=_REBOOT_RECOVERING_STAGE,
         task__task_type=GovernanceTaskType.REBOOT,
-    ).filter(Q(last_heartbeat_at__isnull=True) | Q(last_heartbeat_at__lte=cutoff)).update(stage="pending_reboot")
+    ).filter(
+        Q(last_heartbeat_at__isnull=True) | Q(last_heartbeat_at__lte=cutoff)
+    ).update(stage="pending_reboot")
 
 
 def _claim_pending_reboot_host(host, now) -> bool:
@@ -887,10 +926,7 @@ def verify_pending_reboot_hosts() -> None:
 
             with transaction.atomic():
                 locked = (
-                    GovernanceTaskHost.objects.select_for_update()
-                    .select_related("task")
-                    .filter(pk=host.pk, stage=_REBOOT_RECOVERING_STAGE)
-                    .first()
+                    GovernanceTaskHost.objects.select_for_update().select_related("task").filter(pk=host.pk, stage=_REBOOT_RECOVERING_STAGE).first()
                 )
                 if locked is None:
                     continue
@@ -910,11 +946,7 @@ def verify_pending_reboot_hosts() -> None:
                                 if int(item.get("host_id") or 0) == locked.target_id and item.get("patch_id")
                             )
                         ),
-                        risk_snapshot=[
-                            item
-                            for item in (locked.task.risk_snapshot or [])
-                            if int(item.get("host_id") or 0) == locked.target_id
-                        ],
+                        risk_snapshot=[item for item in (locked.task.risk_snapshot or []) if int(item.get("host_id") or 0) == locked.target_id],
                         team=locked.task.team or [],
                         created_by=locked.task.created_by,
                         timeout=locked.task.timeout or 3600,

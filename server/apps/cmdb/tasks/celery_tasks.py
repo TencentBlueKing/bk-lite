@@ -66,6 +66,69 @@ _COLLECT_WARNING_LOG_STATUSES = {
     CollectRunStatusType.FORCE_STOP,
     CollectRunStatusType.PARTIAL_SUCCESS,
 }
+_COLLECT_FAILURE_DECISIONS = frozenset(
+    {
+        "empty_raw",
+        "pc_empty",
+        "all_raw_failed",
+        "sync_blocked",
+        "asset_sync_failed",
+        "partial",
+        "collection_exception",
+        "result_persistence",
+        "timeout",
+        "force_stop",
+        "unclassified",
+    }
+)
+_EMPTY_RAW_MESSAGE = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
+_PC_EMPTY_MESSAGE = "未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间"
+_ALL_RAW_FAILED_MESSAGE = "本轮采集结果全部失败，请检查原始数据中的采集错误"
+_PARTIAL_MESSAGE = "部分采集或数据写入失败，请检查原始数据及错误数"
+_ASSET_SYNC_FAILED_MESSAGE = "资产同步失败，请查看任务详情中的失败原因"
+
+
+def _bounded_collect_count(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if 0 <= value <= 10_000_000 else 0
+
+
+def classify_collect_decision(digest, *, exec_status=None) -> str:
+    """把采集终态收成稳定决策码。自由文本原因不进入日志或页面。"""
+    if exec_status == CollectRunStatusType.TIME_OUT:
+        return "timeout"
+    if exec_status == CollectRunStatusType.FORCE_STOP:
+        return "force_stop"
+    if exec_status == CollectRunStatusType.SUCCESS:
+        return "ok"
+    if isinstance(digest, dict):
+        stored = digest.get("decision")
+        if isinstance(stored, str) and stored in _COLLECT_FAILURE_DECISIONS:
+            return stored
+        message = digest.get("message")
+        if isinstance(message, str):
+            if message == _EMPTY_RAW_MESSAGE:
+                return "empty_raw"
+            if message == _PC_EMPTY_MESSAGE:
+                return "pc_empty"
+            if message == _ALL_RAW_FAILED_MESSAGE:
+                return "all_raw_failed"
+            if message == _PARTIAL_MESSAGE:
+                return "partial"
+            if message == _ASSET_SYNC_FAILED_MESSAGE:
+                return "asset_sync_failed"
+            if message.startswith("同步已停止："):
+                return "sync_blocked"
+            if message.startswith("采集任务执行失败"):
+                return "collection_exception"
+            if message.startswith("采集结果写入失败"):
+                return "result_persistence"
+    if exec_status == CollectRunStatusType.PARTIAL_SUCCESS:
+        return "partial"
+    return "unclassified"
+
+
 _NODE_MGMT_RAW_DATA_MAX_ROWS = 50_000
 _NODE_MGMT_RAW_DATA_MAX_BYTES = 64 * 1024 * 1024
 _NODE_MGMT_RAW_METRIC_TYPES = {
@@ -490,6 +553,7 @@ def sync_collect_task(  # noqa: C901
     task_exec_status = CollectRunStatusType.SUCCESS
     failed_stage = "-"
     result_persisted = False
+    collect_digest = {}
     try:
         if resolve_latest_round and sync_round_ts in (None, "") and uses_vm_reconciliation(instance):
             failed_stage = "round_resolution"
@@ -577,7 +641,7 @@ def sync_collect_task(  # noqa: C901
             if exec_traceback_excerpt:
                 collect_digest["traceback"] = exec_traceback_excerpt
         elif len(raw_data) == 0 and not pc_summary and not (collect_digest.get("raw_host", 0) or collect_digest.get("raw_process", 0)):
-            collect_digest["message"] = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
+            collect_digest["message"] = _EMPTY_RAW_MESSAGE
             instance.exec_status = CollectRunStatusType.ERROR
         else:
             # 计算最后数据的最后上报时间
@@ -602,16 +666,17 @@ def sync_collect_task(  # noqa: C901
             if decided == CollectRunStatusType.ERROR:
                 instance.exec_status = CollectRunStatusType.ERROR
                 if isinstance(pc_summary, dict) and int(pc_summary.get("pc_total", 0) or 0) == 0:
-                    collect_digest["message"] = "未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间"
+                    collect_digest["message"] = _PC_EMPTY_MESSAGE
                 elif collect_success == 0 and collect_failed > 0:
-                    collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
+                    collect_digest["message"] = _ALL_RAW_FAILED_MESSAGE
                 elif format_data.get("__sync_blocked_reason__"):
                     collect_digest["message"] = "同步已停止：{}".format(format_data["__sync_blocked_reason__"])
                 else:
-                    collect_digest["message"] = "资产同步失败，请查看任务详情中的失败原因"
+                    collect_digest["message"] = _ASSET_SYNC_FAILED_MESSAGE
             elif decided == CollectRunStatusType.PARTIAL_SUCCESS:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
-                collect_digest["message"] = "部分采集或数据写入失败，请检查原始数据及错误数"
+                collect_digest["message"] = _PARTIAL_MESSAGE
+        collect_digest["decision"] = classify_collect_decision(collect_digest, exec_status=instance.exec_status)
         _apply_last_synced_round(
             collect_digest,
             instance_id=instance_id,
@@ -666,8 +731,10 @@ def sync_collect_task(  # noqa: C901
             "message": "采集结果写入失败（task_id={}）：{}".format(
                 instance_id,
                 _build_safe_error_message(err),
-            )
+            ),
+            "decision": "result_persistence",
         }
+        collect_digest = error_digest
         if prev_synced_round is not None:
             error_digest[LAST_SYNCED_ROUND_KEY] = prev_synced_round
         result_persisted = _save_collect_result_if_current(
@@ -682,15 +749,23 @@ def sync_collect_task(  # noqa: C901
         )
 
     terminal_status = CollectRunStatusType.ERROR if failed_stage == "result_persistence" else instance.exec_status
+    decision = classify_collect_decision(collect_digest, exec_status=terminal_status)
     log_terminal = logger.warning if terminal_status in _COLLECT_WARNING_LOG_STATUSES else logger.info
     log_terminal(
-        "event=collect_task_execution_finished task_id=%s execution_id=%s " "status=%s failed_stage=%s result_persisted=%s duration_ms=%.2f",
+        "event=collect_task_execution_finished task_id=%s execution_id=%s "
+        "status=%s failed_stage=%s result_persisted=%s duration_ms=%.2f "
+        "decision=%s raw_host=%s raw_process=%s collect_success=%s collect_failed=%s",
         instance_id,
         execution_id,
         _COLLECT_STATUS_LOG_NAMES.get(terminal_status, str(terminal_status)),
         failed_stage,
         result_persisted,
         (time.monotonic() - run_started_at) * 1000,
+        decision,
+        _bounded_collect_count(collect_digest.get("raw_host")),
+        _bounded_collect_count(collect_digest.get("raw_process")),
+        _bounded_collect_count(collect_digest.get("collect_success")),
+        _bounded_collect_count(collect_digest.get("collect_failed")),
     )
 
 
@@ -1183,7 +1258,7 @@ def reconcile_instance_auto_association_task(instance_id: int) -> dict:
 
 
 @shared_task
-def reconcile_instances_auto_association_task(instance_ids: list[int]) -> dict:
+def reconcile_instances_auto_association_task(instance_ids: list[int], schedule_incoming: bool = True) -> dict:
     """批量重算实例关联，并在服务层合并重复的目标侧规则。"""
     from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
 
@@ -1191,7 +1266,17 @@ def reconcile_instances_auto_association_task(instance_ids: list[int]) -> dict:
         "[AutoRelationRule] start batch instance reconcile, count=%s",
         len(instance_ids or []),
     )
-    return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids)
+    if schedule_incoming:
+        return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids)
+    return AutoRelationRuleReconcileService.reconcile_for_instances(instance_ids, schedule_incoming=False)
+
+
+@shared_task
+def sync_incoming_auto_association_task(instance_ids: list[int]) -> dict:
+    """串行批次结束后统一派发入向规则同步。"""
+    from apps.cmdb.services.auto_relation_reconcile import AutoRelationRuleReconcileService
+
+    return AutoRelationRuleReconcileService.sync_incoming_for_instances(instance_ids)
 
 
 @shared_task

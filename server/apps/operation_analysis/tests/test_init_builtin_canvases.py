@@ -83,6 +83,7 @@ def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_wi
             "valueConfig": {
                 "chartType": "application3D",
                 "sceneWidgetType": "application3D",
+                "application3DWall": {"autoPageEnabled": True},
                 "appearance": {"frame": "bare"},
             },
         }
@@ -1071,6 +1072,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
             "valueConfig": {
                 "chartType": "application3D",
                 "sceneWidgetType": "application3D",
+                "application3DWall": {"autoPageEnabled": True},
                 "appearance": {"frame": "bare"},
             },
         }

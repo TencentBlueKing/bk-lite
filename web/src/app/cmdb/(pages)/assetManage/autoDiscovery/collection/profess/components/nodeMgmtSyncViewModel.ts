@@ -109,6 +109,35 @@ const normalizeReasonCode = (reasonCode?: string) => {
 export const getNodeMgmtSyncReasonTextKey = (reasonCode?: string) =>
   REASON_TEXT_KEYS[normalizeReasonCode(reasonCode)] || 'Collection.nodeMgmtSync.reason.unknown';
 
+const COLLECT_DECISION_TEXT_KEYS: Record<string, string> = {
+  empty_raw: 'Collection.nodeMgmtSync.decision.emptyRaw',
+  pc_empty: 'Collection.nodeMgmtSync.decision.pcEmpty',
+  all_raw_failed: 'Collection.nodeMgmtSync.decision.allRawFailed',
+  sync_blocked: 'Collection.nodeMgmtSync.decision.syncBlocked',
+  asset_sync_failed: 'Collection.nodeMgmtSync.decision.assetSyncFailed',
+  partial: 'Collection.nodeMgmtSync.decision.partial',
+  collection_exception: 'Collection.nodeMgmtSync.decision.collectionException',
+  result_persistence: 'Collection.nodeMgmtSync.decision.resultPersistence',
+  timeout: 'Collection.nodeMgmtSync.decision.timeout',
+  force_stop: 'Collection.nodeMgmtSync.decision.forceStop',
+  unclassified: 'Collection.nodeMgmtSync.decision.unclassified',
+};
+
+export interface NodeMgmtSyncCollectDiagnosis {
+  cloud_region_id?: number;
+  task_id?: number;
+  decision?: string;
+  child_status?: string;
+  reason_code?: string;
+  raw_host?: number;
+  raw_process?: number;
+  collect_success?: number;
+  collect_failed?: number;
+}
+
+export const getCollectDecisionTextKey = (decision?: string) =>
+  COLLECT_DECISION_TEXT_KEYS[decision || ''] || COLLECT_DECISION_TEXT_KEYS.unclassified;
+
 export const getNodeMgmtSyncEmptyStateKey = ({
   status,
   reasonCode,

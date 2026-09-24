@@ -11,6 +11,7 @@ from apps.job_mgmt.config import CANCEL_CONVERGE_BUFFER_SECONDS
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.models import JobExecution
 from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized
 
 
@@ -48,11 +49,18 @@ def request_execution_cancel(
         if execution is None:
             raise JobExecution.DoesNotExist
         if not is_team_authorized(execution.team, authorized_team_ids):
-            raise ExecutionCancellationAuthorizationError("无权取消该任务")
+            raise ExecutionCancellationAuthorizationError(job_message(None, "error.cancel_denied", "You are not allowed to cancel this task"))
         if execution.status in ExecutionStatus.TERMINAL_STATES:
-            raise ExecutionCancellationError(f"任务已处于终态({execution.get_status_display()})，无法取消")
+            raise ExecutionCancellationError(
+                job_message(
+                    None,
+                    "error.task_terminal_not_cancellable",
+                    "Task is already in a terminal state ({status}) and cannot be cancelled",
+                    status=execution.get_status_display(),
+                )
+            )
         if execution.status == ExecutionStatus.CANCELLING:
-            raise ExecutionCancellationError("任务正在取消中，请勿重复操作")
+            raise ExecutionCancellationError(job_message(None, "error.task_cancelling", "Task is already being cancelled; do not repeat the request"))
 
         now = timezone.now()
         countdown = None
@@ -63,7 +71,7 @@ def request_execution_cancel(
             execution.converge_deadline_at = None
             execution.save(update_fields=["status", "finished_at", "cancel_finalize_at", "converge_deadline_at", "updated_at"])
             enqueue_terminal_effects(execution)
-            message = "已取消执行"
+            message = job_message(None, "message.cancel_done", "Execution cancelled")
         elif execution.status == ExecutionStatus.RUNNING:
             # execution.timeout 是从作业开始计算的执行时限，不是取消请求的等待时限。
             # 取消后只保留独立的回调收敛窗口，避免长超时作业长期停留在 CANCELLING。
@@ -72,9 +80,9 @@ def request_execution_cancel(
             execution.cancel_finalize_at = now + timedelta(seconds=countdown)
             execution.converge_deadline_at = None
             execution.save(update_fields=["status", "cancel_finalize_at", "converge_deadline_at", "updated_at"])
-            message = "正在取消执行"
+            message = job_message(None, "message.cancel_in_progress", "Cancelling execution")
         else:
-            raise ExecutionCancellationError("状态已变更，请刷新后重试")
+            raise ExecutionCancellationError(job_message(None, "error.status_changed_retry", "Status has changed; refresh and try again"))
 
         transaction.on_commit(lambda: _run_cancel_fast_path(execution.id, execution.celery_task_id, countdown))
     return execution, message

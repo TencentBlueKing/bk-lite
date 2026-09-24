@@ -71,8 +71,11 @@ def poll_train_job_status(
             )
             raise self.retry(args=(), kwargs=_retry_kwargs(0))
 
-        # 获取最新运行记录
-        runs = mlflow_service.get_experiment_runs(experiment.experiment_id)
+        # 获取最新运行记录；轮询只取预期数量，未知时只看最新一条
+        runs = mlflow_service.get_experiment_runs(
+            experiment.experiment_id,
+            max_results=max(expected_run_count, 1),
+        )
         if runs.empty:
             logger.warning(
                 f"训练状态查询: 实验{experiment_name}无运行记录 , "

@@ -1,11 +1,11 @@
 """补丁管理与系统管理数据权限交互的 NATS API。"""
 
 import nats_client
-
 from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.patch_mgmt.models import PatchTarget
 from apps.patch_mgmt.openapi_serializers import ModuleDataQuerySerializer
+from apps.patch_mgmt.utils.i18n import patch_message
 
 
 @nats_client.register
@@ -21,9 +21,7 @@ def get_patch_mgmt_module_list():
     inject="team_list",
     summary="数据权限规则可选的补丁管理实例（组织口径：注入集合精确成员匹配，不级联子组织）",
 )
-def get_patch_mgmt_module_data(
-    module, child_module, page, page_size, group_id, *, team=None
-):
+def get_patch_mgmt_module_data(module, child_module, page, page_size, group_id, *, team=None):
     """返回数据权限规则可选的补丁管理实例。"""
     del child_module
 
@@ -40,27 +38,22 @@ def get_patch_mgmt_module_data(
             "message": "group_id, page and page_size must be integers",
         }
 
-    authorized_team_ids = {
-        int(team_id)
-        for team_id in (team or [])
-        if str(team_id).isdigit()
-    }
+    authorized_team_ids = {int(team_id) for team_id in (team or []) if str(team_id).isdigit()}
     if normalized_group_id not in authorized_team_ids:
-        return {"result": False, "message": "无权访问该组织数据"}
+        return {
+            "result": False,
+            "message": patch_message(
+                None,
+                "error.org_access_denied",
+                "You do not have access to this organization data",
+            ),
+        }
 
-    queryset = PatchTarget.objects.filter(
-        build_json_membership_query(
-            PatchTarget.objects.all(), "team", [normalized_group_id]
-        )
-    )
+    queryset = PatchTarget.objects.filter(build_json_membership_query(PatchTarget.objects.all(), "team", [normalized_group_id]))
     queryset = queryset.order_by("id")
     start = (normalized_page - 1) * normalized_page_size
-    rows = queryset.values("id", "name")[
-        start : start + normalized_page_size
-    ]
+    rows = queryset.values("id", "name")[start : start + normalized_page_size]
     return {
         "count": queryset.count(),
-        "items": [
-            {"id": row["id"], "name": row["name"]} for row in rows
-        ],
+        "items": [{"id": row["id"], "name": row["name"]} for row in rows],
     }

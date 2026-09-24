@@ -62,8 +62,11 @@ const OsPie: React.FC<OsPieProps> = ({
   }, []);
 
   const chartData = useMemo(
-    () => ChartDataTransformer.transformToPieData(rawData),
-    [rawData],
+    () => ChartDataTransformer.transformToPieData(rawData, {
+      dimensionField: config?.dimensionField,
+      valueField: config?.valueField,
+    }),
+    [config?.dimensionField, config?.valueField, rawData],
   );
   const isDataReady = chartData.some(
     (item) => Number.isFinite(item.value) && item.value > 0,

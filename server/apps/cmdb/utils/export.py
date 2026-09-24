@@ -1,18 +1,13 @@
-from io import BytesIO
 import json
+from io import BytesIO
 
 import openpyxl
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from apps.cmdb.constants.constants import (
-    ENUM,
-    ORGANIZATION,
-    USER,
-    ASSOCIATION_TYPE,
-    ATTR_TYPE_MAP,
-)
+from apps.cmdb.constants.constants import ASSOCIATION_TYPE, ATTR_TYPE_MAP, ENUM, ORGANIZATION, USER
 from apps.cmdb.model_ops.extensions import is_file_attr_type
 from apps.cmdb.services.model import ModelManage
 
@@ -24,18 +19,22 @@ def serialize_tag_values_for_export(values: list[str]) -> str:
 
 
 class Export:
-    def __init__(self, attrs, model_id: str = "", association: list = None):
+    def __init__(self, attrs, model_id: str = "", association: list = None, *, model_name_map=None):
         self.attrs = attrs
         self.model_id = model_id
         self.association = association if association is not None else []
         self.association_type_map = {}
-        self.model_name_map = {}
+        self.model_name_map = dict(model_name_map or {})
         self.model_asso_id_map = {}
         if self.association:
-            self.association_type_map = {
-                i["asst_id"]: i["asst_name"] for i in ASSOCIATION_TYPE
-            }
-            self.set_model_name_map()
+            self.association_type_map = {i["asst_id"]: i["asst_name"] for i in ASSOCIATION_TYPE}
+            if model_name_map is None:
+                self.set_model_name_map()
+            self.association = [
+                item
+                for item in self.association
+                if self.model_name_map.get(item["src_model_id"] if self.model_id == item["dst_model_id"] else item["dst_model_id"])
+            ]
 
     @staticmethod
     def _format_user_display_username(user_option: dict | None):
@@ -57,19 +56,17 @@ class Export:
     def set_row_color(self, sheet, row_num, color):
         """行添加颜色"""
         for cell in sheet[row_num]:
-            cell.fill = PatternFill(
-                start_color=color, end_color=color, fill_type="solid"
-            )
+            cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
 
     def set_cell_color(self, sheet, row, col, color):
         """给指定单元格添加颜色"""
         cell = sheet.cell(row=row, column=col)
         cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
 
-    def generate_header(self):
+    def generate_header(self, *, write_only=False):
         """创建Excel文件, 设置属性与样式"""
-        workbook = openpyxl.Workbook()
-        sheet = workbook.active
+        workbook = openpyxl.Workbook(write_only=write_only)
+        sheet = workbook.create_sheet() if write_only else workbook.active
         # 设置sheet名称为model_id
         sheet.title = self.model_id
         sheet.sheet_format.defaultColWidth = 20
@@ -88,21 +85,15 @@ class Export:
             # 附件/图片字段（企业版）不进入 Excel 导入导出
             if is_file_attr_type(attr_info.get("attr_type")):
                 continue
-            attr_name = (
-                f"{attr_info['attr_name']}(必填)"
-                if attr_info.get("is_required")
-                else attr_info["attr_name"]
-            )
+            attr_name = f"{attr_info['attr_name']}(必填)" if attr_info.get("is_required") else attr_info["attr_name"]
             attrs_name.append(attr_name)
             attrs_id.append(attr_info["attr_id"])
             index += 1
             if attr_info["attr_type"] in {ENUM}:
                 # 修复：Excel列索引需要+1，因为第一列是"字段名(请勿编辑)"
                 col_index = index + 1
-                sheet.add_data_validation(
-                    self.set_enum_validation_by_sheet_data(
-                        workbook, attr_info["attr_name"], attr_info["option"], col_index
-                    )
+                sheet.data_validations.append(
+                    self.set_enum_validation_by_sheet_data(workbook, attr_info["attr_name"], attr_info["option"], col_index)
                 )
             attrs_type.append(ATTR_TYPE_MAP[attr_info["attr_type"]])
 
@@ -111,9 +102,7 @@ class Export:
             dst_model_id = association["dst_model_id"]
             src_model_id = association["src_model_id"]
             model_asst_id = association["model_asst_id"]
-            related_model_id = (
-                src_model_id if self.model_id == dst_model_id else dst_model_id
-            )
+            related_model_id = src_model_id if self.model_id == dst_model_id else dst_model_id
             _asst_model = self.model_name_map.get(related_model_id)
             if not _asst_model:
                 continue
@@ -122,6 +111,17 @@ class Export:
             attrs_type.append("关联")
             attrs_id.append(model_asst_id)
             self.model_asso_id_map[model_asst_id] = {_asst_model: model_asst_id}
+
+        if write_only:
+            for values, color in ((attrs_name, "92D050"), (attrs_type, "C6EFCE"), (attrs_id, "C6EFCE")):
+                cells = []
+                for column, value in enumerate(values):
+                    cell = self._literal_cell(sheet, value)
+                    fill_color = color if column else "FFA500"
+                    cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+                    cells.append(cell)
+                sheet.append(cells)
+            return workbook
 
         sheet.append(attrs_name)
         sheet.append(attrs_type)
@@ -149,15 +149,13 @@ class Export:
 
         # 将枚举数据放入sheet页
         filed_sheet = workbook.create_sheet(title=filed_name)
-        for r, v in enumerate(value_list, start=1):
-            filed_sheet.cell(row=r, column=1, value=v)
+        for value in value_list:
+            filed_sheet.append([value])
 
         # 创建 DataValidation 对象
         col = get_column_letter(index)
-        last_row = len(filed_sheet["A"])
-        dv = DataValidation(
-            type="list", formula1=f"='{filed_sheet.title}'!$A$1:$A{last_row}"
-        )
+        last_row = max(1, len(value_list))
+        dv = DataValidation(type="list", formula1=f"='{filed_sheet.title}'!$A$1:$A{last_row}")
         dv.sqref = f"{col}4:{col}999"
 
         return dv
@@ -167,15 +165,36 @@ class Export:
         workbook = self.generate_header()
         return self.return_bytesio(workbook)
 
-    def export_inst_list(self, inst_list):
+    def export_inst_list(self, inst_list, *, association_values=None):
         """导出实例列表"""
-        workbook = self.generate_header()
+        workbook = self.generate_header(write_only=True)
+        try:
+            self.append_inst_list(workbook, inst_list, association_values=association_values)
+            return self.return_bytesio(workbook)
+        finally:
+            self.close_workbook(workbook)
+
+    @staticmethod
+    def close_workbook(workbook):
+        """中途查询/写入失败也清理 openpyxl 的临时 XML 文件。"""
+        if workbook.write_only:
+            for sheet in workbook.worksheets:
+                if not sheet.closed:
+                    sheet.close()
+                if sheet._writer is not None:
+                    try:
+                        sheet._writer.cleanup()
+                    except FileNotFoundError:
+                        pass  # 成功保存时 openpyxl 已清理。
+        workbook.close()
+
+    def append_inst_list(self, workbook, inst_list, *, association_values=None):
+        """写入一批已准备的数据；写行过程不查询图库。"""
         # 找出枚举属性(过滤掉 _display 字段)
         enum_field_dict = {
             attr_info["attr_id"]: {i["id"]: i["name"] for i in attr_info["option"]}
             for attr_info in self.attrs
-            if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM}
-            and not attr_info.get("is_display_field")
+            if attr_info["attr_type"] in {ORGANIZATION, USER, ENUM} and not attr_info.get("is_display_field")
         }
         user_option_dict = {
             attr_info["attr_id"]: {i.get("id"): i for i in attr_info.get("option", [])}
@@ -187,6 +206,8 @@ class Export:
             for attr in self.attrs:
                 # 过滤掉 _display 冗余字段
                 if attr.get("is_display_field"):
+                    continue
+                if is_file_attr_type(attr.get("attr_type")):
                     continue
                 if attr["attr_type"] in {ORGANIZATION, USER}:
                     # attr_id_value = inst_info.get(attr["attr_id"], [])
@@ -201,55 +222,36 @@ class Export:
                         if isinstance(attr_id_value, list):
                             formatted = []
                             for uid in attr_id_value:
-                                text = self._format_user_display_username(
-                                    user_option_dict.get(attr["attr_id"], {}).get(uid)
-                                )
+                                text = self._format_user_display_username(user_option_dict.get(attr["attr_id"], {}).get(uid))
                                 if text:
                                     formatted.append(text)
                                 else:
-                                    mapped = enum_field_dict.get(
-                                        attr["attr_id"], {}
-                                    ).get(uid)
+                                    mapped = enum_field_dict.get(attr["attr_id"], {}).get(uid)
                                     if mapped is not None:
                                         formatted.append(str(mapped))
                                     elif uid not in (None, ""):
                                         formatted.append(str(uid))
                             sheet_data.append(",".join(formatted))
                         else:
-                            text = self._format_user_display_username(
-                                user_option_dict.get(attr["attr_id"], {}).get(
-                                    attr_id_value
-                                )
-                            )
+                            text = self._format_user_display_username(user_option_dict.get(attr["attr_id"], {}).get(attr_id_value))
                             if text:
                                 sheet_data.append(text)
                             else:
-                                mapped = enum_field_dict.get(attr["attr_id"], {}).get(
-                                    attr_id_value
-                                )
-                                sheet_data.append(
-                                    str(mapped) if mapped is not None else ""
-                                )
+                                mapped = enum_field_dict.get(attr["attr_id"], {}).get(attr_id_value)
+                                sheet_data.append(str(mapped) if mapped is not None else "")
                         continue
 
                     # 其他组织/用户字段保持原有导出格式
                     # TODO 目前只支持单选组织和用户，所以导出返回str即可 若支持单选则返回[]
                     if isinstance(attr_id_value, list):
                         if len(attr_id_value) > 0:
-                            name = ",".join(
-                                [
-                                    str(enum_field_dict[attr["attr_id"]].get(i))
-                                    for i in attr_id_value
-                                ]
-                            )
+                            name = ",".join([str(enum_field_dict[attr["attr_id"]].get(i)) for i in attr_id_value])
                             sheet_data.append(name)
                         else:
                             # 兼容空列表，避免 dict.get(list) 触发 TypeError 导致导出 500
                             sheet_data.append("")
                     else:
-                        sheet_data.append(
-                            str(enum_field_dict[attr["attr_id"]].get(attr_id_value))
-                        )
+                        sheet_data.append(str(enum_field_dict[attr["attr_id"]].get(attr_id_value)))
                     continue
 
                 if attr["attr_type"] == "tag":
@@ -265,11 +267,7 @@ class Export:
                 _value = inst_info.get(attr["attr_id"])
                 if attr["attr_type"] == ENUM:
                     if isinstance(_value, list):
-                        names = [
-                            str(enum_field_dict[attr["attr_id"]].get(v, v))
-                            for v in _value
-                            if v is not None
-                        ]
+                        names = [str(enum_field_dict[attr["attr_id"]].get(v, v)) for v in _value if v is not None]
                         _value = ",".join(names)
                     else:
                         _value = enum_field_dict[attr["attr_id"]].get(_value)
@@ -285,38 +283,21 @@ class Export:
                     else:
                         _value = ""
                 sheet_data.append(_value)
-            # 查询当前实例的全部关联关系数据
-            self.format_inst_asst_name(inst_info, sheet_data)
-            workbook.active.append(sheet_data)
-        return self.return_bytesio(workbook)
+            self.format_inst_asst_name(inst_info, sheet_data, association_values)
+            if workbook.write_only:
+                workbook.active.append(self._literal_cell(workbook.active, value) for value in sheet_data)
+            else:
+                workbook.active.append(sheet_data)
 
-    def format_inst_asst_name(self, inst_info, sheet_data):
-        from apps.cmdb.services.instance import InstanceManage
+    @staticmethod
+    def _literal_cell(sheet, value):
+        cell = WriteOnlyCell(sheet, value=value)
+        if isinstance(value, str):
+            cell.data_type = "s"
+        return cell
 
-        inst_id = inst_info["_id"]
-
-        # 只有在用户选择了关联关系时才查询，避免不必要的关联数据导出
-        if not self.association:
-            return
-
-        # 获取所有关联关系数据
-        asso_insts = InstanceManage.instance_association_instance_list(
-            self.model_id,
-            int(inst_id),
-            business_only=True,
-        )
-        model_asst_name_map = {}
-        for asso_inst in asso_insts:
-            model_asst_id = asso_inst["model_asst_id"]
-            model_asst_name_map[model_asst_id] = [
-                inst["inst_name"] for inst in asso_inst["inst_list"]
-            ]
-
-        # 只处理用户选择的关联关系，而不是所有关联关系
+    def format_inst_asst_name(self, inst_info, sheet_data, association_values=None):
+        model_asst_name_map = (association_values or {}).get(inst_info.get("inst_uuid"), {})
         for association in self.association:
             model_asst_id = association["model_asst_id"]
-            if model_asst_id in model_asst_name_map:
-                data = ",".join(model_asst_name_map[model_asst_id])
-            else:
-                data = ""
-            sheet_data.append(data)
+            sheet_data.append(",".join(model_asst_name_map.get(model_asst_id, [])))

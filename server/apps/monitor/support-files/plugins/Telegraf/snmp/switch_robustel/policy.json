@@ -1,0 +1,81 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Robustel SNMP",
+  "templates": [
+    {
+      "name": "Robustel交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Robustel MG460 工业交换机一秒 CPU 使用率（rosSysutilStatusCpuLoadAverage1sec），当持续高于阈值时触发告警，提示可能存在控制平面过载、转发表震荡或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Robustel交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Robustel MG460 工业交换机的内存使用率（已用/总量），当超过阈值时触发告警，便于及时发现内存压力导致转发表或控制平面性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Robustel交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Robustel MG460 工业交换机的温度传感器读数（rosSysutilStatusTemperatureMonitorTemperature），当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高，避免器件过热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

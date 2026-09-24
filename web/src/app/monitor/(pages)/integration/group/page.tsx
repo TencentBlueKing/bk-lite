@@ -1,4 +1,5 @@
 'use client';
+import './register-group-pilot';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Input, Button, Popconfirm, Space, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';

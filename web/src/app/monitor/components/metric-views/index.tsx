@@ -37,6 +37,11 @@ import {
   MAX_CONCURRENT_METRIC_REQUESTS,
   executeMetricViewRequest,
 } from '@/app/monitor/components/metric-views/metricRequestSlot';
+import { useAiPageContext } from '@/components/ai-page-context';
+import {
+  buildMetricCatalogLines,
+  metricCatalogSections,
+} from '@/components/ai-page-context/metricCatalog';
 import { isHostMonitorObject,
   isHostProcessMetricsTab,
   resolveHostProcessMetricsTarget,
@@ -147,7 +152,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     getMonitorPlugin,
     getMonitorMetrics,
     getMetricsGroup,
-    getInstanceList
+    getInstanceList,
+    lookupInstance
   } = useMonitorApi();
   const { post } = useApiClient();
   const { t } = useTranslation();
@@ -225,6 +231,15 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   };
 
   const hostLogicalId = String(idValues?.[0] || '').trim();
+  const instanceOperatingSystemRef = useRef('');
+
+  const isMetricVisibleForInstanceOs = (metric: MetricItem) => {
+    const allowed = metric.view_config?.os;
+    if (!Array.isArray(allowed) || allowed.length === 0) return true;
+    const current = instanceOperatingSystemRef.current;
+    if (!current) return true;
+    return allowed.includes(current);
+  };
 
   const getDisplayName = (item: { name?: string; display_name?: string }) => {
     const displayName = item.display_name || item.name || '--';
@@ -390,6 +405,22 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       setProcessObjectId(nextProcessObjectId);
       setProcessPluginId(nextProcessPluginId);
 
+      let instanceOs = '';
+      if (isHostView) {
+        try {
+          const lookup = await lookupInstance({ instance_id: String(instanceId) });
+          const os = String(
+            (lookup?.instance as { operating_system?: string } | undefined)?.operating_system || ''
+          )
+            .trim()
+            .toLowerCase();
+          if (os === 'linux' || os === 'windows') instanceOs = os;
+        } catch {
+          instanceOs = '';
+        }
+      }
+      instanceOperatingSystemRef.current = instanceOs;
+
       setPlugins(_plugins);
       const preferredTab = findPluginTabByCollectType(responseData, preferredCollectType);
       const _activeTab = (preferredTab && _plugins.some((item) => item.value === preferredTab))
@@ -477,6 +508,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       const metricsList = res[1].items;
       setMetricCount(res[1].count);
       metricsList.forEach((metric: MetricItem) => {
+        if (!isMetricVisibleForInstanceOs(metric)) return;
         const target = groupData.find(
           (item) => item.id === metric.metric_group
         );
@@ -967,6 +999,23 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     const url = `/monitor/event/strategy/detail?${queryString}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
+
+  useAiPageContext(() => {
+    const built = buildMetricCatalogLines(metricData);
+    const pluginLabel = plugins.find((item) => item.value === activeTab)?.label || '';
+    return {
+      app: 'monitor',
+      url: window.location.href,
+      title: document.title,
+      sections: metricCatalogSections(built, [
+        '正在查看全量指标',
+        monitorObjectName ? `对象: ${monitorObjectName}` : '',
+        instanceName ? `实例: ${instanceName}` : '',
+        pluginLabel ? `插件: ${pluginLabel}` : '',
+      ]),
+      images: [],
+    };
+  });
 
   return (
     <div className="w-full h-full">

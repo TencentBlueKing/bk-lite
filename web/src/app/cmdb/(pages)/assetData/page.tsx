@@ -1,7 +1,11 @@
 'use client';
 
+import TransferDrawer from '@/app/cmdb/components/transfer/TransferDrawer';
+import { useTransferTasks } from '@/app/cmdb/hooks/useTransferTasks';
+import type { TransferTask } from '@/app/cmdb/types/transfer';
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { KeepAlive, useActivate } from 'react-activation';
+import { KeepAlive, useActivate, useUnactivate } from 'react-activation';
 import {
   Button,
   Space,
@@ -246,6 +250,8 @@ const AssetDataContent = () => {
   const importRef = useRef<ImportRef>(null);
   const instanceRef = useRef<RelationInstanceRef>(null);
   const exportRef = useRef<ExportModalRef>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferPageActive, setTransferPageActive] = useState(true);
   const topRowRef = useRef<HTMLDivElement | null>(null);
   const leftActionsRef = useRef<HTMLDivElement | null>(null);
   const actionSizerRef = useRef<HTMLDivElement | null>(null);
@@ -306,7 +312,9 @@ const AssetDataContent = () => {
   const treeWrapperRef = useRef<HTMLDivElement | null>(null);
   const firstVisitTreeScrollAttemptedRef = useRef(false);
 
+  useUnactivate(() => { setTransferPageActive(false); setTransferOpen(false); });
   useActivate(() => {
+    setTransferPageActive(true);
     const { needRefresh, setNeedRefresh } = useAssetDataStore.getState();
     if (needRefresh && modelId) {
       fetchData();
@@ -1281,6 +1289,14 @@ const AssetDataContent = () => {
     }
   );
 
+  const transfers = useTransferTasks(transferOpen, (task) => {
+    if (task.model_id === modelId) void updateFieldList();
+  }, transferPageActive);
+  const onTransferSubmitted = (task: TransferTask) => {
+    transfers.submitted(task);
+    setTransferOpen(true);
+  };
+
   const buildPrefixedItems = (items: MenuProps['items'], prefix: string) =>
     items.map((item, index) => {
       if (!item) return item;
@@ -1439,6 +1455,9 @@ const AssetDataContent = () => {
                   </Space>
                 </Button>
               </Dropdown>
+              <Button onClick={() => setTransferOpen(true)}>{t('Transfer.title')}
+                {transfers.tasks.some(task => ['queued', 'running'].includes(task.status)) ? ' (1)' : ''}
+              </Button>
               <Button icon={<UnorderedListOutlined aria-hidden="true" />} onClick={() => openSubscription('drawer')}>
                 {t('subscription.dataSubscription')}
               </Button>
@@ -1463,6 +1482,9 @@ const AssetDataContent = () => {
                   {t('more')}
                   <DownOutlined aria-hidden="true" />
                 </Space>
+              </Button>
+              <Button>{t('Transfer.title')}
+                {transfers.tasks.some(task => ['queued', 'running'].includes(task.status)) ? ' (1)' : ''}
               </Button>
               <Button icon={<UnorderedListOutlined aria-hidden="true" />}>
                 {t('subscription.dataSubscription')}
@@ -1509,7 +1531,9 @@ const AssetDataContent = () => {
             userList={userList}
             onSuccess={updateFieldList}
           />
-          <ImportInst ref={importRef} onSuccess={updateFieldList} />
+          <ImportInst ref={importRef} onSubmitted={onTransferSubmitted} canSubmit={transfers.canSubmit} />
+          <TransferDrawer open={transferOpen} onClose={() => setTransferOpen(false)} tasks={transfers.tasks}
+            error={transfers.error} loading={transfers.loading} onRefresh={transfers.refresh} />
           <SelectInstance
             ref={instanceRef}
             userList={userList}
@@ -1519,6 +1543,9 @@ const AssetDataContent = () => {
           />
           <ExportModal
             ref={exportRef}
+            onSubmitStart={() => setTransferOpen(true)}
+            onSubmitted={onTransferSubmitted}
+            canSubmit={transfers.canSubmit}
             userList={userList}
             models={originModels}
             assoTypes={assoTypes}

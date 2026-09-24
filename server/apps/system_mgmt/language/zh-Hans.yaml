@@ -3,6 +3,9 @@ error:
   go_to_network_whitelist: 前往白名单管理
   detail_not_supported: 不支持详情查询
   update_not_supported: 不支持修改
+  im_channel_in_use: 该 IM 通知渠道仍被其他业务使用，无法删除
+  integration_instance_in_use: 该集成实例仍被其他配置引用，请先删除这些配置后再试
+  system_token_full_update_not_supported: 系统令牌不支持全量修改
   not_authorized: 未授权
   cannot_delete_builtin_app: 无法删除内置应用
   is_enabled_required: 启用状态不能为空
@@ -210,6 +213,8 @@ export:
   login_log_filename: 用户登录日志
   operation_log_sheet: 用户操作日志
   operation_log_filename: 用户操作日志
+  openapi_call_log_sheet: API调用日志
+  openapi_call_log_filename: API调用日志
   column_username: 用户名
   column_domain: 域名
   column_login_time: 登录时间

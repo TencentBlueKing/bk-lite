@@ -352,3 +352,58 @@ describe('mergeNetworkStatusTopologyDraft', () => {
     );
   });
 });
+
+describe('application3D wall form values', () => {
+  it('hydrates a saved wall config and fills defaults when the field is missing', () => {
+    const saved = buildOpenedWidgetFormValues(
+      {
+        i: 'wall',
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 4,
+        name: '3D应用',
+        valueConfig: {
+          chartType: 'application3D',
+          sceneWidgetType: 'application3D',
+          application3DWall: {
+            pageSize: 36,
+            alarmPagesEnabled: false,
+            alarmPageSize: 12,
+            autoPageEnabled: true,
+            dwellSeconds: 8,
+            pageEffect: 'fade',
+          },
+        },
+      },
+      { showChartThemeMode: false },
+    );
+    assert.equal(saved.application3DWall?.pageSize, 36);
+    assert.equal(saved.application3DWall?.alarmPageSize, 12);
+    assert.equal(saved.application3DWall?.pageEffect, 'fade');
+
+    const missing = buildOpenedWidgetFormValues(
+      {
+        i: 'wall',
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 4,
+        name: '3D应用',
+        valueConfig: {
+          chartType: 'application3D',
+          sceneWidgetType: 'application3D',
+        },
+      },
+      { showChartThemeMode: false },
+    );
+    assert.deepEqual(missing.application3DWall, {
+      pageSize: 24,
+      alarmPagesEnabled: false,
+      alarmPageSize: 24,
+      autoPageEnabled: false,
+      dwellSeconds: 10,
+      pageEffect: 'slide',
+    });
+  });
+});

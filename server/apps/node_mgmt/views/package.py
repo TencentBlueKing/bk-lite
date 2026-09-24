@@ -1,3 +1,4 @@
+from django.db import IntegrityError
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
@@ -40,7 +41,7 @@ class PackageMgmtView(
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        return super().get_queryset().order_by("-id")
+        return PackageService.ready_queryset().order_by("-id")
 
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -95,7 +96,14 @@ class PackageMgmtView(
 
         existing_package = parsed_info.get("existing_package")
         if existing_package:
-            PackageService.upload_file(uploaded_file, data)
+            try:
+                result = PackageService.upload_file(uploaded_file, data, existing_package=existing_package)
+            except IntegrityError:
+                return WebUtils.response_error(
+                    error_message=PackageConstants.ERROR_MSG_VERSION_EXISTS.format(version=data["version"])
+                )
+            if isinstance(result, PackageVersion):
+                return WebUtils.response_success(PackageVersionSerializer(result).data)
             existing_package.description = data.get("description", existing_package.description)
             existing_package.updated_by = request.user.username
             existing_package.save(update_fields=["description", "updated_by", "updated_at"])
@@ -104,14 +112,21 @@ class PackageMgmtView(
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
-        PackageService.upload_file(uploaded_file, data)
+        try:
+            result = PackageService.upload_file(uploaded_file, data)
+        except IntegrityError:
+            return WebUtils.response_error(
+                error_message=PackageConstants.ERROR_MSG_VERSION_EXISTS.format(version=data["version"])
+            )
+        if isinstance(result, PackageVersion):
+            return WebUtils.response_success(PackageVersionSerializer(result).data)
         self.perform_create(serializer)
 
         return WebUtils.response_success(serializer.data)
 
     @action(detail=False, methods=["get"], url_path="download/(?P<pk>.+?)")
     def download(self, request, pk=None):
-        obj = PackageVersion.objects.get(pk=pk)
+        obj = self.get_queryset().get(pk=pk)
         file, name = PackageService.download_file(obj)
         return WebUtils.response_file(file, name)
 

@@ -21,10 +21,14 @@ import {
   type CardListFormState,
 } from '../utils/cardListSettingsModel';
 import { ConfigGroupTitle } from '../configTitles';
+import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 interface CardListSettingsSectionProps {
   t: (key: string) => string;
   availableFields: ResponseFieldDefinition[];
+  previewRawData?: unknown;
+  loadingFields?: boolean;
+  onRefreshFields?: () => void;
 }
 
 const SLOT_LABEL_KEYS: Record<string, string> = {
@@ -121,6 +125,22 @@ const LayoutPicker = ({
     </div>
   );
 };
+
+const CardListNestedTitle = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <h5
+    className={`mb-3 text-xs font-medium leading-5 text-(--color-text-3)${
+      className ? ` ${className}` : ''
+    }`}
+  >
+    {children}
+  </h5>
+);
 
 const OptionalGroup = ({
   title,
@@ -316,6 +336,9 @@ const CardListPreview = ({
 export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = ({
   t,
   availableFields,
+  previewRawData,
+  loadingFields = false,
+  onRefreshFields,
 }) => {
   const form = Form.useFormInstance();
   // 必须分别 watch nested style：useWatch('cardList') 组装出的 leading
@@ -350,9 +373,12 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
   }, [cardList?.badgeField, cardList?.badgeStyle, form]);
 
   const fieldOptions = useMemo(
-    () => buildCardListFieldOptions(availableFields),
-    [availableFields],
+    () => buildCardListFieldOptions(availableFields, previewRawData),
+    [availableFields, previewRawData],
   );
+  const fieldPlaceholder = fieldOptions.length === 0
+    ? t('topology.nodeConfig.clickRefreshToGetFields')
+    : t('dashboard.cardListSelectField');
   const previewSlots = resolveCardListPreviewSlots(cardList, fieldOptions, {
     title: t('dashboard.cardListPreviewTitle'),
     description: t('dashboard.cardListPreviewDescription'),
@@ -384,47 +410,65 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
       <Form.Item name={['cardList', 'badgeStyle']} noStyle>
         <StoredAccentStyle />
       </Form.Item>
-      {availableFields.length === 0 ? (
-        <div className="mb-4 text-center text-sm text-(--color-text-3)">
-          {t('topology.nodeConfig.noAvailableFields')}
-        </div>
-      ) : null}
+      <ConfigGroupTitle
+        actions={(
+          <RefreshFieldsButton
+            label={t('dashboard.refreshFields')}
+            loading={loadingFields}
+            onClick={onRefreshFields}
+          />
+        )}
+      >
+        {t('dashboard.dataFields')}
+      </ConfigGroupTitle>
 
+      <div className="mb-5 border-l border-(--color-border-2) pl-3">
       <CardListPreview
         label={t('dashboard.cardListPreview')}
         slots={previewSlots}
       />
 
-      <ConfigGroupTitle className="mt-5">
+      <CardListNestedTitle className="mt-4">
         {t('dashboard.cardListContent')}
-      </ConfigGroupTitle>
+      </CardListNestedTitle>
       <Form.Item
-        label={t('dashboard.cardListTitleField')}
+        label={(
+          <ChartRoleLabel
+            text={t('dashboard.cardListTitleField')}
+            tip={t('dashboard.cardListTitleFieldTip')}
+          />
+        )}
         name={['cardList', 'titleField']}
         rules={[{ required: true, message: t('dashboard.cardListTitleRequired') }]}
       >
         <CardListFieldSelect
           options={fieldOptions}
-          placeholder={t('dashboard.cardListSelectField')}
+          placeholder={fieldPlaceholder}
         />
       </Form.Item>
       <Form.Item
-        label={t('dashboard.cardListDescriptionField')}
+        label={(
+          <ChartRoleLabel
+            text={t('dashboard.cardListDescriptionField')}
+            tip={t('dashboard.cardListDescriptionFieldTip')}
+          />
+        )}
         name={['cardList', 'descriptionField']}
       >
         <CardListFieldSelect
           options={fieldOptions}
-          placeholder={t('dashboard.cardListSelectField')}
+          placeholder={fieldPlaceholder}
           hint={duplicateHint(cardList?.descriptionField, 'description')}
         />
       </Form.Item>
 
-      <ConfigGroupTitle className="mt-5">
+      <CardListNestedTitle className="mt-4">
         {t('dashboard.cardListOptional')}
-      </ConfigGroupTitle>
+      </CardListNestedTitle>
       <div className="flex flex-col gap-3">
         <OptionalGroup
           title={t('dashboard.cardListAddLeading')}
+          tooltip={t('dashboard.cardListLeadingFieldTip')}
           open={leadingOpen}
           expandLabel={t('dashboard.cardListExpand')}
           collapseLabel={t('dashboard.cardListCollapse')}
@@ -462,6 +506,12 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
           </div>
           {cardList?.leading?.type === 'field' ? (
             <Form.Item
+              label={(
+                <ChartRoleLabel
+                  text={t('dashboard.cardListLeadingField')}
+                  tip={t('dashboard.cardListLeadingFieldTip')}
+                />
+              )}
               name={['cardList', 'leading', 'field']}
               required
               rules={[
@@ -474,7 +524,7 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
               <CardListFieldSelect
                 allowClear={false}
                 options={fieldOptions}
-                placeholder={t('dashboard.cardListSelectField')}
+                placeholder={fieldPlaceholder}
                 hint={duplicateHint(cardList?.leading?.field, 'leading')}
               />
             </Form.Item>
@@ -492,10 +542,13 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
         >
           <div className="flex items-start gap-1">
             <div className="min-w-0 flex-1">
-              <Form.Item name={['cardList', 'badgeField']} className="mb-0">
+              <Form.Item
+                name={['cardList', 'badgeField']}
+                className="mb-0"
+              >
                 <CardListFieldSelect
                   options={fieldOptions}
-                  placeholder={t('dashboard.cardListSelectField')}
+                  placeholder={fieldPlaceholder}
                   hint={duplicateHint(cardList?.badgeField, 'badge')}
                 />
               </Form.Item>
@@ -520,28 +573,39 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
           onToggle={() => setTrailingOpen((open) => !open)}
         >
           <Form.Item
-            label={t('dashboard.cardListTrailingFirst')}
+            label={(
+              <ChartRoleLabel
+                text={t('dashboard.cardListTrailingFirst')}
+                tip={t('dashboard.cardListTrailingFieldTip')}
+              />
+            )}
             name={['cardList', 'trailingPrimaryField']}
           >
             <CardListFieldSelect
               options={fieldOptions}
-              placeholder={t('dashboard.cardListSelectField')}
+              placeholder={fieldPlaceholder}
               hint={duplicateHint(cardList?.trailingPrimaryField, 'trailing')}
             />
           </Form.Item>
           <Form.Item
-            label={t('dashboard.cardListTrailingSecond')}
+            label={(
+              <ChartRoleLabel
+                text={t('dashboard.cardListTrailingSecond')}
+                tip={t('dashboard.cardListTrailingFieldTip')}
+              />
+            )}
             name={['cardList', 'trailingSecondaryField']}
           >
             <CardListFieldSelect
               options={fieldOptions}
-              placeholder={t('dashboard.cardListSelectField')}
+              placeholder={fieldPlaceholder}
             />
           </Form.Item>
         </OptionalGroup>
       </div>
+      </div>
 
-      <ConfigGroupTitle className="mt-5">
+      <ConfigGroupTitle>
         {t('dashboard.cardListLayout')}
       </ConfigGroupTitle>
       <Form.Item name={['cardList', 'layout']} className="mb-0">

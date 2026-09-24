@@ -1,4 +1,5 @@
 'use client';
+import './register-view-pilot';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Segmented, Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';

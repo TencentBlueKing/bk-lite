@@ -39,7 +39,7 @@ Status: ready
 - 「从作业模板重新加载」再拉一次定义，做同样结构对齐，并把仍为 `const` 的项的 `value` 覆盖为模板最新明文默认值（加密/无默认则置空）。`from=field` 的字段映射与手填项的 `allow_adjust` 不因重新加载而改。打开抽屉期间模板变化只通过该按钮更新，不在输入过程中静默改手填值。
 - 自动路径不接受覆盖。手动覆盖后的实际下发参数写入该次执行记录结果，便于事后查看；幂等键、回调、状态机与现网一致。
 - 前端：规则表单增加自动执行开关；参数表提供取值方式、值（输入框、告警字段或触发事件类型）、仅手填可见的「执行时可改」，以及重新加载。变量下拉旁用 Tooltip 标明各生命周期事件下发给脚本的 Key。手动执行弹框只渲染可改手填项。
-- 绑定 `trigger_event` 时，作业 handler 把当次 `ActionExecution.trigger_event` 写入参数 payload。自动路径为 `created` / `assigned` / `acknowledged` / `resolved` / `closed`；手动路径为 `manual`。不把该字段并入规则匹配 payload。
+- 绑定 `trigger_event` 时，作业 handler 写入参数 payload。自动路径为当次生命周期事件 `created` / `assigned` / `acknowledged` / `resolved` / `closed`；手动路径按告警当前状态映射为同一套 Key（未分派→created，待响应→assigned，处理中→acknowledged，已处理→resolved，已关闭→closed）。不把该字段并入规则匹配 payload。
 - 本轮不改作业平台执行接口、不引入参数加密存进规则、不把目标主机改成与参数表同一套手动/变量模型（主机仍用现有从告警取 / 固定 IP）。
 
 ## Testing Decisions

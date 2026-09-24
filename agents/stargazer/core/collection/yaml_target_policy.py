@@ -6,7 +6,7 @@ import asyncio
 from typing import Any, Mapping
 
 from core.collection.constants import CLOUD_TYPES
-from core.collection.runtime import CollectionRequest
+from core.collection.runtime import CollectionRequest, _run_log_identity
 from core.logger import logger, safe_log_value
 from core.plugin.yaml_reader import PluginYamlReader, yaml_reader
 
@@ -53,8 +53,8 @@ def apply_yaml_target_policy(
         )
     except Exception as exc:  # noqa: BLE001 - 保留 request_builder 兜底
         logger.warning(
-            "event=yaml_target_policy_unavailable task_id=%s plugin=%s " "executor=%s failed_stage=run_preparation error_type=%s",
-            safe_log_value(request.task_id),
+            "event=yaml_target_policy_unavailable %s plugin=%s executor=%s failed_stage=run_preparation error_type=%s",
+            _run_log_identity(request),
             safe_log_value(plugin_name),
             safe_log_value(executor_type),
             type(exc).__name__,
@@ -96,8 +96,8 @@ async def apply_yaml_target_policy_async(
         )
     except Exception as exc:  # noqa: BLE001 - 保留 request_builder 兜底
         logger.warning(
-            "event=yaml_target_policy_unavailable task_id=%s plugin=%s " "executor=%s failed_stage=run_preparation error_type=%s",
-            safe_log_value(request.task_id),
+            "event=yaml_target_policy_unavailable %s plugin=%s executor=%s failed_stage=run_preparation error_type=%s",
+            _run_log_identity(request),
             safe_log_value(plugin_name),
             safe_log_value(executor_type),
             type(exc).__name__,
@@ -133,8 +133,8 @@ def apply_executor_target_policy(
     kind = _MODE_TO_KIND.get(mode)
     if not kind:
         logger.warning(
-            "event=yaml_target_policy_unknown_mode task_id=%s mode=%s " "failed_stage=run_preparation error_type=UnsupportedTargetPolicyMode",
-            safe_log_value(request.task_id),
+            "event=yaml_target_policy_unknown_mode %s mode=%s failed_stage=run_preparation error_type=UnsupportedTargetPolicyMode",
+            _run_log_identity(request),
             safe_log_value(mode),
         )
         return request

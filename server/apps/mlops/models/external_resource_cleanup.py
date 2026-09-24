@@ -6,6 +6,8 @@ from apps.core.models.time_info import TimeInfo
 class ExternalResourceCleanupIntent(TimeInfo):
     class ResourceType(models.TextChoices):
         MLFLOW_EXPERIMENT_MODEL = "mlflow_experiment_model", "MLflow experiment and model"
+        MINIO_OBJECT = "minio_object", "MinIO object"
+        WEBHOOK_CONTAINER = "webhook_container", "Webhook container"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

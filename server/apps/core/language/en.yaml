@@ -22,6 +22,10 @@ error:
   user_id_empty: user_id cannot be empty
   username_empty: Username cannot be empty
   otp_empty: Username or OTP code cannot be empty
+  api_token_update_not_supported: API tokens cannot be fully replaced
+  invalid_current_team: Invalid current_team cookie
+  no_permission_access_team: No permission to access this team
+  code_empty: code is required
 
 # Built-in application display names
 app_name:

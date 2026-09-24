@@ -254,7 +254,66 @@ class NodeMgmtSyncService:
 
         todo = detail.get("todo")
         normalized["todo"] = todo if isinstance(todo, list) else []
+        normalized["collect_diagnoses"] = cls._normalize_collect_diagnoses(detail.get("collect_diagnoses"))
         return normalized
+
+    @classmethod
+    def _normalize_collect_diagnoses(cls, diagnoses: Any) -> list[dict[str, Any]]:
+        from apps.cmdb.tasks.celery_tasks import _COLLECT_FAILURE_DECISIONS
+
+        if not isinstance(diagnoses, list):
+            return []
+        normalized = []
+        for item in diagnoses[:20]:
+            if not isinstance(item, dict):
+                continue
+            decision = item.get("decision")
+            if not isinstance(decision, str) or decision not in _COLLECT_FAILURE_DECISIONS:
+                decision = "unclassified"
+            child_status = item.get("child_status")
+            if child_status not in cls.TERMINAL_STATUSES and child_status not in cls.ACTIVE_STATUSES:
+                child_status = "failed"
+            reason_code = item.get("reason_code")
+            if not isinstance(reason_code, str) or not reason_code.isascii() or not reason_code.replace("_", "").isalnum() or len(reason_code) > 64:
+                reason_code = ""
+            normalized.append(
+                {
+                    "cloud_region_id": cls._safe_count(item.get("cloud_region_id")),
+                    "task_id": cls._safe_count(item.get("task_id")),
+                    "decision": decision,
+                    "child_status": child_status,
+                    "reason_code": reason_code,
+                    "raw_host": cls._safe_count(item.get("raw_host")),
+                    "raw_process": cls._safe_count(item.get("raw_process")),
+                    "collect_success": cls._safe_count(item.get("collect_success")),
+                    "collect_failed": cls._safe_count(item.get("collect_failed")),
+                }
+            )
+        return normalized
+
+    @classmethod
+    def _child_collect_diagnosis(
+        cls,
+        collect_task: CollectModels,
+        *,
+        cloud_region_id: int,
+        child_status: str,
+        reason_code: str,
+    ) -> dict[str, Any]:
+        from apps.cmdb.tasks.celery_tasks import classify_collect_decision
+
+        digest = collect_task.collect_digest if isinstance(collect_task.collect_digest, dict) else {}
+        return {
+            "cloud_region_id": cloud_region_id,
+            "task_id": collect_task.id,
+            "decision": classify_collect_decision(digest, exec_status=collect_task.exec_status),
+            "child_status": child_status,
+            "reason_code": reason_code,
+            "raw_host": cls._safe_count(digest.get("raw_host")),
+            "raw_process": cls._safe_count(digest.get("raw_process")),
+            "collect_success": cls._safe_count(digest.get("collect_success")),
+            "collect_failed": cls._safe_count(digest.get("collect_failed")),
+        }
 
     @classmethod
     def _has_display_data(cls, detail: dict[str, Any] | None) -> bool:
@@ -2876,6 +2935,34 @@ class NodeMgmtSyncService:
             snapshot.capture_status = NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
             snapshot.capture_token = ""
             snapshot.capture_deadline = None
+            diagnosis = cls._child_collect_diagnosis(
+                collect_task,
+                cloud_region_id=locked_state.cloud_region_id,
+                child_status=status,
+                reason_code=reason_code,
+            )
+            summary["collect_decision"] = diagnosis["decision"]
+            summary["collect_task_id"] = diagnosis["task_id"]
+            summary["collect_success"] = diagnosis["collect_success"]
+            summary["collect_failed"] = diagnosis["collect_failed"]
+            if status != NodeMgmtSyncRun.STATUS_SUCCESS:
+                execution_id = str(locked_state.child_execution_id or "").replace("\r", "").replace("\n", "")[:64]
+                logger.warning(
+                    "event=node_mgmt_sync_collect_child_finished run_id=%s cloud_region_id=%s "
+                    "task_id=%s execution_id=%s child_status=%s reason_code=%s decision=%s "
+                    "raw_host=%s raw_process=%s collect_success=%s collect_failed=%s",
+                    locked_run.id,
+                    locked_state.cloud_region_id,
+                    collect_task.id,
+                    execution_id,
+                    status,
+                    reason_code,
+                    diagnosis["decision"],
+                    diagnosis["raw_host"],
+                    diagnosis["raw_process"],
+                    diagnosis["collect_success"],
+                    diagnosis["collect_failed"],
+                )
             snapshot.summary_json = summary
             snapshot.byte_size = retained_bytes
             snapshot.truncated = summary["raw_truncated"]
@@ -3024,6 +3111,34 @@ class NodeMgmtSyncService:
             "retained_count": message["raw_retained"],
             "truncated": message["raw_truncated"],
         }
+        diagnoses = []
+        for snapshot in snapshots:
+            if snapshot.status == NodeMgmtSyncRun.STATUS_SUCCESS:
+                continue
+            summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+            diagnoses.append(
+                {
+                    "cloud_region_id": snapshot.cloud_region_id,
+                    "task_id": summary.get("collect_task_id"),
+                    "decision": summary.get("collect_decision") or "unclassified",
+                    "child_status": snapshot.status,
+                    "reason_code": snapshot.reason_code,
+                    "raw_host": summary.get("raw_host"),
+                    "raw_process": summary.get("raw_process"),
+                    "collect_success": summary.get("collect_success"),
+                    "collect_failed": summary.get("collect_failed"),
+                }
+            )
+        detail["collect_diagnoses"] = cls._normalize_collect_diagnoses(diagnoses)
+        if status != NodeMgmtSyncRun.STATUS_SUCCESS:
+            logger.warning(
+                "event=node_mgmt_sync_collect_run_finished run_id=%s status=%s reason_code=%s region_count=%s failed_region_count=%s",
+                run.id,
+                status,
+                reason_code,
+                len(snapshots),
+                len(detail["collect_diagnoses"]),
+            )
         run.refresh_from_db()
         if run.status == status and run.active_scope is None:
             NodeMgmtSyncRun.objects.filter(pk=run.pk, generation=run.generation).update(

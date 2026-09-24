@@ -73,6 +73,10 @@ stargazer 采集并经 NATS 分批推送到 VictoriaMetrics；server 的 Celery 
   发现任务**从未出现过标记**但时序库有该 `instance_id` 的数据（旧版 agent 上报），
   回退为现状行为直接对账；一旦该任务出现首个标记，即永久启用守门语义。避免升级
   顺序导致全部任务停止同步。
+- 兼容探测先对原始序列执行 `last_over_time({instance_id=~"..."}[1h])`，再按
+  `instance_id` 计数；不能对 `count` 聚合结果套 `[1h:]` 子查询，避免冷启动时
+  稀疏样本被隐式采样漏掉。探测失败继续向守门层传播，兼容同步仍只做 Upsert，
+  不执行差集删除、不提交完整轮次游标。
 
 ### 3. 手动执行直通
 
@@ -113,6 +117,9 @@ stargazer 采集并经 NATS 分批推送到 VictoriaMetrics；server 的 Celery 
   - 轮次过滤：时序库同时存在旧轮与新轮数据时，对账只消费 `>= round_ts` 的行，
     `immediately` 不误删新轮缺失但属旧轮的实例以外的对象；
   - 兼容回退：从未有标记 + 有数据 → 按现状对账。
+  - 冷启动：3 分钟新任务无需手动执行；原始样本可查询后，下次守门扫描可派发
+    兼容同步。真实故障时刻通过 `test_compat_probe_vm_live.py` 只读回放验证，
+    不以 mock 返回值代替 VM 查询语义。
   - 先例：`test_network_pipeline` / vmware e2e fixtures 的数据驱动写法。
 - 双租户要求不适用（不新增对外 API）。
 

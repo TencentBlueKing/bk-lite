@@ -43,11 +43,10 @@ import {
   supportsComponentSwitch,
 } from "@/app/ops-analysis/utils/componentParamSwitch";
 import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
-import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
+import { fetchCompareData, validateGaugeData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
-import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
 import { buildTopNItems } from "@/app/ops-analysis/utils/topNData";
 import { buildWidgetRequestCacheKey } from "@/app/ops-analysis/utils/widgetRequestCache";
 import { useDashboardRuntimeScheduler } from "@/app/ops-analysis/context/dashboardRuntimeScheduler";
@@ -112,67 +111,6 @@ const DEFAULT_RUNTIME_PRIORITY: RuntimeRequestPriority = {
   order: 0,
 };
 
-const validateGaugeData = (
-  data: unknown,
-  config?: ValueConfig,
-): { isValid: boolean; message?: string } => {
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    return { isValid: true };
-  }
-
-  const selectedField = config?.selectedFields?.[0];
-  const failMessage =
-    "数据结构不符：仪表盘期望 number，或包含数值字段的对象/数组（可通过“展示字段”指定）";
-
-  const hasNumericValue = (value: unknown) => {
-    if (typeof value === "number") return Number.isFinite(value);
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      return Number.isFinite(parsed);
-    }
-    return false;
-  };
-
-  if (Array.isArray(data)) {
-    const firstItem = data[0];
-    if (selectedField && firstItem && typeof firstItem === "object") {
-      return hasNumericValue(getValueByPath(firstItem, selectedField))
-        ? { isValid: true }
-        : { isValid: false, message: failMessage };
-    }
-
-    if (hasNumericValue(firstItem)) {
-      return { isValid: true };
-    }
-
-    if (firstItem && typeof firstItem === "object") {
-      const values = Object.values(firstItem as Record<string, unknown>);
-      return values.some((item) => hasNumericValue(item))
-        ? { isValid: true }
-        : { isValid: false, message: failMessage };
-    }
-
-    return { isValid: false, message: failMessage };
-  }
-
-  if (typeof data === "object") {
-    if (selectedField) {
-      return hasNumericValue(getValueByPath(data, selectedField))
-        ? { isValid: true }
-        : { isValid: false, message: failMessage };
-    }
-
-    const values = Object.values(data as Record<string, unknown>);
-    return values.some((item) => hasNumericValue(item))
-      ? { isValid: true }
-      : { isValid: false, message: failMessage };
-  }
-
-  return hasNumericValue(data)
-    ? { isValid: true }
-    : { isValid: false, message: failMessage };
-};
-
 const validateEventTableData = (
   data: unknown,
 ): { isValid: boolean; message?: string } => {
@@ -210,8 +148,9 @@ const validateEventTableData = (
 
 const validateEventTimelineData = (
   data: unknown,
+  config?: ValueConfig,
 ): { isValid: boolean; message?: string } =>
-  validateEventTimelinePayload(data);
+  validateEventTimelinePayload(data, config?.eventTimeline);
 
 const validateRadarData = (
   data: unknown,
@@ -270,6 +209,9 @@ export interface WidgetWrapperProps {
   ) => void;
   /** 预览等旁路需要同一份取数结果时使用；不影响画布渲染。 */
   onRawData?: (data: unknown) => void;
+  /** 字段刷新已经拿到的样本。版本增加时直接画这批数据，不再请求一次。 */
+  suppliedRawData?: unknown;
+  suppliedRawDataVersion?: number;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -294,6 +236,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   surface = 'dashboard',
   onTopologyLayoutChange,
   onRawData,
+  suppliedRawData,
+  suppliedRawDataVersion = 0,
 }) => {
   const { t } = useTranslation();
   const headerRuntimeSlot = useWidgetHeaderRuntimeSlot();
@@ -322,6 +266,15 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const isSceneWidget = isSelfFetchSceneWidget(
     config?.sceneWidgetType || chartType,
   );
+  const appliedSupplyVersionRef = useRef(0);
+  useEffect(() => {
+    if (!suppliedRawDataVersion || suppliedRawDataVersion === appliedSupplyVersionRef.current) {
+      return;
+    }
+    appliedSupplyVersionRef.current = suppliedRawDataVersion;
+    setRawData(suppliedRawData);
+    setLoading(false);
+  }, [suppliedRawData, suppliedRawDataVersion]);
   useEffect(() => {
     if (isSceneWidget) return;
     if (loading || tableLoading) return;
@@ -749,10 +702,16 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       switch (type) {
         case "pie":
-          return ChartDataTransformer.validatePieData(data, errorMessage);
+          return ChartDataTransformer.validatePieData(data, errorMessage, {
+            dimensionField: config?.dimensionField,
+            valueField: config?.valueField,
+          });
         case "line":
         case "bar":
-          return ChartDataTransformer.validateLineBarData(data, errorMessage);
+          return ChartDataTransformer.validateLineBarData(data, errorMessage, {
+            dimensionField: config?.dimensionField,
+            valueField: config?.valueField,
+          });
         case "topN":
           return validateTopNData(data, config, errorMessage);
         case "gauge":
@@ -760,11 +719,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         case "eventTable":
           return validateEventTableData(data);
         case "eventTimeline":
-          return validateEventTimelineData(data);
+          return validateEventTimelineData(data, config);
         case "radar":
           return validateRadarData(data, config);
         case "multiValue":
-          const result = validateMultiValueData(data, errorMessage);
+          const result = validateMultiValueData(data, errorMessage, {
+            labelField: config?.multiValueLabelField,
+            valueField: config?.multiValueValueField,
+          });
           return { isValid: result.isValid, message: result.errorMessage };
         case "table":
           return { isValid: true };

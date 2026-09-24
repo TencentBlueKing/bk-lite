@@ -31,26 +31,21 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
+# @bk_include_ifmib_table
+    # ---- LCOS CPU：lcsStatusHardwareInfoCpuLoadPercent，INTEGER 百分比，标量 field 带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2356.11.1.47.3.0"
+        name = "device_cpu_usage"
+    # ---- LCOS 内存：TotalMemoryKbytes / FreeMemoryKbytes，单位 KB，标量 field 带 .0 ----
+    # 查询侧 *1024 转为字节；利用率 (total-free)/total（KB 相消）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2356.11.1.47.4.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2356.11.1.47.5.0"
+        name = "device_memory_free"
     # ---- LANCOM 温度 (LCOS-MIB lcsStatusHardwareInfoTemperatureDegrees, 每传感器 ℃, 表, PEN 2356) ----
-    # 待现网核验：1.3.6.1.4.1.2356.11.1.47.20（硬件温度℃，按列 walk 所有传感器，max by instance）。
+    # table.field 不带 .0，按列 walk 所有传感器。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
@@ -58,4 +53,4 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2356.11.1.47.20"
         name = "celsius"
-# ---- CPU/内存/风扇/电源:LCOS os_discovery 仅暴露硬件温度传感器,未提供 CPU/内存利用率或风扇/电源状态专用 OID → 仅温度可采,余项 N/A。----
+# ---- 风扇/电源：LCOS 未以无需行级过滤的标量形式暴露风扇/电源状态 → N/A 不采。----

@@ -60,3 +60,10 @@ def fake_graph(monkeypatch):
         return fake
 
     return _install
+
+
+@pytest.fixture
+def transfer_owner(db):
+    from apps.system_mgmt.models.user import User
+
+    return User.objects.create(username="transfer-test", domain="tenant-a")

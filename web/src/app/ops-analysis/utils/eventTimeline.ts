@@ -71,7 +71,62 @@ const extractEventRows = (rawData: unknown): Record<string, unknown>[] => {
   return [];
 };
 
-const toEventItem = (row: Record<string, unknown>): EventTimelineItem | null => {
+export interface EventTimelineFieldMapping {
+  timeField?: string;
+  titleField?: string;
+  descriptionField?: string;
+  categoryField?: string;
+  statusField?: string;
+  linkField?: string;
+}
+
+const hasExplicitEventMapping = (mapping?: EventTimelineFieldMapping) =>
+  Boolean(
+    mapping?.timeField?.trim()
+    || mapping?.titleField?.trim()
+    || mapping?.descriptionField?.trim()
+    || mapping?.categoryField?.trim()
+    || mapping?.statusField?.trim()
+    || mapping?.linkField?.trim(),
+  );
+
+const readMappedText = (
+  row: Record<string, unknown>,
+  field?: string,
+): string | undefined => {
+  const key = field?.trim();
+  if (!key) {
+    return undefined;
+  }
+  return toNonEmptyText(row[key]);
+};
+
+const toEventItem = (
+  row: Record<string, unknown>,
+  mapping?: EventTimelineFieldMapping,
+): EventTimelineItem | null => {
+  if (hasExplicitEventMapping(mapping)) {
+    const time = readMappedText(row, mapping?.timeField);
+    const title = readMappedText(row, mapping?.titleField);
+    if (!time || !title) {
+      return null;
+    }
+    const description = readMappedText(row, mapping?.descriptionField);
+    const category = readMappedText(row, mapping?.categoryField);
+    const status = mapping?.statusField?.trim()
+      ? toStatus(row[mapping.statusField.trim()])
+      : undefined;
+    const link = readMappedText(row, mapping?.linkField);
+    return {
+      time,
+      title,
+      ...(description ? { description } : {}),
+      ...(category ? { category } : {}),
+      ...(status ? { status } : {}),
+      ...(link ? { link } : {}),
+    };
+  }
+
   const time = toNonEmptyText(row.time);
   const title = toNonEmptyText(row.title);
 
@@ -126,11 +181,11 @@ export const parseEventTimelineItems = (
   options?: {
     sortOrder?: 'asc' | 'desc';
     maxItems?: number;
-  },
+  } & EventTimelineFieldMapping,
 ): EventTimelineParseResult => {
   const rows = extractEventRows(rawData);
   const mapped = rows
-    .map((row) => toEventItem(row))
+    .map((row) => toEventItem(row, options))
     .filter((item): item is EventTimelineItem => item !== null);
   const sorted = mapped.sort(compareByTimeAsc);
   const descending = options?.sortOrder !== 'asc';
@@ -150,12 +205,13 @@ export const parseEventTimelineItems = (
 
 export const validateEventTimelinePayload = (
   rawData: unknown,
+  mapping?: EventTimelineFieldMapping,
 ): { isValid: boolean; message?: string } => {
   if (isEmptyEventTimelinePayload(rawData)) {
     return { isValid: true };
   }
 
-  const parsed = parseEventTimelineItems(rawData);
+  const parsed = parseEventTimelineItems(rawData, mapping);
   if (parsed.total === 0) {
     return {
       isValid: false,

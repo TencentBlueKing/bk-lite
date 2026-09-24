@@ -284,9 +284,9 @@ def _im_channel_id(channel_id=None, public_id=None, channel_type=None):
 
 @api_exempt
 def execute_skill_channel_im(request, channel_id=None, channel_type=None, public_id=None):
-    """IM 回调入口：企微 aibot / 企微应用 / 公众号 / 钉钉 HTTP 已接完整协议。
+    """IM 回调入口：企微 aibot / 企微应用 / 公众号 / 钉钉 / 飞书 HTTP 已接完整协议。
 
-    GET 用于 URL 校验；POST 在渠道未启用时拒绝。企微/钉钉/公众号不校验组织。
+    GET 用于 URL 校验；POST 在渠道未启用时拒绝。企微/钉钉/公众号/飞书不校验组织。
     对外 URL 使用 public_id；整数 channel_id 路径仅兼容已部署回调。
     """
     channel_ref = public_id if public_id is not None else channel_id
@@ -321,6 +321,11 @@ def execute_skill_channel_im(request, channel_id=None, channel_type=None, public
         from apps.opspilot.services.skill_channel_dingtalk import SkillChannelDingtalkUtils
 
         return SkillChannelDingtalkUtils(channel_id).handle_request(request)
+
+    if channel_type == SkillChannelChoices.FEISHU:
+        from apps.opspilot.services.skill_channel_feishu import SkillChannelFeishuUtils
+
+        return SkillChannelFeishuUtils(channel_id).handle_request(request)
 
     channel = SkillChannel.objects.filter(id=channel_id, channel_type=channel_type).first()
     if not channel or not channel.enabled:
