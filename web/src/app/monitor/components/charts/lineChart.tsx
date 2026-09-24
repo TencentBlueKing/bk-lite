@@ -79,6 +79,12 @@ interface LineChartProps {
   xAxisDomain?: [number, number];
   /** 默认 samples：仪表盘/阈值告警的采样中点空窗。plot：无数据告警贴边铺满。 */
   gapFit?: 'samples' | 'plot';
+  /** null 全部亮着，空数组全部变淡，有值时只亮这些序列。 */
+  emphasizedKeys?: string[] | null;
+  /** 点击图上的一条线，激活或取消这条序列。 */
+  onEmphasizedKeyChange?: (key: string) => void;
+  onActivateAllSeries?: () => void;
+  onDeactivateAllSeries?: () => void;
 }
 
 const getChartAreaKeys = (arr: ChartData[]): string[] => {
@@ -237,7 +243,11 @@ const LineChart: React.FC<LineChartProps> = memo(
     xAxisTimeFormat,
     leftAxisWidthOverride,
     xAxisDomain,
-    gapFit = 'samples'
+    gapFit = 'samples',
+    emphasizedKeys = null,
+    onEmphasizedKeyChange,
+    onActivateAllSeries,
+    onDeactivateAllSeries
   }) => {
     const { formatTime } = useFormatTime();
     const levelList = useLevelList();
@@ -801,9 +811,9 @@ const LineChart: React.FC<LineChartProps> = memo(
                     x2={gap.end}
                     {...(gapFit === 'plot'
                       ? {
-                          y1: niceYAxis.domain[0],
-                          y2: niceYAxis.domain[1],
-                        }
+                        y1: niceYAxis.domain[0],
+                        y2: niceYAxis.domain[1],
+                      }
                       : {})}
                     yAxisId="left"
                     {...GAP_INTERVAL_AREA_STYLE}
@@ -847,8 +857,10 @@ const LineChart: React.FC<LineChartProps> = memo(
                 <defs>
                   {chartAreaKeys.map((key, index) => {
                     const color = resolvedSeriesStyles[index]?.color;
+                    const dimmed = emphasizedKeys != null && !emphasizedKeys.includes(key);
                     const fillOpacity =
-                      resolvedSeriesStyles[index]?.fillOpacity ?? DEFAULT_FILL_OPACITY;
+                      (resolvedSeriesStyles[index]?.fillOpacity ?? DEFAULT_FILL_OPACITY) *
+                      (dimmed ? 0.2 : 1);
                     return (
                       <linearGradient
                         key={`grad-${key}`}
@@ -864,7 +876,9 @@ const LineChart: React.FC<LineChartProps> = memo(
                     );
                   })}
                 </defs>
-                {chartAreaKeys.map((key, index) => (
+                {chartAreaKeys.map((key, index) => {
+                  const dimmed = emphasizedKeys != null && !emphasizedKeys.includes(key);
+                  return (
                     <Area
                       key={key}
                       type="linear"
@@ -873,7 +887,10 @@ const LineChart: React.FC<LineChartProps> = memo(
                       yAxisId="left"
                       stroke={resolvedSeriesStyles[index]?.color}
                       strokeDasharray={resolvedSeriesStyles[index]?.strokeDasharray}
-                      strokeOpacity={resolvedSeriesStyles[index]?.strokeOpacity}
+                      strokeOpacity={
+                        (resolvedSeriesStyles[index]?.strokeOpacity ?? 1) *
+                        (dimmed ? 0.18 : 1)
+                      }
                     fillOpacity={1}
                     fill={`url(#${gradientId}-${index})`}
                     strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? DEFAULT_STROKE_WIDTH}
@@ -884,8 +901,15 @@ const LineChart: React.FC<LineChartProps> = memo(
                     strokeLinecap={resolvedSeriesStyles[index]?.dotStyle === 'hollow' ? 'butt' : 'round'}
                     strokeLinejoin="round"
                     hide={!visibleAreas.includes(key)}
+                    style={onEmphasizedKeyChange ? { cursor: 'pointer' } : undefined}
+                    onClick={
+                      onEmphasizedKeyChange
+                        ? () => onEmphasizedKeyChange(key)
+                        : undefined
+                    }
                   />
-                ))}
+                  );
+                })}
                 {/* 为每个阈值级别渲染阴影区域 */}
                 {validThresholds.map((item, index) => {
                   const levelColor =
@@ -1038,6 +1062,10 @@ const LineChart: React.FC<LineChartProps> = memo(
                 colors={visibleColors}
                 details={details}
                 unit={unit}
+                emphasizedKeys={emphasizedKeys}
+                onSeriesClick={onEmphasizedKeyChange}
+                onActivateAll={onActivateAllSeries}
+                onDeactivateAll={onDeactivateAllSeries}
               />
             )}
 

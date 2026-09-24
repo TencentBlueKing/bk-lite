@@ -1,5 +1,9 @@
 import React from 'react';
 import { MetricItem, ObjectItem, ChartData } from './index';
+import type {
+  SearchChartView,
+  SearchTableKind
+} from '@/app/monitor/(pages)/search/searchChartPresentation';
 
 export interface InstanceItem {
   instance_id: string;
@@ -68,6 +72,8 @@ export interface QueryGroup {
   aggregation: string;
   conditions: ConditionItem[];
   collapsed: boolean;
+  viewMode?: SearchChartView;
+  tableKind?: SearchTableKind | null;
 }
 
 export interface SearchPayload {
@@ -83,6 +89,13 @@ export interface QueryPanelRef {
   getSearchPayload: () => SearchPayload | null;
   canSearch: () => boolean;
   getActiveGroup: () => QueryGroup;
+  updateGroupPresentation: (
+    groupId: string,
+    presentation: {
+      viewMode: SearchChartView;
+      tableKind: SearchTableKind | null;
+    }
+  ) => void;
 }
 
 export interface QueryPanelProps {
@@ -117,6 +130,8 @@ export interface QueryGroupData {
   legacy_metric_name?: string | null;
   aggregation: string;
   conditions: ConditionItemData[];
+  view_mode?: SearchChartView | 'table';
+  table_kind?: SearchTableKind | null;
 }
 
 export interface SaveConditionParams {

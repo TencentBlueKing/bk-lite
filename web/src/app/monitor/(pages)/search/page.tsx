@@ -1,7 +1,7 @@
 'use client';
 import './register-search-pilot';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Card, Segmented } from 'antd';
+import React, { useEffect, useState, useRef } from 'react';
+import { Segmented } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import {
   AppstoreOutlined,
@@ -9,13 +9,10 @@ import {
 } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import TimeSelector from '@/components/time-selector';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
-import LineChart from '@/app/monitor/components/charts/lineChart';
 import { TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
 import { useSearchParams } from 'next/navigation';
-import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import {
   SearchPayload,
   QueryPanelRef,
@@ -27,7 +24,14 @@ import {
 import { attachGapIntervals } from '@/app/monitor/utils/gapIntervals';
 import dayjs from 'dayjs';
 import QueryPanel from './queryPanel';
+import SearchResultCard from './searchResultCard';
 import { publishSearchSnapshot } from './search.pilot';
+import {
+  applySearchPresentationToAll,
+  emptySearchChartPresentation,
+  seedSearchChartPresentation,
+  type SearchChartPresentation
+} from './searchChartPresentation';
 import {
   buildSearchQueryParams,
   getMetricsMapKey,
@@ -38,7 +42,6 @@ import { parseSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery'
 const SearchView: React.FC = () => {
   const { post } = useApiClient();
   const { t } = useTranslation();
-  const { findUnitNameById } = useUnitTransform();
   const searchParams = useSearchParams();
   const parsedSearchTime = parseSearchTimeQueryParams(searchParams);
   const queryPanelRef = useRef<QueryPanelRef>(null);
@@ -55,6 +58,9 @@ const SearchView: React.FC = () => {
           : null
     }));
   const [chartItems, setChartItems] = useState<ChartItem[]>([]);
+  const [presentationByGroupId, setPresentationByGroupId] = useState<
+    Record<string, SearchChartPresentation>
+  >({});
   const [frequence, setFrequence] = useState<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const searchAbortControllerRef = useRef<AbortController | null>(null);
@@ -115,6 +121,9 @@ const SearchView: React.FC = () => {
       (g) => g.metric && g.instanceIds.length > 0
     );
     if (!validGroups?.length) return;
+    setPresentationByGroupId((prev) =>
+      seedSearchChartPresentation(prev, payload.queryGroups)
+    );
     searchAbortControllerRef.current?.abort();
     const abortController = new AbortController();
     searchAbortControllerRef.current = abortController;
@@ -241,13 +250,29 @@ const SearchView: React.FC = () => {
     handleSearch('refresh', timeRange);
   };
 
-  const getUnit = useCallback(
-    (unit: string) => {
-      const unitName = findUnitNameById(unit);
-      return unitName ? `（${unitName}）` : '';
-    },
-    [findUnitNameById]
-  );
+  const updatePresentation = (
+    groupId: string,
+    next: SearchChartPresentation
+  ) => {
+    setPresentationByGroupId((prev) => ({ ...prev, [groupId]: next }));
+    queryPanelRef.current?.updateGroupPresentation(groupId, {
+      viewMode: next.view,
+      tableKind: next.tableKind
+    });
+  };
+
+  const applyPresentationToAll = (source: SearchChartPresentation) => {
+    const groupIds = chartItems.map((item) => item.groupId);
+    setPresentationByGroupId((prev) =>
+      applySearchPresentationToAll(prev, groupIds, source)
+    );
+    groupIds.forEach((groupId) => {
+      queryPanelRef.current?.updateGroupPresentation(groupId, {
+        viewMode: source.view,
+        tableKind: source.tableKind
+      });
+    });
+  };
 
   return (
     <div
@@ -294,62 +319,26 @@ const SearchView: React.FC = () => {
               }`}
             >
               {chartItems.map((item) => (
-                <Card
+                <SearchResultCard
                   key={item.groupId}
-                  size="small"
-                  style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
-                  title={
-                    <div className="flex items-start gap-[8px] min-w-0">
-                      <div className="min-w-0 flex-1 overflow-hidden">
-                        <div className="flex items-center min-w-0">
-                          <EllipsisWithTooltip
-                            text={`${item.aggregation}(${item.objectName}-${item.metric?.display_name || '--'})`}
-                            className="font-medium truncate max-w-full"
-                          />
-                          <span className="font-medium flex-shrink-0">
-                            <span className="text-[var(--color-text-3)] text-[12px]">
-                              {getUnit(item.unit)}
-                            </span>
-                          </span>
-                        </div>
-                        {item.metric?.display_description ? (
-                          <div
-                            className="mt-[2px] text-[12px] leading-[18px] text-[var(--color-text-3)] line-clamp-2"
-                            title={item.metric.display_description}
-                          >
-                            {item.metric.display_description}
-                          </div>
-                        ) : null}
-                      </div>
-                      {!item.loading && item.duration > 0 && (
-                        <span className="text-xs text-[var(--color-text-3)] font-normal flex-shrink-0 whitespace-nowrap pt-[2px]">
-                          {t('monitor.search.duration')} {item.duration}
-                          {t('monitor.search.ms')}
-                        </span>
-                      )}
-                    </div>
+                  item={item}
+                  layoutMode={layoutMode}
+                  presentation={
+                    presentationByGroupId[item.groupId] ||
+                    emptySearchChartPresentation()
                   }
-                  loading={item.loading}
-                  styles={{
-                    body: { padding: '12px' }
-                  }}
-                >
-                  <div
-                    className={
-                      layoutMode === 'double' ? 'h-[220px]' : 'h-[280px]'
-                    }
-                  >
-                    <LineChart
-                      metric={item.metric || undefined}
-                      data={item.data}
-                      unit={item.unit}
-                      showDimensionTable={layoutMode === 'single'}
-                      key={layoutMode}
-                      syncId="monitor-search-charts"
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </Card>
+                  showApplyAll={chartItems.length > 1}
+                  onPresentationChange={(next) =>
+                    updatePresentation(item.groupId, next)
+                  }
+                  onApplyAll={() =>
+                    applyPresentationToAll(
+                      presentationByGroupId[item.groupId] ||
+                        emptySearchChartPresentation()
+                    )
+                  }
+                  onXRangeChange={onXRangeChange}
+                />
               ))}
             </div>
           ) : (

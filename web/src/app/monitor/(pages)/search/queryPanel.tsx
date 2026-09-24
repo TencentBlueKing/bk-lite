@@ -210,7 +210,10 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     useImperativeHandle(ref, () => ({
       getSearchPayload,
       canSearch,
-      getActiveGroup: () => activeGroup
+      getActiveGroup: () => activeGroup,
+      updateGroupPresentation: (groupId, presentation) => {
+        updateQueryGroup(groupId, presentation);
+      }
     }));
 
     useEffect(() => {
