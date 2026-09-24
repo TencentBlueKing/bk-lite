@@ -14,6 +14,7 @@ from apps.job_mgmt.openapi_serializers import (
     TargetListV2RequestSerializer,
 )
 from apps.job_mgmt.services.target_list_v2 import query_target_list_v2
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
@@ -22,7 +23,10 @@ def _require_single_active_team(team):
     authorized_team_ids = normalize_team(team)
     authorized_team_id = next(iter(authorized_team_ids), None)
     if len(authorized_team_ids) != 1 or not GroupUtils.active_queryset(id=authorized_team_id).exists():
-        return None, {"result": False, "message": "用户未关联活动团队"}
+        return None, {
+            "result": False,
+            "message": job_message(None, "error.user_no_active_team", "User is not associated with an active team"),
+        }
     return authorized_team_id, None
 
 
@@ -41,7 +45,14 @@ def openapi_target_list_v2(name="", ip="", os_type="", page_size=20, cursor=None
         return {"result": False, "message": "target list v2 is not enabled"}
     caller_team = set(GroupUtils.active_queryset(id__in=normalize_team(team)).values_list("id", flat=True))
     if not caller_team:
-        return {"result": False, "message": "无权访问该组织：用户未关联活动团队"}
+        return {
+            "result": False,
+            "message": job_message(
+                None,
+                "error.org_access_no_active_team",
+                "No access to this organization: user is not associated with an active team",
+            ),
+        }
     result = query_target_list_v2(
         {"name": name, "ip": ip, "os_type": os_type, "page_size": page_size, "cursor": cursor},
         caller_team,
@@ -156,5 +167,5 @@ def openapi_job_detail(task_id, *, team=None):
 
     result = job_detail_query({"task_id": task_id, "team": [authorized_team_id]})
     if not result.get("result"):
-        return {"result": False, "message": "任务不存在"}
+        return {"result": False, "message": job_message(None, "error.task_not_found", "Task not found")}
     return result.get("data") or {}

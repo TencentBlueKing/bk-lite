@@ -22,6 +22,7 @@ from apps.job_mgmt.serializers.playbook import (
     extract_file_from_archive,
 )
 from apps.job_mgmt.services.error_response import exception_to_response
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -153,7 +154,10 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
         instance = self.get_object()
 
         if not instance.file:
-            return Response({"detail": "文件不存在"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": job_message(request, "error.file_not_found", "File not found")},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         file_handle = instance.file.open("rb")
         response = FileResponse(file_handle, as_attachment=True, filename=instance.file_name)
@@ -227,11 +231,17 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
         # 获取 file_path 参数
         file_path = request.query_params.get("file_path")
         if not file_path:
-            return Response({"detail": "缺少 file_path 参数"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": job_message(request, "error.file_path_required", "file_path is required")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # 检查文件是否存在
         if not instance.file:
-            return Response({"detail": "Playbook 文件不存在"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": job_message(request, "error.playbook_file_not_found", "Playbook file not found")},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         try:
             result = extract_file_from_archive(instance.file, file_path)
@@ -250,4 +260,10 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
             else:
                 return Response({"detail": error_msg}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return exception_to_response(e, context="[playbook.preview]", default_message="预览失败", body_key="detail")
+            return exception_to_response(
+                e,
+                context="[playbook.preview]",
+                default_message=job_message(request, "error.preview_failed", "Preview failed"),
+                body_key="detail",
+                request=request,
+            )

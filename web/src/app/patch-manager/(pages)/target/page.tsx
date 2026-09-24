@@ -13,7 +13,7 @@ import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-req
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PatchTarget, OSType } from '@/app/patch-manager/types';
 import ComplianceTag, { ComplianceStatus } from '@/app/patch-manager/components/compliance-tag';
-import DualSelector from '@/app/patch-manager/components/dual-selector';
+import DualSelector from '@/components/dual-selector';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateDrawer from '@/components/operate-drawer';
@@ -1152,7 +1152,12 @@ export default function TargetPage() {
           selectedKeys={selectedNodes}
           onChange={setSelectedNodes}
           selectedRecordsData={selectedNodeRecords}
-          renderSelectedLabel={(record: any) => `${record.name} (${record.ip})`}
+          renderSelectedLabel={(record: PatchTarget) => `${record.name} (${record.ip})`}
+          rightTitle={t('patchManager.common.selectedItems', undefined, { count: selectedNodes.length })}
+          clearAllText={t('patchManager.common.clearAll')}
+          emptySelectionText={t('patchManager.common.noSelection')}
+          selectedPreviewLabel={t('patchManager.common.selectedPreview')}
+          getRemoveLabel={(record: PatchTarget) => t('patchManager.common.remove', undefined, { name: record.name || record.ip })}
         />
       </OperateDrawer>
     </div>

@@ -130,8 +130,8 @@ export default function RiskPendingPage() {
   const [rebootRange, setRebootRange] = useState<[any, any] | null>(null);
   const [taskName, setTaskName] = useState('');
   const [rebootTaskName, setRebootTaskName] = useState('');
-  const [remediationTaskPrefix, setRemediationTaskPrefix] = useState<'治理' | '一键治理'>('一键治理');
-  const [rebootTaskPrefix, setRebootTaskPrefix] = useState<'重启' | '一键重启'>('一键重启');
+  const [remediationTaskPrefix, setRemediationTaskPrefix] = useState(t('patchManager.risk.oneClickRemediation'));
+  const [rebootTaskPrefix, setRebootTaskPrefix] = useState(t('patchManager.risk.oneClickReboot'));
   const [rebootConfirmOpen, setRebootConfirmOpen] = useState(false);
   const [rebootValidation, setRebootValidation] = useState<{ taskName?: string; window?: string }>({});
 
@@ -196,15 +196,18 @@ export default function RiskPendingPage() {
   };
 
   const buildDefaultTaskName = (
-    prefix: '治理' | '一键治理' | '重启' | '一键重启',
+    prefix: string,
     hosts: Array<{ id: number; name: string }>,
   ) => {
     const uniqueHosts = Array.from(
       new Map(hosts.filter((host) => host.id).map((host) => [host.id, host])).values(),
     );
-    const firstHostName = uniqueHosts[0]?.name || t('patchManager.risk.unknownHost', '未知主机');
+    const firstHostName = uniqueHosts[0]?.name || t('patchManager.risk.unknownHost');
     const hostSummary = uniqueHosts.length > 1
-      ? `${firstHostName}等${uniqueHosts.length}台`
+      ? t('patchManager.risk.hostSummaryMultiple', undefined, {
+        name: firstHostName,
+        count: uniqueHosts.length,
+      })
       : firstHostName;
     const now = new Date();
     const date = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
@@ -225,7 +228,7 @@ export default function RiskPendingPage() {
     return hostIds.size > 0 && Array.from(hostIds).every((hostId) => pendingRebootHostIds.has(hostId) && operableHostIds.has(hostId));
   };
 
-  const openScope = (rows?: SelectedRow[], prefix: '治理' | '一键治理' = '一键治理') => {
+  const openScope = (rows?: SelectedRow[], prefix: string = t('patchManager.risk.oneClickRemediation')) => {
     setScopeRows(rows || selectedRows);
     setScopeSelected([]);
     setCurrentStep(0);
@@ -236,7 +239,7 @@ export default function RiskPendingPage() {
 
   const loadRebootScope = async (
     rows: SelectedRow[],
-    prefix: '重启' | '一键重启',
+    prefix: string,
   ) => {
     const targetIds = Array.from(new Set(
       rows.flatMap((row) => (row.items || []))
@@ -260,7 +263,7 @@ export default function RiskPendingPage() {
     }
   };
 
-  const openReboot = (rows: SelectedRow[], prefix: '重启' | '一键重启') => {
+  const openReboot = (rows: SelectedRow[], prefix: string) => {
     setRebootRows(rows);
     setRebootScope(undefined);
     setRebootTaskName('');
@@ -281,12 +284,12 @@ export default function RiskPendingPage() {
     return (
       <Space size={4}>
         {hasRemediable ? (
-          <PermissionWrapper requiredPermissions={['Add']} instPermissions={remediable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openScope([row], '治理')}>{t('patchManager.risk.remediate')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']} instPermissions={remediable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openScope([row], t('patchManager.risk.remediate'))}>{t('patchManager.risk.remediate')}</Button></PermissionWrapper>
         ) : (
           <Tooltip title={t('patchManager.risk.noRemediableItems')}><Button type="link" size="small" disabled>{t('patchManager.risk.remediate')}</Button></Tooltip>
         )}
         {rebootable && (
-          <PermissionWrapper requiredPermissions={['Add']} instPermissions={rebootable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openReboot([row], '重启')}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']} instPermissions={rebootable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openReboot([row], t('patchManager.risk.reboot'))}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
         )}
         <Button type="link" size="small" onClick={() => setDetailRecord({ name: getRowName(r), items })}>{t('patchManager.risk.details')}</Button>
       </Space>
@@ -782,7 +785,7 @@ export default function RiskPendingPage() {
                   label: <PermissionWrapper requiredPermissions={['Add']} instPermissions={batchCanRemediate ? ['Operate'] : []}>{t('patchManager.risk.oneClickRemediation')}</PermissionWrapper>,
                   icon: <ToolOutlined />,
                   disabled: !batchCanRemediate || !hasPermission(['Add']),
-                  onClick: () => openScope(undefined, '一键治理'),
+                  onClick: () => openScope(undefined, t('patchManager.risk.oneClickRemediation')),
                 },
                 {
                   key: 'reboot',
@@ -796,7 +799,7 @@ export default function RiskPendingPage() {
                   ),
                   icon: <ReloadOutlined />,
                   disabled: !batchCanReboot || !hasPermission(['Add']),
-                  onClick: () => openReboot(selectedRows, '一键重启'),
+                  onClick: () => openReboot(selectedRows, t('patchManager.risk.oneClickReboot')),
                 },
               ],
             }}

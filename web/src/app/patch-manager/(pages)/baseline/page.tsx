@@ -9,7 +9,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import type { Patch } from '@/app/patch-manager/types';
-import DualSelector from '@/app/patch-manager/components/dual-selector';
+import DualSelector from '@/components/dual-selector';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
@@ -743,6 +743,10 @@ export default function BaselineManagementPage() {
           renderSelectedLabel={(r) => r.name}
           leftTitle={<Input.Search placeholder={t('patchManager.baseline.targetSearch')} value={hostSearch} onSearch={(v) => { setBindHostPagination((p) => ({ ...p, current: 1 })); loadBindHosts(1, bindHostPagination.pageSize, v); }} onChange={(e) => setHostSearch(e.target.value)} allowClear className="mb-3 w-60" />}
           rightTitle={t('patchManager.baseline.selectedTargets', undefined, { count: selectedHosts.length })}
+          clearAllText={t('patchManager.common.clearAll')}
+          emptySelectionText={t('patchManager.common.noSelection')}
+          selectedPreviewLabel={t('patchManager.common.selectedPreview')}
+          getRemoveLabel={(record) => t('patchManager.common.remove', undefined, { name: record.name })}
           height="calc(100vh - 200px)"
         />
       </OperateDrawer>
@@ -843,6 +847,11 @@ export default function BaselineManagementPage() {
           getCheckboxProps={(record) => ({ disabled: !record.permission?.includes('Operate') })}
           selectedRecordsData={selectedPatchRecords}
           renderSelectedLabel={(r) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || r.title}
+          rightTitle={t('patchManager.common.selectedItems', undefined, { count: pickerSelected.length })}
+          clearAllText={t('patchManager.common.clearAll')}
+          emptySelectionText={t('patchManager.common.noSelection')}
+          selectedPreviewLabel={t('patchManager.common.selectedPreview')}
+          getRemoveLabel={(record) => t('patchManager.common.remove', undefined, { name: record.windows_detail?.kb_number || record.linux_detail?.pkg_name || record.title })}
           leftTitle={
             <Input.Search
               placeholder={draftOs === 'win' ? t('patchManager.baseline.searchKb') : t('patchManager.baseline.searchPackage')}
