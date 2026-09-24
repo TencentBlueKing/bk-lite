@@ -803,10 +803,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_westermo",
       "capabilities": [
         "uptime",
-        "cpu",
-        "memory",
-        "temperature",
-        "psu",
         "traffic"
       ]
     },
