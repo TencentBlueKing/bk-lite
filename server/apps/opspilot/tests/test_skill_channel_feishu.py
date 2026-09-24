@@ -94,15 +94,58 @@ def test_rejects_mismatched_verification_token():
 
 
 def test_encrypted_url_verification():
+    """飞书网址校验：有 Encrypt Key 时只发 encrypt，通常不带签名头。"""
     channel = _channel(encrypt_key=ENCRYPT_KEY)
     encrypted = _encrypt(
         ENCRYPT_KEY,
         {"type": "url_verification", "challenge": "challenge-enc", "token": VERIFY_TOKEN},
     )
     assert json.loads(decrypt_feishu_payload(ENCRYPT_KEY, encrypted))["challenge"] == "challenge-enc"
-    response = _post(channel, {"encrypt": encrypted}, encrypt_key=ENCRYPT_KEY)
+    # 不带 X-Lark-Signature，模拟飞书真实握手
+    response = _post(channel, {"encrypt": encrypted})
     assert response.status_code == 200
     assert json.loads(response.content) == {"challenge": "challenge-enc"}
+
+
+def test_encrypted_url_verification_with_signature_still_works():
+    channel = _channel(encrypt_key=ENCRYPT_KEY)
+    encrypted = _encrypt(
+        ENCRYPT_KEY,
+        {"type": "url_verification", "challenge": "challenge-sig", "token": VERIFY_TOKEN},
+    )
+    response = _post(channel, {"encrypt": encrypted}, encrypt_key=ENCRYPT_KEY)
+    assert response.status_code == 200
+    assert json.loads(response.content) == {"challenge": "challenge-sig"}
+
+
+def test_encrypted_event_without_signature_is_rejected(monkeypatch):
+    channel = _channel(encrypt_key=ENCRYPT_KEY)
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.process_skill_channel_feishu_message.delay",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("should not queue")),
+    )
+    encrypted = _encrypt(
+        ENCRYPT_KEY,
+        {
+            "schema": "2.0",
+            "header": {
+                "event_type": "im.message.receive_v1",
+                "token": VERIFY_TOKEN,
+                "app_id": APP_ID,
+            },
+            "event": {
+                "sender": {"sender_type": "user", "sender_id": {"open_id": "ou_1"}},
+                "message": {
+                    "message_id": "om_nosig",
+                    "message_type": "text",
+                    "content": json.dumps({"text": "hi"}),
+                },
+            },
+        },
+    )
+    response = _post(channel, {"encrypt": encrypted})
+    assert response.status_code == 403
+    assert json.loads(response.content)["message"] == "飞书签名校验失败"
 
 
 def test_text_event_is_queued(monkeypatch):

@@ -105,4 +105,65 @@ describe('overlay snapshot (modal / drawer)', () => {
     expect(overlay?.content).toContain('内存使用率');
     expect(second?.sections?.some((section) => section.content.includes('主机行'))).toBe(true);
   });
+
+  it('does not leak secret-labeled Form.Item text values via loose controls', () => {
+    document.body.innerHTML = `
+      <div class="ant-modal-wrap" style="display: block">
+        <div class="ant-modal">
+          <div class="ant-modal-header">
+            <div class="ant-modal-title">接入配置</div>
+          </div>
+          <div class="ant-modal-body">
+            <div class="ant-form-item">
+              <label>API Key</label>
+              <input class="ant-input" type="text" value="sk-live-should-not-leak" />
+            </div>
+            <div class="ant-form-item">
+              <label>密钥</label>
+              <input class="ant-input" type="text" value="cn-secret-should-not-leak" />
+            </div>
+            <div class="ant-form-item">
+              <label>token</label>
+              <input class="ant-input" type="text" value="tok-should-not-leak" />
+            </div>
+            <div class="ant-form-item">
+              <label>其它</label>
+              <input type="password" class="ant-input" value="secret-token" />
+            </div>
+            <input class="ant-input" value="metric-cpu" placeholder="指标名" />
+          </div>
+        </div>
+      </div>
+    `;
+    const blocks = readOverlayBlocks();
+    const section = overlaySection()[0];
+    const content = [blocks[0], section?.content || ''].join('\n');
+    expect(content).toContain('[弹窗] 接入配置');
+    expect(content).toContain('metric-cpu');
+    expect(content).not.toContain('sk-live-should-not-leak');
+    expect(content).not.toContain('cn-secret-should-not-leak');
+    expect(content).not.toContain('tok-should-not-leak');
+    expect(content).not.toContain('secret-token');
+  });
+
+  it('does not dump secret Form.Item or placeholder text in overlay fallback', () => {
+    document.body.innerHTML = `
+      <div class="ant-modal-wrap" style="display: block">
+        <div class="ant-modal">
+          <div class="ant-modal-title">密钥</div>
+          <div class="ant-modal-body">
+            <div class="ant-form-item">
+              <label>API Key</label>
+              <textarea>textarea-secret-should-not-leak</textarea>
+            </div>
+            <input class="ant-input" placeholder="API Key" value="placeholder-secret-should-not-leak" />
+          </div>
+        </div>
+      </div>
+    `;
+    const content = overlaySection()[0]?.content || '';
+    expect(content).toContain('[弹窗] 密钥');
+    expect(content).not.toContain('textarea-secret-should-not-leak');
+    expect(content).not.toContain('placeholder-secret-should-not-leak');
+  });
 });
