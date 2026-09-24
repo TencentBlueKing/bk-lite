@@ -20,6 +20,7 @@ import type {
   Room3DConfig,
   SceneWidgetType,
 } from './sceneWidget';
+import type { Application3DWallConfig } from '@/app/ops-analysis/utils/application3DWallConfig';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import type { DateRangeValue } from './dateRange';
 
@@ -73,6 +74,7 @@ export interface AddComponentConfig {
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
   room3D?: Room3DConfig;
+  application3DWall?: Application3DWallConfig;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
 }
@@ -112,6 +114,7 @@ export interface ValueConfig {
   networkStatusTopology?: NetworkStatusTopologyConfig;
   relatedTopology?: RelatedTopologyConfig;
   room3D?: Room3DConfig;
+  application3DWall?: Application3DWallConfig;
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;

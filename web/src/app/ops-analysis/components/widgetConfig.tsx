@@ -103,6 +103,7 @@ import {
 import WidgetConfigPreview from './widgetConfig/widgetConfigPreview';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
 import { RelatedTopologyAssetField } from './widgetConfig/sections/relatedTopologyAssetField';
+import { Application3DWallFields } from './widgetConfig/sections/application3DWallFields';
 import { Room3DRoomField } from './widgetConfig/sections/room3DRoomField';
 import { Room3DRackTopFields } from './widgetConfig/sections/room3DRackTopFields';
 import { getDefaultScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
@@ -253,6 +254,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     isNetworkStatusTopology,
     isRelatedTopology,
     isRoom3D,
+    isApplication3D,
     isSceneWidget,
     showValueFormat,
   } = getWidgetChartTypeFlags(
@@ -1327,6 +1329,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         <Form.Item name="sceneWidgetType" hidden>
           <Input />
         </Form.Item>
+
+        {isApplication3D ? <Application3DWallFields /> : null}
 
         {isNetworkStatusTopology ? (
           <NetworkStatusTopologyDataFields

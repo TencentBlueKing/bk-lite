@@ -97,6 +97,10 @@ const collectColumnCandidates = (count: number, ideal: number): number[] => {
   return [...candidates];
 };
 
+/** 17–36 stay on a 6-column wall so extra cards add rows instead of shrinking. */
+export const APPLICATION3D_DENSE_TIER_MAX = 36;
+export const APPLICATION3D_DENSE_COLUMNS = 6;
+
 /** Prefer a square or slightly wide card grid; a short last row beats a 2-column tower. */
 export const resolveApplication3DColumns = (
   count: number,
@@ -108,11 +112,14 @@ export const resolveApplication3DColumns = (
   const targetGridAspect =
     safeAspect >= 1.05 ? TARGET_GRID_ASPECT_WIDE : TARGET_GRID_ASPECT_TALL;
   const ideal = Math.sqrt(safeCount * targetGridAspect);
-  return collectColumnCandidates(safeCount, ideal)
+  const scored = collectColumnCandidates(safeCount, ideal)
     .reduce((best, candidate) => {
       const score = scoreColumnCandidate(safeCount, candidate, safeAspect);
       return !best || score < best.score ? { columns: candidate, score } : best;
     }, null as { columns: number; score: number } | null)?.columns || 1;
+  if (safeCount < 17 || safeCount > APPLICATION3D_DENSE_TIER_MAX) return scored;
+  if (safeAspect >= 1.05) return Math.min(APPLICATION3D_DENSE_COLUMNS, safeCount);
+  return Math.min(scored, APPLICATION3D_DENSE_COLUMNS);
 };
 
 /** Native card size for sparse walls (≤16). */
@@ -209,9 +216,10 @@ export const fitApplication3DCameraDistance = (
 
 /**
  * Wall home pose:
- * ≤16 parks on the 4×4 density-1 frame;
- * 17–24 uses that parked frame pulled back by 1/0.82;
- * ≥25 keeps the 0.82 card size and frames the actual populated wall.
+ * ≤16 keeps density-1 cards and parks on the 4×4 frame. If this page's wall is
+ * wider or taller than that frame, the camera pulls back to frame it;
+ * 17–36 uses that parked frame pulled back by 1/0.82, same size as today's 24-card page;
+ * above 36 keeps the 0.82 card size and frames the actual populated wall.
  */
 export const resolveApplication3DWallCamera = (
   count: number,
@@ -224,14 +232,22 @@ export const resolveApplication3DWallCamera = (
   const densityFloorDistance = parkedDistance / CARD_DENSITY_FLOOR;
 
   if (safeCount <= 16) {
+    const layout = buildApplication3DLayout(safeCount, viewportAspect);
+    const fitted = fitApplication3DCameraDistanceToWall(
+      layout.wallWidth,
+      layout.wallHeight,
+      viewportAspect,
+      fovDeg,
+    );
+    const pullBack = fitted > parkedDistance;
     return {
       x: 0,
-      y: parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
-      z: parkedDistance,
+      y: (pullBack ? layout.wallHeight : parked.wallHeight) * WALL_CAMERA_HEIGHT_FACTOR,
+      z: Math.max(parkedDistance, fitted),
     };
   }
 
-  if (safeCount <= 24) {
+  if (safeCount <= APPLICATION3D_DENSE_TIER_MAX) {
     return {
       x: 0,
       y: parked.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
