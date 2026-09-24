@@ -33,28 +33,19 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- Private CPU scalar (cpuUsage), top-level field GET with instance .0 ----
+    # ---- Teltonika private CPU usage (cpuUsage, 0-100%, scalar GET with instance .0) ----
+    # 顶层 field GET 必须带实例 .0；禁止 table.field（标量 GET-NEXT 会走到空子树，指标静默为空）。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.48690.1.8.0"
         name = "device_cpu_usage"
-    # ---- HOST-RESOURCES CPU fallback (hrProcessorLoad, per-core %) ----
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.25.3.3.1.2"
-        name = "usage"
-    # ---- UCD-SNMP-MIB memory (total + free, KB) ----
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.5"
-        name = "total"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.6"
-        name = "free"
+    # ---- UCD-SNMP-MIB memory scalars (memTotalReal / memAvailReal, KB, GET with instance .0) ----
+    # 顶层 field GET 必须带实例 .0。原始单位为 KB，共享盘查询 *1024 转字节。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.5.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.6.0"
+        name = "device_memory_free"
     # ---- Modem temperature table (mTemperature, integer 0.1°C; table.field must not use .0) ----
     [[inputs.snmp.table]]
         name = "device_temperature"
@@ -79,3 +70,5 @@ def apply(metric):
     metric.fields["celsius"] = float(value) / 10.0
     return metric
 '''
+    [processors.starlark.tagpass]
+        brand = ["teltonika"]
