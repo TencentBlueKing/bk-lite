@@ -111,6 +111,7 @@ export const useRouterConfig = () => {
       'Router Benu SNMP': 'snmp_benu',
       'Router Peplink SNMP': 'snmp_peplink',
       'Router Advantech SNMP': 'snmp_advantech_router',
+      'Router Nokia SNMP': 'snmp_nokia_router',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
