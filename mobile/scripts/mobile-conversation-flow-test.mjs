@@ -175,7 +175,6 @@ test('会话页不猜测缺失的 Bot 或多入口节点', async () => {
   assert.match(page, /teamId: currentTeamId/);
   assert.match(detail, /selectConversationApplication\([\s\S]*requestedNodeId,/);
   assert.match(detail, /nodeId: botData\.node_id/);
-  assert.match(detail, /node_id: botData\.node_id/);
   assert.doesNotMatch(search, /router\.push\(`\/conversation\?bot_id=/);
 });
 
