@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bintec",
   "plugin": "Router Bintec SNMP",
-  "plugin_desc": "Bintec 中小企业路由器/VPN 网关专用 SNMP 采集模板（BINTEC-MIB resource 树，企业号 272）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 cpuTable 的 60 秒空闲百分比（cpuLoadIdle60s）并换算为 CPU 使用率（usage=100-idle），以及 dram 实例的 memoryTotal / memoryInuse（字节；空闲由总量减已用推导，用量按 used/total）。Bintec 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Bintec 路由器/VPN 网关（bintec-elmeg RS/RXL/be.IP 系列，企业号 272）。",
+  "plugin_desc": "Bintec 中小企业路由器/VPN 网关专用 SNMP 采集模板（BINTEC-MIB resource 树，企业号 272）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 cpuTable 的 60 秒空闲百分比（cpuLoadIdle60s）并换算为 CPU 使用率（usage=100-idle），以及 dram 实例的 memoryTotal / memoryInuse（字节；空闲由总量减已用推导，用量按 used/total）。私有 MIB 未提供温度/风扇/电源 → N/A。适用品牌型号——Bintec 路由器/VPN 网关（bintec-elmeg RS/RXL/be.IP 系列，企业号 272）。",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_bintec'}) by (instance_id)",
   "name": "Router",
