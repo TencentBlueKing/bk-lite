@@ -11,7 +11,7 @@ from django.db import DatabaseError
 from apps.core.logger import monitor_logger as logger
 
 NETWORK_DEVICE_TYPE_ID = "Network Device"
-CORE_IFMIB_OBJECT_NAMES = frozenset({"Switch", "Router", "Firewall", "Loadbalance"})
+CORE_IFMIB_OBJECT_NAMES = frozenset({"Switch", "Router", "Firewall", "Loadbalance", "Wanopt"})
 IFMIB_METRIC_CATALOG = (
     (
         "Status",

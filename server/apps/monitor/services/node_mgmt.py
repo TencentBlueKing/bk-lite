@@ -77,7 +77,7 @@ class InstanceConfigService:
     }
     _HOST_MONITOR_OBJECT_NAME = "Host"
     _PROCESS_MONITOR_OBJECT_NAME = "Process"
-    _NETWORK_DEVICE_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance"}
+    _NETWORK_DEVICE_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance", "Wanopt"}
 
     @staticmethod
     def _build_permission_data(actor_context):
