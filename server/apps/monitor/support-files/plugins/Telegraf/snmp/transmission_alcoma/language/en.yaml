@@ -1,8 +1,6 @@
 Transmission Alcoma SNMP:
   name: Alcoma (Telegraf)
-  desc: SNMP monitoring template for Alcoma transmission device. It reports temperature,
-    receive level, transmit power, optional SNR, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime (IANA PEN 12140).
+  desc: "SNMP monitoring template for Alcoma transmission device. It reports uptime, temperature, and interface traffic, for microwave radio and wireless transmission devices (enterprise PEN 12140)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

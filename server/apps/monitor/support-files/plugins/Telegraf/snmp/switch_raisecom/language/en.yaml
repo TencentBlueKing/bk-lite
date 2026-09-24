@@ -1,9 +1,6 @@
 Switch Raisecom SNMP:
   name: Raisecom (Telegraf)
-  desc: SNMP monitoring template for Raisecom ISCOM/Gazelle switches. It reports
-    CPU utilization, memory total/free/utilization, and chassis temperature.
-    Fan and power-supply health are not supported. Distinct from Access Raisecom
-    SNMP.
+  desc: "SNMP monitoring template for Raisecom ISCOM/Gazelle switches. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 8886)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

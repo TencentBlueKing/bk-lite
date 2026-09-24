@@ -1,8 +1,6 @@
 Transmission Infinera SNMP:
   name: Infinera (Telegraf)
-  desc: SNMP monitoring template for Infinera transmission device. It reports board
-    load averages, memory utilization, per-port inbound traffic rate, per-port outbound
-    traffic rate, and system uptime
+  desc: "SNMP monitoring template for Infinera transmission device. It reports uptime, memory utilization, and interface traffic, for Infinera optical transport platforms (enterprise PEN 8708)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

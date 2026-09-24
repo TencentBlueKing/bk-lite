@@ -1,8 +1,6 @@
 Transmission Fibrolan SNMP:
   name: Fibrolan (Telegraf)
-  desc: SNMP monitoring template for Fibrolan Falcon transmission device. It reports
-    CPU utilization, memory utilization, optional NV memory utilization, per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Fibrolan transmission device. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Falcon (enterprise PEN 4467)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

@@ -1,7 +1,6 @@
 Switch Enterasys SNMP:
   name: Enterasys (Telegraf)
-  desc: SNMP monitoring template for Enterasys switch. It reports CPU utilization,
-    per-port inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Enterasys switch. It reports uptime, CPU utilization, memory utilization, temperature, power supply status, and interface traffic (enterprise PEN 5624)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

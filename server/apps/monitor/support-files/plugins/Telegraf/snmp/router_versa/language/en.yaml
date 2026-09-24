@@ -1,10 +1,6 @@
 Router Versa SNMP:
   name: Versa (Telegraf)
-  desc: SNMP monitoring template for Versa FlexVNF/VOS SD-WAN routers (DEVICE-MIB,
-    PEN 42359). It reports CPU and memory utilization from deviceTable columns
-    (deviceCPULoad / deviceMemoryLoad) plus active, failed and max sessions.
-    Interface traffic comes from the built-in IF-MIB table; this plugin does not
-    declare ifHC*.
+  desc: "SNMP monitoring template for Versa router. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 42359)."
 monitor_object:
   Router: Router
 monitor_object_type:

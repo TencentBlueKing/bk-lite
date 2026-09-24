@@ -1,7 +1,6 @@
 Switch Alaxala SNMP:
   name: Alaxala (Telegraf)
-  desc: SNMP monitoring template for Alaxala switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics (IANA PEN 21839).
+  desc: "SNMP monitoring template for Alaxala switch. It reports uptime, CPU utilization, memory utilization, and interface traffic, for AX2430S (enterprise PEN 21839)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_packetlight",
   "plugin": "Transmission PacketLight SNMP",
-  "plugin_desc": "PacketLight optical transmission SNMP child template for devices under enterprise PEN 4515. Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health object is SL-MAIN slmSysTemperature, reported in degrees Celsius as device_temperature_celsius. Optional slmSysOperStatus (up/down/testing) is collected when the leaf is present. slmPsuNumber is a configured PSU count, not live power-supply status, and is not mapped to device_psu_state. CPU, memory and fan health are not published as stable shared objects, so they are not collected. Supported brands/models — PacketLight DWDM, OTN and optical transmission devices.",
+  "plugin_desc": "SNMP monitoring template for PacketLight transmission device. It reports uptime, temperature, and interface traffic, for DWDM/OTN (enterprise PEN 4515).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_packetlight'}) by (instance_id)",
   "name": "Transmission",

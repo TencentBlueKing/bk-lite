@@ -1,6 +1,6 @@
 Switch EtherWAN SNMP:
   name: EtherWAN（Telegraf）
-  desc: 面向 EtherWAN 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 2736）。
+  desc: 面向 EtherWAN 交换机的 SNMP 监控模板，可采集运行时长、温度、电源状态、接口流量（企业号 PEN 2736）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

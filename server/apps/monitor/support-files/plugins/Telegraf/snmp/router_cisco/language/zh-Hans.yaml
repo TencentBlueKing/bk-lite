@@ -1,6 +1,6 @@
 Router Cisco SNMP:
   name: 思科（Telegraf）
-  desc: 面向 Cisco ISR/ASR/IOS-XE 路由器的 SNMP 监控模板，可采集 CPU 使用率、内存池使用率、温度、风扇和电源状态。
+  desc: 面向思科路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、接口流量（企业号 PEN 9）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

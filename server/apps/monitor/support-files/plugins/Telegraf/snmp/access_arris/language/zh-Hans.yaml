@@ -1,6 +1,6 @@
 Access ARRIS Cadant SNMP:
   name: ARRIS Cadant（Telegraf）
-  desc: 面向 ARRIS Cadant 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4998）。
+  desc: 面向 ARRIS Cadant 接入设备的 SNMP 监控模板，可采集运行时长、温度、电源状态、磁盘使用率、接口流量、板卡状态（企业号 PEN 4998）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_meinberg",
   "plugin": "NetworkService Meinberg LANTIME SNMP",
-  "plugin_desc": "Meinberg LANTIME SNMP collection for time servers under Meinberg PEN 5597. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds LANTIME NG NTP state, stratum and internal temperature, with classic LANTIME NTP state and stratum as fallback. Shared CPU, memory, fan and power-health scalars are not claimed.",
+  "plugin_desc": "SNMP monitoring template for Meinberg LANTIME network service device. It reports uptime, temperature, and interface traffic (enterprise PEN 5597).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_meinberg'}) by (instance_id)",
   "name": "NetworkService",

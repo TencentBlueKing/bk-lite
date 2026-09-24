@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_opnsense",
   "plugin": "Firewall OPNsense SNMP",
-  "plugin_desc": "OPNsense-specific SNMP collection template for OPNsense (FreeBSD/pf) firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load and the BEGEMOT-PF-MIB pf state-table entry count (equivalent to active connections). Sourced from LibreNMS OPNsense support, HOST-RESOURCES and the official BEGEMOT-PF-MIB. Supported brands/models — OPNsense open-source firewall (FreeBSD).",
+  "plugin_desc": "SNMP monitoring template for OPNsense firewall. It reports uptime, CPU utilization, sessions/connections, and interface traffic (enterprise PEN 12325).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_opnsense'}) by (instance_id)",
   "name": "Firewall",

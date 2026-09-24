@@ -1,8 +1,6 @@
 Switch Transition Networks SNMP:
   name: Transition Networks (Telegraf)
-  desc: SNMP monitoring template for Transition Networks switch. It reports system
-    uptime, interface traffic via the shared IF-MIB floor, CPU temperature, and
-    optional board temperature (IANA PEN 868).
+  desc: "SNMP monitoring template for Transition Networks switch. It reports uptime, temperature, and interface traffic, for SISPM/SM and ION/IONMM (enterprise PEN 868)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

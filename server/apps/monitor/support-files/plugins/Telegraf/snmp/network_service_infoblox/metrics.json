@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_infoblox",
   "plugin": "NetworkService Infoblox SNMP",
-  "plugin_desc": "Infoblox NIOS SNMP collection for appliances under Infoblox PEN 7779. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds IB platform CPU, memory, and swap usage percent as scalar GET fields (ibSystemMonitorCpuUsage / MemUsage / SwapUsage). DNS/DHCP service tables are not promoted into shared device-health metrics.",
+  "plugin_desc": "SNMP monitoring template for Infoblox network service device. It reports uptime, CPU utilization, memory utilization, interface traffic, and swap usage (enterprise PEN 7779).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_infoblox'}) by (instance_id)",
   "name": "NetworkService",

@@ -1,6 +1,5 @@
 Firewall SNMP General:
-  desc: Telegraf SNMP template for general firewalls. It collects standard network
-    interface metrics and traffic statistics to monitor device health
+  desc: SNMP monitoring template for general firewalls. It reports uptime and interface traffic (based on standard MIBs).
   name: Firewall General (Telegraf)
 monitor_object:
   Firewall: Firewall

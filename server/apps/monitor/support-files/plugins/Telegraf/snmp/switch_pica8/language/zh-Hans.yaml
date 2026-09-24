@@ -1,7 +1,6 @@
 Switch Pica8 SNMP:
   name: Pica8（Telegraf）
-  desc: 面向 Pica8 PicOS 白盒交换机的 SNMP 监控模板，采集 PICA-PRIVATE-MIB cpuUsage 标量（field+.0）CPU 使用率以及每个端口的进/出流量速率，用于实时掌握设备负载与端口流量变化（企业号
-    PEN 35098）。
+  desc: 面向 Pica8 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、接口流量，适用于 PicOS 白盒交换机（企业号 PEN 35098）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

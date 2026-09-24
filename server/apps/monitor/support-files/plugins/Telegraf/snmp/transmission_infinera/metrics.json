@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_infinera",
   "plugin": "Transmission Infinera SNMP",
-  "plugin_desc": "Infinera optical transport SNMP child template (LUM-SYSINFO, enterprise PEN 8708). Beyond the shared Transmission SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects per-board Unix-style load averages (sysinfoBoardLoadLoad1Min/5Min/15Min mapped as load_1m/load_5m/load_15m). These are load averages, not 0-100 CPU percent, and must not be treated as CPU utilization. It also collects per-board memory utilization (sysinfoBoardMemoryUsageMemPercent mapped as memory_usage_percent, reported directly as a 0-100 percentage) plus optional board memory total/free/available counters when the device returns them. Temperature, fan and power-supply health are not exposed as stable shared scalars in this pass, so they are N/A. Supported brands/models — Infinera optical transport platforms under enterprise 8708.",
+  "plugin_desc": "SNMP monitoring template for Infinera transmission device. It reports uptime, memory utilization, and interface traffic, for Infinera optical transport platforms (enterprise PEN 8708).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_infinera'}) by (instance_id)",
   "name": "Transmission",

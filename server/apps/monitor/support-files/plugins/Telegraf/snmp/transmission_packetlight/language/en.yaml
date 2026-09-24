@@ -1,8 +1,6 @@
 Transmission PacketLight SNMP:
   name: PacketLight (Telegraf)
-  desc: SNMP monitoring template for PacketLight transmission device. It reports system
-    temperature, optional operational status, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime (IANA PEN 4515).
+  desc: "SNMP monitoring template for PacketLight transmission device. It reports uptime, temperature, and interface traffic, for DWDM/OTN (enterprise PEN 4515)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

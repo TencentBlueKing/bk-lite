@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_endrun",
   "plugin": "NetworkService EndRun SNMP",
-  "plugin_desc": "EndRun time-server SNMP collection for appliances under EndRun PEN 13827. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template probes the Cntp and Gntp product branches and reports NTP stratum from the branch that answers. Shared CPU, memory, fan and power-health scalars are not claimed.",
+  "plugin_desc": "SNMP monitoring template for EndRun network service device. It reports uptime and interface traffic (enterprise PEN 13827).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_endrun'}) by (instance_id)",
   "name": "NetworkService",

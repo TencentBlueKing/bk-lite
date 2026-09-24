@@ -1,8 +1,6 @@
 Wireless Proxim SNMP:
   name: Wireless Proxim SNMP
-  desc: SNMP monitoring template for Proxim wireless device. It reports system uptime,
-    CPU utilization, memory utilization, optional chassis temperature, per-port inbound
-    traffic rate, and per-port outbound traffic rate (IANA PEN 841)
+  desc: "SNMP monitoring template for Proxim wireless device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 841)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

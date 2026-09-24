@@ -1,5 +1,5 @@
 Loadbalance SNMP General:
-  desc: 通过 Telegraf 采集器利用 SNMP 协议定期收集负载均衡器的标准网络接口指标和流量统计,用于查看设备运行状态。
+  desc: 面向通用负载均衡设备的 SNMP 监控模板，可采集运行时长、接口流量（基于标准 MIB）。
   name: 负载均衡设备通用（Telegraf）
 monitor_object:
   Loadbalance: 负载均衡

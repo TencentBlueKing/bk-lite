@@ -1,8 +1,6 @@
 Firewall Stormshield SNMP:
   name: Stormshield (Telegraf)
-  desc: SNMP monitoring template for Stormshield SNS firewalls. It reports system
-    uptime, per-core CPU load, UCD memory, ASQ TCP/UDP connections, mature IPsec
-    tunnels, CPU temperature, PSU powered state, and fan RPM.
+  desc: "SNMP monitoring template for Stormshield firewall. It reports uptime, CPU utilization, memory utilization, temperature, VPN tunnels, and interface traffic, for SNS-series (enterprise PEN 11256)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

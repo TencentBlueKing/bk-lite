@@ -1,7 +1,6 @@
 Switch Allied Telesis SNMP:
   name: Allied Telesis (Telegraf)
-  desc: SNMP monitoring template for Allied Telesis switch. It reports system uptime,
-    CPU utilization, memory usage, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Allied Telesis switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for AlliedWare Plus (enterprise PEN 207)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

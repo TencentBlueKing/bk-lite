@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_sangfor",
   "plugin": "Firewall Sangfor SNMP",
-  "plugin_desc": "Sangfor-specific SNMP collection template for Sangfor NGAF/AF8 firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Sangfor private MIB OIDs (IANA PEN 35047) for device health (chassis CPU, memory and per-filesystem disk utilization as percentages), firewall load (current concurrent sessions, new sessions per second and maximum session capacity), SFP optics temperature and optical power, and NAT4 source-port usage. Chassis fan and power-supply sensor OIDs are not exposed in a row-filter-free scalar form, so those remain N/A. Supported brands/models — Sangfor NGAF/AF8 next-generation application firewall (enterprise 35047).",
+  "plugin_desc": "SNMP monitoring template for Sangfor NGAF/AF8 firewall. It reports uptime, CPU utilization, memory utilization, temperature, optical modules, disk usage, sessions/connections, and interface traffic (enterprise PEN 35047).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_sangfor'}) by (instance_id)",
   "name": "Firewall",

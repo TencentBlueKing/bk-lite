@@ -1,7 +1,6 @@
 Router Sierra Wireless SNMP:
   name: Sierra Wireless (Telegraf)
-  desc: SNMP monitoring template for Sierra Wireless router. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 20542).
+  desc: "SNMP monitoring template for Sierra Wireless router. It reports uptime, temperature, and interface traffic, for AirLink ALEOS (enterprise PEN 20542)."
 monitor_object:
   Router: Router
 monitor_object_type:

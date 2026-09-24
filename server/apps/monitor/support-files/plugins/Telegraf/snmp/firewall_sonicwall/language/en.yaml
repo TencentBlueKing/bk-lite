@@ -1,12 +1,6 @@
 Firewall SonicWall SNMP:
   name: SonicWall (Telegraf)
-  desc: SNMP monitoring template for SonicWall SonicOS. It reports CPU percent
-    (sonicCurrentCPUUtil, plus management and forward/inspect split), memory
-    percent (sonicCurrentRAMUtil), active sessions (sonicCurrentConnCacheEntries),
-    session capacity, and NAT translations. Hardware sensors are collected as
-    Device/Value/Unit rows; temperature and fan are selected by Name/Unit.
-    Interface traffic uses the built-in IF-MIB catalog; this plugin does not
-    declare ifHC*.
+  desc: "SNMP monitoring template for SonicWall firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, sessions/connections, max sessions, interface traffic, and NAT translations (enterprise PEN 8741)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

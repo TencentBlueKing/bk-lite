@@ -1,6 +1,6 @@
 Router NetModule SNMP:
   name: NetModule（Telegraf）
-  desc: 面向 NetModule 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 31496）。
+  desc: 面向 NetModule 路由器的 SNMP 监控模板，可采集运行时长、温度、接口流量（企业号 PEN 31496）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

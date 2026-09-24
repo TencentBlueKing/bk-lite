@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ciena",
   "plugin": "Transmission Ciena SNMP",
-  "plugin_desc": "Ciena CES/SAOS transmission SNMP child template (enterprise PEN 1271). Beyond standard IF-MIB interface metrics supplied by the shared Transmission SNMP floor, it collects CES chassis CPU utilization as a direct 0-100 percentage per slot from cienaCesChassisCPUHealthCurrMeasurement (cpu-Usage). Chassis memory current measurement (cienaCesChassisMemoryHealthCurrMeasurement) is in KB and is reported as used memory; memory utilization percent is not derived because this table does not expose a paired used/total. This template binds CES/SAOS platforms only and does not bind Ciena 6500 Packet-Optical. Temperature, optical power and laser bias remain N/A because those health tables need per-row skip_values that telegraf inputs.snmp cannot apply. Supported brands/models — Ciena CES/SAOS packet/optical transport (for example 3000/3900/5000/5100 series, enterprise 1271), not 6500 SP.",
+  "plugin_desc": "SNMP monitoring template for Ciena transmission device. It reports uptime, CPU utilization, memory used, and interface traffic, for CES/SAOS (enterprise PEN 1271).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_ciena'}) by (instance_id)",
   "name": "Transmission",

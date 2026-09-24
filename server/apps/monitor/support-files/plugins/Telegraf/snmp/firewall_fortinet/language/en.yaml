@@ -1,7 +1,6 @@
 Firewall Fortinet SNMP:
   name: Fortinet (Telegraf)
-  desc: SNMP monitoring template for Fortinet firewall. It reports system uptime,
-    CPU utilization, memory utilization, session setup rate, and other key metrics
+  desc: "SNMP monitoring template for Fortinet firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, session establishment rate, VPN tunnels, HA status, and interface traffic, for FortiGate (enterprise PEN 12356)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

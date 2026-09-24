@@ -1,7 +1,6 @@
 Firewall Barracuda SNMP:
   name: Barracuda (Telegraf)
-  desc: SNMP monitoring template for Barracuda firewall. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 20632).
+  desc: "SNMP monitoring template for Barracuda firewall. It reports uptime, temperature, disk usage, and interface traffic (enterprise PEN 20632)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

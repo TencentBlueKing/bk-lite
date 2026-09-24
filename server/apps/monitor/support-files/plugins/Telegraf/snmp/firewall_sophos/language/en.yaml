@@ -1,8 +1,6 @@
 Firewall Sophos XG SNMP:
   name: Sophos XG (Telegraf)
-  desc: SNMP monitoring template for Sophos SFOS firewalls. It reports system uptime,
-    CPU utilization (hrProcessorLoad), memory and disk utilization, temperature, fan
-    speed, and power-supply status.
+  desc: "SNMP monitoring template for Sophos XG firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, disk usage, and interface traffic, for XG/XGS (enterprise PEN 2604)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

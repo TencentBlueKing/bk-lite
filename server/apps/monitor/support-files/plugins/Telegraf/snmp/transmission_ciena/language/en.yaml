@@ -1,8 +1,6 @@
 Transmission Ciena SNMP:
   name: Transmission Ciena SNMP
-  desc: SNMP monitoring template for Ciena CES/SAOS transmission devices. It reports
-    per-slot CPU utilization, chassis memory used, and interface traffic. It does
-    not bind 6500 Packet-Optical.
+  desc: "SNMP monitoring template for Ciena transmission device. It reports uptime, CPU utilization, memory used, and interface traffic, for CES/SAOS (enterprise PEN 1271)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

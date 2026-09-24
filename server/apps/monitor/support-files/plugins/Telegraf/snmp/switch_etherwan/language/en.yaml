@@ -1,7 +1,6 @@
 Switch EtherWAN SNMP:
   name: EtherWAN (Telegraf)
-  desc: SNMP monitoring template for EtherWAN switch. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 2736).
+  desc: "SNMP monitoring template for EtherWAN switch. It reports uptime, temperature, power supply status, and interface traffic (enterprise PEN 2736)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

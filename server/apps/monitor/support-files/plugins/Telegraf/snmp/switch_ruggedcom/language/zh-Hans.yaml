@@ -1,7 +1,6 @@
 Switch RuggedCOM SNMP:
   name: RuggedCOM（Telegraf）
-  desc: 面向 RuggedCOM ROS 工业交换机的 SNMP 监控模板（RUGGEDCOM-SYS-INFO-MIB，企业号 15004），可采集
-    CPU 使用率、内存总量/空闲/已用及利用率、机箱温度，以及归一化后的电源与风扇组状态。接口流量走内置 IF-MIB。
+  desc: 面向 RuggedCOM 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、接口流量（企业号 PEN 15004）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

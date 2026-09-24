@@ -1,7 +1,6 @@
 Switch Parks SNMP:
   name: Parks (Telegraf)
-  desc: SNMP monitoring template for Parks switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics (IANA PEN 50224).
+  desc: "SNMP monitoring template for Parks switch. It reports uptime, CPU utilization, memory utilization, temperature, optical modules, and interface traffic (enterprise PEN 50224)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

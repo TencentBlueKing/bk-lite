@@ -1,8 +1,6 @@
 Router Unisphere SNMP:
   name: Unisphere (Telegraf)
-  desc: SNMP monitoring template for Unisphere router. It reports system memory
-    utilization, per-module CPU utilization, optional temperature and power/fan
-    status, and 64-bit interface traffic (IANA PEN 4874).
+  desc: "SNMP monitoring template for Unisphere router. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 4874)."
 monitor_object:
   Router: Router
 monitor_object_type:

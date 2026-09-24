@@ -1,8 +1,6 @@
 Firewall WatchGuard SNMP:
   name: WatchGuard (Telegraf)
-  desc: SNMP monitoring template for WatchGuard Firebox firewalls. It reports system
-    uptime, CPU utilization converted from 0.01% units, UCD memory, interface speed,
-    and other key metrics
+  desc: "SNMP monitoring template for WatchGuard firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic, for Firebox (enterprise PEN 3097)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

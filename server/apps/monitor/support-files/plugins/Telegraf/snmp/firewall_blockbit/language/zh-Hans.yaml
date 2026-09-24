@@ -1,6 +1,6 @@
 Firewall Blockbit SNMP:
   name: Blockbit（Telegraf）
-  desc: 面向 Blockbit 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率（HOST-RESOURCES）、接口速率、入向错误包等主要指标。
+  desc: 面向 Blockbit 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、接口流量（基于标准 MIB）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:

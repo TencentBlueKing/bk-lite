@@ -1,7 +1,6 @@
 Loadbalance Kemp LoadMaster SNMP:
   name: Kemp LoadMaster (Telegraf)
-  desc: SNMP monitoring template for Kemp LoadMaster load balancer. It reports system
-    uptime, CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Kemp LoadMaster load balancer. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 12196)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

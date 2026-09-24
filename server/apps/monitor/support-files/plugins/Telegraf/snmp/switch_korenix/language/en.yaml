@@ -1,9 +1,6 @@
 Switch Korenix SNMP:
   name: Korenix (Telegraf)
-  desc: SNMP monitoring template for Korenix JetNet industrial Ethernet switches. It reports
-    system uptime, interface traffic via the shared IF-MIB floor, dual power LED status,
-    and SFP DDM temperature, transmit power, and receive power (IANA PEN 24062). Chassis
-    CPU and memory utilization are not collected.
+  desc: "SNMP monitoring template for Korenix switch. It reports uptime, temperature, optical modules, and interface traffic (enterprise PEN 24062)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

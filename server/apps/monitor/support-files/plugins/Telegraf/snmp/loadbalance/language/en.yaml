@@ -1,6 +1,5 @@
 Loadbalance SNMP General:
-  desc: Telegraf SNMP template for general load balancers. It collects standard network
-    interface metrics and traffic statistics to monitor device health
+  desc: SNMP monitoring template for general load balancers. It reports uptime and interface traffic (based on standard MIBs).
   name: Load Balancer General (Telegraf)
 monitor_object:
   Loadbalance: Load Balance

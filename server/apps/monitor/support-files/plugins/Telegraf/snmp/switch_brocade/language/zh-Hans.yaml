@@ -1,6 +1,6 @@
 Switch Brocade SNMP:
   name: Brocade（Telegraf）
-  desc: 面向 Brocade 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  desc: 面向 Brocade 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、接口流量，适用于 ICX/FCX/NetIron、Ruckus ICX、Foundry/IronWare（企业号 PEN 1991）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

@@ -1,7 +1,6 @@
 NetworkService EndRun SNMP:
   name: EndRun (Telegraf)
-  desc: SNMP monitoring template for EndRun network service device. It reports NTP stratum,
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for EndRun network service device. It reports uptime and interface traffic (enterprise PEN 13827).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

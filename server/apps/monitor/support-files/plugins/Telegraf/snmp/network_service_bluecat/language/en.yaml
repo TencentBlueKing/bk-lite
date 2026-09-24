@@ -1,8 +1,6 @@
 NetworkService BlueCat SNMP:
   name: BlueCat (Telegraf)
-  desc: SNMP monitoring template for BlueCat network service device. It reports DNS status, DNS
-    successful query rate, CPU usage, memory usage, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for BlueCat network service device. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 13315)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

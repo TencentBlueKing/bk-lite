@@ -1,7 +1,6 @@
 Switch SNR SNMP:
   name: SNR (Telegraf)
-  desc: SNMP monitoring template for SNR switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics (IANA PEN 40418).
+  desc: "SNMP monitoring template for SNR switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, and interface traffic (enterprise PEN 40418)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

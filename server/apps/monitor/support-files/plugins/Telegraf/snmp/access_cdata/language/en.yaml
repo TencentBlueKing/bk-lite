@@ -1,8 +1,6 @@
 Access C-Data SNMP:
   name: Access C-Data SNMP
-  desc: SNMP monitoring template for C-Data access device. It reports CPU utilization,
-    chassis temperature, PSU A/B on bits, fan status bitmap, per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime (IANA PEN 34592).
+  desc: "SNMP monitoring template for C-Data access device. It reports uptime, CPU utilization, temperature, fan, and interface traffic, for C-Data GPON and EPON OLT (enterprise PEN 34592)."
 monitor_object:
   Access: Access
 monitor_object_type:

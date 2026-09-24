@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_juniper_firewall",
   "plugin": "Firewall Juniper SNMP",
-  "plugin_desc": "Juniper SRX firewall SNMP collection (JUNIPER-SRX5000-SPU-MONITORING-MIB, IANA PEN 2636). Collects per-SPU CPU and memory utilization (jnxJsSPUMonitoringCPUUsage / jnxJsSPUMonitoringMemoryUsage, both 0-100 percent) plus current and maximum flow sessions (jnxJsSPUMonitoringCurrentFlowSession / jnxJsSPUMonitoringMaxFlowSession), optionally tagged by jnxJsSPUMonitoringNodeDescr. Interface counters come from the built-in IF-MIB catalog, not this plugin. Distinct from Switch Juniper SNMP (snmp_juniper) and Router Juniper MX SNMP (snmp_juniper_mx). Supported models — Juniper SRX series firewalls.",
+  "plugin_desc": "SNMP monitoring template for Juniper SRX firewalls. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 2636).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_juniper_firewall'}) by (instance_id)",
   "name": "Firewall",

@@ -1,6 +1,6 @@
 Transmission Redline SNMP:
   name: Redline（Telegraf）
-  desc: 面向 Redline AN80i 传输设备的 SNMP 监控模板，可采集平均 SINADR、PMP 下行 RSSI、可选 PMP 上行 RSSI、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 10728）。
+  desc: 面向 Redline 传输设备的 SNMP 监控模板，可采集运行时长、接口流量，适用于 AN80i PTP/PMP（企业号 PEN 10728）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:

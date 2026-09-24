@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_racom",
   "plugin": "Transmission RACOM SNMP",
-  "plugin_desc": "RACOM RAy3 microwave backhaul transmission SNMP child template for devices under RACOM PEN 33555 (RacomRay3). Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health scalars are CPU usage and memory usage as direct 0-100 percentages (useCpu, useMemory), modem temperature in hundredths of a degree Celsius (temperatureModem, query scaled by 1/100), optional radio temperature in hundredths of a degree Celsius (temperatureRadio, query scaled by 1/100), optional supply voltage in tenths of a volt (voltageUnit, query scaled by 1/10), and optional received signal strength in tenths of dBm (rss, query scaled by 1/10). Fan and power-supply state enumerations are not published, so they are not collected. Supported brands/models — RACOM RAy3 microwave links.",
+  "plugin_desc": "SNMP monitoring template for RACOM transmission device. It reports uptime, CPU utilization, memory utilization, temperature, interface traffic, and voltage, for RAy3 (enterprise PEN 33555).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_racom'}) by (instance_id)",
   "name": "Transmission",

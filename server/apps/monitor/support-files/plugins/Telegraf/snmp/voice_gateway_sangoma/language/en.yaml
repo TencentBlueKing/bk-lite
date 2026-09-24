@@ -1,9 +1,6 @@
 VoiceGateway Sangoma Vega SNMP:
   name: Sangoma Vega (Telegraf)
-  desc: SNMP monitoring template for Sangoma Dialogic IMG 2020 voice gateway. It reports
-    CPU busy percent, free memory in bytes, device temperature in Celsius, per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime. Empty
-    or unanswered health tables are skipped
+  desc: "SNMP monitoring template for Sangoma Vega voice gateway. It reports uptime, CPU utilization, memory, temperature, and interface traffic, for Dialogic IMG 2020 (enterprise PEN 3028)."
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:

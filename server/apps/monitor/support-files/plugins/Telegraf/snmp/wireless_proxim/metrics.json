@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_proxim",
   "plugin": "Wireless Proxim SNMP",
-  "plugin_desc": "Proxim 无线设备 SNMP 采集（IANA PEN 841）。在标准 IF-MIB 64 位 HC 接口流量与 sysUpTime 之外，采集设备健康标量：CPU 使用率（sysMonitorCPUUsage DisplayString 解析为 0-100%）与内存使用率（sysMonitorRAMUsage DisplayString 解析为 0-100%），以及可选机箱内部温度（currentUnitTemp，摄氏度直采；设备无响应时该字段缺省，不伪造）。接口走现有无线插件 IF 模式（ifIndex/ifDescr + ifHCInOctets/ifHCOutOctets），不扩展 ifInErrors/ifOperStatus。适用品牌型号——Proxim 无线接入点与回传网桥（企业号 841）。",
+  "plugin_desc": "SNMP monitoring template for Proxim wireless device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 841).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_proxim'}) by (instance_id)",
   "name": "Wireless",

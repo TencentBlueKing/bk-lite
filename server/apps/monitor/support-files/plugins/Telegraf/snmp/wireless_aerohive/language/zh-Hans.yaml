@@ -1,6 +1,6 @@
 Wireless Aerohive SNMP:
   name: Aerohive（Telegraf）
-  desc: 面向 Aerohive 无线设备的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标（企业号 PEN 26928）。
+  desc: 面向 Aerohive 无线设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量，适用于 HiveAP（企业号 PEN 26928）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_radware",
   "plugin": "Loadbalance Radware SNMP",
-  "plugin_desc": "Radware Alteon load balancer SNMP collection (ALTEON-CHEETAH-SWITCH-MIB, enterprise 1872, prefer sysObjectID under 1872.2.5). Beyond the shared Loadbalance SNMP IF-MIB floor, it collects management-processor CPU utilization (mpCpuStatsUtil64Seconds, reported directly as a percentage) and main memory as total, used and free bytes (mpMemStatsTotal / mpMemStatsUsed / mpMemStatsFree). Memory usage is derived as used/total. Temperature, fan and power-supply objects are not collected in this round. Supported brands/models — Radware Alteon ADC and application switches running Alteon OS (enterprise 1872). This plugin does not match RAD Data Communications enterprise 164.",
+  "plugin_desc": "SNMP monitoring template for Radware Alteon load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Alteon ADC (enterprise PEN 1872).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_radware'}) by (instance_id)",
   "name": "Loadbalance",

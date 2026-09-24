@@ -1,7 +1,6 @@
 NetworkService Gigamon SNMP:
   name: Gigamon (Telegraf)
-  desc: SNMP monitoring template for Gigamon network service device. It reports system
-    uptime, CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Gigamon network service device. It reports uptime, CPU utilization, memory utilization, and interface traffic, for GigaVUE HC / TA / G-series (enterprise PEN 26866)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

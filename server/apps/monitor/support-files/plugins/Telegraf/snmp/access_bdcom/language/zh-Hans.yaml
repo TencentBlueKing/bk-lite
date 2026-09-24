@@ -1,6 +1,6 @@
 Access BDCOM SNMP:
   name: BDCOM (Telegraf)
-  desc: 面向 BDCOM 接入设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、主内存池已用/空闲字节、可选系统温度，以及设备入向/出向总流量（企业号 3320）。
+  desc: 面向 BDCOM 接入设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量，适用于 BDCOM 接入设备与 OLT（企业号 PEN 3320）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:

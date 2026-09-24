@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_sonicwall",
   "plugin": "Firewall SonicWall SNMP",
-  "plugin_desc": "SonicWall SonicOS SNMP collection (SONICWALL-FIREWALL-IP-STATISTICS-MIB, IANA PEN 8741). Device identity is the sysObjectID prefix 1.3.6.1.4.1.8741. Collects CPU percent (sonicCurrentCPUUtil, plus optional management and forward/inspect split), memory percent (sonicCurrentRAMUtil), active connection-cache entries (sonicCurrentConnCacheEntries), cache capacity (sonicMaxConnCacheEntries), and NAT translations (sonicNatTranslationCount). Hardware sensors (sonicwallSensorsTable Device/Value/Unit) are walked as a table; temperature and fan rows are selected by Name/Unit. Interface traffic comes from the built-in IF-MIB catalog; this plugin does not declare ifHC*. VPN SA and private interface throughput tables are not polled.",
+  "plugin_desc": "SNMP monitoring template for SonicWall firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, sessions/connections, max sessions, interface traffic, and NAT translations (enterprise PEN 8741).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_sonicwall'}) by (instance_id)",
   "name": "Firewall",

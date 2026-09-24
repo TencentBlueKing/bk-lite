@@ -1,8 +1,6 @@
 Wanopt Riverbed SNMP:
   name: Riverbed SteelHead (Telegraf)
-  desc: SNMP monitoring template for Riverbed SteelHead WAN optimization
-    appliances. It reports CPU utilization, optional 1/5/15-minute load
-    (hundredths of load), chassis temperature, and normalized system health.
+  desc: "SNMP monitoring template for Riverbed SteelHead WAN optimization device. It reports uptime, CPU utilization, temperature, and interface traffic (enterprise PEN 17163)."
 monitor_object:
   Wanopt: WAN Optimization
 monitor_object_type:

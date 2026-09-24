@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_raisecom_switch",
   "plugin": "Switch Raisecom SNMP",
-  "plugin_desc": "Raisecom ISCOM/Gazelle switch SNMP collection (RAISECOM-SYSTEM-MIB, IANA PEN 8886). Distinct from Access Raisecom SNMP. Chassis health uses top-level scalar GETs: one-minute total CPU percent (raisecomTotalCPUUtilization, full instance index oneMin=3), memory total/available in bytes (raisecomMemoryTotal / raisecomMemoryAvailable), and chassis temperature in Celsius (raisecomTemperatureValue). Memory utilization is computed as (total - free) / total. Interface counters come from the built-in IF-MIB catalog. Fan and power-supply health are not collected. Supported brands/models — Raisecom ISCOM and Gazelle switch series.",
+  "plugin_desc": "SNMP monitoring template for Raisecom ISCOM/Gazelle switches. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 8886).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_raisecom_switch'}) by (instance_id)",
   "name": "Switch",

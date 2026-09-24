@@ -1,9 +1,6 @@
 Transmission Ericsson SNMP:
   name: Ericsson (Telegraf)
-  desc: SNMP monitoring template for Ericsson MINI-LINK/PT transmission device. It
-    reports per-port inbound traffic rate, per-port outbound traffic rate, system
-    uptime, and internal temperature in Celsius (IANA PEN 193.223). Readings of 0.0
-    are skipped as N/A. CPU, memory, fan and power-supply health are not collected.
+  desc: "SNMP monitoring template for Ericsson transmission device. It reports uptime, temperature, and interface traffic (enterprise PEN 193)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

@@ -1,8 +1,6 @@
 Wireless ProSoft Technology SNMP:
   name: ProSoft Technology (Telegraf)
-  desc: SNMP monitoring template for ProSoft RadioLinx/RLX2 wireless device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, system uptime,
-    radio status, link quality percent, and signal strength in dBm (IANA PEN 2382)
+  desc: "SNMP monitoring template for ProSoft Technology wireless device. It reports uptime, interface traffic, and wireless clients/radio, for RadioLinx / RLX2 (enterprise PEN 2382)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

@@ -1,8 +1,6 @@
 Wireless Cisco SNMP:
   name: Cisco (Telegraf)
-  desc: SNMP monitoring template for Cisco AireOS WLC and Catalyst 9800 wireless
-    controllers. It reports system uptime, CPU utilization, memory utilization, and
-    connected AP count.
+  desc: "SNMP monitoring template for Cisco wireless device. It reports uptime, CPU utilization, memory utilization, interface traffic, and wireless clients/radio (enterprise PEN 9)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

@@ -1,7 +1,6 @@
 Transmission Marconi SNMP:
   name: Marconi (Telegraf)
-  desc: SNMP monitoring template for Marconi transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Marconi transmission device. It reports uptime and interface traffic, for ATM, SDH, and optical transmission (based on standard MIBs)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_dasan",
   "plugin": "Switch DASAN SNMP",
-  "plugin_desc": "DASAN ethernet switch SNMP collection (enterprise PEN 6296, dsSwitchSystem). Collects CPU utilization as a 0-100 percent (dsCpuLoad1m, with optional dsCpuLoad5s and dsCpuLoad10m) and memory total/used/free as vendor INTEGER units, with utilization derived as used/total. Interface traffic comes from the built-in IF-MIB table. This plugin does not share discovery or OIDs with access_zhone (Zhone/DZS GPON access) and does not poll the 6296.101 OLT tree.",
+  "plugin_desc": "SNMP monitoring template for DASAN switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 6296).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dasan'}) by (instance_id)",
   "name": "Switch",

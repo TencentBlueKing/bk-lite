@@ -1,6 +1,6 @@
 {
   "plugin": "Router SNMP General",
-  "plugin_desc": "The SNMP general plugin is used to monitor and manage the status of devices through SNMP. Administrators can obtain key information about the device, such as interface traffic, error statistics, and status information, thereby optimizing network performance and improving management efficiency.",
+  "plugin_desc": "SNMP monitoring template for general routers. It reports uptime and interface traffic (based on standard MIBs).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp'}) by (instance_id)",
   "name": "Router",

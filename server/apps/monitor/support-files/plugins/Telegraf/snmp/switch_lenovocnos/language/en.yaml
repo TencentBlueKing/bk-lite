@@ -1,7 +1,6 @@
 Switch Lenovo CNOS SNMP:
   name: Lenovo CNOS (Telegraf)
-  desc: SNMP monitoring template for Lenovo CNOS switch. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Lenovo CNOS switch. It reports uptime, CPU utilization, temperature, fan, power supply status, and interface traffic, for ThinkSystem / RackSwitch CNOS (enterprise PEN 19046)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

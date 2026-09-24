@@ -1,9 +1,6 @@
 Router Teldat SNMP:
   name: Teldat (Telegraf)
-  desc: SNMP monitoring template for Teldat routers (enterprise 2007). It reports
-    5-minute CPU utilization, optional 1-minute and 5-second CPU windows, cache
-    memory total/free in bytes with derived usage, and built-in IF-MIB interface
-    traffic. Temperature, fan, and power-supply health are not exposed.
+  desc: "SNMP monitoring template for Teldat router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 2007)."
 monitor_object:
   Router: Router
 monitor_object_type:

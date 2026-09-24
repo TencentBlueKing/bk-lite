@@ -1,6 +1,6 @@
 VoiceGateway Sangoma Vega SNMP:
   name: Sangoma Vega（Telegraf）
-  desc: 面向 Sangoma Dialogic IMG 2020 语音网关的 SNMP 监控模板,可采集 CPU忙时百分比、空闲内存字节数、设备温度、每端口入向流量速率、每端口出向流量速率和运行时长。健康表无响应或为空时跳过。
+  desc: 面向 Sangoma Vega 语音网关的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存、温度、接口流量，适用于 Dialogic IMG 2020（企业号 PEN 3028）。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:

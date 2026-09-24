@@ -1,6 +1,6 @@
 Switch Ubiquoss SNMP:
   name: Ubiquoss（Telegraf）
-  desc: 面向 Ubiquoss 交换机的 SNMP 监控模板。设备健康来自私有 1 分钟 CPU（5 秒/5 分钟回退）、按 Alloc/Total 或 1-Free/Total 计算的内存使用率，以及可选风扇读数；接口流量使用内置 IF-MIB 底座（企业号 PEN 7800）。
+  desc: 面向 Ubiquoss 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、风扇、接口流量（企业号 PEN 7800）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

@@ -1,8 +1,6 @@
 Router LANCOM SNMP:
   name: LANCOM (Telegraf)
-  desc: SNMP monitoring template for LANCOM LCOS routers and VPN gateways. It reports
-    CPU utilization, memory total/free with derived usage, hardware temperature, and
-    built-in IF-MIB interface traffic.
+  desc: "SNMP monitoring template for LANCOM router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 2356)."
 monitor_object:
   Router: Router
 monitor_object_type:

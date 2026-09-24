@@ -1,7 +1,6 @@
 Switch Eltex SNMP:
   name: Eltex (Telegraf)
-  desc: SNMP monitoring template for Eltex switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics (IANA PEN 89).
+  desc: "SNMP monitoring template for Eltex switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for MES-series (enterprise PEN 89)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_airspan",
   "plugin": "Wireless Airspan SNMP",
-  "plugin_desc": "Airspan wireless SNMP child template for devices under enterprise PEN 989. Interface traffic is supplied by the shared Wireless SNMP IF-MIB floor. Proven private health objects are the sensor temperature monitor table (Integer32 degrees Celsius as device_temperature_celsius, no query scaling) and the optional DC voltage monitor table (Integer32 millivolts, scaled by /1000 to volts). Both tables are walked by sensor index; empty tables yield no rows. Optional name and status columns use the same index. CPU and memory percentages are not collected because no stable private CPU or memory leaves were confirmed. HOST-RESOURCES and UCD are not bound. Product or sysObject trees and traps are not treated as health. Supported brands/models - Airspan wireless access and backhaul devices that expose the PEN 989 sensor tables and standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for Airspan wireless device. It reports uptime, temperature, interface traffic, and voltage (enterprise PEN 989).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_airspan'}) by (instance_id)",
   "name": "Wireless",

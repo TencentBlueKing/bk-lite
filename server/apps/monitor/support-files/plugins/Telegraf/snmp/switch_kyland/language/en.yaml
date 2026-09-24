@@ -1,9 +1,6 @@
 Switch Kyland SNMP:
   name: Kyland (Telegraf)
-  desc: SNMP monitoring template for Kyland switch. It reports CPU utilization, memory
-    utilization, master and backup power state, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime (IANA PEN 26067). Some models may not
-    implement devMemoryUtilRate / devRingLoadRate.
+  desc: "SNMP monitoring template for Kyland switch. It reports uptime, CPU utilization, memory utilization, power supply status, and interface traffic, for industrial managed Ethernet switches (enterprise PEN 26067)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
