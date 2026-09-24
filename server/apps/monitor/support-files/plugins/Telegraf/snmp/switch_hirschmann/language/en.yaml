@@ -1,7 +1,8 @@
 Switch Hirschmann SNMP:
   name: Hirschmann (Telegraf)
   desc: SNMP monitoring template for Hirschmann switch. It reports CPU utilization,
-    per-port inbound traffic rate, per-port outbound traffic rate, and other key metrics
+    memory utilization, chassis temperature, power-supply status, per-port inbound
+    traffic rate, and other key metrics
 monitor_object:
   Switch: Switch
 monitor_object_type:
