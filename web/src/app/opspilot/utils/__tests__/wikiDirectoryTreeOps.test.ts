@@ -6,9 +6,13 @@ import type {
 import {
   canDeleteKnowledgeDirectory,
   collectDirectorySubtreeIds,
+  isMaterialsRootDirectory,
   isTopLevelDirectory,
   omitDirectoriesFromSnapshot,
   pageIdsInDirectories,
+  parseWikiTreeSelection,
+  wikiMaterialTreeKey,
+  wikiPageTreeKey,
 } from "../wikiDirectoryTreeOps";
 
 const directory = (
@@ -44,14 +48,35 @@ describe("wikiDirectoryTreeOps", () => {
   const concept = directory({ id: 2, name: "概念" });
   const roots = [unclassified, concept];
 
+  it("parses page and material tree keys", () => {
+    expect(parseWikiTreeSelection(wikiPageTreeKey(12))).toEqual({
+      kind: "page",
+      id: 12,
+    });
+    expect(parseWikiTreeSelection(wikiMaterialTreeKey(8))).toEqual({
+      kind: "material",
+      id: 8,
+    });
+    expect(parseWikiTreeSelection("directory:3")).toBeNull();
+  });
+
   it("collects a nested directory and its descendants", () => {
     expect(collectDirectorySubtreeIds(roots, 12)).toEqual([12, 121]);
   });
 
-  it("only allows deleting non-top-level non-system directories", () => {
+  it("blocks system and materials roots but allows user-created siblings", () => {
+    const materials = directory({
+      id: 3,
+      name: "来源",
+      key: "schema_source",
+      is_system: true,
+      accepts_pages: false,
+    });
     expect(isTopLevelDirectory(roots, 2)).toBe(true);
-    expect(canDeleteKnowledgeDirectory(roots, concept, 1)).toBe(false);
+    expect(isMaterialsRootDirectory(materials)).toBe(true);
+    expect(canDeleteKnowledgeDirectory(roots, concept, 1)).toBe(true);
     expect(canDeleteKnowledgeDirectory(roots, unclassified, 1)).toBe(false);
+    expect(canDeleteKnowledgeDirectory(roots, materials, 1)).toBe(false);
     expect(
       canDeleteKnowledgeDirectory(roots, unclassified.children[0], 1),
     ).toBe(true);

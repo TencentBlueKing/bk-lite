@@ -63,7 +63,7 @@ def compute_decision_signature(
 
 
 def compute_schema_fingerprint(kb) -> str:
-    """Schema 指纹:活动结构 revision + generation_rules 内容 hash。"""
+    """结构/规则/简介指纹：活动结构 revision + generation_rules + introduction。"""
     generation_rules = json.dumps(
         kb.generation_rules or {},
         ensure_ascii=False,
@@ -72,7 +72,8 @@ def compute_schema_fingerprint(kb) -> str:
     )
     revision = getattr(kb, "active_structure_revision", None)
     structure_fingerprint = getattr(revision, "fingerprint", "") or ""
-    payload = f"{structure_fingerprint}|{generation_rules}"
+    introduction = (getattr(kb, "introduction", None) or "").strip()
+    payload = f"{structure_fingerprint}|{generation_rules}|{introduction}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 

@@ -32,8 +32,8 @@ def _configured_kb(wiki_factory):
             "structure_version": current["structure_revision"]["version"],
             "base_generation_id": current["active_generation"]["id"],
             "structure": {
-                "format_version": 1,
-                "page_types": ["concept"],
+                "format_version": current["structure"]["format_version"],
+                "page_types": list(current["structure"]["page_types"]),
                 "directories": [
                     *existing,
                     {

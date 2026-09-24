@@ -255,3 +255,47 @@ class TestContextView:
         body = r.json()
         assert body["result"] is False
         assert body["code"] == "chunk_retrieval_not_generation_safe"
+
+
+NEAR_IMAGE = "wiki/media/1/9/bbbbbbbbbbbbbbbb.png"
+FAR_IMAGE = "wiki/media/1/9/aaaaaaaaaaaaaaaa.png"
+PAGE_IMAGE = "wiki/media/1/pages/cccccccccccccccc.png"
+
+
+@pytest.mark.django_db
+def test_build_context_includes_page_body_images():
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    _page(kb, "重启服务", f"执行重启\n![步骤]({PAGE_IMAGE})\n完成")
+
+    out = build_context([kb.id], "重启服务", top_k=5, graph_hops=0)
+
+    assert "附图" in out["context"]
+    assert PAGE_IMAGE in out["context"] or "![" in out["context"]
+    assert out["hits"][0]["images"]
+
+
+@pytest.mark.django_db
+def test_build_context_includes_material_images_in_snippet_window_only():
+    from apps.opspilot.models import Material, PageEvidence
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    page = _page(kb, "登录流程", "在登录页输入账号后点击确认")
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="手册.pdf",
+        material_type="text",
+        text_content=(
+            f"![远]({FAR_IMAGE})\n"
+            + ("x" * 500)
+            + f"\n在登录页输入账号后点击确认\n![近]({NEAR_IMAGE})\n"
+        ),
+    )
+    PageEvidence.objects.create(page=page, material=material, locator="")
+
+    out = build_context([kb.id], "登录页输入账号", top_k=5, graph_hops=0)
+
+    assert "bbbbbbbbbbbbbbbb" in out["context"]
+    assert "aaaaaaaaaaaaaaaa" not in out["context"]

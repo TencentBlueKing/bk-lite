@@ -772,12 +772,11 @@ def _import_defs():
     defs["import_options"] = _object(
         {
             "import_format": {"type": "string", "enum": ["okf"]},
-            "restore_native_structure": {"type": "boolean"},
             "create_directories_from_folders": {"type": "boolean"},
             "allow_fallback": {"type": "boolean"},
         },
         (
-            "restore_native_structure",
+            "import_format",
             "create_directories_from_folders",
             "allow_fallback",
         ),
@@ -797,7 +796,7 @@ def _import_target_properties():
 
 def _import_preflight_request():
     properties = {
-        "archive_kind": {"type": "string", "enum": ["opspilot_native", "third_party", "okf"]},
+        "archive_kind": {"type": "string", "enum": ["okf"]},
         **_import_target_properties(),
     }
     return _root(
@@ -819,7 +818,7 @@ def _import_binding():
         "archive_hash": _hash(),
         "knowledge_base_id": _positive_id(read_only=True),
         "actor_id": _positive_id(read_only=True),
-        "archive_kind": {"type": "string", "enum": ["opspilot_native", "third_party", "okf"]},
+        "archive_kind": {"type": "string", "enum": ["okf"]},
         **_import_target_properties(),
         "quota_version": {"type": "string", "minLength": 1},
     }
@@ -853,10 +852,10 @@ def _import_preflight_response():
             ),
             "structure_preview": _object(
                 {
-                    "restore_native_structure": {"type": "boolean"},
+                    "create_directories_from_folders": {"type": "boolean"},
                     "create_directory_count": {"type": "integer", "minimum": 0},
                 },
-                ("restore_native_structure", "create_directory_count"),
+                ("create_directory_count",),
             ),
             "structure_difference": _difference(),
             "import_binding": _import_binding(),

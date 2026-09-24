@@ -22,8 +22,7 @@ def _create_kb(api_client, name="目录治理 API"):
         {
             "name": name,
             "team": [1],
-            "purpose_md": "# Purpose",
-            "schema_md": "# Schema",
+            "introduction": "目录治理 API 简介",
         },
         format="json",
     )
@@ -50,7 +49,9 @@ def test_new_kb_readiness_enable_and_tree_are_connected(api_client):
     assert tree.status_code == 200, tree.content
     assert _data(tree)["enabled"] is True
     assert _data(tree)["migration_state"] == "enabled"
-    assert _data(tree)["directories"][0]["key"] == "__unclassified__"
+    tree_keys = {item["key"] for item in _data(tree)["directories"]}
+    assert "__unclassified__" in tree_keys
+    assert {"schema_entity", "schema_concept", "schema_query", "schema_comparison", "schema_synthesis", "schema_source"} <= tree_keys
 
 
 def test_structure_api_returns_retryable_409_without_partial_rows(api_client):

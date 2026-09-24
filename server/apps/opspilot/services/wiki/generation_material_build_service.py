@@ -317,6 +317,7 @@ def build_material_with_generation(
                     "entities": page_data.get("entities") or [],
                     "aliases": page_data.get("aliases") or [],
                 },
+                okf_sources=[{"resource": material.name, "material_id": material.pk}],
             )
             existing[title_identity_key(staged.title)] = KnowledgePage.objects.get(pk=staged.page_id)
             count_key = {

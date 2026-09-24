@@ -1,7 +1,5 @@
 import type { WikiMarkdownImportExecuteResult } from "@/app/opspilot/types/wiki";
 
-export type WikiMarkdownImportFormat = "markdown" | "okf";
-
 type Translate = (
   id: string,
   defaultMessage?: string,
@@ -19,18 +17,11 @@ export interface MarkdownImportGovernanceErrorView {
   example?: string;
 }
 
-export const markdownImportAccept = (
-  importFormat: WikiMarkdownImportFormat = "markdown",
-): string => (importFormat === "okf" ? ".zip" : ".md,.markdown,.zip");
+export const markdownImportAccept = (): string => ".zip";
 
-export const markdownImportFilePattern = (
-  importFormat: WikiMarkdownImportFormat = "markdown",
-): RegExp =>
-  importFormat === "okf" ? /\.zip$/iu : /\.(?:md|markdown|zip)$/iu;
+export const markdownImportFilePattern = (): RegExp => /\.zip$/iu;
 
-export const initialCreateDirectoriesFromFolders = (
-  importFormat: WikiMarkdownImportFormat = "markdown",
-): boolean => importFormat === "okf";
+export const initialCreateDirectoriesFromFolders = (): boolean => true;
 
 const OKF_SKIP_REASON_KEYS: Record<string, string> = {
   reserved: "wiki.okfSkipReasonReserved",

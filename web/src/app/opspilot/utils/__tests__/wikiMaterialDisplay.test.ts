@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isRedundantWikiAiSummary,
   pickWikiMaterialBodyMarkdown,
+  pickWikiMaterialSourceBody,
 } from "../wikiMaterialDisplay";
 
 describe("wikiMaterialDisplay", () => {
@@ -22,6 +23,13 @@ describe("wikiMaterialDisplay", () => {
     const summary =
       "![A 3D digital rendering of a software product box set against a white background. The box is predominantly a deep royal blue with a subtle gradient that darkens toward the bottom. On the front";
     expect(isRedundantWikiAiSummary(parsed, summary)).toBe(true);
+  });
+
+  it("picks source body without falling back to ai summary", () => {
+    expect(pickWikiMaterialSourceBody("# parsed", "raw", "text")).toBe("# parsed");
+    expect(pickWikiMaterialSourceBody("", "raw file", "")).toBe("raw file");
+    expect(pickWikiMaterialSourceBody("", "", "typed text")).toBe("typed text");
+    expect(pickWikiMaterialSourceBody("", "", "")).toBe("");
   });
 
   it("keeps short text summary when distinct", () => {

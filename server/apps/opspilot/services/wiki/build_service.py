@@ -22,6 +22,7 @@ from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
 from apps.opspilot.services.wiki.colloquial_alias_service import COLLOQUIAL_ALIAS_CONTRACT, ground_aliases, seed_aliases_from_tags
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.text_utils import split_text_by_estimated_tokens, split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
@@ -351,9 +352,9 @@ def _directory_prompt_context(structure_revision, classification_root_id=None):
         )
     return json.dumps(
         {
-            "structure_revision_id": structure_revision.pk,
-            "structure_version": structure_revision.revision_no,
-            "structure_fingerprint": structure_revision.fingerprint,
+            "structure_revision_id": getattr(structure_revision, "pk", None),
+            "structure_version": getattr(structure_revision, "revision_no", None),
+            "structure_fingerprint": getattr(structure_revision, "fingerprint", None),
             "classification_root_id": classification_root_id,
             "page_types": page_types,
             "directories": prompt_nodes,
@@ -441,12 +442,10 @@ def _generation_page_contract(structure_revision, source_metadata=None):
         _FACT_PRESERVATION_RULES.strip(),
         COLLOQUIAL_ALIAS_CONTRACT,
     ]
-    for page_type in page_types:
+    topic_types = [item for item in page_types if item != "source"]
+    for page_type in topic_types:
         lines.append(f"- {page_type}: {_page_type_body_guidance(page_type)}")
-    prompt_metadata = _prompt_source_metadata(source_metadata)
-    if "source" in page_types and prompt_metadata.get("source_title"):
-        lines.append("必须且只能生成一个 source 页面，标题严格使用 " f"{prompt_metadata['source_title']!r}；该页面代表当前资料，不代表普通主题综述。")
-        lines.append("除 source 外，还必须至少生成一个主题页面" "（concept/entity/query/comparison/synthesis 等非 source 类型）；" "禁止只输出 source 页面。")
+    lines.append("不得生成 source 类型知识页；原始资料只挂在「来源」资料根，不生成来源摘要知识页。")
     return "\n".join(lines)
 
 
@@ -658,50 +657,50 @@ def published_pages_missing_contact_facts(source_text, pages):
     return _contact_facts_missing(page_list, _extract_contact_facts(source_text))
 
 
-def _source_default_directory_key(structure_revision):
+def _knowledge_root_directory_key(structure_revision, page_type):
     snapshot = getattr(structure_revision, "structure_snapshot", None) or {}
-    for node in snapshot.get("directories") or []:
-        rules = node.get("rules") or {}
-        if "source" in (rules.get("default_for_page_types") or []):
+    wanted = str(page_type or "").strip() or "concept"
+    directories = snapshot.get("directories") or []
+    for node in directories:
+        if wanted in ((node.get("rules") or {}).get("default_for_page_types") or []):
+            return node.get("key")
+    for node in directories:
+        if "concept" in ((node.get("rules") or {}).get("default_for_page_types") or []):
             return node.get("key")
     return None
 
 
-def _fallback_source_page(pages, source_metadata, structure_revision):
-    title = source_metadata["source_title"]
-    topic_pages = [page for page in pages if page.get("page_type") != "source"]
-    links = [f"- [[{page['title']}]]：{page.get('summary') or page.get('page_type') or '知识主题'}" for page in topic_pages]
-    overview = "本资料形成了以下可复用知识主题。" if links else "本资料未形成可单独发布的主题页面。"
-    body = "\n".join(
-        [
-            f"# {title}",
-            "",
-            "## 资料概述",
-            "",
-            overview,
-            "",
-            "## 内容结构",
-            "",
-            *(links or ["- 暂无可列出的独立主题。"]),
-            "",
-            "## 信息边界",
-            "",
-            "本页是当前资料的来源导航；事实判断仍以对应知识页面和原始证据为准。",
-        ]
-    )
-    return {
-        "page_type": "source",
-        "title": title,
-        "tags": ["来源摘要"],
-        "body": body,
-        "directory_key": _source_default_directory_key(structure_revision),
-        "directory_confidence": 1.0,
-        "directory_reason": "material_source_contract",
-        "summary": overview,
-        "keywords": _normalize_text_list([item for page in topic_pages for item in page.get("keywords") or []], 32),
-        "entities": [page["title"] for page in topic_pages if page.get("page_type") == "entity"][:32],
-        "aliases": _normalize_text_list([source_metadata.get("display_name")], 32),
-    }
+def _assign_knowledge_root_keys(pages, structure_revision):
+    for page in pages:
+        if str(page.get("directory_key") or "").strip():
+            continue
+        key = _knowledge_root_directory_key(structure_revision, page.get("page_type"))
+        if key:
+            page["directory_key"] = key
+            page.setdefault("directory_reason", "frozen_page_type_root")
+    return pages
+
+
+def _promote_source_pages(source_pages, *, kb, source_title):
+    promoted = []
+    for page in source_pages:
+        body = str(page.get("body") or "").strip()
+        if len(body) < 20:
+            continue
+        topic_title = str(page.get("title") or source_title).strip() or source_title
+        if source_title and _title_key(topic_title, kb) == _title_key(source_title, kb):
+            topic_title = f"{source_title}·主题摘录"
+        promoted.append(
+            {
+                **page,
+                "page_type": "concept",
+                "title": topic_title,
+                "body": body,
+                "directory_key": None,
+                "directory_reason": page.get("directory_reason") or "promoted_from_source",
+            }
+        )
+    return promoted
 
 
 def _pages_preview_for_log(pages, *, limit=8):
@@ -720,13 +719,8 @@ def _pages_preview_for_log(pages, *, limit=8):
 def _resolve_page_type(page, *, source_metadata=None, allowed_page_types=None, kb=None):
     """Fill missing page_type instead of failing the whole material build."""
     page_type = str((page or {}).get("page_type") or "").strip().casefold()
-    if page_type:
+    if page_type and page_type != "source":
         return page_type, False
-
-    title = str((page or {}).get("title") or "").strip()
-    source_title = str((source_metadata or {}).get("source_title") or "").strip()
-    if source_title and title and _title_key(title, kb) == _title_key(source_title, kb):
-        return "source", True
 
     allowed = set(allowed_page_types or [])
     if not allowed or "concept" in allowed:
@@ -742,10 +736,17 @@ def _resolve_page_type(page, *, source_metadata=None, allowed_page_types=None, k
 
 def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=None, source_text=None):
     snapshot = getattr(structure_revision, "structure_snapshot", None) or {}
-    allowed_page_types = {str(item).strip().casefold() for item in snapshot.get("page_types") or [] if str(item).strip()}
+    allowed_page_types = {str(item).strip().casefold() for item in snapshot.get("page_types") or [] if str(item).strip()} - {"source"}
     normalized = []
+    source_candidates = []
     for raw in pages:
         page = dict(raw or {})
+        raw_type = str(page.get("page_type") or "").strip().casefold()
+        body = str(page.get("body") or "").strip()
+        if raw_type == "source":
+            if body:
+                source_candidates.append({**page, "page_type": "source", "body": body})
+            continue
         page_type, coerced = _resolve_page_type(
             page,
             source_metadata=source_metadata,
@@ -759,13 +760,12 @@ def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=N
                 page_type,
                 page.get("page_type"),
             )
-        if page_type in _DERIVED_SYSTEM_PAGE_TYPES:
+        if page_type in _DERIVED_SYSTEM_PAGE_TYPES or page_type == "source":
             logger.warning("wiki_build_dropped_derived_page type=%s title=%s", page_type, page.get("title"))
             continue
         if allowed_page_types and page_type not in allowed_page_types:
+            page_type = "concept" if "concept" in allowed_page_types else sorted(allowed_page_types)[0]
             page["directory_key"] = None
-            page["directory_schema_mismatch"] = True
-        body = str(page.get("body") or "").strip()
         if source_metadata is not None and not body:
             logger.warning(
                 "wiki_build_dropped_empty_body_page title=%s page_type=%s",
@@ -780,90 +780,26 @@ def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=N
         normalized.append(page)
 
     if source_metadata is not None and not normalized:
-        logger.warning(
-            "wiki_build_finalize_empty_pages preview=%s",
-            _pages_preview_for_log(pages),
-        )
-        raise BuildOutputInvalid("build_output_empty_pages: 资料未生成任何有效知识页面")
-    if "source" not in allowed_page_types or not source_metadata:
-        finalized = _merge_pages(normalized, kb=kb)
-        for page in finalized:
-            _ground_page_aliases(page)
-        return ensure_contact_facts_preserved(source_text, finalized)
-
-    source_title = str(source_metadata.get("source_title") or "").strip()
-    if not source_title:
-        raise BuildOutputInvalid("build_output_invalid_source: 来源页面标题为空")
-
-    other_pages = _merge_pages(
-        [page for page in normalized if page.get("page_type") != "source"],
-        kb=kb,
-    )
-    if not other_pages:
-        # LLM sometimes only emits source. Reuse that body as one concept topic
-        # rather than failing the whole material build.
-        promoted = []
-        for page in normalized:
-            if page.get("page_type") != "source":
-                continue
-            body = str(page.get("body") or "").strip()
-            if len(body) < 20:
-                continue
-            topic_title = str(page.get("title") or source_title).strip() or source_title
-            if _title_key(topic_title, kb) == _title_key(source_title, kb):
-                topic_title = f"{source_title}·主题摘录"
-            promoted.append(
-                {
-                    **page,
-                    "page_type": "concept",
-                    "title": topic_title,
-                    "body": body,
-                    "directory_reason": page.get("directory_reason") or "promoted_from_source",
-                }
-            )
+        source_title = str((source_metadata or {}).get("source_title") or "").strip()
+        promoted = _promote_source_pages(source_candidates, kb=kb, source_title=source_title)
         if promoted:
             logger.warning(
                 "wiki_build_promoted_source_to_topic count=%s titles=%s",
                 len(promoted),
                 [item.get("title") for item in promoted],
             )
-            other_pages = _merge_pages(promoted, kb=kb)
-    if not other_pages:
+            normalized = promoted
+
+    if source_metadata is not None and not normalized:
         logger.warning(
-            "wiki_build_finalize_empty_topic_pages preview=%s",
-            _pages_preview_for_log(normalized or pages),
+            "wiki_build_finalize_empty_pages preview=%s",
+            _pages_preview_for_log(pages),
         )
-        raise BuildOutputInvalid("build_output_empty_topic_pages: 资料未生成任何有效主题页面")
+        raise BuildOutputInvalid("build_output_empty_pages: 资料未生成任何有效知识页面")
 
-    occupied_title_keys = {_title_key(page.get("title"), kb) for page in other_pages}
-    if _title_key(source_title, kb) in occupied_title_keys:
-        source_title = f"资料：{source_title}"
-    if _title_key(source_title, kb) in occupied_title_keys:
-        source_title = f"资料：{source_title} · {source_metadata.get('material_id')}"
-    effective_source_metadata = {**source_metadata, "source_title": source_title}
-
-    source_pages = [page for page in normalized if page.get("page_type") == "source"]
-    source_pages = [
-        {
-            **page,
-            "title": source_title,
-            "directory_key": _source_default_directory_key(structure_revision),
-            "directory_confidence": 1.0,
-            "directory_reason": "material_source_contract",
-            "aliases": _normalize_text_list(
-                [*(page.get("aliases") or []), source_metadata.get("display_name")],
-                32,
-            ),
-        }
-        for page in source_pages
-    ]
-    if not source_pages:
-        source_pages = [_fallback_source_page(other_pages, effective_source_metadata, structure_revision)]
-    finalized = [*other_pages, *_merge_pages(source_pages, kb=kb)]
-    display_name = source_metadata.get("display_name")
+    finalized = _assign_knowledge_root_keys(_merge_pages(normalized, kb=kb), structure_revision)
     for page in finalized:
-        extra = [display_name] if page.get("page_type") == "source" else None
-        _ground_page_aliases(page, extra_keep=extra)
+        _ground_page_aliases(page)
     return ensure_contact_facts_preserved(source_text, finalized)
 
 
@@ -929,7 +865,7 @@ def _llm_generate_pages(
             f"{_TITLE_SCOPE_RULES}"
             "注意:这是同一份资料的分块处理,如果当前片段补充了已有主题,可以输出同名页面,"
             "系统会合并同名页面内容。\n\n"
-            f"# Purpose\n{kb.purpose_md}"
+            f"# Introduction\n{kb.introduction}"
             f"\n\n# 现有页面清单\n{existing_catalog}"
             f"\n\n# Fixed Structure Schema\n{directory_context or 'unclassified-only'}"
             f"\n\n# Current Material\n{source_context or '{}'}"
@@ -998,7 +934,7 @@ def _bounded_generation_prompt(
         f"{COLLOQUIAL_ALIAS_CONTRACT}\n"
         f"{_FACT_PRESERVATION_RULES}\n"
         f"{_TITLE_SCOPE_RULES}"
-        f"# Purpose\n{kb.purpose_md}\n\n"
+        f"# Introduction\n{kb.introduction}\n\n"
         f"# Fixed Structure Schema\n{directory_context}\n\n"
         f"# Current Material\n{source_context or '{}'}\n\n"
         f"# Page Generation Contract\n{page_contract}\n\n"
@@ -1206,10 +1142,9 @@ def _retry_correction_prompt(base_prompt, error):
         "Requirements for this retry:\n"
         '1. Output exactly one JSON object: {"pages":[...]}.\n'
         "2. Every page MUST include non-empty page_type, title, and body.\n"
-        "3. Include exactly one source page AND at least one concept/entity topic page.\n"
+        "3. Do not emit source pages. Include at least one concept/entity/query/comparison/synthesis topic page.\n"
         '4. Escape quotes inside body as \\". Do not wrap JSON in markdown fences.\n'
-        'Minimal valid shape: {"pages":[{"page_type":"source","title":"...","body":"..."},'
-        '{"page_type":"concept","title":"...","body":"..."}]}.'
+        'Minimal valid shape: {"pages":[{"page_type":"concept","title":"...","body":"..."}]}.'
     )
 
 
