@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import json
 from urllib.parse import unquote, urlsplit
@@ -17,6 +18,7 @@ class PhyscialServerRedfishInfo:
 
     MAX_RESPONSE_BYTES = 1024 * 1024
     MAX_COLLECTION_PAGES = 32
+    CHILD_CONCURRENCY = 4
 
     def __init__(self, kwargs, *, transport=None):
         self.host = str(kwargs.get("host") or "").strip()
@@ -30,6 +32,7 @@ class PhyscialServerRedfishInfo:
             raw_verify_tls if isinstance(raw_verify_tls, bool) else str(raw_verify_tls).strip().lower() not in {"0", "false", "no", "off"}
         )
         self._transport = transport
+        self._child_semaphore = asyncio.Semaphore(self.CHILD_CONCURRENCY)
         self.base_url = f"https://{self._url_host()}:{self.port}"
 
     def _url_host(self):
@@ -43,7 +46,10 @@ class PhyscialServerRedfishInfo:
         return httpx.AsyncClient(
             auth=httpx.BasicAuth(self.username, self.password),
             follow_redirects=False,
-            limits=httpx.Limits(max_connections=2, max_keepalive_connections=1),
+            limits=httpx.Limits(
+                max_connections=self.CHILD_CONCURRENCY,
+                max_keepalive_connections=max(1, self.CHILD_CONCURRENCY // 2),
+            ),
             timeout=httpx.Timeout(10.0, connect=5.0),
             transport=self._transport,
             trust_env=False,
@@ -144,7 +150,7 @@ class PhyscialServerRedfishInfo:
             if canonical_url in visited:
                 raise RedfishCollectionError("Redfish collection pagination contains a cycle")
             visited.add(canonical_url)
-            page = await self._get_json(client, next_link)
+            page = await self._child_get_json(client, next_link)
             page_members = page.get("Members")
             if not isinstance(page_members, list):
                 raise RedfishCollectionError("Redfish collection must contain Members")
@@ -163,9 +169,13 @@ class PhyscialServerRedfishInfo:
             self._log_child_skip(exc)
             return None
 
+    async def _child_get_json(self, client, resource_link):
+        async with self._child_semaphore:
+            return await self._get_json(client, resource_link)
+
     async def _read_resource(self, client, link):
         try:
-            return await self._get_json(client, link)
+            return await self._child_get_json(client, link)
         except (RedfishCollectionError, httpx.HTTPError) as exc:
             self._log_child_skip(exc)
             return None
@@ -186,7 +196,7 @@ class PhyscialServerRedfishInfo:
         return []
 
     async def _read_linked_resources(self, client, links):
-        resources = []
+        unique_links = []
         seen = set()
         for link in links:
             try:
@@ -197,17 +207,20 @@ class PhyscialServerRedfishInfo:
             if canonical_url in seen:
                 continue
             seen.add(canonical_url)
-            resource = await self._read_resource(client, link)
-            if resource is not None:
-                resources.append(resource)
-        return resources
+            unique_links.append(link)
+        if not unique_links:
+            return []
+        results = await asyncio.gather(*(self._read_resource(client, link) for link in unique_links))
+        return [resource for resource in results if resource is not None]
 
     async def _read_inventory(self, client, system):
-        processors = await self._read_processor_members(client, system.get("Processors"))
-        memory_links = await self._read_optional_collection(client, system.get("Memory"))
-        memory = None if memory_links is None else await self._read_linked_resources(client, memory_links)
-        drives = await self._read_drives(client, system.get("Storage"))
-        assemblies, nic_records = await self._read_chassis_inventory(client, system)
+        processors, memory, drives, chassis_inventory = await asyncio.gather(
+            self._read_collection_resources(client, system.get("Processors")),
+            self._read_collection_resources(client, system.get("Memory")),
+            self._read_drives(client, system.get("Storage")),
+            self._read_chassis_inventory(client, system),
+        )
+        assemblies, nic_records = chassis_inventory
         return {
             "processors": processors,
             "memory": memory,
@@ -216,7 +229,7 @@ class PhyscialServerRedfishInfo:
             "assemblies": assemblies,
         }
 
-    async def _read_processor_members(self, client, link):
+    async def _read_collection_resources(self, client, link):
         links = await self._read_optional_collection(client, link)
         if links is None:
             return None
@@ -226,11 +239,9 @@ class PhyscialServerRedfishInfo:
         storage_links = await self._read_optional_collection(client, storage_link)
         if storage_links is None:
             return None
+        storages = await self._read_linked_resources(client, storage_links)
         drive_links = []
-        for storage_link_item in storage_links:
-            storage = await self._read_resource(client, storage_link_item)
-            if storage is None:
-                continue
+        for storage in storages:
             drives = storage.get("Drives")
             if isinstance(drives, list):
                 drive_links.extend(self._as_links(drives))

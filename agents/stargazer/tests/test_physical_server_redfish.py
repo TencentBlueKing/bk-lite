@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 
 import httpx
@@ -631,3 +632,34 @@ async def test_redfish_child_transport_error_keeps_server_identity(monkeypatch):
     template, args, kwargs = log_calls[0]
     assert template.startswith("event=physical_server_redfish_child_skipped")
     assert secret_sentinel not in template % args
+
+
+async def test_redfish_child_member_fetches_use_bounded_concurrency():
+    collector = PhyscialServerRedfishInfo(
+        {
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(lambda request: _response(request, {})),
+    )
+    in_flight = 0
+    peak = 0
+
+    async def delayed_get_json(client, link):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.02)
+        in_flight -= 1
+        path = link["@odata.id"] if isinstance(link, dict) else str(link)
+        return {"Id": path.rsplit("/", 1)[-1]}
+
+    collector._get_json = delayed_get_json
+    links = [{"@odata.id": f"/redfish/v1/Systems/1/Memory/{index}"} for index in range(12)]
+
+    resources = await collector._read_linked_resources(None, links)
+
+    assert [item["Id"] for item in resources] == [str(index) for index in range(12)]
+    assert peak > 1
+    assert peak <= PhyscialServerRedfishInfo.CHILD_CONCURRENCY
