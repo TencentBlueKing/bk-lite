@@ -7,6 +7,7 @@ import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterVa
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { isOrganizationControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { isDynamicOptionFilter } from '@/app/ops-analysis/utils/optionBackedFilterValue';
 import {
   coerceFilterValuesForDefinitions,
   coerceValueForMultiple,
@@ -157,6 +158,9 @@ export const syncFilterValuesWithDefinitions = (
       }
       return;
     }
+
+    // 动态选项的默认值可能属于别的组织，等选项列表回来后再套用。
+    if (isDynamicOptionFilter(definition)) return;
 
     updatedValues[definition.id] = definition.defaultValue;
   });
