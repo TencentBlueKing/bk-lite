@@ -1,12 +1,33 @@
 import asyncio
 import ipaddress
 import json
+import ssl
 from urllib.parse import unquote, urlsplit
 
 import httpx
 from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from core.logger import logger, safe_exception_info, safe_log_value
 from plugins.inputs.physcial_server.redfish_inventory import build_redfish_result
+
+# 部分 BMC（如 H3C HDM）仅提供 TLS_RSA_WITH_AES_256_GCM_SHA384；OpenSSL 3 默认 SECLEVEL 不含该套件。
+_TLS_CIPHERS = ("DEFAULT:@SECLEVEL=0", "DEFAULT:@SECLEVEL=1", "DEFAULT")
+
+
+def _tls_verify(verify_tls: bool):
+    """构造 httpx verify：保留校验证书开关，只放宽套件以完成握手。"""
+    if verify_tls:
+        ctx = ssl.create_default_context()
+    else:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    for cipher in _TLS_CIPHERS:
+        try:
+            ctx.set_ciphers(cipher)
+            break
+        except ssl.SSLError:
+            continue
+    return ctx
 
 
 class RedfishCollectionError(ValueError):
@@ -53,7 +74,7 @@ class PhyscialServerRedfishInfo:
             timeout=httpx.Timeout(10.0, connect=5.0),
             transport=self._transport,
             trust_env=False,
-            verify=self.verify_tls,
+            verify=_tls_verify(self.verify_tls),
         )
 
     def _resource_url(self, resource_link):
