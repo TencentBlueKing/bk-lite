@@ -5,6 +5,7 @@ import pytest
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
+from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 
 
 @pytest.fixture(autouse=True)
@@ -251,3 +252,44 @@ def test_sangfor_collection_accepts_3000_second_task_budget():
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data["timeout"] == 3000
+
+
+@pytest.mark.parametrize("model_id", ["fusioninsight", "storage", "sangforhci"])
+def test_platform_api_preserves_metadata_with_legacy_aliases_and_password_edit(model_id):
+    # 复现页面同时提交新旧认证键、后端补齐版本的请求链路。
+    pool = CollectCredentialPoolService.normalize_pool(
+        {
+            "credential_source": "inline",
+            "username": "reader",
+            "accessKey": "reader",
+            "password": "test-secret",
+            "accessSecret": "test-secret",
+            "port": 443,
+            "verify_tls": True,
+        }
+    )
+    serializer = _serializer(model_id, pool[0], timeout=3000)
+    assert serializer.is_valid(), serializer.errors
+    saved = serializer.validated_data["credential"][0]
+    assert "accessKey" not in saved
+    assert "accessSecret" not in saved
+    assert saved["credential_version"] == 1
+
+    edited = {**saved, "password": "rotated-test-secret"}
+    updated_pool = CollectCredentialPoolService.assign_versions([saved], [edited])
+    update = CollectModelSerializer(
+        instance=CollectModels(**serializer.validated_data),
+        data={"credential": updated_pool},
+        partial=True,
+        context=serializer.context,
+    )
+    assert update.is_valid(), update.errors
+    assert update.validated_data["credential"][0] == {**edited, "credential_version": 2}
+
+
+@pytest.mark.parametrize("model_id", ["fusioninsight", "storage", "sangforhci"])
+def test_platform_api_still_rejects_unknown_fields_alongside_pool_metadata(model_id):
+    pool = CollectCredentialPoolService.normalize_pool({"username": "reader", "password": "test-secret", "port": 443, "unexpected": "invalid"})
+    serializer = _serializer(model_id, pool[0])
+    assert not serializer.is_valid()
+    assert str(serializer.errors["credential"]["fields"]) == "不支持字段: unexpected"

@@ -18,9 +18,7 @@ assert.deepEqual(
   }),
   {
     username: 'admin',
-    accessKey: 'admin',
     password: 'secret',
-    accessSecret: 'secret',
     port: 8088,
     verify_tls: false,
   },

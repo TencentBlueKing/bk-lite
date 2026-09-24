@@ -645,3 +645,26 @@ async def test_non_job_or_unscoped_request_does_not_load_job_node_info(params):
     close = getattr(plugin, "close", None)
     if close is not None:
         await close()
+
+
+@pytest.mark.asyncio
+async def test_platform_collection_preserves_http_endpoint_path_after_preflight():
+    captured = {}
+
+    class Service:
+        def __init__(self, params):
+            captured.update(params)
+
+        async def collect(self):
+            return 'openstack_info{collect_status="success"} 1'
+
+    context = TargetCollectionContext(
+        task_id="platform-endpoint",
+        plugin_ref="openstack.config",
+        fence=1,
+        params={"model_id": "openstack", "_validated_connect_host": "platform.example.test"},
+    )
+    await ConfigurationCollectionPlugin(service_factory=Service).collect("http://platform.example.test:5000/identity/v3", {"port": 9443}, context)
+    assert captured["host"] == "http://platform.example.test:5000/identity/v3"
+    assert captured["port"] == 9443
+    assert "_validated_connect_host" not in captured

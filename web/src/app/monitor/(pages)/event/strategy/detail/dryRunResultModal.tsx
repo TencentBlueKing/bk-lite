@@ -189,7 +189,7 @@ const DryRunResultModal = ({
               );
             },
           } satisfies ColumnsType<DryRunItem>[number],
-        ]
+      ]
       : []),
     {
       title: t('monitor.events.dryRunCurrentValue', '当前值'),
@@ -208,7 +208,7 @@ const DryRunResultModal = ({
             render: (value: unknown, record: DryRunItem) =>
               formatDryRunValue(value, record.result_unit),
           } satisfies ColumnsType<DryRunItem>[number],
-        ]
+      ]
       : []),
     {
       title: t('monitor.events.dryRunComparedValue', '比较值'),
@@ -233,7 +233,7 @@ const DryRunResultModal = ({
             render: (_value: unknown, record: DryRunItem) =>
               resolveDryRunReason(record) || '—',
           } satisfies ColumnsType<DryRunItem>[number],
-        ]
+      ]
       : []),
   ];
 
