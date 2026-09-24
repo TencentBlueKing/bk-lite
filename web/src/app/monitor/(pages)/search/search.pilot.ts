@@ -7,6 +7,7 @@ import { PAGE_CONTEXT_MAX_IMAGES } from '@/components/ai-page-context/types';
 import { sparklineFromChartRows } from '@/components/chart-snapshot/sparkline';
 import type { ChartItem, SearchPayload } from '@/app/monitor/types/search';
 import { cleanLabel } from '@/components/ai-page-context/domSnapshot';
+import { listSelectedMetricIds } from './searchQueryLogic';
 
 export interface PublishedSearchSnapshot {
   payload: SearchPayload | null;
@@ -42,9 +43,12 @@ const instanceNames = (payload: SearchPayload, group = payload.activeGroup) => {
 
 const metricName = (payload: SearchPayload, group = payload.activeGroup) => {
   const metrics = payload.metricsMap[String(group.plugin || group.object)] || [];
-  const metric = metrics.find((item) => String(item.id) === String(group.metric))
-    || metrics.find((item) => item.name === group.legacyMetricName);
-  return metric?.display_name || metric?.name || group.legacyMetricName || '';
+  const names = listSelectedMetricIds(group.metric)
+    .map((id) => metrics.find((item) => String(item.id) === String(id)))
+    .map((metric) => metric?.display_name || metric?.name || '')
+    .filter(Boolean);
+  if (names.length) return names.join('、');
+  return group.legacyMetricName || '';
 };
 
 export const summarizeSearchForm = (payload: SearchPayload | null, timeLabel = ''): string[] => {

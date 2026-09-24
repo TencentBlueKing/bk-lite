@@ -1,4 +1,5 @@
 import asyncio
+import ssl
 import traceback
 
 import httpx
@@ -243,7 +244,25 @@ async def test_redfish_protocol_honors_explicitly_disabled_tls_verification(monk
     result = await collector.list_all_resources()
 
     assert result["success"] is True
-    assert captured["verify"] is False
+    ctx = captured["verify"]
+    assert isinstance(ctx, ssl.SSLContext)
+    assert ctx.verify_mode == ssl.CERT_NONE
+    assert ctx.check_hostname is False
+    assert "AES256-GCM-SHA384" in {item["name"] for item in ctx.get_ciphers()}
+
+
+async def test_redfish_tls_context_keeps_verify_flag_and_offers_rsa_gcm():
+    from plugins.inputs.physcial_server.redfish_info import _tls_verify
+
+    ctx = _tls_verify(True)
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+    assert "AES256-GCM-SHA384" in {item["name"] for item in ctx.get_ciphers()}
+
+    ctx = _tls_verify(False)
+    assert ctx.verify_mode == ssl.CERT_NONE
+    assert ctx.check_hostname is False
+    assert "AES256-GCM-SHA384" in {item["name"] for item in ctx.get_ciphers()}
 
 
 async def test_redfish_protocol_uses_canonical_service_root_without_redirects():

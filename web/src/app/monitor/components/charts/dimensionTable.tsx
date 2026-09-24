@@ -8,12 +8,17 @@ import { ColumnItem, TableDataItem } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import SeriesActivationHeader from './seriesActivationHeader';
 
 interface DimensionTableProps {
   data: any[];
   colors: string[];
   details: any;
   unit?: string;
+  emphasizedKeys?: string[] | null;
+  onActivateAll?: () => void;
+  onDeactivateAll?: () => void;
+  onSeriesClick?: (key: string) => void;
 }
 
 const getChartAreaKeys = (arr: any[]) => {
@@ -29,7 +34,16 @@ const getChartAreaKeys = (arr: any[]) => {
 };
 
 const DimensionTable: React.FC<DimensionTableProps> = memo(
-  ({ data, colors, details, unit = '' }) => {
+  ({
+    data,
+    colors,
+    details,
+    unit = '',
+    emphasizedKeys = null,
+    onSeriesClick,
+    onActivateAll,
+    onDeactivateAll
+  }) => {
     const { t } = useTranslation();
     const { findUnitNameById } = useUnitTransform();
     const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -130,19 +144,26 @@ const DimensionTable: React.FC<DimensionTableProps> = memo(
           key: 'color',
           width: 30,
           fixed: 'left',
-          render: (_: any, row: TableDataItem) => (
-            <div
-              className="w-[10px] h-[4px]"
-              style={{
-                background: row.color
-              }}
-            ></div>
-          )
+          render: (_: any, row: TableDataItem) => {
+            const active = emphasizedKeys === null || emphasizedKeys.includes(String(row.id));
+            return (
+              <div
+                data-series-key={row.id}
+                data-series-active={active ? 'true' : 'false'}
+                className="h-1.5 w-4 rounded-[1px] border border-solid"
+                style={
+                  active
+                    ? { background: row.color, borderColor: row.color }
+                    : { borderColor: row.color }
+                }
+              />
+            );
+          }
         },
         identifierColumn,
         ..._columns
       ];
-    }, [details, unit, t]);
+    }, [details, emphasizedKeys, unit, t]);
 
     useEffect(() => {
       if (data?.length && colors?.length && details?.value1) {
@@ -155,17 +176,35 @@ const DimensionTable: React.FC<DimensionTableProps> = memo(
           setColumns([]);
         }
       }
-    }, [data, colors, details, unit]);
+    }, [data, colors, details, tableColumns, unit]);
 
     return (
       <div className={chartStyle.tableArea}>
+        {onActivateAll && onDeactivateAll ? (
+          <div className="mb-1 flex justify-end">
+            <SeriesActivationHeader
+              emphasizedKeys={emphasizedKeys}
+              activateLabel={t('monitor.search.activateAll')}
+              deactivateLabel={t('monitor.search.deactivateAll')}
+              onActivateAll={onActivateAll}
+              onDeactivateAll={onDeactivateAll}
+            />
+          </div>
+        ) : null}
         <CustomTable
-          className="w-full"
+          className={onSeriesClick ? 'w-full [&_tbody_tr]:cursor-pointer' : 'w-full'}
           rowKey="id"
           size="small"
           scroll={{ y: 240 }}
           dataSource={tableData}
           columns={columns}
+          onRow={
+            onSeriesClick
+              ? (row: TableDataItem) => ({
+                onClick: () => onSeriesClick(String(row.id))
+              })
+              : undefined
+          }
         />
       </div>
     );
