@@ -5,7 +5,7 @@
     {
       "name": "Teltonika路由器CPU使用率过高",
       "alert_name": "路由器${resource_name} CPU 使用率过高",
-      "description": "监控 Teltonika 蜂窝路由器整机 CPU 使用率（私有 cpuUsage 优先，HOST-RESOURCES 每核均值为回退），当持续高于阈值时触发告警，提示可能存在控制平面过载或异常流量，避免管理响应变慢或转发受影响。",
+      "description": "监控 Teltonika 蜂窝路由器整机 CPU 使用率（私有 cpuUsage 标量），当持续高于阈值时触发告警，提示可能存在控制平面过载或异常流量，避免管理响应变慢或转发受影响。",
       "metric_name": "device_cpu_usage",
       "algorithm": "last_over_time",
       "threshold": [
