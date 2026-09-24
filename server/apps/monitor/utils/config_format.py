@@ -37,9 +37,9 @@ class ConfigFormat:
         }
 
     # Telegraf inputs.prometheus.http_headers 的值类型是 map[string]string。
-    # 创建页 switch/inputNumber 会把 bool/number 写进 JSON，再经 json_to_toml 落成
+    # 编辑页 switch/inputNumber 会把 bool/number 写进 JSON，再经 json_to_toml 落成
     # verify_tls = false / timeout = 60，Telegraf 直接拒绝加载。
-    # 创建保存前把任意 http_headers 表内的值统一成字符串（bool 用小写 true/false）。
+    # 编辑保存前把任意 http_headers 表内的值统一成字符串（bool 用小写 true/false）。
     _QUEUE_NAME_LIST_KEYS = frozenset({"queue_name_include", "queue_name_exclude"})
 
     @staticmethod
