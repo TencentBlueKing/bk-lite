@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_hirschmann",
   "plugin": "Switch Hirschmann SNMP",
-  "plugin_desc": "Hirschmann 工业交换机专用 SNMP 采集模板（HMPRIV-MGMT-SNMP-MIB，企业号 248）。除标准 IF-MIB 接口指标外，额外采集 Hirschmann 私有 OID 的设备健康指标：CPU 使用率（hmCpuUtilization，直接以百分比上报）、主内存（hmMemoryAllocated 已用 + hmMemoryFree 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（hmTemperature，℃）与电源状态（hmPSState，经 telegraf processors.enum 归一为 1=正常/2=异常）。未暴露独立风扇状态 OID，故风扇为 N/A。适用品牌型号——Hirschmann（Belden）工业网管交换机（RS20/RS30/RS40、MACH/MICE/GREYHOUND/EAGLE 系列，企业号 248）。",
+  "plugin_desc": "Hirschmann Classic industrial switch SNMP collection (enterprise PEN 248, HMPRIV-MGMT-SNMP-MIB hmConfiguration). Device identity is the sysObjectID prefix 1.3.6.1.4.1.248 on the Classic resource tree (248.14); HiOS IT 248.100 is out of scope. Collects CPU utilization as a 0-100 percent (hmCpuUtilization, with optional hmCpuAverageUtilization over up to 30 minutes) and memory allocated/free as kilobytes converted to bytes in the metric query, with utilization derived as allocated/(allocated+free). Chassis temperature comes from the hmTemperature scalar (degrees Celsius). Fan operational state comes from the hmFanTable (hmFanState ok(1) normalized to 1=ok / 2=failed). Interface traffic comes from the built-in IF-MIB table. Some firmware requires hmEnableMeasurement 1.3.6.1.4.1.248.14.2.15.1.0 = enable(1) before resource gauges populate. This plugin does not share discovery or OIDs with switch_ruggedcom (PEN 15004) or switch_westermo (PEN 16177) and does not poll VLAN/PTP/traps or treat hmIfaceUtilization as CPU.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_hirschmann'}) by (instance_id)",
   "name": "Switch",
@@ -15,13 +15,16 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage"
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state"
   ],
   "metrics": [
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -29,98 +32,80 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilisation of the Hirschmann switch (HMPRIV-MGMT-SNMP-MIB hmCpuUtilization)."
+      "description": "This metric reports the current CPU utilization of the Hirschmann Classic switch (hmCpuUtilization) as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, ring-protocol instability, or attack traffic."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_avg",
+      "query": "snmp_device_cpu_usage_avg{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization (avg)",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
-    },
-    {
-      "metric_group": "Memory",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "name": "device_memory_used",
-      "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__} * 1024) by (instance_id)",
-      "unit": "bytes",
-      "data_type": "Number",
-      "description": "Used memory of the Hirschmann switch in bytes (hmMemoryAllocated, KB*1024)."
-    },
-    {
-      "metric_group": "Memory",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "name": "device_memory_free",
-      "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__} * 1024) by (instance_id)",
-      "unit": "bytes",
-      "data_type": "Number",
-      "description": "Free memory of the Hirschmann switch in bytes (hmMemoryFree, KB*1024)."
-    },
-    {
-      "metric_group": "Memory",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "name": "device_memory_usage",
-      "display_name": "内存使用率",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
       "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the average CPU utilization of the Hirschmann Classic switch (hmCpuAverageUtilization) as a 0-100 percentage, measured over at most the last 30 minutes. It is a longer-window companion to the headline CPU metric."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "snmp_device_memory_used{instance_type='switch', __$labels__} * 1024",
+      "display_name": "Memory Used",
       "data_type": "Number",
-      "description": "Memory utilisation of the Hirschmann switch, derived as used/(used+free)."
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the allocated memory of the Hirschmann Classic switch in bytes (hmMemoryAllocated, converted from kilobytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='switch', __$labels__} * 1024",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the free memory of the Hirschmann Classic switch in bytes (hmMemoryFree, converted from kilobytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "100 * snmp_device_memory_used{instance_type='switch', __$labels__} / (snmp_device_memory_used{instance_type='switch', __$labels__} + snmp_device_memory_free{instance_type='switch', __$labels__})",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the Hirschmann Classic switch, computed as allocated / (allocated + free) * 100. Vendor kilobyte units cancel in the ratio. High memory usage may indicate leaks, oversized MAC/ARP tables, or insufficient capacity."
     },
     {
       "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "name": "device_temperature_celsius",
-      "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
-      "unit": "celsius",
-      "data_type": "Number",
-      "description": "Chassis temperature of the Hirschmann switch in degrees Celsius (hmTemperature)."
+      "description": "This metric reports the chassis temperature of the Hirschmann Classic switch (hmTemperature) in degrees Celsius. Sustained high temperature can indicate cooling failure or an overheated environment."
     },
     {
       "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -130,12 +115,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "name": "device_psu_state",
-      "display_name": "电源状态",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "data_type": "Enum",
-      "description": "Power-supply state of the Hirschmann switch (hmPSState), normalised to 1=normal / 2=abnormal."
+      "description": "This metric reports the operational state of each Hirschmann Classic cooling fan (hmFanState). Values are normalized to 1=ok / 2=failed. A non-normal state indicates a cooling fault that can quickly lead to overheating."
     },
     {
       "metric_group": "Base",

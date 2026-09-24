@@ -32,64 +32,42 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+# @bk_include_ifmib_table
+    # ---- CPU：HMPRIV Classic 标量，顶层 field GET 必须带实例 .0；禁止 table.field+.0 ----
+    # 发现身份为 sysObjectID 前缀 1.3.6.1.4.1.248，且走 hmConfiguration(14) 资源树。
+    # 不采集 HiOS IT 树 248.100，也不与 RUGGEDCOM 15004 / Westermo 16177 混用。
+    # hmCpuUtilization 作 headline；hmCpuAverageUtilization 为 ≤30 分钟均值可选窗口。
+    # 部分固件需 hmEnableMeasurement 1.3.6.1.4.1.248.14.2.15.1.0 = enable(1) 后资源 Gauge 才填充。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.14.2.15.2.1.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.14.2.15.2.2.0"
+        name = "device_cpu_usage_avg"
+    # ---- 内存：hmMemoryAllocated / hmMemoryFree，标量 field 带 .0，原始单位 kBytes ----
+    # 盘侧 *1024 换成字节；利用率 allocated/(allocated+free)（单位相消）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.14.2.15.3.1.0"
+        name = "device_memory_used"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.14.2.15.3.2.0"
+        name = "device_memory_free"
+    # ---- 温度：hmTemperature 标量 ℃，顶层 field 必须带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.248.14.2.5.1.0"
+        name = "device_temperature_celsius"
+    # ---- 风扇：hmFanState 表列禁止 .0；INDEX hmFanSysID+hmFanID ----
+    # ok(1)→1(正常)，failed(2) 及其余→2(异常)。
     [[inputs.snmp.table]]
-        name = "interface"
+        name = "device_fan"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- Hirschmann CPU (HMPRIV-MGMT-SNMP-MIB hmCpuUtilization, 直接%, scalar, PEN 248；hirschmann.snmprec 实测42) ----
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.248.14.2.15.2.1"
-        name = "usage"
-    # ---- Hirschmann 内存 (hmMemoryAllocated 已用 + hmMemoryFree 空闲, KB；无总量 → used/(used+free)) ----
-    # 待现网核验：hmMemoryAllocated .248.14.2.15.3.1.0(已用) / hmMemoryFree .248.14.2.15.3.2.0(空闲)；snmprec used=27112 free=21857。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.248.14.2.15.3.1"
-        name = "used"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.248.14.2.15.3.2"
-        name = "free"
-    # ---- Hirschmann 温度 (hmTemperature, 直接 ℃, scalar) ----
-    # 待现网核验：hmTemperature .248.14.2.5.1.0(机箱温度℃)；snmprec 实测43。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.248.14.2.5.1"
-        name = "celsius"
-    # ---- Hirschmann 电源状态 (hmPSState 表 .248.14.1.2.1.3, 每电源 ok(1)/failed(2)/notInstalled(3)/unknown(4)) ----
-    # 待现网核验：原始码 ok=1；下方 enum 归一 1→1(正常),其余→2(异常)。
-    [[inputs.snmp.table]]
-        name = "device_psu"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.248.14.1.2.1.3"
+        oid = "1.3.6.1.4.1.248.14.1.3.1.3"
         name = "state"
-# ---- 风扇:Hirschmann HMPRIV MIB 未暴露独立风扇状态/转速专用标量 → 风扇 N/A。CPU/内存/温度/电源四项干净可采。----
-# ---- 状态归一:电源 ok(1)→1(正常),其余(failed/notInstalled/unknown)→2(异常)。----
+# ---- 不采集 VLAN/PTP/traps，也不把 hmIfaceUtilization 当 CPU。接口走内置 IF-MIB。----
 [[processors.enum]]
-    namepass = ["device_psu"]
+    namepass = ["device_fan"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2
