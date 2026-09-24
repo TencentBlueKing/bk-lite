@@ -189,6 +189,8 @@ MODEL:
   storage_volume: 存储卷
   storage_eth_port: 存储以太口
   storage_fc_port: 存储FC口
+  storage_controller: 存储控制器
+  psu: 服务器电源
   hwcloud_evs: 华为云云硬盘
   hwcloud_obs: 华为云对象存储桶
   hwcloud_vpc: 华为云VPC
@@ -1206,6 +1208,8 @@ ATTR:
     board_vendor: 主板厂商
     board_model: 主板型号
     board_serial: 主板序列号
+    power_state: 电源状态
+    health: 健康状态
     asset_status: 资产状态
     rack_u_start: 起始U位
     u_size: 占用U数
@@ -2572,6 +2576,8 @@ ATTR:
     disk: 磁盘（GB）
     disk_type: 磁盘类型
     disk_sn: 磁盘序列号
+    health: 健康状态
+    disk_life_percent: 剩余寿命(%)
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
@@ -2599,6 +2605,7 @@ ATTR:
     nic_model: 型号
     nic_iface: 接口名
     nic_mac: MAC 地址
+    nic_speed_mbps: 速率(Mbps)
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
@@ -2610,6 +2617,35 @@ ATTR:
     gpu_name: GPU
     gpu_type: GPU类型
     gpu_desc: GPU描述
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  storage_controller:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    sc_id: 控制器ID
+    sc_name: 名称
+    sc_vendor: 厂商
+    sc_model: 型号
+    sc_sn: 序列号
+    sc_firmware: 固件版本
+    health: 健康状态
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
+  psu:
+    inst_name: 实例名
+    organization: 组织
+    self_device: 所属设备
+    tag: 标签
+    psu_name: 名称
+    psu_vendor: 厂商
+    psu_model: 型号
+    psu_sn: 序列号
+    psu_capacity_watts: 额定功率(W)
+    health: 健康状态
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务

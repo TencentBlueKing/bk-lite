@@ -67,6 +67,8 @@ class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
         "memory_info_gauge",
         "nic_info_gauge",
         "gpu_info_gauge",
+        "storage_controller_info_gauge",
+        "psu_info_gauge",
     )
     field_mapping = {
         "ip_addr": "ip_addr",
@@ -82,6 +84,8 @@ class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
         "cpu_core": (HostCollectMetrics.transform_int, "cpu_cores"),
         "cpu_threads": (HostCollectMetrics.transform_int, "cpu_threads"),
         "cpu_arch": set_redfish_cpu_arch,
+        "power_state": "power_state",
+        "health": "health",
         "inst_name": get_inst_name,
     }
     related_field_mappings = {
@@ -110,6 +114,8 @@ class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
             "disk": (HostCollectMetrics.transform_unit_int, "disk"),
             "disk_type": "disk_type",
             "disk_sn": "disk_sn",
+            "health": "health",
+            "disk_life_percent": (HostCollectMetrics.transform_int, "disk_life_percent"),
             "assos": set_physical_server_asso_instances,
         },
         "nic": {
@@ -120,8 +126,32 @@ class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
             "nic_vendor": "nic_vendor",
             "nic_model": "nic_model",
             "nic_iface": "nic_iface",
+            "nic_speed_mbps": (HostCollectMetrics.transform_int, "nic_speed_mbps"),
             "nic_mac": set_nic_mac,
             "assos": set_physical_server_nic_asso_instances,
+        },
+        "storage_controller": {
+            "inst_name": set_physical_server_component_inst_name,
+            "self_device": set_physical_server_component_parent,
+            "sc_id": "sc_id",
+            "sc_name": "sc_name",
+            "sc_vendor": "sc_vendor",
+            "sc_model": "sc_model",
+            "sc_sn": "sc_sn",
+            "sc_firmware": "sc_firmware",
+            "health": "health",
+            "assos": set_physical_server_asso_instances,
+        },
+        "psu": {
+            "inst_name": set_physical_server_component_inst_name,
+            "self_device": set_physical_server_component_parent,
+            "psu_name": "psu_name",
+            "psu_vendor": "psu_vendor",
+            "psu_model": "psu_model",
+            "psu_sn": "psu_sn",
+            "psu_capacity_watts": (HostCollectMetrics.transform_int, "psu_capacity_watts"),
+            "health": "health",
+            "assos": set_physical_server_asso_instances,
         },
     }
 

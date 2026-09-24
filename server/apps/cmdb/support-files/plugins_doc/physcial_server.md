@@ -121,11 +121,15 @@ Redfish 是服务器 BMC 提供的标准 REST API。本方式通过 HTTPS Basic 
 | board_vendor | SystemBoard Assembly.Vendor | 主板厂商 |
 | board_model | SystemBoard Assembly.Model | 主板型号 |
 | board_serial | SystemBoard Assembly.SerialNumber | 主板序列号 |
+| power_state | ComputerSystem.PowerState | 电源状态。`On`/`Off` 规范大小写；其他非空值原样保留 |
+| health | ComputerSystem.Status.Health | 整机健康快照。只写 `OK`/`Warning`/`Critical`/`Unknown` |
 
 **关联子项（以包含/关联挂在物理服务器下）**
 - `memory`：`mem_locator`、`mem_part_number`、`mem_type`、`mem_size`（整数 GB）、`mem_sn`
-- `disk`：`disk_vendor`、`disk`（整数 GB）、`disk_type`、`disk_sn`
-- `nic`：`nic_mac`、`nic_vendor`、`nic_model`、`nic_type`
+- `disk`：`disk_vendor`、`disk`（整数 GB）、`disk_type`、`disk_sn`、`health`（`Status.Health`，Absent 整盘跳过）、`disk_life_percent`（`PredictedMediaLifeLeftPercent`）
+- `nic`：`nic_mac`、`nic_vendor`、`nic_model`、`nic_type`、`nic_iface`（功能/适配器 `Name` 或 `Id`）、`nic_speed_mbps`（优先当前链路，否则最大速率）
 - `gpu`：`gpu_name`、`gpu_type`、`gpu_desc`
+- `storage_controller`：`sc_id`（`Id`，否则 `MemberId`）、`sc_name`、`sc_vendor`、`sc_model`、`sc_sn`、`sc_firmware`、`health`（`Storage.StorageControllers`）
+- `psu`：`psu_name`、`psu_vendor`、`psu_model`、`psu_sn`、`psu_capacity_watts`、`health`（`Power.PowerSupplies`，不写瞬时功耗）
 
-> 补充说明：子实例挂在 BMC IP；`nic_iface` 和 `nic_pci_addr` 留空；没有 SystemBoard 时不写主板字段；标准资源没有的字段留空；缺少的子实例不会自动删除；不采集 OEM 和 EthernetInterfaces。
+> 补充说明：子实例挂在 BMC IP；`nic_pci_addr` 留空；没有 SystemBoard 时不写主板字段；标准资源没有的字段留空；`Power` 或 `StorageControllers` 缺失时跳过对应子项，任务仍成功；缺少的子实例不会自动删除；不采集 OEM、EthernetInterfaces、风扇以及能耗/温度/电压/转速。
