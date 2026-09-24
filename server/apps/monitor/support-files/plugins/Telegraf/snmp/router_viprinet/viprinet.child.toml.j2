@@ -51,26 +51,127 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Viprinet CPU load (VIPRINET-MIB, 私有企业号 35424, 直接 %, scalar) ----
-    # 待现网核验：整机 CPU 使用率标量 1.3.6.1.4.1.35424.1.1.7.0（设备直接以 0-100% 上报）。
-    # 标量用 table+field 命名 → device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35424.1.1.7"
-        name = "usage"
-    # ---- Viprinet 内存 (总量 + 空闲, 字节；usage=(总量-空闲)/总量) ----
-    # 待现网核验：内存总量 .35424.1.1.8.0 / 空闲 .35424.1.1.9.0（bytes）。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35424.1.1.8"
-        name = "total"
+    # ---- Viprinet health scalars (vpnRouterHealth, 企业号 35424) ----
+    # 标量必须顶层 field 且带实例 .0。CPU 负载是 OCTET STRING 负载均值，不是百分比。
+    # 内存仅有已用量（KB），MIB 无总量/空闲/使用率。温度以系统温度为准，CPU 温度为第二路。
+    # 电源失败码采集为 device_psu_state：0=无故障 / 1=故障，下方 enum 归一为 1=正常 / 2=异常。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35424.1.2.1.0"
+        name = "cpu_load_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35424.1.2.2.0"
+        name = "memory_used_kb"
         conversion = "int"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35424.1.1.9"
-        name = "free"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35424.1.2.3.0"
+        name = "temperature"
         conversion = "int"
-# ---- 温度/风扇/电源：Viprinet 紧凑型多 WAN 路由器为无风扇固定配置设计，VIPRINET-MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器 → 温度/风扇/电源 N/A 不采。CPU/内存/接口干净可采。----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35424.1.2.4.0"
+        name = "cpu_temperature"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35424.1.2.5.0"
+        name = "device_psu_state"
+        conversion = "int"
+    # ---- Viprinet fan table (vpnRouterFanTable) ----
+    # 表列禁止 .0。状态 0=Disabled / 1=OK / 2=Faulty，下方 enum 将 1 保持为 1、其余归一为 2。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35424.1.3.2.1.3"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35424.1.3.2.1.4"
+        name = "speed"
+
+# 将 health 标量从 snmp 测量拆到 device_* 测量，使盘侧指标名为 device_memory_used / device_temperature_celsius 等。
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+ALLOWED = "0123456789.+-eE"
+
+def _copy_tags(src, dst):
+    for key, value in src.tags.items():
+        dst.tags[key] = value
+    dst.time = src.time
+
+def _parse_load(raw):
+    if raw == None:
+        return None
+    err = catch(lambda: float(raw))
+    if err == None:
+        return float(raw)
+    text = str(raw)
+    cleaned = ""
+    for i in range(len(text)):
+        ch = text[i]
+        if ch in ALLOWED:
+            cleaned += ch
+    if cleaned == "" or cleaned == "." or cleaned == "+" or cleaned == "-" or cleaned == "e" or cleaned == "E":
+        return None
+    err = catch(lambda: float(cleaned))
+    if err != None:
+        return None
+    return float(cleaned)
+
+def _emit(src, name, field, value, extra_tags):
+    metric = Metric(name)
+    _copy_tags(src, metric)
+    if extra_tags != None:
+        for key, tag_value in extra_tags.items():
+            metric.tags[key] = tag_value
+    metric.fields[field] = value
+    return metric
+
+def apply(metric):
+    results = [metric]
+    raw_load = metric.fields.pop("cpu_load_raw", None)
+    load = _parse_load(raw_load)
+    if load != None:
+        results.append(_emit(metric, "device_cpu", "load", load, None))
+    kb = metric.fields.pop("memory_used_kb", None)
+    if kb != None:
+        err = catch(lambda: float(kb) * 1024)
+        if err == None:
+            results.append(_emit(metric, "device_memory", "used", int(float(kb) * 1024), None))
+    sys_temp = metric.fields.pop("temperature", None)
+    if sys_temp != None:
+        results.append(_emit(metric, "device_temperature", "celsius", sys_temp, {"sensor": "system"}))
+    cpu_temp = metric.fields.pop("cpu_temperature", None)
+    if cpu_temp != None:
+        results.append(_emit(metric, "device_temperature", "celsius", cpu_temp, {"sensor": "cpu"}))
+    psu = metric.fields.pop("device_psu_state", None)
+    if psu != None:
+        results.append(_emit(metric, "device_psu", "state", psu, None))
+    return results
+'''
+    [processors.starlark.tagpass]
+        brand = ["viprinet"]
+
+# 电源失败码 0=无故障 → 1=正常；1=故障及其余 → 2=异常。
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [processors.enum.tagpass]
+        brand = ["viprinet"]
+    [[processors.enum.mapping]]
+        field = "state"
+        dest = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1
+            "1" = 2
+
+# 风扇 1=OK → 1=正常；0=Disabled / 2=Faulty / 其余 → 2=异常。
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [processors.enum.tagpass]
+        brand = ["viprinet"]
+    [[processors.enum.mapping]]
+        field = "state"
+        dest = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

@@ -1192,8 +1192,10 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_viprinet",
       "capabilities": [
         "uptime",
-        "cpu",
         "memory",
+        "temperature",
+        "fan",
+        "psu",
         "traffic"
       ]
     },
