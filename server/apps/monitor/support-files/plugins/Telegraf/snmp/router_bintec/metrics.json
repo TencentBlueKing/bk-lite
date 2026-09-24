@@ -75,7 +75,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total DRAM of the Bintec router in bytes (resource memoryTable memoryTotal, memoryType=dram)."
@@ -88,7 +88,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free DRAM of the Bintec router in bytes, derived as memoryTotal minus memoryInuse for memoryType=dram."
@@ -101,7 +101,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Bintec router DRAM, derived as used/total (equivalent to (total-free)/total)."
