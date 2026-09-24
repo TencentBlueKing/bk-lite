@@ -84,6 +84,63 @@ def test_redfish_child_gauges_use_ssh_instance_names(protocol_plugin):
     assert gpu["inst_name"] == "A100-10.0.0.8"
 
 
+def test_empty_disk_and_mem_size_are_not_stored(protocol_plugin):
+    protocol_plugin.collection_metrics_dict["disk_info_gauge"] = [
+        {
+            "model_id": "disk",
+            "disk_name": "Disk.Bay.0",
+            "disk": "",
+            "self_device": "10.0.0.8",
+            "collect_status": "success",
+        }
+    ]
+    protocol_plugin.collection_metrics_dict["memory_info_gauge"] = [
+        {
+            "model_id": "memory",
+            "mem_locator": "DIMM_A1",
+            "mem_size": "   ",
+            "self_device": "10.0.0.8",
+            "collect_status": "success",
+        },
+        {
+            "model_id": "memory",
+            "mem_locator": "DIMM_B1",
+            "mem_size": 0,
+            "self_device": "10.0.0.8",
+            "collect_status": "success",
+        },
+    ]
+
+    protocol_plugin.format_metrics()
+
+    disk = protocol_plugin.result["disk"][0]
+    assert disk["inst_name"] == "Disk.Bay.0-10.0.0.8"
+    assert "disk" not in disk
+
+    memory_rows = {item["inst_name"]: item for item in protocol_plugin.result["memory"]}
+    assert memory_rows["DIMM_A1-10.0.0.8"]["mem_locator"] == "DIMM_A1"
+    assert "mem_size" not in memory_rows["DIMM_A1-10.0.0.8"]
+    assert memory_rows["DIMM_B1-10.0.0.8"]["mem_locator"] == "DIMM_B1"
+    assert "mem_size" not in memory_rows["DIMM_B1-10.0.0.8"]
+
+
+def test_zero_cpu_core_is_stored(protocol_plugin):
+    protocol_plugin.collection_metrics_dict["physcial_server_info_gauge"] = [
+        {
+            "ip_addr": "10.0.0.8",
+            "cpu_cores": 0,
+            "cpu_threads": 0,
+            "collect_status": "success",
+        }
+    ]
+
+    protocol_plugin.format_metrics()
+
+    server = protocol_plugin.result["physcial_server"][0]
+    assert server["cpu_core"] == 0
+    assert server["cpu_threads"] == 0
+
+
 def test_unknown_cpu_arch_is_not_stored(protocol_plugin):
     protocol_plugin.collection_metrics_dict["physcial_server_info_gauge"] = [
         {

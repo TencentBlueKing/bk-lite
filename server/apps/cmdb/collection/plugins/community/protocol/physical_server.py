@@ -143,6 +143,18 @@ class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
                 continue
             self.collection_metrics_dict[metric_name].append(index_data["metric"])
 
+    @staticmethod
+    def _normalize_field_value(value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @staticmethod
+    def _should_skip_mapped_value(field, value):
+        if field in ("disk", "mem_size") and value == 0:
+            return True
+        return value in (None, "")
+
     def _map_metric_row(self, index_data, model_id, mapping):
         row = dict(index_data)
         if "model_id" not in row:
@@ -154,11 +166,14 @@ class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
                 transform, source_field = key_or_func
                 if source_field not in index_data:
                     continue
+                raw_value = self._normalize_field_value(index_data[source_field])
+                if raw_value in (None, ""):
+                    continue
                 try:
-                    value = transform(index_data[source_field])
+                    value = transform(raw_value)
                 except (KeyError, ValueError, TypeError):
                     continue
-                if value in (None, ""):
+                if self._should_skip_mapped_value(field, value):
                     continue
                 data[field] = value
             elif callable(key_or_func):
@@ -166,12 +181,13 @@ class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
                     value = key_or_func(row, model_id=model_id)
                 except Exception:
                     continue
-                if value in (None, ""):
+                value = self._normalize_field_value(value)
+                if self._should_skip_mapped_value(field, value):
                     continue
                 data[field] = value
             else:
-                value = index_data.get(key_or_func)
-                if value in (None, ""):
+                value = self._normalize_field_value(index_data.get(key_or_func))
+                if self._should_skip_mapped_value(field, value):
                     continue
                 data[field] = value
         return data
