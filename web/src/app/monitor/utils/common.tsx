@@ -724,6 +724,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /fortiadc|fad\b/i, label: 'FortiADC', icon: 'mm-fortiadc_fortiadc' },
   { match: /alteon|radware/i, label: 'Radware Alteon', icon: 'mm-alteon_alteon' },
   { match: /kemp|loadmaster/i, label: 'Kemp LoadMaster', icon: 'mm-kemp_kemp' },
+  { match: /array networks|clickarray|loadbalance array/i, label: 'Array Networks', icon: 'mm-array_array' },
   { match: /vyatta|vyos/i, label: 'Vyatta', icon: 'mm-vyatta_vyatta' },
   { match: /\bnec\b|univerge|\bix[0-9]{3,4}\b/i, label: 'NEC', icon: 'mm-nec_nec' },
   { match: /draytek|vigor/i, label: 'DrayTek', icon: 'mm-draytek_draytek' },
