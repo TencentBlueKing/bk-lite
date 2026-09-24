@@ -32,40 +32,50 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns) ----
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
-    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.6"
-        name = "ifHCInOctets"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.31.1.1.1.10"
-        name = "ifHCOutOctets"
-    # ---- Versa SD-WAN CPU usage (VERSA-MIB, 私有企业号 42359, 直接 %, scalar) ----
-    # 待现网核验：整机 CPU 使用率标量 1.3.6.1.4.1.42359.2.2.1.1.0（设备直接以 0-100% 上报）。
+# @bk_include_ifmib_table
+    # 识别门：sysObjectID 前缀 1.3.6.1.4.1.42359（Versa FlexVNF / VOS）。
+    # DEVICE-MIB deviceTable 列：table.field 禁止 .0；按 deviceClientId（及 ifIndex）walk 发现实例。
+    # 不要把 device 节点 1.3.6.1.4.1.42359.2.2.1.1 或 1.3.6.1.4.1.42359.2.2.1.2 当 CPU/内存叶。
+    # ---- CPU%：deviceCPULoad，UnsignedShort 0–100 ----
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.42359.2.2.1.1"
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.8"
+        name = "deviceClientId"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.2"
         name = "usage"
-    # ---- Versa SD-WAN memory usage (VERSA-MIB, scalar %) ----
-    # 待现网核验：整机内存使用率标量 1.3.6.1.4.1.42359.2.2.1.2.0（设备直接以 0-100% 上报）。device_memory_usage 直采。
+    # ---- 内存%：deviceMemoryLoad，UnsignedShort 0–100 ----
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.42359.2.2.1.2"
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.8"
+        name = "deviceClientId"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.3"
         name = "usage"
-# ---- 温度/风扇/电源：Versa SD-WAN（软件型/虚拟化 VNF，运行于通用计算或白盒 CPE）私有 MIB 未以无需行级过滤的标量形式暴露环境传感器 → 温度/风扇/电源 N/A 不采。仅 CPU/内存/接口干净可采。----
+    # ---- 会话：deviceActiveSessions / deviceFailedSessions / deviceMaxSessions ----
+    [[inputs.snmp.table]]
+        name = "device"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.8"
+        name = "deviceClientId"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.5"
+        name = "active_sessions"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.6"
+        name = "failed_sessions"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.1.1.7"
+        name = "max_sessions"
+# ---- 温度/风扇/电源：Versa SD-WAN（软件型/虚拟化 VNF）私有 MIB 未以无需行级过滤的标量形式暴露环境传感器 → N/A。不采 alarm / deviceCpuInfoTable。接口走内置 IF-MIB。----
