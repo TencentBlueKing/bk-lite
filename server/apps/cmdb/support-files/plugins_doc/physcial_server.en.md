@@ -113,5 +113,19 @@ Redfish is the standard REST API provided by a server BMC. This method reads `/r
 | model | ComputerSystem.Model | Product model |
 | brand | ComputerSystem.Manufacturer | Vendor |
 | asset_code | ComputerSystem.AssetTag | Asset tag |
+| cpu_vendor | First CPU Processor.Manufacturer | CPU vendor |
+| cpu_model | First CPU Processor.Model | CPU model |
+| cpu_cores | Sum of CPU Processor.TotalCores | CPU physical core count, stored as `cpu_core` |
+| cpu_threads | Sum of CPU Processor.TotalThreads | CPU thread count |
+| cpu_arch | First CPU InstructionSet | CPU architecture |
+| board_vendor | SystemBoard Assembly.Vendor | Motherboard vendor |
+| board_model | SystemBoard Assembly.Model | Motherboard model |
+| board_serial | SystemBoard Assembly.SerialNumber | Motherboard serial number |
 
-> The current Redfish MVP only writes the `physcial_server` main instance and does not create memory, disk, NIC, GPU, or other child instances. Devices such as Huawei iBMC can be onboarded as long as they correctly implement the standard Redfish resources above; vendor OEM extensions are not a first-version dependency.
+**Related children (attached under the physical server by containment/association)**
+- `memory`: `mem_locator`, `mem_part_number`, `mem_type`, `mem_size` (integer GB), `mem_sn`
+- `disk`: `disk_vendor`, `disk` (integer GB), `disk_type`, `disk_sn`
+- `nic`: `nic_mac`, `nic_vendor`, `nic_model`, `nic_type`
+- `gpu`: `gpu_name`, `gpu_type`, `gpu_desc`
+
+> Note: child instances attach to the BMC IP; `nic_iface` and `nic_pci_addr` are omitted; if no SystemBoard is present, `board_*` fields are not written; missing standard fields stay empty; missing children are not auto-deleted; OEM and EthernetInterfaces are not collected.
