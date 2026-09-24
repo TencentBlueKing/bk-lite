@@ -1,4 +1,4 @@
-import { readVisibleFormFacts } from './secretSnapshot';
+import { isSecretControl, isSecretFieldLabel, readVisibleFormFacts } from './secretSnapshot';
 
 export const cleanLabel = (value: string) => value.replace(/\s+/g, ' ').trim();
 
@@ -89,12 +89,20 @@ export const treeSection = (root?: Element | Document | null) => {
     : [];
 };
 
+const isSecretFormItem = (item: Element): boolean => {
+  if (isSecretControl(item)) return true;
+  const label = cleanLabel(item.querySelector('label')?.textContent || '').replace(/[:：]\s*$/, '');
+  return isSecretFieldLabel(label);
+};
+
 /** 弹窗 / Drawer 内未包在 Form.Item 里的控件值（指标配置等多列 Select+Input）。 */
 const readLooseControlLines = (root: Element): string[] => {
   const lines: string[] = [];
 
   root.querySelectorAll('.ant-select').forEach((select) => {
     if (select.closest('.ant-pagination, .ant-table-filter-trigger')) return;
+    // Form.Item 内的 Select 由 readVisibleFormFacts 负责，避免密钥项被二次写入。
+    if (select.closest('.ant-form-item')) return;
     const item = cleanLabel(select.querySelector('.ant-select-selection-item')?.textContent || '');
     if (item) lines.push(item);
   });
@@ -110,9 +118,13 @@ const readLooseControlLines = (root: Element): string[] => {
     ) {
       return;
     }
+    // Form.Item 值只走 readVisibleFormFacts，避免密钥标签项经松散路径回流。
+    const formItem = input.closest('.ant-form-item');
+    if (formItem) return;
+    const placeholder = cleanLabel(input.getAttribute('placeholder') || '');
+    if (isSecretFieldLabel(placeholder)) return;
     const value = cleanLabel(input.value || '');
     if (!value) return;
-    const placeholder = cleanLabel(input.getAttribute('placeholder') || '');
     lines.push(placeholder ? `${placeholder}: ${value}` : value);
   });
 
@@ -126,8 +138,22 @@ const readLooseControlLines = (root: Element): string[] => {
 
 const cleanOverlayInnerText = (body: Element): string => {
   const clone = body.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('.ant-form-item').forEach((item) => {
+    if (isSecretFormItem(item)) item.remove();
+  });
+  clone.querySelectorAll('input, textarea').forEach((node) => {
+    const input = node as HTMLInputElement | HTMLTextAreaElement;
+    const placeholder = cleanLabel(input.getAttribute('placeholder') || '');
+    if (
+      input.type === 'password'
+      || input.closest('.ant-input-password')
+      || isSecretFieldLabel(placeholder)
+    ) {
+      node.remove();
+    }
+  });
   clone.querySelectorAll(
-    'input[type="password"], .ant-input-password, .ant-modal-close, .ant-drawer-close, script, style',
+    '.ant-input-password, .ant-modal-close, .ant-drawer-close, script, style',
   ).forEach((node) => node.remove());
   return cleanLabel((clone.textContent || '').replace(/\n+/g, '\n')).slice(0, OVERLAY_BODY_BUDGET);
 };
