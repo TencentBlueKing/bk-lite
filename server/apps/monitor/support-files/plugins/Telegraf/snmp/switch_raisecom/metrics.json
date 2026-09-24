@@ -1,0 +1,102 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_raisecom_switch",
+  "plugin": "Switch Raisecom SNMP",
+  "plugin_desc": "Raisecom ISCOM/Gazelle switch SNMP collection (RAISECOM-SYSTEM-MIB, IANA PEN 8886). Distinct from Access Raisecom SNMP. Chassis health uses top-level scalar GETs: one-minute total CPU percent (raisecomTotalCPUUtilization, full instance index oneMin=3), memory total/available in bytes (raisecomMemoryTotal / raisecomMemoryAvailable), and chassis temperature in Celsius (raisecomTemperatureValue). Memory utilization is computed as (total - free) / total. Interface counters come from the built-in IF-MIB catalog. Fan and power-supply health are not collected. Supported brands/models — Raisecom ISCOM and Gazelle switch series.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_raisecom_switch'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the one-minute total CPU busy percentage of the Raisecom ISCOM/Gazelle switch (RAISECOM-SYSTEM-MIB raisecomTotalCPUUtilization, index oneMin). The value is used as a percent directly. Sustained high CPU usage can indicate control-plane overload, forwarding instability, or attack traffic."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total size in bytes of the Raisecom ISCOM/Gazelle switch system memory (RAISECOM-SYSTEM-MIB raisecomMemoryTotal). Together with available memory it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of available bytes in the Raisecom ISCOM/Gazelle switch system memory (RAISECOM-SYSTEM-MIB raisecomMemoryAvailable). A persistently low free value indicates memory pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "(sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the Raisecom ISCOM/Gazelle switch, computed as (total - free) / total * 100. High memory usage may indicate memory leaks, oversized MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature of the Raisecom ISCOM/Gazelle switch (RAISECOM-SYSTEM-MIB raisecomTemperatureValue) in degrees Celsius. Abnormally high temperatures may indicate cooling failure or excessive ambient heat."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}
