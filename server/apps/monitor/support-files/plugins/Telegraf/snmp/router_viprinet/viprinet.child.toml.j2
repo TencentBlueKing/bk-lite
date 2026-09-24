@@ -90,8 +90,6 @@
 # 将 health 标量从 snmp 测量拆到 device_* 测量，使盘侧指标名为 device_memory_used / device_temperature_celsius 等。
 [[processors.starlark]]
     namepass = ["snmp"]
-    [processors.starlark.tagpass]
-        brand = ["viprinet"]
     source = '''
 ALLOWED = "0123456789.+-eE"
 
@@ -150,6 +148,8 @@ def apply(metric):
         results.append(_emit(metric, "device_psu", "state", psu, None))
     return results
 '''
+    [processors.starlark.tagpass]
+        brand = ["viprinet"]
 
 # 电源失败码 0=无故障 → 1=正常；1=故障及其余 → 2=异常。
 [[processors.enum]]
