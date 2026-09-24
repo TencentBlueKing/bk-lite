@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_futurematrix",
   "plugin": "Switch FutureMatrix SNMP",
-  "plugin_desc": "SNMP monitoring template for FutureMatrix switches (enterprise 56813). Metric set mirrors Switch Huawei SNMP — CPU, memory, temperature, fan, SFP optical Rx/Tx (attenuation-related), and interface traffic. It reports uptime, CPU utilization, memory utilization, temperature, fan, optical modules, and interface traffic (enterprise PEN 56813).",
+  "plugin_desc": "SNMP monitoring template for Huawei FutureMatrix switches. It reports uptime, CPU utilization, memory utilization, temperature, fan, optical modules, and interface traffic (enterprise PEN 56813).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_futurematrix'}) by (instance_id)",
   "name": "Switch",

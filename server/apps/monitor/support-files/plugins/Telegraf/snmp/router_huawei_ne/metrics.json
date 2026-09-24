@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei_ne",
   "plugin": "Router Huawei NE SNMP",
-  "plugin_desc": "SNMP monitoring template for Huawei NetEngine router, including NE40E, NetEngine 9000-8/9000-20, and NetEngine 8000 M14/X8/F1A chassis. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, voltage, and power (enterprise PEN 2011).",
+  "plugin_desc": "SNMP monitoring template for Huawei NE series routers. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, voltage, and power (enterprise PEN 2011).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_huawei_ne'}) by (instance_id)",
   "name": "Router",
