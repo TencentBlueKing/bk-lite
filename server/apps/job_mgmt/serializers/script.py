@@ -6,6 +6,7 @@ from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Script
 from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
+from apps.job_mgmt.utils.i18n import serializer_message
 
 
 def validate_script_name_unique_in_organizations(name, team, exclude_script_id=None):
@@ -93,7 +94,7 @@ class ScriptCreateSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         """验证脚本内容不能为空,并按 script_type 规范化换行符"""
         if not value or not value.strip():
-            raise serializers.ValidationError("脚本内容不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.script_content_empty", "Script content cannot be empty"))
         script_type = self.initial_data.get("script_type", "") or ""
         return normalize_script_line_endings(value, script_type)
 
@@ -106,7 +107,7 @@ class ScriptCreateSerializer(serializers.ModelSerializer):
     def validate_team(self, value):
         """验证组织不能为空"""
         if not value:
-            raise serializers.ValidationError("组织不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.organization_required", "Organization is required"))
         return value
 
 
@@ -129,7 +130,7 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         """验证脚本内容不能为空,并按当前 script_type 规范化换行符"""
         if value is not None and not value.strip():
-            raise serializers.ValidationError("脚本内容不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.script_content_empty", "Script content cannot be empty"))
         if value is None:
             return value
         # update 场景下若用户未传 script_type,从已有 instance 读取,避免误规范化
@@ -148,7 +149,7 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
     def validate_team(self, value):
         """验证组织不能为空"""
         if not value:
-            raise serializers.ValidationError("组织不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.organization_required", "Organization is required"))
         return value
 
 
@@ -173,10 +174,10 @@ class ScriptImportSerializer(serializers.Serializer):
     def validate_file(self, value):
         name = (getattr(value, "name", "") or "").lower()
         if not name.endswith(".zip"):
-            raise serializers.ValidationError("仅支持 .zip 格式的文件")
+            raise serializers.ValidationError(serializer_message(self, "error.zip_only", "Only .zip files are supported"))
         return value
 
     def validate_team(self, value):
         if not value:
-            raise serializers.ValidationError("组织不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.organization_required", "Organization is required"))
         return value

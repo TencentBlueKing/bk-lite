@@ -198,11 +198,12 @@ class TestReExecute:
 
 
 class TestCancel:
-    def test_cancel_pending(self, su_client):
+    def test_cancel_pending(self, su_client, django_capture_on_commit_callbacks):
         execution = _make_execution(status=ExecutionStatus.PENDING, celery_task_id="task-x")
-        with patch("apps.job_mgmt.views.execution.current_app") as mapp:
-            resp = su_client.post(f"{URL}{execution.id}/cancel/", {}, format="json")
-            mapp.control.revoke.assert_called_once()
+        with patch("apps.job_mgmt.services.execution_cancellation_service.current_app.control.revoke") as mock_revoke:
+            with django_capture_on_commit_callbacks(execute=True):
+                resp = su_client.post(f"{URL}{execution.id}/cancel/", {}, format="json")
+        mock_revoke.assert_called_once_with("task-x")
         assert resp.status_code == 200
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLED

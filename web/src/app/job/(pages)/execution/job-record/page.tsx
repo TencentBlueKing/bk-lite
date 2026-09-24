@@ -827,9 +827,9 @@ const JobRecordPage = () => {
 
     // Determine color based on keywords
     let colorClass = 'text-gray-300';
-    if (rest.includes('[SUCCESS]') || rest.includes('[EXIT]') || rest.includes('成功')) {
+    if (rest.includes('[SUCCESS]') || rest.includes('[EXIT]') || /成功|success/i.test(rest)) {
       colorClass = 'text-green-400';
-    } else if (rest.includes('[ERROR]') || rest.includes('[FAIL]') || rest.includes('失败')) {
+    } else if (rest.includes('[ERROR]') || rest.includes('[FAIL]') || /失败|fail/i.test(rest)) {
       colorClass = 'text-red-400';
     } else if (rest.includes('[WARN]') || rest.includes('[WARNING]')) {
       colorClass = 'text-yellow-400';

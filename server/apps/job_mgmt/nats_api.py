@@ -2,6 +2,8 @@
 
 import os
 
+from django.db.models import Q
+
 import nats_client
 from apps.core.logger import job_logger as logger
 from apps.core.openapi.decorators import openapi_expose
@@ -25,6 +27,7 @@ from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.node_mgmt.models import Node
 from apps.system_mgmt.nats.common import _verify_token
@@ -79,10 +82,13 @@ def job_script_detail(data: dict):
     script_id = data.get("id")
     authorized_team_ids = normalize_team(data.get("team"))
     if not authorized_team_ids:
-        return {"result": False, "message": "team 不能为空"}
+        return {"result": False, "message": job_message(None, "error.team_required", "team is required")}
     script = Script.objects.filter(id=script_id).first()
     if not script or not (normalize_team(script.team) & authorized_team_ids):
-        return {"result": False, "message": f"脚本不存在: id={script_id}"}
+        return {
+            "result": False,
+            "message": job_message(None, "error.script_not_found", "Script not found: id={id}", id=script_id),
+        }
     return {
         "result": True,
         "data": {
@@ -110,11 +116,11 @@ def _parse_job_list_page(data: dict):
         page = int(data.get("page") or 1)
         page_size = int(data.get("page_size") or 20)
     except (TypeError, ValueError):
-        return None, "page/page_size 参数非法"
+        return None, job_message(None, "error.page_params_invalid", "Invalid page/page_size")
     if page < 1:
-        return None, "page 必须大于 0"
+        return None, job_message(None, "error.page_must_positive", "page must be greater than 0")
     if page_size < 1 or page_size > _MAX_JOB_LIST_PAGE_SIZE:
-        return None, f"page_size 范围为 1-{_MAX_JOB_LIST_PAGE_SIZE}"
+        return None, job_message(None, "error.page_size_range", "page_size must be between 1 and {max}", max=_MAX_JOB_LIST_PAGE_SIZE)
     return (page, page_size), None
 
 
@@ -165,7 +171,7 @@ def job_list(data: dict):
     """
     authorized_team_ids = normalize_team((data or {}).get("team"))
     if not authorized_team_ids:
-        return {"result": False, "message": "team 不能为空"}
+        return {"result": False, "message": job_message(None, "error.team_required", "team is required")}
 
     page_info, error = _parse_job_list_page(data or {})
     if error:
@@ -246,17 +252,17 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     actor_domain = actor.get("domain") or "domain.com"
 
     if not name:
-        return {"result": False, "message": "name 不能为空"}
+        return {"result": False, "message": job_message(None, "error.name_required", "name is required")}
     if target_source not in ("node_mgmt", "manual"):
-        return {"result": False, "message": "target_source 必须为 node_mgmt 或 manual"}
+        return {"result": False, "message": job_message(None, "error.target_source_invalid", "target_source must be node_mgmt or manual")}
     if not target_list:
-        return {"result": False, "message": "目标列表不能为空"}
+        return {"result": False, "message": job_message(None, "error.target_list_required", "Target list cannot be empty")}
     if script_type not in ("shell", "python", "powershell", "bat"):
-        return {"result": False, "message": "script_type 必须为 shell/python/powershell/bat"}
+        return {"result": False, "message": job_message(None, "error.script_type_invalid", "script_type must be shell/python/powershell/bat")}
     if not script_content:
-        return {"result": False, "message": "script_content 不能为空"}
+        return {"result": False, "message": job_message(None, "error.script_content_required", "script_content is required")}
     if not team:
-        return {"result": False, "message": "team 不能为空"}
+        return {"result": False, "message": job_message(None, "error.team_required", "team is required")}
 
     # 回调配置校验（web 通道 SSRF 校验、nats 通道 subject 必填）
     cb_err = _validate_callback_config(callback_type, callback_url, callback_subject, "job_script_execute")
@@ -267,7 +273,15 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     check_result = DangerousChecker.check_command(script_content, team)
     if not check_result.can_execute:
         forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-        return {"result": False, "message": f"脚本包含高危命令，禁止执行: {', '.join(forbidden_rules)}"}
+        return {
+            "result": False,
+            "message": job_message(
+                None,
+                "error.dangerous_command_forbidden",
+                "Script contains high-risk commands and cannot be executed: {rules}",
+                rules=", ".join(forbidden_rules),
+            ),
+        }
 
     # 构建 params 字符串
     params_str = ScriptParamsService.params_to_string(params) if params else ""
@@ -303,7 +317,10 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
 
     # 触发异步执行（Celery Worker）
     if not dispatch_celery_task(execute_script_task, execution):
-        return {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
+        return {
+            "result": False,
+            "message": job_message(None, "error.scheduler_unavailable", "Task scheduling service is temporarily unavailable; try again later"),
+        }
 
     return {"result": True, "data": {"task_id": execution.id}}
 
@@ -313,7 +330,14 @@ def job_file_distribute(data: dict):
     """旧版 NATS 文件分发入口；默认兼容，支持显式退役与即时回滚。"""
     if os.getenv("JOB_FILE_DISTRIBUTE_NATS_ENABLED", "1").strip().lower() not in {"1", "true", "yes", "on"}:
         logger.warning("[job_file_distribute] legacy NATS entry disabled")
-        return {"result": False, "message": "旧版 NATS 文件分发入口已停用，请迁移至 OpenAPI 网关"}
+        return {
+            "result": False,
+            "message": job_message(
+                None,
+                "error.legacy_nats_distribute_disabled",
+                "The legacy NATS file-distribution endpoint is disabled; migrate to the OpenAPI gateway",
+            ),
+        }
 
     logger.info(
         "[job_file_distribute] legacy NATS call: team=%s, file_count=%s, target_count=%s",
@@ -363,17 +387,17 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
     actor_domain = actor.get("domain") or "domain.com"
 
     if not name:
-        return {"result": False, "message": "name 不能为空"}
+        return {"result": False, "message": job_message(None, "error.name_required", "name is required")}
     if not file_keys:
-        return {"result": False, "message": "file_keys 不能为空"}
+        return {"result": False, "message": job_message(None, "error.file_keys_required", "file_keys is required")}
     if target_source not in ("node_mgmt", "manual"):
-        return {"result": False, "message": "target_source 必须为 node_mgmt 或 manual"}
+        return {"result": False, "message": job_message(None, "error.target_source_invalid", "target_source must be node_mgmt or manual")}
     if not target_list:
-        return {"result": False, "message": "目标列表不能为空"}
+        return {"result": False, "message": job_message(None, "error.target_list_required", "Target list cannot be empty")}
     if not target_path:
-        return {"result": False, "message": "target_path 不能为空"}
+        return {"result": False, "message": job_message(None, "error.target_path_required", "target_path is required")}
     if not authorized_team_ids:
-        return {"result": False, "message": "team 不能为空或格式非法"}
+        return {"result": False, "message": job_message(None, "error.team_required_or_invalid", "team is required or has an invalid format")}
 
     # 回调配置校验（web 通道 SSRF 校验、nats 通道 subject 必填）
     cb_err = _validate_callback_config(callback_type, callback_url, callback_subject, "job_file_distribute")
@@ -384,7 +408,15 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
     check_result = DangerousChecker.check_path(target_path, team)
     if not check_result.can_execute:
         forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-        return {"result": False, "message": f"目标路径为高危路径，禁止分发: {', '.join(forbidden_rules)}"}
+        return {
+            "result": False,
+            "message": job_message(
+                None,
+                "error.dangerous_path_forbidden",
+                "Target path is high-risk and cannot be used for distribution: {rules}",
+                rules=", ".join(forbidden_rules),
+            ),
+        }
 
     # 文件必须属于本次作业声明的团队。将团队范围直接落到 ORM 查询，
     # 对跨团队文件与历史无归属文件统一 fail-closed，避免泄露其存在性。
@@ -392,7 +424,12 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
     found_keys = {df.file_key for df in distribution_files}
     missing_keys = [k for k in file_keys if k not in found_keys]
     if missing_keys:
-        return {"result": False, "message": f"部分文件不存在、已过期或无权访问: {', '.join(missing_keys)}"}
+        return {
+            "result": False,
+            "message": job_message(
+                None, "error.files_missing_or_expired", "Some files are missing, expired, or inaccessible: {keys}", keys=", ".join(missing_keys)
+            ),
+        }
 
     # 构建文件信息
     files_info = [{"name": df.original_name, "file_key": df.file_key} for df in distribution_files]
@@ -425,7 +462,10 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
 
     # 触发异步执行（Celery Worker）
     if not dispatch_celery_task(distribute_files_task, execution):
-        return {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
+        return {
+            "result": False,
+            "message": job_message(None, "error.scheduler_unavailable", "Task scheduling service is temporarily unavailable; try again later"),
+        }
 
     return {"result": True, "data": {"task_id": execution.id}}
 
@@ -481,7 +521,7 @@ def openapi_file_distribute(
     authorized_team_ids = normalize_team(team)
     authorized_team_id = next(iter(authorized_team_ids), None)
     if len(authorized_team_ids) != 1 or not GroupUtils.active_queryset(id=authorized_team_id).exists():
-        return {"result": False, "message": "用户未关联活动团队"}
+        return {"result": False, "message": job_message(None, "error.user_no_active_team", "User is not associated with an active team")}
 
     scope_error = _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids)
     if scope_error:
@@ -532,7 +572,7 @@ def job_status_batch_query(data: dict):
     """
     task_ids = data.get("task_ids", [])
     if not task_ids:
-        return {"result": False, "message": "task_ids 不能为空"}
+        return {"result": False, "message": job_message(None, "error.task_ids_required", "task_ids is required")}
 
     executions = JobExecution.objects.filter(id__in=task_ids)
     execution_map = {e.id: e for e in executions}
@@ -600,18 +640,18 @@ def job_detail_query(data: dict):
     task_id = data.get("task_id")
     team = normalize_team(data.get("team", []))
     if not task_id:
-        return {"result": False, "message": "task_id 不能为空"}
+        return {"result": False, "message": job_message(None, "error.task_id_required", "task_id is required")}
 
     try:
         execution = JobExecution.objects.get(id=task_id)
     except JobExecution.DoesNotExist:
-        return {"result": False, "message": "任务不存在"}
+        return {"result": False, "message": job_message(None, "error.task_not_found", "Task not found")}
 
     if not team:
         return {"result": True, "data": _build_job_detail_payload(execution, include_sensitive=False)}
 
     if not is_team_authorized(execution.team, team):
-        return {"result": False, "message": "无权查询该任务"}
+        return {"result": False, "message": job_message(None, "error.task_query_denied", "You are not allowed to query this task")}
 
     return {"result": True, "data": _build_job_detail_payload(execution, include_sensitive=True)}
 
@@ -633,9 +673,9 @@ def job_task_terminate(data=None, task_id=None, **kwargs):
             except ValueError:
                 task_id = None
     if isinstance(task_id, bool) or not isinstance(task_id, int) or not 1 <= task_id <= 2**63 - 1:
-        return {"result": False, "message": "task_id 必须为正整数或其字符串形式"}
+        return {"result": False, "message": job_message(None, "error.task_id_invalid", "task_id must be a positive integer or its string form")}
     if not caller_token:
-        return {"result": False, "message": "caller_token 不能为空"}
+        return {"result": False, "message": job_message(None, "error.caller_token_required", "caller_token is required")}
 
     try:
         caller = _verify_token(caller_token)
@@ -645,12 +685,12 @@ def job_task_terminate(data=None, task_id=None, **kwargs):
     caller_team = normalize_team(getattr(caller, "group_list", []))
     if not caller_team:
         logger.warning("[job_task_terminate] 服务端团队归属校验失败: task_id=%s", task_id)
-        return {"result": False, "message": "无权取消该任务"}
+        return {"result": False, "message": job_message(None, "error.cancel_denied", "You are not allowed to cancel this task")}
 
     try:
         execution, message = request_execution_cancel(task_id, authorized_team_ids=caller_team)
     except JobExecution.DoesNotExist:
-        return {"result": False, "message": "任务不存在"}
+        return {"result": False, "message": job_message(None, "error.task_not_found", "Task not found")}
     except ExecutionCancellationAuthorizationError as error:
         logger.warning("[job_task_terminate] 锁内团队归属校验失败: task_id=%s", task_id)
         return {"result": False, "message": str(error)}
@@ -774,3 +814,138 @@ def get_job_usage_statistics(user_info=None, time=None, **kwargs):
         },
         "message": "",
     }
+
+
+def _automation_actor_context(actor_context):
+    if not isinstance(actor_context, dict):
+        return None
+    authorized_team_ids = normalize_team(actor_context.get("authorized_team_ids"))
+    username = str(actor_context.get("username") or "").strip()
+    domain = str(actor_context.get("domain") or "domain.com").strip()
+    if not authorized_team_ids or not username:
+        return None
+    return {
+        "authorized_team_ids": authorized_team_ids,
+        "user": username[:150],
+        "domain": domain[:255],
+    }
+
+
+def execute_automation_script_local(data: dict, actor_context: dict):
+    """同进程自动化入口：身份与组织来自已鉴权的调用上下文。"""
+    actor = _automation_actor_context(actor_context)
+    if actor is None:
+        return {"result": False, "message": "缺少可信执行上下文"}
+    requested_team_ids = normalize_team((data or {}).get("team"))
+    if not requested_team_ids or not requested_team_ids <= actor["authorized_team_ids"]:
+        return {"result": False, "message": "无权在目标组织执行作业"}
+    target_scope_error = _validate_openapi_target_scope(
+        (data or {}).get("target_source"),
+        (data or {}).get("target_list") or [],
+        requested_team_ids,
+    )
+    if target_scope_error:
+        return {"result": False, "message": target_scope_error}
+    return _run_script_execute(data or {}, trusted_actor=actor)
+
+
+def list_automation_targets_local(data: dict, actor_context: dict):
+    """同进程自动化目标查询，不把消息体中的 team 当成身份。"""
+    actor = _automation_actor_context(actor_context)
+    if actor is None:
+        return {"result": False, "message": "缺少可信执行上下文"}
+    authorized_team_ids = actor["authorized_team_ids"]
+    if not authorized_team_ids:
+        return {"result": False, "message": job_message(None, "error.team_required", "team is required")}
+    target_ids = (data or {}).get("target_ids")
+    ips = (data or {}).get("ips")
+    if target_ids is not None:
+        if not isinstance(target_ids, list) or not target_ids or len(target_ids) > 100:
+            return {"result": False, "message": "target_ids 必须是 1 到 100 个目标 ID"}
+        try:
+            target_ids = [int(value) for value in target_ids]
+        except (TypeError, ValueError):
+            return {"result": False, "message": "target_ids 包含非法 ID"}
+        if len(set(target_ids)) != len(target_ids):
+            return {"result": False, "message": "target_ids 不能重复"}
+    if ips is not None:
+        if not isinstance(ips, list) or not ips or len(ips) > 100:
+            return {"result": False, "message": "ips 必须是 1 到 100 个 IP"}
+        ips = list(dict.fromkeys(str(value).strip() for value in ips if str(value).strip()))
+        if not ips:
+            return {"result": False, "message": "ips 不能为空"}
+
+    try:
+        page = max(1, int((data or {}).get("page", 1)))
+        page_size = min(100, max(1, int((data or {}).get("page_size", 20))))
+    except (TypeError, ValueError):
+        return {"result": False, "message": "分页参数非法"}
+    query = str((data or {}).get("query") or "").strip()[:120]
+
+    queryset = _team_owned_queryset(Target, authorized_team_ids)
+    if target_ids is not None:
+        queryset = queryset.filter(id__in=target_ids)
+    if ips is not None:
+        queryset = queryset.filter(ip__in=ips)
+    if query:
+        queryset = queryset.filter(Q(name__icontains=query) | Q(ip__icontains=query))
+    count = queryset.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = [
+        {
+            "target_id": target.id,
+            "name": target.name,
+            "ip": str(target.ip),
+            "os_type": target.os_type,
+            "cloud_region_id": target.cloud_region_id,
+        }
+        for target in queryset.order_by("-id")[start:end]
+    ]
+    return {"result": True, "data": {"count": count, "items": items}}
+
+
+def get_automation_execution_statuses_local(data: dict, actor_context: dict):
+    """同进程批量状态查询；越权任务与不存在任务统一返回 not_found。"""
+    actor = _automation_actor_context(actor_context)
+    if actor is None:
+        return {"result": False, "message": "缺少可信执行上下文"}
+    task_ids = (data or {}).get("task_ids")
+    if not isinstance(task_ids, list) or not 1 <= len(task_ids) <= 100:
+        return {"result": False, "message": "task_ids 必须是 1 到 100 个任务 ID"}
+    try:
+        normalized_task_ids = [int(task_id) for task_id in task_ids]
+    except (TypeError, ValueError):
+        return {"result": False, "message": "task_ids 包含非法 ID"}
+    executions = _team_owned_queryset(JobExecution, actor["authorized_team_ids"]).filter(id__in=normalized_task_ids)
+    execution_map = {execution.id: execution for execution in executions}
+    return {
+        "result": True,
+        "data": [
+            {
+                "task_id": execution.id,
+                "status": execution.status,
+                "total_count": execution.total_count,
+                "success_count": execution.success_count,
+                "failed_count": execution.failed_count,
+            }
+            if (execution := execution_map.get(task_id))
+            else {"task_id": task_id, "status": "not_found"}
+            for task_id in normalized_task_ids
+        ],
+    }
+
+
+def get_automation_execution_detail_local(data: dict, actor_context: dict):
+    """同进程执行详情查询；只返回可信上下文有权访问的结果。"""
+    actor = _automation_actor_context(actor_context)
+    if actor is None:
+        return {"result": False, "message": "缺少可信执行上下文"}
+    try:
+        task_id = int((data or {}).get("task_id"))
+    except (TypeError, ValueError):
+        return {"result": False, "message": "task_id 必须是任务 ID"}
+    execution = _team_owned_queryset(JobExecution, actor["authorized_team_ids"]).filter(id=task_id).first()
+    if execution is None:
+        return {"result": False, "message": job_message(None, "error.task_not_found_or_denied", "Task not found or access denied")}
+    return {"result": True, "data": _build_job_detail_payload(execution, include_sensitive=True)}

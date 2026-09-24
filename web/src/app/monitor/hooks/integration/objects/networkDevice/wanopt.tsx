@@ -80,3 +80,6 @@ export const useWanoptConfig = () => {
       'Wanopt Exinda SNMP': 'snmp_exinda',
       'Wanopt Riverbed SNMP': 'snmp_riverbed',
       'Wanopt BlueCoat SNMP': 'snmp_bluecoat'
+    }
+  };
+};

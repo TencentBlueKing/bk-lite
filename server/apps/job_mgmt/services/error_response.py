@@ -17,23 +17,25 @@ from rest_framework.response import Response
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import job_logger as logger
+from apps.job_mgmt.utils.i18n import job_message
 
 try:
     from nats.errors import Error as NatsError
 except ImportError:  # pragma: no cover - nats 是项目硬依赖，缺失时退化为不识别
     NatsError = None
 
-DEFAULT_5XX_MESSAGE = "服务器内部错误，请稍后重试"
-SERVICE_UNAVAILABLE_MESSAGE = "上游服务暂不可用，请稍后重试"
-NOT_FOUND_MESSAGE = "资源不存在"
+DEFAULT_5XX_MESSAGE = job_message(None, "error.internal_server", "Internal server error; try again later")
+SERVICE_UNAVAILABLE_MESSAGE = job_message(None, "error.service_unavailable", "Upstream service is temporarily unavailable; try again later")
+NOT_FOUND_MESSAGE = job_message(None, "error.resource_not_found", "Resource not found")
 
 
 def exception_to_response(
     e: Exception,
     *,
     context: str = "",
-    default_message: str = DEFAULT_5XX_MESSAGE,
+    default_message: str | None = None,
     body_key: str = "detail",
+    request=None,
 ) -> Response:
     """根据异常类型返回安全的 HTTP 响应；异常细节仅写日志。
 
@@ -57,8 +59,12 @@ def exception_to_response(
         context: 上下文标签，用于日志（如 ``"[query_nodes]"``）。
         default_message: 5xx 兜底对外文案。
         body_key: 响应体里承载消息的字段名。默认 ``"detail"`` 匹配 ``CustomRenderer``。
+        request: 可选请求，用于选择语言。
     """
     prefix = f"{context} " if context else ""
+    resolved_default = default_message or job_message(request, "error.internal_server", "Internal server error; try again later")
+    not_found = job_message(request, "error.resource_not_found", "Resource not found")
+    unavailable = job_message(request, "error.service_unavailable", "Upstream service is temporarily unavailable; try again later")
 
     if isinstance(e, BaseAppException):
         logger.warning(f"{prefix}业务异常: {e}")
@@ -70,14 +76,14 @@ def exception_to_response(
 
     if isinstance(e, ObjectDoesNotExist):
         logger.warning(f"{prefix}资源不存在: {e}")
-        return Response({body_key: NOT_FOUND_MESSAGE}, status=status.HTTP_404_NOT_FOUND)
+        return Response({body_key: not_found}, status=status.HTTP_404_NOT_FOUND)
 
     # NATS RPC 失败（NoRespondersError / NoServersError / ConnectionClosedError 等）
     # 都归到"上游不可达"。nats.errors.TimeoutError 同时是 Python TimeoutError，
     # 这里把它和裸 TimeoutError / ConnectionError 一起处理。
     if isinstance(e, (TimeoutError, ConnectionError)) or (NatsError is not None and isinstance(e, NatsError)):
         logger.warning(f"{prefix}上游不可达: {e}")
-        return Response({body_key: SERVICE_UNAVAILABLE_MESSAGE}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response({body_key: unavailable}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     logger.exception(f"{prefix}未预期异常: {e}")
-    return Response({body_key: default_message}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response({body_key: resolved_default}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.models import DistributionFile, JobExecution
 from apps.job_mgmt.nats_api import job_detail_query, job_list, job_script_execute, job_status_batch_query
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized
 from apps.job_mgmt.views.mixins import TeamResolveMixin
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
@@ -99,14 +100,21 @@ class OpenFileUploadView(TeamResolveMixin, APIView):
         file = request.FILES.get("file")
         if not file:
             return Response(
-                {"detail": "未上传文件"},
+                {"detail": job_message(request, "error.no_file_uploaded", "No file uploaded")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         # 单文件大小上界（防超大单文件在过期前占满存储）
         if getattr(file, "size", 0) and file.size > MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024:
             return Response(
-                {"detail": f"文件大小超过上限（{MAX_UPLOAD_FILE_SIZE_MB}MB）"},
+                {
+                    "detail": job_message(
+                        request,
+                        "error.file_size_exceeds_limit",
+                        "File size exceeds the limit ({size}MB)",
+                        size=MAX_UPLOAD_FILE_SIZE_MB,
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -135,7 +143,7 @@ class OpenFileUploadView(TeamResolveMixin, APIView):
         except Exception as e:
             logger.error(f"[open_upload_file] 文件上传失败: {e}")
             return Response(
-                {"detail": "文件上传失败"},
+                {"detail": job_message(request, "error.file_upload_failed", "File upload failed")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -175,7 +183,7 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
         files = request.data.get("files", [])
         if not files:
             return Response(
-                {"detail": "files 不能为空"},
+                {"detail": job_message(request, "error.files_required", "files is required")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -286,11 +294,7 @@ class OpenScriptExecuteView(TeamResolveMixin, APIView):
         result = job_script_execute(payload)
         if not result.get("result"):
             message = result.get("message") or "脚本执行失败"
-            http_status = (
-                status.HTTP_503_SERVICE_UNAVAILABLE
-                if "调度服务" in message
-                else status.HTTP_400_BAD_REQUEST
-            )
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE if "调度服务" in message else status.HTTP_400_BAD_REQUEST
             logger.warning("Open script execute failed: team=%s, message=%s", user_team, message)
             return Response({"detail": "脚本执行失败"}, status=http_status)
         return Response(result.get("data") or {}, status=status.HTTP_201_CREATED)
@@ -322,11 +326,7 @@ class OpenJobStatusView(TeamResolveMixin, APIView):
         if not result.get("result"):
             return Response({"detail": result.get("message") or "查询失败"}, status=status.HTTP_400_BAD_REQUEST)
 
-        owned_ids = {
-            execution.id
-            for execution in JobExecution.objects.filter(id__in=task_ids)
-            if is_team_authorized(execution.team, {user_team})
-        }
+        owned_ids = {execution.id for execution in JobExecution.objects.filter(id__in=task_ids) if is_team_authorized(execution.team, {user_team})}
         items = []
         for item in result.get("data") or []:
             task_id = item.get("task_id")
@@ -354,5 +354,8 @@ class OpenJobDetailView(TeamResolveMixin, APIView):
 
         result = job_detail_query({"task_id": task_id, "team": [user_team]})
         if not result.get("result"):
-            return Response({"detail": "任务不存在"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": job_message(request, "error.task_not_found", "Task not found")},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         return Response(result.get("data") or {}, status=status.HTTP_200_OK)

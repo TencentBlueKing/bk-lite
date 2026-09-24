@@ -29,6 +29,7 @@ from apps.job_mgmt.services.scheduled_task_authz import ScheduledTaskTeamBoundar
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -172,16 +173,27 @@ class ScheduledTaskViewSet(AuthViewSet):
                     schedule_synced = ScheduledTaskService.toggle_periodic_task_or_raise(instance.id, instance.is_enabled)
             except DatabaseError:
                 if instance.is_enabled:
-                    raise serializers.ValidationError({"is_enabled": "同步定时调度状态失败，请稍后重试"})
+                    raise serializers.ValidationError(
+                        {"is_enabled": job_message(request, "error.schedule_sync_failed", "Failed to sync the schedule status; try again later")}
+                    )
                 schedule_synced = False
             if not schedule_synced and instance.is_enabled:
-                raise serializers.ValidationError({"is_enabled": "同步定时调度状态失败，请稍后重试"})
+                raise serializers.ValidationError(
+                    {"is_enabled": job_message(request, "error.schedule_sync_failed", "Failed to sync the schedule status; try again later")}
+                )
             schedule_sync_pending = not schedule_synced
         log_operation(request, "execute", "job", f"切换定时任务状态: {instance.name}")
 
+        enabled_message = job_message(request, "message.scheduled_task_enabled", "Task enabled")
+        disabled_message = job_message(request, "message.scheduled_task_disabled", "Task disabled")
+        pending_suffix = job_message(
+            request,
+            "message.scheduled_task_schedule_sync_pending",
+            ", schedule sync will retry on the next trigger",
+        )
         return Response(
             {
-                "message": (f"任务已{'启用' if instance.is_enabled else '禁用'}" + ("，调度状态将在下次触发时重试同步" if schedule_sync_pending else "")),
+                "message": (enabled_message if instance.is_enabled else disabled_message) + (pending_suffix if schedule_sync_pending else ""),
                 "is_enabled": instance.is_enabled,
             }
         )
@@ -203,11 +215,14 @@ class ScheduledTaskViewSet(AuthViewSet):
             # 获取执行目标
             target_list = instance.target_list or []
             if not target_list:
-                return Response({"error": "没有配置执行目标"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": job_message(request, "error.no_execution_targets", "No execution targets configured")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # 处理参数：解析 is_modified=False 的参数并转换为字符串
             params = instance.params if isinstance(instance.params, list) else []
-            resolved_params = ScriptParamsService.resolve_params(params, script=instance.script)
+            resolved_params = ScriptParamsService.resolve_params(params, script=instance.script, request=request)
             params_str = ScriptParamsService.params_to_string(resolved_params)
 
             # 脚本内容：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段
@@ -224,7 +239,14 @@ class ScheduledTaskViewSet(AuthViewSet):
                 if not check_result.can_execute:
                     forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
                     return Response(
-                        {"error": f"脚本包含高危命令，已拦截: {', '.join(forbidden_rules)}"},
+                        {
+                            "error": job_message(
+                                request,
+                                "error.dangerous_command_intercepted",
+                                "Script contains high-risk commands and was blocked: {rules}",
+                                rules=", ".join(forbidden_rules),
+                            )
+                        },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             if instance.job_type == JobType.FILE_DISTRIBUTION and instance.target_path:
@@ -232,7 +254,14 @@ class ScheduledTaskViewSet(AuthViewSet):
                 if not check_result.can_execute:
                     forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
                     return Response(
-                        {"error": f"目标路径为高危路径，已拦截: {', '.join(forbidden_rules)}"},
+                        {
+                            "error": job_message(
+                                request,
+                                "error.dangerous_path_intercepted",
+                                "Target path is high-risk and was blocked: {rules}",
+                                rules=", ".join(forbidden_rules),
+                            )
+                        },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
@@ -269,7 +298,13 @@ class ScheduledTaskViewSet(AuthViewSet):
         task_func = task_func_map.get(instance.job_type)
         if task_func and not dispatch_celery_task(task_func, execution):
             return Response(
-                {"error": "任务调度服务暂不可用，请稍后重试"},
+                {
+                    "error": job_message(
+                        request,
+                        "error.scheduler_unavailable",
+                        "Task scheduling service is temporarily unavailable; try again later",
+                    )
+                },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -277,7 +312,7 @@ class ScheduledTaskViewSet(AuthViewSet):
 
         return Response(
             {
-                "message": "已触发执行",
+                "message": job_message(request, "message.execution_triggered", "Execution triggered"),
                 "execution_id": execution.id,
             }
         )
@@ -371,7 +406,12 @@ class ScheduledTaskViewSet(AuthViewSet):
 
         return Response(
             {
-                "message": f"已删除 {deleted_count} 个定时任务",
+                "message": job_message(
+                    request,
+                    "message.scheduled_tasks_deleted",
+                    "Deleted {count} scheduled task(s)",
+                    count=deleted_count,
+                ),
                 "deleted_count": deleted_count,
             }
         )
@@ -390,7 +430,10 @@ class ScheduledTaskViewSet(AuthViewSet):
         cron_expression = request.data.get("cron_expression", "").strip()
 
         if not cron_expression:
-            return Response({"error": "cron_expression 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": job_message(request, "error.cron_expression_required", "cron_expression is required")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             next_runs = get_crontab_next_runs(cron_expression, count=5)

@@ -1,34 +1,21 @@
 """补丁管理 Dashboard 视图"""
 
+from collections import defaultdict
+
 from django.db.models import Count, Prefetch
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
-from collections import defaultdict
-
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.patch_mgmt.constants import (
-    ComplianceStatus,
-    GovernanceTaskStatus,
-    GovernanceTaskType,
-    PatchSeverity,
-    RiskCompliance,
-)
-from apps.patch_mgmt.models import (
-    BaselineRequirement,
-    GovernanceTask,
-    GovernanceTaskHost,
-    HostBaselineBinding,
-    Patch,
-)
+from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, PatchSeverity, RiskCompliance
+from apps.patch_mgmt.models import BaselineRequirement, GovernanceTask, GovernanceTaskHost, HostBaselineBinding, Patch
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
-from apps.patch_mgmt.services.execution_record_service import (
-    filter_execution_record_roots,
-)
+from apps.patch_mgmt.services.execution_record_service import filter_execution_record_roots
 from apps.patch_mgmt.services.risk_service import compute_host_compliance_status, compute_risk_items
 from apps.patch_mgmt.services.target_access import target_access_scope
+from apps.patch_mgmt.utils.i18n import patch_message
 
 
 class PatchDashboardViewSet(AuthViewSet):
@@ -56,23 +43,13 @@ class PatchDashboardViewSet(AuthViewSet):
         """汇总补丁管理关键指标"""
         target_qs = target_access_scope(request).queryset("View")
         target_ids = set(target_qs.values_list("id", flat=True))
-        operable_target_ids = set(
-            target_access_scope(request)
-            .queryset("Operate")
-            .values_list("id", flat=True)
-        )
+        operable_target_ids = set(target_access_scope(request).queryset("Operate").values_list("id", flat=True))
         visible_target_ids = target_qs.values("id")
-        binding_qs = HostBaselineBinding.objects.filter(
-            target_id__in=visible_target_ids
-        )
+        binding_qs = HostBaselineBinding.objects.filter(target_id__in=visible_target_ids)
         baseline_ids = set(binding_qs.values_list("baseline_id", flat=True))
-        patch_qs = Patch.objects.filter(
-            baseline_requirements__baseline_id__in=baseline_ids
-        ).distinct()
+        patch_qs = Patch.objects.filter(baseline_requirements__baseline_id__in=baseline_ids).distinct()
         patch_ids = set(patch_qs.values_list("id", flat=True))
-        task_qs = GovernanceTask.objects.filter(
-            host_results__target_id__in=visible_target_ids
-        ).distinct()
+        task_qs = GovernanceTask.objects.filter(host_results__target_id__in=visible_target_ids).distinct()
 
         target_total = len(target_ids)
         patch_total = len(patch_ids)
@@ -105,28 +82,17 @@ class PatchDashboardViewSet(AuthViewSet):
         denom = compliant_hosts + non_compliant_hosts
         compliance_rate = round((compliant_hosts / denom) * 100) if denom > 0 else 0
 
-        pending_reboot_targets = binding_qs.filter(
-            pending_reboot_count__gt=0
-        ).count()
+        pending_reboot_targets = binding_qs.filter(pending_reboot_count__gt=0).count()
 
-        failed_install_tasks = task_qs.filter(
-            status=GovernanceTaskStatus.FAILED, task_type="install"
-        ).count()
-        failed_tasks = task_qs.filter(
-            status=GovernanceTaskStatus.FAILED
-        ).count()
+        failed_install_tasks = task_qs.filter(status=GovernanceTaskStatus.FAILED, task_type="install").count()
+        failed_tasks = task_qs.filter(status=GovernanceTaskStatus.FAILED).count()
 
         # 真实风险项（按已核验主机范围计算）
         risk_items = compute_risk_items(target_ids)
         missing_risk_items = [i for i in risk_items if i.compliance == RiskCompliance.MISSING]
         pending_risk_count = len(missing_risk_items)
 
-        severity_dist = (
-            patch_qs
-            .values("severity")
-            .annotate(count=Count("id"))
-            .order_by("-count")
-        )
+        severity_dist = patch_qs.values("severity").annotate(count=Count("id")).order_by("-count")
         severity_names = dict(PatchSeverity.CHOICES)
         patch_severity_distribution = [
             {
@@ -138,20 +104,58 @@ class PatchDashboardViewSet(AuthViewSet):
         ]
 
         compliance_distribution = [
-            {"label": "合规", "count": compliant_hosts, "color": "success", "filter": "compliant"},
-            {"label": "不合规", "count": non_compliant_hosts, "color": "error", "filter": "non_compliant"},
-            {"label": "待评估", "count": pending_hosts, "color": "default", "filter": "pending"},
-            {"label": "评估中", "count": evaluating_hosts, "color": "processing", "filter": "evaluating"},
-            {"label": "评估失败", "count": failed_hosts, "color": "default", "filter": "failed"},
-            {"label": "无法判定", "count": unknown_hosts, "color": "warning", "filter": "unknown"},
-            {"label": "不适用", "count": not_applicable_hosts, "color": "default", "filter": "not_applicable"},
-            {"label": "未配置", "count": unconfigured_hosts, "color": "warning", "filter": "unconfigured"},
+            {
+                "label": patch_message(request, "status.compliance.compliant", "Compliant"),
+                "count": compliant_hosts,
+                "color": "success",
+                "filter": "compliant",
+            },
+            {
+                "label": patch_message(request, "status.compliance.non_compliant", "Non-compliant"),
+                "count": non_compliant_hosts,
+                "color": "error",
+                "filter": "non_compliant",
+            },
+            {
+                "label": patch_message(request, "status.compliance.pending", "Pending assessment"),
+                "count": pending_hosts,
+                "color": "default",
+                "filter": "pending",
+            },
+            {
+                "label": patch_message(request, "status.compliance.evaluating", "Assessing"),
+                "count": evaluating_hosts,
+                "color": "processing",
+                "filter": "evaluating",
+            },
+            {
+                "label": patch_message(request, "status.compliance.failed", "Assessment failed"),
+                "count": failed_hosts,
+                "color": "default",
+                "filter": "failed",
+            },
+            {
+                "label": patch_message(request, "status.compliance.unknown", "Assessment unknown"),
+                "count": unknown_hosts,
+                "color": "warning",
+                "filter": "unknown",
+            },
+            {
+                "label": patch_message(request, "status.compliance.not_applicable", "Not applicable"),
+                "count": not_applicable_hosts,
+                "color": "default",
+                "filter": "not_applicable",
+            },
+            {
+                "label": patch_message(request, "status.compliance.unconfigured", "Not configured"),
+                "count": unconfigured_hosts,
+                "color": "warning",
+                "filter": "unconfigured",
+            },
         ]
 
         # 与「风险治理 / 执行记录」使用同一根记录、权限、排序和状态口径。
-        visible_host_qs = GovernanceTaskHost.objects.filter(
-            target_id__in=visible_target_ids
-        ).select_related("task")
+        visible_host_qs = GovernanceTaskHost.objects.filter(target_id__in=visible_target_ids).select_related("task")
         recent_roots = list(
             filter_execution_record_roots(task_qs)
             .select_related("source_record")
@@ -214,40 +218,44 @@ class PatchDashboardViewSet(AuthViewSet):
             parts = [p for p in [first.kb_number, first.pkg_name] if p]
             patch_label = " · ".join(parts + [first.patch_title]) if parts else first.patch_title
             severity_display = dict(PatchSeverity.CHOICES).get(first.patch_severity, first.patch_severity)
-            top_risks.append({
-                "id": patch_id,
-                "patch": patch_label,
-                "hosts": len(items),
-                "sev": severity_display,
-                "severity": first.patch_severity,
-            })
+            top_risks.append(
+                {
+                    "id": patch_id,
+                    "patch": patch_label,
+                    "hosts": len(items),
+                    "sev": severity_display,
+                    "severity": first.patch_severity,
+                }
+            )
 
-        return Response({
-            "high_severity_missing": high_severity_missing,
-            "affected_targets": affected_targets,
-            "pending_reboot_targets": pending_reboot_targets,
-            "failed_install_tasks": failed_install_tasks,
-            "recent_scan_status": None,
-            "recent_scan_coverage": None,
-            "target_total": target_total,
-            "patch_total": patch_total,
-            "compliance_rate": compliance_rate,
-            "coverage_rate": coverage_rate,
-            "non_compliant_hosts": non_compliant_hosts,
-            "unconfigured_hosts": unconfigured_hosts,
-            "pending_risk_count": pending_risk_count,
-            "failed_tasks": failed_tasks,
-            "compliant_hosts": compliant_hosts,
-            "pending_hosts": pending_hosts,
-            "evaluating_hosts": evaluating_hosts,
-            "failed_hosts": failed_hosts,
-            "unknown_hosts": unknown_hosts,
-            "not_applicable_hosts": not_applicable_hosts,
-            "compliance_distribution": compliance_distribution,
-            "scan_tasks": {"total": 0, "running": 0, "pending": 0, "completed": 0, "failed": 0},
-            "install_tasks": {"total": 0, "running": 0, "pending": 0, "success": 0, "failed": 0},
-            "patch_severity_distribution": patch_severity_distribution,
-            "scan_result_distribution": [],
-            "recent_tasks": recent_tasks,
-            "top_risks": top_risks,
-        })
+        return Response(
+            {
+                "high_severity_missing": high_severity_missing,
+                "affected_targets": affected_targets,
+                "pending_reboot_targets": pending_reboot_targets,
+                "failed_install_tasks": failed_install_tasks,
+                "recent_scan_status": None,
+                "recent_scan_coverage": None,
+                "target_total": target_total,
+                "patch_total": patch_total,
+                "compliance_rate": compliance_rate,
+                "coverage_rate": coverage_rate,
+                "non_compliant_hosts": non_compliant_hosts,
+                "unconfigured_hosts": unconfigured_hosts,
+                "pending_risk_count": pending_risk_count,
+                "failed_tasks": failed_tasks,
+                "compliant_hosts": compliant_hosts,
+                "pending_hosts": pending_hosts,
+                "evaluating_hosts": evaluating_hosts,
+                "failed_hosts": failed_hosts,
+                "unknown_hosts": unknown_hosts,
+                "not_applicable_hosts": not_applicable_hosts,
+                "compliance_distribution": compliance_distribution,
+                "scan_tasks": {"total": 0, "running": 0, "pending": 0, "completed": 0, "failed": 0},
+                "install_tasks": {"total": 0, "running": 0, "pending": 0, "success": 0, "failed": 0},
+                "patch_severity_distribution": patch_severity_distribution,
+                "scan_result_distribution": [],
+                "recent_tasks": recent_tasks,
+                "top_risks": top_risks,
+            }
+        )
