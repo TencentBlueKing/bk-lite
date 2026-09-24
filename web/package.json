@@ -151,6 +151,7 @@
     "test:wiki-decision-center": "pnpm exec tsx scripts/wiki-decision-center-test.ts && pnpm exec tsx scripts/wiki-check-review-i18n-test.ts && pnpm exec tsx scripts/wiki-check-filter-test.ts",
     "type-check:wiki-decision": "tsc -p tsconfig.wiki-decision.json --noEmit",
     "test:ops-analysis-component-param-switch": "pnpm exec tsx scripts/ops-analysis-component-param-switch-test.ts",
+    "test:ops-analysis-i18n": "pnpm exec tsx --test scripts/ops-analysis-i18n-check-test.ts && pnpm exec tsx --test src/app/ops-analysis/locales/__tests__/localeIcu.test.ts",
     "test:ops-analysis-topn-data": "pnpm exec tsx --test src/app/ops-analysis/utils/__tests__/topNData.test.ts src/app/ops-analysis/components/widgetConfig/utils/__tests__/chartFieldOptions.test.ts && pnpm exec vitest run src/app/ops-analysis/components/widgetConfig/sections/__tests__/topNSettingsSection.test.tsx",
     "test:ops-analysis-unified-filter-input": "pnpm exec tsx scripts/ops-analysis-unified-filter-input-test.ts",
     "test:ops-analysis-dashboard-share": "pnpm exec tsx scripts/ops-analysis-dashboard-share-test.ts",
