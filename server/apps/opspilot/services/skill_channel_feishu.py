@@ -123,7 +123,8 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
             id=self.channel_id,
             channel_type=SkillChannelChoices.FEISHU,
         ).first()
-        if not channel or not channel.enabled:
+        # URL 校验允许未启用：飞书保存回调地址时就会发 challenge，此时渠道常尚未上线。
+        if not channel:
             return JsonResponse({"result": False, "message": "渠道不存在或已下线"}, status=403)
 
         config = normalize_feishu_channel_config(channel.channel_config)
@@ -139,10 +140,19 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
         try:
             payload = self._load_payload(request, config)
         except FeishuChannelError as exc:
+            logger.warning(
+                "智能体飞书回调校验失败 channel_id=%s status=%s error=%s",
+                self.channel_id,
+                exc.status,
+                exc.message,
+            )
             return JsonResponse({"result": False, "message": exc.message}, status=exc.status)
 
         if payload.get("type") == "url_verification":
             return JsonResponse({"challenge": payload.get("challenge", "")})
+
+        if not channel.enabled:
+            return JsonResponse({"result": False, "message": "渠道不存在或已下线"}, status=403)
 
         header = payload.get("header") or {}
         if header.get("event_type") != FEISHU_TEXT_EVENT:
