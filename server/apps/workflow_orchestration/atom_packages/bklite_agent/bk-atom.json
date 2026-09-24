@@ -1,0 +1,21 @@
+{
+  "key": "bklite_agent",
+  "name": "智能体",
+  "category": "智能体",
+  "description": "调用当前组织可用的 OpsPilot 智能体处理输入",
+  "source_type": "PLATFORM",
+  "driver": "WORKER",
+  "trusted_context": true,
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_agent.runtime.handler:execute",
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 3900,
+  "retry_count": 0,
+  "retry_delay_seconds": 5,
+  "idempotent": false,
+  "safety_level": "MUTATION",
+  "resource_scope": "ORGANIZATION",
+  "required_permissions": [],
+  "error_types": []
+}

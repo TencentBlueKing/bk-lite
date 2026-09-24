@@ -1,0 +1,19 @@
+services:
+  conductor:
+    image: conductoross/conductor:${CONDUCTOR_IMAGE_TAG:-3.32.1}
+    container_name: bklite-conductor
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CONDUCTOR_PORT:-8091}:8080"
+    networks:
+      - workflow-orchestration
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
+
+networks:
+  workflow-orchestration:
+    name: bklite-workflow-orchestration

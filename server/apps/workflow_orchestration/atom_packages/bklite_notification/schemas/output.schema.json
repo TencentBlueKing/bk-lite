@@ -1,0 +1,1 @@
+{"type": "object", "properties": {"delivery": {"type": "object", "title": "投递结果"}}, "required": ["delivery"]}

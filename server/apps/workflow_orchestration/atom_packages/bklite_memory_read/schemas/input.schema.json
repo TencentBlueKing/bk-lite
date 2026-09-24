@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "memory_space_id": {
+      "type": "integer",
+      "title": "记忆空间",
+      "x-widget": "select",
+      "x-binding": "literal-only"
+    },
+    "query": {
+      "type": "string",
+      "title": "检索内容",
+      "minLength": 1,
+      "maxLength": 20000,
+      "x-widget": "textarea"
+    },
+    "top_k": {
+      "type": "integer",
+      "title": "返回条数",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 5,
+      "x-widget": "number",
+      "x-binding": "literal-only"
+    }
+  },
+  "required": ["memory_space_id", "query"]
+}

@@ -14,6 +14,7 @@ import {
 } from '@/console-layout';
 import type { ClientData, MenuItem } from '@/types/index';
 import Icon from '@/components/icon';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 import { useTranslation } from '@/utils/i18n';
 import styles from './index.module.scss';
 
@@ -188,13 +189,14 @@ const AppTopNavItem = ({
   menus: MenuItem[];
   screenMode: boolean;
 }) => {
+  const { t } = useTranslation();
   const target = useMemo(
     () => resolveAppLandingHref(app, origin, menus),
     [app, origin, menus],
   );
   const href = withScreenQuery(target.href, screenMode, origin);
   const className = `flex shrink-0 items-center rounded-[10px] px-3 py-2 ${styles.menuCol} ${active ? styles.active : ''}`;
-  const label = app.display_name || app.name;
+  const label = resolveAppDisplayName(app, t);
   const icon = <Icon type={app.icon || app.name} className="mr-1.5 h-4 w-4 shrink-0" />;
   const stayOnCurrent = shouldStayOnCurrentAppPage(active, target);
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {

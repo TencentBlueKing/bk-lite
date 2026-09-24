@@ -204,7 +204,7 @@ class SystemSettingModelViewSet(ModelViewSet):
     @action(methods=["get"], detail=False, url_path="get_channel_list")
     def get_channel_list(self, request):
         """
-        获取告警通知通道列表: 排除普通 nats（内部直推），但并入 OpsPilot 托管的 NATS 触发通道。
+        获取告警通知通道列表: 排除普通 nats（内部直推），但并入平台托管的 NATS 触发通道。
         企微应用消息与已启用的 IM 应用通知一并作为分派/模板候选。
         """
         from apps.system_mgmt.models.channel import Channel
@@ -237,6 +237,17 @@ class SystemSettingModelViewSet(ModelViewSet):
 
         # 并入 OpsPilot 托管的 NATS 触发通道（普通 nats 仍排除）
         for ch in SystemMgmtUtils.search_opspilot_nats_channels(teams=team_ids):
+            result.append(
+                {
+                    "id": ch["id"],
+                    "name": ch["name"],
+                    "channel_type": "nats",
+                    "team": ch.get("team", []),
+                }
+            )
+
+        # 编排中心已启用的 NATS 入口与 OpsPilot 一样作为可选通知通道。
+        for ch in SystemMgmtUtils.search_workflow_orchestration_nats_channels(teams=team_ids):
             result.append(
                 {
                     "id": ch["id"],

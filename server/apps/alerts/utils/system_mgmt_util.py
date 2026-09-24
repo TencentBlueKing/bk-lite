@@ -20,6 +20,17 @@ class SystemMgmtUtils:
         return result["data"]
 
     @staticmethod
+    def search_workflow_orchestration_nats_channels(teams=None, workflow_id=None, include_children=False):
+        """查询已启用的编排中心托管 NATS 触发通道。"""
+        result = SystemMgmt().search_workflow_orchestration_nats_channels(
+            teams=teams,
+            workflow_id=workflow_id,
+            include_children=include_children,
+            active_only=True,
+        )
+        return result["data"]
+
+    @staticmethod
     def send_msg_with_channel(channel_id, title, content, receivers, append_receivers=True, channel_type=None):
         kwargs = {
             "channel_id": channel_id,

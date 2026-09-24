@@ -17,12 +17,17 @@ SUPPORTED_CHANNEL_TYPES = {
     ChannelChoices.CUSTOM_WEBHOOK,
     ChannelChoices.NATS,
 }
+MANAGED_NATS_SOURCES = {"opspilot", "workflow_orchestration"}
+
+
+def is_managed_nats_channel(channel: Channel) -> bool:
+    return channel.channel_type == ChannelChoices.NATS and (channel.config or {}).get("source") in MANAGED_NATS_SOURCES
 
 
 def is_supported_operation_channel(channel: Channel) -> bool:
     if channel.channel_type not in SUPPORTED_CHANNEL_TYPES:
         return False
-    return channel.channel_type != ChannelChoices.NATS or (channel.config or {}).get("source") == "opspilot"
+    return channel.channel_type != ChannelChoices.NATS or is_managed_nats_channel(channel)
 
 
 def _legacy_default_content(channel_type: str) -> tuple[str, str]:

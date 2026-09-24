@@ -67,6 +67,27 @@ class TestListAndFilter:
         resp = client.get(BASE, {"unread_only": "true"})
         assert len(_list(resp)) == 1
 
+    def test_定向通知仅候选用户可见且返回跳转目标(self, make_client):
+        NotificationFactory(content="全员通知")
+        NotificationFactory(
+            app_module="workflow-orchestration",
+            content="待审批：发布确认",
+            recipient_usernames=["alice"],
+            target_url="/workflow-orchestration/executions?scope=mine",
+        )
+        NotificationFactory(content="其他人的审批", recipient_usernames=["bob"])
+        _, alice_client = make_client("alice")
+        _, carol_client = make_client("carol")
+
+        alice_items = _list(alice_client.get(BASE))
+        carol_items = _list(carol_client.get(BASE))
+
+        assert [item["content"] for item in alice_items] == ["待审批：发布确认", "全员通知"]
+        assert alice_items[0]["target_url"] == "/workflow-orchestration/executions?scope=mine"
+        assert [item["content"] for item in carol_items] == ["全员通知"]
+        assert alice_client.get(f"{BASE}unread_count/").json()["data"]["count"] == 2
+        assert carol_client.get(f"{BASE}unread_count/").json()["data"]["count"] == 1
+
 
 class TestPerUserIsolation:
     def test_软删除仅对当前用户隐藏(self, make_client):
@@ -95,6 +116,15 @@ class TestPerUserIsolation:
         # alice 显示已读，bob 仍未读
         assert _list(ac.get(BASE))[0]["is_read"] is True
         assert _list(bc.get(BASE))[0]["is_read"] is False
+
+    def test_非接收人不能读取或修改定向通知(self, make_client):
+        notification = NotificationFactory(recipient_usernames=["alice"])
+        bob, bob_client = make_client("bob")
+
+        assert bob_client.get(f"{BASE}{notification.id}/").status_code == 404
+        assert bob_client.post(f"{BASE}{notification.id}/mark_as_read/").status_code == 404
+        assert bob_client.delete(f"{BASE}{notification.id}/").status_code == 404
+        assert not NotificationRead.objects.filter(notification=notification, user=bob).exists()
 
 
 class TestMarkActions:
@@ -140,6 +170,19 @@ class TestMarkActions:
         assert resp.json()["result"] is True
         assert "已标记 0 条" in resp.json()["message"]
 
+    def test_mark_all_as_read_只处理当前用户可见通知(self, make_client):
+        broadcast = NotificationFactory()
+        mine = NotificationFactory(recipient_usernames=["alice"])
+        others = NotificationFactory(recipient_usernames=["bob"])
+        alice, client = make_client("alice")
+
+        resp = client.post(f"{BASE}mark_all_as_read/")
+
+        assert "已标记 2 条" in resp.json()["message"]
+        assert NotificationRead.objects.filter(notification=broadcast, user=alice, is_read=True).exists()
+        assert NotificationRead.objects.filter(notification=mine, user=alice, is_read=True).exists()
+        assert not NotificationRead.objects.filter(notification=others, user=alice).exists()
+
     def test_mark_batch_as_read_拒绝非整数数组(self, user_client):
         """revert-fail：若去掉 serializer 校验，字符串会被 set(ids) 拆成字符集合继续写库。"""
         _, client = user_client
@@ -167,6 +210,17 @@ class TestMarkActions:
         assert data["data"]["skipped_ids"] == [missing_id]
         assert NotificationRead.objects.filter(notification=notification, user=user, is_read=True).exists()
         assert not NotificationRead.objects.filter(notification_id=missing_id, user=user).exists()
+
+    def test_mark_batch_as_read_过滤当前用户不可见的通知(self, make_client):
+        visible = NotificationFactory(recipient_usernames=["alice"])
+        hidden = NotificationFactory(recipient_usernames=["bob"])
+        alice, client = make_client("alice")
+
+        resp = client.post(f"{BASE}mark_batch_as_read/", data={"ids": [visible.id, hidden.id]}, format="json")
+
+        assert resp.json()["data"]["skipped_ids"] == [hidden.id]
+        assert NotificationRead.objects.filter(notification=visible, user=alice, is_read=True).exists()
+        assert not NotificationRead.objects.filter(notification=hidden, user=alice).exists()
 
     def test_unread_count_排除已读与已删除(self, user_client):
         _, client = user_client

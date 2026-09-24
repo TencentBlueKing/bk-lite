@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "targets": {
+      "type": "array", "title": "目标主机", "description": "可从左侧拖入兼容字段，或从目标管理和节点管理选择主机",
+      "items": {"type": "string", "pattern": "^(node:[^:]+|manual:[0-9]+)$"},
+      "minItems": 1, "maxItems": 100, "uniqueItems": true
+    },
+    "script_type": {
+      "type": "string", "title": "脚本类型",       "enum": ["shell", "bat", "python", "powershell"],
+      "x-enum-labels": {"shell": "Shell", "bat": "Bat", "python": "Python", "powershell": "PowerShell"},
+      "default": "shell", "x-binding": "literal-only"
+    },
+    "script_content": {"type": "string", "title": "脚本内容", "maxLength": 100000, "x-widget": "textarea", "x-binding": "literal-only"},
+    "execution_params": {"type": "string", "title": "执行参数", "maxLength": 4000, "x-binding": "literal-only"},
+    "timeout_seconds": {"type": "integer", "title": "超时（秒）", "minimum": 30, "maximum": 3600, "default": 600, "x-binding": "literal-only"}
+  },
+  "required": ["targets", "script_type", "script_content"],
+  "additionalProperties": false
+}

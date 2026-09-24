@@ -74,15 +74,9 @@ def test_internal_event_auth_caller_keys_prevent_cross_service_impersonation(set
         key="log-secret",
     )
 
-    assert verify_internal_event(
-        "alerts.receive_alert_events", payload, monitor_auth, caller="lite-monitor", now=now
-    ) is True
-    assert verify_internal_event(
-        "alerts.receive_alert_events", payload, forged_log_auth, caller="lite-log", now=now
-    ) is False
-    assert verify_internal_event(
-        "alerts.receive_alert_events", payload, log_key_claiming_monitor, caller="lite-monitor", now=now
-    ) is False
+    assert verify_internal_event("alerts.receive_alert_events", payload, monitor_auth, caller="lite-monitor", now=now) is True
+    assert verify_internal_event("alerts.receive_alert_events", payload, forged_log_auth, caller="lite-log", now=now) is False
+    assert verify_internal_event("alerts.receive_alert_events", payload, log_key_claiming_monitor, caller="lite-monitor", now=now) is False
 
 
 def test_internal_event_auth_accepts_caller_previous_rotation_key(settings, monkeypatch):
@@ -101,9 +95,7 @@ def test_internal_event_auth_accepts_caller_previous_rotation_key(settings, monk
         key="monitor-previous",
     )
 
-    assert verify_internal_event(
-        "alerts.receive_alert_events", payload, previous_auth, caller="lite-monitor", now=now
-    ) is True
+    assert verify_internal_event("alerts.receive_alert_events", payload, previous_auth, caller="lite-monitor", now=now) is True
 
 
 def test_internal_event_auth_caller_key_receiver_accepts_global_key_during_migration(settings, monkeypatch):
@@ -122,9 +114,7 @@ def test_internal_event_auth_caller_key_receiver_accepts_global_key_during_migra
         key="global-old-key",
     )
 
-    assert verify_internal_event(
-        "alerts.receive_alert_events", payload, old_producer_auth, caller="lite-monitor", now=now
-    ) is True
+    assert verify_internal_event("alerts.receive_alert_events", payload, old_producer_auth, caller="lite-monitor", now=now) is True
 
 
 def test_internal_event_auth_rejects_shared_keys_after_strict_caller_key_cutover(settings, monkeypatch):
@@ -151,12 +141,8 @@ def test_internal_event_auth_rejects_shared_keys_after_strict_caller_key_cutover
         key="django-still-nonempty",
     )
 
-    assert verify_internal_event(
-        "alerts.receive_alert_events", payload, old_global_auth, caller="lite-monitor", now=now
-    ) is False
-    assert verify_internal_event(
-        "alerts.receive_alert_events", payload, old_django_auth, caller="lite-monitor", now=now
-    ) is False
+    assert verify_internal_event("alerts.receive_alert_events", payload, old_global_auth, caller="lite-monitor", now=now) is False
+    assert verify_internal_event("alerts.receive_alert_events", payload, old_django_auth, caller="lite-monitor", now=now) is False
 
 
 def test_internal_event_auth_rejects_empty_key(monkeypatch):
@@ -181,3 +167,38 @@ def test_legacy_internal_event_auth_defaults_to_rolling_compatibility(monkeypatc
 
     monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
     assert legacy_internal_event_auth_allowed() is False
+
+
+def test_workflow_orchestration_can_sign_notification_dispatch(monkeypatch):
+    from apps.core.utils.internal_event_auth import sign_internal_event, verify_internal_event
+
+    caller = "workflow-orchestration"
+    monkeypatch.setenv("ALERTS_INTERNAL_EVENT_AUTH_WORKFLOW_ORCHESTRATION_KEY", "workflow-secret")
+    payload = {
+        "delivery_key": "workflow:execution-1:notify",
+        "channel_id": 1,
+        "organization_ids": [1],
+        "recipients": ["admin"],
+        "title": "巡检完成",
+        "body": "查看执行详情",
+        "event_payload": {"execution_id": "execution-1"},
+        "required_delivery_mode": "",
+        "producer": caller,
+        "ack_mode": "",
+        "ack_token": "",
+    }
+
+    auth = sign_internal_event(
+        "system_mgmt.dispatch_notification",
+        payload,
+        caller=caller,
+        now=1_700_000_000,
+    )
+
+    assert verify_internal_event(
+        "system_mgmt.dispatch_notification",
+        payload,
+        auth,
+        caller,
+        now=1_700_000_000,
+    )

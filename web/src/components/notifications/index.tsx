@@ -9,6 +9,8 @@ import { useClientData } from '@/context/client';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import Icon from '@/components/icon';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
+import { useRouter } from 'next/navigation';
 
 interface Notification {
   id: number;
@@ -16,10 +18,12 @@ interface Notification {
   app_module: string;
   content: string;
   is_read: boolean;
+  target_url?: string;
 }
 
 const Notifications = () => {
   const { t } = useTranslation();
+  const router = useRouter();
   const { get, post, del } = useApiClient();
   const { clientData } = useClientData();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -55,6 +59,9 @@ const Notifications = () => {
     clientData
       .filter(item => item.icon)
       .map((item) => [item.name, item.icon as string])
+  );
+  const appDisplayNameMap = new Map(
+    clientData.map((item) => [item.name, resolveAppDisplayName(item, t)])
   );
 
   const fetchNotifications = useCallback(async (pageNum: number, isUnreadOnly: boolean) => {
@@ -174,6 +181,10 @@ const Notifications = () => {
         setUnreadCount(prev => prev + 1);
       }
     }
+    if (notification.target_url?.startsWith('/') && !notification.target_url.startsWith('//')) {
+      setOpen(false);
+      router.push(notification.target_url);
+    }
   };
 
   const content = (
@@ -236,7 +247,7 @@ const Notifications = () => {
               return (
                 <div
                   key={notification.id}
-                  className={`group px-3 py-3 border-1 border-[var(--color-border)] border-b last:border-b-0 first:pt-0 cursor-pointer`}
+                  className="group cursor-pointer border-b border-[var(--color-border)] px-3 py-3 last:border-b-0"
                   onClick={handlenotificationClick(notification)}
                 >
                   <div className='flex items-start justify-between'>
@@ -246,7 +257,7 @@ const Notifications = () => {
                         className="text-2xl flex-shrink-0"
                       />
                       <div className={`text-base font-medium ${!notification.is_read ? '' : 'text-[var(--color-text-3)]'}`}>
-                        {notification.app_module}
+                        {appDisplayNameMap.get(notification.app_module) || notification.app_module}
                       </div>
                     </div>
                     {!notification.is_read && (
@@ -317,11 +328,11 @@ const Notifications = () => {
       arrow={false}
     >
       <Tooltip title={t('common.notification')}>
-        <div className="cursor-pointer flex items-center justify-center">
+        <button type="button" aria-label={t('common.notification')} className="cursor-pointer flex items-center justify-center border-0 bg-transparent p-0">
           <Badge size="small" count={unreadCount}>
             <BellOutlined className='text-[16px] text-[var(--color-text-3)] hover:text-[var(--color-primary)] transition-colors' />
           </Badge>
-        </div>
+        </button>
       </Tooltip>
     </Popover>
   )

@@ -122,6 +122,13 @@ def test_get_authorized_nodes_by_ids_带permission_data(node):
     assert _last(node.client) == ("get_authorized_nodes_by_ids", (["n1"], {"team": [1]}), {})
 
 
+def test_execution_target_projection_requires_local_client(node):
+    with pytest.raises(Exception) as error:
+        node.get_authorized_execution_targets_by_ids(["n1"], {"team": [1]})
+
+    assert getattr(error.value, "code", "") == "rpc.local_client_required"
+
+
 def test_update_child_config_content_组装字典(node):
     node.update_child_config_content(7, "content", {"K": "V"})
     assert _last(node.client) == (

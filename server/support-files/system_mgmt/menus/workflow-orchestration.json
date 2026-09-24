@@ -1,0 +1,55 @@
+{
+  "client_id": "workflow-orchestration",
+  "name": "Workflow Orchestration",
+  "url": "/workflow-orchestration",
+  "icon": "liuchengguanli1",
+  "tags": [
+    "tag.workflow_design",
+    "tag.workflow_execution",
+    "tag.automation",
+    "tag.approval"
+  ],
+  "description": "app.workflow-orchestration",
+  "menus": [
+    {
+      "name": "Workflow Orchestration",
+      "children": [
+        {
+          "id": "workflow",
+          "name": "Workflow",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Execute",
+            "Publish",
+            "Approve",
+            "Manage",
+            "Delete"
+          ]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "workflow_orchestration_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "workflow_orchestration_normal",
+      "menus": [
+        "workflow-View",
+        "workflow-Add",
+        "workflow-Edit",
+        "workflow-Execute",
+        "workflow-Publish",
+        "workflow-Approve",
+        "workflow-Manage",
+        "workflow-Delete"
+      ]
+    }
+  ]
+}

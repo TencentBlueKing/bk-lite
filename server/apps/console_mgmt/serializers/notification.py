@@ -12,7 +12,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Notification
-        fields = ["id", "notification_time", "app_module", "content", "is_read", "source"]
+        fields = ["id", "notification_time", "app_module", "content", "is_read", "source", "target_url"]
         read_only_fields = ["id", "notification_time"]
 
     def get_is_read(self, obj):

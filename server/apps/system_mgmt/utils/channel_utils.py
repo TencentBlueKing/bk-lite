@@ -5,6 +5,8 @@ import json
 import smtplib
 import time
 import urllib.parse
+import uuid
+from datetime import datetime, timezone
 from email import encoders
 from email.header import Header
 from email.mime.base import MIMEBase
@@ -333,7 +335,58 @@ def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=N
     if method_name == "trigger_workflow_by_nats":
         if bot_id is None or not node_id:
             return {"result": False, "message": "NATS channel config missing bot_id or node_id"}
-        payload.update({"bot_id": bot_id, "node_id": node_id})
+        payload = {
+            "message": payload.get("message"),
+            "team": payload.get("team"),
+            "user_ids": payload.get("user_ids") or [],
+            "bot_id": bot_id,
+            "node_id": node_id,
+        }
+    elif method_name == "trigger_orchestration_workflow_by_nats":
+        trigger_id = str(config.get("trigger_id") or "").strip()
+        subject = str(config.get("subject") or "").strip()
+        if not trigger_id or not subject:
+            return {"result": False, "message": "NATS channel config missing trigger_id or subject"}
+        if config.get("active") is not True:
+            return {"result": False, "message": "编排流程已停用"}
+        try:
+            team = int(payload.get("team"))
+            channel_teams = {int(item) for item in (getattr(channel_obj, "team", None) or [])}
+        except (TypeError, ValueError):
+            return {"result": False, "message": "NATS content.team must be a single integer team id"}
+        if team not in channel_teams:
+            return {"result": False, "message": "NATS content.team is outside the channel organization scope"}
+        event_id = str(payload.get("event_id") or f"notification-{uuid.uuid4().hex}").strip()
+        occurred_at = str(payload.get("occurred_at") or datetime.now(timezone.utc).isoformat()).strip()
+        producer = str(payload.get("producer") or "system-mgmt").strip()
+        if not event_id or len(event_id) > 128 or not occurred_at or len(occurred_at) > 64 or not producer or len(producer) > 100:
+            return {"result": False, "message": "NATS event metadata is invalid"}
+        event_payload = {
+            "message": payload.get("message"),
+            "team": team,
+            "user_ids": payload.get("user_ids") or [],
+        }
+        for field in ("object_id", "scene"):
+            if payload.get(field):
+                event_payload[field] = payload[field]
+        payload = {
+            "data": {
+                "trigger_id": trigger_id,
+                "team": team,
+                "subject": subject,
+                "event": {
+                    "event_id": event_id,
+                    "occurred_at": occurred_at,
+                    "producer": producer,
+                    "payload": event_payload,
+                },
+            },
+            "actor_context": {
+                "authorized_team_ids": sorted(channel_teams),
+                "username": "managed-nats-channel",
+                "domain": "domain.com",
+            },
+        }
 
     try:
         result = nats_client.request_sync(namespace, method_name, _timeout=timeout, **payload)

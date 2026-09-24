@@ -1,0 +1,21 @@
+{
+  "key": "bklite_document_render",
+  "name": "文档生成",
+  "category": "报告",
+  "description": "根据 Word 或 Excel 模板和结构化数据生成受控下载文件",
+  "source_type": "PLATFORM",
+  "driver": "WORKER",
+  "trusted_context": true,
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_document_render.runtime.handler:execute",
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 900,
+  "retry_count": 1,
+  "retry_delay_seconds": 2,
+  "idempotent": false,
+  "safety_level": "MUTATION",
+  "resource_scope": "ORGANIZATION",
+  "required_permissions": [],
+  "error_types": []
+}
