@@ -1,5 +1,12 @@
 import type { AiContextSection, AiPageContext, PageContextMessage } from '@/components/ai-page-context/types';
-import { cleanLabel, readPaginationRange, readTableRows, selectedTreeLabel } from '@/components/ai-page-context/domSnapshot';
+import {
+  cleanLabel,
+  readPaginationRange,
+  readTableRows,
+  readTreeLines,
+  selectedTreeLabel,
+  treeSection,
+} from '@/components/ai-page-context/domSnapshot';
 
 export const fingerprintRows = (rows: string[]): string =>
   rows.slice(0, 12).map((row) => row.slice(0, 48)).join('|');
@@ -27,6 +34,7 @@ export const buildTableListContext = (options: {
       content: identity.join('\n'),
       priority: 10,
     },
+    ...treeSection(root),
     ...(range
       ? [{
         id: 'list-range',
@@ -57,8 +65,11 @@ export const tableListMessage = (titlePrefix: string): PageContextMessage => {
   const rows = readTableRows();
   const range = readPaginationRange();
   const objectLabel = selectedTreeLabel();
+  const tree = readTreeLines();
   const title = `${titlePrefix}${objectLabel || 'all'}`;
-  const currentTime = [objectLabel, range, fingerprintRows(rows)].filter(Boolean).join('::');
+  const currentTime = [objectLabel, range, fingerprintRows(rows), fingerprintRows(tree)]
+    .filter(Boolean)
+    .join('::');
   return currentTime ? { title, currentTime } : { title };
 };
 
