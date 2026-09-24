@@ -1974,6 +1974,7 @@
     "export": "导出",
     "organization": "组织",
     "created": "提交时间",
+    "succeededAt": "成功时间",
     "expires": "到期时间",
     "rows": "条",
     "cancel": "取消排队",

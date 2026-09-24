@@ -1974,6 +1974,7 @@
     "export": "Export",
     "organization": "Organization",
     "created": "Submitted",
+    "succeededAt": "Succeeded at",
     "expires": "Expires",
     "rows": "rows",
     "cancel": "Cancel queued task",
