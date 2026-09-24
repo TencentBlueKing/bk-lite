@@ -18,7 +18,7 @@ _SERVER_CPU_ARCH = (
 
 
 class PhysicalServerProtocolCollectionPlugin(BaseProtocolCollectionPlugin):
-    def get_inst_name(self, data):
+    def get_inst_name(self, data, *args, **kwargs):
         return resolve_physical_server_inst_name(data, fallback=self.inst_name)
 
     def set_physical_server_component_parent(self, data, *args, **kwargs):

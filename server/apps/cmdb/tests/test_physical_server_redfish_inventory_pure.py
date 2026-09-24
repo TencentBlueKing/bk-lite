@@ -66,6 +66,7 @@ def test_redfish_child_gauges_use_ssh_instance_names(protocol_plugin):
     protocol_plugin.format_metrics()
 
     server = protocol_plugin.result["physcial_server"][0]
+    assert server["inst_name"] == "10.0.0.8"
     assert server["cpu_core"] == 32
     assert server["cpu_threads"] == 64
     assert server["cpu_arch"] == "x64"
@@ -82,6 +83,20 @@ def test_redfish_child_gauges_use_ssh_instance_names(protocol_plugin):
 
     gpu = protocol_plugin.result["gpu"][0]
     assert gpu["inst_name"] == "A100-10.0.0.8"
+
+
+def test_parent_only_format_metrics_includes_inst_name(protocol_plugin):
+    protocol_plugin.collection_metrics_dict["physcial_server_info_gauge"] = [
+        {
+            "ip_addr": "10.0.0.8",
+            "serial_number": "SERVER-SN-8",
+            "collect_status": "success",
+        }
+    ]
+
+    protocol_plugin.format_metrics()
+
+    assert protocol_plugin.result["physcial_server"][0]["inst_name"] == "10.0.0.8"
 
 
 def test_empty_disk_and_mem_size_are_not_stored(protocol_plugin):
