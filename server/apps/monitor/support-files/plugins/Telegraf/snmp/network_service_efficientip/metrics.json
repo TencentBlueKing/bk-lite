@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_efficientip",
   "plugin": "NetworkService EfficientIP SNMP",
-  "plugin_desc": "EfficientIP SOLIDserver DDI SNMP collection for appliances under EfficientIP PEN 2440. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects private scalar health — CPU load average (eipHwCpuLoadInt), used physical memory (eipHwMemUsed), CPU temperature and PSU-1 status — plus DNS/DHCP/database service CPU and DNS/DHCP operational state, normalized to 1=healthy / 2=fault. Fan, remaining service counters and IF-MIB 32-bit / error / operStatus expansions are not collected.",
+  "plugin_desc": "SNMP monitoring template for EfficientIP network service device. It reports uptime, CPU utilization, memory used, temperature, power supply status, and interface traffic (enterprise PEN 2440).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_efficientip'}) by (instance_id)",
   "name": "NetworkService",

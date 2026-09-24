@@ -1,6 +1,6 @@
 Router Versa SNMP:
   name: Versa（Telegraf）
-  desc: 面向 Versa FlexVNF/VOS SD-WAN 路由器的 SNMP 监控模板（DEVICE-MIB，企业号 42359），采集 deviceTable 的 CPU/内存使用率以及活动/失败/最大会话。接口流量走内置 IF-MIB，本插件不声明 ifHC*。
+  desc: 面向 Versa 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、会话/连接数、接口流量（企业号 PEN 42359）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

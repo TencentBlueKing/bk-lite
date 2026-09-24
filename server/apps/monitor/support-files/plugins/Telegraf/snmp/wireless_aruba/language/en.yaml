@@ -1,8 +1,6 @@
 Wireless Aruba SNMP:
   name: Aruba AOS (Telegraf)
-  desc: SNMP monitoring template for Aruba AOS wireless controllers. It reports CPU
-    utilization, memory utilization, internal temperature, AP count, and associated
-    station count (IANA PEN 14823).
+  desc: "SNMP monitoring template for Aruba AOS wireless device. It reports uptime, CPU utilization, memory utilization, temperature, interface traffic, and wireless clients/radio (enterprise PEN 14823)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

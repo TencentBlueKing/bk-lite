@@ -1,9 +1,6 @@
 Switch Ubiquoss SNMP:
   name: Switch Ubiquoss SNMP
-  desc: SNMP monitoring template for Ubiquoss switches. Device health comes from
-    private 1-minute CPU (with 5-second and 5-minute fallbacks), memory usage computed
-    from alloc/total or one minus free/total, and an optional fan reading. Interface
-    traffic uses the built-in IF-MIB floor (IANA PEN 7800).
+  desc: "SNMP monitoring template for Ubiquoss switch. It reports uptime, CPU utilization, memory utilization, fan, and interface traffic (enterprise PEN 7800)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

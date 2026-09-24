@@ -1,6 +1,6 @@
 ConsoleServer Opengear SNMP:
   name: Opengear (Telegraf)
-  desc: 面向 Opengear 控制台服务器的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率。
+  desc: 面向 Opengear 串口服务器的 SNMP 监控模板，可采集运行时长、接口流量（基于标准 MIB）。
 monitor_object:
   ConsoleServer: 控制台服务器
 monitor_object_type:

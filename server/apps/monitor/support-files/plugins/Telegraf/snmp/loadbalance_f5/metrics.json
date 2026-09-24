@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_f5",
   "plugin": "Loadbalance F5 SNMP",
-  "plugin_desc": "F5-specific SNMP collection template for F5 BIG-IP load balancers. Collects MIB-II uptime, IF-MIB 64-bit HC interface traffic, host CPU (sysGlobalHostCpuUsageRatio5s), TMM memory total/used (sysStatMemoryTotal / sysStatMemoryUsed), current client connections (sysStatClientCurConns), and chassis temperature/fan/PSU tables (sysChassisTempTemperature / sysChassisFanStatus / sysChassisPowerSupplyStatus). Supported brands/models — F5 BIG-IP (LTM/GTM/DNS; iSeries / VIPRION / VE).",
+  "plugin_desc": "SNMP monitoring template for F5 load balancer. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic, for BIG-IP (enterprise PEN 3375).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_f5'}) by (instance_id)",
   "name": "Loadbalance",

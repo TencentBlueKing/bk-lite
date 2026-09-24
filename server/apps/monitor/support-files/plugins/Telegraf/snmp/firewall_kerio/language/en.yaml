@@ -1,7 +1,6 @@
 Firewall Kerio Control SNMP:
   name: Kerio Control (Telegraf)
-  desc: SNMP monitoring template for Kerio Control firewall. It reports system uptime,
-    interface speed, inbound error packets, and other key metrics
+  desc: "SNMP monitoring template for Kerio Control firewall. It reports uptime, sessions/connections, and interface traffic, for Kerio Control UTM (enterprise PEN 17028)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ligowave",
   "plugin": "Wireless LigoWave SNMP",
-  "plugin_desc": "LigoWave wireless AP and backhaul SNMP child template for devices under enterprise PEN 32750 (LIGO-RADIO3-DRV). Interface traffic is supplied by the shared Wireless SNMP IF-MIB floor. Proven private telemetry is ligoRdo3StatsTable RF stats indexed by ifIndex and endpoint — antenna-0 receive signal, noise, SNR, optional extra antenna signal columns, and optional transmit power. CPU, memory, temperature, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — LigoWave wireless access points and backhaul radios.",
+  "plugin_desc": "SNMP monitoring template for LigoWave wireless device. It reports uptime and interface traffic (enterprise PEN 32750).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_ligowave'}) by (instance_id)",
   "name": "Wireless",

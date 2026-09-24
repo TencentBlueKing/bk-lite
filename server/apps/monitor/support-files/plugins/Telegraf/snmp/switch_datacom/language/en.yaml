@@ -1,7 +1,6 @@
 Switch Datacom SNMP:
   name: Datacom (Telegraf)
-  desc: SNMP monitoring template for Datacom switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics (IANA PEN 3709).
+  desc: "SNMP monitoring template for Datacom switch. It reports uptime, CPU utilization, memory utilization, and interface traffic, for DmOS (enterprise PEN 3709)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

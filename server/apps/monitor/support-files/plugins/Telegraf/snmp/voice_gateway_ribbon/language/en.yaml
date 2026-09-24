@@ -1,8 +1,6 @@
 VoiceGateway Ribbon SNMP:
   name: Ribbon (Telegraf)
-  desc: SNMP monitoring template for Ribbon voice gateway. It reports CPU usage, memory
-    usage, optional power-supply and disk status, fan speed, per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Ribbon voice gateway. It reports uptime, CPU utilization, memory utilization, fan, power supply status, and interface traffic, for Ribbon/Sonus SBC (enterprise PEN 2879)."
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:

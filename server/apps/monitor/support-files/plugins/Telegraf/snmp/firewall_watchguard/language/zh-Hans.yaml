@@ -1,6 +1,6 @@
 Firewall WatchGuard SNMP:
   name: WatchGuard（Telegraf）
-  desc: 面向 WatchGuard Firebox 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率（0.01% 换算）、UCD 内存、接口速率等主要指标。
+  desc: 面向 WatchGuard 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、会话/连接数、接口流量，适用于 Firebox（企业号 PEN 3097）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:

@@ -1,8 +1,6 @@
 Router Viprinet SNMP:
   name: Viprinet (Telegraf)
-  desc: SNMP monitoring template for Viprinet router. It reports used memory in bytes,
-    chassis and CPU temperature, power-supply and fan health, CPU load average, and
-    per-port inbound and outbound traffic rates.
+  desc: "SNMP monitoring template for Viprinet router. It reports uptime, CPU utilization, memory used, temperature, fan, power supply status, and interface traffic (enterprise PEN 35424)."
 monitor_object:
   Router: Router
 monitor_object_type:

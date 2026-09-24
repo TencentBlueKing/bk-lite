@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_transition",
   "plugin": "Switch Transition Networks SNMP",
-  "plugin_desc": "Transition Networks (now Lantronix) switch / managed media-converter SNMP collection (IANA PEN 868). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Proven private device-health objects are CPU temperature in degrees Celsius (tnDevSysHwInforCPUtmp, table). Optional board temperature (tnDevSysHwInforBoardtmp) is collected when the device returns it. CPU and memory utilization are not collected because no private CPU or memory utilization object is published. Fan and power-supply state are not collected. Supported brands/models — Transition Networks SISPM/SM hardened managed switches and ION/IONMM managed media converters.",
+  "plugin_desc": "SNMP monitoring template for Transition Networks switch. It reports uptime, temperature, and interface traffic, for SISPM/SM and ION/IONMM (enterprise PEN 868).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_transition'}) by (instance_id)",
   "name": "Switch",

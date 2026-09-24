@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cisco_router",
   "plugin": "Router Cisco SNMP",
-  "plugin_desc": "Cisco ISR/ASR/IOS-XE router SNMP collection. Collects Cisco private OIDs for device health: CPU utilization (CISCO-PROCESS-MIB cpmCPUTotal5minRev), memory pools (CISCO-MEMORY-POOL-MIB name/used/free), and CISCO-ENVMON temperature, fan and power-supply status. Supported brands/models — Cisco ISR, ASR and IOS-XE routers. Interface traffic is supplied by the shared Router SNMP IF-MIB floor.",
+  "plugin_desc": "SNMP monitoring template for Cisco ISR/ASR/IOS-XE routers. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 9).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_cisco_router'}) by (instance_id)",
   "name": "Router",

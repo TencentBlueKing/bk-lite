@@ -1,7 +1,6 @@
 Firewall Amaranten SNMP:
   name: Amaranten (Telegraf)
-  desc: SNMP monitoring template for Amaranten firewall. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Amaranten firewall. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 1991)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

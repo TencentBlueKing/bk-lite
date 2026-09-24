@@ -1,7 +1,6 @@
 Loadbalance Superiority SNMP:
   name: Superiority (Telegraf)
-  desc: SNMP monitoring template for Superiority load balancer. It reports system
-    uptime, CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Superiority load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 1991)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

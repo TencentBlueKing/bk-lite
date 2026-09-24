@@ -1,9 +1,6 @@
 ConsoleServer Lantronix SLC SNMP:
   name: Lantronix SLC ConsoleServer SNMP
-  desc: SNMP monitoring template for Lantronix SLC console server. It reports chassis
-    internal temperature, power-supply A/B status, optional active session count,
-    optional per-port sensor temperature and humidity, per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Lantronix SLC console server. It reports uptime, temperature, power supply status, sessions/connections, interface traffic, and humidity (enterprise PEN 244)."
 monitor_object:
   ConsoleServer: ConsoleServer
 monitor_object_type:

@@ -1,6 +1,6 @@
 NetworkService EfficientIP SNMP:
   name: EfficientIP（Telegraf）
-  desc: 面向 EfficientIP 网络服务设备的 SNMP 监控模板,可采集 CPU 负载、内存使用、DNS/DHCP 服务状态、每端口入向流量速率等主要指标（企业号 PEN 2440）。
+  desc: 面向 EfficientIP 网络服务设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存已用量、温度、电源状态、接口流量（企业号 PEN 2440）。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:

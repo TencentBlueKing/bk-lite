@@ -1,8 +1,6 @@
 Transmission Redline SNMP:
   name: Redline (Telegraf)
-  desc: SNMP monitoring template for Redline AN80i transmission device. It reports
-    average SINADR, PMP downlink RSSI, optional PMP uplink RSSI, per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 10728).
+  desc: "SNMP monitoring template for Redline transmission device. It reports uptime and interface traffic, for AN80i PTP and PMP (enterprise PEN 10728)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

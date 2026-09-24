@@ -1,6 +1,6 @@
 Switch Alcatel OmniSwitch SNMP:
   name: Alcatel OmniSwitch（Telegraf）
-  desc: 面向 Alcatel OmniSwitch AOS6 交换机的 SNMP 监控模板（ALCATEL-IND1-HEALTH-MIB，PEN 6486.800），采集设备级 CPU 使用率（healthDeviceCpuLatest）、内存使用率（healthDeviceMemoryLatest）、每端口入向流量速率与系统运行时间。
+  desc: 面向 Alcatel OmniSwitch 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 6486）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

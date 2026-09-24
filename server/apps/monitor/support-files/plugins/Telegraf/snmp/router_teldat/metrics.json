@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_teldat",
   "plugin": "Router Teldat SNMP",
-  "plugin_desc": "Teldat 企业级路由器/SD-WAN CPE 专用 SNMP 采集模板（TELDAT-MON-CPU-MIB / TELDAT-MON-CommonInfo-MIB，企业号 2007）。除标准 IF-MIB 接口指标外，额外采集私有标量：5 分钟 CPU 使用率（teldatCPUBusy5min，直接 0-100%）以及 1 分钟/5 秒窗口，cache 内存总量/空闲（telProdNpMonSistemMemTotalcache / telProdNpMonSistemMemFreecache，字节，用量按 (总量-空闲)/总量 推导）。Teldat 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Teldat 路由器/SD-WAN CPE（Atlas/Regesta/iMxx 系列，企业号 2007）。",
+  "plugin_desc": "SNMP monitoring template for Teldat router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 2007).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_teldat'}) by (instance_id)",
   "name": "Router",

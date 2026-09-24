@@ -1,7 +1,6 @@
 Router Juniper MX SNMP:
   name: Juniper MX (Telegraf)
-  desc: SNMP monitoring template for Juniper MX router. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Juniper MX router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 2636)."
 monitor_object:
   Router: Router
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_aruba_wireless",
   "plugin": "Wireless Aruba SNMP",
-  "plugin_desc": "Aruba AOS wireless controller SNMP collection under Aruba PEN 14823. It collects WLSX-SYSTEMEXT CPU utilization (wlsxSysExtCpuUsedPercent), memory utilization (wlsxSysExtMemoryUsedPercent), and internal temperature (wlsxSysExtInternalTemparature, MIB spelling), plus WLSX-SWITCH controller AP count (wlsxSwitchTotalNumAccessPoints) and associated station count (wlsxSwitchTotalNumStationsAssociated). Interface traffic comes from the built-in IF-MIB table. This plugin is for AOS controllers only; it does not share discovery or OIDs with ArubaOS-CX switch_aruba (enterprise 47196) and does not collect Instant/IAP objects.",
+  "plugin_desc": "SNMP monitoring template for Aruba AOS wireless device. It reports uptime, CPU utilization, memory utilization, temperature, interface traffic, and wireless clients/radio (enterprise PEN 14823).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_aruba_wireless'}) by (instance_id)",
   "name": "Wireless",

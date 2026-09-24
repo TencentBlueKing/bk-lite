@@ -1,7 +1,6 @@
 Transmission Tachyon SNMP:
   name: Tachyon (Telegraf)
-  desc: SNMP monitoring template for Tachyon transmission device. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Tachyon transmission device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for TNA 300 (enterprise PEN 57344)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

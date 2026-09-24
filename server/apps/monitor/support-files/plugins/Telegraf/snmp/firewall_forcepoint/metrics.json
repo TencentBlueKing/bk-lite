@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_forcepoint",
   "plugin": "Firewall Forcepoint SNMP",
-  "plugin_desc": "Forcepoint NGFW SNMP collection. PEN 1369 STONESOFT-FIREWALL-MIB supplies per-core CPU (fwCpuTotal, averaged) and memory bytes (fwMemBytesTotal / fwMemBytesUsed). PEN 47565 FORCEPOINT-NGFW-ENGINE-MIB adds current connections (fwConnNumber), temperature (fwHwTemperature), PSU/fan status (fwPsuStatus / fwFanStatus, FwHwComponentStatus ok(0) normalized to 1=ok / 2=bad) and optional fan RPM (fwFan). Interface counters come from the built-in IF-MIB catalog; this plugin does not declare ifHC*. Supported models — Forcepoint NGFW / Stonesoft / McAfee NGFW hardware and virtual engines.",
+  "plugin_desc": "SNMP monitoring template for Forcepoint firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic (enterprise PEN 47565).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_forcepoint'}) by (instance_id)",
   "name": "Firewall",

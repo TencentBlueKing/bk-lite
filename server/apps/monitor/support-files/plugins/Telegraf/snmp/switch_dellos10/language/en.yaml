@@ -1,7 +1,6 @@
 Switch Dell OS10 SNMP:
   name: Dell OS10 (Telegraf)
-  desc: SNMP monitoring template for Dell switch. It reports system uptime, CPU utilization,
-    interface speed, and other key metrics
+  desc: "SNMP monitoring template for Dell OS10 switch. It reports uptime, CPU utilization, temperature, fan, power supply status, and interface traffic, for OS10 / SmartFabric OS10 (enterprise PEN 674)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

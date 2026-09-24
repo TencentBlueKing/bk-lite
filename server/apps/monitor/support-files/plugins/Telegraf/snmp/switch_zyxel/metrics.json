@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_zyxel",
   "plugin": "Switch Zyxel SNMP",
-  "plugin_desc": "Zyxel switch SNMP collection (enterprise 890). For NebulaFlex/XGS1930/XS1930 (sysObjectID prefix 1.3.6.1.4.1.890.1.15) it collects ES-COMMON CPU and memory utilization (sysMgmtCPUUsage / sysMgmtMemUsage, direct 0-100 percent) as top-level scalar GETs. Older GS lines keep the 890.1.5.8.20 CPU scalar and temperature table as fallback. Interface traffic comes from the built-in IF-MIB table. This plugin does not collect GS1900 HW-MONITOR temperature; fan is raw RPM (not a state) and power-supply state is N/A.",
+  "plugin_desc": "SNMP monitoring template for Zyxel switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 890).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_zyxel'}) by (instance_id)",
   "name": "Switch",

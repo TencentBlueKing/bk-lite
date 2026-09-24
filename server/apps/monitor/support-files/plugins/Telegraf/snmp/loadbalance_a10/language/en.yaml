@@ -1,7 +1,6 @@
 Loadbalance A10 SNMP:
   name: A10 (Telegraf)
-  desc: SNMP monitoring template for A10 Thunder/AX load balancer. It reports system
-    uptime, average CPU utilization, and memory utilization (enterprise 22610)
+  desc: "SNMP monitoring template for A10 load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Thunder ADC / AX series (enterprise PEN 22610)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

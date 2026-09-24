@@ -1,9 +1,6 @@
 Switch Comtrol RocketLinx SNMP:
   name: Comtrol RocketLinx (Telegraf)
-  desc: SNMP monitoring template for Comtrol RocketLinx switch. It reports SFP DDM
-    temperature, SFP transmit power, SFP receive power, per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime (IANA PEN 2882). Chassis
-    CPU and memory utilization are not collected.
+  desc: "SNMP monitoring template for Comtrol RocketLinx switch. It reports uptime, temperature, optical modules, and interface traffic (enterprise PEN 2882)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -1,8 +1,6 @@
 Switch Westermo SNMP:
   name: Westermo（Telegraf）
-  desc: 面向 Westermo WeOS 工业交换机的 SNMP 监控模板（WESTERMO-WEOS-MIB，企业号 16177，WeOS 树
-    1.3.6.1.4.1.16177.2），可采集 1/5/15 分钟 CPU 负载、可用内存以及接口流量。WeOS 无私有整机温度/风扇/电源 Gauge，故这些项为
-    N/A。
+  desc: 面向 Westermo 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、接口流量（企业号 PEN 16177）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

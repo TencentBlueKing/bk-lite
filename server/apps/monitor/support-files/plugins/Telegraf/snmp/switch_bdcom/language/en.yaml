@@ -1,7 +1,6 @@
 Switch BDCOM SNMP:
   name: BDCOM (Telegraf)
-  desc: SNMP monitoring template for BDCOM switch. It reports system uptime, per-port
-    inbound traffic rate, and per-port outbound traffic rate (IANA PEN 3320).
+  desc: "SNMP monitoring template for BDCOM switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for managed Ethernet switches and OLT line cards (enterprise PEN 3320)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -1,6 +1,6 @@
 NetworkService Meinberg LANTIME SNMP:
   name: Meinberg LANTIME（Telegraf）
-  desc: 面向 Meinberg LANTIME 网络服务设备的 SNMP 监控模板,可采集 NTP 状态、NTP 层级、内部温度、每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Meinberg LANTIME 网络服务设备的 SNMP 监控模板，可采集运行时长、温度、接口流量（企业号 PEN 5597）。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:

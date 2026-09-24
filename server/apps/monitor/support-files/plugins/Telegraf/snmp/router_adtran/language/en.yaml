@@ -1,9 +1,6 @@
 Router Adtran SNMP:
   name: Adtran (Telegraf)
-  desc: SNMP monitoring template for Adtran AOS routers (ADTRAN-AOSCPU scalars as
-    top-level field+.0). It reports CPU utilization (including 1/5-minute averages),
-    memory total and HeapFree (.4.8), derived usage, heap size, and IF-MIB interface
-    traffic.
+  desc: "SNMP monitoring template for Adtran router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 664)."
 monitor_object:
   Router: Router
 monitor_object_type:

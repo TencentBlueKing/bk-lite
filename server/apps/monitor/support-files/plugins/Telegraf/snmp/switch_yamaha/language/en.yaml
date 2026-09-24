@@ -1,7 +1,6 @@
 Switch Yamaha SNMP:
   name: Yamaha (Telegraf)
-  desc: SNMP monitoring template for Yamaha switch. It reports CPU utilization, per-port
-    inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Yamaha switch. It reports uptime, CPU utilization, memory utilization, and interface traffic, for SWX-series (enterprise PEN 1182)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

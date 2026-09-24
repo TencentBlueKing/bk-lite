@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_relianoid",
   "plugin": "Loadbalance RELIANOID SNMP",
-  "plugin_desc": "RELIANOID load balancer SNMP child template (enterprise 61269). RELIANOID appliances do not expose CPU or memory scalars under private enterprise 61269; health is collected from UCD-SNMP (enterprise 2021). CPU utilization is 100 minus ssCpuIdle, or ssCpuUser plus ssCpuSystem when idle is absent. Memory utilization is derived from memTotalReal and memAvailReal (kB). Optional 1/5/15-minute load averages (laLoad) are collected when present. noidHostname under enterprise 61269 is identity only. Interface traffic stays on the existing IF-MIB 64-bit HC chassis; error counters and ifOperStatus are not expanded. Temperature, fan, power and current connections remain N/A. Supported brands/models — RELIANOID ADC and load-balancing appliances.",
+  "plugin_desc": "SNMP monitoring template for RELIANOID load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for RELIANOID ADC (enterprise PEN 61269).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_relianoid'}) by (instance_id)",
   "name": "Loadbalance",

@@ -1,9 +1,6 @@
 Wireless Albentia SNMP:
   name: Albentia (Telegraf)
-  desc: SNMP monitoring template for Albentia wireless device. It reports RF
-    temperature, optional sector temperature, optional transmit power, per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 28087).
+  desc: "SNMP monitoring template for Albentia wireless device. It reports uptime, temperature, and interface traffic (enterprise PEN 28087)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

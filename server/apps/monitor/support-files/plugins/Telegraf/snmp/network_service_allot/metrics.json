@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_allot",
   "plugin": "NetworkService Allot SNMP",
-  "plugin_desc": "Allot network-service SNMP collection for appliances under enterprise PEN 2603. Beyond the NetworkService IF chassis (MIB-II sysUpTime and IF-MIB 64-bit HC interface traffic, without ifInErrors or ifOperStatus expansion), it walks alSensorType and keeps cpu(4) and memory(5) rows, then reads alSensorRawValue at those indices as CPU and memory utilization percentages. Temperature and storage rows are taken from the same sensor table by type. Sensor indices are discovered from the type column and are not assumed to be fixed. Alert-tree scalars and alert-configuration tables are not treated as chassis health readings. Fan and power-supply rows exist in the same table, but their raw values have no documented 1=healthy/2=fault encoding, so they are not promoted to shared fan or PSU health states. Supported brands/models — Allot NetEnforcer and service-gateway appliances (enterprise 2603).",
+  "plugin_desc": "SNMP monitoring template for Allot network service device. It reports uptime, CPU utilization, memory utilization, temperature, disk usage, and interface traffic, for NetEnforcer (enterprise PEN 2603).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_allot'}) by (instance_id)",
   "name": "NetworkService",

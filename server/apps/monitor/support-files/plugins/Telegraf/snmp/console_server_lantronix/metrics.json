@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_lantronix",
   "plugin": "ConsoleServer Lantronix SLC SNMP",
-  "plugin_desc": "Lantronix SLC console-server SNMP collection for devices under Lantronix PEN 244 (LANTRONIX-SLC). The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds verified chassis leaves: slcSystemInternalTemp as device_temperature_celsius (9999 read-error values are dropped), slcDevPowerSupplyA/B as psu_a_status/psu_b_status normalized conservatively to 1=healthy and 2=fault (notInstalled on B is not treated as fault) and rolled up to device_psu_state, plus optional slcConnNumber as active_sessions. Optional per-port sensor temperature and humidity DisplayString columns are collected when numeric; empty values are skipped. CPU and memory percentages are not faked because LANTRONIX-SLC-MIB does not expose stable shared CPU or memory gauges.",
+  "plugin_desc": "SNMP monitoring template for Lantronix SLC console server. It reports uptime, temperature, power supply status, sessions/connections, interface traffic, and humidity (enterprise PEN 244).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='console_server', collect_type='snmp_lantronix'}) by (instance_id)",
   "name": "ConsoleServer",

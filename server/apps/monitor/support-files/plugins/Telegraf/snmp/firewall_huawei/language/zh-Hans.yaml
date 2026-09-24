@@ -1,6 +1,6 @@
 Firewall Huawei SNMP:
   name: 华为 USG（Telegraf）
-  desc: 面向华为 USG 防火墙的 SNMP 监控。采集实体 CPU、内存、温度与电压，以及当前会话、新建会话、建连速率、半连接、TCP/UDP/ICMP 会话数和整机转发吞吐。USG9500 在插有 SPU 时额外报告各 SPU CPU 使用率。接口指标使用平台内置 IF-MIB。支持 USG6000、USG6000E、USG9500 与 HiSecEngine USG。
+  desc: 面向华为 USG 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、会话/连接数、会话建立速率、接口流量、电压（企业号 PEN 2011）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:

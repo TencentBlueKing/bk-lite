@@ -1,7 +1,6 @@
 Firewall ScreenOS SNMP:
   name: Juniper ScreenOS (Telegraf)
-  desc: SNMP monitoring template for ScreenOS firewall. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Juniper ScreenOS firewall. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 3224)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ruckus_wireless",
   "plugin": "Wireless Ruckus SNMP",
-  "plugin_desc": "Ruckus wireless controller SNMP collection for ZoneDirector under Ruckus PEN 25053. It collects RUCKUS-SYSTEM CPU and memory utilization, plus ZoneDirector associated AP count, registered AP count, client station count, licensed AP count, and ZoneDirector CPU and memory. SmartZone/SCG and Unleashed use different OID trees and must not share this instance. Interface traffic comes from the built-in IF-MIB table. Per-AP tables are not collected.",
+  "plugin_desc": "SNMP monitoring template for Ruckus wireless device. It reports uptime, CPU utilization, memory utilization, interface traffic, and wireless clients/radio (enterprise PEN 25053).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_ruckus_wireless'}) by (instance_id)",
   "name": "Wireless",

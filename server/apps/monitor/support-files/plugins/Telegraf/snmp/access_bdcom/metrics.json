@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bdcom",
   "plugin": "Access BDCOM SNMP",
-  "plugin_desc": "BDCOM access-device SNMP collection under enterprise PEN 3320 (BDCOM-PROCESS-MIB, BDCOM-MEMORY-POOL-MIB, optional BDCOM-SYS). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB interface traffic, it collects control-plane CPU utilization (prefer bdpmCPUTotal5min, optional bdpmCPUTotal1min fallback), primary memory-pool used and free bytes (bdcomMemoryPoolUsed / bdcomMemoryPoolFree, selected by bdcomMemoryPoolName), and optional chassis temperature (bdenvTestPt1Measure). Memory utilization is computed as used / (used + free). PON, ONU and optical-power tables are not collected. Supported brands/models — BDCOM access devices and OLT (GP/EP series).",
+  "plugin_desc": "SNMP monitoring template for BDCOM access device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for BDCOM access devices and OLT (enterprise PEN 3320).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_bdcom'}) by (instance_id)",
   "name": "Access",

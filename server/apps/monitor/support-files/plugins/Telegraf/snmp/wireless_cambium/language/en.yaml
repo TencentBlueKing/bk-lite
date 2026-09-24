@@ -1,8 +1,6 @@
 Wireless Cambium SNMP:
   name: Wireless Cambium SNMP
-  desc: SNMP monitoring template for Cambium wireless device. It reports CPU usage, optional
-    connected station count, per-port inbound traffic rate, per-port outbound traffic rate,
-    and system uptime
+  desc: "SNMP monitoring template for Cambium wireless device. It reports uptime, CPU utilization, interface traffic, and wireless clients/radio (enterprise PEN 17713)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

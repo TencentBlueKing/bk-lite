@@ -1,7 +1,6 @@
 Switch Ruijie SNMP:
   name: Ruijie (Telegraf)
-  desc: SNMP monitoring template for Ruijie switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics (IANA PEN 4881).
+  desc: "SNMP monitoring template for Ruijie switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, and voltage (enterprise PEN 4881)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

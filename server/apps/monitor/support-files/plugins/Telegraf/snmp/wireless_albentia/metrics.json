@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_albentia",
   "plugin": "Wireless Albentia SNMP",
-  "plugin_desc": "Albentia wireless SNMP child template (enterprise PEN 28087). Beyond the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects the RF temperature scalar (Integer32 with two implied decimals, converted to Celsius on the query side by dividing by 100), optionally walks per-sector temperature with the same scale, and optionally walks per-sector transmit power in dBm. CPU and memory percentages are not collected because no stable private scalar was confirmed. Target RSSI is a radio configuration object and is not treated as measured RSSI. Applicable to Albentia wireless base stations and access devices that expose the private wireless tree and standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for Albentia wireless device. It reports uptime, temperature, and interface traffic (enterprise PEN 28087).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_albentia'}) by (instance_id)",
   "name": "Wireless",

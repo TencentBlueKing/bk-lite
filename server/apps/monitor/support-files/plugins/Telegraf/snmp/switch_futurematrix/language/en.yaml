@@ -1,8 +1,6 @@
 Switch FutureMatrix SNMP:
   name: Huawei FutureMatrix (Telegraf)
-  desc: SNMP monitoring template for FutureMatrix switches (enterprise 56813). Metric
-    set mirrors Switch Huawei SNMP — CPU, memory, temperature, fan, SFP optical Rx/Tx
-    (attenuation-related), and interface traffic
+  desc: "SNMP monitoring template for Huawei FutureMatrix switches. It reports uptime, CPU utilization, memory utilization, temperature, fan, optical modules, and interface traffic (enterprise PEN 56813)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

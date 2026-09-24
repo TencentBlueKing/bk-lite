@@ -1,6 +1,5 @@
 Router SNMP General:
-  desc: Telegraf SNMP template for general routers. It collects standard network interface
-    metrics and traffic statistics to monitor device health
+  desc: SNMP monitoring template for general routers. It reports uptime and interface traffic (based on standard MIBs).
   name: Router General(Telegraf)
 monitor_object:
   Router: Router

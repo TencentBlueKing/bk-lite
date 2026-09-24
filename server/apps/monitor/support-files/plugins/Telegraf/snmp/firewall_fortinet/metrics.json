@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_fortinet",
   "plugin": "Firewall Fortinet SNMP",
-  "plugin_desc": "Fortinet-specific SNMP collection template for FortiGate firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects FORTINET-FORTIGATE-MIB private OIDs for device health (CPU utilization, memory utilization and capacity) and firewall-specific state (IPv4 active sessions, session setup rate, active IPsec VPN tunnels and HA mode). Supported brands/models — Fortinet FortiGate firewalls (FortiOS).",
+  "plugin_desc": "SNMP monitoring template for Fortinet firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, session establishment rate, VPN tunnels, HA status, and interface traffic, for FortiGate (enterprise PEN 12356).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_fortinet'}) by (instance_id)",
   "name": "Firewall",

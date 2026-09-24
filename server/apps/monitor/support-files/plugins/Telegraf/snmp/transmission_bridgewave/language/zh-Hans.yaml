@@ -1,6 +1,6 @@
 Transmission BridgeWave SNMP:
   name: BridgeWave（Telegraf）
-  desc: 面向 BridgeWave 传输设备的 SNMP 监控模板,可采集 机组温度、发射机温度、接收信号电平、可选输入电压、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 6080）。
+  desc: 面向 BridgeWave 传输设备的 SNMP 监控模板，可采集运行时长、温度、接口流量、电压，适用于 FlexPort 毫米波（企业号 PEN 6080）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:

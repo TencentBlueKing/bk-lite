@@ -1,7 +1,6 @@
 Switch QTech SNMP:
   name: QTech (Telegraf)
-  desc: SNMP monitoring template for QTech switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for QTech switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for QSW-series (enterprise PEN 27514)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

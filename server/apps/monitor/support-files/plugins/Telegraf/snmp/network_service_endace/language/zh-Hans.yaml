@@ -1,6 +1,6 @@
 NetworkService Endace SNMP:
   name: Endace（Telegraf）
-  desc: 面向 Endace 网络可视化设备的 SNMP 监控模板,可采集运行时长、CPU 使用率、CPU 负载、挂载点磁盘空闲百分比、RAID 状态、每端口入向流量速率等主要指标。
+  desc: 面向 Endace 网络服务设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、接口流量，适用于 EndaceProbe（企业号 PEN 18418）。
 monitor_object:
   NetworkService: 网络服务
 monitor_object_type:

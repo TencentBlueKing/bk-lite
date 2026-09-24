@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_stormshield",
   "plugin": "Firewall Stormshield SNMP",
-  "plugin_desc": "Stormshield SNS-specific SNMP collection template for Stormshield Network Security firewalls. In addition to standard IF-MIB interface metrics, it collects HOST-RESOURCES per-core CPU load, UCD-SNMP memory scalars (memTotalReal/memAvailReal), STORMSHIELD-ASQ-STATS-MIB session counts, STORMSHIELD-IPSEC-STATS-MIB mature VPN tunnels, and STORMSHIELD-SYSTEM-MONITOR-MIB CPU temperature, PSU powered state and fan RPM. Supported brands/models — Stormshield SNS-series firewalls.",
+  "plugin_desc": "SNMP monitoring template for Stormshield firewall. It reports uptime, CPU utilization, memory utilization, temperature, VPN tunnels, and interface traffic, for SNS-series (enterprise PEN 11256).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_stormshield'}) by (instance_id)",
   "name": "Firewall",

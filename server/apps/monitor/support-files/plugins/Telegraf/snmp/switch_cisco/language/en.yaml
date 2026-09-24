@@ -1,7 +1,6 @@
 Switch Cisco SNMP:
   name: Cisco (Telegraf)
-  desc: SNMP monitoring template for Cisco switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Cisco switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, and interface traffic, for Catalyst campus switches (enterprise PEN 9)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

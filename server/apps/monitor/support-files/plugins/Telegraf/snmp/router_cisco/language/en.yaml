@@ -1,7 +1,6 @@
 Router Cisco SNMP:
   name: Cisco (Telegraf)
-  desc: SNMP monitoring template for Cisco ISR/ASR/IOS-XE routers. It reports CPU
-    utilization, memory pool utilization, temperature, fan and power-supply status.
+  desc: "SNMP monitoring template for Cisco ISR/ASR/IOS-XE routers. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 9)."
 monitor_object:
   Router: Router
 monitor_object_type:

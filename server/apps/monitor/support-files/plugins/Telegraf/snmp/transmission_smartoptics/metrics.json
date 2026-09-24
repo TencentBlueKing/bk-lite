@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_smartoptics",
   "plugin": "Transmission Smartoptics SNMP",
-  "plugin_desc": "Smartoptics DCP and M-Series WDM/DWDM transmission SNMP child template (enterprise PEN 30826). Interface traffic is supplied by the shared IF-MIB table include. DCP-ENV-MON supplies chassis health. Temperature (dcpEnvMonTemperatureValue) is tenths of a degree Celsius and is divided by 10 in the query. Fan status (dcpEnvMonFanStatus) is normalized so ok and notPresent are healthy and alarm is fault. Fan speed (RPM) and power consumption (Watt) are optional table columns and are collected when present. CPU and memory utilization are not exposed as stable shared health objects in DCP-ENV-MON, so they are not collected.",
+  "plugin_desc": "SNMP monitoring template for Smartoptics transmission device. It reports uptime, temperature, fan, interface traffic, and power (enterprise PEN 30826).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_smartoptics'}) by (instance_id)",
   "name": "Transmission",

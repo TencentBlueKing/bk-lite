@@ -1,8 +1,6 @@
 Switch Robustel SNMP:
   name: Robustel (Telegraf)
-  desc: SNMP monitoring template for Robustel MG460 industrial switches. It
-    reports CPU utilization (1s headline, optional 10s), memory total/used in
-    bytes and derived utilization, and board/junction temperature.
+  desc: "SNMP monitoring template for Robustel switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 39699)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

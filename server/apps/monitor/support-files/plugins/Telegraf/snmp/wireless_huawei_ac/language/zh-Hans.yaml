@@ -1,6 +1,6 @@
 Wireless Huawei AC SNMP:
   name: 华为 WLAN AC（Telegraf）
-  desc: 面向华为 WLAN AC 的 SNMP 监控模板,可采集实体 CPU、内存、温度、机箱已用/总功耗（瓦特）、风扇转速（满速百分比）与风扇状态、AP 环境/CPU/NP 温度、AP/终端数量、射频占用、信道干扰率、射频误包率、收发占比、上联流量和光模块 DDM 等主要指标。无风扇机型风扇表可为空。
+  desc: 面向华为 WLAN AC 无线设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、光模块、接口流量、电压、功率、无线客户端/射频（企业号 PEN 2011）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:

@@ -1,6 +1,6 @@
 Router Viprinet SNMP:
   name: Viprinet（Telegraf）
-  desc: 面向 Viprinet 路由器的 SNMP 监控模板，可采集已用内存（字节）、机箱/CPU 温度、电源与风扇状态、CPU 负载均值，以及每端口入向/出向流量速率。
+  desc: 面向 Viprinet 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存已用量、温度、风扇、电源状态、接口流量（企业号 PEN 35424）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

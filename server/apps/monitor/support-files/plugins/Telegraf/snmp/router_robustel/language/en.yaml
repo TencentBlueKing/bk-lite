@@ -1,8 +1,6 @@
 Router Robustel SNMP:
   name: Robustel (Telegraf)
-  desc: SNMP monitoring template for Robustel router. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, per-core CPU utilization (HOST-RESOURCES),
-    and system uptime
+  desc: "SNMP monitoring template for Robustel router. It reports uptime, CPU utilization, and interface traffic, for R3000 (based on standard MIBs)."
 monitor_object:
   Router: Router
 monitor_object_type:

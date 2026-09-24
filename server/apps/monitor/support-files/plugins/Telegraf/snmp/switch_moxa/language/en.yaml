@@ -1,7 +1,6 @@
 Switch Moxa SNMP:
   name: Moxa (Telegraf)
-  desc: SNMP monitoring template for Moxa switch. It reports per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Moxa switch. It reports uptime, temperature, power supply status, and interface traffic (enterprise PEN 8691)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

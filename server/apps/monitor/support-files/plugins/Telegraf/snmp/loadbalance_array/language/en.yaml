@@ -1,8 +1,6 @@
 Loadbalance Array SNMP:
   name: Array Networks (Telegraf)
-  desc: SNMP monitoring template for Array Networks and ClickArray load balancers.
-    It reports system uptime, CPU utilization, memory utilization, power state,
-    and other key metrics
+  desc: "SNMP monitoring template for Array Networks load balancer. It reports uptime, CPU utilization, memory utilization, power supply status, and interface traffic, for Array / ClickArray ADC (enterprise PEN 7564)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

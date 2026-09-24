@@ -1,7 +1,6 @@
 Loadbalance F5 SNMP:
   name: F5 (Telegraf)
-  desc: SNMP monitoring template for F5 load balancer. It reports system uptime, CPU
-    utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for F5 load balancer. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic, for BIG-IP (enterprise PEN 3375)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

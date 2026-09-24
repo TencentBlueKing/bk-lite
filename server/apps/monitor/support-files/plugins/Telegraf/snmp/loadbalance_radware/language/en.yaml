@@ -1,8 +1,6 @@
 Loadbalance Radware SNMP:
   name: Radware Alteon (Telegraf)
-  desc: SNMP monitoring template for Radware Alteon load balancer. It reports system
-    uptime, management-processor CPU utilization, main memory total/used/free, memory
-    usage derived from used/total, and IF-MIB interface traffic
+  desc: "SNMP monitoring template for Radware Alteon load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Alteon ADC (enterprise PEN 1872)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

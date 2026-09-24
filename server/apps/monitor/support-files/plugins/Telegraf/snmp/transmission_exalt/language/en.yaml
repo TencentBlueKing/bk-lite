@@ -1,9 +1,6 @@
 Transmission Exalt SNMP:
   name: Exalt (Telegraf)
-  desc: SNMP monitoring template for Exalt transmission device. It reports internal
-    temperature, received signal level, optional temperature alarm, optional link
-    state, per-port inbound traffic rate, per-port outbound traffic rate, and system
-    uptime (IANA PEN 25651).
+  desc: "SNMP monitoring template for Exalt transmission device. It reports uptime, temperature, and interface traffic (enterprise PEN 25651)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

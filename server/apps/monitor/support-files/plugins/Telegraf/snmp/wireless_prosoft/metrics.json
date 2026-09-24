@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_prosoft",
   "plugin": "Wireless ProSoft Technology SNMP",
-  "plugin_desc": "ProSoft Technology industrial wireless SNMP child template for RadioLinx / RLX2 devices under enterprise PEN 2382. Beyond the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects RadioLinx/RLX2 scalars radio status, link quality (0-100 percent) and signal strength in dBm. CPU and memory utilization are N/A because no stable shared percentage objects are confirmed, and they are not faked. ICX cellular and other non-RadioLinx branches under this enterprise tree are not hard-bound. Interface error counters, ifOperStatus and 32-bit octet counters are not expanded. Supported brands/models — ProSoft Technology RadioLinx / RLX2 industrial wireless radios (enterprise 2382).",
+  "plugin_desc": "SNMP monitoring template for ProSoft Technology wireless device. It reports uptime, interface traffic, and wireless clients/radio, for RadioLinx / RLX2 (enterprise PEN 2382).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_prosoft'}) by (instance_id)",
   "name": "Wireless",

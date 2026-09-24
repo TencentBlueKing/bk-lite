@@ -1,7 +1,6 @@
 Firewall Hillstone SNMP:
   name: Hillstone (Telegraf)
-  desc: SNMP monitoring template for Hillstone firewall. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Hillstone firewall. It reports uptime, CPU utilization, memory utilization, temperature, power supply status, and interface traffic, for SG-6000, E-series, and A-series (enterprise PEN 28557)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

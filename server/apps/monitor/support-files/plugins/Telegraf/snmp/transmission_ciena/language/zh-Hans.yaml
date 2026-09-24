@@ -1,6 +1,6 @@
 Transmission Ciena SNMP:
   name: Ciena (Telegraf)
-  desc: 面向 Ciena CES/SAOS 传输设备的 SNMP 监控模板，可采集每槽位 CPU 使用率、机箱内存已用量以及接口流量；不绑定 6500 Packet-Optical。
+  desc: 面向 Ciena 传输设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存已用量、接口流量，适用于 CES/SAOS（企业号 PEN 1271）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:

@@ -1,8 +1,6 @@
 Firewall Blockbit SNMP:
   name: Blockbit (Telegraf)
-  desc: SNMP monitoring template for Blockbit firewall. It reports system uptime,
-    per-core CPU utilization (HOST-RESOURCES), interface speed, inbound error packets,
-    and other key metrics
+  desc: "SNMP monitoring template for Blockbit firewall. It reports uptime, CPU utilization, and interface traffic (based on standard MIBs)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

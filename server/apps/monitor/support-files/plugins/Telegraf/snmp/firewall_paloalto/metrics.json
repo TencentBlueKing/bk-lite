@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_paloalto",
   "plugin": "Firewall Palo Alto SNMP",
-  "plugin_desc": "Palo Alto Networks-specific SNMP collection template for PAN-OS firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load, PAN-COMMON-MIB panhrStorageTable RAM used/total (used×allocationUnits / size×allocationUnits, RAM rows only), and PAN-COMMON-MIB private OIDs for firewall-specific session health (session-table utilization, active sessions total/TCP/UDP/ICMP and maximum supported sessions). Supported brands/models — Palo Alto Networks PA-series firewalls (PAN-OS).",
+  "plugin_desc": "SNMP monitoring template for Palo Alto firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 25461).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_paloalto'}) by (instance_id)",
   "name": "Firewall",
