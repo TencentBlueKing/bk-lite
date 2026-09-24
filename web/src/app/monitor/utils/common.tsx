@@ -917,6 +917,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
   { match: /exinda|gfi\s*exos/i, label: 'Exinda / GFI ExOS', icon: 'mm-exinda_exinda' },
+  { match: /bluecoat|blue\s*coat|symantec\s*edge|edge\s*swg|proxysg|broadcom\s*proxy/i, label: 'Blue Coat / Symantec Edge SWG / Broadcom ProxySG', icon: 'mm-bluecoat_bluecoat' },
   { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' },
   { match: /riverbed|steelhead/i, label: 'Riverbed SteelHead' }
 ];
