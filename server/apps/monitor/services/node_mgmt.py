@@ -1,3 +1,5 @@
+import ipaddress
+
 from django.db import IntegrityError, models, transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
@@ -17,11 +19,7 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     MonitorPlugin,
 )
-from apps.monitor.services.child_instance_discovery import (
-    enqueue_child_instance_discovery,
-    normalize_collect_interval,
-    parent_has_child_objects,
-)
+from apps.monitor.services.child_instance_discovery import enqueue_child_instance_discovery, normalize_collect_interval, parent_has_child_objects
 from apps.monitor.services.host_deployment import HostDeploymentStatus
 from apps.monitor.services.instance_facts import InstanceFactResolver
 from apps.monitor.services.website_config import validate_rendered_website_config
@@ -63,10 +61,7 @@ def _restore_config_secrets(new_value, old_value):
         return restored
     if isinstance(new_value, list):
         old_items = old_value if isinstance(old_value, list) else []
-        return [
-            _restore_config_secrets(item, old_items[index] if index < len(old_items) else None)
-            for index, item in enumerate(new_value)
-        ]
+        return [_restore_config_secrets(item, old_items[index] if index < len(old_items) else None) for index, item in enumerate(new_value)]
     return new_value
 
 
@@ -800,6 +795,89 @@ class InstanceConfigService:
         return prepared
 
     @staticmethod
+    def _process_node_ids(instance: dict) -> list[str]:
+        raw_node_ids = instance.get("node_ids") or []
+        if isinstance(raw_node_ids, (str, bytes)):
+            raw_node_ids = [raw_node_ids]
+        elif not isinstance(raw_node_ids, (list, tuple)):
+            return []
+        node_ids = []
+        for raw_node_id in raw_node_ids:
+            if raw_node_id in (None, ""):
+                continue
+            node_id = str(raw_node_id).strip()
+            if node_id and node_id not in node_ids:
+                node_ids.append(node_id)
+        return node_ids
+
+    @staticmethod
+    def _process_lookup_ip(instance: dict) -> str:
+        candidates = [instance.get("ip")]
+        facts = instance.get("summary_facts")
+        if isinstance(facts, dict):
+            candidates.append(facts.get("asset.ip"))
+        for candidate in candidates:
+            if candidate in (None, ""):
+                continue
+            try:
+                return str(ipaddress.ip_address(str(candidate).strip()))
+            except ValueError:
+                continue
+        return ""
+
+    @staticmethod
+    def _process_lookup_cloud_region_id(instance: dict) -> int | None:
+        raw_cloud = instance.get("cloud_region_id")
+        if raw_cloud in (None, ""):
+            raw_cloud = instance.get("cloud_region")
+        if raw_cloud in (None, ""):
+            return None
+        try:
+            return int(raw_cloud)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _logical_id_from_host(host: MonitorInstance) -> str | None:
+        parts = parse_instance_id(host.id)
+        if not parts or parts[0] in (None, ""):
+            return None
+        return str(parts[0])
+
+    @staticmethod
+    def _unique_host_logical_id(hosts) -> tuple[str | None, bool]:
+        """返回 (logical id, 是否已有命中)。命中不是恰好一条时 logical id 为空，且不再继续猜测。"""
+        matched = list(hosts.order_by("id")[:2])
+        if not matched:
+            return None, False
+        if len(matched) != 1:
+            return None, True
+        return InstanceConfigService._logical_id_from_host(matched[0]), True
+
+    @staticmethod
+    def _resolve_process_host_logical_id(instance: dict) -> str | None:
+        """已有且唯一的 Host 时，返回其 logical instance_id，供进程指标标签对齐。
+
+        node_id 命中多条时不再按 IP 猜测。零条才继续用 IP + 云区域，仍须恰好一条。
+        """
+        hosts = MonitorInstance.objects.filter(
+            monitor_object__name=InstanceConfigService._HOST_MONITOR_OBJECT_NAME,
+            is_deleted=False,
+        )
+        node_ids = InstanceConfigService._process_node_ids(instance)
+        if node_ids:
+            logical_id, matched = InstanceConfigService._unique_host_logical_id(hosts.filter(node_id__in=node_ids))
+            if matched:
+                return logical_id
+
+        ip = InstanceConfigService._process_lookup_ip(instance)
+        cloud_region_id = InstanceConfigService._process_lookup_cloud_region_id(instance)
+        if not ip or cloud_region_id is None:
+            return None
+        logical_id, _matched = InstanceConfigService._unique_host_logical_id(hosts.filter(ip=ip, cloud_region_id=cloud_region_id))
+        return logical_id
+
+    @staticmethod
     def _prepare_process_identity_instances(instances: list) -> list:
         """Process 实例：与 Host 共用 logical instance_id，storage 追加 process_name 避免主键冲突。"""
         prepared = []
@@ -808,7 +886,8 @@ class InstanceConfigService:
             if not process_name:
                 raise ValueError("process instance requires process_name")
             host_identity = normalize_instance_identity(instance.get("instance_id"))
-            host_logical_id = host_identity["logical_instance_value"]
+            resolved_host_id = InstanceConfigService._resolve_process_host_logical_id(instance)
+            host_logical_id = resolved_host_id or host_identity["logical_instance_value"]
             identity = normalize_instance_identity((host_logical_id, process_name))
             storage_key = identity["storage_instance_key"]
             if len(storage_key) > 200:
@@ -895,7 +974,7 @@ class InstanceConfigService:
             raise BaseAppException(f"采集配置元数据缺失: {', '.join(missing)}")
 
     @staticmethod
-    def create_monitor_instance_by_node_mgmt(data, actor_context=None):
+    def create_monitor_instance_by_node_mgmt(data, actor_context=None):  # noqa: C901
         """创建监控对象实例（支持同一实例ID多种采集方式）"""
         instances = data.get("instances", [])
         monitor_object_id = data["monitor_object_id"]
