@@ -176,12 +176,39 @@ def test_ignores_bot_sender(monkeypatch):
     assert called["n"] == 0
 
 
-def test_disabled_channel_is_rejected():
+def test_disabled_channel_still_answers_url_verification():
     channel = _channel()
     channel.enabled = False
     channel.save(update_fields=["enabled"])
     response = _post(
         channel,
         {"type": "url_verification", "challenge": "c", "token": VERIFY_TOKEN},
+    )
+    assert response.status_code == 200
+    assert json.loads(response.content) == {"challenge": "c"}
+
+
+def test_disabled_channel_rejects_message_events(monkeypatch):
+    channel = _channel()
+    channel.enabled = False
+    channel.save(update_fields=["enabled"])
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.process_skill_channel_feishu_message.delay",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("should not queue")),
+    )
+    response = _post(
+        channel,
+        {
+            "schema": "2.0",
+            "header": {"event_type": "im.message.receive_v1", "token": VERIFY_TOKEN, "app_id": APP_ID},
+            "event": {
+                "sender": {"sender_type": "user", "sender_id": {"open_id": "ou_1"}},
+                "message": {
+                    "message_id": "om_disabled",
+                    "message_type": "text",
+                    "content": json.dumps({"text": "hi"}),
+                },
+            },
+        },
     )
     assert response.status_code == 403
