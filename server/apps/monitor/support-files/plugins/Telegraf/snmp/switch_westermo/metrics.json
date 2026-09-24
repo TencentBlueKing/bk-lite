@@ -24,7 +24,7 @@
       "query": "snmp_device_cpu_load{instance_type='switch', __$labels__} / 100",
       "display_name": "CPU Load Average 1m",
       "data_type": "Number",
-      "unit": "",
+      "unit": "none",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -37,7 +37,7 @@
       "query": "snmp_device_cpu_load5{instance_type='switch', __$labels__} / 100",
       "display_name": "CPU Load Average 5m",
       "data_type": "Number",
-      "unit": "",
+      "unit": "none",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
@@ -50,7 +50,7 @@
       "query": "snmp_device_cpu_load15{instance_type='switch', __$labels__} / 100",
       "display_name": "CPU Load Average 15m",
       "data_type": "Number",
-      "unit": "",
+      "unit": "none",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
