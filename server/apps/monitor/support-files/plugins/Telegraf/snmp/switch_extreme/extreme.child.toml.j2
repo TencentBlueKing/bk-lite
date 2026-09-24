@@ -32,22 +32,14 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    # ---- Extreme CPU utilization (EXTREME-SYSTEM-MIB extremeCpuMonitorTotalUtilization, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.1916.1.32.1.2.0。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1916.1.32.1.2"
-        name = "usage"
-    # ---- Extreme current temperature (EXTREME-SYSTEM-MIB extremeCurrentTemperature, scalar °C) ----
-    # 待现网核验：1.3.6.1.4.1.1916.1.1.1.8.0 → 指标 device_temperature_celsius（整机单值，无 per-sensor descr）。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1916.1.1.1.8"
-        name = "celsius"
+    # Extreme CPU/温度标量：顶层 field GET 必须带实例 .0；table.field 禁止 .0。
+    # extremeCpuMonitorTotalUtilization 直接 0-100%；extremeCurrentTemperature 为机箱内 °C。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1916.1.32.1.2.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1916.1.1.1.8.0"
+        name = "device_temperature_celsius"
     # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
     [[inputs.snmp.table]]
         name = "interface"
