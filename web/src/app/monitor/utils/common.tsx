@@ -698,6 +698,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /genua/i, label: 'Genua', icon: 'mm-genua_genua' },
   { match: /kerio/i, label: 'Kerio', icon: 'mm-kerio_kerio' },
   { match: /sangfor|深信服/i, label: 'Sangfor', icon: 'mm-sangfor_sangfor' },
+  { match: /topsec|天融信/i, label: 'Topsec', icon: 'mm-topsec_topsec' },
   { match: /zorp/i, label: 'Zorp', icon: 'mm-zorp_zorp' },
   { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
   { match: /hillstone|stoneos/i, label: 'Hillstone', icon: 'mm-hillstone_hillstone' },
