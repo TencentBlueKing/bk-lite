@@ -27,12 +27,13 @@ from apps.opspilot.models import (
     WikiGenerationPage,
     WikiStructureRevision,
 )
+from apps.opspilot.tests.wiki.factories import create_unsafe_legacy_page_without_version
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def _legacy_page(knowledge_base, *, title, status="active"):
-    page = KnowledgePage.objects.create(
+    page = create_unsafe_legacy_page_without_version(
         knowledge_base=knowledge_base,
         page_type="concept",
         title=title,

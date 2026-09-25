@@ -5,10 +5,7 @@ import { Form, Input, Modal, Select } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import GroupTreeSelect from "@/components/group-tree-select";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
-import {
-  PurposeSchemaTemplate,
-  WikiKnowledgeBase,
-} from "@/app/opspilot/types/wiki";
+import { WikiKnowledgeBase } from "@/app/opspilot/types/wiki";
 import { LlmModel } from "@/app/opspilot/types/skill";
 import { Model } from "@/app/opspilot/types/provider";
 import {
@@ -23,17 +20,6 @@ interface WikiModifyModalProps {
   initialValues?: WikiKnowledgeBase | null;
 }
 
-const fillTemplate = (
-  tpl: PurposeSchemaTemplate | undefined,
-  intro: string,
-) => ({
-  purpose_md: (tpl?.purpose_md || "").replace(
-    /\{\{description\}\}/g,
-    intro || "",
-  ),
-  schema_md: tpl?.schema_md || "",
-});
-
 const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
   visible,
   onCancel,
@@ -42,13 +28,11 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels, fetchEmbedProviders } =
+  const { fetchKnowledgeBase, fetchLlmModels, fetchEmbedProviders } =
     useWikiApi();
-  const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
   const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const isEditing = Boolean(initialValues?.id);
 
   useEffect(() => {
     if (!visible) return;
@@ -58,22 +42,8 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
     fetchEmbedProviders()
       .then((models) => setEmbedProviders(models || []))
       .catch(() => undefined);
-    if (!isEditing) {
-      fetchTemplates()
-        .then((tpls) => {
-          setTemplates(tpls);
-          // 新建:默认套用「通用知识库」固定内容
-          const def = tpls.find((x) => x.key === "general") || tpls[0];
-          const templateValues = fillTemplate(def, "");
-          form.setFieldsValue({ template_key: def?.key, ...templateValues });
-        })
-        .catch(() => undefined);
-    } else {
-      setTemplates([]);
-    }
     if (initialValues?.id) {
       form.resetFields();
-      // 卡片菜单只透传了部分字段,编辑时拉取完整知识库回写基础信息
       fetchKnowledgeBase(initialValues.id)
         .then((full) => {
           form.setFieldsValue({
@@ -89,18 +59,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
     } else {
       form.resetFields();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialValues]);
-
-  // 选择模板 → 用途与结构说明供用户编辑；实际目录树由 template_key 在服务端 bootstrap。
-  const onTemplateChange = (key: string) => {
-    const tpl = templates.find((x) => x.key === key);
-    const templateValues = fillTemplate(
-      tpl,
-      form.getFieldValue("introduction") || "",
-    );
-    form.setFieldsValue(templateValues);
-  };
 
   const handleOk = async () => {
     const values = await form.validateFields();
@@ -108,11 +67,6 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
       ...values,
       embed_provider: values.embed_provider ?? null,
     };
-    if (isEditing) {
-      delete submitValues.template_key;
-      delete submitValues.purpose_md;
-      delete submitValues.schema_md;
-    }
     setConfirmLoading(true);
     try {
       await onConfirm(submitValues);
@@ -131,7 +85,6 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
       maskClosable={false}
       width={640}
       destroyOnHidden
-      // 表单较长:限制弹窗主体高度并内部滚动,确保任何视口下都不触底(前端规范:弹窗禁止触底)
       styles={{
         body: {
           maxHeight: "calc(100vh - 240px)",
@@ -218,33 +171,19 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
             }))}
           />
         </Form.Item>
-        <Form.Item label={t("wiki.introduction")} name="introduction">
-          <Input.TextArea rows={2} />
+        <Form.Item
+          label={t("wiki.introduction")}
+          name="introduction"
+          rules={[
+            {
+              required: true,
+              whitespace: true,
+              message: t("wiki.introductionRequired"),
+            },
+          ]}
+        >
+          <Input.TextArea rows={4} />
         </Form.Item>
-        {!isEditing && (
-          <>
-            <Form.Item label={t("wiki.template")} name="template_key">
-              <Select
-                onChange={onTemplateChange}
-                options={templates.map((tp) => ({
-                  value: tp.key,
-                  label: tp.name,
-                  title: tp.description || tp.name,
-                }))}
-              />
-            </Form.Item>
-            <Form.Item label={t("wiki.purpose")} name="purpose_md">
-              <Input.TextArea rows={3} />
-            </Form.Item>
-            <Form.Item
-              label={t("wiki.schema")}
-              name="schema_md"
-              extra={t("wiki.schemaCreateTip")}
-            >
-              <Input.TextArea rows={6} />
-            </Form.Item>
-          </>
-        )}
       </Form>
     </Modal>
   );

@@ -44,15 +44,15 @@ def _freeze_wiki_task_identity(
     """Freeze all identities that a generation task is allowed to observe."""
 
     from apps.opspilot.models import WikiKnowledgeBase
-    from apps.opspilot.services.wiki.build_generation_service import PIPELINE_VERSION, BuildGenerationError, freeze_source_fingerprints
+    from apps.opspilot.services.wiki.build_generation_service import (
+        PIPELINE_VERSION,
+        BuildGenerationError,
+        _ensure_active_generation,
+        freeze_source_fingerprints,
+    )
 
     knowledge_base = WikiKnowledgeBase.objects.select_related("active_structure_revision").get(pk=knowledge_base.pk)
-    revision = knowledge_base.active_structure_revision
-    if revision is None or knowledge_base.active_generation_id is None:
-        raise BuildGenerationError(
-            "active_governance_snapshot_missing",
-            "知识库缺少 active structure/generation",
-        )
+    knowledge_base, revision = _ensure_active_generation(knowledge_base)
     source_fingerprints = freeze_source_fingerprints(materials)
     incomplete = [
         fingerprint
@@ -255,7 +255,7 @@ def _material_pipeline_fingerprints(knowledge_base, material):
     build_payload = {
         "parse_fingerprint": parse_fingerprint,
         "source": material_fingerprint(material),
-        "purpose_md": knowledge_base.purpose_md or "",
+        "introduction": knowledge_base.introduction or "",
         "generation_rules": knowledge_base.generation_rules or {},
         "generation_language": knowledge_base.generation_language,
         "llm_model_id": knowledge_base.llm_model_id,

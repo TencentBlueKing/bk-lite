@@ -33,11 +33,9 @@ from apps.opspilot.services.wiki.markdown_import_governance_service import (
     reclaim_stale_markdown_import_builds,
 )
 from apps.opspilot.services.wiki.material_build_queue_service import has_active_runner, kb_has_user_build_in_progress, release_stale_runner_lease
-from apps.opspilot.services.wiki.native_markdown_export_service import build_native_markdown_export_zip
 from apps.opspilot.services.wiki.okf_export_service import build_okf_export_zip
 from apps.opspilot.services.wiki.overview_service import get_overview
 from apps.opspilot.services.wiki.parsed_media_service import sign_media_locators
-from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
 from apps.opspilot.services.wiki.rebuild_service import create_rebuild_record, running_build_record
 from apps.opspilot.services.wiki.relation_service import list_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
@@ -46,7 +44,6 @@ from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.retrieval_service import stream_answer as wiki_stream_answer
 from apps.opspilot.services.wiki.rollback_service import RollbackServiceError, execute_generation_rollback, preview_generation_rollback
-from apps.opspilot.services.wiki.schema_directory_sync_service import apply_schema_markdown_structure
 from apps.opspilot.services.wiki.structure_service import StructureServiceError, bootstrap_knowledge_base
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
@@ -112,10 +109,11 @@ def _rollback_error(error):
 
 
 class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
-    """新 Wiki 知识库 CRUD + 创建流程(模板/AI 生成 Purpose+Schema)。沿用团队权限。"""
+    """新 Wiki 知识库 CRUD；新建时 bootstrap 冻结六根。沿用团队权限。"""
 
     queryset = WikiKnowledgeBase.objects.all().order_by("-id")
     serializer_class = WikiKnowledgeBaseSerializer
+    lookup_value_regex = r"\d+"
     ordering = ("-id",)
     search_fields = ("name",)
     team_scope_field = "id"
@@ -160,11 +158,6 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                     serializer.instance,
                     operator=operator,
                 )
-                apply_schema_markdown_structure(
-                    serializer.instance,
-                    serializer.instance.schema_md,
-                    operator=operator,
-                )
         except StructureServiceError as error:
             return _governance_error(error, status=error.status_code)
         log_operation(request, "create", "opspilot", f"新增知识库: {serializer.data.get('name', '')}")
@@ -178,18 +171,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
             self.validate_team_assignment(request.data.get("team"))
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        # 旧库结构说明往往已写入、目录仍是创建时的模板；保存时即使文案未改也要同步。
-        should_sync_schema_dirs = "schema_md" in request.data
         self.perform_update(serializer)
-        if should_sync_schema_dirs:
-            try:
-                apply_schema_markdown_structure(
-                    serializer.instance,
-                    serializer.instance.schema_md,
-                    operator=getattr(request.user, "username", "") or "",
-                )
-            except StructureServiceError as error:
-                return _governance_error(error, status=error.status_code)
         log_operation(request, "update", "opspilot", f"编辑知识库: {serializer.data.get('name', '')}")
         return JsonResponse({"result": True, "data": serializer.data})
 
@@ -310,43 +292,6 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         return JsonResponse({"result": True, "data": {"id": knowledge_base_id}})
 
     @HasPermission("wiki_list-View")
-    @action(methods=["GET"], detail=False)
-    def templates(self, request):
-        """返回创建知识库的场景模板列表。"""
-        return JsonResponse({"result": True, "data": list_templates()})
-
-    @HasPermission("wiki_list-View")
-    @action(methods=["GET"], detail=True)
-    def export_markdown(self, request, pk=None):
-        """导出当前知识库启用中的知识页面为 Markdown zip。带配额审计。"""
-        kb = self.get_object()
-        try:
-            content, count = build_native_markdown_export_zip(kb)
-        except ActiveGenerationReadError as error:
-            return _governance_error(error, status=409)
-        except QuotaExceededError as exc:
-            # 审计失败导出尝试:留给运维/安全审计
-            log_operation(
-                request,
-                "execute",
-                "opspilot",
-                f"导出 Markdown 超限: 知识库={kb.name} code={exc.code} detail={exc.message}",
-            )
-            return JsonResponse(
-                {"result": False, "code": exc.code, "message": exc.message},
-                status=400,
-            )
-        log_operation(
-            request,
-            "execute",
-            "opspilot",
-            f"导出 Markdown: 知识库={kb.name} pages={count} bytes={len(content)}",
-        )
-        response = HttpResponse(content, content_type="application/zip")
-        response["Content-Disposition"] = f'attachment; filename="wiki-kb-{kb.id}-markdown.zip"'
-        return response
-
-    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def export_okf(self, request, pk=None):
         """导出当前知识库启用中的知识页面为 OKF v0.2 zip。带配额审计。"""
@@ -390,8 +335,6 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
             for field in ("classification_root_id", "target_directory_id"):
                 if request.data.get(field) not in (None, ""):
                     options[field] = int(request.data.get(field))
-            if request.data.get("restore_structure") not in (None, ""):
-                options["restore_structure"] = _bool_param(request.data, "restore_structure")
             data = preflight_markdown_import(
                 knowledge_base,
                 upload.read(),
@@ -407,7 +350,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
             request,
             "create",
             "opspilot",
-            f"预检 Markdown 导入: 知识库={knowledge_base.name} file={upload.name}",
+            f"预检 OKF 导入: 知识库={knowledge_base.name} file={upload.name}",
         )
         return JsonResponse({"result": True, "data": data})
 
@@ -438,7 +381,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                 request,
                 "create",
                 "opspilot",
-                f"执行 Markdown 导入: 知识库={knowledge_base.name} generation={data.get('generation_id')} build={data.get('build_record_id')}",
+                f"执行 OKF 导入: 知识库={knowledge_base.name} generation={data.get('generation_id')} build={data.get('build_record_id')}",
             )
             return JsonResponse({"result": True, "data": data})
         try:
@@ -474,7 +417,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
             request,
             "create",
             "opspilot",
-            f"受理 Markdown 导入: 知识库={knowledge_base.name} build={dispatch['build_record_id']}",
+            f"受理 OKF 导入: 知识库={knowledge_base.name} build={dispatch['build_record_id']}",
         )
         return JsonResponse({"result": True, "data": data})
 
@@ -484,17 +427,6 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         """兼容旧入口：只执行安全预检，不再绕过一次性 token 直接写入。"""
 
         return self.import_markdown_preflight(request, pk=pk)
-
-    @HasPermission("wiki_list-Add")
-    @action(methods=["POST"], detail=False)
-    def generate_purpose_schema(self, request):
-        """根据模板 + 用户描述,AI 生成 purpose_md / schema_md 草稿(无模型/失败时回退模板骨架)。"""
-        purpose, schema = generate_purpose_schema(
-            template_key=request.data.get("template_key", "general"),
-            description=request.data.get("description", ""),
-            llm_model_id=request.data.get("llm_model_id"),
-        )
-        return JsonResponse({"result": True, "data": {"purpose_md": purpose, "schema_md": schema}})
 
     @HasPermission("wiki_list-View")
     @action(methods=["GET", "POST"], detail=True)

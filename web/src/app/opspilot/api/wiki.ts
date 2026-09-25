@@ -21,8 +21,6 @@ import {
   WikiMarkdownImportPreflightOptions,
   WikiMarkdownImportPreflightResult,
   PageVersion,
-  PurposeSchemaResult,
-  PurposeSchemaTemplate,
   SaveAnswerPageInput,
   SaveAnswerPageResult,
   WikiContextOptions,
@@ -116,9 +114,6 @@ export const useWikiApi = () => {
   const deleteKnowledgeBase = (id: number): Promise<void> =>
     del(`${BASE}/knowledge_base/${id}/`);
 
-  const fetchTemplates = (): Promise<PurposeSchemaTemplate[]> =>
-    get(`${BASE}/knowledge_base/templates/`);
-
   // 知识库需绑定 LLM 模型用于"资料摘要"与"页面构建"。
   // 注意:/llm/ 是「LLM 技能/Bot」列表,真正的「模型」在 /llm_model/(与技能配置页一致)
   const fetchLlmModels = (): Promise<LlmModel[]> =>
@@ -129,13 +124,6 @@ export const useWikiApi = () => {
     get("/opspilot/model_provider_mgmt/embed_provider/", {
       params: { enabled: 1 },
     });
-
-  const generatePurposeSchema = (data: {
-    template_key?: string;
-    description?: string;
-    llm_model_id?: number;
-  }): Promise<PurposeSchemaResult> =>
-    post(`${BASE}/knowledge_base/generate_purpose_schema/`, data);
 
   const search = (
     id: number,
@@ -281,11 +269,6 @@ export const useWikiApi = () => {
 
   const reindexKnowledgeBase = (id: number): Promise<BuildRecord> =>
     post(`${BASE}/knowledge_base/${id}/reindex/`, {});
-
-  const exportKnowledgeBaseMarkdown = (id: number): Promise<Blob> =>
-    get(`${BASE}/knowledge_base/${id}/export_markdown/`, {
-      responseType: "blob",
-    });
 
   const exportKnowledgeBaseOkf = (id: number): Promise<Blob> =>
     get(`${BASE}/knowledge_base/${id}/export_okf/`, {
@@ -759,12 +742,10 @@ export const useWikiApi = () => {
     createKnowledgeBase,
     updateKnowledgeBase,
     deleteKnowledgeBase,
-    fetchTemplates,
     fetchLlmModels,
     previewGenerationRollback,
     executeGenerationRollback,
     fetchEmbedProviders,
-    generatePurposeSchema,
     search,
     qa,
     qaStream,
@@ -776,7 +757,6 @@ export const useWikiApi = () => {
     fetchOverview,
     buildContext,
     reindexKnowledgeBase,
-    exportKnowledgeBaseMarkdown,
     exportKnowledgeBaseOkf,
     preflightKnowledgeBaseMarkdown,
     executeKnowledgeBaseMarkdown,

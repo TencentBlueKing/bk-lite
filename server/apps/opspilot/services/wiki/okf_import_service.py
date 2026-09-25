@@ -12,13 +12,18 @@ from xml.etree import ElementTree
 import yaml
 
 from apps.opspilot.services.wiki.markdown_import_service import _title_from_filename, split_front_matter_block
+from apps.opspilot.services.wiki.purpose_schema_service import is_frozen_root_name
 from apps.opspilot.services.wiki.title_service import title_identity_key, validate_display_title
 
 OKF_IMPORT_FORMAT = "okf"
 RESERVED_OKF_FILENAMES = frozenset({"index.md", "log.md"})
+WRAPPER_DIRECTORY_NAMES = frozenset({"assets", "__macosx", ".git"})
+PEELABLE_WRAPPER_DIRECTORIES = frozenset({"wiki", "llm_wiki"})
 MARKDOWN_SUFFIXES = {".md", ".markdown"}
 CONSUMED_FRONTMATTER_KEYS = frozenset({"type", "title", "tags"})
-_LINK_RE = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)]+)\)")
+_LINK_RE = re.compile(
+    r"(?<!!)\[([^\]]+)\]\((?:<([^>\n]*)>|([^)\s]+))(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\)"
+)
 _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 _FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
 _INLINE_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\n]+)\)")
@@ -66,20 +71,71 @@ def concept_id_from_archive_path(path):
     return posix.as_posix().strip("/")
 
 
+def _is_wrapper_name(name):
+    text = str(name or "")
+    folded = text.casefold()
+    if folded in WRAPPER_DIRECTORY_NAMES or folded in RESERVED_OKF_FILENAMES:
+        return True
+    return text.startswith(".")
+
+
+def _layer_effective_members(members, prefix):
+    directories = set()
+    knowledge_md = False
+    prefix = str(prefix or "").strip("/")
+    for raw in members:
+        relative = strip_bundle_root(raw, prefix)
+        if not relative:
+            continue
+        parts = PurePosixPath(relative).parts
+        first = parts[0]
+        if _is_wrapper_name(first):
+            continue
+        if len(parts) == 1:
+            if PurePosixPath(relative).suffix.lower() in MARKDOWN_SUFFIXES and not is_reserved_okf_path(relative):
+                knowledge_md = True
+            continue
+        directories.add(first)
+    return directories, knowledge_md
+
+
+def _layer_has_assets_directory(members, prefix):
+    prefix = str(prefix or "").strip("/")
+    for raw in members:
+        relative = strip_bundle_root(raw, prefix)
+        parts = PurePosixPath(relative).parts
+        if len(parts) >= 2 and parts[0].casefold() == "assets":
+            return True
+    return False
+
+
 def detect_bundle_root(paths):
-    """Return the unique top-level directory to strip, or empty string."""
+    """剥掉纯包装层，返回应去掉的路径前缀。"""
     members = [str(path or "").replace("\\", "/").strip("/") for path in paths if str(path or "").strip("/")]
     if not members:
         return ""
-    tops = {PurePosixPath(path).parts[0] for path in members}
-    if len(tops) != 1:
+    prefix_parts = []
+    while True:
+        prefix = "/".join(prefix_parts)
+        directories, knowledge_md = _layer_effective_members(members, prefix)
+        if knowledge_md or len(directories) != 1:
+            break
+        only = next(iter(directories))
+        if is_frozen_root_name(only):
+            break
+        if _layer_has_assets_directory(members, prefix) and only.casefold() not in PEELABLE_WRAPPER_DIRECTORIES:
+            break
+        prefix_parts.append(only)
+        if len(prefix_parts) > 16:
+            break
+    return "/".join(prefix_parts)
+
+
+def import_layer_name(bundle_root):
+    root = str(bundle_root or "").strip("/")
+    if not root:
         return ""
-    root = next(iter(tops))
-    if not any(len(PurePosixPath(path).parts) > 1 for path in members):
-        return ""
-    if not any(PurePosixPath(path).suffix.lower() in MARKDOWN_SUFFIXES for path in members):
-        return ""
-    return root
+    return PurePosixPath(root).name
 
 
 def strip_bundle_root(path, bundle_root):
@@ -292,7 +348,8 @@ def _resolve_link_target(target, current_path):
 
 def _rewrite_segment(segment, current_path, titles_by_concept_id, stats):
     def replace(match):
-        text, target = match.group(1), match.group(2)
+        text = match.group(1)
+        target = match.group(2) if match.group(2) is not None else match.group(3)
         concept_id = _resolve_link_target(target, current_path)
         if concept_id is None:
             return match.group(0)

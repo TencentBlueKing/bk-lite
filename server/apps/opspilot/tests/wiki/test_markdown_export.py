@@ -3,17 +3,17 @@ import zipfile
 
 import pytest
 
+from apps.opspilot.models import WikiKnowledgeBase
+from apps.opspilot.services.wiki.page_service import create_manual_page
+from apps.opspilot.tests.wiki.factories import create_unsafe_legacy_page_without_version
+
 
 def _kb(name="kb"):
-    from apps.opspilot.models import WikiKnowledgeBase
-
     return WikiKnowledgeBase.objects.create(name=name, team=[1])
 
 
-def _page(kb, title, body, page_type="concept", status="active", tags=None):
-    from apps.opspilot.services.wiki.page_service import create_manual_page
-
-    page = create_manual_page(
+def _page(kb, title, body, page_type="concept", tags=None):
+    return create_manual_page(
         kb,
         page_type=page_type,
         title=title,
@@ -21,10 +21,16 @@ def _page(kb, title, body, page_type="concept", status="active", tags=None):
         tags=tags or [],
         created_by="u",
     )
-    if page.status != status:
-        page.status = status
-        page.save(update_fields=["status"])
-    return page
+
+
+def _inactive_page(kb, title, _body, *, status):
+    return create_unsafe_legacy_page_without_version(
+        knowledge_base=kb,
+        title=title,
+        status=status,
+        contribution="ai",
+        page_type="concept",
+    )
 
 
 @pytest.mark.django_db
@@ -33,8 +39,8 @@ def test_export_markdown_zip_contains_active_pages_with_metadata():
 
     kb = _kb("蓝鲸知识库")
     active = _page(kb, "CMDB/配置平台", "配置平台正文", page_type="entity", tags=["CMDB", "资源"])
-    archived = _page(kb, "归档页", "旧正文", status="archived")
-    source_invalid = _page(kb, "失效页", "失效正文", status="source_invalid")
+    archived = _inactive_page(kb, "归档页", "旧正文", status="archived")
+    source_invalid = _inactive_page(kb, "失效页", "失效正文", status="source_invalid")
 
     content, count = build_markdown_export_zip(kb)
 
@@ -56,19 +62,10 @@ def test_export_markdown_zip_contains_active_pages_with_metadata():
 
 
 @pytest.mark.django_db
-def test_export_markdown_endpoint_returns_zip_attachment(api_client):
+def test_export_markdown_endpoint_removed(api_client):
     kb = _kb("kb export")
-    page = _page(kb, "作业平台", "作业平台正文")
+    _page(kb, "作业平台", "作业平台正文")
 
     response = api_client.get(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/export_markdown/")
 
-    assert response.status_code == 200, response.content
-    assert response["Content-Type"] == "application/zip"
-    assert response["Content-Disposition"] == f'attachment; filename="wiki-kb-{kb.id}-markdown.zip"'
-    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        assert archive.namelist() == [
-            "manifest.json",
-            "structure.json",
-            f"pages/unclassified/{page.id}-作业平台.md",
-        ]
-        assert "作业平台正文" in archive.read(f"pages/unclassified/{page.id}-作业平台.md").decode("utf-8")
+    assert response.status_code == 404, response.content

@@ -8,9 +8,6 @@ export interface WikiKnowledgeBase {
   team_name?: string[];
   permissions?: string[];
   is_pinned?: boolean;
-  purpose_md?: string;
-  /** 兼容旧数据与模板提交；目录机器结构由结构化 revision 管理。 */
-  schema_md?: string;
   llm_model?: number | null;
   embed_provider?: number | null;
   vision_model?: number | null;
@@ -640,12 +637,7 @@ export interface MarkdownImportResult {
   build_record?: BuildRecord;
 }
 
-export type WikiMarkdownImportArchiveKind =
-  | "markdown"
-  | "native"
-  | "opspilot_native"
-  | "third_party"
-  | "okf";
+export type WikiMarkdownImportArchiveKind = "okf";
 
 export type WikiMarkdownImportAction = "create" | "update" | "candidate";
 
@@ -680,7 +672,6 @@ export interface WikiMarkdownImportFolderPreview {
 }
 
 export interface WikiMarkdownImportStructurePreview {
-  restore_native_structure?: boolean;
   create_directories_from_folders?: boolean;
   create_directory_count?: number;
   directories?: WikiMarkdownImportFolderPreview[];
@@ -709,9 +700,18 @@ export interface WikiOkfSkippedEntry {
   reason: string;
 }
 
+export interface WikiOkfAlignmentItem {
+  folder: string;
+  action: "merge" | "create" | "new_root" | string;
+  target: string;
+}
+
 export interface WikiOkfImportPreview {
   okf_version: string;
   bundle_root: string;
+  import_layer_name?: string;
+  alignment_mode?: string;
+  alignment?: WikiOkfAlignmentItem[];
   type_mapping: WikiOkfTypeMapping[];
   skipped: WikiOkfSkippedEntry[];
   links: {
@@ -738,8 +738,6 @@ export interface WikiMarkdownImportPreview {
     update: number;
     candidate: number;
   };
-  native_structure_available: boolean;
-  restore_structure_requested: boolean;
   create_directories_from_folders_requested?: boolean;
   structure_preview?: WikiMarkdownImportStructurePreview | null;
   okf?: WikiOkfImportPreview;
@@ -748,9 +746,6 @@ export interface WikiMarkdownImportPreview {
 export interface WikiMarkdownImportPreflightOptions {
   classification_root_id?: number | null;
   target_directory_id?: number | null;
-  path_mappings?: Record<string, number | string>;
-  restore_structure?: boolean;
-  restore_native_structure?: boolean;
   create_directories_from_folders?: boolean;
   import_format?: "okf";
 }
@@ -954,21 +949,6 @@ export interface RevokeDecisionRuleRequest {
 
 export interface RevokeDecisionRuleResponse {
   check: CheckItem;
-}
-
-export interface PurposeSchemaTemplate {
-  key: string;
-  name: string;
-  description?: string;
-  purpose_md?: string;
-  /** 仅用于模板/后端兼容，不作为管理员可编辑的目录结构。 */
-  schema_md?: string;
-}
-
-export interface PurposeSchemaResult {
-  purpose_md: string;
-  schema_md: string;
-  template_key?: string;
 }
 
 export interface WikiSearchExplanation {

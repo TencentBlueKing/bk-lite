@@ -4,15 +4,16 @@ import pytest
 
 
 def _kb(wiki_factory, schema="# schema"):
-    return wiki_factory.knowledge_base(name="kb", team=[1], schema_md=schema)
+    return wiki_factory.knowledge_base(name="kb", team=[1], introduction=schema)
 
 
 def _material(wiki_factory, kb, name="m"):
-    return wiki_factory.material(
+    return wiki_factory.ready_material(
         knowledge_base=kb,
         name=name,
         material_type="text",
         text_content="facts",
+        source_identity=f"text:{name}",
     )
 
 
@@ -742,7 +743,7 @@ def test_rebuild_generator_failure_keeps_old_pages_and_persists_failed_record(wi
         pytest.param("add", "资料集合已变化", id="added"),
         pytest.param("change", "资料内容已变化", id="content-changed"),
         pytest.param("version", "资料版本已变化", id="version-changed"),
-        pytest.param("schema", "Schema 已变化", id="schema-changed"),
+        pytest.param("introduction", "Schema 已变化", id="introduction-changed"),
     ],
 )
 @pytest.mark.django_db
@@ -754,6 +755,8 @@ def test_rebuild_aborts_safely_when_context_changes_after_prepare(
 ):
     from apps.opspilot.models import BuildRecord, KnowledgePage, Material, MaterialVersion, WikiKnowledgeBase
     from apps.opspilot.services.wiki import rebuild_service
+    from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
+    from apps.opspilot.services.wiki.generation_rebuild_service import _lock_prepared_snapshot
 
     kb = _kb(wiki_factory)
     material = _material(wiki_factory, kb, "source")
@@ -772,9 +775,8 @@ def test_rebuild_aborts_safely_when_context_changes_after_prepare(
             ]
         )
     old_page = _page(wiki_factory, kb, "OldAI", "ai")
-    apply_prepared = rebuild_service._apply_prepared_rebuild
 
-    def mutate_material_then_apply(*args, **kwargs):
+    def mutate_material_then_lock(*args, **kwargs):
         live_material = Material.objects.get(pk=material.pk)
         if mutation == "delete":
             live_material.delete()
@@ -787,20 +789,19 @@ def test_rebuild_aborts_safely_when_context_changes_after_prepare(
             )
             live_material.current_version = replacement
             live_material.save(update_fields=["current_version", "updated_at"])
-        elif mutation == "schema":
-            WikiKnowledgeBase.objects.filter(pk=kb.pk).update(schema_md="# changed schema")
+        elif mutation == "introduction":
+            WikiKnowledgeBase.objects.filter(pk=kb.pk).update(introduction="changed introduction")
         else:
             live_material.text_content = "changed after prepare"
             live_material.save(update_fields=["text_content", "updated_at"])
-        return apply_prepared(*args, **kwargs)
+        return _lock_prepared_snapshot(*args, **kwargs)
 
     monkeypatch.setattr(
-        rebuild_service,
-        "_apply_prepared_rebuild",
-        mutate_material_then_apply,
+        "apps.opspilot.services.wiki.generation_rebuild_service._lock_prepared_snapshot",
+        mutate_material_then_lock,
     )
 
-    with pytest.raises(RuntimeError, match=expected_error):
+    with pytest.raises(BuildGenerationError, match=expected_error):
         rebuild_service.rebuild_knowledge_base(
             kb,
             generator=lambda current_material: [

@@ -14,6 +14,7 @@ class WikiFactory:
         values = {
             "name": _unique_name("wiki-kb"),
             "team": [1],
+            "introduction": "测试知识库简介",
             "purpose_md": "# Purpose",
             "schema_md": "# Schema",
         }
@@ -35,6 +36,28 @@ class WikiFactory:
         }
         values.update(overrides)
         return Material.objects.create(**values)
+
+    def ready_material(self, *, knowledge_base, **overrides):
+        from apps.opspilot.models import MaterialVersion
+
+        name = overrides.get("name") or "m"
+        content_hash = overrides.pop("content_hash", "a" * 64)
+        source_identity = overrides.pop("source_identity", f"text:{name}")
+        status = overrides.pop("status", "done")
+        material = self.material(
+            knowledge_base=knowledge_base,
+            source_identity=source_identity,
+            content_hash=content_hash,
+            status=status,
+            **overrides,
+        )
+        version = MaterialVersion.objects.create(
+            material=material,
+            content_hash=material.content_hash or content_hash,
+        )
+        material.current_version = version
+        material.save(update_fields=["current_version", "updated_at"])
+        return material
 
     def page(self, *, knowledge_base, body="", **overrides):
         forbidden_fields = {"current_version", "current_version_id"} & overrides.keys()

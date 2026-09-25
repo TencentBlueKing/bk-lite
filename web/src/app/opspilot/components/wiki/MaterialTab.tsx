@@ -701,13 +701,15 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     return `#${version.id} ${hash}`;
   };
 
+  // 名称列不设 width，吃满剩余宽度；类型/状态/时间/操作固定窄列，避免最小宽加总撑出横向滚动
   const columns: ColumnsType<Material> = [
     {
       title: t("wiki.name"),
       dataIndex: "name",
       key: "name",
+      ellipsis: { showTitle: false },
       render: (name: string) => (
-        <div className="truncate" title={name}>
+        <div className="min-w-0 truncate" title={name}>
           {name}
         </div>
       ),
@@ -765,7 +767,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       title: t("wiki.aiSummary"),
       dataIndex: "ai_summary",
       key: "ai_summary",
-      width: 280,
+      width: 200,
       ellipsis: { showTitle: false },
       render: (s: string) => (
         <span className="text-[var(--color-text-3)]">{s || "--"}</span>
@@ -774,14 +776,14 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     {
       title: t("common.actions"),
       key: "action",
-      width: 360,
+      width: 180,
       render: (_: unknown, record) => {
         const busy = IN_PROGRESS.includes(record.status || "");
         const canBuild =
           !busy && record.status !== "invalid" && record.status !== "queued";
         const canProposeUpdate = record.status === "updated";
         return (
-          <Space>
+          <Space size={8} wrap={false}>
             <Button
               type="link"
               size="small"
@@ -888,7 +890,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className="mb-3 flex shrink-0 flex-wrap items-center justify-end gap-2">
         <Select
           mode="multiple"
@@ -936,13 +938,15 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         </Button>
       </div>
       {/* flex-1 容器给表格确定高度,使分页时 CustomTable 自动算出的 scroll.y 稳定;
-          scroll x:undefined 关闭默认按列宽合计强制的横向滚动,列宽自适应容器 */}
-      <div className="flex-1 min-h-0">
+          autoScrollX 关闭后名称列吃剩余宽度，避免列最小宽加总撑出横向滚动 */}
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         <CustomTable<Material>
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={data}
+          autoScrollX={false}
+          tableLayout="fixed"
           rowSelection={{
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys),
