@@ -1338,7 +1338,7 @@ const Asset = () => {
                   unassignedOnly={unassignedOnly}
                   onChange={handleCatalogScopeChange}
                   count={unassignedCount}
-                  resourceName={t('common.instance', '监控实例')}
+                  resourceName={t('monitor.integrations.monitorInstance', '监控实例')}
                 />
                 <Button
                   type="primary"

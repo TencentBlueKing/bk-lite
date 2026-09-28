@@ -6,6 +6,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.utils.locale_text import serializer_text
 from apps.log.utils.log_group import LogGroupQueryBuilder
 
 
@@ -92,10 +93,10 @@ class LogGroupSerializer(serializers.ModelSerializer):
     def validate_organizations(self, value):
         """验证组织ID列表"""
         if not isinstance(value, list):
-            raise serializers.ValidationError("必须是一个列表")
+            raise serializers.ValidationError(serializer_text(self, "error.must_be_list"))
 
         if not all(isinstance(org_id, int) for org_id in value):
-            raise serializers.ValidationError("列表中的元素必须是整数")
+            raise serializers.ValidationError(serializer_text(self, "error.list_items_must_be_int"))
 
         request = self.context.get("request") if hasattr(self, "context") else None
         if request is not None:
@@ -108,7 +109,7 @@ class LogGroupSerializer(serializers.ModelSerializer):
 
     def validate_rule(self, value):
         if not isinstance(value, dict):
-            raise serializers.ValidationError("日志分组规则必须是对象（object）格式")
+            raise serializers.ValidationError(serializer_text(self, "error.log_group_rule_object"))
 
         value = LogGroupQueryBuilder.normalize_star_rule(value)
 
@@ -124,7 +125,7 @@ class LogGroupSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.instance is None and "organizations" not in attrs:
-            raise serializers.ValidationError({"organizations": "至少需要一个组织"})
+            raise serializers.ValidationError({"organizations": serializer_text(self, "error.organization_required")})
         return attrs
 
 
@@ -137,19 +138,19 @@ class SearchConditionSerializer(serializers.ModelSerializer):
     def validate_condition(self, value):
         """验证搜索条件配置"""
         if not isinstance(value, dict):
-            raise serializers.ValidationError("搜索条件配置必须是字典格式")
+            raise serializers.ValidationError(serializer_text(self, "error.search_condition_object"))
 
         # 验证必要字段
         if "query" not in value:
-            raise serializers.ValidationError("搜索条件配置中必须包含query字段")
+            raise serializers.ValidationError(serializer_text(self, "error.search_condition_query_required"))
 
         if "log_groups" not in value:
-            raise serializers.ValidationError("搜索条件配置中必须包含log_groups字段")
+            raise serializers.ValidationError(serializer_text(self, "error.search_condition_groups_required"))
 
         # 验证日志分组是否存在
         log_groups = value.get("log_groups", [])
         if not isinstance(log_groups, list):
-            raise serializers.ValidationError("log_groups必须是列表格式")
+            raise serializers.ValidationError(serializer_text(self, "error.log_groups_must_be_list"))
 
         request = self.context.get("request") if hasattr(self, "context") else None
         if request is not None:
@@ -161,6 +162,6 @@ class SearchConditionSerializer(serializers.ModelSerializer):
             existing_groups = LogGroup.objects.filter(id__in=log_groups).values_list("id", flat=True)
             invalid_groups = set(log_groups) - set(existing_groups)
             if invalid_groups:
-                raise serializers.ValidationError(f"以下日志分组不存在: {', '.join(invalid_groups)}")
+                raise serializers.ValidationError(serializer_text(self, "error.log_groups_missing", names=", ".join(invalid_groups)))
 
         return value

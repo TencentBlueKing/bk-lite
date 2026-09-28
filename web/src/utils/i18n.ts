@@ -31,10 +31,13 @@ export const useTranslation = () => {
     try {
       const catalogMessage = intl.messages[id];
       // @formatjs/intl 在无 values 时走热路径，只用正则 `'\{(.*?)\}'` → `{$1}`，
-      // 无法还原 ICU 字面量 `'{'` / `'}'`。对含这类转义的文案强制走完整格式化。
+      // 无法还原 ICU 字面量 `'{'` / `'}'` / `'<'` / `'>'`。对含这类转义的文案强制走完整格式化。
       const needsFullIcu =
         typeof catalogMessage === 'string' &&
-        (catalogMessage.includes("'{'") || catalogMessage.includes("'}'"));
+        (catalogMessage.includes("'{'") ||
+          catalogMessage.includes("'}'") ||
+          catalogMessage.includes("'<'") ||
+          catalogMessage.includes("'>'"));
       return intl.formatMessage(
         { id, defaultMessage },
         needsFullIcu ? values || {} : values,

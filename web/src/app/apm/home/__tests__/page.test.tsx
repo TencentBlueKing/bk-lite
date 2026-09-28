@@ -78,10 +78,10 @@ const loadedDashboard: ApmDashboard = {
     data: {
       total: 5,
       buckets: [
-        { key: 'healthy', label: '健康', count: 3 },
-        { key: 'warning', label: '警告', count: 1 },
-        { key: 'critical', label: '严重', count: 1 },
-        { key: 'unknown', label: '未知', count: 0 },
+        { key: 'healthy', label: 'RAW_HEALTHY', count: 3 },
+        { key: 'warning', label: 'RAW_WARNING', count: 1 },
+        { key: 'critical', label: 'RAW_CRITICAL', count: 1 },
+        { key: 'unknown', label: 'RAW_UNKNOWN', count: 0 },
       ],
     },
   },
@@ -204,6 +204,12 @@ describe('ApmHomePage', () => {
     expect(screen.getByText('请求量')).not.toBeNull();
     expect(screen.getByText('错误请求数')).not.toBeNull();
     expect(screen.getByText('P95 延迟')).not.toBeNull();
+    expect(screen.getByText('健康')).not.toBeNull();
+    expect(screen.getByText('警告')).not.toBeNull();
+    expect(screen.getByText('严重')).not.toBeNull();
+    expect(screen.queryByText('RAW_HEALTHY')).toBeNull();
+    expect(screen.queryByText('RAW_WARNING')).toBeNull();
+    expect(screen.queryByText('RAW_CRITICAL')).toBeNull();
   });
 
   it('shows retry when a section failed', async () => {

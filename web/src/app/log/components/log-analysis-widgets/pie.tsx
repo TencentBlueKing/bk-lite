@@ -26,6 +26,7 @@ const LogAnalysisPie: React.FC<LogAnalysisPieProps> = ({
   const [chartInstance, setChartInstance] = useState<any>(null);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
   const { t } = useTranslation();
+  const totalLabel = t('log.analysis.total');
   const colors = useChartColors();
   const chartColors = colors.series;
 
@@ -183,7 +184,7 @@ const LogAnalysisPie: React.FC<LogAnalysisPieProps> = ({
               (sum: number, item: any) => sum + item.value,
               0,
             );
-            return `{title|总数}\n{value|${total}}`;
+            return `{title|${totalLabel}}\n{value|${total}}`;
           },
           rich: {
             title: {

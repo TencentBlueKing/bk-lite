@@ -9,6 +9,7 @@ from apps.apm.services.identity import normalize_identity
 from apps.apm.services.policies import MAX_POLICY_TARGETS
 from apps.apm.services.query import MAX_METRIC_WINDOW
 from apps.apm.services.status import catalog_status
+from apps.apm.utils.locale_text import serializer_text
 
 
 class OrganizationAssignmentSerializer(serializers.Serializer):
@@ -26,21 +27,24 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
         regex=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
         max_length=128,
         required=False,
-        error_messages={"invalid": "应用 ID 仅支持字母、数字、点、下划线和连字符，且必须以字母或数字开头。"},
     )
     name = serializers.CharField(max_length=128)
     description = serializers.CharField(max_length=512, required=False, allow_blank=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["application_id"].error_messages["invalid"] = serializer_text(self, "error.application_id_invalid")
 
     def validate_application_id(self, value):
         if not self.context.get("creating"):
             return value
         if ApmApplication.objects.filter(application_id=value).exists():
-            raise serializers.ValidationError("该应用 ID 已存在。")
+            raise serializers.ValidationError(serializer_text(self, "error.application_id_exists"))
         return value
 
     def validate(self, attrs):
         if self.context.get("creating") and not attrs.get("application_id"):
-            raise serializers.ValidationError({"application_id": "该字段必填。"})
+            raise serializers.ValidationError({"application_id": serializer_text(self, "error.field_required")})
         if not self.context.get("creating"):
             attrs.pop("application_id", None)
         return attrs
@@ -58,7 +62,7 @@ class IngestSnippetSerializer(serializers.Serializer):
     sample_rate = serializers.IntegerField(min_value=1, max_value=100, required=False, default=100)
 
     def validate_endpoint(self, _value):
-        raise serializers.ValidationError("OTLP 端点必须由服务器根据云区域配置解析，客户端不得提交。")
+        raise serializers.ValidationError(serializer_text(self, "error.otlp_endpoint_server_resolved"))
 
 
 class CatalogListQuerySerializer(serializers.Serializer):
@@ -77,7 +81,7 @@ class CatalogListQuerySerializer(serializers.Serializer):
         started_at = attrs.get("started_at")
         ended_at = attrs.get("ended_at")
         if started_at is not None and ended_at is not None and started_at >= ended_at:
-            raise serializers.ValidationError("started_at 必须早于 ended_at。")
+            raise serializers.ValidationError(serializer_text(self, "error.started_before_ended"))
         return attrs
 
 
@@ -95,11 +99,11 @@ class InstanceCatalogListQuerySerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的实例查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_instance_query", names=", ".join(unsupported)))
         started_at = attrs.get("started_at")
         ended_at = attrs.get("ended_at")
         if started_at is not None and ended_at is not None and started_at >= ended_at:
-            raise serializers.ValidationError("started_at 必须早于 ended_at。")
+            raise serializers.ValidationError(serializer_text(self, "error.started_before_ended"))
         return attrs
 
 
@@ -249,7 +253,7 @@ class ApmSloSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.instance is None and "service_id" not in attrs:
-            raise serializers.ValidationError({"service_id": "该字段必填。"})
+            raise serializers.ValidationError({"service_id": serializer_text(self, "error.field_required")})
         sli_type = attrs.get("sli_type", getattr(self.instance, "sli_type", None))
         threshold = attrs.get(
             "latency_threshold_ms",
@@ -258,7 +262,7 @@ class ApmSloSerializer(serializers.ModelSerializer):
         if sli_type == ApmSlo.SliType.AVAILABILITY:
             attrs["latency_threshold_ms"] = None
         elif not threshold:
-            raise serializers.ValidationError({"latency_threshold_ms": "时延 SLO 必须配置正数阈值。"})
+            raise serializers.ValidationError({"latency_threshold_ms": serializer_text(self, "error.latency_threshold_positive")})
         return attrs
 
 
@@ -272,13 +276,13 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的 RED 查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_red_query", names=", ".join(unsupported)))
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > MAX_METRIC_WINDOW:
-            raise serializers.ValidationError("RED 查询时间窗不能超过 7 天")
+            raise serializers.ValidationError(serializer_text(self, "error.red_window_limit"))
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs
@@ -298,18 +302,18 @@ class ServiceMetricBatchSerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的批量 RED 查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_batch_red_query", names=", ".join(unsupported)))
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > MAX_METRIC_WINDOW:
-            raise serializers.ValidationError("RED 查询时间窗不能超过 7 天")
+            raise serializers.ValidationError(serializer_text(self, "error.red_window_limit"))
         targets = attrs.get("targets") or []
         if not targets:
-            raise serializers.ValidationError({"targets": "该字段不能为空。"})
+            raise serializers.ValidationError({"targets": serializer_text(self, "error.field_not_empty")})
         if len(targets) > 40:
-            raise serializers.ValidationError({"targets": "批量 RED 查询最多 40 个目标。"})
+            raise serializers.ValidationError({"targets": serializer_text(self, "error.batch_red_target_limit", count=40)})
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs
@@ -324,13 +328,13 @@ class ServiceErrorBreakdownQuerySerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的错误构成查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_error_query", names=", ".join(unsupported)))
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > MAX_METRIC_WINDOW:
-            raise serializers.ValidationError("错误构成查询时间窗不能超过 7 天")
+            raise serializers.ValidationError(serializer_text(self, "error.error_window_limit"))
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs
@@ -353,7 +357,7 @@ class TraceSearchSerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的 Trace 查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_trace_query", names=", ".join(unsupported)))
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         attrs["started_at"] = started_at
@@ -361,7 +365,7 @@ class TraceSearchSerializer(serializers.Serializer):
         min_duration = attrs.get("min_duration_ms")
         max_duration = attrs.get("max_duration_ms")
         if min_duration is not None and max_duration is not None and min_duration > max_duration:
-            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+            raise serializers.ValidationError(serializer_text(self, "error.duration_range"))
         if attrs.get("span_name") == "":
             attrs.pop("span_name", None)
         return attrs
@@ -388,7 +392,7 @@ class SpanSearchSerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的 Span 查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_span_query", names=", ".join(unsupported)))
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         attrs["started_at"] = started_at
@@ -396,7 +400,7 @@ class SpanSearchSerializer(serializers.Serializer):
         min_duration = attrs.get("min_duration_ms")
         max_duration = attrs.get("max_duration_ms")
         if min_duration is not None and max_duration is not None and min_duration > max_duration:
-            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+            raise serializers.ValidationError(serializer_text(self, "error.duration_range"))
         if attrs.get("span_name") == "":
             attrs.pop("span_name", None)
         return attrs
@@ -415,13 +419,13 @@ class IssueSearchSerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的 Issue 查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_issue_query", names=", ".join(unsupported)))
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > timedelta(days=7):
-            raise serializers.ValidationError("Issue 查询时间窗不能超过 7 天")
+            raise serializers.ValidationError(serializer_text(self, "error.issue_window_limit"))
         attrs.update(started_at=started_at, ended_at=ended_at)
         return attrs
 
@@ -520,7 +524,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         unknown_fields = sorted(set(data) - set(self.fields))
         if unknown_fields:
-            raise serializers.ValidationError({field: "APM 策略不支持该字段。" for field in unknown_fields})
+            raise serializers.ValidationError({field: serializer_text(self, "error.policy_field_unsupported") for field in unknown_fields})
         return super().to_internal_value(data)
 
     def get_state(self, obj):
@@ -541,10 +545,10 @@ class ApmPolicySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.instance is None and "service_id" not in attrs:
-            raise serializers.ValidationError({"service_id": "该字段必填。"})
+            raise serializers.ValidationError({"service_id": serializer_text(self, "error.field_required")})
         environment = attrs.get("environment", getattr(self.instance, "environment", ""))
         if not str(environment).strip():
-            raise serializers.ValidationError({"environment": "环境必填。"})
+            raise serializers.ValidationError({"environment": serializer_text(self, "error.environment_required")})
         attrs["environment"] = str(environment).strip()
 
         metric_type = attrs.get("metric_type", getattr(self.instance, "metric_type", None))
@@ -552,7 +556,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if thresholds is None:
             thresholds = list(getattr(self.instance, "thresholds", []) or [])
         if not thresholds:
-            raise serializers.ValidationError({"thresholds": "至少配置一条告警阈值。"})
+            raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_required")})
         normalized_thresholds = self._validate_thresholds(thresholds, metric_type)
         attrs["thresholds"] = normalized_thresholds
 
@@ -562,21 +566,21 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         attrs["versions"] = list(dict.fromkeys(item.strip() for item in versions))
         version_mode = attrs.get("version_mode", getattr(self.instance, "version_mode", ApmPolicy.VersionMode.ALL))
         if version_mode == ApmPolicy.VersionMode.SPECIFIC and not attrs["versions"]:
-            raise serializers.ValidationError({"versions": "指定版本模式必须至少选择一个版本。"})
+            raise serializers.ValidationError({"versions": serializer_text(self, "error.versions_required")})
         if version_mode != ApmPolicy.VersionMode.SPECIFIC and attrs["versions"]:
-            raise serializers.ValidationError({"versions": "只有指定版本模式可以配置版本列表。"})
+            raise serializers.ValidationError({"versions": serializer_text(self, "error.versions_mode_only")})
         if version_mode == ApmPolicy.VersionMode.SPECIFIC:
             combination_count = max(1, len(attrs["endpoints"])) * len(attrs["versions"])
             if combination_count > MAX_POLICY_TARGETS:
                 raise serializers.ValidationError(
-                    {"endpoints": f"指定版本模式下，端点与版本组合数不能超过 {MAX_POLICY_TARGETS}。"}
+                    {"endpoints": serializer_text(self, "error.policy_target_limit", count=MAX_POLICY_TARGETS)}
                 )
 
         no_data_after = attrs.get("no_data_after", getattr(self.instance, "no_data_after", None))
         no_data_severity = attrs.get("no_data_severity", getattr(self.instance, "no_data_severity", ""))
         if bool(no_data_after) != bool(no_data_severity):
             field = "no_data_severity" if no_data_after else "no_data_after"
-            raise serializers.ValidationError({field: "无数据持续次数与级别必须同时配置或同时关闭。"})
+            raise serializers.ValidationError({field: serializer_text(self, "error.no_data_pair")})
         no_data_alert_name = attrs.get(
             "no_data_alert_name",
             getattr(self.instance, "no_data_alert_name", ""),
@@ -587,7 +591,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if notification_targets is not None:
             channel_ids = [target["channel_id"] for target in notification_targets]
             if len(channel_ids) != len(set(channel_ids)):
-                raise serializers.ValidationError({"notification_targets": "同一通知渠道不能重复选择。"})
+                raise serializers.ValidationError({"notification_targets": serializer_text(self, "error.channel_duplicate")})
         self._validate_policy_handlers(attrs)
         return attrs
 
@@ -613,8 +617,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if handlers_provided:
             attrs["handlers"] = resolved
 
-    @staticmethod
-    def _validate_thresholds(thresholds, metric_type):
+    def _validate_thresholds(self, thresholds, metric_type):
         severity_rank = {"critical": 0, "error": 1, "warning": 2}
         normalized = []
         seen = set()
@@ -622,27 +625,27 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         for threshold in thresholds:
             severity = str(threshold["severity"])
             if severity in seen:
-                raise serializers.ValidationError({"thresholds": "同一告警级别不能重复配置。"})
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.level_duplicate")})
             seen.add(severity)
             comparator = str(threshold["comparator"])
             comparators.add(comparator)
             try:
                 value = Decimal(str(threshold["value"]))
             except (InvalidOperation, TypeError, ValueError):
-                raise serializers.ValidationError({"thresholds": "阈值必须是有限数值。"}) from None
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")}) from None
             if not value.is_finite():
-                raise serializers.ValidationError({"thresholds": "阈值必须是有限数值。"})
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_finite")})
             if metric_type == ApmPolicy.MetricType.ERROR_RATE and not 0 <= value <= 1:
-                raise serializers.ValidationError({"thresholds": "错误率阈值必须在 0 到 1 之间。"})
+                raise serializers.ValidationError({"thresholds": serializer_text(self, "error.error_rate_range")})
             normalized.append({"severity": severity, "comparator": comparator, "value": str(value)})
         if len(comparators) != 1:
-            raise serializers.ValidationError({"thresholds": "多级阈值必须使用相同比较符。"})
+            raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_comparator")})
         normalized.sort(key=lambda item: severity_rank[item["severity"]])
         values = [Decimal(item["value"]) for item in normalized]
         comparator = next(iter(comparators))
         valid = values == sorted(values, reverse=comparator in {"gt", "gte"})
         if not valid:
-            raise serializers.ValidationError({"thresholds": "多级阈值必须按严重、错误、警告保持单调。"})
+            raise serializers.ValidationError({"thresholds": serializer_text(self, "error.threshold_monotonic")})
         return normalized
 
 
@@ -681,9 +684,9 @@ class ApmDeploymentQuerySerializer(serializers.Serializer):
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(days=7)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > timedelta(days=90):
-            raise serializers.ValidationError("部署事件查询时间窗不能超过 90 天")
+            raise serializers.ValidationError(serializer_text(self, "error.deployment_window_limit"))
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         if not attrs.get("environment"):
@@ -713,9 +716,9 @@ class ApmEventQuerySerializer(serializers.Serializer):
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(days=7)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > timedelta(days=90):
-            raise serializers.ValidationError("事件查询时间窗不能超过 90 天")
+            raise serializers.ValidationError(serializer_text(self, "error.event_window_limit"))
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs
@@ -737,9 +740,9 @@ class ApmAlertQuerySerializer(serializers.Serializer):
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(days=7)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > timedelta(days=90):
-            raise serializers.ValidationError("告警查询时间窗不能超过 90 天")
+            raise serializers.ValidationError(serializer_text(self, "error.alert_window_limit"))
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         attrs["my_alert"] = str(attrs.get("my_alert") or "").strip().lower() in {"1", "true", "yes"}
@@ -753,10 +756,10 @@ class ApmAlertAssignSerializer(serializers.Serializer):
         cleaned = []
         for item in value:
             if item in (None, "") or isinstance(item, bool):
-                raise serializers.ValidationError("处理人标识无效")
+                raise serializers.ValidationError(serializer_text(self, "error.handler_invalid"))
             cleaned.append(item)
         if not cleaned:
-            raise serializers.ValidationError("至少指定一名处理人")
+            raise serializers.ValidationError(serializer_text(self, "error.handler_required"))
         return cleaned
 
 
@@ -778,7 +781,7 @@ class NotificationRecipientQuerySerializer(serializers.Serializer):
         try:
             return sorted({int(part) for part in parts})
         except (TypeError, ValueError) as exc:
-            raise serializers.ValidationError("organization_ids 必须是逗号分隔的正整数。") from exc
+            raise serializers.ValidationError(serializer_text(self, "error.organization_ids_format")) from exc
 
 
 class NotificationDeliveryRetrySerializer(serializers.Serializer):

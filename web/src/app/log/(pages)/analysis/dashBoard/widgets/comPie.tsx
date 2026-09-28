@@ -6,6 +6,7 @@ import ChartEmptyState from '@/components/chart-empty-state';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import useChartColors from './docker/useChartColors';
 import { createHorizontalBarGradient } from './chartStyle';
+import { useTranslation } from '@/utils/i18n';
 
 const LEGEND_WIDTH_CLASS = 'w-40';
 const LEGEND_WIDTH_PX = 160;
@@ -32,6 +33,8 @@ const OsPie: React.FC<OsPieProps> = ({
   const observerRef = useRef<ResizeObserver | null>(null);
   const colors = useChartColors();
   const chartColors = colors.series;
+  const { t } = useTranslation();
+  const totalLabel = t('log.analysis.total');
 
   const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
     // 清理旧的 observer
@@ -211,7 +214,7 @@ const OsPie: React.FC<OsPieProps> = ({
               (sum: number, item: any) => sum + item.value,
               0
             );
-            return `{title|总数}\n{value|${total}}`;
+            return `{title|${totalLabel}}\n{value|${total}}`;
           },
           rich: {
             title: {
