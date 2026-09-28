@@ -28,6 +28,7 @@ from apps.apm.models import (
 )
 from apps.apm.pagination import ApmCatalogPagination
 from apps.apm.renderers import ApmRenderer
+from apps.apm.utils.locale_text import public_detail, request_text
 from apps.apm.serializers import (
     ApmAlertAssignSerializer,
     ApmAlertQuerySerializer,
@@ -258,11 +259,11 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
         try:
             return Response(self.service.list_regions(NodeMgmt()))
         except CloudRegionConfigurationError as exc:
-            return Response({"code": exc.code, "detail": exc.detail}, status=status.HTTP_502_BAD_GATEWAY)
+            return Response({"code": exc.code, "detail": public_detail(exc, request)}, status=status.HTTP_502_BAD_GATEWAY)
         except Exception as exc:
             logger.warning("APM cloud region listing failed: %s", type(exc).__name__)
             return Response(
-                {"code": "cloud_region_unavailable", "detail": "云区域目录暂时不可用，请稍后重试。"},
+                {"code": "cloud_region_unavailable", "detail": request_text(request, "error.cloud_region_catalog_unavailable")},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -273,7 +274,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
         data = serializer.validated_data
         organization_id = current_organization_id(request)
         if organization_id is None:
-            return Response({"detail": "当前组织不在用户授权范围内。"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": request_text(request, "error.organization_out_of_scope")}, status=status.HTTP_403_FORBIDDEN)
         applications = filter_current_organization(
             ApmApplication.objects.filter(is_builtin=False),
             request,
@@ -295,11 +296,11 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 if exc.code in {"cloud_region_not_found", "cloud_region_receiver_unavailable", "probe_download_unavailable"}
                 else status.HTTP_400_BAD_REQUEST
             )
-            return Response({"code": exc.code, "detail": exc.detail}, status=response_status)
+            return Response({"code": exc.code, "detail": public_detail(exc, request)}, status=response_status)
         except Exception as exc:
             logger.warning("APM cloud region endpoint resolution failed: %s", type(exc).__name__)
             return Response(
-                {"code": "cloud_region_unavailable", "detail": "云区域配置暂时不可用，请稍后重试。"},
+                {"code": "cloud_region_unavailable", "detail": request_text(request, "error.cloud_region_config_unavailable")},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         try:
@@ -320,7 +321,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             return Response(
                 {
                     "code": "probe_artifact_not_found",
-                    "detail": "探针文件不存在，请先在服务端初始化探针制品。",
+                    "detail": request_text(request, "error.probe_artifact_missing"),
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
@@ -329,7 +330,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             return Response(
                 {
                     "code": "probe_artifact_unavailable",
-                    "detail": "探针文件暂时不可用，请稍后重试。",
+                    "detail": request_text(request, "error.probe_artifact_unavailable"),
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
@@ -485,7 +486,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                     "environment": target["environment"],
                     "ok": False,
                     "code": "not_found",
-                    "detail": "服务不存在或当前组织不可见",
+                    "detail": request_text(self.request, "error.service_invisible"),
                 }
             query = ServiceMetricQuery(
                 service_namespace=service.namespace,
@@ -811,7 +812,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
     def _authorize_policy_organizations(self, organizations, *, required):
         if organizations is None:
             if required:
-                raise ValidationError({"organizations": "该字段必填。"})
+                raise ValidationError({"organizations": request_text(self.request, "error.field_required")})
             return None
         try:
             validate_assignable_organizations(self.request, organizations)
@@ -855,7 +856,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
             return []
         organization_id = current_organization_id(self.request)
         if organization_id is None:
-            raise ValidationError({"notification_targets": "缺少当前组织。"})
+            raise ValidationError({"notification_targets": request_text(self.request, "error.organization_missing")})
         actor_context = _notification_actor_context(self.request, organization_id)
         try:
             channels = self.notification_directory.list_available(
@@ -873,14 +874,14 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         for target in requested_targets:
             channel = allowed.get(int(target["channel_id"]))
             if channel is None:
-                raise ValidationError({"notification_targets": "包含当前组织不可用的通知渠道。"})
+                raise ValidationError({"notification_targets": request_text(self.request, "error.channel_unavailable")})
             recipients = [str(value).strip() for value in target.get("recipients", [])]
             if channel.recipient_mode == "none" and recipients:
-                raise ValidationError({"notification_targets": f"渠道 {channel.name} 不接受接收人。"})
+                raise ValidationError({"notification_targets": request_text(self.request, "error.channel_rejects_recipients", name=channel.name)})
             if channel.recipient_mode != "none" and not recipients:
-                raise ValidationError({"notification_targets": f"渠道 {channel.name} 必须配置接收人。"})
+                raise ValidationError({"notification_targets": request_text(self.request, "error.channel_requires_recipients", name=channel.name)})
             if channel.recipient_mode == "system_user" and not all(value.isdigit() for value in recipients):
-                raise ValidationError({"notification_targets": f"渠道 {channel.name} 只接受系统用户 ID。"})
+                raise ValidationError({"notification_targets": request_text(self.request, "error.channel_user_ids_only", name=channel.name)})
             if channel.recipient_mode == "system_user":
                 requested_recipient_ids = {int(value) for value in recipients}
                 try:
@@ -896,7 +897,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                         status=status.HTTP_503_SERVICE_UNAVAILABLE,
                     )
                 if valid_recipient_ids != requested_recipient_ids:
-                    raise ValidationError({"notification_targets": f"渠道 {channel.name} 包含当前组织不可用的系统用户。"})
+                    raise ValidationError({"notification_targets": request_text(self.request, "error.channel_users_unavailable", name=channel.name)})
             normalized_targets.append(
                 {
                     "channel_id": channel.id,

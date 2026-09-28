@@ -8,6 +8,7 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore, telemetry_error_payload
+from apps.apm.utils.locale_text import serializer_text
 from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.renderers import ApmRenderer
 from apps.apm.services import DjangoApmTopologyService
@@ -59,13 +60,13 @@ class TopologyQuerySerializer(serializers.Serializer):
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
         if unsupported:
-            raise serializers.ValidationError(f"不支持的拓扑查询参数: {', '.join(unsupported)}")
+            raise serializers.ValidationError(serializer_text(self, "error.unsupported_topology_query", names=", ".join(unsupported)))
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         if ended_at <= started_at:
-            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+            raise serializers.ValidationError(serializer_text(self, "error.ended_after_started"))
         if ended_at - started_at > timedelta(days=7):
-            raise serializers.ValidationError("拓扑查询时间窗不能超过 7 天")
+            raise serializers.ValidationError(serializer_text(self, "error.topology_window_limit"))
         if attrs.get("span_name") == "":
             attrs.pop("span_name", None)
         attrs.update(started_at=started_at, ended_at=ended_at)
